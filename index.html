@@ -335,43 +335,40 @@
       opacity: 0.5;
     }
 
-    /* ── Dimensions Row ──────────────────────────────────────────────────── */
-    .dim-row {
+    /* ── Dimensions Block ────────────────────────────────────────────────── */
+    .dim-block {
       display: flex;
-      align-items: center;
-      gap: 12px;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
     }
 
-    .dim-row .dim-label {
-      font-size: 12px;
+    .dim-title {
+      font-size: 14px;
       font-weight: 700;
-      color: var(--text-muted);
-      white-space: nowrap;
-      width: 120px;
-      flex-shrink: 0;
+      color: var(--text);
     }
 
     .dim-group {
       display: flex;
-      gap: 8px;
-      flex: 1;
+      gap: 16px;
     }
 
     .dim-field {
       flex: 1;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 10px;
     }
 
     .dim-field label {
-      font-size: 11px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
       white-space: nowrap;
       margin: 0;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-      font-weight: 700;
+      text-transform: none;
+      letter-spacing: 0;
       flex-shrink: 0;
     }
 
@@ -614,47 +611,43 @@
         <div class="subsection-title">Technical Specifications</div>
 
         <!-- Dimensions inches -->
-        <div style="margin-bottom:14px;">
-          <div class="dim-row">
-            <span class="dim-label">Dimensions (in)</span>
-            <div class="dim-group">
-              <div class="field dim-field">
-                <label>L:</label>
-                <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-l" oninput="convertToMm('in')" />
-              </div>
-              <div class="field dim-field">
-                <label>W:</label>
-                <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-w" oninput="convertToMm('in')" />
-              </div>
-              <div class="field dim-field">
-                <label>H:</label>
-                <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-h" oninput="convertToMm('in')" />
-              </div>
+        <div class="dim-block">
+          <div class="dim-title">Dimensions (in)</div>
+          <div class="dim-group">
+            <div class="dim-field">
+              <label>L:</label>
+              <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-l" oninput="convertToMm('in')" />
+            </div>
+            <div class="dim-field">
+              <label>W:</label>
+              <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-w" oninput="convertToMm('in')" />
+            </div>
+            <div class="dim-field">
+              <label>H:</label>
+              <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-h" oninput="convertToMm('in')" />
             </div>
           </div>
         </div>
 
         <!-- Dimensions mm (auto-converted) -->
-        <div style="margin-bottom:20px;">
-          <div class="dim-row">
-            <span class="dim-label">Dimensions (mm)</span>
-            <div class="dim-group">
-              <div class="field dim-field">
-                <label>L:</label>
-                <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-l" oninput="convertToIn('mm')" />
-              </div>
-              <div class="field dim-field">
-                <label>W:</label>
-                <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-w" oninput="convertToIn('mm')" />
-              </div>
-              <div class="field dim-field">
-                <label>H:</label>
-                <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-h" oninput="convertToIn('mm')" />
-              </div>
+        <div class="dim-block">
+          <div class="dim-title">Dimensions (mm)</div>
+          <div class="dim-group">
+            <div class="dim-field">
+              <label>L:</label>
+              <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-l" oninput="convertToIn('mm')" />
+            </div>
+            <div class="dim-field">
+              <label>W:</label>
+              <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-w" oninput="convertToIn('mm')" />
+            </div>
+            <div class="dim-field">
+              <label>H:</label>
+              <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-h" oninput="convertToIn('mm')" />
             </div>
           </div>
-          <div style="margin-top:5px; font-size:11px; color:var(--text-muted);">↕ Inches and mm fields auto-convert when either is filled</div>
         </div>
+        <div style="margin-bottom:20px; font-size:11px; color:var(--text-muted); font-style:italic;">* Inches and mm fields are separate, either can be filled.</div>
 
         <!-- Materials / Colors -->
         <div class="form-grid form-grid-2">
