@@ -358,10 +358,19 @@
 
     .dim-field {
       flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .dim-field label {
-      font-size: 10px;
+      font-size: 11px;
+      white-space: nowrap;
+      margin: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 700;
     }
 
     /* ── Image Upload ────────────────────────────────────────────────────── */
@@ -603,15 +612,15 @@
             <span class="dim-label">Dimensions (in)</span>
             <div class="dim-group">
               <div class="field dim-field">
-                <label>L (in)</label>
+                <label>L:</label>
                 <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-l" oninput="convertToMm('in')" />
               </div>
               <div class="field dim-field">
-                <label>W (in)</label>
+                <label>W:</label>
                 <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-w" oninput="convertToMm('in')" />
               </div>
               <div class="field dim-field">
-                <label>H (in)</label>
+                <label>H:</label>
                 <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-h" oninput="convertToMm('in')" />
               </div>
             </div>
@@ -624,15 +633,15 @@
             <span class="dim-label">Dimensions (mm)</span>
             <div class="dim-group">
               <div class="field dim-field">
-                <label>L (mm)</label>
+                <label>L:</label>
                 <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-l" oninput="convertToIn('mm')" />
               </div>
               <div class="field dim-field">
-                <label>W (mm)</label>
+                <label>W:</label>
                 <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-w" oninput="convertToIn('mm')" />
               </div>
               <div class="field dim-field">
-                <label>H (mm)</label>
+                <label>H:</label>
                 <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-h" oninput="convertToIn('mm')" />
               </div>
             </div>
