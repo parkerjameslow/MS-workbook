@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Market Sculpt — Product Workbook</title>
+  <style>
+    /* ── Reset & Variables ───────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0f1117;
+      --surface:     #1a1d27;
+      --surface2:    #21253a;
+      --border:      #2e3350;
+      --text:        #e8eaf0;
+      --text-muted:  #7b82a0;
+      --accent:      #4f7cff;
+      --accent-glow: rgba(79,124,255,0.15);
+      --karen-bg:    #2a2100;
+      --karen-border:#c99a00;
+      --karen-text:  #ffe066;
+      --karen-label: #f5c842;
+      --success:     #34d399;
+      --danger:      #f87171;
+      --radius:      10px;
+      --radius-sm:   6px;
+      --shadow:      0 4px 24px rgba(0,0,0,0.4);
+    }
+
+    [data-theme="light"] {
+      --bg:          #f0f2f8;
+      --surface:     #ffffff;
+      --surface2:    #f5f7ff;
+      --border:      #d0d6e8;
+      --text:        #1a1d2e;
+      --text-muted:  #6b7494;
+      --accent:      #3b68f0;
+      --accent-glow: rgba(59,104,240,0.1);
+      --karen-bg:    #fffbe6;
+      --karen-border:#e6b800;
+      --karen-text:  #7a5c00;
+      --karen-label: #996600;
+      --shadow:      0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────────── */
+    .app-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-mark {
+      width: 34px;
+      height: 34px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 16px;
+      color: #fff;
+    }
+
+    .logo-text {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .logo-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: -2px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-danger-ghost {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--danger);
+      padding: 4px 8px;
+    }
+    .btn-danger-ghost:hover { background: rgba(248,113,113,0.1); }
+    .btn-add {
+      background: var(--surface2);
+      border: 1px dashed var(--border);
+      color: var(--text-muted);
+      width: 100%;
+      padding: 9px;
+      border-radius: var(--radius-sm);
+    }
+    .btn-add:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+    /* ── Theme Toggle ────────────────────────────────────────────────────── */
+    .theme-toggle {
+      width: 42px; height: 22px;
+      background: var(--border);
+      border-radius: 11px;
+      border: none;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.2s;
+    }
+    .theme-toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 16px; height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    [data-theme="light"] .theme-toggle { background: var(--accent); }
+    [data-theme="light"] .theme-toggle::after { transform: translateX(20px); }
+
+    /* ── Main Container ──────────────────────────────────────────────────── */
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+    }
+
+    /* ── Karen Legend ────────────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 28px;
+      font-size: 13px;
+    }
+    .legend-title { color: var(--text-muted); font-weight: 600; }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .legend-dot {
+      width: 12px; height: 12px;
+      border-radius: 3px;
+    }
+    .dot-ms   { background: var(--accent); }
+    .dot-karen { background: var(--karen-border); }
+
+    /* ── Section Card ────────────────────────────────────────────────────── */
+    .section-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 24px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .section-header {
+      padding: 16px 22px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-icon {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      background: var(--accent-glow);
+      border: 1px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .section-badge {
+      margin-left: auto;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: var(--accent-glow);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      font-weight: 600;
+    }
+
+    .section-body {
+      padding: 22px;
+    }
+
+    /* ── Sub-section ─────────────────────────────────────────────────────── */
+    .subsection {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .subsection-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    /* ── Form Grid ───────────────────────────────────────────────────────── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+    }
+
+    .form-grid-2 { grid-template-columns: 1fr 1fr; }
+    .form-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .col-span-2 { grid-column: span 2; }
+    .col-span-3 { grid-column: span 3; }
+    .col-full   { grid-column: 1 / -1; }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    /* Karen label color */
+    .karen-field label {
+      color: var(--karen-label);
+    }
+
+    input, textarea, select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      padding: 8px 11px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      width: 100%;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    input::placeholder, textarea::placeholder {
+      color: var(--text-muted);
+      opacity: 0.6;
+    }
+    textarea { resize: vertical; min-height: 80px; }
+
+    /* Karen fields */
+    .karen-field input,
+    .karen-field textarea,
+    .karen-field select {
+      background: var(--karen-bg);
+      border-color: var(--karen-border);
+      color: var(--karen-text);
+    }
+    .karen-field input:focus,
+    .karen-field textarea:focus {
+      box-shadow: 0 0 0 3px rgba(201,154,0,0.2);
+    }
+    .karen-field input::placeholder,
+    .karen-field textarea::placeholder {
+      color: var(--karen-label);
+      opacity: 0.5;
+    }
+
+    /* ── Dimensions Row ──────────────────────────────────────────────────── */
+    .dim-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .dim-row .dim-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      padding-bottom: 9px;
+      white-space: nowrap;
+    }
+
+    .dim-group {
+      display: flex;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .dim-field {
+      flex: 1;
+    }
+
+    .dim-field label {
+      font-size: 10px;
+    }
+
+    /* ── Image Upload ────────────────────────────────────────────────────── */
+    .image-upload-area {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+      min-height: 160px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .image-upload-area:hover {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+    .image-upload-area.has-image {
+      padding: 0;
+      border-style: solid;
+      border-color: var(--accent);
+    }
+    .image-upload-area input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+      border: none;
+      padding: 0;
+    }
+    .image-preview {
+      width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      border-radius: calc(var(--radius) - 2px);
+      display: none;
+    }
+    .image-upload-area.has-image .image-preview { display: block; }
+    .image-upload-area.has-image .upload-prompt { display: none; }
+    .upload-icon { font-size: 28px; line-height: 1; }
+    .upload-text { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+    .upload-hint { font-size: 11px; color: var(--text-muted); opacity: 0.6; }
+    .image-remove {
+      position: absolute;
+      top: 8px; right: 8px;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 26px; height: 26px;
+      font-size: 14px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+    }
+    .image-upload-area.has-image .image-remove { display: flex; }
+
+    /* ── Color Swatch ────────────────────────────────────────────────────── */
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .color-swatch {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* ── Table ───────────────────────────────────────────────────────────── */
+    .rfq-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .rfq-table th {
+      text-align: left;
+      padding: 9px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .rfq-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .rfq-table tr:last-child td { border-bottom: none; }
+
+    .rfq-table input {
+      padding: 6px 9px;
+      font-size: 13px;
+    }
+
+    .karen-cell input {
+      background: var(--karen-bg);
+      border-color: var(--karen-border);
+      color: var(--karen-text);
+    }
+    .karen-cell input::placeholder { color: var(--karen-label); opacity: 0.5; }
+
+    .total-cell {
+      font-weight: 700;
+      color: var(--success);
+      font-size: 14px;
+    }
+
+    .th-karen {
+      color: var(--karen-label) !important;
+    }
+
+    /* ── Carton Grid ─────────────────────────────────────────────────────── */
+    .carton-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    /* ── Info Pill ───────────────────────────────────────────────────────── */
+    .info-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-glow);
+      border: 1px solid var(--accent);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    /* ── Print ───────────────────────────────────────────────────────────── */
+    @media print {
+      .app-header, .header-actions, .btn-add, .btn-danger-ghost,
+      .image-upload-area input[type="file"], .image-remove,
+      .legend { display: none !important; }
+      body { background: #fff; color: #000; }
+      .section-card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+      .container { padding: 16px; }
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
+      .col-span-2, .col-span-3 { grid-column: span 1; }
+      .carton-grid { grid-template-columns: 1fr; }
+      .dim-group { flex-direction: column; }
+    }
+  </style>
+</head>
+<body data-theme="dark">
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header class="app-header">
+  <div class="logo">
+    <div class="logo-mark">MS</div>
+    <div>
+      <div class="logo-text">Market Sculpt</div>
+      <div class="logo-sub">Product Workbook · RFQ</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-ghost" onclick="window.print()">🖨 Print / Export</button>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode"></button>
+  </div>
+</header>
+
+<!-- ── Main ────────────────────────────────────────────────────────────── -->
+<main class="container">
+
+  <!-- Legend -->
+  <div class="legend">
+    <span class="legend-title">FIELD KEY</span>
+    <div class="legend-item">
+      <div class="legend-dot dot-ms"></div>
+      <span>Filled by Market Sculpt</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-dot dot-karen"></div>
+      <span style="color:var(--karen-label); font-weight:600;">Filled by Karen (supplier)</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION 1 — PRODUCT OVERVIEW
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">📦</div>
+      <span class="section-title">Product Overview</span>
+      <span class="section-badge">Section 1</span>
+    </div>
+    <div class="section-body">
+
+      <!-- Basic info grid -->
+      <div class="form-grid form-grid-2">
+        <div class="field">
+          <label>Client Name</label>
+          <input type="text" placeholder="e.g. Acme Corp" id="client-name" />
+        </div>
+        <div class="field">
+          <label>Product Name</label>
+          <input type="text" placeholder="e.g. Custom Tote Bag" id="product-name" />
+        </div>
+        <div class="field col-full">
+          <label>Product Description</label>
+          <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc"></textarea>
+        </div>
+      </div>
+
+      <!-- Product Image -->
+      <div style="margin-top:18px;">
+        <label style="display:block; margin-bottom:8px;">Product Image</label>
+        <div class="image-upload-area" id="uploadArea" onclick="document.getElementById('imgInput').click()">
+          <input type="file" id="imgInput" accept="image/*" onchange="handleImage(event)" onclick="event.stopPropagation()" />
+          <div class="upload-prompt">
+            <div class="upload-icon">🖼️</div>
+            <div class="upload-text">Click or drag & drop to upload product image</div>
+            <div class="upload-hint">PNG, JPG, WEBP · Max 10MB</div>
+          </div>
+          <img class="image-preview" id="imgPreview" alt="Product preview" />
+          <button class="image-remove" onclick="removeImage(event)" title="Remove image">✕</button>
+        </div>
+      </div>
+
+      <!-- ── Technical Specifications ── -->
+      <div class="subsection">
+        <div class="subsection-title">Technical Specifications</div>
+
+        <!-- Dimensions inches -->
+        <div style="margin-bottom:14px;">
+          <div class="dim-row">
+            <span class="dim-label">Dimensions (in)</span>
+            <div class="dim-group">
+              <div class="field dim-field">
+                <label>L (in)</label>
+                <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-l" oninput="convertToMm('in')" />
+              </div>
+              <div class="field dim-field">
+                <label>W (in)</label>
+                <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-w" oninput="convertToMm('in')" />
+              </div>
+              <div class="field dim-field">
+                <label>H (in)</label>
+                <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-h" oninput="convertToMm('in')" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dimensions mm (auto-converted) -->
+        <div style="margin-bottom:20px;">
+          <div class="dim-row">
+            <span class="dim-label">Dimensions (mm)</span>
+            <div class="dim-group">
+              <div class="field dim-field">
+                <label>L (mm)</label>
+                <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-l" oninput="convertToIn('mm')" />
+              </div>
+              <div class="field dim-field">
+                <label>W (mm)</label>
+                <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-w" oninput="convertToIn('mm')" />
+              </div>
+              <div class="field dim-field">
+                <label>H (mm)</label>
+                <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-h" oninput="convertToIn('mm')" />
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:5px; font-size:11px; color:var(--text-muted);">↕ Inches and mm fields auto-convert when either is filled</div>
+        </div>
+
+        <!-- Materials / Colors -->
+        <div class="form-grid form-grid-2">
+          <div class="field col-span-2">
+            <label>Materials</label>
+            <input type="text" placeholder="e.g. 600D Polyester, Zinc alloy hardware" id="materials" />
+          </div>
+
+          <!-- Pantone -->
+          <div class="field">
+            <label>Pantone Color(s)</label>
+            <div class="color-row">
+              <input type="color" class="color-swatch" id="pantone-swatch" value="#4f7cff" oninput="syncPantone()" title="Pick color" />
+              <input type="text" placeholder="e.g. PMS 286 C" id="pantone-text" />
+            </div>
+          </div>
+
+          <!-- CMYK -->
+          <div class="field">
+            <label>CMYK</label>
+            <input type="text" placeholder="e.g. C:100 M:72 Y:0 K:18" id="cmyk" />
+          </div>
+
+          <!-- Color Notes -->
+          <div class="field col-span-2">
+            <label>Color Notes</label>
+            <textarea placeholder="Any special color matching instructions, finish requirements, or brand guidelines…" id="color-notes" style="min-height:60px;"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       SECTION 2 — RFQ
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="section-card">
+    <div class="section-header">
+      <div class="section-icon">💬</div>
+      <span class="section-title">RFQ — Request for Quotation</span>
+      <span class="section-badge">Section 2</span>
+    </div>
+    <div class="section-body">
+
+      <div class="info-pill">✏️ Highlighted fields are completed by Karen</div>
+
+      <!-- ── Quote Details ── -->
+      <div class="subsection-title" style="margin-top:0;">Quote Details</div>
+      <div class="form-grid form-grid-2">
+        <div class="field karen-field">
+          <label>Quantity</label>
+          <input type="number" min="0" placeholder="e.g. 500" id="quote-qty" />
+        </div>
+        <div class="field karen-field">
+          <label>Unit Price (USD)</label>
+          <input type="number" step="0.0001" min="0" placeholder="e.g. 2.50" id="quote-unit" />
+        </div>
+        <div class="field karen-field">
+          <label>Lead Time</label>
+          <input type="text" placeholder="e.g. 30 days after artwork approval" id="quote-lead" />
+        </div>
+        <div class="field karen-field col-full">
+          <label>Quality Control Notes</label>
+          <textarea placeholder="Describe QC standards, inspection methods, acceptable tolerances…" id="quote-qc" style="min-height:70px;"></textarea>
+        </div>
+      </div>
+
+      <!-- ── Carton Specifications ── -->
+      <div class="subsection">
+        <div class="subsection-title">Carton Specifications</div>
+        <div class="carton-grid">
+          <div class="field karen-field">
+            <label>Unit Weight (kg)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 0.250" id="carton-unit-weight" />
+          </div>
+          <div class="field karen-field">
+            <label>Inner Carton Weight (kg)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 2.500" id="carton-inner-weight" />
+          </div>
+          <div class="field karen-field">
+            <label>Inner Count <span style="font-weight:400; text-transform:none;">(units / inner carton)</span></label>
+            <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" />
+          </div>
+          <div class="field karen-field">
+            <label>Outer Carton Weight (kg)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 15.000" id="carton-outer-weight" />
+          </div>
+          <div class="field karen-field">
+            <label>Outer Count <span style="font-weight:400; text-transform:none;">(units / outer carton)</span></label>
+            <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" />
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Tiered Pricing ── -->
+      <div class="subsection">
+        <div class="subsection-title">Tiered Pricing</div>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+          Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
+        </p>
+        <table class="rfq-table" id="tier-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Quantity</th>
+              <th class="th-karen">Unit Price (USD) ✎</th>
+              <th>Total Price</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tier-body">
+            <!-- rows injected by JS -->
+          </tbody>
+        </table>
+        <button class="btn btn-add" style="margin-top:10px;" onclick="addTierRow()">+ Add Pricing Tier</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer note -->
+  <div style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:8px;">
+    Market Sculpt Product Workbook · Generated <span id="gen-date"></span>
+  </div>
+
+</main>
+
+<script>
+  /* ── Theme ─────────────────────────────────────────────────────────────── */
+  function toggleTheme() {
+    const body = document.body;
+    body.dataset.theme = body.dataset.theme === 'dark' ? 'light' : 'dark';
+  }
+
+  /* ── Image Upload ──────────────────────────────────────────────────────── */
+  function handleImage(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('imgPreview').src = ev.target.result;
+      document.getElementById('uploadArea').classList.add('has-image');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeImage(e) {
+    e.stopPropagation();
+    document.getElementById('imgPreview').src = '';
+    document.getElementById('imgInput').value = '';
+    document.getElementById('uploadArea').classList.remove('has-image');
+  }
+
+  // Drag and drop support
+  const uploadArea = document.getElementById('uploadArea');
+  uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.borderColor = 'var(--accent)'; });
+  uploadArea.addEventListener('dragleave', () => { uploadArea.style.borderColor = ''; });
+  uploadArea.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadArea.style.borderColor = '';
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      document.getElementById('imgInput').files = dt.files;
+      handleImage({ target: { files: [file] } });
+    }
+  });
+
+  /* ── Dimension Conversion ──────────────────────────────────────────────── */
+  const IN_TO_MM = 25.4;
+  let converting = false;
+
+  function convertToMm(source) {
+    if (converting) return;
+    converting = true;
+    ['l','w','h'].forEach(axis => {
+      const inVal = parseFloat(document.getElementById(`dim-in-${axis}`).value);
+      const mmEl  = document.getElementById(`dim-mm-${axis}`);
+      mmEl.value  = isNaN(inVal) ? '' : (inVal * IN_TO_MM).toFixed(1);
+    });
+    converting = false;
+  }
+
+  function convertToIn(source) {
+    if (converting) return;
+    converting = true;
+    ['l','w','h'].forEach(axis => {
+      const mmVal = parseFloat(document.getElementById(`dim-mm-${axis}`).value);
+      const inEl  = document.getElementById(`dim-in-${axis}`);
+      inEl.value  = isNaN(mmVal) ? '' : (mmVal / IN_TO_MM).toFixed(3);
+    });
+    converting = false;
+  }
+
+  /* ── Pantone Swatch ────────────────────────────────────────────────────── */
+  function syncPantone() {
+    // swatch is just a helper; text field is the source of truth
+  }
+
+  /* ── Tiered Pricing ────────────────────────────────────────────────────── */
+  let tierCount = 0;
+
+  function addTierRow(qty = '', unitPrice = '') {
+    tierCount++;
+    const id = tierCount;
+    const tbody = document.getElementById('tier-body');
+    const tr = document.createElement('tr');
+    tr.id = `tier-${id}`;
+    tr.innerHTML = `
+      <td style="color:var(--text-muted); font-weight:600;">${id}</td>
+      <td>
+        <input type="number" min="0" placeholder="e.g. 100" value="${qty}"
+               oninput="recalcTier(${id})"
+               style="width:110px;" />
+      </td>
+      <td class="karen-cell">
+        <input type="number" step="0.0001" min="0" placeholder="0.0000" value="${unitPrice}"
+               oninput="recalcTier(${id})"
+               style="width:130px;" />
+      </td>
+      <td class="total-cell" id="tier-total-${id}">—</td>
+      <td>
+        <button class="btn btn-danger-ghost" onclick="removeTierRow(${id})">✕</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    recalcTier(id);
+  }
+
+  function recalcTier(id) {
+    const row    = document.getElementById(`tier-${id}`);
+    const inputs = row.querySelectorAll('input');
+    const qty    = parseFloat(inputs[0].value);
+    const unit   = parseFloat(inputs[1].value);
+    const totalEl = document.getElementById(`tier-total-${id}`);
+    if (!isNaN(qty) && !isNaN(unit)) {
+      totalEl.textContent = '$' + (qty * unit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } else {
+      totalEl.textContent = '—';
+    }
+  }
+
+  function removeTierRow(id) {
+    document.getElementById(`tier-${id}`)?.remove();
+  }
+
+  /* ── Init ──────────────────────────────────────────────────────────────── */
+  // Seed with 3 default tiers
+  addTierRow(100);
+  addTierRow(250);
+  addTierRow(500);
+
+  // Footer date
+  document.getElementById('gen-date').textContent = new Date().toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+</script>
+</body>
+</html>
