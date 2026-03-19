@@ -149,25 +149,20 @@
 
     /* ── Theme Toggle ────────────────────────────────────────────────────── */
     .theme-toggle {
-      width: 42px; height: 22px;
-      background: var(--border);
-      border-radius: 11px;
-      border: none;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 14px;
       cursor: pointer;
-      position: relative;
-      transition: background 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
     }
-    .theme-toggle::after {
-      content: '';
-      position: absolute;
-      top: 3px; left: 3px;
-      width: 16px; height: 16px;
-      background: #fff;
-      border-radius: 50%;
-      transition: transform 0.2s;
-    }
-    [data-theme="light"] .theme-toggle { background: var(--accent); }
-    [data-theme="light"] .theme-toggle::after { transform: translateX(20px); }
+    .theme-toggle:hover { background: var(--border); }
 
     /* ── Main Container ──────────────────────────────────────────────────── */
     .container {
@@ -550,7 +545,7 @@
   </div>
   <div class="header-actions">
     <button class="btn btn-ghost" onclick="window.print()">🖨 Print / Export</button>
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode"></button>
+    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">🌙 Dark Mode</button>
   </div>
 </header>
 
@@ -789,7 +784,9 @@
   /* ── Theme ─────────────────────────────────────────────────────────────── */
   function toggleTheme() {
     const body = document.body;
-    body.dataset.theme = body.dataset.theme === 'dark' ? 'light' : 'dark';
+    const isDark = body.dataset.theme === 'dark';
+    body.dataset.theme = isDark ? 'light' : 'dark';
+    document.getElementById('theme-btn').textContent = isDark ? '🌙 Dark Mode' : '☀️ Light Mode';
   }
 
   /* ── Image Upload ──────────────────────────────────────────────────────── */
