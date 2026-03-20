@@ -17,14 +17,10 @@
       --text-muted:  #7b82a0;
       --accent:      #4f7cff;
       --accent-glow: rgba(79,124,255,0.15);
-      --karen-bg:    rgba(180,30,30,0.10);
-      --karen-border:rgba(200,80,80,0.30);
-      --karen-text:  #e8eaf0;
-      --karen-label: #c07070;
-      --karen-filled-bg:    rgba(30,160,80,0.10);
-      --karen-filled-border:rgba(60,180,100,0.30);
-      --karen-filled-text:  #e8eaf0;
-      --karen-filled-label: #60b07a;
+      --karen-label: #8ca8ff;
+      --filled-bg:    rgba(52,211,153,0.08);
+      --filled-border:rgba(52,211,153,0.28);
+      --filled-label: #52c98a;
       --success:     #34d399;
       --danger:      #f87171;
       --radius:      10px;
@@ -41,14 +37,10 @@
       --text-muted:  #6b7494;
       --accent:      #3b68f0;
       --accent-glow: rgba(59,104,240,0.1);
-      --karen-bg:    rgba(220,60,60,0.07);
-      --karen-border:rgba(200,60,60,0.25);
-      --karen-text:  #1a1d2e;
-      --karen-label: #b05050;
-      --karen-filled-bg:    rgba(40,180,90,0.07);
-      --karen-filled-border:rgba(40,170,85,0.25);
-      --karen-filled-text:  #1a1d2e;
-      --karen-filled-label: #3a8f55;
+      --karen-label: #3a6ae0;
+      --filled-bg:    rgba(40,180,90,0.07);
+      --filled-border:rgba(40,170,85,0.25);
+      --filled-label: #2a9a50;
       --shadow:      0 4px 24px rgba(0,0,0,0.08);
     }
 
@@ -304,14 +296,14 @@
     }
 
     input, textarea, select {
-      background: var(--surface2);
-      border: 1px solid var(--border);
+      background: rgba(79,124,255,0.07);
+      border: 1px solid rgba(79,124,255,0.28);
       border-radius: var(--radius-sm);
       color: var(--text);
       font-size: 14px;
       font-family: inherit;
       padding: 8px 11px;
-      transition: border-color 0.15s, box-shadow 0.15s;
+      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
       width: 100%;
     }
     input:focus, textarea:focus, select:focus {
@@ -325,38 +317,19 @@
     }
     textarea { resize: vertical; min-height: 80px; }
 
-    /* Karen fields */
-    .karen-field input,
-    .karen-field textarea,
-    .karen-field select {
-      background: var(--karen-bg);
-      border-color: var(--karen-border);
-      color: var(--karen-text);
+    /* Filled state — all fields */
+    .field-filled label {
+      color: var(--filled-label);
     }
-    .karen-field input:focus,
-    .karen-field textarea:focus {
-      box-shadow: 0 0 0 3px rgba(201,154,0,0.2);
+    .field-filled input,
+    .field-filled textarea,
+    .field-filled select {
+      background: var(--filled-bg);
+      border-color: var(--filled-border);
     }
-    .karen-field input::placeholder,
-    .karen-field textarea::placeholder {
-      color: var(--karen-label);
-      opacity: 0.5;
-    }
-
-    /* Karen fields — filled state */
-    .karen-field.karen-filled label {
-      color: var(--karen-filled-label);
-    }
-    .karen-field.karen-filled input,
-    .karen-field.karen-filled textarea,
-    .karen-field.karen-filled select {
-      background: var(--karen-filled-bg);
-      border-color: var(--karen-filled-border);
-      color: var(--karen-filled-text);
-    }
-    .karen-field.karen-filled input:focus,
-    .karen-field.karen-filled textarea:focus {
-      box-shadow: 0 0 0 3px rgba(62,191,106,0.2);
+    .field-filled input:focus,
+    .field-filled textarea:focus {
+      box-shadow: 0 0 0 3px rgba(52,211,153,0.15);
     }
 
     /* ── Dimensions Block ────────────────────────────────────────────────── */
@@ -511,16 +484,9 @@
       font-size: 13px;
     }
 
-    .karen-cell input {
-      background: var(--karen-bg);
-      border-color: var(--karen-border);
-      color: var(--karen-text);
-    }
-    .karen-cell input::placeholder { color: var(--karen-label); opacity: 0.5; }
-    .karen-cell.karen-filled input {
-      background: var(--karen-filled-bg);
-      border-color: var(--karen-filled-border);
-      color: var(--karen-filled-text);
+    .karen-cell.field-filled input {
+      background: var(--filled-bg);
+      border-color: var(--filled-border);
     }
 
     .total-cell {
@@ -918,17 +884,15 @@
     document.getElementById(`tier-${id}`)?.remove();
   }
 
-  /* ── Karen Field Fill State ────────────────────────────────────────────── */
-  function updateKarenFilled(el) {
-    const field = el.closest('.karen-field, .karen-cell');
+  /* ── Field Fill State ───────────────────────────────────────────────────── */
+  function updateFilled(el) {
+    const field = el.closest('.field, .karen-cell');
     if (!field) return;
-    const filled = el.value.trim() !== '';
-    field.classList.toggle('karen-filled', filled);
+    field.classList.toggle('field-filled', el.value.trim() !== '');
   }
 
   document.addEventListener('input', e => {
-    const el = e.target;
-    if (el.closest('.karen-field, .karen-cell')) updateKarenFilled(el);
+    if (e.target.matches('input, textarea, select')) updateFilled(e.target);
   });
 
   /* ── Init ──────────────────────────────────────────────────────────────── */
