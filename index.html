@@ -17,10 +17,14 @@
       --text-muted:  #7b82a0;
       --accent:      #4f7cff;
       --accent-glow: rgba(79,124,255,0.15);
-      --karen-bg:    #2a2100;
-      --karen-border:#c99a00;
-      --karen-text:  #ffe066;
-      --karen-label: #f5c842;
+      --karen-bg:    #2a0a0a;
+      --karen-border:#c94040;
+      --karen-text:  #ffb3b3;
+      --karen-label: #f58080;
+      --karen-filled-bg:    #0a2a12;
+      --karen-filled-border:#3abf6a;
+      --karen-filled-text:  #a3f0c0;
+      --karen-filled-label: #5ecf8a;
       --success:     #34d399;
       --danger:      #f87171;
       --radius:      10px;
@@ -37,10 +41,14 @@
       --text-muted:  #6b7494;
       --accent:      #3b68f0;
       --accent-glow: rgba(59,104,240,0.1);
-      --karen-bg:    #fffbe6;
-      --karen-border:#e6b800;
-      --karen-text:  #7a5c00;
-      --karen-label: #996600;
+      --karen-bg:    #ffe6e6;
+      --karen-border:#e05050;
+      --karen-text:  #7a0000;
+      --karen-label: #a03030;
+      --karen-filled-bg:    #e6fff0;
+      --karen-filled-border:#2ea855;
+      --karen-filled-text:  #0a4a1e;
+      --karen-filled-label: #1a7a3a;
       --shadow:      0 4px 24px rgba(0,0,0,0.08);
     }
 
@@ -335,6 +343,22 @@
       opacity: 0.5;
     }
 
+    /* Karen fields — filled state */
+    .karen-field.karen-filled label {
+      color: var(--karen-filled-label);
+    }
+    .karen-field.karen-filled input,
+    .karen-field.karen-filled textarea,
+    .karen-field.karen-filled select {
+      background: var(--karen-filled-bg);
+      border-color: var(--karen-filled-border);
+      color: var(--karen-filled-text);
+    }
+    .karen-field.karen-filled input:focus,
+    .karen-field.karen-filled textarea:focus {
+      box-shadow: 0 0 0 3px rgba(62,191,106,0.2);
+    }
+
     /* ── Dimensions Block ────────────────────────────────────────────────── */
     .dim-block {
       display: flex;
@@ -493,6 +517,11 @@
       color: var(--karen-text);
     }
     .karen-cell input::placeholder { color: var(--karen-label); opacity: 0.5; }
+    .karen-cell.karen-filled input {
+      background: var(--karen-filled-bg);
+      border-color: var(--karen-filled-border);
+      color: var(--karen-filled-text);
+    }
 
     .total-cell {
       font-weight: 700;
@@ -888,6 +917,19 @@
   function removeTierRow(id) {
     document.getElementById(`tier-${id}`)?.remove();
   }
+
+  /* ── Karen Field Fill State ────────────────────────────────────────────── */
+  function updateKarenFilled(el) {
+    const field = el.closest('.karen-field, .karen-cell');
+    if (!field) return;
+    const filled = el.value.trim() !== '';
+    field.classList.toggle('karen-filled', filled);
+  }
+
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (el.closest('.karen-field, .karen-cell')) updateKarenFilled(el);
+  });
 
   /* ── Init ──────────────────────────────────────────────────────────────── */
   // Seed with 3 default tiers
