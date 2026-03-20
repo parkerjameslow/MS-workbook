@@ -318,7 +318,8 @@
     textarea { resize: vertical; min-height: 80px; }
 
     /* Filled state — all fields */
-    .field-filled label {
+    .field-filled label,
+    .dim-field.field-filled label {
       color: var(--filled-label);
     }
     .field-filled input,
@@ -886,7 +887,7 @@
 
   /* ── Field Fill State ───────────────────────────────────────────────────── */
   function updateFilled(el) {
-    const field = el.closest('.field, .karen-cell');
+    const field = el.closest('.field, .dim-field, .karen-cell');
     if (!field) return;
     field.classList.toggle('field-filled', el.value.trim() !== '');
   }
