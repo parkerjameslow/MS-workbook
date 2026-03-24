@@ -1,0 +1,7 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home4/markewq4/public_html/workbook/
+    - /bin/cp -R index.html $DEPLOYPATH
+    - /bin/cp -R assets $DEPLOYPATH
+    - /bin/cp -R deploy.php $DEPLOYPATH
