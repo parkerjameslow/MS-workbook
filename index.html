@@ -9,23 +9,23 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:          #0f1117;
-      --surface:     #1a1d27;
-      --surface2:    #21253a;
-      --border:      #2e3350;
-      --text:        #e8eaf0;
-      --text-muted:  #7b82a0;
-      --accent:      #4f7cff;
-      --accent-glow: rgba(79,124,255,0.15);
-      --karen-label: #8ca8ff;
-      --filled-bg:    rgba(52,211,153,0.08);
-      --filled-border:rgba(52,211,153,0.28);
-      --filled-label: #52c98a;
-      --success:     #34d399;
-      --danger:      #f87171;
+      --bg:          #0d0f14;
+      --surface:     #181b26;
+      --surface2:    #222638;
+      --border:      #3a3f5c;
+      --text:        #f0f1f5;
+      --text-muted:  #9ba3c0;
+      --accent:      #6b93ff;
+      --accent-glow: rgba(107,147,255,0.18);
+      --karen-label: #a0bdff;
+      --filled-bg:    rgba(52,211,153,0.14);
+      --filled-border:rgba(52,211,153,0.40);
+      --filled-label: #5ee8a0;
+      --success:     #4ade80;
+      --danger:      #fb7185;
       --radius:      10px;
       --radius-sm:   6px;
-      --shadow:      0 4px 24px rgba(0,0,0,0.4);
+      --shadow:      0 4px 24px rgba(0,0,0,0.5);
     }
 
     [data-theme="light"] {
@@ -55,6 +55,122 @@
     }
 
     /* ── Layout ──────────────────────────────────────────────────────────── */
+    .app-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    .sidebar {
+      width: 180px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      z-index: 200;
+      overflow-y: auto;
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 12px 20px;
+      cursor: pointer;
+    }
+
+    .sidebar-logo img {
+      max-width: 100px;
+      height: auto;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 0 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+
+    .nav-item:hover {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    .nav-item.active {
+      background: var(--accent-glow);
+      color: var(--accent);
+      font-weight: 600;
+      border-left: 3px solid var(--accent);
+    }
+
+    .nav-item-icon {
+      width: 20px;
+      text-align: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .nav-item-chevron {
+      margin-left: auto;
+      font-size: 10px;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+    }
+
+    .nav-item.expanded .nav-item-chevron {
+      transform: rotate(90deg);
+    }
+
+    .nav-submenu {
+      display: none;
+      padding-left: 44px;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .nav-submenu.open {
+      display: flex;
+    }
+
+    .nav-submenu .nav-item {
+      padding: 7px 12px;
+      font-size: 13px;
+    }
+
+    .sidebar-bottom {
+      padding: 12px;
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+    }
+
+    .app-content {
+      margin-left: 180px;
+      flex: 1;
+    }
+
     .app-header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -171,9 +287,9 @@
 
     /* ── Main Container ──────────────────────────────────────────────────── */
     .container {
-      max-width: 960px;
+      max-width: 1200px;
       margin: 0 auto;
-      padding: 32px 20px 60px;
+      padding: 32px 32px 60px;
     }
 
     /* ── Karen Legend ────────────────────────────────────────────────────── */
@@ -299,8 +415,8 @@
 
 
     input, textarea, select {
-      background: rgba(79,124,255,0.07);
-      border: 1px solid rgba(79,124,255,0.28);
+      background: rgba(107,147,255,0.08);
+      border: 1px solid rgba(107,147,255,0.30);
       border-radius: var(--radius-sm);
       color: var(--text);
       font-size: 14px;
@@ -308,6 +424,10 @@
       padding: 8px 11px;
       transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
       width: 100%;
+    }
+
+    select {
+      height: 38px;
     }
     input:focus, textarea:focus, select:focus {
       outline: none;
@@ -501,6 +621,12 @@
     /* ── Carton Grid ─────────────────────────────────────────────────────── */
     .carton-grid {
       display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .carton-grid-2 {
+      display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 14px;
     }
@@ -520,8 +646,728 @@
       margin-bottom: 16px;
     }
 
+    /* ── Views ──────────────────────────────────────────────────────────── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Dashboard Table ────────────────────────────────────────────────── */
+    .dash-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .dash-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .dash-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      table-layout: fixed;
+    }
+
+    .dash-table th {
+      text-align: left;
+      padding: 14px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .dash-table th:nth-child(1) { width: 20%; }
+    .dash-table th:nth-child(2) { width: 10%; }
+    .dash-table th:nth-child(3) { width: 10%; }
+    .dash-table th:nth-child(4) { width: auto; }
+    .dash-table th:nth-child(5) { width: 60px; }
+
+    .dash-table td {
+      padding: 18px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .dash-table tbody tr {
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .dash-table tbody tr:hover {
+      background: var(--surface2);
+    }
+
+    .dash-table tbody tr.row-complete {
+      background: rgba(52,211,153,0.08);
+    }
+
+    .dash-table tbody tr.row-complete:hover {
+      background: rgba(52,211,153,0.14);
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .status-badge.complete {
+      background: rgba(52,211,153,0.15);
+      color: var(--success);
+    }
+
+    .status-badge.in-progress {
+      background: var(--accent-glow);
+      color: var(--accent);
+    }
+
+    .dash-table .product-name {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .dash-table .desc-cell {
+      color: var(--text-muted);
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── Fulfilment Flow Indicators ─────────────────────────────────────── */
+    .flow-group {
+      display: flex;
+      gap: 6px;
+    }
+
+    .flow-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .flow-bar {
+      width: 46px;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--border);
+    }
+
+    .flow-bar.filled {
+      background: var(--success);
+    }
+
+    .flow-label {
+      font-size: 9px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      text-align: center;
+    }
+
+    /* ── Action Icon Button ─────────────────────────────────────────────── */
+    .dash-table td:last-child {
+      position: relative;
+      text-align: center;
+      padding-right: 24px;
+    }
+
+    .action-icon-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 18px;
+      font-weight: 700;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      line-height: 1;
+    }
+
+    .action-icon-btn:hover {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
+    .action-menu {
+      display: none;
+      position: absolute;
+      right: 16px;
+      top: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      z-index: 50;
+      min-width: 100px;
+      overflow: hidden;
+    }
+
+    .action-menu.open {
+      display: block;
+    }
+
+    .action-menu a {
+      display: block;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      transition: background 0.1s;
+      text-decoration: none;
+    }
+
+    .action-menu a:hover {
+      background: var(--surface2);
+    }
+
+    /* ── Workbook Status Bar ───────────────────────────────────────────── */
+    .status-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .status-bar-left {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex: 1;
+    }
+
+    .status-label {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .status-label span {
+      color: var(--success);
+      font-size: 14px;
+    }
+
+    .status-flow {
+      display: flex;
+      gap: 8px;
+      flex: 1;
+      justify-content: center;
+    }
+
+    .status-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-step-bar {
+      width: 60px;
+      height: 10px;
+      border-radius: 5px;
+      background: var(--border);
+      transition: background 0.2s;
+    }
+
+    .status-step-bar.filled {
+      background: var(--success);
+    }
+
+    .status-step-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .btn-advance {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+      min-width: 180px;
+    }
+
+    .btn-advance:hover { opacity: 0.85; }
+
+    .btn-back-step {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      font-size: 16px;
+      font-weight: 700;
+      width: 36px;
+      height: 38px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .btn-back-step:hover { background: var(--surface2); color: var(--text); }
+    .btn-back-step:disabled { opacity: 0.3; cursor: default; }
+
+    .btn-advance:disabled {
+      background: var(--success);
+      opacity: 0.7;
+      cursor: default;
+    }
+
+    /* ── Home View ──────────────────────────────────────────────────────── */
+    .home-welcome {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-muted);
+    }
+    .home-welcome h2 {
+      font-size: 24px;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    /* ── Workbook Tabs ──────────────────────────────────────────────────── */
+    .wb-tabs {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .wb-tab {
+      padding: 8px 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .wb-tab.active {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+
+    .wb-tab:not(.active):hover {
+      color: var(--text);
+    }
+
+    .wb-tab-content {
+      display: none;
+    }
+
+    .wb-tab-content.active {
+      display: block;
+    }
+
+    /* ── Sticky Bar ─────────────────────────────────────────────────────── */
+    .wb-sticky-bar {
+      position: sticky;
+      top: 64px;
+      z-index: 90;
+      background: var(--bg);
+      padding: 16px 0 12px;
+      margin: -16px 0 16px;
+    }
+
+    /* ── Back Button ────────────────────────────────────────────────────── */
+    .btn-back {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0;
+      margin-bottom: 16px;
+    }
+    .btn-back:hover { opacity: 0.7; }
+
+    /* ── Modal ──────────────────────────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+      width: 480px;
+      max-width: 90vw;
+      padding: 28px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 20px;
+    }
+
+    .modal-field {
+      margin-bottom: 16px;
+    }
+
+    .modal-field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .modal-field label .required {
+      color: var(--danger);
+    }
+
+    .modal-field input,
+    .modal-field select,
+    .modal-field textarea {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .modal-field textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .modal-field input:focus,
+    .modal-field select:focus,
+    .modal-field textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .btn-cancel:hover { background: var(--surface2); }
+
+    .btn-create {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 9px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-create:hover { opacity: 0.85; }
+
+    /* ── Add Workbook Button (sidebar) ─────────────────────────────────── */
+    .sidebar-add-btn {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 6px;
+      margin: 0;
+      padding: 9px 12px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .sidebar-add-btn:hover { opacity: 0.85; }
+
+    /* ── Shipping Calculator ─────────────────────────────────────────────── */
+    .freight-calc {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .freight-panel {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+
+    .freight-panel-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .freight-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .freight-row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .freight-field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .freight-field input,
+    .freight-field select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+      height: 38px;
+    }
+
+    .freight-field select {
+      font-family: inherit;
+    }
+
+    .freight-result {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+
+    .freight-result:last-child {
+      border-bottom: none;
+    }
+
+    .freight-result-label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .freight-result-value {
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .freight-result-value.highlight {
+      font-size: 16px;
+      color: var(--accent);
+    }
+
+    .freight-result-value.cost {
+      font-size: 16px;
+      color: var(--success);
+    }
+
+    .freight-verdict {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .freight-verdict.volumetric {
+      background: rgba(251,191,36,0.1);
+      border: 1px solid rgba(251,191,36,0.3);
+      color: #f59e0b;
+    }
+
+    .freight-verdict.actual {
+      background: rgba(52,211,153,0.1);
+      border: 1px solid rgba(52,211,153,0.3);
+      color: var(--success);
+    }
+
+    .freight-verdict.equal {
+      background: var(--accent-glow);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+    }
+
+    .freight-bars {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      height: 80px;
+      margin: 14px 0;
+      padding: 0 10px;
+    }
+
+    .freight-bar-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      height: 100%;
+      justify-content: flex-end;
+    }
+
+    .freight-bar {
+      width: 100%;
+      border-radius: 4px 4px 0 0;
+      transition: height 0.3s ease;
+      min-height: 4px;
+    }
+
+    .freight-bar.actual-bar { background: var(--accent); }
+    .freight-bar.vol-bar { background: #f59e0b; }
+    .freight-bar.charge-bar { background: var(--success); }
+
+    .freight-bar-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .freight-bar-val {
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      color: var(--text);
+    }
+
+    .freight-tip {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .freight-ref-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 14px;
+    }
+
+    .freight-ref-table th,
+    .freight-ref-table td {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .freight-ref-table th {
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .freight-extra {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .freight-extra span {
+      font-weight: 700;
+      color: #f59e0b;
+    }
+
+    @media (max-width: 768px) {
+      .freight-calc { grid-template-columns: 1fr; }
+    }
+
     /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
+      .sidebar { display: none !important; }
+      .app-content { margin-left: 0 !important; }
       .app-header, .header-actions, .btn-add, .btn-danger-ghost,
       .image-upload-area input[type="file"], .image-remove,
       .legend { display: none !important; }
@@ -531,6 +1377,11 @@
     }
 
     /* ── Responsive ──────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .app-content { margin-left: 0; }
+    }
+
     @media (max-width: 640px) {
       .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
       .col-span-2, .col-span-3 { grid-column: span 1; }
@@ -541,14 +1392,37 @@
 </head>
 <body data-theme="light">
 
-<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<div class="app-layout">
+
+<!-- ── Sidebar ───────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <a class="sidebar-logo" href="#/" style="text-decoration:none;">
+    <img src="assets/logo.png" alt="Market Sculpt" />
+  </a>
+
+  <div style="padding: 0 12px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;">
+    <button class="sidebar-add-btn" onclick="openNewWorkbookModal()">+ Add Workbook</button>
+    <button class="sidebar-add-btn" style="background: var(--success);" onclick="openAddClientModal()">+ Add Client</button>
+  </div>
+  <div style="padding: 0 16px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Clients</div>
+  <nav class="sidebar-nav">
+    <a class="nav-item" href="#/client/BAM">BAM</a>
+    <a class="nav-item" href="#/client/Bloom">Bloom</a>
+    <a class="nav-item" href="#/client/Candy Pan">Candy Pan</a>
+    <a class="nav-item" href="#/client/Fresh Her">Fresh Her</a>
+    <a class="nav-item" href="#/client/Kids United">Kids United</a>
+    <a class="nav-item" href="#/client/Nut Garden">Nut Garden</a>
+    <a class="nav-item" href="#/client/Salt">Salt</a>
+    <a class="nav-item" href="#/client/Tweedle Dee">Tweedle Dee</a>
+  </nav>
+</aside>
+
+<!-- ── App Content ──────────────────────────────────────────────────── -->
+<div class="app-content">
+
 <header class="app-header">
   <div class="logo">
-    <div class="logo-mark">MS</div>
-    <div>
-      <div class="logo-text">Market Sculpt</div>
-      <div class="logo-sub">Product Workbook · RFQ</div>
-    </div>
+    <div class="logo-text" id="header-title" style="font-size:18px; font-weight:700; color:var(--text);">Market Sculpt</div>
   </div>
   <div class="header-actions">
     <button class="btn btn-ghost" onclick="window.print()">🖨 Print / Export</button>
@@ -556,8 +1430,97 @@
   </div>
 </header>
 
-<!-- ── Main ────────────────────────────────────────────────────────────── -->
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: HOME
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-home" class="view active">
+  <main class="container">
+    <div class="section-card">
+      <div class="section-header">
+        <span class="section-title">Recently Worked On</span>
+      </div>
+      <div class="section-body" style="padding:0;">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Client</th>
+              <th>Date Created</th>
+              <th>Fulfilment (Flow)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="recent-tbody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: CLIENT DASHBOARD
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-dashboard" class="view">
+  <main class="container">
+    <div class="section-card">
+      <div class="section-body" style="padding:0;">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Date Created</th>
+              <th>Date Submitted</th>
+              <th>Fulfilment (Flow)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="dash-tbody">
+            <!-- rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: WORKBOOK DETAIL
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-workbook" class="view">
 <main class="container">
+  <div class="wb-sticky-bar">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <button class="btn-back" id="btn-back" onclick="history.back()" style="margin-bottom:0;">← Back to Workbooks</button>
+      <div class="wb-tabs">
+        <button class="wb-tab active" onclick="switchWbTab('workbook', this)">Workbook</button>
+        <button class="wb-tab" onclick="switchWbTab('shipping', this)">Shipping</button>
+        <button class="wb-tab" onclick="switchWbTab('pricing', this)">Pricing</button>
+        <button class="wb-tab" onclick="switchWbTab('quote', this)">Quote for Client</button>
+        <button class="wb-tab" onclick="switchWbTab('invoice', this)">Office Invoice</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Status Bar ── -->
+  <div class="status-bar" id="status-bar">
+    <div class="status-bar-left">
+      <div class="status-label">Status</div>
+      <div class="status-flow" id="status-flow">
+        <!-- populated by JS -->
+      </div>
+    </div>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
+      <button class="btn-advance" id="btn-advance" onclick="advanceStatus()">
+        Mark as Entered →
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Tab: Workbook ── -->
+  <div id="wb-tab-workbook" class="wb-tab-content active">
 
   <!-- ══════════════════════════════════════════════════════════════════════
        SECTION 1 — PRODUCT OVERVIEW
@@ -688,8 +1651,12 @@
           <input type="number" min="0" placeholder="e.g. 500" id="quote-qty" />
         </div>
         <div class="field karen-field">
+          <label>Unit Price (RMB)</label>
+          <input type="number" step="0.0001" min="0" placeholder="e.g. 18.00" id="quote-unit-rmb" oninput="convertRmbToUsd()" />
+        </div>
+        <div class="field">
           <label>Unit Price (USD)</label>
-          <input type="number" step="0.0001" min="0" placeholder="e.g. 2.50" id="quote-unit" />
+          <input type="number" step="0.0001" min="0" placeholder="auto" id="quote-unit" readonly style="opacity:0.7;" />
         </div>
         <div class="field karen-field">
           <label>Lead Time</label>
@@ -704,33 +1671,236 @@
       <!-- ── Carton Specifications ── -->
       <div class="subsection">
         <div class="subsection-title">Carton Specifications</div>
-        <div class="carton-grid">
+        <!-- Unit Weight -->
+        <div class="carton-grid-2" style="margin-bottom:20px;">
           <div class="field karen-field">
             <label>Unit Weight (kg)</label>
-            <input type="number" step="0.001" min="0" placeholder="e.g. 0.250" id="carton-unit-weight" />
+            <input type="number" step="0.001" min="0" placeholder="e.g. 0.250" id="carton-unit-weight" oninput="convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg')" />
+          </div>
+          <div class="field">
+            <label>Unit Weight (lbs)</label>
+            <input type="number" step="0.001" min="0" placeholder="auto" id="carton-unit-weight-lbs" oninput="convertWeight('carton-unit-weight-lbs','carton-unit-weight','lbs')" />
+          </div>
+        </div>
+
+        <!-- Inner Carton -->
+        <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">Inner Carton</div>
+        <div class="carton-grid" style="margin-bottom:20px; margin-top:10px;">
+          <div class="field karen-field">
+            <label>Weight (kg)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 2.500" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg')" />
+          </div>
+          <div class="field">
+            <label>Weight (lbs)</label>
+            <input type="number" step="0.001" min="0" placeholder="auto" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" />
           </div>
           <div class="field karen-field">
-            <label>Inner Carton Weight (kg)</label>
-            <input type="number" step="0.001" min="0" placeholder="e.g. 2.500" id="carton-inner-weight" />
-          </div>
-          <div class="field karen-field">
-            <label>Inner Count <span style="font-weight:400; text-transform:none;">(units / inner carton)</span></label>
+            <label>Qty <span style="font-weight:400; text-transform:none;">(units / inner carton)</span></label>
             <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" />
           </div>
+        </div>
+
+        <!-- Outer Carton -->
+        <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border);">Outer Carton</div>
+        <div class="carton-grid" style="margin-top:10px;">
           <div class="field karen-field">
-            <label>Outer Carton Weight (kg)</label>
-            <input type="number" step="0.001" min="0" placeholder="e.g. 15.000" id="carton-outer-weight" />
+            <label>Weight (kg)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 15.000" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" />
+          </div>
+          <div class="field">
+            <label>Weight (lbs)</label>
+            <input type="number" step="0.001" min="0" placeholder="auto" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" />
           </div>
           <div class="field karen-field">
-            <label>Outer Count <span style="font-weight:400; text-transform:none;">(units / outer carton)</span></label>
+            <label>Qty <span style="font-weight:400; text-transform:none;">(units / outer carton)</span></label>
             <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" />
           </div>
         </div>
       </div>
 
-      <!-- ── Tiered Pricing ── -->
-      <div class="subsection">
-        <div class="subsection-title">Tiered Pricing</div>
+    </div>
+  </div>
+  </div><!-- /#wb-tab-workbook -->
+
+  <!-- ── Tab: Shipping ── -->
+  <div id="wb-tab-shipping" class="wb-tab-content">
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">Shipping Weight Calculator</span>
+    </div>
+    <div class="section-body">
+      <div class="subsection" style="margin-top:0; padding-top:0; border-top:none;">
+        <div class="subsection-title" style="display:none;">Shipping Weight Calculator</div>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+          Carriers charge the greater of Actual Weight or Volumetric Weight. This calculator determines the chargeable weight and estimated cost.
+        </p>
+
+        <div class="freight-calc">
+          <!-- INPUT PANEL -->
+          <div class="freight-panel">
+            <div class="freight-panel-title">Inputs</div>
+
+            <div class="freight-field" style="margin-bottom:10px;">
+              <label>Dimension Unit</label>
+              <select id="freight-dim-unit" onchange="calcFreight()">
+                <option value="in" selected>Inches (in)</option>
+                <option value="cm">Centimeters (cm)</option>
+                <option value="mm">Millimeters (mm)</option>
+              </select>
+            </div>
+
+            <div class="freight-row-3">
+              <div class="freight-field">
+                <label>Length</label>
+                <input type="number" step="0.01" min="0" value="60" id="freight-l" oninput="calcFreight()" />
+              </div>
+              <div class="freight-field">
+                <label>Width</label>
+                <input type="number" step="0.01" min="0" value="50" id="freight-w" oninput="calcFreight()" />
+              </div>
+              <div class="freight-field">
+                <label>Height</label>
+                <input type="number" step="0.01" min="0" value="40" id="freight-h" oninput="calcFreight()" />
+              </div>
+            </div>
+
+            <div class="freight-row">
+              <div class="freight-field">
+                <label>Weight Unit</label>
+                <select id="freight-wt-unit" onchange="calcFreight()">
+                  <option value="kg" selected>Kilograms (kg)</option>
+                  <option value="lbs">Pounds (lbs)</option>
+                </select>
+              </div>
+              <div class="freight-field">
+                <label>Actual Weight</label>
+                <input type="number" step="0.01" min="0" value="10" id="freight-actual" oninput="calcFreight()" />
+              </div>
+            </div>
+
+            <div class="freight-row">
+              <div class="freight-field">
+                <label>Shipping Method</label>
+                <select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
+                  <option value="slow" selected>Slow Boat</option>
+                  <option value="fast">Fast Boat</option>
+                  <option value="airupp">Air + UPS</option>
+                  <option value="directair">Direct Air</option>
+                </select>
+              </div>
+              <div class="freight-field">
+                <label>Rate per kg (USD)</label>
+                <input type="number" step="0.01" min="0" value="12" id="freight-rate" oninput="calcFreight()" />
+              </div>
+            </div>
+
+            <div class="freight-field" style="margin-bottom:0;">
+              <label>Number of Cartons</label>
+              <input type="number" step="1" min="1" value="1" id="freight-cartons" oninput="calcFreight()" />
+            </div>
+
+            <!-- Reference table -->
+            <table class="freight-ref-table">
+              <thead><tr><th>Method</th><th>Rate / kg</th><th>Divisor</th></tr></thead>
+              <tbody>
+                <tr><td>Slow Boat</td><td>$12.00</td><td>÷ 6,000</td></tr>
+                <tr><td>Fast Boat</td><td>$14.00</td><td>÷ 6,000</td></tr>
+                <tr><td>Air + UPS</td><td>$44.00</td><td>÷ 5,000</td></tr>
+                <tr><td>Direct Air</td><td>$65.00</td><td>÷ 5,000</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- RESULTS PANEL -->
+          <div class="freight-panel">
+            <div class="freight-panel-title">Results</div>
+
+            <div class="freight-result">
+              <span class="freight-result-label">Actual Weight</span>
+              <span class="freight-result-value" id="freight-out-actual">10.00 kg</span>
+            </div>
+            <div class="freight-result">
+              <span class="freight-result-label">Volumetric Weight</span>
+              <span class="freight-result-value" id="freight-out-vol">20.00 kg</span>
+            </div>
+            <div class="freight-result">
+              <span class="freight-result-label">Chargeable Weight</span>
+              <span class="freight-result-value highlight" id="freight-out-charge">20.00 kg</span>
+            </div>
+            <div class="freight-result">
+              <span class="freight-result-label">Formula Used</span>
+              <span class="freight-result-value" id="freight-out-formula" style="font-size:12px;">(60 × 50 × 40) ÷ 6,000</span>
+            </div>
+
+            <!-- Bar comparison -->
+            <div class="freight-bars">
+              <div class="freight-bar-col">
+                <span class="freight-bar-val" id="freight-bar-actual-val">10</span>
+                <div class="freight-bar actual-bar" id="freight-bar-actual" style="height:50%"></div>
+                <span class="freight-bar-label">Actual</span>
+              </div>
+              <div class="freight-bar-col">
+                <span class="freight-bar-val" id="freight-bar-vol-val">20</span>
+                <div class="freight-bar vol-bar" id="freight-bar-vol" style="height:100%"></div>
+                <span class="freight-bar-label">Volumetric</span>
+              </div>
+              <div class="freight-bar-col">
+                <span class="freight-bar-val" id="freight-bar-charge-val">20</span>
+                <div class="freight-bar charge-bar" id="freight-bar-charge" style="height:100%"></div>
+                <span class="freight-bar-label">Chargeable</span>
+              </div>
+            </div>
+
+            <!-- Verdict -->
+            <div class="freight-verdict volumetric" id="freight-verdict">
+              Volumetric weight applies — package is bulky/light.
+            </div>
+
+            <!-- Cost -->
+            <div class="freight-result" style="margin-top:14px;">
+              <span class="freight-result-label">Estimated Shipping Cost</span>
+              <span class="freight-result-value cost" id="freight-out-cost">$90.00</span>
+            </div>
+
+            <div class="freight-extra" id="freight-extra">
+              Extra cost due to volumetric: <span>$45.00</span>
+            </div>
+
+            <!-- Tip -->
+            <div class="freight-tip" id="freight-tip">
+              Tip: Reduce void/air space in packaging to lower volumetric weight.
+            </div>
+
+            <!-- Mode comparison -->
+            <div class="freight-panel-title" style="margin-top:16px;">Volumetric by Divisor</div>
+            <div class="freight-result">
+              <span class="freight-result-label">Slow / Fast Boat (÷ 6,000)</span>
+              <span class="freight-result-value" id="freight-cmp-air">20.00 kg</span>
+            </div>
+            <div class="freight-result">
+              <span class="freight-result-label">Air + UPS / Direct Air (÷ 5,000)</span>
+              <span class="freight-result-value" id="freight-cmp-express">24.00 kg</span>
+            </div>
+            <div class="freight-result">
+              <span class="freight-result-label">Volume (CBM)</span>
+              <span class="freight-result-value" id="freight-cmp-sea">0.1200 CBM</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  </div><!-- /#wb-tab-shipping -->
+
+  <!-- ── Tab: Pricing ── -->
+  <div id="wb-tab-pricing" class="wb-tab-content">
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">Tiered Pricing</span>
+    </div>
+    <div class="section-body">
+      <div class="subsection" style="margin-top:0; padding-top:0; border-top:none;">
         <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
           Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
         </p>
@@ -739,8 +1909,9 @@
             <tr>
               <th>#</th>
               <th>Quantity</th>
-              <th class="th-karen">Unit Price (USD) ✎</th>
-              <th>Total Price</th>
+              <th class="th-karen">Unit Price (RMB) ✎</th>
+              <th>Unit Price (USD)</th>
+              <th>Total Price (USD)</th>
               <th></th>
             </tr>
           </thead>
@@ -753,6 +1924,131 @@
 
     </div>
   </div>
+  </div><!-- /#wb-tab-pricing -->
+
+  <!-- ── Tab: Quote for Client ── -->
+  <div id="wb-tab-quote" class="wb-tab-content">
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">Quote for Client</span>
+    </div>
+    <div class="section-body">
+      <div class="form-grid form-grid-2">
+        <div class="field">
+          <label>Client Name</label>
+          <input type="text" id="quote-client-name" placeholder="Auto-filled from workbook" readonly style="opacity:0.7;" />
+        </div>
+        <div class="field">
+          <label>Product Name</label>
+          <input type="text" id="quote-product-name" placeholder="Auto-filled from workbook" readonly style="opacity:0.7;" />
+        </div>
+        <div class="field">
+          <label>Quote Date</label>
+          <input type="date" id="quote-date" />
+        </div>
+        <div class="field">
+          <label>Valid Until</label>
+          <input type="date" id="quote-valid-until" />
+        </div>
+        <div class="field">
+          <label>Quantity</label>
+          <input type="number" min="0" placeholder="e.g. 500" id="quote-cl-qty" />
+        </div>
+        <div class="field">
+          <label>Unit Price (USD)</label>
+          <input type="number" step="0.01" min="0" placeholder="e.g. 5.50" id="quote-cl-unit-price" oninput="calcQuoteTotal()" />
+        </div>
+        <div class="field">
+          <label>Shipping Cost (USD)</label>
+          <input type="number" step="0.01" min="0" placeholder="e.g. 250.00" id="quote-cl-shipping" oninput="calcQuoteTotal()" />
+        </div>
+        <div class="field">
+          <label>Total Quote (USD)</label>
+          <input type="text" id="quote-cl-total" placeholder="auto" readonly style="opacity:0.7; font-weight:700;" />
+        </div>
+        <div class="field col-full">
+          <label>Notes / Terms</label>
+          <textarea placeholder="Payment terms, delivery details, special conditions…" id="quote-cl-notes" style="min-height:80px;"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /#wb-tab-quote -->
+
+  <!-- ── Tab: Office Invoice ── -->
+  <div id="wb-tab-invoice" class="wb-tab-content">
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">Office Invoice</span>
+    </div>
+    <div class="section-body">
+      <div class="form-grid form-grid-2">
+        <div class="field">
+          <label>Invoice Number</label>
+          <input type="text" placeholder="e.g. INV-2025-001" id="inv-number" />
+        </div>
+        <div class="field">
+          <label>Invoice Date</label>
+          <input type="date" id="inv-date" />
+        </div>
+        <div class="field">
+          <label>Bill To (Client)</label>
+          <input type="text" id="inv-bill-to" placeholder="Auto-filled from workbook" readonly style="opacity:0.7;" />
+        </div>
+        <div class="field">
+          <label>Payment Due Date</label>
+          <input type="date" id="inv-due-date" />
+        </div>
+        <div class="field">
+          <label>Product / Description</label>
+          <input type="text" id="inv-product" placeholder="Auto-filled from workbook" readonly style="opacity:0.7;" />
+        </div>
+        <div class="field">
+          <label>Quantity</label>
+          <input type="number" min="0" placeholder="e.g. 500" id="inv-qty" />
+        </div>
+        <div class="field">
+          <label>Unit Price (USD)</label>
+          <input type="number" step="0.01" min="0" placeholder="e.g. 5.50" id="inv-unit-price" oninput="calcInvoiceTotal()" />
+        </div>
+        <div class="field">
+          <label>Shipping (USD)</label>
+          <input type="number" step="0.01" min="0" placeholder="e.g. 250.00" id="inv-shipping" oninput="calcInvoiceTotal()" />
+        </div>
+        <div class="field">
+          <label>Subtotal (USD)</label>
+          <input type="text" id="inv-subtotal" placeholder="auto" readonly style="opacity:0.7;" />
+        </div>
+        <div class="field">
+          <label>Total Due (USD)</label>
+          <input type="text" id="inv-total" placeholder="auto" readonly style="opacity:0.7; font-weight:700; font-size:16px;" />
+        </div>
+        <div class="field">
+          <label>Payment Status</label>
+          <select id="inv-status">
+            <option value="unpaid">Unpaid</option>
+            <option value="partial">Partially Paid</option>
+            <option value="paid">Paid</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Payment Method</label>
+          <select id="inv-method">
+            <option value="">Select…</option>
+            <option>Wire Transfer</option>
+            <option>Credit Card</option>
+            <option>PayPal</option>
+            <option>Check</option>
+          </select>
+        </div>
+        <div class="field col-full">
+          <label>Notes</label>
+          <textarea placeholder="Additional notes, PO numbers, references…" id="inv-notes" style="min-height:80px;"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /#wb-tab-invoice -->
 
   <!-- Footer note -->
   <div style="text-align:center; color:var(--text-muted); font-size:12px; margin-top:8px;">
@@ -760,8 +2056,72 @@
   </div>
 
 </main>
+</div><!-- /#view-workbook -->
+
+</div><!-- /.app-content -->
+</div><!-- /.app-layout -->
+
+<!-- ── New Workbook Modal ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-title">New Workbook</div>
+    <form id="new-workbook-form" onsubmit="createWorkbook(event)">
+      <div class="modal-field">
+        <label>Product Name <span class="required">*</span></label>
+        <input type="text" id="modal-product" placeholder="e.g. Custom Tote Bag" required />
+      </div>
+      <div class="modal-field">
+        <label>Client <span class="required">*</span></label>
+        <select id="modal-client" required>
+          <option value="">Select a client…</option>
+          <option>BAM</option>
+          <option>Bloom</option>
+          <option>Candy Pan</option>
+          <option>Fresh Her</option>
+          <option>Kids United</option>
+          <option>Nut Garden</option>
+          <option>Salt</option>
+          <option>Tweedle Dee</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <label>Description <span class="required">*</span></label>
+        <textarea id="modal-desc" placeholder="Brief description of the product…" required></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn-create">Create Workbook</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Add Client Modal ───────────────────────────────────────────────── -->
+<div class="modal-overlay" id="client-modal-overlay" onclick="if(event.target===this)closeClientModal()">
+  <div class="modal">
+    <div class="modal-title">Add Client</div>
+    <form id="add-client-form" onsubmit="createClient(event)">
+      <div class="modal-field">
+        <label>Client Name <span class="required">*</span></label>
+        <input type="text" id="modal-client-name" placeholder="e.g. Acme Corp" required />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="closeClientModal()">Cancel</button>
+        <button type="submit" class="btn-create">Create Client</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <script>
+  /* ── Sidebar Submenu Toggle ─────────────────────────────────────────── */
+  function toggleSubmenu(btn) {
+    btn.classList.toggle('expanded');
+    const submenu = btn.nextElementSibling;
+    if (submenu && submenu.classList.contains('nav-submenu')) {
+      submenu.classList.toggle('open');
+    }
+  }
   /* ── Theme ─────────────────────────────────────────────────────────────── */
   function toggleTheme() {
     const body = document.body;
@@ -831,9 +2191,55 @@
     converting = false;
   }
 
+  /* ── Weight Conversion (kg ↔ lbs) ─────────────────────────────────────── */
+  const KG_TO_LBS = 2.20462;
+  let convertingWeight = false;
+
+  function convertWeight(sourceId, targetId, sourceUnit) {
+    if (convertingWeight) return;
+    convertingWeight = true;
+    const val = parseFloat(document.getElementById(sourceId).value);
+    const targetEl = document.getElementById(targetId);
+    if (isNaN(val)) {
+      targetEl.value = '';
+    } else if (sourceUnit === 'kg') {
+      targetEl.value = (val * KG_TO_LBS).toFixed(2);
+    } else {
+      targetEl.value = (val / KG_TO_LBS).toFixed(2);
+    }
+    convertingWeight = false;
+  }
+
   /* ── Pantone Swatch ────────────────────────────────────────────────────── */
   function syncPantone() {
     // swatch is just a helper; text field is the source of truth
+  }
+
+  /* ── RMB to USD Conversion (live rate) ─────────────────────────────────── */
+  let USD_TO_RMB = 7.24; // fallback rate
+
+  // Fetch live rate from ExchangeRate-API on page load
+  (async function fetchLiveRate() {
+    try {
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      const data = await res.json();
+      if (data.result === 'success' && data.rates && data.rates.CNY) {
+        USD_TO_RMB = data.rates.CNY;
+        console.log('Live USD→CNY rate:', USD_TO_RMB);
+        // Re-run conversion if a workbook is already loaded
+        if (document.getElementById('quote-unit-rmb').value) {
+          convertRmbToUsd();
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch live rate, using fallback:', USD_TO_RMB);
+    }
+  })();
+
+  function convertRmbToUsd() {
+    const rmb = parseFloat(document.getElementById('quote-unit-rmb').value);
+    const usdEl = document.getElementById('quote-unit');
+    usdEl.value = isNaN(rmb) ? '' : (rmb / USD_TO_RMB).toFixed(2);
   }
 
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
@@ -857,6 +2263,7 @@
                oninput="recalcTier(${id})"
                style="width:130px;" />
       </td>
+      <td id="tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="tier-total-${id}">—</td>
       <td>
         <button class="btn btn-danger-ghost" onclick="removeTierRow(${id})">✕</button>
@@ -870,10 +2277,17 @@
     const row    = document.getElementById(`tier-${id}`);
     const inputs = row.querySelectorAll('input');
     const qty    = parseFloat(inputs[0].value);
-    const unit   = parseFloat(inputs[1].value);
+    const rmb    = parseFloat(inputs[1].value);
+    const usd    = rmb / USD_TO_RMB;
     const totalEl = document.getElementById(`tier-total-${id}`);
-    if (!isNaN(qty) && !isNaN(unit)) {
-      totalEl.textContent = '$' + (qty * unit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const usdEl = document.getElementById(`tier-usd-${id}`);
+    if (!isNaN(rmb)) {
+      usdEl.textContent = '$' + usd.toFixed(2);
+    } else {
+      usdEl.textContent = '—';
+    }
+    if (!isNaN(qty) && !isNaN(rmb)) {
+      totalEl.textContent = '$' + (qty * usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     } else {
       totalEl.textContent = '—';
     }
@@ -894,16 +2308,560 @@
     if (e.target.matches('input, textarea, select')) updateFilled(e.target);
   });
 
-  /* ── Init ──────────────────────────────────────────────────────────────── */
-  // Seed with 3 default tiers
-  addTierRow(100);
-  addTierRow(250);
-  addTierRow(500);
+  /* ── Sample Data ──────────────────────────────────────────────────────── */
+  const clientData = {
+    'BAM': [
+      { id: 1, product: 'Custom Tote Bag', description: 'Eco-friendly cotton tote with screen print logo', dateCreated: '15 Jan 25', dateSubmitted: '20 Jan 25', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: false, orderChina: false } },
+      { id: 2, product: 'Branded Pen Set', description: 'Metal ballpoint pen with laser engraving', dateCreated: '22 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+      { id: 3, product: 'Event Lanyard', description: 'Polyester lanyard with safety clip and badge holder', dateCreated: '5 Feb 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+      { id: 4, product: 'USB Flash Drive', description: '16GB custom shaped USB with logo print', dateCreated: '12 Feb 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: false, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+    ],
+    'Bloom': [
+      { id: 1, product: 'Ceramic Mug', description: 'White ceramic 11oz mug with full wrap print', dateCreated: '3 Jan 25', dateSubmitted: '10 Jan 25', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: true, orderChina: true } },
+      { id: 2, product: 'Seed Paper Card', description: 'Plantable greeting card with wildflower seeds', dateCreated: '18 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+      { id: 3, product: 'Bamboo Notebook', description: 'A5 hardcover notebook with bamboo front cover', dateCreated: '2 Feb 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: false, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+    ],
+    'Candy Pan': [
+      { id: 1, product: 'Candy Tin Box', description: 'Custom printed tin with hinged lid', dateCreated: '10 Jan 25', dateSubmitted: '15 Jan 25', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: true, orderChina: true } },
+      { id: 2, product: 'Paper Straw Set', description: 'Biodegradable paper straws in custom wrapper', dateCreated: '20 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+      { id: 3, product: 'Gift Bag', description: 'Kraft paper bag with ribbon handles', dateCreated: '1 Feb 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: false, orderChina: false } },
+    ],
+    'Fresh Her': [
+      { id: 1, product: 'Glass Water Bottle', description: 'Borosilicate glass bottle with silicone sleeve', dateCreated: '8 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+      { id: 2, product: 'Yoga Mat', description: 'TPE eco yoga mat with custom print', dateCreated: '20 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+    ],
+    'Kids United': [
+      { id: 1, product: 'Coloring Book', description: '32-page activity book with custom illustrations', dateCreated: '5 Jan 25', dateSubmitted: '12 Jan 25', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: true, orderChina: true } },
+      { id: 2, product: 'Sticker Sheet', description: 'Die-cut vinyl stickers on A4 sheet', dateCreated: '15 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: false, orderChina: false } },
+      { id: 3, product: 'Drawstring Bag', description: 'Polyester drawstring backpack with logo', dateCreated: '28 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: false, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+    ],
+    'Nut Garden': [
+      { id: 1, product: 'Packaging Box', description: 'Corrugated box with full color print and window', dateCreated: '12 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+      { id: 2, product: 'Jar Label', description: 'Waterproof vinyl label with metallic foil accent', dateCreated: '25 Jan 25', dateSubmitted: '2 Feb 25', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: true, orderChina: true } },
+      { id: 3, product: 'Wooden Display Stand', description: 'Counter-top birch plywood stand', dateCreated: '3 Feb 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+    ],
+    'Salt': [
+      { id: 1, product: 'Pouch Bag', description: 'Stand-up pouch with zip lock and matte finish', dateCreated: '6 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+      { id: 2, product: 'Spice Grinder', description: 'Ceramic mechanism grinder with branded cap', dateCreated: '19 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: false, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+    ],
+    'Tweedle Dee': [
+      { id: 1, product: 'Plush Toy', description: 'Custom character plush 20cm with embroidered face', dateCreated: '9 Jan 25', dateSubmitted: '16 Jan 25', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: true, orderChina: true } },
+      { id: 2, product: 'Party Hat Set', description: 'Cone hats printed full color, pack of 8', dateCreated: '22 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+      { id: 3, product: 'Wristband', description: 'Silicone wristband with debossed logo', dateCreated: '5 Feb 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
+    ],
+  };
 
+  // Detailed workbook data for pre-filling (keyed by "client|id")
+  const workbookDetail = {
+    'BAM|1': { client: 'BAM', product: 'Custom Tote Bag', desc: 'Eco-friendly cotton tote with screen print logo. Suitable for retail and events.', dimInL: '15', dimInW: '16', dimInH: '4', materials: '12oz Natural Cotton Canvas', pantone: 'PMS 286 C', cmyk: 'C:100 M:72 Y:0 K:18', colorNotes: 'Single color print on both sides', qty: '500', unitPriceRmb: '23.53', leadTime: '30 days after artwork approval', tiers: [{qty:250,price:'27.15'},{qty:500,price:'23.53'},{qty:1000,price:'20.27'}] },
+    'BAM|2': { client: 'BAM', product: 'Branded Pen Set', desc: 'Premium metal ballpoint pen with twist mechanism and laser engraved logo.', dimInL: '5.5', dimInW: '0.4', dimInH: '0.4', materials: 'Brass body, chrome plating', pantone: 'PMS 877 C (Silver)', cmyk: '', colorNotes: 'Metallic silver finish, laser engrave logo on barrel', qty: '1000', unitPriceRmb: '13.39', leadTime: '25 days', tiers: [{qty:500,price:'15.20'},{qty:1000,price:'13.39'},{qty:2500,price:'10.86'}] },
+    'Bloom|1': { client: 'Bloom', product: 'Ceramic Mug', desc: 'Classic white ceramic mug with full-wrap sublimation print. Dishwasher safe.', dimInL: '3.75', dimInW: '3.75', dimInH: '3.85', materials: 'White ceramic, AAA grade', pantone: 'PMS 348 C, PMS 7462 C', cmyk: 'Full color CMYK sublimation', colorNotes: 'Full wrap print, no bleed at handle', qty: '300', unitPriceRmb: '32.58', leadTime: '21 days after proof approval', tiers: [{qty:100,price:'39.82'},{qty:300,price:'32.58'},{qty:500,price:'28.24'}] },
+    'Candy Pan|1': { client: 'Candy Pan', product: 'Candy Tin Box', desc: 'Custom printed hinged tin for candy packaging. Food-safe interior coating.', dimInL: '4', dimInW: '3', dimInH: '1.5', materials: 'Tinplate with food-safe lacquer interior', pantone: 'PMS 1787 C, PMS 109 C', cmyk: 'C:0 M:80 Y:5 K:0, C:0 M:6 Y:95 K:0', colorNotes: 'Glossy finish exterior, white interior', qty: '2000', unitPriceRmb: '8.69', leadTime: '35 days', tiers: [{qty:1000,price:'10.50'},{qty:2000,price:'8.69'},{qty:5000,price:'6.88'}] },
+  };
+
+  /* ── Status Bar ──────────────────────────────────────────────────────────── */
+  const flowSteps = ['prepChina', 'chinaSubmits', 'shippingDims', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
+  const flowLabels = ['Prep for China', 'China Submits', 'Shipping Dims', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Order to China'];
+  let currentClient = '';
+  let currentWorkbookId = '';
+
+  function renderStatusBar(flow) {
+    const statusFlow = document.getElementById('status-flow');
+    statusFlow.innerHTML = flowSteps.map((s, i) => `
+      <div class="status-step">
+        <div class="status-step-bar ${flow[s] ? 'filled' : ''}"></div>
+        <span class="status-step-label">${flowLabels[i]}</span>
+      </div>
+    `).join('');
+
+    // Find current status and next step
+    let currentIdx = -1;
+    for (let i = flowSteps.length - 1; i >= 0; i--) {
+      if (flow[flowSteps[i]]) { currentIdx = i; break; }
+    }
+
+    const advanceBtn = document.getElementById('btn-advance');
+
+    const backBtn = document.getElementById('btn-back-step');
+    backBtn.disabled = currentIdx < 1;
+
+    if (currentIdx < flowSteps.length - 1) {
+      const nextLabel = flowLabels[currentIdx + 1];
+      advanceBtn.textContent = nextLabel;
+      advanceBtn.disabled = false;
+    } else {
+      advanceBtn.textContent = 'Completed';
+      advanceBtn.disabled = true;
+    }
+  }
+
+  function revertStatus() {
+    const items = clientData[currentClient];
+    if (!items) return;
+    const item = items.find(i => i.id === parseInt(currentWorkbookId));
+    if (!item) return;
+
+    // Find the last true step and set it to false
+    for (let i = flowSteps.length - 1; i >= 0; i--) {
+      if (item.flow[flowSteps[i]]) {
+        item.flow[flowSteps[i]] = false;
+        break;
+      }
+    }
+
+    renderStatusBar(item.flow);
+  }
+
+  function advanceStatus() {
+    const items = clientData[currentClient];
+    if (!items) return;
+    const item = items.find(i => i.id === parseInt(currentWorkbookId));
+    if (!item) return;
+
+    // Find next step to advance
+    for (let i = 0; i < flowSteps.length; i++) {
+      if (!item.flow[flowSteps[i]]) {
+        item.flow[flowSteps[i]] = true;
+        break;
+      }
+    }
+
+    renderStatusBar(item.flow);
+  }
+
+  /* ── Workbook Tabs ────────────────────────────────────────────────────────── */
+  function switchWbTab(tabName, btn) {
+    document.querySelectorAll('.wb-tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.wb-tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('wb-tab-' + tabName).classList.add('active');
+    btn.classList.add('active');
+    if (tabName === 'shipping') calcFreight();
+  }
+
+  /* ── Shipping Calculator ─────────────────────────────────────────────────── */
+  const freightMethodRates = { slow: 12, fast: 14, airupp: 44, directair: 65 };
+  const freightMethodDivisors = { slow: 6000, fast: 6000, airupp: 5000, directair: 5000 };
+
+  function updateFreightRate() {
+    const mode = document.getElementById('freight-mode').value;
+    document.getElementById('freight-rate').value = freightMethodRates[mode];
+  }
+
+  function calcFreight() {
+    let l = parseFloat(document.getElementById('freight-l').value) || 0;
+    let w = parseFloat(document.getElementById('freight-w').value) || 0;
+    let h = parseFloat(document.getElementById('freight-h').value) || 0;
+    let actual = parseFloat(document.getElementById('freight-actual').value) || 0;
+    const dimUnit = document.getElementById('freight-dim-unit').value;
+    const wtUnit = document.getElementById('freight-wt-unit').value;
+    const mode = document.getElementById('freight-mode').value;
+    const rate = parseFloat(document.getElementById('freight-rate').value) || 0;
+    const cartons = parseInt(document.getElementById('freight-cartons').value) || 1;
+
+    // Convert to cm
+    let lCm = l, wCm = w, hCm = h;
+    if (dimUnit === 'in') { lCm = l * 2.54; wCm = w * 2.54; hCm = h * 2.54; }
+    if (dimUnit === 'mm') { lCm = l / 10; wCm = w / 10; hCm = h / 10; }
+
+    // Convert to kg if lbs
+    const actualKg = wtUnit === 'lbs' ? actual / 2.20462 : actual;
+
+    const volume = lCm * wCm * hCm;
+    const divisor = freightMethodDivisors[mode];
+    const volWeight = volume / divisor;
+    const formulaStr = `(${lCm.toFixed(0)} × ${wCm.toFixed(0)} × ${hCm.toFixed(0)}) ÷ ${divisor.toLocaleString()}`;
+
+    const chargeWeight = Math.max(actualKg, volWeight);
+    const totalCost = chargeWeight * rate * cartons;
+
+    // Update results
+    document.getElementById('freight-out-actual').textContent = actualKg.toFixed(2) + ' kg';
+    document.getElementById('freight-out-vol').textContent = volWeight.toFixed(2) + ' kg';
+    document.getElementById('freight-out-charge').textContent = chargeWeight.toFixed(2) + ' kg';
+    document.getElementById('freight-out-formula').textContent = formulaStr;
+    document.getElementById('freight-out-cost').textContent = '$' + totalCost.toFixed(2);
+
+    // Bar chart
+    const maxWt = Math.max(actualKg, volWeight, 0.01);
+    document.getElementById('freight-bar-actual').style.height = ((actualKg / maxWt) * 100) + '%';
+    document.getElementById('freight-bar-vol').style.height = ((volWeight / maxWt) * 100) + '%';
+    document.getElementById('freight-bar-charge').style.height = ((chargeWeight / maxWt) * 100) + '%';
+    document.getElementById('freight-bar-actual-val').textContent = actualKg.toFixed(1);
+    document.getElementById('freight-bar-vol-val').textContent = volWeight.toFixed(1);
+    document.getElementById('freight-bar-charge-val').textContent = chargeWeight.toFixed(1);
+
+    // Verdict
+    const verdictEl = document.getElementById('freight-verdict');
+    const extraEl = document.getElementById('freight-extra');
+    const tipEl = document.getElementById('freight-tip');
+
+    if (volWeight > actualKg) {
+      verdictEl.className = 'freight-verdict volumetric';
+      verdictEl.textContent = 'Volumetric weight applies — package is bulky/light.';
+      const extraCost = (volWeight - actualKg) * rate * cartons;
+      extraEl.innerHTML = 'Extra cost due to volumetric: <span>$' + extraCost.toFixed(2) + '</span>';
+      extraEl.style.display = 'block';
+      tipEl.textContent = 'Tip: Reduce void/air space in packaging to lower volumetric weight.';
+    } else if (actualKg > volWeight) {
+      verdictEl.className = 'freight-verdict actual';
+      verdictEl.textContent = 'Actual weight applies — package is dense.';
+      extraEl.style.display = 'none';
+      tipEl.textContent = 'Tip: Your packaging density is efficient for this shipping method.';
+    } else {
+      verdictEl.className = 'freight-verdict equal';
+      verdictEl.textContent = 'Weights are equal — no volumetric surcharge.';
+      extraEl.style.display = 'none';
+      tipEl.textContent = 'Tip: Weights match perfectly. No size penalty applies.';
+    }
+
+    // Method comparison
+    const volBoat = volume / 6000;
+    const volAir = volume / 5000;
+    document.getElementById('freight-cmp-air').textContent = volBoat.toFixed(2) + ' kg (÷ 6,000)';
+    document.getElementById('freight-cmp-express').textContent = volAir.toFixed(2) + ' kg (÷ 5,000)';
+    const cbm = volume / 1000000;
+    document.getElementById('freight-cmp-sea').textContent = cbm.toFixed(4) + ' CBM';
+  }
+
+  /* ── Quote & Invoice Calcs ───────────────────────────────────────────────── */
+  function calcQuoteTotal() {
+    const qty = parseFloat(document.getElementById('quote-cl-qty')?.value) || 0;
+    const unit = parseFloat(document.getElementById('quote-cl-unit-price')?.value) || 0;
+    const shipping = parseFloat(document.getElementById('quote-cl-shipping')?.value) || 0;
+    const total = (qty * unit) + shipping;
+    document.getElementById('quote-cl-total').value = total > 0 ? '$' + total.toFixed(2) : '';
+  }
+
+  function calcInvoiceTotal() {
+    const qty = parseFloat(document.getElementById('inv-qty')?.value) || 0;
+    const unit = parseFloat(document.getElementById('inv-unit-price')?.value) || 0;
+    const shipping = parseFloat(document.getElementById('inv-shipping')?.value) || 0;
+    const subtotal = qty * unit;
+    const total = subtotal + shipping;
+    document.getElementById('inv-subtotal').value = subtotal > 0 ? '$' + subtotal.toFixed(2) : '';
+    document.getElementById('inv-total').value = total > 0 ? '$' + total.toFixed(2) : '';
+  }
+
+  function fillQuoteInvoice(clientName, productName) {
+    document.getElementById('quote-client-name').value = clientName || '';
+    document.getElementById('quote-product-name').value = productName || '';
+    document.getElementById('inv-bill-to').value = clientName || '';
+    document.getElementById('inv-product').value = productName || '';
+  }
+
+  /* ── New Workbook Modal ──────────────────────────────────────────────────── */
+  function openNewWorkbookModal() {
+    document.getElementById('new-workbook-form').reset();
+    document.getElementById('modal-overlay').classList.add('open');
+  }
+
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('open');
+  }
+
+  function createWorkbook(e) {
+    e.preventDefault();
+    const product = document.getElementById('modal-product').value.trim();
+    const client = document.getElementById('modal-client').value;
+    const desc = document.getElementById('modal-desc').value.trim();
+
+    if (!product || !client || !desc) return;
+
+    // Add to client data
+    const items = clientData[client] || [];
+    const newId = items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
+    const today = new Date();
+    const dateStr = today.getDate() + ' ' + today.toLocaleString('en-US', { month: 'short' }) + ' ' + String(today.getFullYear()).slice(2);
+
+    items.push({
+      id: newId,
+      product: product,
+      description: desc,
+      dateCreated: dateStr,
+      dateSubmitted: '',
+      flow: { prepChina: true, chinaSubmits: false, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false }
+    });
+
+    clientData[client] = items;
+
+    closeModal();
+
+    // Navigate to the new workbook
+    location.hash = `#/client/${encodeURIComponent(client)}/workbook/${newId}`;
+  }
+
+  /* ── Add Client Modal ───────────────────────────────────────────────────── */
+  function openAddClientModal() {
+    document.getElementById('add-client-form').reset();
+    document.getElementById('client-modal-overlay').classList.add('open');
+  }
+
+  function closeClientModal() {
+    document.getElementById('client-modal-overlay').classList.remove('open');
+  }
+
+  function createClient(e) {
+    e.preventDefault();
+    const name = document.getElementById('modal-client-name').value.trim();
+    if (!name) return;
+
+    // Check if client already exists
+    if (clientData[name]) {
+      alert('Client "' + name + '" already exists.');
+      return;
+    }
+
+    // Add to client data
+    clientData[name] = [];
+
+    // Add to sidebar nav (in alphabetical order)
+    const nav = document.querySelector('.sidebar-nav');
+    const links = Array.from(nav.querySelectorAll('.nav-item'));
+    const newLink = document.createElement('a');
+    newLink.className = 'nav-item';
+    newLink.href = `#/client/${encodeURIComponent(name)}`;
+    newLink.textContent = name;
+
+    // Find insertion point alphabetically
+    const insertBefore = links.find(a => a.textContent.trim().localeCompare(name) > 0);
+    if (insertBefore) {
+      nav.insertBefore(newLink, insertBefore);
+    } else {
+      nav.appendChild(newLink);
+    }
+
+    // Add to workbook modal client dropdown
+    const select = document.getElementById('modal-client');
+    const newOption = document.createElement('option');
+    newOption.textContent = name;
+    // Insert alphabetically in dropdown too
+    const options = Array.from(select.options).slice(1); // skip "Select a client…"
+    const insertBeforeOpt = options.find(o => o.textContent.localeCompare(name) > 0);
+    if (insertBeforeOpt) {
+      select.insertBefore(newOption, insertBeforeOpt);
+    } else {
+      select.appendChild(newOption);
+    }
+
+    closeClientModal();
+
+    // Navigate to the new client dashboard
+    location.hash = `#/client/${encodeURIComponent(name)}`;
+  }
+
+  /* ── Router ─────────────────────────────────────────────────────────────── */
+  function showView(viewId) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(viewId).classList.add('active');
+  }
+
+  function updateSidebarActive(clientName) {
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => {
+      a.classList.toggle('active', a.textContent.trim() === clientName);
+    });
+  }
+
+  /* ── Action Menu ──────────────────────────────────────────────────────────── */
+  function toggleActionMenu(btn) {
+    const menu = btn.nextElementSibling;
+    const wasOpen = menu.classList.contains('open');
+    // Close all menus first
+    document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
+    if (!wasOpen) menu.classList.add('open');
+  }
+
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
+  });
+
+  function isFlowComplete(flow) {
+    return flowSteps.every(s => flow[s]);
+  }
+
+  function renderDashboard(clientName) {
+    const items = clientData[clientName] || [];
+    const tbody = document.getElementById('dash-tbody');
+
+    tbody.innerHTML = items.map(item => {
+      const complete = isFlowComplete(item.flow);
+      return `
+      <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">
+        <td class="product-name">${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</td>
+        <td>${item.dateCreated}</td>
+        <td>${item.dateSubmitted || '—'}</td>
+        <td>
+          <div class="flow-group">
+            ${flowSteps.map((s, i) => `
+              <div class="flow-step">
+                <div class="flow-bar ${item.flow[s] ? 'filled' : ''}"></div>
+                <span class="flow-label">${flowLabels[i]}</span>
+              </div>
+            `).join('')}
+          </div>
+        </td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation()">View</a><a onclick="event.stopPropagation()">Edit</a><a onclick="event.stopPropagation()">Delete</a></div></td>
+      </tr>
+    `}).join('');
+
+    document.getElementById('header-title').textContent = clientName + ' — Workbooks';
+    updateSidebarActive(clientName);
+    showView('view-dashboard');
+  }
+
+  function fillWorkbook(clientName, workbookId) {
+    currentClient = clientName;
+    currentWorkbookId = workbookId;
+
+    // Reset to default Workbook tab
+    document.querySelectorAll('.wb-tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.wb-tab').forEach(el => el.classList.remove('active'));
+    const defaultTab = document.getElementById('wb-tab-workbook');
+    if (defaultTab) defaultTab.classList.add('active');
+    const defaultBtn = document.querySelector('.wb-tab[onclick*="workbook"]');
+    if (defaultBtn) defaultBtn.classList.add('active');
+
+    const key = `${clientName}|${workbookId}`;
+    const data = workbookDetail[key];
+
+    // Render status bar from client data
+    const items = clientData[clientName] || [];
+    const item = items.find(i => i.id === parseInt(workbookId));
+    if (item) renderStatusBar(item.flow);
+
+    // Clear existing tier rows
+    document.getElementById('tier-body').innerHTML = '';
+    tierCount = 0;
+
+    if (data) {
+      document.getElementById('client-name').value = data.client;
+      document.getElementById('product-name').value = data.product;
+      document.getElementById('product-desc').value = data.desc;
+      document.getElementById('dim-in-l').value = data.dimInL || '';
+      document.getElementById('dim-in-w').value = data.dimInW || '';
+      document.getElementById('dim-in-h').value = data.dimInH || '';
+      if (data.dimInL) convertToMm('in');
+      document.getElementById('materials').value = data.materials || '';
+      document.getElementById('pantone-text').value = data.pantone || '';
+      document.getElementById('cmyk').value = data.cmyk || '';
+      document.getElementById('color-notes').value = data.colorNotes || '';
+      document.getElementById('quote-qty').value = data.qty || '';
+      document.getElementById('quote-unit-rmb').value = data.unitPriceRmb || '';
+      convertRmbToUsd();
+      document.getElementById('quote-lead').value = data.leadTime || '';
+      (data.tiers || []).forEach(t => addTierRow(t.qty, t.price));
+    } else {
+      // Fill with basic info from the client list
+      const items = clientData[clientName] || [];
+      const item = items.find(i => i.id === parseInt(workbookId));
+      document.getElementById('client-name').value = clientName;
+      document.getElementById('product-name').value = item ? item.product : '';
+      document.getElementById('product-desc').value = item ? item.description : '';
+      // Clear other fields
+      ['dim-in-l','dim-in-w','dim-in-h','dim-mm-l','dim-mm-w','dim-mm-h','materials','pantone-text','cmyk','color-notes','quote-qty','quote-unit','quote-lead','quote-qc'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      addTierRow(100);
+      addTierRow(250);
+      addTierRow(500);
+    }
+
+    // Trigger filled state on all inputs
+    document.querySelectorAll('#view-workbook input, #view-workbook textarea').forEach(el => updateFilled(el));
+
+    const prodName = document.getElementById('product-name').value || 'Workbook';
+    document.getElementById('header-title').textContent = clientName + ' — ' + prodName;
+    updateSidebarActive(clientName);
+    fillQuoteInvoice(clientName, prodName);
+    showView('view-workbook');
+    calcFreight();
+  }
+
+  function router() {
+    const hash = decodeURIComponent(location.hash || '#/');
+
+    // Match: #/client/{name}/workbook/{id}
+    const wbMatch = hash.match(/^#\/client\/(.+?)\/workbook\/(\d+)$/);
+    if (wbMatch) {
+      fillWorkbook(wbMatch[1], wbMatch[2]);
+      return;
+    }
+
+    // Match: #/client/{name}
+    const clientMatch = hash.match(/^#\/client\/(.+)$/);
+    if (clientMatch) {
+      renderDashboard(clientMatch[1]);
+      return;
+    }
+
+    // Default: home
+    document.getElementById('header-title').textContent = 'Market Sculpt';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    renderRecentWorkbooks();
+    showView('view-home');
+  }
+
+  function renderRecentWorkbooks() {
+    // Gather all workbooks with their client name
+    const all = [];
+    for (const [client, items] of Object.entries(clientData)) {
+      items.forEach(item => all.push({ ...item, client }));
+    }
+
+    // Sort by dateCreated descending (most recent first)
+    const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+    all.sort((a, b) => {
+      const parseDate = d => {
+        const parts = d.split(' ');
+        return new Date(2000 + parseInt(parts[2]), months[parts[1]], parseInt(parts[0]));
+      };
+      return parseDate(b.dateCreated) - parseDate(a.dateCreated);
+    });
+
+    const recent = all.slice(0, 5);
+    const tbody = document.getElementById('recent-tbody');
+
+    tbody.innerHTML = recent.map(item => {
+      const complete = isFlowComplete(item.flow);
+      // Find current step name
+      let currentStep = 'Not Started';
+      for (let i = flowSteps.length - 1; i >= 0; i--) {
+        if (item.flow[flowSteps[i]]) { currentStep = flowLabels[i]; break; }
+      }
+      const statusClass = complete ? 'complete' : 'in-progress';
+      const statusText = complete ? 'Complete' : currentStep;
+
+      return `
+      <tr class="${complete ? 'row-complete' : ''}" style="cursor:pointer;" onclick="location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">
+        <td class="product-name">${item.product}</td>
+        <td>${item.client}</td>
+        <td>${item.dateCreated}</td>
+        <td>
+          <div class="flow-group">
+            ${flowSteps.map((s, i) => `
+              <div class="flow-step">
+                <div class="flow-bar ${item.flow[s] ? 'filled' : ''}"></div>
+                <span class="flow-label">${flowLabels[i]}</span>
+              </div>
+            `).join('')}
+          </div>
+        </td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation()">View</a><a onclick="event.stopPropagation()">Edit</a></div></td>
+      </tr>
+      `;
+    }).join('');
+  }
+
+  window.addEventListener('hashchange', router);
+
+  /* ── Init ──────────────────────────────────────────────────────────────── */
   // Footer date
   document.getElementById('gen-date').textContent = new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric'
   });
+
+  // Run router on page load
+  router();
 </script>
 </body>
 </html>
