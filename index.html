@@ -2308,8 +2308,137 @@
     if (e.target.matches('input, textarea, select')) updateFilled(e.target);
   });
 
-  /* ── Sample Data ──────────────────────────────────────────────────────── */
-  const clientData = {
+  /* ── API Layer ────────────────────────────────────────────────────────── */
+  const API_URL = 'api.php';
+
+  async function apiCall(action, data = null) {
+    try {
+      const opts = data
+        ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) }
+        : { method: 'GET' };
+      const res = await fetch(`${API_URL}?action=${action}`, opts);
+      const json = await res.json();
+      if (json.success) {
+        // Cache to LocalStorage
+        saveToLocalStorage();
+      }
+      return json;
+    } catch (e) {
+      console.warn('API call failed, using local data:', e);
+      return { success: false, error: e.message };
+    }
+  }
+
+  function saveToLocalStorage() {
+    try {
+      localStorage.setItem('ms_clientData', JSON.stringify(clientData));
+      localStorage.setItem('ms_workbookDetail', JSON.stringify(workbookDetail));
+      localStorage.setItem('ms_dbClientMap', JSON.stringify(dbClientMap));
+      localStorage.setItem('ms_dbWorkbookMap', JSON.stringify(dbWorkbookMap));
+      localStorage.setItem('ms_lastSaved', new Date().toISOString());
+    } catch(e) { console.warn('LocalStorage save failed:', e); }
+  }
+
+  function loadFromLocalStorage() {
+    try {
+      const cd = localStorage.getItem('ms_clientData');
+      const wd = localStorage.getItem('ms_workbookDetail');
+      const cm = localStorage.getItem('ms_dbClientMap');
+      const wm = localStorage.getItem('ms_dbWorkbookMap');
+      if (cd) Object.assign(clientData, JSON.parse(cd));
+      if (wd) Object.assign(workbookDetail, JSON.parse(wd));
+      if (cm) Object.assign(dbClientMap, JSON.parse(cm));
+      if (wm) Object.assign(dbWorkbookMap, JSON.parse(wm));
+      return !!cd;
+    } catch(e) { return false; }
+  }
+
+  // Maps local client names to DB ids, and local "client|wbId" to DB workbook ids
+  let dbClientMap = {};
+  let dbWorkbookMap = {};
+
+  async function loadFromDatabase() {
+    const result = await apiCall('get_all_data');
+    if (!result.success) return false;
+
+    // Clear and rebuild clientData from DB
+    for (const key of Object.keys(clientData)) delete clientData[key];
+    for (const key of Object.keys(workbookDetail)) delete workbookDetail[key];
+
+    // Rebuild client list
+    result.clients.forEach(c => {
+      dbClientMap[c.name] = c.id;
+      if (!clientData[c.name]) clientData[c.name] = [];
+    });
+
+    // Rebuild workbook data
+    result.workbooks.forEach(wb => {
+      const flowStep = parseInt(wb.flow_step) || 0;
+      const flow = {};
+      flowSteps.forEach((s, i) => { flow[s] = i < flowStep; });
+
+      const item = {
+        id: parseInt(wb.id),
+        product: wb.product_name,
+        description: wb.description || '',
+        dateCreated: new Date(wb.created_at).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'2-digit'}),
+        dateSubmitted: '',
+        flow: flow
+      };
+
+      if (!clientData[wb.client_name]) clientData[wb.client_name] = [];
+      clientData[wb.client_name].push(item);
+
+      // Rebuild detail if stored
+      const detail = wb.detail;
+      if (detail) {
+        workbookDetail[`${wb.client_name}|${wb.id}`] = detail;
+      }
+
+      dbWorkbookMap[`${wb.client_name}|${wb.id}`] = wb.id;
+    });
+
+    // Rebuild sidebar
+    rebuildSidebar();
+    saveToLocalStorage();
+    return true;
+  }
+
+  function rebuildSidebar() {
+    const nav = document.querySelector('.sidebar-nav');
+    nav.innerHTML = '';
+    const sorted = Object.keys(clientData).sort();
+    sorted.forEach(name => {
+      const a = document.createElement('a');
+      a.className = 'nav-item';
+      a.href = `#/client/${encodeURIComponent(name)}`;
+      a.textContent = name;
+      nav.appendChild(a);
+    });
+
+    // Rebuild modal dropdown
+    const select = document.getElementById('modal-client');
+    const firstOpt = select.options[0];
+    select.innerHTML = '';
+    select.appendChild(firstOpt);
+    sorted.forEach(name => {
+      const opt = document.createElement('option');
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+  }
+
+  function flowToStep(flow) {
+    let step = 0;
+    for (let i = 0; i < flowSteps.length; i++) {
+      if (flow[flowSteps[i]]) step = i + 1;
+      else break;
+    }
+    return step;
+  }
+
+  /* ── Sample Data (fallback) ────────────────────────────────────────── */
+  let clientData = {
     'BAM': [
       { id: 1, product: 'Custom Tote Bag', description: 'Eco-friendly cotton tote with screen print logo', dateCreated: '15 Jan 25', dateSubmitted: '20 Jan 25', flow: { prepChina: true, chinaSubmits: true, shippingDims: true, quoteClient: true, clientApproved: true, officeInvoice: true, confirmedPayment: false, orderChina: false } },
       { id: 2, product: 'Branded Pen Set', description: 'Metal ballpoint pen with laser engraving', dateCreated: '22 Jan 25', dateSubmitted: '', flow: { prepChina: true, chinaSubmits: true, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } },
@@ -2352,7 +2481,7 @@
   };
 
   // Detailed workbook data for pre-filling (keyed by "client|id")
-  const workbookDetail = {
+  let workbookDetail = {
     'BAM|1': { client: 'BAM', product: 'Custom Tote Bag', desc: 'Eco-friendly cotton tote with screen print logo. Suitable for retail and events.', dimInL: '15', dimInW: '16', dimInH: '4', materials: '12oz Natural Cotton Canvas', pantone: 'PMS 286 C', cmyk: 'C:100 M:72 Y:0 K:18', colorNotes: 'Single color print on both sides', qty: '500', unitPriceRmb: '23.53', leadTime: '30 days after artwork approval', tiers: [{qty:250,price:'27.15'},{qty:500,price:'23.53'},{qty:1000,price:'20.27'}] },
     'BAM|2': { client: 'BAM', product: 'Branded Pen Set', desc: 'Premium metal ballpoint pen with twist mechanism and laser engraved logo.', dimInL: '5.5', dimInW: '0.4', dimInH: '0.4', materials: 'Brass body, chrome plating', pantone: 'PMS 877 C (Silver)', cmyk: '', colorNotes: 'Metallic silver finish, laser engrave logo on barrel', qty: '1000', unitPriceRmb: '13.39', leadTime: '25 days', tiers: [{qty:500,price:'15.20'},{qty:1000,price:'13.39'},{qty:2500,price:'10.86'}] },
     'Bloom|1': { client: 'Bloom', product: 'Ceramic Mug', desc: 'Classic white ceramic mug with full-wrap sublimation print. Dishwasher safe.', dimInL: '3.75', dimInW: '3.75', dimInH: '3.85', materials: 'White ceramic, AAA grade', pantone: 'PMS 348 C, PMS 7462 C', cmyk: 'Full color CMYK sublimation', colorNotes: 'Full wrap print, no bleed at handle', qty: '300', unitPriceRmb: '32.58', leadTime: '21 days after proof approval', tiers: [{qty:100,price:'39.82'},{qty:300,price:'32.58'},{qty:500,price:'28.24'}] },
@@ -2401,7 +2530,6 @@
     const item = items.find(i => i.id === parseInt(currentWorkbookId));
     if (!item) return;
 
-    // Find the last true step and set it to false
     for (let i = flowSteps.length - 1; i >= 0; i--) {
       if (item.flow[flowSteps[i]]) {
         item.flow[flowSteps[i]] = false;
@@ -2410,6 +2538,10 @@
     }
 
     renderStatusBar(item.flow);
+    // Save flow to DB
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
+    saveToLocalStorage();
   }
 
   function advanceStatus() {
@@ -2418,7 +2550,6 @@
     const item = items.find(i => i.id === parseInt(currentWorkbookId));
     if (!item) return;
 
-    // Find next step to advance
     for (let i = 0; i < flowSteps.length; i++) {
       if (!item.flow[flowSteps[i]]) {
         item.flow[flowSteps[i]] = true;
@@ -2427,6 +2558,10 @@
     }
 
     renderStatusBar(item.flow);
+    // Save flow to DB
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
+    saveToLocalStorage();
   }
 
   /* ── Workbook Tabs ────────────────────────────────────────────────────────── */
@@ -2559,7 +2694,7 @@
     document.getElementById('modal-overlay').classList.remove('open');
   }
 
-  function createWorkbook(e) {
+  async function createWorkbook(e) {
     e.preventDefault();
     const product = document.getElementById('modal-product').value.trim();
     const client = document.getElementById('modal-client').value;
@@ -2567,9 +2702,25 @@
 
     if (!product || !client || !desc) return;
 
-    // Add to client data
+    // Save to DB
+    const clientId = dbClientMap[client];
+    let newId;
+    if (clientId) {
+      const result = await apiCall('add_workbook', {
+        client_id: clientId,
+        product_name: product,
+        description: desc
+      });
+      if (result.success) {
+        newId = parseInt(result.id);
+      }
+    }
+
+    // Add to local data
     const items = clientData[client] || [];
-    const newId = items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
+    if (!newId) {
+      newId = items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
+    }
     const today = new Date();
     const dateStr = today.getDate() + ' ' + today.toLocaleString('en-US', { month: 'short' }) + ' ' + String(today.getFullYear()).slice(2);
 
@@ -2583,6 +2734,8 @@
     });
 
     clientData[client] = items;
+    dbWorkbookMap[`${client}|${newId}`] = newId;
+    saveToLocalStorage();
 
     closeModal();
 
@@ -2600,7 +2753,7 @@
     document.getElementById('client-modal-overlay').classList.remove('open');
   }
 
-  function createClient(e) {
+  async function createClient(e) {
     e.preventDefault();
     const name = document.getElementById('modal-client-name').value.trim();
     if (!name) return;
@@ -2609,6 +2762,12 @@
     if (clientData[name]) {
       alert('Client "' + name + '" already exists.');
       return;
+    }
+
+    // Save to DB
+    const result = await apiCall('add_client', { name: name });
+    if (result.success) {
+      dbClientMap[name] = result.id;
     }
 
     // Add to client data
@@ -2622,7 +2781,6 @@
     newLink.href = `#/client/${encodeURIComponent(name)}`;
     newLink.textContent = name;
 
-    // Find insertion point alphabetically
     const insertBefore = links.find(a => a.textContent.trim().localeCompare(name) > 0);
     if (insertBefore) {
       nav.insertBefore(newLink, insertBefore);
@@ -2634,8 +2792,7 @@
     const select = document.getElementById('modal-client');
     const newOption = document.createElement('option');
     newOption.textContent = name;
-    // Insert alphabetically in dropdown too
-    const options = Array.from(select.options).slice(1); // skip "Select a client…"
+    const options = Array.from(select.options).slice(1);
     const insertBeforeOpt = options.find(o => o.textContent.localeCompare(name) > 0);
     if (insertBeforeOpt) {
       select.insertBefore(newOption, insertBeforeOpt);
@@ -2643,6 +2800,7 @@
       select.appendChild(newOption);
     }
 
+    saveToLocalStorage();
     closeClientModal();
 
     // Navigate to the new client dashboard
@@ -2854,14 +3012,129 @@
 
   window.addEventListener('hashchange', router);
 
+  /* ── Auto-save workbook fields ─────────────────────────────────────────── */
+  let saveTimer = null;
+
+  function collectWorkbookDetail() {
+    return {
+      client: document.getElementById('client-name').value || '',
+      product: document.getElementById('product-name').value || '',
+      desc: document.getElementById('product-desc').value || '',
+      dimInL: document.getElementById('dim-in-l').value || '',
+      dimInW: document.getElementById('dim-in-w').value || '',
+      dimInH: document.getElementById('dim-in-h').value || '',
+      materials: document.getElementById('materials').value || '',
+      pantone: document.getElementById('pantone-text').value || '',
+      cmyk: document.getElementById('cmyk').value || '',
+      colorNotes: document.getElementById('color-notes').value || '',
+      qty: document.getElementById('quote-qty').value || '',
+      unitPriceRmb: document.getElementById('quote-unit-rmb').value || '',
+      leadTime: document.getElementById('lead-time').value || '',
+      tiers: collectTiers()
+    };
+  }
+
+  function collectTiers() {
+    const rows = document.querySelectorAll('#tier-body tr');
+    const tiers = [];
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      if (inputs.length >= 2) {
+        tiers.push({ qty: inputs[0].value, price: inputs[1].value });
+      }
+    });
+    return tiers;
+  }
+
+  function autoSaveWorkbook() {
+    if (!currentClient || !currentWorkbookId) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const detail = collectWorkbookDetail();
+      const key = `${currentClient}|${currentWorkbookId}`;
+      workbookDetail[key] = detail;
+
+      // Save to DB
+      const dbId = dbWorkbookMap[key] || currentWorkbookId;
+      apiCall('save_workbook_detail', { id: dbId, detail: detail });
+
+      // Also update product name in clientData
+      const items = clientData[currentClient] || [];
+      const item = items.find(i => i.id === parseInt(currentWorkbookId));
+      if (item && detail.product) {
+        item.product = detail.product;
+        item.description = detail.desc;
+      }
+
+      saveToLocalStorage();
+    }, 1500); // Save 1.5s after last change
+  }
+
+  // Listen for changes on workbook form fields
+  document.getElementById('view-workbook').addEventListener('input', function(e) {
+    if (e.target.matches('input, textarea, select')) {
+      autoSaveWorkbook();
+    }
+  });
+
   /* ── Init ──────────────────────────────────────────────────────────────── */
   // Footer date
   document.getElementById('gen-date').textContent = new Date().toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric'
   });
 
-  // Run router on page load
-  router();
+  // Load data: try DB first, then LocalStorage, then use hardcoded fallback
+  (async function init() {
+    // Try loading from LocalStorage immediately for fast render
+    loadFromLocalStorage();
+    router();
+
+    // Then try loading from database (will override if successful)
+    const dbLoaded = await loadFromDatabase();
+    if (dbLoaded) {
+      console.log('Data loaded from database');
+      router(); // Re-render with DB data
+    } else {
+      console.log('Using local/fallback data');
+      // Seed the DB with sample data if empty
+      seedDatabase();
+    }
+  })();
+
+  async function seedDatabase() {
+    // Check if DB has clients
+    const result = await apiCall('get_clients');
+    if (result.success && result.data && result.data.length > 0) return; // DB has data
+
+    // Seed clients
+    for (const name of Object.keys(clientData).sort()) {
+      const r = await apiCall('add_client', { name });
+      if (r.success) dbClientMap[name] = r.id;
+    }
+
+    // Seed workbooks
+    for (const [clientName, items] of Object.entries(clientData)) {
+      const clientId = dbClientMap[clientName];
+      if (!clientId) continue;
+      for (const item of items) {
+        const detail = workbookDetail[`${clientName}|${item.id}`] || {};
+        const r = await apiCall('add_workbook', {
+          client_id: clientId,
+          product_name: item.product,
+          description: item.description,
+          detail: detail
+        });
+        if (r.success) {
+          // Update flow
+          const step = flowToStep(item.flow);
+          await apiCall('update_flow', { id: r.id, flow_step: step });
+          dbWorkbookMap[`${clientName}|${r.id}`] = r.id;
+        }
+      }
+    }
+    saveToLocalStorage();
+    console.log('Database seeded with sample data');
+  }
 </script>
 </body>
 </html>
