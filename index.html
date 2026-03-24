@@ -2361,15 +2361,21 @@
     const result = await apiCall('get_all_data');
     if (!result.success) return false;
 
-    // Clear and rebuild clientData from DB
-    for (const key of Object.keys(clientData)) delete clientData[key];
-    for (const key of Object.keys(workbookDetail)) delete workbookDetail[key];
+    // Only clear local data if DB has workbooks, otherwise keep hardcoded sample data
+    const hasWorkbooks = result.workbooks && result.workbooks.length > 0;
 
-    // Rebuild client list
+    if (hasWorkbooks) {
+      for (const key of Object.keys(clientData)) delete clientData[key];
+      for (const key of Object.keys(workbookDetail)) delete workbookDetail[key];
+    }
+
+    // Rebuild client list (always update client map)
     result.clients.forEach(c => {
       dbClientMap[c.name] = c.id;
       if (!clientData[c.name]) clientData[c.name] = [];
     });
+
+    if (!hasWorkbooks) return false; // Let seedDatabase handle it
 
     // Rebuild workbook data
     result.workbooks.forEach(wb => {
@@ -3102,14 +3108,22 @@
   })();
 
   async function seedDatabase() {
-    // Check if DB has clients
-    const result = await apiCall('get_clients');
-    if (result.success && result.data && result.data.length > 0) return; // DB has data
+    // Check if DB already has workbooks
+    const wbResult = await apiCall('get_workbooks');
+    if (wbResult.success && wbResult.data && wbResult.data.length > 0) return; // DB already seeded
 
-    // Seed clients
+    // Get existing clients from DB to build the map
+    const clientResult = await apiCall('get_clients');
+    if (clientResult.success && clientResult.data) {
+      clientResult.data.forEach(c => { dbClientMap[c.name] = c.id; });
+    }
+
+    // Seed any missing clients
     for (const name of Object.keys(clientData).sort()) {
-      const r = await apiCall('add_client', { name });
-      if (r.success) dbClientMap[name] = r.id;
+      if (!dbClientMap[name]) {
+        const r = await apiCall('add_client', { name });
+        if (r.success) dbClientMap[name] = r.id;
+      }
     }
 
     // Seed workbooks
