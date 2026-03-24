@@ -801,14 +801,12 @@
 
     .action-menu {
       display: none;
-      position: absolute;
-      right: 16px;
-      top: 100%;
+      position: fixed;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-      z-index: 50;
+      z-index: 9999;
       min-width: 100px;
       overflow: hidden;
     }
@@ -2830,8 +2828,23 @@
     const menu = btn.nextElementSibling;
     const wasOpen = menu.classList.contains('open');
     // Close all menus first
-    document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
-    if (!wasOpen) menu.classList.add('open');
+    document.querySelectorAll('.action-menu.open').forEach(m => {
+      m.classList.remove('open');
+      m.style.top = '';
+      m.style.right = '';
+    });
+    if (!wasOpen) {
+      const rect = btn.getBoundingClientRect();
+      menu.classList.add('open');
+      const menuH = menu.offsetHeight;
+      // Flip upward if menu would overflow viewport bottom
+      if (rect.bottom + 4 + menuH > window.innerHeight) {
+        menu.style.top = (rect.top - menuH - 4) + 'px';
+      } else {
+        menu.style.top = (rect.bottom + 4) + 'px';
+      }
+      menu.style.right = (window.innerWidth - rect.right) + 'px';
+    }
   }
 
   document.addEventListener('click', () => {
@@ -3010,7 +3023,7 @@
             `).join('')}
           </div>
         </td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation()">View</a><a onclick="event.stopPropagation()">Edit</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation()">View</a><a onclick="event.stopPropagation()">Edit</a><a onclick="event.stopPropagation()">Delete</a></div></td>
       </tr>
       `;
     }).join('');
