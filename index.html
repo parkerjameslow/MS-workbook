@@ -1475,8 +1475,8 @@
       .section-body { max-width: 100%; box-sizing: border-box; overflow: hidden !important; }
       .section-body[style*="padding:0"] { overflow-x: auto !important; }
       .table-scroll-wrapper { overflow-x: auto !important; -webkit-overflow-scrolling: touch; max-width: 100%; }
-      .status-bar { max-width: 100%; box-sizing: border-box; overflow: hidden; }
-      .wb-sticky-bar { max-width: 100%; box-sizing: border-box; overflow: hidden; }
+      .status-bar { max-width: 100%; box-sizing: border-box; }
+      .wb-sticky-bar { max-width: 100%; box-sizing: border-box; }
       .form-grid, .form-grid-2, .form-grid-3 { max-width: 100%; box-sizing: border-box; }
 
       /* Compact header */
@@ -1496,7 +1496,7 @@
       }
 
       /* Sticky bar offset for smaller header */
-      .wb-sticky-bar { top: 56px !important; padding: 12px 0 8px; max-width: 100%; overflow: hidden; }
+      .wb-sticky-bar { top: 56px !important; padding: 8px 0 6px; padding-top: 8px !important; margin: 0 0 8px !important; max-width: 100%; }
       .wb-sticky-bar > div {
         flex-direction: column !important;
         gap: 8px;
