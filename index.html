@@ -1477,7 +1477,7 @@
   <main class="container">
     <div class="section-card">
       <div class="section-body" style="padding:0;">
-        <table class="dash-table">
+        <table class="dash-table" id="dash-table">
           <thead>
             <tr>
               <th>Product</th>
@@ -1491,6 +1491,10 @@
             <!-- rows injected by JS -->
           </tbody>
         </table>
+        <div id="dash-empty" style="display:none; text-align:center; padding:60px 24px;">
+          <p style="color:var(--text-muted); font-size:16px; margin:0 0 16px;">No workbooks yet for this client.</p>
+          <button class="btn-create" onclick="openNewWorkbookModal()" style="font-size:14px;">+ New Workbook</button>
+        </div>
       </div>
     </div>
   </main>
@@ -2939,6 +2943,16 @@
   function renderDashboard(clientName) {
     const items = clientData[clientName] || [];
     const tbody = document.getElementById('dash-tbody');
+    const emptyState = document.getElementById('dash-empty');
+    const table = document.getElementById('dash-table');
+
+    if (items.length === 0) {
+      table.style.display = 'none';
+      emptyState.style.display = 'block';
+    } else {
+      table.style.display = '';
+      emptyState.style.display = 'none';
+    }
 
     tbody.innerHTML = items.map(item => {
       const complete = isFlowComplete(item.flow);
