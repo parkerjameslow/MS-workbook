@@ -1516,23 +1516,45 @@
       .wb-tabs::-webkit-scrollbar { display: none; }
       .wb-tab { flex-shrink: 0; padding: 8px 14px; font-size: 12px; white-space: nowrap; }
 
-      /* Status bar stacked */
-      .status-bar { flex-direction: column; padding: 14px 12px; gap: 12px; overflow: hidden; }
-      .status-bar-left { flex-direction: column; gap: 10px; align-items: flex-start; width: 100%; overflow: hidden; }
+      /* Status bar — compact mobile layout */
+      .status-bar {
+        flex-direction: column;
+        padding: 12px;
+        gap: 10px;
+        overflow: visible !important;
+        box-sizing: border-box;
+      }
+      .status-bar-left {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+        width: 100%;
+      }
+      .status-label { font-size: 11px; }
       .status-flow {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
         justify-content: flex-start;
         width: 100%;
-        max-width: 100%;
       }
-      .status-flow::-webkit-scrollbar { display: none; }
       .status-step { flex-shrink: 0; }
-      .status-step-bar { width: 36px; height: 8px; }
-      .status-actions { width: 100%; box-sizing: border-box; }
-      .btn-advance { min-width: unset !important; width: 100%; box-sizing: border-box; }
-      .btn-back-step { flex-shrink: 0; }
+      .status-step-bar { width: 28px; height: 6px; border-radius: 3px; }
+      .status-step-label { font-size: 8px; }
+      .status-actions {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        gap: 6px;
+      }
+      .btn-advance {
+        min-width: unset !important;
+        flex: 1;
+        padding: 8px 12px;
+        font-size: 12px;
+        box-sizing: border-box;
+      }
+      .btn-back-step { flex-shrink: 0; width: 36px; height: 36px; }
 
       /* Form grids single column */
       .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
