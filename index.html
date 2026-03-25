@@ -2862,14 +2862,8 @@
 
     // Call API to delete
     try {
-      const dbId = dbWorkbookMap[`${clientName}|${workbookId}`];
-      if (dbId) {
-        await fetch('api.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete_workbook', id: dbId })
-        });
-      }
+      const dbId = dbWorkbookMap[`${clientName}|${workbookId}`] || workbookId;
+      await apiCall('delete_workbook', { id: dbId });
     } catch (e) {
       console.log('API delete failed, removing locally:', e);
     }
