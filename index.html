@@ -1496,7 +1496,7 @@
       }
 
       /* Sticky bar offset for smaller header */
-      .wb-sticky-bar { top: 56px !important; padding: 8px 0 6px; padding-top: 8px !important; margin: 0 0 8px !important; max-width: 100%; }
+      .wb-sticky-bar { top: 56px !important; padding: 6px 0 4px !important; margin: 0 !important; max-width: 100%; }
       .wb-sticky-bar > div {
         flex-direction: column !important;
         gap: 8px;
@@ -1519,28 +1519,31 @@
       /* Status bar — compact mobile layout */
       .status-bar {
         flex-direction: column;
-        padding: 12px;
-        gap: 10px;
+        padding: 10px 12px;
+        gap: 8px;
         overflow: visible !important;
         box-sizing: border-box;
       }
       .status-bar-left {
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
         align-items: flex-start;
         width: 100%;
       }
       .status-label { font-size: 11px; }
       .status-flow {
         display: flex;
-        gap: 4px;
+        gap: 3px;
         flex-wrap: wrap;
         justify-content: flex-start;
         width: 100%;
       }
-      .status-step { flex-shrink: 0; }
-      .status-step-bar { width: 28px; height: 6px; border-radius: 3px; }
-      .status-step-label { font-size: 8px; }
+      .status-step {
+        flex-shrink: 0;
+        flex-direction: column-reverse;
+      }
+      .status-step-bar { width: 28px; height: 5px; border-radius: 3px; }
+      .status-step-label { font-size: 8px; line-height: 1.1; }
       .status-actions {
         width: 100%;
         box-sizing: border-box;
