@@ -1466,10 +1466,13 @@
       .app-content { margin-left: 0 !important; }
 
       /* Contain content within viewport */
-      .app-layout { max-width: 100vw; overflow-x: hidden; }
-      .container { max-width: 100%; padding: 16px 12px 40px; }
-      .section-card { max-width: 100%; overflow: hidden; }
-      .section-body { max-width: 100%; overflow-x: auto; }
+      .app-layout { width: 100%; max-width: 100vw; overflow-x: hidden; }
+      .view { width: 100%; overflow-x: hidden; }
+      .container { width: 100%; max-width: 100%; box-sizing: border-box; padding: 16px 10px 40px; }
+      .section-card { width: 100%; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+      .section-body { width: 100%; max-width: 100%; box-sizing: border-box; overflow-x: auto; }
+      .status-bar { width: 100%; max-width: 100%; box-sizing: border-box; }
+      .wb-sticky-bar { width: 100%; box-sizing: border-box; overflow: hidden; }
 
       /* Compact header */
       .app-header {
@@ -1565,9 +1568,8 @@
       .flow-group { gap: 4px; }
 
       /* Spacing */
-      .container { padding: 16px 12px 40px; }
-      .section-body { padding: 16px; }
-      .section-header { padding: 12px 16px; }
+      .section-body { padding: 14px; }
+      .section-header { padding: 12px 14px; }
       .legend { flex-wrap: wrap; padding: 10px 12px; }
     }
 
