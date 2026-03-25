@@ -26,6 +26,10 @@
       --radius:      10px;
       --radius-sm:   6px;
       --shadow:      0 4px 24px rgba(0,0,0,0.5);
+      --sidebar-text: #E8751A;
+      --sidebar-active-bg: rgba(255, 255, 255, 0.08);
+      --sidebar-btn: #E8751A;
+      --header-title: #E8751A;
     }
 
     [data-theme="light"] {
@@ -42,6 +46,10 @@
       --filled-border:rgba(40,170,85,0.25);
       --filled-label: #2a9a50;
       --shadow:      0 4px 24px rgba(0,0,0,0.08);
+      --sidebar-text: #4A4A4A;
+      --sidebar-active-bg: rgba(232, 117, 26, 0.08);
+      --sidebar-btn: #4A4A4A;
+      --header-title: #4A4A4A;
     }
 
     body {
@@ -102,7 +110,7 @@
       gap: 12px;
       padding: 10px 12px;
       border-radius: var(--radius-sm);
-      color: #4A4A4A;
+      color: var(--sidebar-text);
       font-size: 14px;
       font-weight: 500;
       cursor: pointer;
@@ -120,7 +128,7 @@
     }
 
     .nav-item.active {
-      background: rgba(232, 117, 26, 0.08);
+      background: var(--sidebar-active-bg);
       color: #E8751A;
       font-weight: 600;
       border-left: 3px solid #E8751A;
@@ -1168,7 +1176,7 @@
       gap: 6px;
       margin: 0;
       padding: 9px 12px;
-      background: #4A4A4A;
+      background: var(--sidebar-btn);
       color: #fff;
       border: none;
       border-radius: var(--radius-sm);
@@ -1456,7 +1464,7 @@
 
 <header class="app-header">
   <div class="logo">
-    <div class="logo-text" id="header-title" style="font-size:18px; font-weight:700; color:#4A4A4A; border-left:3px solid #E8751A; padding-left:12px;">Market Sculpt</div>
+    <div class="logo-text" id="header-title" style="font-size:18px; font-weight:700; color:var(--header-title); border-left:3px solid #E8751A; padding-left:12px;">Market Sculpt</div>
   </div>
   <div class="header-actions">
     <button class="btn btn-ghost" onclick="window.print()">🖨 Print / Export</button>
