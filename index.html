@@ -2773,6 +2773,7 @@
   function openNewWorkbookModal() {
     document.getElementById('new-workbook-form').reset();
     document.getElementById('modal-overlay').classList.add('open');
+    setTimeout(() => document.getElementById('modal-product').focus(), 50);
   }
 
   function closeModal() {
@@ -2832,6 +2833,7 @@
   function openAddClientModal() {
     document.getElementById('add-client-form').reset();
     document.getElementById('client-modal-overlay').classList.add('open');
+    setTimeout(() => document.getElementById('modal-client-name').focus(), 50);
   }
 
   function closeClientModal() {
