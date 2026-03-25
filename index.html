@@ -1124,6 +1124,19 @@
 
     .btn-create:hover { opacity: 0.85; }
 
+    .btn-danger {
+      background: #e53e3e;
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 9px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-danger:hover { background: #c53030; }
+
     /* ── Add Workbook Button (sidebar) ─────────────────────────────────── */
     .sidebar-add-btn {
       display: flex;
@@ -2111,6 +2124,19 @@
   </div>
 </div>
 
+<!-- ── Delete Confirmation Modal ──────────────────────────────────────── -->
+<div class="modal-overlay" id="delete-modal-overlay" onclick="if(event.target===this)closeDeleteModal()">
+  <div class="modal">
+    <div class="modal-title">Delete Workbook</div>
+    <p style="margin:0 0 8px; color:var(--text); font-size:14px;">Are you sure you want to delete <strong id="delete-product-name"></strong>?</p>
+    <p style="margin:0; color:var(--text-muted); font-size:13px;">This action cannot be undone.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+      <button type="button" class="btn-danger" id="confirm-delete-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
 <script>
   /* ── Sidebar Submenu Toggle ─────────────────────────────────────────── */
   function toggleSubmenu(btn) {
@@ -2811,6 +2837,61 @@
     location.hash = `#/client/${encodeURIComponent(name)}`;
   }
 
+  /* ── Delete Workbook Modal ─────────────────────────────────────────────── */
+  let pendingDelete = null;
+
+  function openDeleteModal(clientName, workbookId, productName) {
+    document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
+    document.getElementById('delete-product-name').textContent = productName;
+    pendingDelete = { clientName, workbookId };
+    document.getElementById('delete-modal-overlay').classList.add('open');
+  }
+
+  function closeDeleteModal() {
+    document.getElementById('delete-modal-overlay').classList.remove('open');
+    pendingDelete = null;
+  }
+
+  document.getElementById('confirm-delete-btn').addEventListener('click', async function() {
+    if (!pendingDelete) return;
+    const { clientName, workbookId } = pendingDelete;
+
+    // Call API to delete
+    try {
+      const dbId = dbWorkbookMap[`${clientName}|${workbookId}`];
+      if (dbId) {
+        await fetch('api.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete_workbook', id: dbId })
+        });
+      }
+    } catch (e) {
+      console.log('API delete failed, removing locally:', e);
+    }
+
+    // Remove from clientData
+    if (clientData[clientName]) {
+      clientData[clientName] = clientData[clientName].filter(item => String(item.id) !== String(workbookId));
+    }
+
+    // Remove from workbookDetail
+    delete workbookDetail[`${clientName}|${workbookId}`];
+    delete dbWorkbookMap[`${clientName}|${workbookId}`];
+
+    saveToLocalStorage();
+    closeDeleteModal();
+
+    // Re-render current view
+    const hash = location.hash;
+    if (hash.startsWith('#/client/') && !hash.includes('/workbook/')) {
+      renderDashboard(clientName);
+    } else {
+      renderRecentWorkbooks();
+      showView('view-home');
+    }
+  });
+
   /* ── Router ─────────────────────────────────────────────────────────────── */
   function showView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -2876,7 +2957,7 @@
             `).join('')}
           </div>
         </td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation()">View</a><a onclick="event.stopPropagation()">Edit</a><a onclick="event.stopPropagation()">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `}).join('');
 
@@ -3023,7 +3104,7 @@
             `).join('')}
           </div>
         </td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation()">View</a><a onclick="event.stopPropagation()">Edit</a><a onclick="event.stopPropagation()">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); openDeleteModal('${item.client.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
       `;
     }).join('');
