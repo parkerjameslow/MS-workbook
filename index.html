@@ -30,6 +30,7 @@
       --sidebar-active-bg: rgba(255, 255, 255, 0.08);
       --sidebar-btn: #E8751A;
       --header-title: #E8751A;
+      --product-name-color: #E8751A;
     }
 
     [data-theme="light"] {
@@ -759,7 +760,7 @@
 
     .dash-table .product-name {
       font-weight: 600;
-      color: var(--text);
+      color: var(--product-name-color, var(--text));
     }
 
     .dash-table .desc-cell {
