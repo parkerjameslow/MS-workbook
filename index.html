@@ -1465,6 +1465,13 @@
 
       .app-content { margin-left: 0 !important; }
 
+      /* Prevent horizontal overflow */
+      html, body { overflow-x: hidden; }
+      .app-layout { overflow-x: hidden; }
+      .container { overflow-x: hidden; }
+      .section-card { overflow-x: hidden; }
+      .section-body { overflow-x: auto; }
+
       /* Compact header */
       .app-header {
         padding: 0 12px !important;
@@ -1493,24 +1500,32 @@
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
         max-width: 100%;
+        width: 100%;
         gap: 2px;
       }
       .wb-tabs::-webkit-scrollbar { display: none; }
-      .wb-tab { flex-shrink: 0; padding: 8px 14px; font-size: 12px; }
+      .wb-tab { flex-shrink: 0; padding: 8px 14px; font-size: 12px; white-space: nowrap; }
 
       /* Status bar stacked */
-      .status-bar { flex-direction: column; padding: 14px 12px; gap: 12px; }
-      .status-bar-left { flex-direction: column; gap: 10px; align-items: flex-start; }
+      .status-bar { flex-direction: column; padding: 14px 12px; gap: 12px; overflow: hidden; }
+      .status-bar-left { flex-direction: column; gap: 10px; align-items: flex-start; width: 100%; overflow: hidden; }
       .status-flow {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
         justify-content: flex-start;
         width: 100%;
+        max-width: 100%;
       }
       .status-flow::-webkit-scrollbar { display: none; }
-      .status-step-bar { width: 46px; height: 8px; }
+      .status-step { flex-shrink: 0; }
+      .status-step-bar { width: 36px; height: 8px; }
+      .status-actions { width: 100%; }
       .btn-advance { min-width: unset; width: 100%; }
+
+      /* Form grids single column */
+      .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
+      .col-span-2, .col-span-3 { grid-column: span 1; }
 
       /* Dashboard table scrollable */
       .dash-table { table-layout: auto; min-width: 700px; }
@@ -1699,7 +1714,7 @@
         <!-- populated by JS -->
       </div>
     </div>
-    <div style="display:flex; gap:6px; align-items:center;">
+    <div class="status-actions" style="display:flex; gap:6px; align-items:center;">
       <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
       <button class="btn-advance" id="btn-advance" onclick="advanceStatus()">
         Mark as Entered →
