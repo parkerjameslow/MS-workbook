@@ -126,6 +126,29 @@
       border-left: 3px solid var(--accent);
     }
 
+    .nav-item .client-delete-btn {
+      display: none;
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      line-height: 1;
+    }
+
+    .nav-item .client-delete-btn:hover {
+      color: #e53e3e;
+      background: rgba(229, 62, 62, 0.1);
+    }
+
+    .nav-item.active .client-delete-btn {
+      display: inline-flex;
+    }
+
     .nav-item-icon {
       width: 20px;
       text-align: center;
@@ -2141,6 +2164,19 @@
   </div>
 </div>
 
+<!-- ── Delete Client Modal ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="delete-client-modal-overlay" onclick="if(event.target===this)closeDeleteClientModal()">
+  <div class="modal">
+    <div class="modal-title">Delete Client</div>
+    <p style="margin:0 0 8px; color:var(--text); font-size:14px;">Are you sure you want to delete <strong id="delete-client-name"></strong> and all their workbooks?</p>
+    <p style="margin:0; color:var(--text-muted); font-size:13px;">This action cannot be undone.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-cancel" onclick="closeDeleteClientModal()">Cancel</button>
+      <button type="button" class="btn-danger" id="confirm-delete-client-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
 <script>
   /* ── Sidebar Submenu Toggle ─────────────────────────────────────────── */
   function toggleSubmenu(btn) {
@@ -2446,7 +2482,22 @@
       const a = document.createElement('a');
       a.className = 'nav-item';
       a.href = `#/client/${encodeURIComponent(name)}`;
-      a.textContent = name;
+
+      const span = document.createElement('span');
+      span.textContent = name;
+      a.appendChild(span);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'client-delete-btn';
+      delBtn.title = 'Delete client';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openDeleteClientModal(name);
+      });
+      a.appendChild(delBtn);
+
       nav.appendChild(a);
     });
 
@@ -2890,6 +2941,59 @@
     }
   });
 
+  /* ── Delete Client Modal ──────────────────────────────────────────────── */
+  let pendingClientDelete = null;
+
+  function openDeleteClientModal(clientName) {
+    document.getElementById('delete-client-name').textContent = clientName;
+    pendingClientDelete = clientName;
+    document.getElementById('delete-client-modal-overlay').classList.add('open');
+  }
+
+  function closeDeleteClientModal() {
+    document.getElementById('delete-client-modal-overlay').classList.remove('open');
+    pendingClientDelete = null;
+  }
+
+  document.getElementById('confirm-delete-client-btn').addEventListener('click', async function() {
+    if (!pendingClientDelete) return;
+    const clientName = pendingClientDelete;
+
+    // Delete all workbooks for this client from API
+    try {
+      const items = clientData[clientName] || [];
+      for (const item of items) {
+        const dbId = dbWorkbookMap[`${clientName}|${item.id}`] || item.id;
+        await apiCall('delete_workbook', { id: dbId });
+      }
+      // Delete the client itself
+      const clientDbId = dbClientMap[clientName];
+      if (clientDbId) {
+        await apiCall('delete_client', { id: clientDbId });
+      }
+    } catch (e) {
+      console.log('API client delete failed, removing locally:', e);
+    }
+
+    // Remove from local data
+    const items = clientData[clientName] || [];
+    items.forEach(item => {
+      delete workbookDetail[`${clientName}|${item.id}`];
+      delete dbWorkbookMap[`${clientName}|${item.id}`];
+    });
+    delete clientData[clientName];
+    delete dbClientMap[clientName];
+
+    saveToLocalStorage();
+    closeDeleteClientModal();
+    rebuildSidebar();
+
+    // Navigate to home
+    location.hash = '';
+    renderRecentWorkbooks();
+    showView('view-home');
+  });
+
   /* ── Router ─────────────────────────────────────────────────────────────── */
   function showView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -2898,7 +3002,8 @@
 
   function updateSidebarActive(clientName) {
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => {
-      a.classList.toggle('active', a.textContent.trim() === clientName);
+      const name = a.querySelector('span') ? a.querySelector('span').textContent.trim() : a.textContent.trim();
+      a.classList.toggle('active', name === clientName);
     });
   }
 
@@ -3195,6 +3300,7 @@
   (async function init() {
     // Try loading from LocalStorage immediately for fast render
     loadFromLocalStorage();
+    rebuildSidebar();
     router();
 
     // Then try loading from database (will override if successful)
