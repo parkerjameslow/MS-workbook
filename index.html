@@ -1498,10 +1498,16 @@
       }
 
       /* Sticky bar offset for smaller header */
-      .wb-sticky-bar { top: 56px !important; padding: 6px 0 4px !important; margin: 0 !important; max-width: 100%; }
+      .wb-sticky-bar {
+        position: relative !important;
+        top: auto !important;
+        padding: 8px 0 4px !important;
+        margin: 0 !important;
+        max-width: 100%;
+      }
       .wb-sticky-bar > div {
         flex-direction: column !important;
-        gap: 8px;
+        gap: 6px;
         align-items: flex-start !important;
         max-width: 100%;
       }
