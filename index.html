@@ -3428,6 +3428,19 @@
   }
 
   function fillWorkbook(clientName, workbookId) {
+    // Save previous workbook immediately before switching to a different one
+    const switching = currentClient && currentWorkbookId &&
+                      (currentClient !== clientName || currentWorkbookId !== workbookId);
+    if (switching) {
+      clearTimeout(saveTimer);
+      const prevDetail = collectWorkbookDetail();
+      const prevKey = `${currentClient}|${currentWorkbookId}`;
+      workbookDetail[prevKey] = prevDetail;
+      const prevDbId = dbWorkbookMap[prevKey] || currentWorkbookId;
+      apiCall('save_workbook_detail', { id: prevDbId, detail: prevDetail });
+      saveToLocalStorage();
+    }
+
     _filling = true;
     currentClient = clientName;
     currentWorkbookId = workbookId;
