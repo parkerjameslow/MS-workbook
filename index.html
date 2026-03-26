@@ -1689,6 +1689,26 @@
       .dim-group { flex-direction: column; }
     }
 
+    /* Quote tab mobile — ensure date inputs and fields fit */
+    @media (max-width: 768px) {
+      #wb-tab-quote input[type="date"] {
+        width: 100% !important;
+        min-width: 0;
+        box-sizing: border-box;
+        font-size: 13px;
+      }
+      #wb-tab-quote .section-card,
+      #wb-tab-quote .section-body {
+        overflow: visible !important;
+      }
+      #wb-tab-quote .field input,
+      #wb-tab-quote .field textarea {
+        width: 100% !important;
+        min-width: 0;
+        box-sizing: border-box;
+      }
+    }
+
     /* Tier table mobile — hide # col, short labels, evenly spaced */
     @media (max-width: 768px) {
       .tier-col-num { display: none; }
