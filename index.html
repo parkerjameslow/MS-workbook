@@ -1514,15 +1514,19 @@
         padding: 0 !important;
         font-size: 18px;
         white-space: nowrap;
-        width: 36px;
-        height: 36px;
+        min-width: 38px !important;
+        max-width: 38px !important;
+        min-height: 38px !important;
+        max-height: 38px !important;
+        width: 38px !important;
+        height: 38px !important;
         display: inline-flex !important;
         align-items: center;
         justify-content: center;
         border: 1px solid var(--border) !important;
         border-radius: var(--radius-sm) !important;
         background: var(--surface2) !important;
-        box-sizing: border-box;
+        box-sizing: border-box !important;
       }
       .header-actions .btn .btn-label,
       .header-actions .theme-toggle .toggle-label { display: none; }
