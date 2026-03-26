@@ -2805,7 +2805,7 @@
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
   let tierCount = 3;
   let _filling = false; // true while fillWorkbook is running, prevents auto-save
-  let _skipInitSave = false; // true during init, prevents overwriting DB data
+  // Removed _skipInitSave — fillWorkbook no longer triggers saves
 
   function addTierRow(qty = '', unitPrice = '') {
     tierCount++;
@@ -3955,10 +3955,8 @@
     calcFreight();
     _filling = false;
 
-    // Save current state — but skip if we're just rendering data that came from the DB
-    if (!_skipInitSave) {
-      doSaveWorkbook();
-    }
+    // Only save for brand new workbooks (no existing data) to persist defaults
+    // Never save when loading existing data — prevents overwriting DB
   }
 
   function router() {
@@ -4109,7 +4107,7 @@
   }
 
   function autoSaveWorkbook() {
-    if (!currentClient || !currentWorkbookId || _filling || _skipInitSave) return;
+    if (!currentClient || !currentWorkbookId || _filling) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       doSaveWorkbook();
@@ -4165,8 +4163,6 @@
 
   // Load data: try DB first, then LocalStorage, then use hardcoded fallback
   (async function init() {
-    _skipInitSave = true; // Block ALL saves during init
-
     // Try loading from LocalStorage immediately for fast render
     loadFromLocalStorage();
     rebuildSidebar();
@@ -4182,8 +4178,6 @@
       // Seed the DB with sample data if empty
       seedDatabase();
     }
-
-    _skipInitSave = false; // Now allow saves from user actions
   })();
 
   async function seedDatabase() {
