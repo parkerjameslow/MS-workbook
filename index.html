@@ -1504,15 +1504,17 @@
 
       /* Compact header */
       .app-header {
-        padding: 0 12px !important;
+        padding: 0 8px !important;
         height: 56px !important;
-        gap: 8px;
-        max-width: 100vw;
+        gap: 6px;
+        width: 100vw !important;
+        max-width: 100vw !important;
+        box-sizing: border-box !important;
         position: sticky !important;
         top: 0 !important;
         z-index: 100 !important;
       }
-      #header-title { font-size: 14px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+      #header-title { font-size: 13px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 0; min-width: 0; max-width: calc(100vw - 140px); }
       .header-actions { gap: 4px; flex-shrink: 0; }
       .header-actions .btn,
       .header-actions .theme-toggle {
