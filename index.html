@@ -2624,6 +2624,7 @@
 
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
   let tierCount = 3;
+  let _filling = false; // true while fillWorkbook is running, prevents auto-save
 
   function addTierRow(qty = '', unitPrice = '') {
     tierCount++;
@@ -2651,7 +2652,7 @@
     `;
     tbody.appendChild(tr);
     recalcTier(id);
-    autoSaveWorkbook();
+    if (!_filling) autoSaveWorkbook();
   }
 
   function recalcTier(id) {
@@ -2672,7 +2673,7 @@
     } else {
       totalEl.textContent = '—';
     }
-    autoSaveWorkbook();
+    if (!_filling) autoSaveWorkbook();
   }
 
   function removeTierRow(id) {
@@ -3427,6 +3428,7 @@
   }
 
   function fillWorkbook(clientName, workbookId) {
+    _filling = true;
     currentClient = clientName;
     currentWorkbookId = workbookId;
 
@@ -3503,6 +3505,20 @@
     fillQuoteInvoice(clientName, prodName);
     showView('view-workbook');
     calcFreight();
+    _filling = false;
+
+    // Immediately save if this workbook had no valid data (ensures defaults persist)
+    const savedData = workbookDetail[`${clientName}|${workbookId}`];
+    if (!savedData || Array.isArray(savedData) || !savedData.client) {
+      clearTimeout(saveTimer);
+      const detail = collectWorkbookDetail();
+      const key = `${clientName}|${workbookId}`;
+      workbookDetail[key] = detail;
+      const dbId = dbWorkbookMap[key] || workbookId;
+      apiCall('save_workbook_detail', { id: dbId, detail: detail });
+      saveToLocalStorage();
+      console.log('Saved initial workbook data with default tiers for', key);
+    }
   }
 
   function router() {
