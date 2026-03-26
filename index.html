@@ -3455,7 +3455,14 @@
       document.getElementById('quote-unit-rmb').value = data.unitPriceRmb || '';
       convertRmbToUsd();
       document.getElementById('quote-lead').value = data.leadTime || '';
-      (data.tiers || []).forEach(t => addTierRow(t.qty, t.price));
+      const validTiers = (data.tiers || []).filter(t => t.qty);
+      if (validTiers.length) {
+        validTiers.forEach(t => addTierRow(t.qty, t.price));
+      } else {
+        addTierRow(100);
+        addTierRow(250);
+        addTierRow(500);
+      }
     } else {
       // Fill with basic info from the client list
       const items = clientData[clientName] || [];
