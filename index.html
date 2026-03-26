@@ -1689,6 +1689,17 @@
       .dim-group { flex-direction: column; }
     }
 
+    /* Tier table mobile scroll */
+    @media (max-width: 768px) {
+      #wb-tab-pricing .section-card { overflow: visible !important; }
+      #wb-tab-pricing .section-body { overflow: visible !important; }
+      #wb-tab-pricing .subsection { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      #tier-table { min-width: 520px; }
+      #tier-table th { font-size: 10px; padding: 7px 6px; white-space: nowrap; }
+      #tier-table td { padding: 6px; }
+      #tier-table input { width: 80px !important; font-size: 12px; padding: 5px 6px; }
+    }
+
     @media (max-width: 480px) {
       .header-actions .btn-ghost span { display: none; }
       .app-header { padding: 0 8px !important; }
