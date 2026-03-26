@@ -281,14 +281,46 @@ switch ($action) {
             break;
         }
         $stmt = $pdo->prepare("
-            SELECT id, workbook_id, changed_by, created_at
+            SELECT id, workbook_id, detail_json, changed_by, created_at
             FROM workbook_revisions
             WHERE workbook_id = ?
             ORDER BY created_at DESC
             LIMIT 50
         ");
         $stmt->execute([$wbId]);
-        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+        $revisions = $stmt->fetchAll();
+        // Decode detail_json and build summary of fields
+        foreach ($revisions as &$rev) {
+            $detail = json_decode($rev['detail_json'], true);
+            // Create a summary of key fields (exclude large data like images)
+            $rev['summary'] = [];
+            if ($detail && is_array($detail)) {
+                $fieldLabels = [
+                    'product' => 'Product', 'desc' => 'Description', 'materials' => 'Materials',
+                    'pantone' => 'Pantone', 'cmyk' => 'CMYK', 'colorNotes' => 'Color Notes',
+                    'qty' => 'Quantity', 'unitPriceRmb' => 'Unit Price (RMB)', 'leadTime' => 'Lead Time',
+                    'qcNotes' => 'QC Notes', 'freightMode' => 'Shipping Method',
+                    'quoteDate' => 'Quote Date', 'quoteClQty' => 'Quote Qty',
+                    'quoteClUnitPrice' => 'Quote Unit Price', 'quoteClShipping' => 'Quote Shipping',
+                    'invNumber' => 'Invoice #', 'invStatus' => 'Invoice Status'
+                ];
+                foreach ($fieldLabels as $key => $label) {
+                    if (!empty($detail[$key])) {
+                        $rev['summary'][] = ['field' => $label, 'value' => (string)$detail[$key]];
+                    }
+                }
+                // Count tiers
+                if (!empty($detail['tiers']) && is_array($detail['tiers'])) {
+                    $rev['summary'][] = ['field' => 'Pricing Tiers', 'value' => count($detail['tiers']) . ' tiers'];
+                }
+                // Has image?
+                if (!empty($detail['productImage'])) {
+                    $rev['summary'][] = ['field' => 'Product Image', 'value' => 'Yes'];
+                }
+            }
+            unset($rev['detail_json']); // Don't send the full JSON to client
+        }
+        echo json_encode(['success' => true, 'data' => $revisions]);
         break;
 
     case 'get_revision_detail':

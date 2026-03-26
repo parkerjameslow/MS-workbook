@@ -3516,15 +3516,24 @@
           list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No revision history yet. Changes are tracked automatically as you edit.</p>';
           return;
         }
-        list.innerHTML = data.data.map(rev => `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);">
-            <div>
-              <div style="font-size:13px; font-weight:600;">${new Date(rev.created_at).toLocaleString()}</div>
-              <div style="font-size:11px; color:var(--text-muted);">${rev.changed_by || 'Unknown user'}</div>
+        list.innerHTML = data.data.map(rev => {
+          const summary = (rev.summary || []).slice(0, 6).map(s =>
+            `<span style="display:inline-block; background:var(--surface2); border-radius:4px; padding:2px 6px; font-size:10px; color:var(--text-muted); margin:2px 2px 0 0;">${s.field}: ${s.value.length > 20 ? s.value.substring(0, 20) + '…' : s.value}</span>`
+          ).join('');
+          const moreCount = (rev.summary || []).length - 6;
+          const moreTag = moreCount > 0 ? `<span style="font-size:10px; color:var(--text-muted);">+${moreCount} more</span>` : '';
+          return `
+          <div style="padding:10px 0; border-bottom:1px solid var(--border);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+              <div style="flex:1; min-width:0;">
+                <div style="font-size:13px; font-weight:600;">${new Date(rev.created_at).toLocaleString()}</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">${rev.changed_by || 'Unknown user'}</div>
+                <div style="line-height:1.6;">${summary}${moreTag}</div>
+              </div>
+              <button class="btn-back-step" onclick="restoreRevision(${rev.id}, ${rev.workbook_id})" title="Restore this version" style="font-size:11px; width:auto; padding:4px 10px; flex-shrink:0; margin-left:8px;">Restore</button>
             </div>
-            <button class="btn-back-step" onclick="restoreRevision(${rev.id}, ${rev.workbook_id})" title="Restore this version" style="font-size:11px; width:auto; padding:4px 10px;">Restore</button>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
       })
       .catch(() => {
         list.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Failed to load history.</p>';
