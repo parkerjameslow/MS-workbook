@@ -2684,9 +2684,17 @@
         const compressed = canvas.toDataURL('image/jpeg', 0.6);
         document.getElementById('imgPreview').src = compressed;
         document.getElementById('uploadArea').classList.add('has-image');
-        // Save immediately (no debounce) since images are large
+        // Save immediately with image data included
         clearTimeout(saveTimer);
-        doSaveWorkbook();
+        if (currentClient && currentWorkbookId) {
+          const detail = collectWorkbookDetail();
+          detail.productImage = compressed; // Force the image data in
+          const key = `${currentClient}|${currentWorkbookId}`;
+          workbookDetail[key] = detail;
+          const dbId = dbWorkbookMap[key] || currentWorkbookId;
+          apiCall('save_workbook_detail', { id: dbId, detail: detail });
+          saveToLocalStorage();
+        }
       };
       img.src = ev.target.result;
     };
