@@ -2805,7 +2805,8 @@
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
   let tierCount = 3;
   let _filling = false; // true while fillWorkbook is running, prevents auto-save
-  let _dbLoading = false; // true during initial DB load, prevents overwriting DB data
+  let _dbLoading = false;
+  let _skipInitSave = false; // true when rendering from DB data, prevents overwriting
 
   function addTierRow(qty = '', unitPrice = '') {
     tierCount++;
@@ -3955,9 +3956,8 @@
     calcFreight();
     _filling = false;
 
-    // Only save if this is from a user action (not during initial DB load)
-    // The _filling flag is already false at this point, but we check if DB has loaded
-    if (!_dbLoading) {
+    // Save current state — but skip if we're just rendering data that came from the DB
+    if (!_skipInitSave) {
       doSaveWorkbook();
     }
   }
@@ -4172,10 +4172,12 @@
     // Then try loading from database (will override if successful)
     _dbLoading = true;
     const dbLoaded = await loadFromDatabase();
+    _dbLoading = false;
     if (dbLoaded) {
       console.log('Data loaded from database');
+      _skipInitSave = true;
       router(); // Re-render with DB data
-      _dbLoading = false;
+      _skipInitSave = false;
     } else {
       _dbLoading = false;
       console.log('Using local/fallback data');
