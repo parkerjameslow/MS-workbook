@@ -2671,9 +2671,24 @@
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      document.getElementById('imgPreview').src = ev.target.result;
-      document.getElementById('uploadArea').classList.add('has-image');
-      autoSaveWorkbook();
+      // Compress image to max 800px wide, JPEG quality 0.6 to keep payload small
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 800;
+        let w = img.width, h = img.height;
+        if (w > maxW) { h = h * maxW / w; w = maxW; }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.6);
+        document.getElementById('imgPreview').src = compressed;
+        document.getElementById('uploadArea').classList.add('has-image');
+        // Save immediately (no debounce) since images are large
+        clearTimeout(saveTimer);
+        doSaveWorkbook();
+      };
+      img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
   }
