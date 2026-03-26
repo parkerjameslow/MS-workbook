@@ -1689,13 +1689,20 @@
       .dim-group { flex-direction: column; }
     }
 
-    /* Tier table mobile — hide # and Unit Price (USD) columns to fit */
+    /* Tier table mobile — hide # col, compact layout to fit all price columns */
     @media (max-width: 768px) {
-      .tier-col-num, .tier-col-usd { display: none; }
-      #tier-table { width: 100%; }
-      #tier-table th { font-size: 10px; padding: 7px 6px; white-space: nowrap; }
-      #tier-table td { padding: 6px; }
-      #tier-table input { width: 100% !important; min-width: 0; font-size: 12px; padding: 5px 6px; box-sizing: border-box; }
+      .tier-col-num { display: none; }
+      #tier-table { width: 100%; table-layout: fixed; }
+      #tier-table th { font-size: 9px; padding: 6px 4px; white-space: nowrap; }
+      #tier-table td { padding: 4px 3px; }
+      #tier-table input { width: 100% !important; min-width: 0; font-size: 11px; padding: 4px 4px; box-sizing: border-box; }
+      /* Column widths: Qty narrow, prices share remaining space */
+      #tier-table th:nth-child(2),
+      #tier-table td:nth-child(2) { width: 50px; }
+      #tier-table th:last-child,
+      #tier-table td:last-child { width: 28px; padding: 2px; }
+      #tier-table .btn-danger-ghost { font-size: 11px; padding: 2px 5px; min-width: 0; }
+      .tier-col-usd, .total-cell { font-size: 11px !important; }
     }
 
     @media (max-width: 480px) {
