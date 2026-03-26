@@ -2805,8 +2805,7 @@
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
   let tierCount = 3;
   let _filling = false; // true while fillWorkbook is running, prevents auto-save
-  let _dbLoading = false;
-  let _skipInitSave = false; // true when rendering from DB data, prevents overwriting
+  let _skipInitSave = false; // true during init, prevents overwriting DB data
 
   function addTierRow(qty = '', unitPrice = '') {
     tierCount++;
@@ -4108,7 +4107,7 @@
   }
 
   function autoSaveWorkbook() {
-    if (!currentClient || !currentWorkbookId || _filling) return;
+    if (!currentClient || !currentWorkbookId || _filling || _skipInitSave) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       doSaveWorkbook();
@@ -4164,26 +4163,25 @@
 
   // Load data: try DB first, then LocalStorage, then use hardcoded fallback
   (async function init() {
+    _skipInitSave = true; // Block ALL saves during init
+
     // Try loading from LocalStorage immediately for fast render
     loadFromLocalStorage();
     rebuildSidebar();
     router();
 
     // Then try loading from database (will override if successful)
-    _dbLoading = true;
     const dbLoaded = await loadFromDatabase();
-    _dbLoading = false;
     if (dbLoaded) {
       console.log('Data loaded from database');
-      _skipInitSave = true;
       router(); // Re-render with DB data
-      _skipInitSave = false;
     } else {
-      _dbLoading = false;
       console.log('Using local/fallback data');
       // Seed the DB with sample data if empty
       seedDatabase();
     }
+
+    _skipInitSave = false; // Now allow saves from user actions
   })();
 
   async function seedDatabase() {
