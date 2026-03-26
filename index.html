@@ -1508,8 +1508,11 @@
         height: 56px !important;
         gap: 8px;
         max-width: 100vw;
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 100 !important;
       }
-      #header-title { font-size: 14px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #header-title { font-size: 14px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
       .header-actions { gap: 4px; flex-shrink: 0; }
       .header-actions .btn,
       .header-actions .theme-toggle {
