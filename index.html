@@ -1450,6 +1450,8 @@
     }
     .label-short { display: none; }
     .label-full { display: inline; }
+    .date-short { display: none; }
+    .date-full { display: inline; }
     .col-mobile-status { display: none; }
     .mobile-status-badge {
       display: inline-block;
@@ -1596,13 +1598,15 @@
       .dash-table { table-layout: auto; min-width: unset !important; display: table; width: 100%; }
       .dash-table thead, .dash-table tbody { display: table-row-group; width: 100%; min-width: unset; }
       .col-flow, .col-date-submitted, .col-client { display: none !important; }
-      .col-mobile-status { display: table-cell !important; }
+      .col-mobile-status { display: table-cell !important; text-align: right !important; }
+      .date-full { display: none !important; }
+      .date-short { display: inline !important; }
       .dash-table { table-layout: fixed !important; }
       .dash-table td, .dash-table th { padding: 12px 6px; font-size: 13px; vertical-align: middle; }
-      .dash-table td:first-child, .dash-table th:first-child { padding-left: 14px; width: 36%; }
-      .dash-table .col-date-created { width: 20%; }
-      .dash-table .col-mobile-status { width: 26%; text-align: center; }
-      .dash-table td:last-child, .dash-table th:last-child { width: 18%; padding-right: 14px; text-align: right; }
+      .dash-table td:first-child, .dash-table th:first-child { padding-left: 14px; width: 40%; }
+      .dash-table .col-date-created { width: 14%; text-align: center; }
+      .dash-table .col-mobile-status { width: 30%; text-align: right !important; padding-right: 4px !important; }
+      .dash-table td:last-child, .dash-table th:last-child { width: 16%; padding-right: 14px; text-align: right; }
       .dash-table .product-name { font-size: 14px; }
       .dash-table .product-name .status-badge { display: none !important; }
       .dash-table .action-icon-btn { width: 32px; height: 32px; font-size: 16px; min-height: unset; }
@@ -3299,6 +3303,12 @@
     return flowSteps.every(s => flow[s]);
   }
 
+  function shortDate(dateStr) {
+    const months = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
+    const parts = dateStr.split(' ');
+    return months[parts[1]] + '/' + parseInt(parts[0]);
+  }
+
   function getCurrentStepName(flow) {
     if (isFlowComplete(flow)) return 'Complete';
     for (let i = flowSteps.length - 1; i >= 0; i--) {
@@ -3328,7 +3338,7 @@
       return `
       <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">
         <td class="product-name">${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</td>
-        <td class="col-date-created">${item.dateCreated}</td>
+        <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
         <td class="col-flow">
           <div class="flow-group">
@@ -3472,7 +3482,7 @@
       <tr class="${complete ? 'row-complete' : ''}" style="cursor:pointer;" onclick="location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">
         <td class="product-name">${item.product}</td>
         <td class="col-client">${item.client}</td>
-        <td class="col-date-created">${item.dateCreated}</td>
+        <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-flow">
           <div class="flow-group">
             ${flowSteps.map((s, i) => `
