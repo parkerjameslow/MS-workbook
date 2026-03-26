@@ -463,6 +463,26 @@
       height: 38px;
       cursor: pointer;
     }
+
+    .select-wrap {
+      position: relative;
+    }
+    .select-wrap select {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      padding-right: 40px;
+    }
+    .select-wrap::after {
+      content: '\25BE';
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      font-size: 14px;
+      color: #888;
+    }
     input:focus, textarea:focus, select:focus {
       outline: none;
       border-color: var(--accent);
@@ -2107,11 +2127,11 @@
 
             <div class="freight-field" style="margin-bottom:10px;">
               <label>Dimension Unit</label>
-              <select id="freight-dim-unit" onchange="calcFreight()">
+              <div class="select-wrap"><select id="freight-dim-unit" onchange="calcFreight()">
                 <option value="in" selected>Inches (in)</option>
                 <option value="cm">Centimeters (cm)</option>
                 <option value="mm">Millimeters (mm)</option>
-              </select>
+              </select></div>
             </div>
 
             <div class="freight-row-3">
@@ -2132,10 +2152,10 @@
             <div class="freight-row">
               <div class="freight-field">
                 <label>Weight Unit</label>
-                <select id="freight-wt-unit" onchange="calcFreight()">
+                <div class="select-wrap"><select id="freight-wt-unit" onchange="calcFreight()">
                   <option value="kg" selected>Kilograms (kg)</option>
                   <option value="lbs">Pounds (lbs)</option>
-                </select>
+                </select></div>
               </div>
               <div class="freight-field">
                 <label>Actual Weight</label>
@@ -2146,12 +2166,12 @@
             <div class="freight-row">
               <div class="freight-field">
                 <label>Shipping Method</label>
-                <select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
+                <div class="select-wrap"><select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
                   <option value="slow" selected>Slow Boat</option>
                   <option value="fast">Fast Boat</option>
                   <option value="airupp">Air + UPS</option>
                   <option value="directair">Direct Air</option>
-                </select>
+                </select></div>
               </div>
               <div class="freight-field">
                 <label>Rate per kg (USD)</label>
@@ -2413,21 +2433,21 @@
         </div>
         <div class="field">
           <label>Payment Status</label>
-          <select id="inv-status">
+          <div class="select-wrap"><select id="inv-status">
             <option value="unpaid">Unpaid</option>
             <option value="partial">Partially Paid</option>
             <option value="paid">Paid</option>
-          </select>
+          </select></div>
         </div>
         <div class="field">
           <label>Payment Method</label>
-          <select id="inv-method">
+          <div class="select-wrap"><select id="inv-method">
             <option value="">Select…</option>
             <option>Wire Transfer</option>
             <option>Credit Card</option>
             <option>PayPal</option>
             <option>Check</option>
-          </select>
+          </select></div>
         </div>
         <div class="field col-full">
           <label>Notes</label>
@@ -2460,7 +2480,7 @@
       </div>
       <div class="modal-field">
         <label>Client <span class="required">*</span></label>
-        <select id="modal-client" required>
+        <div class="select-wrap"><select id="modal-client" required>
           <option value="">Select a client…</option>
           <option>BAM</option>
           <option>Bloom</option>
@@ -2470,7 +2490,7 @@
           <option>Nut Garden</option>
           <option>Salt</option>
           <option>Tweedle Dee</option>
-        </select>
+        </select></div>
       </div>
       <div class="modal-field">
         <label>Description <span class="required">*</span></label>
