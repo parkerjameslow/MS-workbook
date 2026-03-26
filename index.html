@@ -3953,10 +3953,8 @@
     fillQuoteInvoice(clientName, prodName);
     showView('view-workbook');
     calcFreight();
-    _filling = false;
-
-    // Only save for brand new workbooks (no existing data) to persist defaults
-    // Never save when loading existing data — prevents overwriting DB
+    // Delay clearing _filling to let queued input events (from calcFreight etc.) fire while still blocked
+    setTimeout(() => { _filling = false; }, 200);
   }
 
   function router() {
