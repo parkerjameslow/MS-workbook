@@ -2651,6 +2651,7 @@
     `;
     tbody.appendChild(tr);
     recalcTier(id);
+    autoSaveWorkbook();
   }
 
   function recalcTier(id) {
@@ -2675,6 +2676,7 @@
 
   function removeTierRow(id) {
     document.getElementById(`tier-${id}`)?.remove();
+    autoSaveWorkbook();
   }
 
   /* ── Field Fill State ───────────────────────────────────────────────────── */
