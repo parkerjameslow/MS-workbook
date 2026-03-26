@@ -2673,6 +2673,7 @@
     reader.onload = ev => {
       document.getElementById('imgPreview').src = ev.target.result;
       document.getElementById('uploadArea').classList.add('has-image');
+      autoSaveWorkbook();
     };
     reader.readAsDataURL(file);
   }
@@ -2682,6 +2683,7 @@
     document.getElementById('imgPreview').src = '';
     document.getElementById('imgInput').value = '';
     document.getElementById('uploadArea').classList.remove('has-image');
+    autoSaveWorkbook();
   }
 
   // Drag and drop support
@@ -3832,6 +3834,14 @@
       convertRmbToUsd();
       _s('quote-lead', data.leadTime);
       _s('quote-qc', data.qcNotes);
+      // Product image
+      if (data.productImage) {
+        document.getElementById('imgPreview').src = data.productImage;
+        document.getElementById('uploadArea').classList.add('has-image');
+      } else {
+        document.getElementById('imgPreview').src = '';
+        document.getElementById('uploadArea').classList.remove('has-image');
+      }
       // Pricing tiers
       const rawTiers = Array.isArray(data.tiers) ? data.tiers : [];
       const validTiers = rawTiers.filter(t => t && t.qty && String(t.qty).trim() !== '');
@@ -3892,6 +3902,10 @@
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
+      // Clear image
+      document.getElementById('imgPreview').src = '';
+      document.getElementById('imgInput').value = '';
+      document.getElementById('uploadArea').classList.remove('has-image');
       addTierRow(100);
       addTierRow(250);
       addTierRow(500);
@@ -4007,6 +4021,7 @@
       unitPriceRmb: _v('quote-unit-rmb'),
       leadTime: _v('quote-lead'),
       qcNotes: _v('quote-qc'),
+      productImage: (document.getElementById('imgPreview')?.src || '').startsWith('data:') ? document.getElementById('imgPreview').src : '',
       // Pricing tab
       tiers: collectTiers(),
       // Shipping tab
