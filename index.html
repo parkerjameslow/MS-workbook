@@ -2729,7 +2729,15 @@
       const cm = localStorage.getItem('ms_dbClientMap');
       const wm = localStorage.getItem('ms_dbWorkbookMap');
       if (cd) Object.assign(clientData, JSON.parse(cd));
-      if (wd) Object.assign(workbookDetail, JSON.parse(wd));
+      if (wd) {
+        const parsed = JSON.parse(wd);
+        // Skip empty arrays from bad saves
+        for (const [k, v] of Object.entries(parsed)) {
+          if (v && !Array.isArray(v) && typeof v === 'object' && v.client) {
+            workbookDetail[k] = v;
+          }
+        }
+      }
       if (cm) Object.assign(dbClientMap, JSON.parse(cm));
       if (wm) Object.assign(dbWorkbookMap, JSON.parse(wm));
       return !!cd;
@@ -2778,9 +2786,9 @@
       if (!clientData[wb.client_name]) clientData[wb.client_name] = [];
       clientData[wb.client_name].push(item);
 
-      // Rebuild detail if stored
+      // Rebuild detail if stored (skip empty arrays from bad saves)
       const detail = wb.detail;
-      if (detail) {
+      if (detail && !Array.isArray(detail) && typeof detail === 'object' && detail.client) {
         workbookDetail[`${wb.client_name}|${wb.id}`] = detail;
       }
 
