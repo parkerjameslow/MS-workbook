@@ -1689,18 +1689,22 @@
       .dim-group { flex-direction: column; }
     }
 
-    /* Tier table mobile — hide # col, compact layout to fit all price columns */
+    /* Tier table mobile — hide # col, short labels, evenly spaced */
     @media (max-width: 768px) {
       .tier-col-num { display: none; }
+      #tier-table .label-full { display: none; }
+      #tier-table .label-short { display: inline; }
       #tier-table { width: 100%; table-layout: fixed; }
-      #tier-table th { font-size: 9px; padding: 6px 4px; white-space: nowrap; }
-      #tier-table td { padding: 4px 3px; }
-      #tier-table input { width: 100% !important; min-width: 0; font-size: 11px; padding: 4px 4px; box-sizing: border-box; }
-      /* Column widths: Qty narrow, prices share remaining space */
-      #tier-table th:nth-child(2),
-      #tier-table td:nth-child(2) { width: 50px; }
-      #tier-table th:last-child,
-      #tier-table td:last-child { width: 28px; padding: 2px; }
+      #tier-table th { font-size: 9px; padding: 6px 4px; white-space: nowrap; text-align: center; }
+      #tier-table td { padding: 4px 3px; text-align: center; }
+      #tier-table input { width: 100% !important; min-width: 0; font-size: 11px; padding: 4px 4px; box-sizing: border-box; text-align: center; }
+      /* Column proportions: Qty wider, RMB slimmer, USD/Total even, delete narrow */
+      #tier-table colgroup { display: table-column-group; }
+      #tier-table th:nth-child(2), #tier-table td:nth-child(2) { width: 25%; } /* Qty */
+      #tier-table th:nth-child(3), #tier-table td:nth-child(3) { width: 20%; } /* RMB */
+      #tier-table th:nth-child(4), #tier-table td:nth-child(4) { width: 22%; text-align: right; } /* USD Per */
+      #tier-table th:nth-child(5), #tier-table td:nth-child(5) { width: 25%; text-align: right; } /* Total */
+      #tier-table th:last-child, #tier-table td:last-child { width: 8%; padding: 2px; }
       #tier-table .btn-danger-ghost { font-size: 11px; padding: 2px 5px; min-width: 0; }
       .tier-col-usd, .total-cell { font-size: 11px !important; }
     }
@@ -2242,10 +2246,10 @@
           <thead>
             <tr>
               <th class="tier-col-num">#</th>
-              <th>Quantity</th>
-              <th class="th-karen">Unit Price (RMB) ✎</th>
-              <th class="tier-col-usd">Unit Price (USD)</th>
-              <th>Total Price (USD)</th>
+              <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
+              <th class="th-karen"><span class="label-full">Unit Price (RMB) ✎</span><span class="label-short">RMB ✎</span></th>
+              <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">USD Per</span></th>
+              <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
               <th></th>
             </tr>
           </thead>
