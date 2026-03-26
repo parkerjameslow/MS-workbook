@@ -1450,6 +1450,23 @@
     }
     .label-short { display: none; }
     .label-full { display: inline; }
+    .col-mobile-status { display: none; }
+    .mobile-status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .mobile-status-badge.complete {
+      background: rgba(52, 211, 153, 0.15);
+      color: #059669;
+    }
+    .mobile-status-badge.in-progress {
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--accent);
+    }
 
     /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
@@ -1575,9 +1592,14 @@
       .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
       .col-span-2, .col-span-3 { grid-column: span 1; }
 
-      /* Dashboard table scrollable */
-      .dash-table { table-layout: auto; min-width: 700px; display: block; }
-      .dash-table thead, .dash-table tbody { display: table; width: 100%; min-width: 700px; table-layout: auto; }
+      /* Dashboard table — mobile card layout */
+      .dash-table { table-layout: auto; min-width: unset !important; display: table; width: 100%; }
+      .dash-table thead, .dash-table tbody { display: table-row-group; width: 100%; min-width: unset; }
+      .col-flow, .col-date-submitted, .col-client { display: none !important; }
+      .col-mobile-status { display: table-cell !important; }
+      .dash-table td, .dash-table th { padding: 10px 8px; font-size: 13px; }
+      .dash-table .product-name { font-size: 14px; }
+      .action-menu { right: 0; min-width: 120px; }
 
       /* Touch targets */
       input, textarea, select { padding: 11px 12px; font-size: 16px !important; max-width: 100%; box-sizing: border-box; }
@@ -1688,9 +1710,10 @@
           <thead>
             <tr>
               <th>Product</th>
-              <th>Client</th>
-              <th>Date Created</th>
-              <th>Fulfilment (Flow)</th>
+              <th class="col-client">Client</th>
+              <th class="col-date-created">Date Created</th>
+              <th class="col-flow">Fulfilment (Flow)</th>
+              <th class="col-mobile-status">Status</th>
               <th></th>
             </tr>
           </thead>
@@ -1716,9 +1739,10 @@
           <thead>
             <tr>
               <th>Product</th>
-              <th>Date Created</th>
-              <th>Date Submitted</th>
-              <th>Fulfilment (Flow)</th>
+              <th class="col-date-created">Date Created</th>
+              <th class="col-date-submitted">Date Submitted</th>
+              <th class="col-flow">Fulfilment (Flow)</th>
+              <th class="col-mobile-status">Status</th>
               <th></th>
             </tr>
           </thead>
@@ -3268,6 +3292,14 @@
     return flowSteps.every(s => flow[s]);
   }
 
+  function getCurrentStepName(flow) {
+    if (isFlowComplete(flow)) return 'Complete';
+    for (let i = flowSteps.length - 1; i >= 0; i--) {
+      if (flow[flowSteps[i]]) return flowLabelsShort[i];
+    }
+    return 'Not Started';
+  }
+
   function renderDashboard(clientName) {
     const items = clientData[clientName] || [];
     const tbody = document.getElementById('dash-tbody');
@@ -3284,12 +3316,14 @@
 
     tbody.innerHTML = items.map(item => {
       const complete = isFlowComplete(item.flow);
+      const stepName = getCurrentStepName(item.flow);
+      const stepClass = complete ? 'complete' : 'in-progress';
       return `
       <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">
         <td class="product-name">${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</td>
-        <td>${item.dateCreated}</td>
-        <td>${item.dateSubmitted || '—'}</td>
-        <td>
+        <td class="col-date-created">${item.dateCreated}</td>
+        <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
+        <td class="col-flow">
           <div class="flow-group">
             ${flowSteps.map((s, i) => `
               <div class="flow-step">
@@ -3299,6 +3333,7 @@
             `).join('')}
           </div>
         </td>
+        <td class="col-mobile-status"><span class="mobile-status-badge ${stepClass}">${stepName}</span></td>
         <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `}).join('');
@@ -3423,20 +3458,15 @@
 
     tbody.innerHTML = recent.map(item => {
       const complete = isFlowComplete(item.flow);
-      // Find current step name
-      let currentStep = 'Not Started';
-      for (let i = flowSteps.length - 1; i >= 0; i--) {
-        if (item.flow[flowSteps[i]]) { currentStep = flowLabels[i]; break; }
-      }
-      const statusClass = complete ? 'complete' : 'in-progress';
-      const statusText = complete ? 'Complete' : currentStep;
+      const stepName = getCurrentStepName(item.flow);
+      const stepClass = complete ? 'complete' : 'in-progress';
 
       return `
       <tr class="${complete ? 'row-complete' : ''}" style="cursor:pointer;" onclick="location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">
         <td class="product-name">${item.product}</td>
-        <td>${item.client}</td>
-        <td>${item.dateCreated}</td>
-        <td>
+        <td class="col-client">${item.client}</td>
+        <td class="col-date-created">${item.dateCreated}</td>
+        <td class="col-flow">
           <div class="flow-group">
             ${flowSteps.map((s, i) => `
               <div class="flow-step">
@@ -3446,6 +3476,7 @@
             `).join('')}
           </div>
         </td>
+        <td class="col-mobile-status"><span class="mobile-status-badge ${stepClass}">${stepName}</span></td>
         <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); openDeleteModal('${item.client.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
       `;
