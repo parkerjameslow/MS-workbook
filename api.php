@@ -25,6 +25,30 @@ try {
     exit;
 }
 
+// Auto-create revisions table if not exists
+$pdo->exec("CREATE TABLE IF NOT EXISTS workbook_revisions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    workbook_id INT NOT NULL,
+    detail_json LONGTEXT,
+    changed_by VARCHAR(255) DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_workbook_date (workbook_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Auto-add soft-delete columns if not present
+try {
+    $pdo->exec("ALTER TABLE workbooks ADD COLUMN deleted_at DATETIME DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE workbooks ADD COLUMN deleted_by VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN deleted_at DATETIME DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN deleted_by VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
@@ -34,7 +58,7 @@ switch ($action) {
     // ─── CLIENTS ───────────────────────────────────────
 
     case 'get_clients':
-        $stmt = $pdo->query("SELECT * FROM clients ORDER BY name ASC");
+        $stmt = $pdo->query("SELECT * FROM clients WHERE deleted_at IS NULL ORDER BY name ASC");
         echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
         break;
 
@@ -61,8 +85,13 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Client ID required']);
             break;
         }
-        $stmt = $pdo->prepare("DELETE FROM clients WHERE id = ?");
-        $stmt->execute([$input['id']]);
+        $deletedBy = $input['deleted_by'] ?? '';
+        // Soft-delete client
+        $stmt = $pdo->prepare("UPDATE clients SET deleted_at = NOW(), deleted_by = ? WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$deletedBy, $input['id']]);
+        // Soft-delete all its workbooks
+        $stmt = $pdo->prepare("UPDATE workbooks SET deleted_at = NOW(), deleted_by = ? WHERE client_id = ? AND deleted_at IS NULL");
+        $stmt->execute([$deletedBy, $input['id']]);
         echo json_encode(['success' => true]);
         break;
 
@@ -75,7 +104,7 @@ switch ($action) {
                 SELECT w.*, c.name as client_name
                 FROM workbooks w
                 JOIN clients c ON w.client_id = c.id
-                WHERE w.client_id = ?
+                WHERE w.client_id = ? AND w.deleted_at IS NULL
                 ORDER BY w.created_at DESC
             ");
             $stmt->execute([$clientId]);
@@ -84,11 +113,11 @@ switch ($action) {
                 SELECT w.*, c.name as client_name
                 FROM workbooks w
                 JOIN clients c ON w.client_id = c.id
+                WHERE w.deleted_at IS NULL
                 ORDER BY w.updated_at DESC
             ");
         }
         $workbooks = $stmt->fetchAll();
-        // Decode detail_json for each workbook
         foreach ($workbooks as &$wb) {
             $wb['detail'] = $wb['detail_json'] ? json_decode($wb['detail_json'], true) : null;
             unset($wb['detail_json']);
@@ -188,8 +217,9 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
             break;
         }
-        $stmt = $pdo->prepare("DELETE FROM workbooks WHERE id = ?");
-        $stmt->execute([$input['id']]);
+        $deletedBy = $input['deleted_by'] ?? '';
+        $stmt = $pdo->prepare("UPDATE workbooks SET deleted_at = NOW(), deleted_by = ? WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$deletedBy, $input['id']]);
         echo json_encode(['success' => true]);
         break;
 
@@ -201,6 +231,7 @@ switch ($action) {
             SELECT w.*, c.name as client_name
             FROM workbooks w
             JOIN clients c ON w.client_id = c.id
+            WHERE w.deleted_at IS NULL
             ORDER BY w.updated_at DESC
             LIMIT ?
         ");
@@ -213,26 +244,189 @@ switch ($action) {
         echo json_encode(['success' => true, 'data' => $workbooks]);
         break;
 
-    // ─── SAVE ALL (bulk save from JS) ─────────────────
+    // ─── SAVE WITH REVISION TRACKING ────────────────────
 
     case 'save_workbook_detail':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
             break;
         }
+        $changedBy = $input['changed_by'] ?? '';
+
+        // Save current version as a revision BEFORE overwriting
+        $stmt = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ?");
+        $stmt->execute([$input['id']]);
+        $current = $stmt->fetch();
+        if ($current && $current['detail_json'] && $current['detail_json'] !== '[]' && $current['detail_json'] !== 'null') {
+            $stmt = $pdo->prepare("INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)");
+            $stmt->execute([$input['id'], $current['detail_json'], $changedBy]);
+        }
+
+        // Now save the new version
         $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
         $stmt->execute([json_encode($input['detail']), $input['id']]);
+
+        // Purge revisions older than 30 days
+        $pdo->exec("DELETE FROM workbook_revisions WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+
+        echo json_encode(['success' => true]);
+        break;
+
+    // ─── REVISION HISTORY ────────────────────────────────
+
+    case 'get_revisions':
+        $wbId = $_GET['workbook_id'] ?? null;
+        if (!$wbId) {
+            echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
+            break;
+        }
+        $stmt = $pdo->prepare("
+            SELECT id, workbook_id, changed_by, created_at
+            FROM workbook_revisions
+            WHERE workbook_id = ?
+            ORDER BY created_at DESC
+            LIMIT 50
+        ");
+        $stmt->execute([$wbId]);
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+        break;
+
+    case 'get_revision_detail':
+        $revId = $_GET['revision_id'] ?? null;
+        if (!$revId) {
+            echo json_encode(['success' => false, 'error' => 'Revision ID required']);
+            break;
+        }
+        $stmt = $pdo->prepare("SELECT * FROM workbook_revisions WHERE id = ?");
+        $stmt->execute([$revId]);
+        $rev = $stmt->fetch();
+        if ($rev) {
+            $rev['detail'] = json_decode($rev['detail_json'], true);
+            unset($rev['detail_json']);
+        }
+        echo json_encode(['success' => true, 'data' => $rev]);
+        break;
+
+    case 'restore_revision':
+        if (empty($input['revision_id']) || empty($input['workbook_id'])) {
+            echo json_encode(['success' => false, 'error' => 'Revision ID and Workbook ID required']);
+            break;
+        }
+        $changedBy = $input['changed_by'] ?? '';
+
+        // Get the revision to restore
+        $stmt = $pdo->prepare("SELECT detail_json FROM workbook_revisions WHERE id = ?");
+        $stmt->execute([$input['revision_id']]);
+        $rev = $stmt->fetch();
+        if (!$rev) {
+            echo json_encode(['success' => false, 'error' => 'Revision not found']);
+            break;
+        }
+
+        // Save current version as a revision first
+        $stmt = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ?");
+        $stmt->execute([$input['workbook_id']]);
+        $current = $stmt->fetch();
+        if ($current && $current['detail_json']) {
+            $stmt = $pdo->prepare("INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)");
+            $stmt->execute([$input['workbook_id'], $current['detail_json'], $changedBy . ' (before restore)']);
+        }
+
+        // Restore the revision
+        $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
+        $stmt->execute([$rev['detail_json'], $input['workbook_id']]);
+        echo json_encode(['success' => true]);
+        break;
+
+    // ─── ARCHIVE (Soft-deleted items) ────────────────────
+
+    case 'get_archived':
+        $archivedWorkbooks = $pdo->query("
+            SELECT w.id, w.product_name, w.deleted_at, w.deleted_by, c.name as client_name
+            FROM workbooks w
+            JOIN clients c ON w.client_id = c.id
+            WHERE w.deleted_at IS NOT NULL
+            ORDER BY w.deleted_at DESC
+        ")->fetchAll();
+
+        $archivedClients = $pdo->query("
+            SELECT id, name, deleted_at, deleted_by
+            FROM clients
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+        ")->fetchAll();
+
+        echo json_encode([
+            'success' => true,
+            'workbooks' => $archivedWorkbooks,
+            'clients' => $archivedClients
+        ]);
+        break;
+
+    case 'restore_workbook':
+        if (empty($input['id'])) {
+            echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
+            break;
+        }
+        $stmt = $pdo->prepare("UPDATE workbooks SET deleted_at = NULL, deleted_by = NULL WHERE id = ?");
+        $stmt->execute([$input['id']]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'restore_client':
+        if (empty($input['id'])) {
+            echo json_encode(['success' => false, 'error' => 'Client ID required']);
+            break;
+        }
+        // Restore client
+        $stmt = $pdo->prepare("UPDATE clients SET deleted_at = NULL, deleted_by = NULL WHERE id = ?");
+        $stmt->execute([$input['id']]);
+        // Restore all its workbooks
+        $stmt = $pdo->prepare("UPDATE workbooks SET deleted_at = NULL, deleted_by = NULL WHERE client_id = ?");
+        $stmt->execute([$input['id']]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'permanent_delete_workbook':
+        if (empty($input['id'])) {
+            echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
+            break;
+        }
+        // Delete revisions first
+        $stmt = $pdo->prepare("DELETE FROM workbook_revisions WHERE workbook_id = ?");
+        $stmt->execute([$input['id']]);
+        // Then delete the workbook
+        $stmt = $pdo->prepare("DELETE FROM workbooks WHERE id = ?");
+        $stmt->execute([$input['id']]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'permanent_delete_client':
+        if (empty($input['id'])) {
+            echo json_encode(['success' => false, 'error' => 'Client ID required']);
+            break;
+        }
+        // Delete all workbook revisions for this client's workbooks
+        $stmt = $pdo->prepare("DELETE r FROM workbook_revisions r JOIN workbooks w ON r.workbook_id = w.id WHERE w.client_id = ?");
+        $stmt->execute([$input['id']]);
+        // Delete all workbooks
+        $stmt = $pdo->prepare("DELETE FROM workbooks WHERE client_id = ?");
+        $stmt->execute([$input['id']]);
+        // Delete the client
+        $stmt = $pdo->prepare("DELETE FROM clients WHERE id = ?");
+        $stmt->execute([$input['id']]);
         echo json_encode(['success' => true]);
         break;
 
     // ─── FULL DATA EXPORT (for LocalStorage sync) ─────
 
     case 'get_all_data':
-        $clients = $pdo->query("SELECT * FROM clients ORDER BY name ASC")->fetchAll();
+        $clients = $pdo->query("SELECT * FROM clients WHERE deleted_at IS NULL ORDER BY name ASC")->fetchAll();
         $workbooks = $pdo->query("
             SELECT w.*, c.name as client_name
             FROM workbooks w
             JOIN clients c ON w.client_id = c.id
+            WHERE w.deleted_at IS NULL
             ORDER BY c.name, w.product_name
         ")->fetchAll();
         foreach ($workbooks as &$wb) {
@@ -252,6 +446,9 @@ switch ($action) {
             'get_clients', 'add_client', 'delete_client',
             'get_workbooks', 'get_workbook', 'add_workbook', 'update_workbook',
             'update_flow', 'delete_workbook', 'save_workbook_detail',
-            'get_recent', 'get_all_data'
+            'get_recent', 'get_all_data',
+            'get_revisions', 'get_revision_detail', 'restore_revision',
+            'get_archived', 'restore_workbook', 'restore_client',
+            'permanent_delete_workbook', 'permanent_delete_client'
         ]]);
 }

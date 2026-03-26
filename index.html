@@ -493,6 +493,27 @@
       opacity: 0.6;
     }
 
+    .sidebar-archive-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      width: 100%;
+      font-family: inherit;
+    }
+    .sidebar-archive-btn:hover {
+      background: var(--surface2);
+      color: var(--text);
+    }
+
     .email-quote-btn {
       background: transparent;
       border: 1px solid var(--border);
@@ -1814,6 +1835,12 @@
     <a class="nav-item" href="#/client/Salt">Salt</a>
     <a class="nav-item" href="#/client/Tweedle Dee">Tweedle Dee</a>
   </nav>
+  <div style="padding: 12px 16px; margin-top: auto; border-top: 1px solid var(--border);">
+    <button class="sidebar-archive-btn" onclick="openArchiveModal()" title="Archive">
+      <span style="font-size:16px;">&#128451;</span>
+      <span>Archive</span>
+    </button>
+  </div>
 </aside>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
 
@@ -1923,6 +1950,7 @@
       </div>
     </div>
     <div class="status-actions" style="display:flex; gap:6px; align-items:center;">
+      <button class="btn-back-step" onclick="openHistoryModal()" title="Revision History" style="font-size:14px;">&#128339;</button>
       <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
       <button class="btn-advance" id="btn-advance" onclick="advanceStatus()">
         Mark as Entered →
@@ -2573,6 +2601,36 @@
     <div class="modal-actions">
       <button type="button" class="btn-cancel" onclick="closeDeleteClientModal()">Cancel</button>
       <button type="button" class="btn-danger" id="confirm-delete-client-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── History Modal ── -->
+<div class="modal-overlay" id="history-modal-overlay" onclick="if(event.target===this)closeHistoryModal()" style="display:none;">
+  <div class="modal" style="max-width:560px; max-height:80vh; display:flex; flex-direction:column;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);">
+      <h3 style="margin:0; font-size:16px;">Revision History</h3>
+      <button onclick="closeHistoryModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-muted);">&times;</button>
+    </div>
+    <div id="history-list" style="overflow-y:auto; flex:1; padding:12px 20px;">
+      <p style="color:var(--text-muted); text-align:center;">Loading...</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Archive Modal ── -->
+<div class="modal-overlay" id="archive-modal-overlay" onclick="if(event.target===this)closeArchiveModal()" style="display:none;">
+  <div class="modal" style="max-width:640px; max-height:80vh; display:flex; flex-direction:column;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);">
+      <h3 style="margin:0; font-size:16px;">&#128451; Archive</h3>
+      <button onclick="closeArchiveModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-muted);">&times;</button>
+    </div>
+    <div style="display:flex; gap:0; border-bottom:1px solid var(--border);">
+      <button class="archive-tab active" onclick="switchArchiveTab('workbooks', this)" style="flex:1; padding:10px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600; border-bottom:2px solid var(--accent);">Workbooks</button>
+      <button class="archive-tab" onclick="switchArchiveTab('clients', this)" style="flex:1; padding:10px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600; color:var(--text-muted); border-bottom:2px solid transparent;">Clients</button>
+    </div>
+    <div id="archive-list" style="overflow-y:auto; flex:1; padding:12px 20px;">
+      <p style="color:var(--text-muted); text-align:center;">Loading...</p>
     </div>
   </div>
 </div>
@@ -3439,6 +3497,180 @@
     renderRecentWorkbooks();
     showView('view-home');
   });
+
+  /* ── History Modal ──────────────────────────────────────────────────────── */
+  function openHistoryModal() {
+    if (!currentWorkbookId) return;
+    const overlay = document.getElementById('history-modal-overlay');
+    overlay.style.display = 'flex';
+    const list = document.getElementById('history-list');
+    list.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Loading...</p>';
+
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    fetch(`api.php?action=get_revisions&workbook_id=${dbId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success || !data.data.length) {
+          list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No revision history yet. Changes are tracked automatically as you edit.</p>';
+          return;
+        }
+        list.innerHTML = data.data.map(rev => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);">
+            <div>
+              <div style="font-size:13px; font-weight:600;">${new Date(rev.created_at).toLocaleString()}</div>
+              <div style="font-size:11px; color:var(--text-muted);">${rev.changed_by || 'Unknown user'}</div>
+            </div>
+            <button class="btn-back-step" onclick="restoreRevision(${rev.id}, ${rev.workbook_id})" title="Restore this version" style="font-size:11px; width:auto; padding:4px 10px;">Restore</button>
+          </div>
+        `).join('');
+      })
+      .catch(() => {
+        list.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Failed to load history.</p>';
+      });
+  }
+
+  function closeHistoryModal() {
+    document.getElementById('history-modal-overlay').style.display = 'none';
+  }
+
+  async function restoreRevision(revisionId, workbookId) {
+    if (!confirm('Restore this version? Your current data will be saved as a revision before restoring.')) return;
+    try {
+      await apiCall('restore_revision', { revision_id: revisionId, workbook_id: workbookId, changed_by: '' });
+      closeHistoryModal();
+      // Reload the workbook data
+      await loadFromDatabase();
+      router();
+    } catch (e) {
+      alert('Failed to restore revision.');
+    }
+  }
+
+  /* ── Archive Modal ─────────────────────────────────────────────────────── */
+  let archiveData = { workbooks: [], clients: [] };
+  let archiveTab = 'workbooks';
+
+  function openArchiveModal() {
+    const overlay = document.getElementById('archive-modal-overlay');
+    overlay.style.display = 'flex';
+    archiveTab = 'workbooks';
+    loadArchiveData();
+  }
+
+  function closeArchiveModal() {
+    document.getElementById('archive-modal-overlay').style.display = 'none';
+  }
+
+  function switchArchiveTab(tab, btn) {
+    archiveTab = tab;
+    document.querySelectorAll('.archive-tab').forEach(t => {
+      t.classList.remove('active');
+      t.style.borderBottomColor = 'transparent';
+      t.style.color = 'var(--text-muted)';
+    });
+    btn.classList.add('active');
+    btn.style.borderBottomColor = 'var(--accent)';
+    btn.style.color = '';
+    renderArchiveList();
+  }
+
+  async function loadArchiveData() {
+    const list = document.getElementById('archive-list');
+    list.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Loading...</p>';
+    try {
+      const res = await fetch('api.php?action=get_archived');
+      const data = await res.json();
+      if (data.success) {
+        archiveData = data;
+        renderArchiveList();
+      }
+    } catch (e) {
+      list.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Failed to load archive.</p>';
+    }
+  }
+
+  function renderArchiveList() {
+    const list = document.getElementById('archive-list');
+    const items = archiveTab === 'workbooks' ? archiveData.workbooks : archiveData.clients;
+
+    if (!items || !items.length) {
+      list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No archived items.</p>';
+      return;
+    }
+
+    if (archiveTab === 'workbooks') {
+      list.innerHTML = items.map(wb => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${wb.product_name}</div>
+            <div style="font-size:11px; color:var(--text-muted);">${wb.client_name} &middot; Deleted ${new Date(wb.deleted_at).toLocaleDateString()}${wb.deleted_by ? ' by ' + wb.deleted_by : ''}</div>
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button class="btn-back-step" onclick="restoreArchivedWorkbook(${wb.id})" style="font-size:11px; width:auto; padding:4px 10px; color:var(--success);">Restore</button>
+            <button class="btn-back-step" onclick="permanentDeleteWorkbook(${wb.id})" style="font-size:11px; width:auto; padding:4px 10px; color:var(--danger);">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      list.innerHTML = items.map(cl => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border);">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:600;">${cl.name}</div>
+            <div style="font-size:11px; color:var(--text-muted);">Deleted ${new Date(cl.deleted_at).toLocaleDateString()}${cl.deleted_by ? ' by ' + cl.deleted_by : ''}</div>
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button class="btn-back-step" onclick="restoreArchivedClient(${cl.id})" style="font-size:11px; width:auto; padding:4px 10px; color:var(--success);">Restore</button>
+            <button class="btn-back-step" onclick="permanentDeleteClient(${cl.id})" style="font-size:11px; width:auto; padding:4px 10px; color:var(--danger);">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  async function restoreArchivedWorkbook(id) {
+    if (!confirm('Restore this workbook?')) return;
+    try {
+      await apiCall('restore_workbook', { id });
+      await loadFromDatabase();
+      rebuildSidebar();
+      loadArchiveData();
+    } catch (e) {
+      alert('Failed to restore workbook.');
+    }
+  }
+
+  async function restoreArchivedClient(id) {
+    if (!confirm('Restore this client and all its workbooks?')) return;
+    try {
+      await apiCall('restore_client', { id });
+      await loadFromDatabase();
+      rebuildSidebar();
+      renderRecentWorkbooks();
+      loadArchiveData();
+    } catch (e) {
+      alert('Failed to restore client.');
+    }
+  }
+
+  async function permanentDeleteWorkbook(id) {
+    if (!confirm('Permanently delete this workbook? This cannot be undone.')) return;
+    try {
+      await apiCall('permanent_delete_workbook', { id });
+      loadArchiveData();
+    } catch (e) {
+      alert('Failed to delete workbook.');
+    }
+  }
+
+  async function permanentDeleteClient(id) {
+    if (!confirm('Permanently delete this client and ALL its workbooks? This cannot be undone.')) return;
+    try {
+      await apiCall('permanent_delete_client', { id });
+      loadArchiveData();
+    } catch (e) {
+      alert('Failed to delete client.');
+    }
+  }
 
   /* ── Router ─────────────────────────────────────────────────────────────── */
   function showView(viewId) {
