@@ -1450,6 +1450,8 @@
     }
     .label-short { display: none; }
     .label-full { display: inline; }
+    .tab-short { display: none; }
+    .tab-full { display: inline; }
     .date-short { display: none; }
     .date-full { display: inline; }
     .col-mobile-status { display: none; }
@@ -1560,7 +1562,9 @@
         gap: 2px;
       }
       .wb-tabs::-webkit-scrollbar { display: none; }
-      .wb-tab { flex-shrink: 0; padding: 8px 14px; font-size: 12px; white-space: nowrap; }
+      .wb-tab { flex: 1; padding: 6px 4px; font-size: 11px; white-space: nowrap; text-align: center; min-width: 0; }
+      .wb-tab .tab-full { display: none; }
+      .wb-tab .tab-short { display: inline; }
 
       /* Status bar — compact mobile layout */
       .status-bar {
@@ -1799,11 +1803,11 @@
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <button class="btn-back" id="btn-back" onclick="history.back()" style="margin-bottom:0;">← Back to Workbooks</button>
       <div class="wb-tabs">
-        <button class="wb-tab active" onclick="switchWbTab('workbook', this)">Workbook</button>
-        <button class="wb-tab" onclick="switchWbTab('shipping', this)">Shipping</button>
-        <button class="wb-tab" onclick="switchWbTab('pricing', this)">Pricing</button>
-        <button class="wb-tab" onclick="switchWbTab('quote', this)">Quote for Client</button>
-        <button class="wb-tab" onclick="switchWbTab('invoice', this)">Office Invoice</button>
+        <button class="wb-tab active" onclick="switchWbTab('workbook', this)"><span class="tab-full">Workbook</span><span class="tab-short">Work</span></button>
+        <button class="wb-tab" onclick="switchWbTab('shipping', this)"><span class="tab-full">Shipping</span><span class="tab-short">Ship</span></button>
+        <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
+        <button class="wb-tab" onclick="switchWbTab('quote', this)"><span class="tab-full">Quote for Client</span><span class="tab-short">Quote</span></button>
+        <button class="wb-tab" onclick="switchWbTab('invoice', this)"><span class="tab-full">Office Invoice</span><span class="tab-short">Invoice</span></button>
       </div>
     </div>
   </div>
