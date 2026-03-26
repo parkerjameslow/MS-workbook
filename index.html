@@ -1597,9 +1597,12 @@
       .dash-table thead, .dash-table tbody { display: table-row-group; width: 100%; min-width: unset; }
       .col-flow, .col-date-submitted, .col-client { display: none !important; }
       .col-mobile-status { display: table-cell !important; }
-      .dash-table td, .dash-table th { padding: 12px 10px; font-size: 13px; }
-      .dash-table td:first-child, .dash-table th:first-child { padding-left: 16px; }
-      .dash-table .product-name { font-size: 14px; }
+      .dash-table { table-layout: fixed !important; }
+      .dash-table td, .dash-table th { padding: 12px 8px; font-size: 13px; }
+      .dash-table td:first-child, .dash-table th:first-child { padding-left: 16px; width: 40%; }
+      .dash-table .col-date-created { width: 22%; }
+      .dash-table .col-mobile-status { width: 22%; text-align: center; }
+      .dash-table .product-name { font-size: 14px; width: 40%; }
       .dash-table .product-name .status-badge { display: none !important; }
       .dash-table .action-icon-btn { width: 32px; height: 32px; font-size: 16px; min-height: unset; }
       .action-menu { right: 0; min-width: 120px; }
