@@ -4146,13 +4146,9 @@
   window.addEventListener('beforeunload', function() {
     if (!currentClient || !currentWorkbookId) return;
     clearTimeout(saveTimer);
-    const detail = collectWorkbookDetail();
-    const key = `${currentClient}|${currentWorkbookId}`;
-    workbookDetail[key] = detail;
+    // Don't save on unload — it can overwrite good DB data with stale/incomplete data
+    // All saves happen via autoSaveWorkbook, image upload, or workbook switch
     saveToLocalStorage();
-    const dbId = dbWorkbookMap[key] || currentWorkbookId;
-    const blob = new Blob([JSON.stringify({ id: dbId, detail: detail })], { type: 'application/json' });
-    navigator.sendBeacon(`${API_URL}?action=save_workbook_detail`, blob);
   });
 
   /* ── Init ──────────────────────────────────────────────────────────────── */
