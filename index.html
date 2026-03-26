@@ -1689,23 +1689,26 @@
       .dim-group { flex-direction: column; }
     }
 
-    /* Quote tab mobile — ensure date inputs and fields fit */
+    /* Quote & Invoice tabs mobile — single column, fit all fields */
     @media (max-width: 768px) {
-      #wb-tab-quote input[type="date"] {
+      #wb-tab-quote .form-grid-2,
+      #wb-tab-invoice .form-grid-2 {
+        grid-template-columns: 1fr !important;
+      }
+      #wb-tab-quote input,
+      #wb-tab-quote textarea,
+      #wb-tab-invoice input,
+      #wb-tab-invoice textarea {
         width: 100% !important;
-        min-width: 0;
-        box-sizing: border-box;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
         font-size: 13px;
       }
-      #wb-tab-quote .section-card,
-      #wb-tab-quote .section-body {
-        overflow: visible !important;
-      }
-      #wb-tab-quote .field input,
-      #wb-tab-quote .field textarea {
-        width: 100% !important;
-        min-width: 0;
-        box-sizing: border-box;
+      #wb-tab-quote input[type="date"],
+      #wb-tab-invoice input[type="date"] {
+        -webkit-appearance: none;
+        appearance: none;
       }
     }
 
@@ -3560,18 +3563,8 @@
     calcFreight();
     _filling = false;
 
-    // Immediately save if this workbook had no valid data (ensures defaults persist)
-    const savedData = workbookDetail[`${clientName}|${workbookId}`];
-    if (!savedData || Array.isArray(savedData) || !savedData.client) {
-      clearTimeout(saveTimer);
-      const detail = collectWorkbookDetail();
-      const key = `${clientName}|${workbookId}`;
-      workbookDetail[key] = detail;
-      const dbId = dbWorkbookMap[key] || workbookId;
-      apiCall('save_workbook_detail', { id: dbId, detail: detail });
-      saveToLocalStorage();
-      console.log('Saved initial workbook data with default tiers for', key);
-    }
+    // Immediately save current state (ensures defaults and all data persist)
+    doSaveWorkbook();
   }
 
   function router() {
@@ -3682,27 +3675,32 @@
   }
 
   function autoSaveWorkbook() {
-    if (!currentClient || !currentWorkbookId) return;
+    if (!currentClient || !currentWorkbookId || _filling) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      const detail = collectWorkbookDetail();
-      const key = `${currentClient}|${currentWorkbookId}`;
-      workbookDetail[key] = detail;
+      doSaveWorkbook();
+    }, 800); // Save 0.8s after last change
+  }
 
-      // Save to DB
-      const dbId = dbWorkbookMap[key] || currentWorkbookId;
-      apiCall('save_workbook_detail', { id: dbId, detail: detail });
+  function doSaveWorkbook() {
+    if (!currentClient || !currentWorkbookId) return;
+    const detail = collectWorkbookDetail();
+    const key = `${currentClient}|${currentWorkbookId}`;
+    workbookDetail[key] = detail;
 
-      // Also update product name in clientData
-      const items = clientData[currentClient] || [];
-      const item = items.find(i => i.id === parseInt(currentWorkbookId));
-      if (item && detail.product) {
-        item.product = detail.product;
-        item.description = detail.desc;
-      }
+    // Save to DB
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    apiCall('save_workbook_detail', { id: dbId, detail: detail });
 
-      saveToLocalStorage();
-    }, 1500); // Save 1.5s after last change
+    // Also update product name in clientData
+    const items = clientData[currentClient] || [];
+    const item = items.find(i => i.id === parseInt(currentWorkbookId));
+    if (item && detail.product) {
+      item.product = detail.product;
+      item.description = detail.desc;
+    }
+
+    saveToLocalStorage();
   }
 
   // Listen for changes on workbook form fields
