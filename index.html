@@ -3508,33 +3508,74 @@
     document.getElementById('tier-body').innerHTML = '';
     tierCount = 0;
 
+    function _s(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
+
     if (data && !Array.isArray(data) && data.client) {
-      document.getElementById('client-name').value = data.client;
-      document.getElementById('product-name').value = data.product;
-      document.getElementById('product-desc').value = data.desc;
-      document.getElementById('dim-in-l').value = data.dimInL || '';
-      document.getElementById('dim-in-w').value = data.dimInW || '';
-      document.getElementById('dim-in-h').value = data.dimInH || '';
+      // Workbook tab
+      _s('client-name', data.client);
+      _s('product-name', data.product);
+      _s('product-desc', data.desc);
+      _s('dim-in-l', data.dimInL);
+      _s('dim-in-w', data.dimInW);
+      _s('dim-in-h', data.dimInH);
       if (data.dimInL) convertToMm('in');
-      document.getElementById('materials').value = data.materials || '';
-      document.getElementById('pantone-text').value = data.pantone || '';
-      document.getElementById('cmyk').value = data.cmyk || '';
-      document.getElementById('color-notes').value = data.colorNotes || '';
-      document.getElementById('quote-qty').value = data.qty || '';
-      document.getElementById('quote-unit-rmb').value = data.unitPriceRmb || '';
+      _s('materials', data.materials);
+      _s('pantone-text', data.pantone);
+      _s('cmyk', data.cmyk);
+      _s('color-notes', data.colorNotes);
+      _s('quote-qty', data.qty);
+      _s('quote-unit-rmb', data.unitPriceRmb);
       convertRmbToUsd();
-      document.getElementById('quote-lead').value = data.leadTime || '';
+      _s('quote-lead', data.leadTime);
+      _s('quote-qc', data.qcNotes);
+      // Pricing tiers
       const rawTiers = Array.isArray(data.tiers) ? data.tiers : [];
       const validTiers = rawTiers.filter(t => t && t.qty && String(t.qty).trim() !== '');
       if (validTiers.length) {
         validTiers.forEach(t => addTierRow(t.qty, t.price));
       }
-      // Always ensure at least the 3 default tiers exist
       if (tierCount === 0) {
         addTierRow(100);
         addTierRow(250);
         addTierRow(500);
       }
+      // Shipping tab
+      _s('carton-unit-weight', data.cartonUnitWeight);
+      _s('carton-inner-weight', data.cartonInnerWeight);
+      _s('carton-inner-count', data.cartonInnerCount);
+      _s('carton-outer-weight', data.cartonOuterWeight);
+      _s('carton-outer-count', data.cartonOuterCount);
+      if (data.cartonUnitWeight) convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg');
+      if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
+      if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
+      _s('freight-dim-unit', data.freightDimUnit);
+      _s('freight-l', data.freightL);
+      _s('freight-w', data.freightW);
+      _s('freight-h', data.freightH);
+      _s('freight-wt-unit', data.freightWtUnit);
+      _s('freight-actual', data.freightActual);
+      _s('freight-mode', data.freightMode);
+      _s('freight-rate', data.freightRate);
+      _s('freight-cartons', data.freightCartons);
+      // Quote for Client tab
+      _s('quote-date', data.quoteDate);
+      _s('quote-valid-until', data.quoteValidUntil);
+      _s('quote-cl-qty', data.quoteClQty);
+      _s('quote-cl-unit-price', data.quoteClUnitPrice);
+      _s('quote-cl-shipping', data.quoteClShipping);
+      _s('quote-cl-notes', data.quoteClNotes);
+      if (data.quoteClUnitPrice || data.quoteClShipping) calcQuoteTotal();
+      // Invoice tab
+      _s('inv-number', data.invNumber);
+      _s('inv-date', data.invDate);
+      _s('inv-due-date', data.invDueDate);
+      _s('inv-qty', data.invQty);
+      _s('inv-unit-price', data.invUnitPrice);
+      _s('inv-shipping', data.invShipping);
+      _s('inv-status', data.invStatus);
+      _s('inv-method', data.invMethod);
+      _s('inv-notes', data.invNotes);
+      if (data.invUnitPrice || data.invShipping) calcInvoiceTotal();
     } else {
       // Fill with basic info from the client list
       const items = clientData[clientName] || [];
@@ -3643,22 +3684,59 @@
   /* ── Auto-save workbook fields ─────────────────────────────────────────── */
   let saveTimer = null;
 
+  function _v(id) { const el = document.getElementById(id); return el ? el.value || '' : ''; }
+
   function collectWorkbookDetail() {
     return {
-      client: document.getElementById('client-name').value || '',
-      product: document.getElementById('product-name').value || '',
-      desc: document.getElementById('product-desc').value || '',
-      dimInL: document.getElementById('dim-in-l').value || '',
-      dimInW: document.getElementById('dim-in-w').value || '',
-      dimInH: document.getElementById('dim-in-h').value || '',
-      materials: document.getElementById('materials').value || '',
-      pantone: document.getElementById('pantone-text').value || '',
-      cmyk: document.getElementById('cmyk').value || '',
-      colorNotes: document.getElementById('color-notes').value || '',
-      qty: document.getElementById('quote-qty').value || '',
-      unitPriceRmb: document.getElementById('quote-unit-rmb').value || '',
-      leadTime: document.getElementById('quote-lead').value || '',
-      tiers: collectTiers()
+      // Workbook tab
+      client: _v('client-name'),
+      product: _v('product-name'),
+      desc: _v('product-desc'),
+      dimInL: _v('dim-in-l'),
+      dimInW: _v('dim-in-w'),
+      dimInH: _v('dim-in-h'),
+      materials: _v('materials'),
+      pantone: _v('pantone-text'),
+      cmyk: _v('cmyk'),
+      colorNotes: _v('color-notes'),
+      qty: _v('quote-qty'),
+      unitPriceRmb: _v('quote-unit-rmb'),
+      leadTime: _v('quote-lead'),
+      qcNotes: _v('quote-qc'),
+      // Pricing tab
+      tiers: collectTiers(),
+      // Shipping tab
+      cartonUnitWeight: _v('carton-unit-weight'),
+      cartonInnerWeight: _v('carton-inner-weight'),
+      cartonInnerCount: _v('carton-inner-count'),
+      cartonOuterWeight: _v('carton-outer-weight'),
+      cartonOuterCount: _v('carton-outer-count'),
+      freightDimUnit: _v('freight-dim-unit'),
+      freightL: _v('freight-l'),
+      freightW: _v('freight-w'),
+      freightH: _v('freight-h'),
+      freightWtUnit: _v('freight-wt-unit'),
+      freightActual: _v('freight-actual'),
+      freightMode: _v('freight-mode'),
+      freightRate: _v('freight-rate'),
+      freightCartons: _v('freight-cartons'),
+      // Quote for Client tab
+      quoteDate: _v('quote-date'),
+      quoteValidUntil: _v('quote-valid-until'),
+      quoteClQty: _v('quote-cl-qty'),
+      quoteClUnitPrice: _v('quote-cl-unit-price'),
+      quoteClShipping: _v('quote-cl-shipping'),
+      quoteClNotes: _v('quote-cl-notes'),
+      // Invoice tab
+      invNumber: _v('inv-number'),
+      invDate: _v('inv-date'),
+      invDueDate: _v('inv-due-date'),
+      invQty: _v('inv-qty'),
+      invUnitPrice: _v('inv-unit-price'),
+      invShipping: _v('inv-shipping'),
+      invStatus: _v('inv-status'),
+      invMethod: _v('inv-method'),
+      invNotes: _v('inv-notes'),
     };
   }
 
