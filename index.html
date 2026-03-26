@@ -3111,7 +3111,9 @@
 
     // Rebuild workbook data
     result.workbooks.forEach(wb => {
-      const flowStep = parseInt(wb.flow_step) || 0;
+      let flowStep = parseInt(wb.flow_step) || 0;
+      // Migrate old 8-step flow: if step >= 3 (old shippingDims), shift down by 1
+      if (flowStep >= 3 && flowLabels.length === 7) flowStep = Math.max(flowStep - 1, 0);
       const flow = {};
       flowSteps.forEach((s, i) => { flow[s] = i < flowStep; });
 
@@ -3242,9 +3244,9 @@
   };
 
   /* ── Status Bar ──────────────────────────────────────────────────────────── */
-  const flowSteps = ['prepChina', 'chinaSubmits', 'shippingDims', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
-  const flowLabels = ['Prep for China', 'China Submits', 'Shipping Dims', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Order to China'];
-  const flowLabelsShort = ['Prep', 'Submit', 'Dims', 'Quote', 'Approved', 'Invoice', 'Payment', 'Order'];
+  const flowSteps = ['quoteChina', 'quoteSubmitted', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
+  const flowLabels = ['Quote for China', 'Quote Submitted', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Order to China'];
+  const flowLabelsShort = ['Quote', 'Submitted', 'Quote', 'Approved', 'Invoice', 'Payment', 'Order'];
   let currentClient = '';
   let currentWorkbookId = '';
 
