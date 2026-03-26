@@ -1141,6 +1141,16 @@
       max-width: 90vw;
       padding: 28px;
     }
+    .diff-panel { background: var(--surface2); border-radius: 6px; padding: 10px 12px; margin-top: 8px; display: none; }
+    .diff-panel.open { display: block; }
+    .diff-row { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+    .diff-row:last-child { border-bottom: none; }
+    .diff-label { font-weight: 600; color: var(--text-muted); min-width: 120px; flex-shrink: 0; font-size: 11px; }
+    .diff-old { color: #c0392b; text-decoration: line-through; }
+    .diff-new { color: #27ae60; font-weight: 600; }
+    .diff-arrow { color: var(--text-muted); margin: 0 2px; }
+    .diff-toggle { background: none; border: none; color: var(--primary); font-size: 11px; cursor: pointer; padding: 4px 0; margin-top: 4px; }
+    .diff-toggle:hover { text-decoration: underline; }
 
     .modal-title {
       font-size: 18px;
@@ -3525,6 +3535,24 @@
   });
 
   /* ── History Modal ──────────────────────────────────────────────────────── */
+  const FIELD_LABELS = {
+    client:'Client', product:'Product', desc:'Description', dimInL:'Length', dimInW:'Width', dimInH:'Height',
+    materials:'Materials', pantone:'Pantone', cmyk:'CMYK', colorNotes:'Color Notes',
+    qty:'Quantity', unitPriceRmb:'Unit Price (RMB)', leadTime:'Lead Time', qcNotes:'QC Notes',
+    cartonUnitWeight:'Unit Weight', cartonInnerWeight:'Inner Carton Weight', cartonInnerCount:'Inner Carton Qty',
+    cartonOuterWeight:'Outer Carton Weight', cartonOuterCount:'Outer Carton Qty',
+    freightDimUnit:'Dimension Unit', freightL:'Freight Length', freightW:'Freight Width', freightH:'Freight Height',
+    freightWtUnit:'Weight Unit', freightActual:'Actual Weight', freightMode:'Shipping Method',
+    freightRate:'Shipping Rate', freightCartons:'Number of Cartons',
+    quoteDate:'Quote Date', quoteValidUntil:'Valid Until', quoteClQty:'Quote Qty',
+    quoteClUnitPrice:'Quote Unit Price', quoteClShipping:'Quote Shipping', quoteClNotes:'Quote Notes',
+    invNumber:'Invoice #', invDate:'Invoice Date', invDueDate:'Due Date',
+    invQty:'Invoice Qty', invUnitPrice:'Invoice Unit Price', invShipping:'Invoice Shipping',
+    invStatus:'Payment Status', invMethod:'Payment Method', invNotes:'Invoice Notes'
+  };
+
+  let _historyRevisions = []; // store fetched revisions for diff comparison
+
   function openHistoryModal() {
     if (!currentWorkbookId) return;
     const overlay = document.getElementById('history-modal-overlay');
@@ -3540,7 +3568,8 @@
           list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No revision history yet. Changes are tracked automatically as you edit.</p>';
           return;
         }
-        list.innerHTML = data.data.map(rev => {
+        _historyRevisions = data.data;
+        list.innerHTML = data.data.map((rev, idx) => {
           const summary = (rev.summary || []).slice(0, 6).map(s =>
             `<span style="display:inline-block; background:var(--surface2); border-radius:4px; padding:2px 6px; font-size:10px; color:var(--text-muted); margin:2px 2px 0 0;">${s.field}: ${s.value.length > 20 ? s.value.substring(0, 20) + '…' : s.value}</span>`
           ).join('');
@@ -3553,6 +3582,8 @@
                 <div style="font-size:13px; font-weight:600;">${new Date(rev.created_at).toLocaleString()}</div>
                 <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">${rev.changed_by || 'Unknown user'}</div>
                 <div style="line-height:1.6;">${summary}${moreTag}</div>
+                <button class="diff-toggle" onclick="toggleDiff(${rev.id}, ${idx})">&#9654; View Changes</button>
+                <div class="diff-panel" id="diff-panel-${rev.id}"><p style="color:var(--text-muted);font-size:11px;">Loading...</p></div>
               </div>
               <button class="btn-back-step" onclick="restoreRevision(${rev.id}, ${rev.workbook_id})" title="Restore this version" style="font-size:11px; width:auto; padding:4px 10px; flex-shrink:0; margin-left:8px;">Restore</button>
             </div>
@@ -3562,6 +3593,92 @@
       .catch(() => {
         list.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Failed to load history.</p>';
       });
+  }
+
+  async function toggleDiff(revId, idx) {
+    const panel = document.getElementById(`diff-panel-${revId}`);
+    if (panel.classList.contains('open')) {
+      panel.classList.remove('open');
+      return;
+    }
+    panel.classList.add('open');
+    panel.innerHTML = '<p style="color:var(--text-muted);font-size:11px;">Loading...</p>';
+
+    try {
+      // This revision (the OLD version — what was saved before the change)
+      const oldRes = await fetch(`api.php?action=get_revision_detail&revision_id=${revId}`).then(r => r.json());
+      const oldDetail = oldRes.data?.detail || {};
+
+      // The NEWER version: previous revision in the list (idx-1), or current workbook data
+      let newDetail;
+      if (idx === 0) {
+        // Most recent revision — compare against current live data
+        const key = `${currentClient}|${currentWorkbookId}`;
+        newDetail = workbookDetail[key] || {};
+      } else {
+        const newerRevId = _historyRevisions[idx - 1].id;
+        const newRes = await fetch(`api.php?action=get_revision_detail&revision_id=${newerRevId}`).then(r => r.json());
+        newDetail = newRes.data?.detail || {};
+      }
+
+      const diffs = buildDiff(oldDetail, newDetail);
+      if (diffs.length === 0) {
+        panel.innerHTML = '<p style="color:var(--text-muted);font-size:11px;">No changes detected.</p>';
+      } else {
+        panel.innerHTML = diffs.map(d => `
+          <div class="diff-row">
+            <span class="diff-label">${d.label}</span>
+            <span><span class="diff-old">${escHtml(d.old || '—')}</span> <span class="diff-arrow">&rarr;</span> <span class="diff-new">${escHtml(d.new || '—')}</span></span>
+          </div>
+        `).join('');
+      }
+    } catch (e) {
+      panel.innerHTML = '<p style="color:#c0392b;font-size:11px;">Failed to load diff.</p>';
+    }
+  }
+
+  function buildDiff(oldD, newD) {
+    const diffs = [];
+    const allKeys = new Set([...Object.keys(oldD), ...Object.keys(newD)]);
+
+    for (const key of allKeys) {
+      if (key === 'productImage') {
+        const hadOld = (oldD[key] || '').length > 100;
+        const hadNew = (newD[key] || '').length > 100;
+        if (hadOld !== hadNew) {
+          diffs.push({ label: 'Product Image', old: hadOld ? 'Present' : '—', new: hadNew ? 'Added' : 'Removed' });
+        } else if (hadOld && hadNew && oldD[key] !== newD[key]) {
+          diffs.push({ label: 'Product Image', old: 'Image', new: 'Changed' });
+        }
+        continue;
+      }
+      if (key === 'tiers') {
+        const oldTiers = Array.isArray(oldD.tiers) ? oldD.tiers : [];
+        const newTiers = Array.isArray(newD.tiers) ? newD.tiers : [];
+        const maxLen = Math.max(oldTiers.length, newTiers.length);
+        for (let i = 0; i < maxLen; i++) {
+          const oq = oldTiers[i]?.qty?.toString() || '';
+          const nq = newTiers[i]?.qty?.toString() || '';
+          const op = oldTiers[i]?.price?.toString() || '';
+          const np = newTiers[i]?.price?.toString() || '';
+          if (oq !== nq) diffs.push({ label: `Tier ${i+1} Qty`, old: oq, new: nq });
+          if (op !== np) diffs.push({ label: `Tier ${i+1} Price`, old: op, new: np });
+        }
+        continue;
+      }
+      const oldVal = (oldD[key] || '').toString();
+      const newVal = (newD[key] || '').toString();
+      if (oldVal !== newVal) {
+        diffs.push({ label: FIELD_LABELS[key] || key, old: oldVal, new: newVal });
+      }
+    }
+    return diffs;
+  }
+
+  function escHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 
   function closeHistoryModal() {
