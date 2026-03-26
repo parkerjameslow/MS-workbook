@@ -492,6 +492,18 @@
       color: var(--text-muted);
       opacity: 0.6;
     }
+
+    .email-quote-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .email-icon {
+      font-size: 16px;
+    }
     textarea { resize: vertical; min-height: 80px; }
 
     /* Filled state — all fields */
@@ -1752,6 +1764,9 @@
       #tier-table th:last-child, #tier-table td:last-child { width: 8%; padding: 2px; }
       #tier-table .btn-danger-ghost { font-size: 11px; padding: 2px 5px; min-width: 0; }
       .tier-col-usd, .total-cell { font-size: 11px !important; }
+      .email-quote-btn .email-label { display: none; }
+      .email-quote-btn { padding: 6px 10px; }
+      .email-icon { font-size: 20px; }
     }
 
     @media (max-width: 480px) {
@@ -2337,8 +2352,12 @@
   <!-- ── Tab: Quote for Client ── -->
   <div id="wb-tab-quote" class="wb-tab-content">
   <div class="section-card">
-    <div class="section-header">
+    <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
       <span class="section-title">Quote for Client</span>
+      <button class="btn btn-accent email-quote-btn" onclick="emailQuote()" title="Email Quote">
+        <span class="email-icon">&#9993;</span>
+        <span class="email-label">Email Quote</span>
+      </button>
     </div>
     <div class="section-body">
       <div class="form-grid form-grid-2">
@@ -3146,6 +3165,41 @@
     const shipping = parseFloat(document.getElementById('quote-cl-shipping')?.value) || 0;
     const total = (qty * unit) + shipping;
     document.getElementById('quote-cl-total').value = total > 0 ? '$' + total.toFixed(2) : '';
+  }
+
+  function emailQuote() {
+    const client = document.getElementById('quote-client-name').value || 'Client';
+    const product = document.getElementById('quote-product-name').value || 'Product';
+    const quoteDate = document.getElementById('quote-date').value || '';
+    const validUntil = document.getElementById('quote-valid-until').value || '';
+    const qty = document.getElementById('quote-cl-qty').value || '';
+    const unitPrice = document.getElementById('quote-cl-unit-price').value || '';
+    const shipping = document.getElementById('quote-cl-shipping').value || '';
+    const total = document.getElementById('quote-cl-total').value || '';
+    const notes = document.getElementById('quote-cl-notes').value || '';
+
+    const subject = encodeURIComponent(`Quote for ${product} - ${client}`);
+    const lines = [
+      `Hi,`,
+      ``,
+      `Please find the quote details below:`,
+      ``,
+      `Client: ${client}`,
+      `Product: ${product}`,
+      quoteDate ? `Quote Date: ${quoteDate}` : '',
+      validUntil ? `Valid Until: ${validUntil}` : '',
+      ``,
+      `Quantity: ${qty}`,
+      `Unit Price (USD): $${unitPrice}`,
+      `Shipping (USD): $${shipping}`,
+      `Total (USD): ${total}`,
+      ``,
+      notes ? `Notes / Terms:\n${notes}\n` : '',
+      `Best regards`
+    ].filter(l => l !== '').join('\n');
+
+    const body = encodeURIComponent(lines);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
   function calcInvoiceTotal() {
