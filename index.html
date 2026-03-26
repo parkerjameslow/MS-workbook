@@ -2805,7 +2805,7 @@
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
   let tierCount = 3;
   let _filling = false; // true while fillWorkbook is running, prevents auto-save
-  // Removed _skipInitSave — fillWorkbook no longer triggers saves
+  let _appReady = false; // true after init completes — blocks all saves until then
 
   function addTierRow(qty = '', unitPrice = '') {
     tierCount++;
@@ -4105,7 +4105,7 @@
   }
 
   function autoSaveWorkbook() {
-    if (!currentClient || !currentWorkbookId || _filling) return;
+    if (!currentClient || !currentWorkbookId || _filling || !_appReady) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       doSaveWorkbook();
@@ -4172,6 +4172,9 @@
       // Seed the DB with sample data if empty
       seedDatabase();
     }
+
+    // Allow saves now — wait 500ms for any queued events to settle
+    setTimeout(() => { _appReady = true; console.log('App ready — saves enabled'); }, 500);
   })();
 
   async function seedDatabase() {
