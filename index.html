@@ -594,69 +594,35 @@
       flex: 1;
     }
 
-    /* ── Image Upload ────────────────────────────────────────────────────── */
-    .image-upload-area {
-      border: 2px dashed var(--border);
-      border-radius: var(--radius);
-      padding: 24px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.15s;
-      position: relative;
-      min-height: 160px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
+    /* ── Image Gallery ───────────────────────────────────────────────────── */
+    .image-gallery { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .image-gallery-item {
+      position: relative; width: 120px; height: 120px; border-radius: var(--radius);
+      border: 1px solid var(--border); overflow: hidden; flex-shrink: 0;
     }
-    .image-upload-area:hover {
-      border-color: var(--accent);
-      background: var(--accent-glow);
+    .image-gallery-item img {
+      width: 100%; height: 100%; object-fit: cover; cursor: pointer;
     }
-    .image-upload-area.has-image {
-      padding: 0;
-      border-style: solid;
-      border-color: var(--accent);
+    .image-gallery-item .img-remove {
+      position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.6); color: #fff;
+      border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 12px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2;
     }
-    .image-upload-area input[type="file"] {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      cursor: pointer;
-      width: 100%;
-      height: 100%;
-      border: none;
-      padding: 0;
+    .image-add-btn {
+      width: 120px; height: 120px; border: 2px dashed var(--border); border-radius: var(--radius);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; transition: all 0.15s; gap: 4px; flex-shrink: 0;
     }
-    .image-preview {
-      width: 100%;
-      max-height: 280px;
-      object-fit: contain;
-      border-radius: calc(var(--radius) - 2px);
-      display: none;
+    .image-add-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
+    .image-add-btn .add-icon { font-size: 24px; color: var(--text-muted); }
+    .image-add-btn .add-text { font-size: 10px; color: var(--text-muted); }
+    /* Lightbox */
+    .lightbox-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85); z-index: 600; align-items: center; justify-content: center; cursor: pointer;
     }
-    .image-upload-area.has-image .image-preview { display: block; }
-    .image-upload-area.has-image .upload-prompt { display: none; }
-    .upload-icon { font-size: 28px; line-height: 1; }
-    .upload-text { font-size: 13px; font-weight: 600; color: var(--text-muted); }
-    .upload-hint { font-size: 11px; color: var(--text-muted); opacity: 0.6; }
-    .image-remove {
-      position: absolute;
-      top: 8px; right: 8px;
-      background: rgba(0,0,0,0.6);
-      color: #fff;
-      border: none;
-      border-radius: 50%;
-      width: 26px; height: 26px;
-      font-size: 14px;
-      cursor: pointer;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 2;
-    }
-    .image-upload-area.has-image .image-remove { display: flex; }
+    .lightbox-overlay.open { display: flex; }
+    .lightbox-overlay img { max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; }
 
     /* ── Color Swatch ────────────────────────────────────────────────────── */
     .color-row {
@@ -1492,7 +1458,7 @@
       .sidebar { display: none !important; }
       .app-content { margin-left: 0 !important; }
       .app-header, .header-actions, .btn-add, .btn-danger-ghost,
-      .image-upload-area input[type="file"], .image-remove,
+      .image-add-btn, .img-remove,
       .legend { display: none !important; }
       body { background: #fff; color: #000; }
       .section-card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
@@ -1996,19 +1962,21 @@
         </div>
       </div>
 
-      <!-- Product Image -->
+      <!-- Product Images -->
       <div style="margin-top:18px;">
-        <label style="display:block; margin-bottom:8px;">Product Image</label>
-        <div class="image-upload-area" id="uploadArea" onclick="document.getElementById('imgInput').click()">
-          <input type="file" id="imgInput" accept="image/*" onchange="handleImage(event)" onclick="event.stopPropagation()" />
-          <div class="upload-prompt">
-            <div class="upload-icon">🖼️</div>
-            <div class="upload-text">Click or drag & drop to upload product image</div>
-            <div class="upload-hint">PNG, JPG, WEBP · Max 10MB</div>
+        <label style="display:block; margin-bottom:8px;">Product Images</label>
+        <div class="image-gallery" id="imageGallery">
+          <!-- images inserted dynamically -->
+          <div class="image-add-btn" onclick="document.getElementById('imgInput').click()">
+            <div class="add-icon">+</div>
+            <div class="add-text">Add Image</div>
           </div>
-          <img class="image-preview" id="imgPreview" alt="Product preview" />
-          <button class="image-remove" onclick="removeImage(event)" title="Remove image">✕</button>
         </div>
+        <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImages(event)" style="display:none;" />
+      </div>
+      <!-- Lightbox -->
+      <div class="lightbox-overlay" id="lightboxOverlay" onclick="this.classList.remove('open')">
+        <img id="lightboxImg" src="" alt="Full size" onclick="event.stopPropagation()" />
       </div>
 
       <!-- ── Technical Specifications ── -->
@@ -2676,62 +2644,87 @@
   }
 
   /* ── Image Upload ──────────────────────────────────────────────────────── */
-  function handleImage(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      // Compress image to max 800px wide, JPEG quality 0.6 to keep payload small
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxW = 800;
-        let w = img.width, h = img.height;
-        if (w > maxW) { h = h * maxW / w; w = maxW; }
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const compressed = canvas.toDataURL('image/jpeg', 0.6);
-        document.getElementById('imgPreview').src = compressed;
-        document.getElementById('uploadArea').classList.add('has-image');
-        // Save immediately with image data included
-        clearTimeout(saveTimer);
-        if (currentClient && currentWorkbookId) {
-          const detail = collectWorkbookDetail();
-          detail.productImage = compressed; // Force the image data in
-          const key = `${currentClient}|${currentWorkbookId}`;
-          workbookDetail[key] = detail;
-          const dbId = dbWorkbookMap[key] || currentWorkbookId;
-          apiCall('save_workbook_detail', { id: dbId, detail: detail });
-          saveToLocalStorage();
+  let _productImages = []; // array of { url: 'uploads/28/abc.jpg' }
+
+  async function handleImages(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length || !currentWorkbookId) return;
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('workbook_id', dbId);
+      try {
+        const res = await fetch('api.php?action=upload_image', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success) {
+          _productImages.push({ url: data.url });
+          renderImageGallery();
+          saveImageList();
         }
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+      } catch (err) { console.warn('Upload failed:', err); }
+    }
+    e.target.value = '';
   }
 
-  function removeImage(e) {
+  async function removeGalleryImage(idx, e) {
     e.stopPropagation();
-    document.getElementById('imgPreview').src = '';
-    document.getElementById('imgInput').value = '';
-    document.getElementById('uploadArea').classList.remove('has-image');
-    autoSaveWorkbook();
+    const img = _productImages[idx];
+    if (!img) return;
+    // Delete file from server
+    try { await apiCall('delete_image', { url: img.url }); } catch (err) { /* ignore */ }
+    _productImages.splice(idx, 1);
+    renderImageGallery();
+    saveImageList();
   }
 
-  // Drag and drop support
-  const uploadArea = document.getElementById('uploadArea');
-  uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.borderColor = 'var(--accent)'; });
-  uploadArea.addEventListener('dragleave', () => { uploadArea.style.borderColor = ''; });
-  uploadArea.addEventListener('drop', e => {
+  function renderImageGallery() {
+    const gallery = document.getElementById('imageGallery');
+    const addBtn = gallery.querySelector('.image-add-btn');
+    // Remove existing image items
+    gallery.querySelectorAll('.image-gallery-item').forEach(el => el.remove());
+    // Add image items before the add button
+    _productImages.forEach((img, idx) => {
+      const item = document.createElement('div');
+      item.className = 'image-gallery-item';
+      item.innerHTML = `
+        <img src="${img.url}" alt="Product image ${idx+1}" onclick="openLightbox('${img.url}')" />
+        <button class="img-remove" onclick="removeGalleryImage(${idx}, event)" title="Remove">✕</button>
+      `;
+      gallery.insertBefore(item, addBtn);
+    });
+  }
+
+  function openLightbox(url) {
+    document.getElementById('lightboxImg').src = url;
+    document.getElementById('lightboxOverlay').classList.add('open');
+  }
+
+  function saveImageList() {
+    if (!currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (!workbookDetail[key]) workbookDetail[key] = {};
+    workbookDetail[key].productImages = _productImages.map(i => i.url);
+    // Also update legacy field
+    workbookDetail[key].productImage = _productImages.length > 0 ? _productImages[0].url : '';
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    const detail = collectWorkbookDetail();
+    apiCall('save_workbook_detail', { id: dbId, detail: detail });
+    saveToLocalStorage();
+  }
+
+  // Drag and drop support for gallery
+  const galleryEl = document.getElementById('imageGallery');
+  galleryEl.addEventListener('dragover', e => { e.preventDefault(); });
+  galleryEl.addEventListener('drop', e => {
     e.preventDefault();
-    uploadArea.style.borderColor = '';
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length) {
       const dt = new DataTransfer();
-      dt.items.add(file);
+      files.forEach(f => dt.items.add(f));
       document.getElementById('imgInput').files = dt.files;
-      handleImage({ target: { files: [file] } });
+      handleImages({ target: { files: files } });
     }
   });
 
@@ -3642,13 +3635,13 @@
     const allKeys = new Set([...Object.keys(oldD), ...Object.keys(newD)]);
 
     for (const key of allKeys) {
-      if (key === 'productImage') {
-        const hadOld = (oldD[key] || '').length > 100;
-        const hadNew = (newD[key] || '').length > 100;
-        if (hadOld !== hadNew) {
-          diffs.push({ label: 'Product Image', old: hadOld ? 'Present' : '—', new: hadNew ? 'Added' : 'Removed' });
-        } else if (hadOld && hadNew && oldD[key] !== newD[key]) {
-          diffs.push({ label: 'Product Image', old: 'Image', new: 'Changed' });
+      if (key === 'productImage' || key === 'productImages') {
+        if (key === 'productImages') {
+          const oldImgs = Array.isArray(oldD.productImages) ? oldD.productImages.length : 0;
+          const newImgs = Array.isArray(newD.productImages) ? newD.productImages.length : 0;
+          if (oldImgs !== newImgs) {
+            diffs.push({ label: 'Product Images', old: oldImgs + ' image(s)', new: newImgs + ' image(s)' });
+          }
         }
         continue;
       }
@@ -3984,14 +3977,16 @@
       convertRmbToUsd();
       _s('quote-lead', data.leadTime);
       _s('quote-qc', data.qcNotes);
-      // Product image
-      if (data.productImage) {
-        document.getElementById('imgPreview').src = data.productImage;
-        document.getElementById('uploadArea').classList.add('has-image');
+      // Product images (gallery)
+      if (data.productImages && Array.isArray(data.productImages) && data.productImages.length > 0) {
+        _productImages = data.productImages.map(url => ({ url }));
+      } else if (data.productImage && data.productImage.length > 10) {
+        // Legacy: single base64 image — keep for backward compat
+        _productImages = [{ url: data.productImage }];
       } else {
-        document.getElementById('imgPreview').src = '';
-        document.getElementById('uploadArea').classList.remove('has-image');
+        _productImages = [];
       }
+      renderImageGallery();
       // Pricing tiers
       const rawTiers = Array.isArray(data.tiers) ? data.tiers : [];
       const validTiers = rawTiers.filter(t => t && t.qty && String(t.qty).trim() !== '');
@@ -4052,10 +4047,9 @@
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
-      // Clear image
-      document.getElementById('imgPreview').src = '';
-      document.getElementById('imgInput').value = '';
-      document.getElementById('uploadArea').classList.remove('has-image');
+      // Clear images
+      _productImages = [];
+      renderImageGallery();
       addTierRow(100);
       addTierRow(250);
       addTierRow(500);
@@ -4169,9 +4163,8 @@
       unitPriceRmb: _v('quote-unit-rmb'),
       leadTime: _v('quote-lead'),
       qcNotes: _v('quote-qc'),
-      productImage: (document.getElementById('imgPreview')?.src || '').startsWith('data:')
-        ? document.getElementById('imgPreview').src
-        : (workbookDetail[`${currentClient}|${currentWorkbookId}`]?.productImage || ''),
+      productImage: _productImages.length > 0 ? _productImages[0].url : '',
+      productImages: _productImages.map(i => i.url),
       // Pricing tab
       tiers: collectTiers(),
       // Shipping tab

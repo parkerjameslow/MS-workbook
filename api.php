@@ -473,6 +473,49 @@ switch ($action) {
         ]);
         break;
 
+    case 'upload_image':
+        if (empty($_FILES['image']) || empty($_POST['workbook_id'])) {
+            echo json_encode(['success' => false, 'error' => 'Image file and workbook_id required']);
+            break;
+        }
+        $wbId = intval($_POST['workbook_id']);
+        $file = $_FILES['image'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        if (!in_array($ext, $allowed)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid file type']);
+            break;
+        }
+        if ($file['size'] > 10 * 1024 * 1024) {
+            echo json_encode(['success' => false, 'error' => 'File too large (max 10MB)']);
+            break;
+        }
+        $uploadDir = __DIR__ . '/uploads/' . $wbId . '/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+        $filename = uniqid() . '_' . time() . '.' . $ext;
+        $filepath = $uploadDir . $filename;
+        if (move_uploaded_file($file['tmp_name'], $filepath)) {
+            $url = 'uploads/' . $wbId . '/' . $filename;
+            echo json_encode(['success' => true, 'url' => $url, 'filename' => $filename]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Upload failed']);
+        }
+        break;
+
+    case 'delete_image':
+        if (empty($input['url'])) {
+            echo json_encode(['success' => false, 'error' => 'Image URL required']);
+            break;
+        }
+        $path = __DIR__ . '/' . $input['url'];
+        if (file_exists($path) && strpos(realpath($path), realpath(__DIR__ . '/uploads/')) === 0) {
+            unlink($path);
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'File not found']);
+        }
+        break;
+
     default:
         echo json_encode(['error' => 'Unknown action', 'available' => [
             'get_clients', 'add_client', 'delete_client',
@@ -481,6 +524,7 @@ switch ($action) {
             'get_recent', 'get_all_data',
             'get_revisions', 'get_revision_detail', 'restore_revision',
             'get_archived', 'restore_workbook', 'restore_client',
-            'permanent_delete_workbook', 'permanent_delete_client'
+            'permanent_delete_workbook', 'permanent_delete_client',
+            'upload_image', 'delete_image'
         ]]);
 }
