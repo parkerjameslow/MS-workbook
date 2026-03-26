@@ -1913,6 +1913,7 @@
         <button class="wb-tab" onclick="switchWbTab('shipping', this)"><span class="tab-full">Shipping</span><span class="tab-short">Ship</span></button>
         <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
         <button class="wb-tab" onclick="switchWbTab('quote', this)"><span class="tab-full">Quote for Client</span><span class="tab-short">Quote</span></button>
+        <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
         <button class="wb-tab" onclick="switchWbTab('invoice', this)"><span class="tab-full">Office Invoice</span><span class="tab-short">Invoice</span></button>
       </div>
     </div>
@@ -1983,8 +1984,48 @@
       <div class="subsection">
         <div class="subsection-title">Technical Specifications</div>
 
+        <!-- Category / Subcategory -->
+        <div class="form-grid form-grid-2">
+          <div class="field">
+            <label>Product Category</label>
+            <div class="select-wrapper">
+              <select id="product-category" onchange="updateSubcategories()">
+                <option value="">Select category...</option>
+                <option value="packaging">Packaging</option>
+                <option value="apparel">Apparel</option>
+                <option value="furniture">Furniture</option>
+                <option value="electronics">Electronics</option>
+                <option value="promotional">Promotional Products</option>
+                <option value="food-beverage">Food & Beverage</option>
+                <option value="toys">Toys & Games</option>
+                <option value="beauty">Beauty & Personal Care</option>
+                <option value="home-garden">Home & Garden</option>
+                <option value="sports">Sports & Outdoors</option>
+                <option value="stationery">Stationery & Office</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Material Type</label>
+            <div class="select-wrapper">
+              <select id="product-subcategory">
+                <option value="">Select category first...</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Materials -->
+        <div class="form-grid form-grid-2" style="margin-top:12px;">
+          <div class="field col-span-2">
+            <label>Materials</label>
+            <input type="text" placeholder="e.g. 600D Polyester, Zinc alloy hardware" id="materials" />
+          </div>
+        </div>
+
         <!-- Dimensions inches -->
-        <div class="dim-block">
+        <div class="dim-block" style="margin-top:12px;">
           <div class="dim-title">Dimensions (in)</div>
           <div class="dim-group">
             <div class="dim-field">
@@ -2022,18 +2063,10 @@
         </div>
         <div style="margin-bottom:20px; font-size:11px; color:var(--text-muted); font-style:italic;">* Inches and mm fields are separate, either can be filled.</div>
 
-        <!-- Materials / Colors -->
-        <div class="form-grid form-grid-2">
-          <div class="field col-span-2">
-            <label>Materials</label>
-            <input type="text" placeholder="e.g. 600D Polyester, Zinc alloy hardware" id="materials" />
-          </div>
-
-          <!-- Hidden fields to preserve existing data -->
-          <input type="hidden" id="pantone-text" />
-          <input type="hidden" id="cmyk" />
-          <input type="hidden" id="color-notes" />
-        </div>
+        <!-- Hidden fields to preserve existing data -->
+        <input type="hidden" id="pantone-text" />
+        <input type="hidden" id="cmyk" />
+        <input type="hidden" id="color-notes" />
       </div>
     </div>
   </div>
@@ -2406,6 +2439,55 @@
   </div>
   </div><!-- /#wb-tab-quote -->
 
+  <!-- ── Tab: Art ── -->
+  <div id="wb-tab-art" class="wb-tab-content">
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">Art</span>
+    </div>
+    <div class="section-body">
+      <p style="color:var(--text-muted); margin-bottom:16px;">Upload artwork files, logos, and design assets for this product.</p>
+
+      <div class="form-grid form-grid-2">
+        <div class="field">
+          <label>Art Status</label>
+          <div class="select-wrapper">
+            <select id="art-status">
+              <option value="">Select status...</option>
+              <option value="pending">Pending</option>
+              <option value="received">Received from Client</option>
+              <option value="in-review">In Review</option>
+              <option value="approved">Approved</option>
+              <option value="revision-needed">Revision Needed</option>
+              <option value="sent-to-factory">Sent to Factory</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Art Due Date</label>
+          <input type="date" id="art-due-date" />
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:12px;">
+        <label>Art Notes</label>
+        <textarea placeholder="Design specifications, color requirements, placement instructions..." id="art-notes" style="min-height:80px;"></textarea>
+      </div>
+
+      <div style="margin-top:18px;">
+        <label style="display:block; margin-bottom:8px;">Art Files</label>
+        <div class="image-gallery" id="artGallery">
+          <div class="image-add-btn" onclick="document.getElementById('artInput').click()">
+            <div class="add-icon">+</div>
+            <div class="add-text">Add File</div>
+          </div>
+        </div>
+        <input type="file" id="artInput" accept="image/*" multiple onchange="handleArtFiles(event)" style="display:none;" />
+      </div>
+    </div>
+  </div>
+  </div><!-- /#wb-tab-art -->
+
   <!-- ── Tab: Office Invoice ── -->
   <div id="wb-tab-invoice" class="wb-tab-content">
   <div class="section-card">
@@ -2714,6 +2796,133 @@
       handleImages({ target: { files: files } });
     }
   });
+
+  /* ── Product Category / Subcategory ────────────────────────────────────── */
+  const SUBCATEGORIES = {
+    packaging: [
+      'Polyethylene (PE)', 'Polypropylene (PP)', 'Polyvinyl Chloride (PVC)',
+      'Polyethylene Terephthalate (PET)', 'Polylactic Acid (PLA)',
+      'Polybutylene Adipate Terephthalate (PBAT)', 'Polyamide (PA / Nylon)',
+      'Ethylene Vinyl Acetate (EVA)', 'Corrugated Cardboard', 'Kraft Paper',
+      'Rigid Paperboard', 'Glass', 'Aluminum', 'Tin / Tinplate', 'Wood'
+    ],
+    apparel: [
+      'Cotton', 'Polyester', 'Nylon', 'Silk', 'Wool', 'Linen', 'Rayon',
+      'Spandex / Elastane', 'Bamboo Fiber', 'Hemp', 'Leather', 'Faux Leather',
+      'Denim', 'Fleece', 'Mesh'
+    ],
+    furniture: [
+      'Solid Wood', 'Plywood', 'MDF', 'Particle Board', 'Bamboo',
+      'Steel', 'Aluminum', 'Wrought Iron', 'Rattan / Wicker',
+      'Acrylic', 'Tempered Glass', 'Marble', 'Granite', 'Upholstered Fabric'
+    ],
+    electronics: [
+      'ABS Plastic', 'Polycarbonate (PC)', 'Aluminum Alloy', 'Stainless Steel',
+      'Silicone', 'TPU', 'FR-4 (PCB)', 'Copper', 'Glass (Display)', 'Ceramic'
+    ],
+    promotional: [
+      'ABS Plastic', 'Silicone', 'Stainless Steel', 'Cotton', 'Polyester',
+      'Neoprene', 'PVC', 'Rubber', 'Cork', 'Bamboo', 'Recycled Material'
+    ],
+    'food-beverage': [
+      'Food-Grade PP', 'Food-Grade PE', 'Food-Grade Silicone', 'Stainless Steel (304/316)',
+      'Borosilicate Glass', 'Ceramic', 'Bamboo', 'Kraft Paper (FDA)', 'PLA (Compostable)',
+      'Aluminum (Food-Safe)'
+    ],
+    toys: [
+      'ABS Plastic', 'PP', 'Plush (Polyester)', 'Wood (Beech/Maple)',
+      'Silicone (BPA-Free)', 'EVA Foam', 'Cotton', 'Nylon', 'Rubber'
+    ],
+    beauty: [
+      'Glass (Cosmetic)', 'PP (Cosmetic Grade)', 'PET', 'Aluminum',
+      'Acrylic (PMMA)', 'Bamboo', 'PCR Plastic', 'Silicone', 'Ceramic'
+    ],
+    'home-garden': [
+      'Ceramic', 'Terracotta', 'Stainless Steel', 'Cast Iron', 'Bamboo',
+      'Cotton', 'Linen', 'Jute', 'Rattan', 'Teak', 'Resin', 'Concrete'
+    ],
+    sports: [
+      'Nylon', 'Polyester', 'Neoprene', 'Silicone', 'EVA Foam', 'TPE',
+      'Carbon Fiber', 'Aluminum', 'Rubber', 'Mesh', 'Spandex'
+    ],
+    stationery: [
+      'Paper (Offset)', 'Kraft Paper', 'Recycled Paper', 'PU Leather',
+      'PP', 'ABS', 'Bamboo', 'Wood', 'Metal (Brass/Steel)', 'Cork'
+    ]
+  };
+
+  function updateSubcategories() {
+    const cat = document.getElementById('product-category').value;
+    const subSel = document.getElementById('product-subcategory');
+    subSel.innerHTML = '';
+    if (!cat || !SUBCATEGORIES[cat]) {
+      subSel.innerHTML = '<option value="">Select category first...</option>';
+      return;
+    }
+    subSel.innerHTML = '<option value="">Select material type...</option>' +
+      SUBCATEGORIES[cat].map(s => `<option value="${s}">${s}</option>`).join('');
+  }
+
+  /* ── Art Tab ─────────────────────────────────────────────────────────────── */
+  let _artImages = [];
+
+  async function handleArtFiles(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length || !currentWorkbookId) return;
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('workbook_id', dbId);
+      try {
+        const res = await fetch('api.php?action=upload_image', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success) {
+          _artImages.push({ url: data.url });
+          renderArtGallery();
+          saveArtList();
+        }
+      } catch (err) { console.warn('Art upload failed:', err); }
+    }
+    e.target.value = '';
+  }
+
+  async function removeArtImage(idx, e) {
+    e.stopPropagation();
+    const img = _artImages[idx];
+    if (!img) return;
+    try { await apiCall('delete_image', { url: img.url }); } catch (err) {}
+    _artImages.splice(idx, 1);
+    renderArtGallery();
+    saveArtList();
+  }
+
+  function renderArtGallery() {
+    const gallery = document.getElementById('artGallery');
+    const addBtn = gallery.querySelector('.image-add-btn');
+    gallery.querySelectorAll('.image-gallery-item').forEach(el => el.remove());
+    _artImages.forEach((img, idx) => {
+      const item = document.createElement('div');
+      item.className = 'image-gallery-item';
+      item.innerHTML = `
+        <img src="${img.url}" alt="Art file ${idx+1}" onclick="openLightbox('${img.url}')" />
+        <button class="img-remove" onclick="removeArtImage(${idx}, event)" title="Remove">✕</button>
+      `;
+      gallery.insertBefore(item, addBtn);
+    });
+  }
+
+  function saveArtList() {
+    if (!currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (!workbookDetail[key]) workbookDetail[key] = {};
+    workbookDetail[key].artImages = _artImages.map(i => i.url);
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    const detail = collectWorkbookDetail();
+    apiCall('save_workbook_detail', { id: dbId, detail: detail });
+    saveToLocalStorage();
+  }
 
   /* ── Dimension Conversion ──────────────────────────────────────────────── */
   const IN_TO_MM = 25.4;
@@ -3516,7 +3725,8 @@
 
   /* ── History Modal ──────────────────────────────────────────────────────── */
   const FIELD_LABELS = {
-    client:'Client', product:'Product', desc:'Description', dimInL:'Length', dimInW:'Width', dimInH:'Height',
+    client:'Client', product:'Product', desc:'Description', productCategory:'Category', productSubcategory:'Material Type',
+    dimInL:'Length', dimInW:'Width', dimInH:'Height',
     materials:'Materials', pantone:'Pantone', cmyk:'CMYK', colorNotes:'Color Notes',
     qty:'Quantity', unitPriceRmb:'Unit Price (RMB)', leadTime:'Lead Time', qcNotes:'QC Notes',
     cartonUnitWeight:'Unit Weight', cartonInnerWeight:'Inner Carton Weight', cartonInnerCount:'Inner Carton Qty',
@@ -3528,7 +3738,8 @@
     quoteClUnitPrice:'Quote Unit Price', quoteClShipping:'Quote Shipping', quoteClNotes:'Quote Notes',
     invNumber:'Invoice #', invDate:'Invoice Date', invDueDate:'Due Date',
     invQty:'Invoice Qty', invUnitPrice:'Invoice Unit Price', invShipping:'Invoice Shipping',
-    invStatus:'Payment Status', invMethod:'Payment Method', invNotes:'Invoice Notes'
+    invStatus:'Payment Status', invMethod:'Payment Method', invNotes:'Invoice Notes',
+    artStatus:'Art Status', artDueDate:'Art Due Date', artNotes:'Art Notes'
   };
 
   let _historyRevisions = []; // store fetched revisions for diff comparison
@@ -3622,12 +3833,19 @@
     const allKeys = new Set([...Object.keys(oldD), ...Object.keys(newD)]);
 
     for (const key of allKeys) {
-      if (key === 'productImage' || key === 'productImages') {
+      if (key === 'productImage' || key === 'productImages' || key === 'artImages') {
         if (key === 'productImages') {
           const oldImgs = Array.isArray(oldD.productImages) ? oldD.productImages.length : 0;
           const newImgs = Array.isArray(newD.productImages) ? newD.productImages.length : 0;
           if (oldImgs !== newImgs) {
             diffs.push({ label: 'Product Images', old: oldImgs + ' image(s)', new: newImgs + ' image(s)' });
+          }
+        }
+        if (key === 'artImages') {
+          const oldArt = Array.isArray(oldD.artImages) ? oldD.artImages.length : 0;
+          const newArt = Array.isArray(newD.artImages) ? newD.artImages.length : 0;
+          if (oldArt !== newArt) {
+            diffs.push({ label: 'Art Files', old: oldArt + ' file(s)', new: newArt + ' file(s)' });
           }
         }
         continue;
@@ -3955,6 +4173,10 @@
       _s('dim-in-w', data.dimInW);
       _s('dim-in-h', data.dimInH);
       if (data.dimInL) convertToMm('in');
+      // Category / subcategory
+      _s('product-category', data.productCategory);
+      if (data.productCategory) updateSubcategories();
+      _s('product-subcategory', data.productSubcategory);
       _s('materials', data.materials);
       _s('pantone-text', data.pantone);
       _s('cmyk', data.cmyk);
@@ -4022,6 +4244,16 @@
       _s('inv-method', data.invMethod);
       _s('inv-notes', data.invNotes);
       if (data.invUnitPrice || data.invShipping) calcInvoiceTotal();
+      // Art tab
+      _s('art-status', data.artStatus);
+      _s('art-due-date', data.artDueDate);
+      _s('art-notes', data.artNotes);
+      if (data.artImages && Array.isArray(data.artImages) && data.artImages.length > 0) {
+        _artImages = data.artImages.map(url => ({ url }));
+      } else {
+        _artImages = [];
+      }
+      renderArtGallery();
     } else {
       // Fill with basic info from the client list
       const items = clientData[clientName] || [];
@@ -4037,6 +4269,10 @@
       // Clear images
       _productImages = [];
       renderImageGallery();
+      _artImages = [];
+      renderArtGallery();
+      document.getElementById('product-category').value = '';
+      document.getElementById('product-subcategory').innerHTML = '<option value="">Select category first...</option>';
       addTierRow(100);
       addTierRow(250);
       addTierRow(500);
@@ -4142,6 +4378,8 @@
       dimInL: _v('dim-in-l'),
       dimInW: _v('dim-in-w'),
       dimInH: _v('dim-in-h'),
+      productCategory: _v('product-category'),
+      productSubcategory: _v('product-subcategory'),
       materials: _v('materials'),
       pantone: _v('pantone-text'),
       cmyk: _v('cmyk'),
@@ -4186,6 +4424,11 @@
       invStatus: _v('inv-status'),
       invMethod: _v('inv-method'),
       invNotes: _v('inv-notes'),
+      // Art tab
+      artStatus: _v('art-status'),
+      artDueDate: _v('art-due-date'),
+      artNotes: _v('art-notes'),
+      artImages: _artImages.map(i => i.url),
     };
   }
 
