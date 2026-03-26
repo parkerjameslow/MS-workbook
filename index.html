@@ -808,7 +808,7 @@
     .dash-table th:last-child {
       position: relative;
       text-align: center;
-      padding-right: 24px;
+      padding-right: 16px;
       width: 50px;
       min-width: 50px;
     }
@@ -2234,7 +2234,30 @@
             </tr>
           </thead>
           <tbody id="tier-body">
-            <!-- rows injected by JS -->
+            <tr id="tier-1">
+              <td style="color:var(--text-muted); font-weight:600;">1</td>
+              <td><input type="number" min="0" placeholder="e.g. 100" value="100" oninput="recalcTier(1)" style="width:110px;" /></td>
+              <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(1)" style="width:130px;" /></td>
+              <td id="tier-usd-1" style="color:var(--text-muted); font-size:13px;">—</td>
+              <td class="total-cell" id="tier-total-1">—</td>
+              <td><button class="btn btn-danger-ghost" onclick="removeTierRow(1)">✕</button></td>
+            </tr>
+            <tr id="tier-2">
+              <td style="color:var(--text-muted); font-weight:600;">2</td>
+              <td><input type="number" min="0" placeholder="e.g. 100" value="250" oninput="recalcTier(2)" style="width:110px;" /></td>
+              <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(2)" style="width:130px;" /></td>
+              <td id="tier-usd-2" style="color:var(--text-muted); font-size:13px;">—</td>
+              <td class="total-cell" id="tier-total-2">—</td>
+              <td><button class="btn btn-danger-ghost" onclick="removeTierRow(2)">✕</button></td>
+            </tr>
+            <tr id="tier-3">
+              <td style="color:var(--text-muted); font-weight:600;">3</td>
+              <td><input type="number" min="0" placeholder="e.g. 100" value="500" oninput="recalcTier(3)" style="width:110px;" /></td>
+              <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(3)" style="width:130px;" /></td>
+              <td id="tier-usd-3" style="color:var(--text-muted); font-size:13px;">—</td>
+              <td class="total-cell" id="tier-total-3">—</td>
+              <td><button class="btn btn-danger-ghost" onclick="removeTierRow(3)">✕</button></td>
+            </tr>
           </tbody>
         </table>
         <button class="btn btn-add" style="margin-top:10px;" onclick="addTierRow()">+ Add Pricing Tier</button>
@@ -2600,7 +2623,7 @@
   }
 
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
-  let tierCount = 0;
+  let tierCount = 3;
 
   function addTierRow(qty = '', unitPrice = '') {
     tierCount++;
