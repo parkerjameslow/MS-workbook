@@ -2029,23 +2029,10 @@
             <input type="text" placeholder="e.g. 600D Polyester, Zinc alloy hardware" id="materials" />
           </div>
 
-          <!-- Pantone -->
-          <div class="field">
-            <label>Pantone Color(s)</label>
-            <input type="text" placeholder="e.g. PMS 286 C" id="pantone-text" />
-          </div>
-
-          <!-- CMYK -->
-          <div class="field">
-            <label>CMYK</label>
-            <input type="text" placeholder="e.g. C:100 M:72 Y:0 K:18" id="cmyk" />
-          </div>
-
-          <!-- Color Notes -->
-          <div class="field col-span-2">
-            <label>Color Notes</label>
-            <textarea placeholder="Any special color matching instructions, finish requirements, or brand guidelines…" id="color-notes" style="min-height:60px;"></textarea>
-          </div>
+          <!-- Hidden fields to preserve existing data -->
+          <input type="hidden" id="pantone-text" />
+          <input type="hidden" id="cmyk" />
+          <input type="hidden" id="color-notes" />
         </div>
       </div>
     </div>
