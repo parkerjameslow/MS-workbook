@@ -4056,7 +4056,9 @@
       unitPriceRmb: _v('quote-unit-rmb'),
       leadTime: _v('quote-lead'),
       qcNotes: _v('quote-qc'),
-      productImage: (document.getElementById('imgPreview')?.src || '').startsWith('data:') ? document.getElementById('imgPreview').src : '',
+      productImage: (document.getElementById('imgPreview')?.src || '').startsWith('data:')
+        ? document.getElementById('imgPreview').src
+        : (workbookDetail[`${currentClient}|${currentWorkbookId}`]?.productImage || ''),
       // Pricing tab
       tiers: collectTiers(),
       // Shipping tab
