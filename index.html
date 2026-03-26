@@ -1448,6 +1448,8 @@
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
     }
+    .label-short { display: none; }
+    .label-full { display: inline; }
 
     /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
@@ -1544,6 +1546,8 @@
       }
       .status-step-bar { width: 28px; height: 5px; border-radius: 3px; }
       .status-step-label { font-size: 8px; line-height: 1.1; }
+      .label-full { display: none !important; }
+      .label-short { display: inline !important; }
       .status-actions {
         width: 100%;
         box-sizing: border-box;
@@ -2790,6 +2794,7 @@
   /* ── Status Bar ──────────────────────────────────────────────────────────── */
   const flowSteps = ['prepChina', 'chinaSubmits', 'shippingDims', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
   const flowLabels = ['Prep for China', 'China Submits', 'Shipping Dims', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Order to China'];
+  const flowLabelsShort = ['Prep', 'Submit', 'Dims', 'Quote', 'Approved', 'Invoice', 'Payment', 'Order'];
   let currentClient = '';
   let currentWorkbookId = '';
 
@@ -2798,7 +2803,7 @@
     statusFlow.innerHTML = flowSteps.map((s, i) => `
       <div class="status-step">
         <div class="status-step-bar ${flow[s] ? 'filled' : ''}"></div>
-        <span class="status-step-label">${flowLabels[i]}</span>
+        <span class="status-step-label"><span class="label-full">${flowLabels[i]}</span><span class="label-short">${flowLabelsShort[i]}</span></span>
       </div>
     `).join('');
 
