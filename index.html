@@ -1963,23 +1963,6 @@
         </div>
       </div>
 
-      <!-- Product Images -->
-      <div style="margin-top:18px;">
-        <label style="display:block; margin-bottom:8px;">Product Images</label>
-        <div class="image-gallery" id="imageGallery">
-          <!-- images inserted dynamically -->
-          <div class="image-add-btn" onclick="document.getElementById('imgInput').click()">
-            <div class="add-icon">+</div>
-            <div class="add-text">Add Image</div>
-          </div>
-        </div>
-        <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImages(event)" style="display:none;" />
-      </div>
-      <!-- Lightbox -->
-      <div class="lightbox-overlay" id="lightboxOverlay" onclick="this.classList.remove('open')">
-        <img id="lightboxImg" src="" alt="Full size" onclick="event.stopPropagation()" />
-      </div>
-
       <!-- ── Technical Specifications ── -->
       <div class="subsection">
         <div class="subsection-title">Technical Specifications</div>
@@ -2016,57 +1999,34 @@
           </div>
         </div>
 
-        <!-- Materials -->
-        <div class="form-grid form-grid-2" style="margin-top:12px;">
-          <div class="field col-span-2">
-            <label>Materials</label>
-            <input type="text" placeholder="e.g. 600D Polyester, Zinc alloy hardware" id="materials" />
-          </div>
-        </div>
-
-        <!-- Dimensions inches -->
-        <div class="dim-block" style="margin-top:12px;">
-          <div class="dim-title">Dimensions (in)</div>
-          <div class="dim-group">
-            <div class="dim-field">
-              <label>L:</label>
-              <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-l" oninput="convertToMm('in')" />
-            </div>
-            <div class="dim-field">
-              <label>W:</label>
-              <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-w" oninput="convertToMm('in')" />
-            </div>
-            <div class="dim-field">
-              <label>H:</label>
-              <input type="number" step="0.01" min="0" placeholder="0.00" id="dim-in-h" oninput="convertToMm('in')" />
-            </div>
-          </div>
-        </div>
-
-        <!-- Dimensions mm (auto-converted) -->
-        <div class="dim-block">
-          <div class="dim-title">Dimensions (mm)</div>
-          <div class="dim-group">
-            <div class="dim-field">
-              <label>L:</label>
-              <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-l" oninput="convertToIn('mm')" />
-            </div>
-            <div class="dim-field">
-              <label>W:</label>
-              <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-w" oninput="convertToIn('mm')" />
-            </div>
-            <div class="dim-field">
-              <label>H:</label>
-              <input type="number" step="0.1" min="0" placeholder="0.0" id="dim-mm-h" oninput="convertToIn('mm')" />
-            </div>
-          </div>
-        </div>
-        <div style="margin-bottom:20px; font-size:11px; color:var(--text-muted); font-style:italic;">* Inches and mm fields are separate, either can be filled.</div>
-
         <!-- Hidden fields to preserve existing data -->
+        <input type="hidden" id="materials" />
         <input type="hidden" id="pantone-text" />
         <input type="hidden" id="cmyk" />
         <input type="hidden" id="color-notes" />
+        <input type="hidden" id="dim-in-l" />
+        <input type="hidden" id="dim-in-w" />
+        <input type="hidden" id="dim-in-h" />
+        <input type="hidden" id="dim-mm-l" />
+        <input type="hidden" id="dim-mm-w" />
+        <input type="hidden" id="dim-mm-h" />
+      </div>
+
+      <!-- Product Images -->
+      <div style="margin-top:18px;">
+        <label style="display:block; margin-bottom:8px;">Product Images</label>
+        <div class="image-gallery" id="imageGallery">
+          <!-- images inserted dynamically -->
+          <div class="image-add-btn" onclick="document.getElementById('imgInput').click()">
+            <div class="add-icon">+</div>
+            <div class="add-text">Add Image</div>
+          </div>
+        </div>
+        <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImages(event)" style="display:none;" />
+      </div>
+      <!-- Lightbox -->
+      <div class="lightbox-overlay" id="lightboxOverlay" onclick="this.classList.remove('open')">
+        <img id="lightboxImg" src="" alt="Full size" onclick="event.stopPropagation()" />
       </div>
     </div>
   </div>
