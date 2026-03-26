@@ -3190,26 +3190,9 @@
     const notes = document.getElementById('quote-cl-notes').value || '';
 
     const subject = encodeURIComponent(`Quote for ${product} - ${client}`);
-    const lines = [
-      `Hi,`,
-      ``,
-      `Please find the quote details below:`,
-      ``,
-      `Client: ${client}`,
-      `Product: ${product}`,
-      quoteDate ? `Quote Date: ${quoteDate}` : '',
-      validUntil ? `Valid Until: ${validUntil}` : '',
-      ``,
-      `Quantity: ${qty}`,
-      `Unit Price (USD): $${unitPrice}`,
-      `Shipping (USD): $${shipping}`,
-      `Total (USD): ${total}`,
-      ``,
-      notes ? `Notes / Terms:\n${notes}\n` : '',
-      `Best regards`
-    ].filter(l => l !== '').join('\n');
-
-    const body = encodeURIComponent(lines);
+    const body = encodeURIComponent(
+      `Hi ${client},\n\nWe have finalized your quote for the following product. We are ready to move forward, let us know when you would like to meet and discuss.\n\nProduct: ${product}\nQuantity: ${qty}\nUnit Price: $${unitPrice}\nShipping: $${shipping}\n\nTOTAL: ${total}\n\nThanks,\nMarket Sculpt`
+    );
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
