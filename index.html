@@ -494,12 +494,23 @@
     }
 
     .email-quote-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
       display: inline-flex;
       align-items: center;
       gap: 6px;
       padding: 6px 14px;
       font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
       white-space: nowrap;
+    }
+    .email-quote-btn:hover {
+      background: var(--surface2);
+      color: var(--text);
     }
     .email-icon {
       font-size: 16px;
@@ -2354,7 +2365,7 @@
   <div class="section-card">
     <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
       <span class="section-title">Quote for Client</span>
-      <button class="btn btn-accent email-quote-btn" onclick="emailQuote()" title="Email Quote">
+      <button class="email-quote-btn" onclick="emailQuote()" title="Email Quote">
         <span class="email-icon">&#9993;</span>
         <span class="email-label">Email Quote</span>
       </button>
