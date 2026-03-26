@@ -1511,14 +1511,18 @@
       .header-actions { gap: 4px; flex-shrink: 0; }
       .header-actions .btn,
       .header-actions .theme-toggle {
-        padding: 6px 8px;
+        padding: 0 !important;
         font-size: 18px;
         white-space: nowrap;
         width: 36px;
         height: 36px;
-        display: inline-flex;
+        display: inline-flex !important;
         align-items: center;
         justify-content: center;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius-sm) !important;
+        background: var(--surface2) !important;
+        box-sizing: border-box;
       }
       .header-actions .btn .btn-label,
       .header-actions .theme-toggle .toggle-label { display: none; }
