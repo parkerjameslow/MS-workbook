@@ -1508,13 +1508,15 @@
         max-width: 100vw;
       }
       #header-title { font-size: 14px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .header-actions { gap: 6px; flex-shrink: 0; }
+      .header-actions { gap: 4px; flex-shrink: 0; }
       .header-actions .btn,
       .header-actions .theme-toggle {
-        padding: 6px 10px;
-        font-size: 11px;
+        padding: 6px 8px;
+        font-size: 16px;
         white-space: nowrap;
       }
+      .header-actions .btn .btn-label,
+      .header-actions .theme-toggle .toggle-label { display: none; }
 
       /* Sticky bar offset for smaller header */
       .wb-sticky-bar {
@@ -1701,8 +1703,8 @@
     <div class="logo-text" id="header-title" style="font-size:18px; font-weight:700; color:var(--header-title); border-left:3px solid #E8751A; padding-left:12px;">Market Sculpt</div>
   </div>
   <div class="header-actions">
-    <button class="btn btn-ghost" onclick="window.print()">🖨 Print / Export</button>
-    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️ Light Mode</button>
+    <button class="btn btn-ghost" onclick="window.print()">🖨️<span class="btn-label"> Print / Export</span></button>
+    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️<span class="toggle-label"> Light Mode</span></button>
   </div>
 </header>
 
@@ -2452,7 +2454,7 @@
     const body = document.body;
     const isDark = body.dataset.theme === 'dark';
     body.dataset.theme = isDark ? 'light' : 'dark';
-    document.getElementById('theme-btn').textContent = isDark ? '🌙 Dark Mode' : '☀️ Light Mode';
+    document.getElementById('theme-btn').innerHTML = isDark ? '🌙<span class="toggle-label"> Dark Mode</span>' : '☀️<span class="toggle-label"> Light Mode</span>';
   }
 
   /* ── Image Upload ──────────────────────────────────────────────────────── */
