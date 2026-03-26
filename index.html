@@ -2672,6 +2672,7 @@
     } else {
       totalEl.textContent = '—';
     }
+    autoSaveWorkbook();
   }
 
   function removeTierRow(id) {
@@ -3632,6 +3633,19 @@
     if (e.target.matches('input, textarea, select')) {
       autoSaveWorkbook();
     }
+  });
+
+  // Save immediately when leaving/refreshing the page
+  window.addEventListener('beforeunload', function() {
+    if (!currentClient || !currentWorkbookId) return;
+    clearTimeout(saveTimer);
+    const detail = collectWorkbookDetail();
+    const key = `${currentClient}|${currentWorkbookId}`;
+    workbookDetail[key] = detail;
+    saveToLocalStorage();
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    const blob = new Blob([JSON.stringify({ id: dbId, detail: detail })], { type: 'application/json' });
+    navigator.sendBeacon(`${API_URL}?action=save_workbook_detail`, blob);
   });
 
   /* ── Init ──────────────────────────────────────────────────────────────── */
