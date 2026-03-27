@@ -3176,9 +3176,9 @@
 
   function recalcTier(id) {
     const row    = document.getElementById(`tier-${id}`);
-    const inputs = row.querySelectorAll('input');
-    const qty    = parseFloat(inputs[0].value);
-    const rmb    = parseFloat(inputs[1].value);
+    if (!row) return;
+    const qty    = parseFloat(row.dataset.qty);
+    const rmb    = parseFloat(row.dataset.price);
     const usd    = rmb / USD_TO_RMB;
     const totalEl = document.getElementById(`tier-total-${id}`);
     const usdEl = document.getElementById(`tier-usd-${id}`);
