@@ -2192,7 +2192,7 @@
             </div>
             <div class="field">
               <label>Weight (lbs)</label>
-              <input type="number" step="0.001" min="0" placeholder="auto" id="carton-inner-weight-lbs" readonly style="background:var(--readonly-bg);" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" />
+              <input type="number" step="0.001" min="0" placeholder="e.g. 5.512" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" />
             </div>
             <div class="field karen-field">
               <label>Qty <span style="font-weight:400; text-transform:none;">(units / carton)</span></label>
@@ -2209,7 +2209,7 @@
             </div>
             <div class="field">
               <label>Weight (lbs)</label>
-              <input type="number" step="0.001" min="0" placeholder="auto" id="carton-outer-weight-lbs" readonly style="background:var(--readonly-bg);" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" />
+              <input type="number" step="0.001" min="0" placeholder="e.g. 33.069" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" />
             </div>
             <div class="field karen-field">
               <label>Qty <span style="font-weight:400; text-transform:none;">(units / carton)</span></label>
@@ -2218,17 +2218,9 @@
           </div>
         </div>
 
-        <!-- Unit Weight row below -->
-        <div class="carton-grid-2" style="margin-top:20px;">
-          <div class="field karen-field">
-            <label>Unit Weight (kg)</label>
-            <input type="number" step="0.001" min="0" placeholder="e.g. 0.250" id="carton-unit-weight" oninput="convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg')" />
-          </div>
-          <div class="field">
-            <label>Unit Weight (lbs)</label>
-            <input type="number" step="0.001" min="0" placeholder="auto" id="carton-unit-weight-lbs" readonly style="background:var(--readonly-bg);" oninput="convertWeight('carton-unit-weight-lbs','carton-unit-weight','lbs')" />
-          </div>
-        </div>
+        <!-- Unit Weight hidden inputs kept for backward compatibility -->
+        <input type="hidden" id="carton-unit-weight" />
+        <input type="hidden" id="carton-unit-weight-lbs" />
       </div>
 
     </div>
@@ -2869,6 +2861,9 @@
     workbookDetail[key].productImage = _productImages.length > 0 ? _productImages[0].url : '';
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
     const detail = collectWorkbookDetail();
+    // Ensure image data from _productImages is preserved in the detail sent to API
+    detail.productImages = _productImages.map(i => i.url);
+    detail.productImage = _productImages.length > 0 ? _productImages[0].url : '';
     apiCall('save_workbook_detail', { id: dbId, detail: detail });
     saveToLocalStorage();
   }
@@ -4273,7 +4268,7 @@
 
     function _s(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
 
-    if (data && !Array.isArray(data) && data.client) {
+    if (data && !Array.isArray(data) && (data.client || data.product || data.productImages || data.productImage)) {
       // Workbook tab
       _s('client-name', data.client);
       _s('product-name', data.product);
