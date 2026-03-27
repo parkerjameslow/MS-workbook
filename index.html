@@ -3245,7 +3245,7 @@
       const leadNum = parseInt(lead);
       if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
     });
-    document.getElementById('rfq-total-qty').textContent = totalQty || '—';
+    document.getElementById('rfq-total-qty').textContent = totalQty ? totalQty.toLocaleString('en-US') : '—';
     document.getElementById('rfq-total-usd').textContent = totalUsd ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('rfq-max-lead').textContent = maxLead ? maxLead + ' days' : '—';
   }
@@ -3278,8 +3278,8 @@
     tr.id = `tier-${id}`;
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
-      <td style="color:var(--text); font-size:13px;">${qty || '—'}</td>
-      <td style="color:var(--text); font-size:13px;">${unitPrice ? '¥ ' + unitPrice : '—'}</td>
+      <td style="color:var(--text); font-size:13px;">${qty ? parseFloat(qty).toLocaleString('en-US') : '—'}</td>
+      <td style="color:var(--text); font-size:13px;">${unitPrice ? '¥ ' + parseFloat(unitPrice).toLocaleString('en-US') : '—'}</td>
       <td class="tier-col-usd" id="tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="tier-total-${id}">—</td>
       <td></td>
@@ -3822,7 +3822,7 @@
     const unit = parseFloat(document.getElementById('quote-cl-unit-price')?.value) || 0;
     const shipping = parseFloat(document.getElementById('quote-cl-shipping')?.value) || 0;
     const total = (qty * unit) + shipping;
-    document.getElementById('quote-cl-total').value = total > 0 ? '$' + total.toFixed(2) : '';
+    document.getElementById('quote-cl-total').value = total > 0 ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
   }
 
   function emailQuote() {
@@ -3849,8 +3849,8 @@
     const shipping = parseFloat(document.getElementById('inv-shipping')?.value) || 0;
     const subtotal = qty * unit;
     const total = subtotal + shipping;
-    document.getElementById('inv-subtotal').value = subtotal > 0 ? '$' + subtotal.toFixed(2) : '';
-    document.getElementById('inv-total').value = total > 0 ? '$' + total.toFixed(2) : '';
+    document.getElementById('inv-subtotal').value = subtotal > 0 ? '$' + subtotal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+    document.getElementById('inv-total').value = total > 0 ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
   }
 
   function fillQuoteInvoice(clientName, productName) {
