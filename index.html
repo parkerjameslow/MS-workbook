@@ -2491,7 +2491,7 @@
             </tr>
           </tbody>
         </table>
-        <button class="btn btn-add" style="margin-top:10px;" onclick="addTierRow()">+ Add Pricing Tier</button>
+        <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Tiers are managed from the Workbook tab.</p>
       </div>
 
     </div>
@@ -3162,21 +3162,19 @@
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
       <td>
         <input type="number" min="0" placeholder="e.g. 100" value="${qty}"
-               oninput="recalcTier(${id})"
+               readonly
                style="width:110px;" />
       </td>
-      <td class="karen-cell">
+      <td>
         <div class="currency-prefix currency-rmb" style="display:inline-block; position:relative;">
           <input type="number" step="0.0001" min="0" placeholder="0.0000" value="${unitPrice}"
-                 oninput="recalcTier(${id})"
+                 readonly
                  style="width:130px; padding-left:28px;" />
         </div>
       </td>
       <td class="tier-col-usd" id="tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="tier-total-${id}">—</td>
-      <td>
-        <button class="btn btn-danger-ghost" onclick="removeTierRow(${id})">✕</button>
-      </td>
+      <td></td>
     `;
     tbody.appendChild(tr);
     recalcTier(id);
