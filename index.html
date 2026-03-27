@@ -4489,7 +4489,11 @@
   function _v(id) { const el = document.getElementById(id); return el ? el.value || '' : ''; }
 
   function collectWorkbookDetail() {
-    return {
+    // Get existing saved data to preserve fields we can't collect from the DOM (like images)
+    const key = `${currentClient}|${currentWorkbookId}`;
+    const existing = workbookDetail[key] || {};
+
+    const detail = {
       // Workbook tab
       client: _v('client-name'),
       product: _v('product-name'),
@@ -4510,8 +4514,9 @@
       unitPriceRmb: _v('quote-unit-rmb'),
       leadTime: _v('quote-lead'),
       qcNotes: _v('quote-qc'),
-      productImage: _productImages.length > 0 ? _productImages[0].url : '',
-      productImages: _productImages.map(i => i.url),
+      // Images: use in-memory arrays if populated, otherwise preserve existing DB data
+      productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
+      productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
       // Pricing tab
       tiers: collectTiers(),
       // Shipping tab
@@ -4550,8 +4555,9 @@
       artStatus: _v('art-status'),
       artDueDate: _v('art-due-date'),
       artNotes: _v('art-notes'),
-      artImages: _artImages.map(i => i.url),
+      artImages: _artImages.length > 0 ? _artImages.map(i => i.url) : (existing.artImages || []),
     };
+    return detail;
   }
 
   function collectTiers() {
