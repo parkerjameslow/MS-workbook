@@ -2112,33 +2112,38 @@
     </div>
     <div class="section-body">
 
-      <!-- ── Quote Details ── -->
+      <!-- ── Quote Details (Multi-line) ── -->
       <div class="subsection-title" style="margin-top:0;">Quote Details</div>
-      <div class="form-grid form-grid-2">
-        <div class="field karen-field col-full">
-          <div style="display:flex; gap:12px;">
-            <div style="flex:1;">
-              <label>Quantity</label>
-              <input type="number" min="0" placeholder="e.g. 500" id="quote-qty" />
-            </div>
-            <div style="flex:1;">
-              <label>Unit Price (RMB)</label>
-              <div class="currency-prefix currency-rmb">
-                <input type="number" step="0.0001" min="0" placeholder="e.g. 18.00" id="quote-unit-rmb" oninput="convertRmbToUsd()" />
-              </div>
-            </div>
-            <div style="flex:1;">
-              <label>Unit Price (USD)</label>
-              <div class="currency-prefix currency-usd">
-                <input type="number" step="0.0001" min="0" placeholder="auto" id="quote-unit" readonly />
-              </div>
-            </div>
-            <div style="flex:1;">
-              <label>Lead Time</label>
-              <input type="text" placeholder="e.g. 30 days" id="quote-lead" />
-            </div>
-          </div>
-        </div>
+      <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Add line items for each product/component in this quote.</p>
+      <table class="tier-table" id="rfq-table">
+        <thead>
+          <tr>
+            <th style="width:40px;">#</th>
+            <th>ITEM</th>
+            <th>QTY</th>
+            <th>UNIT PRICE (RMB)</th>
+            <th>UNIT PRICE (USD)</th>
+            <th>TOTAL (USD)</th>
+            <th>LEAD TIME</th>
+            <th style="width:36px;"></th>
+          </tr>
+        </thead>
+        <tbody id="rfq-body"></tbody>
+        <tfoot>
+          <tr id="rfq-totals" style="border-top:2px solid var(--border); font-weight:700;">
+            <td></td>
+            <td style="font-weight:700; color:var(--text);">TOTALS</td>
+            <td id="rfq-total-qty" style="color:var(--text);">—</td>
+            <td></td>
+            <td></td>
+            <td id="rfq-total-usd" style="color:var(--accent-green); font-weight:700;">—</td>
+            <td id="rfq-max-lead" style="color:var(--text);">—</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="add-tier-row" onclick="addRfqRow()">+ Add Line Item</div>
+      <div class="form-grid form-grid-2" style="margin-top:16px;">
         <div class="field karen-field col-full">
           <label>Quote Notes</label>
           <textarea placeholder="Additional notes, special requirements, or instructions…" id="quote-qc" style="min-height:70px;"></textarea>
@@ -3131,10 +3136,10 @@
       if (data.result === 'success' && data.rates && data.rates.CNY) {
         USD_TO_RMB = data.rates.CNY;
         console.log('Live USD→CNY rate:', USD_TO_RMB);
-        // Re-run conversion if a workbook is already loaded
-        if (document.getElementById('quote-unit-rmb').value) {
-          convertRmbToUsd();
-        }
+        // Re-run RFQ conversions if a workbook is already loaded
+        document.querySelectorAll('#rfq-body tr').forEach((row, i) => {
+          recalcRfqRow(i + 1);
+        });
       }
     } catch (e) {
       console.warn('Could not fetch live rate, using fallback:', USD_TO_RMB);
@@ -3145,6 +3150,95 @@
     const rmb = parseFloat(document.getElementById('quote-unit-rmb').value);
     const usdEl = document.getElementById('quote-unit');
     usdEl.value = isNaN(rmb) ? '' : (rmb / USD_TO_RMB).toFixed(2);
+  }
+
+  /* ── RFQ Line Items ─────────────────────────────────────────────────── */
+  let rfqCount = 0;
+
+  function addRfqRow(item = '', qty = '', priceRmb = '', leadTime = '') {
+    rfqCount++;
+    const id = rfqCount;
+    const tbody = document.getElementById('rfq-body');
+    const tr = document.createElement('tr');
+    tr.id = `rfq-${id}`;
+    const usdVal = priceRmb ? (parseFloat(priceRmb) / USD_TO_RMB).toFixed(2) : '';
+    const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
+    tr.innerHTML = `
+      <td style="color:var(--text-muted); font-weight:600;">${id}</td>
+      <td><input type="text" placeholder="Item description" value="${item}" oninput="recalcRfqTotals()" style="width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:13px;" /></td>
+      <td><input type="number" min="0" placeholder="e.g. 500" value="${qty}" oninput="recalcRfqRow(${id})" style="width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:13px;" /></td>
+      <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="number" step="0.0001" min="0" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px 10px 28px; font-size:13px;" /></div></td>
+      <td style="color:var(--text-muted); font-size:13px;" id="rfq-usd-${id}">${usdVal ? '$' + usdVal : '—'}</td>
+      <td class="total-cell" id="rfq-total-${id}">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
+      <td><input type="text" placeholder="e.g. 30 days" value="${leadTime}" oninput="recalcRfqTotals()" style="width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:13px;" /></td>
+      <td><span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove">&times;</span></td>
+    `;
+    tbody.appendChild(tr);
+    recalcRfqTotals();
+  }
+
+  function removeRfqRow(id) {
+    const row = document.getElementById(`rfq-${id}`);
+    if (row) row.remove();
+    renumberRfqRows();
+    recalcRfqTotals();
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  function renumberRfqRows() {
+    const rows = document.querySelectorAll('#rfq-body tr');
+    rows.forEach((row, i) => {
+      row.querySelector('td').textContent = i + 1;
+    });
+  }
+
+  function recalcRfqRow(id) {
+    const row = document.getElementById(`rfq-${id}`);
+    if (!row) return;
+    const inputs = row.querySelectorAll('input');
+    const qty = parseFloat(inputs[1]?.value) || 0;
+    const rmb = parseFloat(inputs[2]?.value) || 0;
+    const usd = rmb / USD_TO_RMB;
+    const total = qty * usd;
+    const usdEl = document.getElementById(`rfq-usd-${id}`);
+    const totalEl = document.getElementById(`rfq-total-${id}`);
+    if (usdEl) usdEl.textContent = rmb ? '$' + usd.toFixed(2) : '—';
+    if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    recalcRfqTotals();
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  function recalcRfqTotals() {
+    const rows = document.querySelectorAll('#rfq-body tr');
+    let totalQty = 0, totalUsd = 0, maxLead = 0;
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      const qty = parseFloat(inputs[1]?.value) || 0;
+      const rmb = parseFloat(inputs[2]?.value) || 0;
+      const lead = inputs[3]?.value || '';
+      totalQty += qty;
+      if (qty && rmb) totalUsd += qty * (rmb / USD_TO_RMB);
+      const leadNum = parseInt(lead);
+      if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
+    });
+    document.getElementById('rfq-total-qty').textContent = totalQty || '—';
+    document.getElementById('rfq-total-usd').textContent = totalUsd ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('rfq-max-lead').textContent = maxLead ? maxLead + ' days' : '—';
+  }
+
+  function collectRfqItems() {
+    const rows = document.querySelectorAll('#rfq-body tr');
+    const items = [];
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll('input');
+      items.push({
+        item: inputs[0]?.value || '',
+        qty: inputs[1]?.value || '',
+        priceRmb: inputs[2]?.value || '',
+        leadTime: inputs[3]?.value || ''
+      });
+    });
+    return items;
   }
 
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
@@ -3974,7 +4068,7 @@
     client:'Client', product:'Product', desc:'Description', productCategory:'Category', productSubcategory:'Material Type',
     dimInL:'Length', dimInW:'Width', dimInH:'Height',
     materials:'Materials', pantone:'Pantone', cmyk:'CMYK', colorNotes:'Color Notes',
-    qty:'Quantity', unitPriceRmb:'Unit Price (RMB)', leadTime:'Lead Time', qcNotes:'Quote Notes',
+    rfqItems:'RFQ Line Items', qcNotes:'Quote Notes',
     cartonUnitWeight:'Unit Weight', cartonInnerWeight:'Inner Carton Weight', cartonInnerCount:'Inner Carton Qty',
     cartonOuterWeight:'Outer Carton Weight', cartonOuterCount:'Outer Carton Qty',
     freightDimUnit:'Dimension Unit', freightL:'Freight Length', freightW:'Freight Width', freightH:'Freight Height',
@@ -4438,10 +4532,19 @@
       _s('pantone-text', data.pantone);
       _s('cmyk', data.cmyk);
       _s('color-notes', data.colorNotes);
-      _s('quote-qty', data.qty);
-      _s('quote-unit-rmb', data.unitPriceRmb);
-      convertRmbToUsd();
-      _s('quote-lead', data.leadTime);
+      // RFQ Line Items
+      document.getElementById('rfq-body').innerHTML = '';
+      rfqCount = 0;
+      if (data.rfqItems && Array.isArray(data.rfqItems) && data.rfqItems.length > 0) {
+        data.rfqItems.forEach(item => addRfqRow(item.item, item.qty, item.priceRmb, item.leadTime));
+      } else if (data.qty || data.unitPriceRmb) {
+        // Legacy: migrate single-row quote data to first RFQ row
+        addRfqRow('', data.qty, data.unitPriceRmb, data.leadTime);
+        addRfqRow(); addRfqRow(); addRfqRow();
+      } else {
+        addRfqRow(); addRfqRow(); addRfqRow(); addRfqRow();
+      }
+      recalcRfqTotals();
       _s('quote-qc', data.qcNotes);
       // Product images (gallery)
       if (data.productImages && Array.isArray(data.productImages) && data.productImages.length > 0) {
@@ -4520,7 +4623,7 @@
       document.getElementById('product-name').value = item ? item.product : '';
       document.getElementById('product-desc').value = item ? item.description : '';
       // Clear other fields
-      ['dim-in-l','dim-in-w','dim-in-h','dim-mm-l','dim-mm-w','dim-mm-h','materials','pantone-text','cmyk','color-notes','quote-qty','quote-unit','quote-lead','quote-qc'].forEach(id => {
+      ['dim-in-l','dim-in-w','dim-in-h','dim-mm-l','dim-mm-w','dim-mm-h','materials','pantone-text','cmyk','color-notes','quote-qc'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
@@ -4649,9 +4752,7 @@
       pantone: _v('pantone-text'),
       cmyk: _v('cmyk'),
       colorNotes: _v('color-notes'),
-      qty: _v('quote-qty'),
-      unitPriceRmb: _v('quote-unit-rmb'),
-      leadTime: _v('quote-lead'),
+      rfqItems: collectRfqItems(),
       qcNotes: _v('quote-qc'),
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
