@@ -2154,12 +2154,22 @@
             </td>
             <td colspan="6" style="padding:0; border-bottom:none;"></td>
           </tr>
+          <tr style="background:var(--surface2);">
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">#</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">ITEM</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">QTY</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">UNIT PRICE (RMB)</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:right;">UNIT PRICE (USD)</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:right;">TOTAL (USD)</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">LEAD TIME</th>
+            <th style="border-bottom:1px solid var(--border);"></th>
+          </tr>
           <tr id="rfq-totals" style="border-top:2px solid var(--border); font-weight:700; background:rgba(232, 117, 26, 0.08);">
             <td></td>
             <td style="font-weight:700; color:#374151; padding-left:26px;">TOTALS</td>
             <td id="rfq-total-qty" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
-            <td></td>
-            <td></td>
+            <td id="rfq-total-rmb" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
+            <td id="rfq-total-usd-sum" style="color:#374151; font-weight:700; text-align:right;">—</td>
             <td id="rfq-total-usd" style="color:#374151; font-weight:700; text-align:right;">—</td>
             <td id="rfq-max-lead" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
             <td></td>
@@ -3182,15 +3192,24 @@
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
+    const isFirstRow = tbody.querySelectorAll('tr').length === 0;
+    const defaultItem = isFirstRow && !item ? 'Main Item' : item;
     const tr = document.createElement('tr');
     tr.id = `rfq-${id}`;
+    tr.draggable = true;
+    tr.ondragstart = function(e) { e.dataTransfer.setData('text/plain', id); tr.style.opacity='0.4'; };
+    tr.ondragend = function() { tr.style.opacity='1'; };
+    tr.ondragover = function(e) { e.preventDefault(); tr.style.borderTop='2px solid var(--accent)'; };
+    tr.ondragleave = function() { tr.style.borderTop=''; };
+    tr.ondrop = function(e) { e.preventDefault(); tr.style.borderTop=''; rfqDropRow(e, id); };
     const usdVal = priceRmb ? (parseFloat(priceRmb) / USD_TO_RMB).toFixed(2) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
     const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:13px; box-sizing:border-box;';
+    const qtyLabel = isFirstRow ? '<span style="display:block; font-size:9px; color:var(--text-muted); margin-top:2px; text-align:center;">Total Qty</span>' : '';
     tr.innerHTML = `
-      <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;">${id}</td>
-      <td><input type="text" placeholder="Enter Item" value="${item}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
-      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
+      <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center; cursor:grab;" title="Drag to reorder">☰ ${id}</td>
+      <td><input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
+      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" />${qtyLabel}</td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + usdVal : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
@@ -3234,18 +3253,22 @@
 
   function recalcRfqTotals() {
     const rows = document.querySelectorAll('#rfq-body tr');
-    let totalQty = 0, totalUsd = 0, maxLead = 0;
+    let totalQty = 0, totalUsd = 0, totalRmb = 0, totalUsdUnit = 0, maxLead = 0;
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
       const qty = parseFloat(inputs[1]?.value) || 0;
       const rmb = parseFloat(inputs[2]?.value) || 0;
       const lead = inputs[3]?.value || '';
       totalQty += qty;
+      totalRmb += rmb;
+      totalUsdUnit += rmb / USD_TO_RMB;
       if (qty && rmb) totalUsd += qty * (rmb / USD_TO_RMB);
       const leadNum = parseInt(lead);
       if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
     });
     document.getElementById('rfq-total-qty').textContent = totalQty ? totalQty.toLocaleString('en-US') : '—';
+    document.getElementById('rfq-total-rmb').textContent = totalRmb ? '¥ ' + totalRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('rfq-total-usd-sum').textContent = totalUsdUnit ? '$' + totalUsdUnit.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('rfq-total-usd').textContent = totalUsd ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('rfq-max-lead').textContent = maxLead ? maxLead + ' days' : '—';
   }
@@ -3264,6 +3287,42 @@
     });
     return items;
   }
+
+  function rfqDropRow(e, targetId) {
+    const draggedId = parseInt(e.dataTransfer.getData('text/plain'));
+    const tbody = document.getElementById('rfq-body');
+    const draggedRow = document.getElementById(`rfq-${draggedId}`);
+    const targetRow = document.getElementById(`rfq-${targetId}`);
+    if (draggedRow && targetRow && draggedRow !== targetRow) {
+      tbody.insertBefore(draggedRow, targetRow);
+      renumberRfqRows();
+      recalcRfqTotals();
+      if (!_filling) autoSaveWorkbook();
+    }
+  }
+
+  // Arrow key navigation within RFQ table
+  document.addEventListener('keydown', function(e) {
+    const el = document.activeElement;
+    if (!el || !el.closest('#rfq-body')) return;
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    e.preventDefault();
+    const row = el.closest('tr');
+    const rows = Array.from(document.querySelectorAll('#rfq-body tr'));
+    const inputs = Array.from(row.querySelectorAll('input'));
+    const colIdx = inputs.indexOf(el);
+    const rowIdx = rows.indexOf(row);
+    if (e.key === 'ArrowLeft' && colIdx > 0) inputs[colIdx - 1].focus();
+    if (e.key === 'ArrowRight' && colIdx < inputs.length - 1) inputs[colIdx + 1].focus();
+    if (e.key === 'ArrowUp' && rowIdx > 0) {
+      const prevInputs = rows[rowIdx - 1].querySelectorAll('input');
+      if (prevInputs[colIdx]) prevInputs[colIdx].focus();
+    }
+    if (e.key === 'ArrowDown' && rowIdx < rows.length - 1) {
+      const nextInputs = rows[rowIdx + 1].querySelectorAll('input');
+      if (nextInputs[colIdx]) nextInputs[colIdx].focus();
+    }
+  });
 
   /* ── Tiered Pricing ────────────────────────────────────────────────────── */
   let tierCount = 3;
