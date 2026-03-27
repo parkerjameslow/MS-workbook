@@ -767,9 +767,10 @@
       color: var(--text-muted);
       pointer-events: none;
     }
-    .no-spin input::-webkit-outer-spin-button,
-    .no-spin input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .no-spin input[type="number"] { -moz-appearance: textbox; }
+    /* Hide number spinners globally */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textbox; }
 
     /* ── Info Pill ───────────────────────────────────────────────────────── */
     .info-pill {
