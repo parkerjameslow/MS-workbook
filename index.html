@@ -502,6 +502,19 @@
       cursor: default;
       opacity: 1 !important;
     }
+    .lead-time-suffix {
+      position: relative;
+    }
+    .lead-time-suffix::after {
+      content: 'days';
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      color: #b0b7c3;
+      pointer-events: none;
+    }
     .currency-prefix {
       position: relative;
     }
@@ -3217,7 +3230,7 @@
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + usdVal : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
-      <td><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
+      <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td>${isFirstRow ? '' : '<span class="remove-tier" onclick="removeRfqRow(' + id + ')" title="Remove">&times;</span>'}</td>
     `;
     tbody.appendChild(tr);
