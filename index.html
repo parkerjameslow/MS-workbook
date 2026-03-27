@@ -2147,6 +2147,11 @@
         </thead>
         <tbody id="rfq-body"></tbody>
         <tfoot>
+          <tr>
+            <td colspan="8" style="padding:0; border-bottom:none;">
+              <button class="btn btn-add" style="width:100%; margin:8px 0;" onclick="addRfqRow()">+ Add Line Item</button>
+            </td>
+          </tr>
           <tr id="rfq-totals" style="border-top:2px solid var(--border); font-weight:700;">
             <td></td>
             <td style="font-weight:700; color:var(--text);">TOTALS</td>
@@ -2159,7 +2164,6 @@
           </tr>
         </tfoot>
       </table>
-      <button class="btn btn-add" style="margin-top:10px;" onclick="addRfqRow()">+ Add Line Item</button>
       <div class="form-grid form-grid-2" style="margin-top:16px;">
         <div class="field karen-field col-full">
           <label>Quote Notes</label>
