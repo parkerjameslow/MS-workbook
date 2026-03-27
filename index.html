@@ -1876,6 +1876,29 @@
       .email-icon { font-size: 20px; }
     }
 
+    /* RFQ table mobile */
+    @media (max-width: 768px) {
+      #rfq-table { width: 100%; table-layout: fixed; }
+      #rfq-table colgroup { display: none; }
+      #rfq-table th, #rfq-table td { font-size: 10px; padding: 6px 3px; }
+      #rfq-table th:nth-child(1) { width: 20px; } /* # */
+      #rfq-table th:nth-child(2) { width: 22%; } /* Item */
+      #rfq-table th:nth-child(3) { width: 12%; } /* Qty */
+      #rfq-table th:nth-child(4) { width: 18%; } /* RMB */
+      #rfq-table th:nth-child(5) { width: 14%; } /* USD unit */
+      #rfq-table th:nth-child(6) { width: 16%; } /* Total */
+      #rfq-table th:nth-child(7) { width: 12%; } /* Lead */
+      #rfq-table th:nth-child(8) { width: 20px; } /* delete */
+      #rfq-table input { width: 100% !important; min-width: 0 !important; font-size: 11px; padding: 6px 4px !important; box-sizing: border-box; }
+      #rfq-table .currency-prefix input { padding-left: 18px !important; }
+      #rfq-table .currency-prefix::before { font-size: 10px; left: 4px; }
+      #rfq-table .lead-suffix::after { font-size: 8px; right: 2px; }
+      #rfq-table .tier-col-usd, #rfq-table .total-cell { font-size: 10px !important; }
+      #rfq-table .drag-handle { font-size: 10px; padding: 0 2px; }
+      #rfq-table .btn-danger-ghost { font-size: 10px; padding: 2px 4px; min-width: 0; }
+      #rfq-table tfoot td { font-size: 10px; padding: 8px 3px; }
+    }
+
     @media (max-width: 480px) {
       .header-actions .btn-ghost span { display: none; }
       .app-header { padding: 0 8px !important; }
