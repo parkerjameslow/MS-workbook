@@ -3206,16 +3206,20 @@
     const usdVal = priceRmb ? (parseFloat(priceRmb) / USD_TO_RMB).toFixed(2) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
     const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:13px; box-sizing:border-box;';
-    const qtyLabel = isFirstRow ? '<span style="display:block; font-size:9px; color:var(--text-muted); margin-top:2px; text-align:center;">Total Qty</span>' : '';
+    if (isFirstRow) {
+      tr.draggable = false;
+      tr.ondragstart = null;
+      tr.style.background = 'rgba(232, 117, 26, 0.08)';
+    }
     tr.innerHTML = `
-      <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center; cursor:grab;" title="Drag to reorder">☰ ${id}</td>
+      <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'}>${isFirstRow ? id : '☰ ' + id}</td>
       <td><input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
-      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" />${qtyLabel}</td>
+      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + usdVal : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
-      <td><span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove">&times;</span></td>
+      <td>${isFirstRow ? '' : '<span class="remove-tier" onclick="removeRfqRow(' + id + ')" title="Remove">&times;</span>'}</td>
     `;
     tbody.appendChild(tr);
     recalcRfqTotals();
@@ -3292,8 +3296,11 @@
   function rfqDropRow(e, targetId) {
     const draggedId = parseInt(e.dataTransfer.getData('text/plain'));
     const tbody = document.getElementById('rfq-body');
+    const firstRow = tbody.querySelector('tr');
     const draggedRow = document.getElementById(`rfq-${draggedId}`);
     const targetRow = document.getElementById(`rfq-${targetId}`);
+    // Don't allow dropping onto or moving the first row
+    if (draggedRow === firstRow || targetRow === firstRow) return;
     if (draggedRow && targetRow && draggedRow !== targetRow) {
       tbody.insertBefore(draggedRow, targetRow);
       renumberRfqRows();
