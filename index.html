@@ -3189,12 +3189,12 @@
     const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:13px; box-sizing:border-box;';
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;">${id}</td>
-      <td><input type="text" placeholder="Item description" value="${item}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
-      <td><input type="text" inputmode="numeric" placeholder="500" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
+      <td><input type="text" placeholder="Enter Item" value="${item}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
+      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + usdVal : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
-      <td><input type="text" placeholder="30 days" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
+      <td><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
       <td><span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove">&times;</span></td>
     `;
     tbody.appendChild(tr);
