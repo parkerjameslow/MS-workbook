@@ -4559,14 +4559,20 @@
       // RFQ Line Items
       document.getElementById('rfq-body').innerHTML = '';
       rfqCount = 0;
-      if (data.rfqItems && Array.isArray(data.rfqItems) && data.rfqItems.length > 0) {
+      const hasRfqData = data.rfqItems && Array.isArray(data.rfqItems) && data.rfqItems.length > 0
+        && data.rfqItems.some(i => i.item || i.qty || i.priceRmb || i.leadTime);
+      if (hasRfqData) {
         data.rfqItems.forEach(item => addRfqRow(item.item, item.qty, item.priceRmb, item.leadTime));
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
         addRfqRow('', data.qty, data.unitPriceRmb, data.leadTime);
-        addRfqRow(); addRfqRow(); addRfqRow();
+        addRfqRow(); addRfqRow();
       } else {
         addRfqRow(); addRfqRow(); addRfqRow();
+      }
+      // Ensure at least 3 rows
+      while (document.querySelectorAll('#rfq-body tr').length < 3) {
+        addRfqRow();
       }
       recalcRfqTotals();
       _s('quote-qc', data.qcNotes);
