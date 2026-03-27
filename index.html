@@ -3197,9 +3197,6 @@
     const defaultItem = isFirstRow && !item ? 'Main Item' : item;
     const tr = document.createElement('tr');
     tr.id = `rfq-${id}`;
-    tr.draggable = true;
-    tr.ondragstart = function(e) { e.dataTransfer.setData('text/plain', id); tr.style.opacity='0.4'; };
-    tr.ondragend = function() { tr.style.opacity='1'; };
     tr.ondragover = function(e) { e.preventDefault(); tr.style.borderTop='2px solid var(--accent)'; };
     tr.ondragleave = function() { tr.style.borderTop=''; };
     tr.ondrop = function(e) { e.preventDefault(); tr.style.borderTop=''; rfqDropRow(e, id); };
@@ -3207,12 +3204,14 @@
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
     const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:13px; box-sizing:border-box;';
     if (isFirstRow) {
-      tr.draggable = false;
-      tr.ondragstart = null;
       tr.style.background = 'rgba(232, 117, 26, 0.08)';
+      tr.ondragover = null;
+      tr.ondragleave = null;
+      tr.ondrop = null;
     }
+    const handleAttr = isFirstRow ? '' : `draggable="true" onmousedown="this.closest('tr').draggable=true" onmouseup="this.closest('tr').draggable=false" ondragstart="event.dataTransfer.setData('text/plain','${id}'); this.closest('tr').style.opacity='0.4'" ondragend="this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false"`;
     tr.innerHTML = `
-      <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'}>${isFirstRow ? id : '☰ ' + id}</td>
+      <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
       <td><input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
