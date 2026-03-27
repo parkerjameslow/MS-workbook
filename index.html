@@ -1069,11 +1069,11 @@
 
     .btn-back-step {
       background: transparent;
-      border: 1px solid var(--border);
+      border: 2px solid var(--text);
       border-radius: var(--radius-sm);
-      color: var(--text-muted);
-      font-size: 16px;
-      font-weight: 700;
+      color: var(--text);
+      font-size: 18px;
+      font-weight: 900;
       width: 36px;
       height: 38px;
       cursor: pointer;
@@ -3270,7 +3270,10 @@
       const leadNum = parseInt(lead);
       if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
     });
-    document.getElementById('rfq-total-qty').textContent = totalQty ? totalQty.toLocaleString('en-US') : '—';
+    // Total qty comes only from the first (fixed) row
+    const firstRow = document.querySelector('#rfq-body tr');
+    const firstQty = firstRow ? parseFloat(firstRow.querySelectorAll('input')[1]?.value) || 0 : 0;
+    document.getElementById('rfq-total-qty').textContent = firstQty ? firstQty.toLocaleString('en-US') : '—';
     document.getElementById('rfq-total-rmb').textContent = totalRmb ? '¥ ' + totalRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('rfq-total-usd-sum').textContent = totalUsdUnit ? '$' + totalUsdUnit.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('rfq-total-usd').textContent = totalUsd ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
