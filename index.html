@@ -2253,7 +2253,7 @@
 
             <div class="freight-field" style="margin-bottom:10px;">
               <label>Dimension Unit</label>
-              <div class="select-wrap"><select id="freight-dim-unit" onchange="calcFreight()">
+              <div class="select-wrap"><select id="freight-dim-unit" onchange="updateFreightDimLabels(); calcFreight()">
                 <option value="in" selected>Inches (in)</option>
                 <option value="cm">Centimeters (cm)</option>
                 <option value="mm">Millimeters (mm)</option>
@@ -2263,15 +2263,24 @@
             <div class="freight-row-3">
               <div class="freight-field">
                 <label>Length</label>
-                <input type="number" step="0.01" min="0" value="60" id="freight-l" oninput="calcFreight()" />
+                <div class="dim-dual-field">
+                  <input type="number" step="0.01" min="0" value="60" id="freight-l" oninput="calcFreight()" />
+                  <span class="dim-unit freight-dim-label">in</span>
+                </div>
               </div>
               <div class="freight-field">
                 <label>Width</label>
-                <input type="number" step="0.01" min="0" value="50" id="freight-w" oninput="calcFreight()" />
+                <div class="dim-dual-field">
+                  <input type="number" step="0.01" min="0" value="50" id="freight-w" oninput="calcFreight()" />
+                  <span class="dim-unit freight-dim-label">in</span>
+                </div>
               </div>
               <div class="freight-field">
                 <label>Height</label>
-                <input type="number" step="0.01" min="0" value="40" id="freight-h" oninput="calcFreight()" />
+                <div class="dim-dual-field">
+                  <input type="number" step="0.01" min="0" value="40" id="freight-h" oninput="calcFreight()" />
+                  <span class="dim-unit freight-dim-label">in</span>
+                </div>
               </div>
             </div>
 
@@ -3490,6 +3499,11 @@
     document.getElementById('freight-rate').value = freightMethodRates[mode];
   }
 
+  function updateFreightDimLabels() {
+    const unit = document.getElementById('freight-dim-unit').value;
+    document.querySelectorAll('.freight-dim-label').forEach(el => { el.textContent = unit; });
+  }
+
   function calcFreight() {
     let l = parseFloat(document.getElementById('freight-l').value) || 0;
     let w = parseFloat(document.getElementById('freight-w').value) || 0;
@@ -4340,6 +4354,7 @@
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
       _s('freight-dim-unit', data.freightDimUnit);
+      updateFreightDimLabels();
       _s('freight-l', data.freightL);
       _s('freight-w', data.freightW);
       _s('freight-h', data.freightH);
