@@ -1967,7 +1967,7 @@
   <main class="container">
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
-        <span class="section-title" style="margin-right:auto;">Recently Worked On</span>
+        <span class="section-title" style="margin-right:auto;">All Workbooks</span>
         <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
           <button class="status-filter-btn active" onclick="filterByStatus('all')">All</button>
           <button class="status-filter-btn" onclick="filterByStatus('quoteChina')">Quote</button>
@@ -4878,7 +4878,7 @@
       });
     }
 
-    const recent = _currentStatusFilter === 'all' ? filtered.slice(0, 5) : filtered;
+    const recent = filtered;
     const filterEmpty = document.getElementById('filter-empty');
     const tbody = document.getElementById('recent-tbody');
 
