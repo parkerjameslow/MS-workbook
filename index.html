@@ -302,6 +302,27 @@
     }
     .btn-add:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
 
+    /* ── Status Filter Pills ────────────────────────────────────────────── */
+    .status-filter-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .status-filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .status-filter-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 600;
+    }
+
     /* ── Theme Toggle ────────────────────────────────────────────────────── */
     .theme-toggle {
       background: var(--surface2);
@@ -1949,6 +1970,18 @@
         <span class="section-title">Recently Worked On</span>
       </div>
       <div class="section-body" style="padding:0;">
+        <div style="padding:14px 18px 0; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+          <span style="font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-right:4px;">Filter:</span>
+          <button class="status-filter-btn active" onclick="filterByStatus('all')">All</button>
+          <button class="status-filter-btn" onclick="filterByStatus('quoteChina')">Quote for China</button>
+          <button class="status-filter-btn" onclick="filterByStatus('quoteSubmitted')">Quote Submitted</button>
+          <button class="status-filter-btn" onclick="filterByStatus('quoteClient')">Quote to Client</button>
+          <button class="status-filter-btn" onclick="filterByStatus('clientApproved')">Client Approved</button>
+          <button class="status-filter-btn" onclick="filterByStatus('officeInvoice')">Office Invoice</button>
+          <button class="status-filter-btn" onclick="filterByStatus('confirmedPayment')">Confirmed Payment</button>
+          <button class="status-filter-btn" onclick="filterByStatus('orderChina')">Order to China</button>
+          <button class="status-filter-btn" onclick="filterByStatus('complete')">Complete</button>
+        </div>
         <div class="table-scroll-wrapper">
         <table class="dash-table">
           <thead>
@@ -1966,6 +1999,7 @@
           </tbody>
         </table>
         </div>
+        <div id="filter-empty" style="display:none; padding:40px 20px; text-align:center; color:var(--text-muted); font-size:14px;">No workbooks match this status.</div>
       </div>
     </div>
   </main>
@@ -4800,6 +4834,23 @@
     showView('view-home');
   }
 
+  let _currentStatusFilter = 'all';
+
+  function filterByStatus(status) {
+    _currentStatusFilter = status;
+    document.querySelectorAll('.status-filter-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    renderRecentWorkbooks();
+  }
+
+  function getItemCurrentStep(flow) {
+    let lastStep = null;
+    for (let i = flowSteps.length - 1; i >= 0; i--) {
+      if (flow[flowSteps[i]]) { lastStep = flowSteps[i]; break; }
+    }
+    return lastStep;
+  }
+
   function renderRecentWorkbooks() {
     // Gather all workbooks with their client name
     const all = [];
@@ -4817,7 +4868,19 @@
       return parseDate(b.dateCreated) - parseDate(a.dateCreated);
     });
 
-    const recent = all.slice(0, 5);
+    // Apply status filter
+    let filtered = all;
+    if (_currentStatusFilter === 'complete') {
+      filtered = all.filter(item => isFlowComplete(item.flow));
+    } else if (_currentStatusFilter !== 'all') {
+      filtered = all.filter(item => {
+        const currentStep = getItemCurrentStep(item.flow);
+        return currentStep === _currentStatusFilter;
+      });
+    }
+
+    const recent = _currentStatusFilter === 'all' ? filtered.slice(0, 5) : filtered;
+    const filterEmpty = document.getElementById('filter-empty');
     const tbody = document.getElementById('recent-tbody');
 
     tbody.innerHTML = recent.map(item => {
@@ -4845,6 +4908,16 @@
       </tr>
       `;
     }).join('');
+
+    if (filterEmpty) {
+      if (recent.length === 0 && _currentStatusFilter !== 'all') {
+        filterEmpty.style.display = 'block';
+        tbody.closest('table').style.display = 'none';
+      } else {
+        filterEmpty.style.display = 'none';
+        tbody.closest('table').style.display = '';
+      }
+    }
   }
 
   window.addEventListener('hashchange', router);
