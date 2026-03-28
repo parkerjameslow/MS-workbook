@@ -3255,7 +3255,12 @@
   function renumberRfqRows() {
     const rows = document.querySelectorAll('#rfq-body tr');
     rows.forEach((row, i) => {
-      row.querySelector('td').textContent = i + 1;
+      const td = row.querySelector('td');
+      if (i === 0) {
+        td.textContent = i + 1;
+      } else {
+        td.textContent = '☰ ' + (i + 1);
+      }
     });
   }
 
