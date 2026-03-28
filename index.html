@@ -1966,22 +1966,21 @@
 <div id="view-home" class="view active">
   <main class="container">
     <div class="section-card">
-      <div class="section-header">
-        <span class="section-title">Recently Worked On</span>
-      </div>
-      <div class="section-body" style="padding:0;">
-        <div style="padding:14px 18px 0; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-          <span style="font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-right:4px;">Filter:</span>
+      <div class="section-header" style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Recently Worked On</span>
+        <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
           <button class="status-filter-btn active" onclick="filterByStatus('all')">All</button>
-          <button class="status-filter-btn" onclick="filterByStatus('quoteChina')">Quote for China</button>
-          <button class="status-filter-btn" onclick="filterByStatus('quoteSubmitted')">Quote Submitted</button>
-          <button class="status-filter-btn" onclick="filterByStatus('quoteClient')">Quote to Client</button>
-          <button class="status-filter-btn" onclick="filterByStatus('clientApproved')">Client Approved</button>
-          <button class="status-filter-btn" onclick="filterByStatus('officeInvoice')">Office Invoice</button>
-          <button class="status-filter-btn" onclick="filterByStatus('confirmedPayment')">Confirmed Payment</button>
-          <button class="status-filter-btn" onclick="filterByStatus('orderChina')">Order to China</button>
+          <button class="status-filter-btn" onclick="filterByStatus('quoteChina')">Quote</button>
+          <button class="status-filter-btn" onclick="filterByStatus('quoteSubmitted')">Submitted</button>
+          <button class="status-filter-btn" onclick="filterByStatus('quoteClient')">To Client</button>
+          <button class="status-filter-btn" onclick="filterByStatus('clientApproved')">Approved</button>
+          <button class="status-filter-btn" onclick="filterByStatus('officeInvoice')">Invoice</button>
+          <button class="status-filter-btn" onclick="filterByStatus('confirmedPayment')">Payment</button>
+          <button class="status-filter-btn" onclick="filterByStatus('orderChina')">Order</button>
           <button class="status-filter-btn" onclick="filterByStatus('complete')">Complete</button>
         </div>
+      </div>
+      <div class="section-body" style="padding:0;">
         <div class="table-scroll-wrapper">
         <table class="dash-table">
           <thead>
