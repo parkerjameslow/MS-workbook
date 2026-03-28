@@ -323,6 +323,16 @@
       font-weight: 600;
     }
 
+    /* ── Sortable Table Headers ─────────────────────────────────────────── */
+    .sortable { cursor: pointer; user-select: none; }
+    .sortable:hover { color: var(--accent); }
+    .sort-arrow { font-size: 10px; opacity: 0.4; margin-left: 2px; }
+    .sort-arrow::after { content: '⇅'; }
+    .sortable.asc .sort-arrow { opacity: 1; }
+    .sortable.asc .sort-arrow::after { content: '↑'; }
+    .sortable.desc .sort-arrow { opacity: 1; }
+    .sortable.desc .sort-arrow::after { content: '↓'; }
+
     /* ── Theme Toggle ────────────────────────────────────────────────────── */
     .theme-toggle {
       background: var(--surface2);
@@ -1985,11 +1995,11 @@
         <table class="dash-table">
           <thead>
             <tr>
-              <th>Product</th>
-              <th class="col-client">Client</th>
-              <th class="col-date-created">Date Created</th>
+              <th class="sortable" onclick="sortHomeTable('product')">Product <span class="sort-arrow"></span></th>
+              <th class="col-client sortable" onclick="sortHomeTable('client')">Client <span class="sort-arrow"></span></th>
+              <th class="col-date-created sortable" onclick="sortHomeTable('date')">Date Created <span class="sort-arrow"></span></th>
               <th class="col-flow">Fulfilment (Flow)</th>
-              <th class="col-mobile-status">Status</th>
+              <th class="col-mobile-status sortable" onclick="sortHomeTable('status')">Status <span class="sort-arrow"></span></th>
               <th></th>
             </tr>
           </thead>
@@ -2015,11 +2025,11 @@
         <table class="dash-table" id="dash-table">
           <thead>
             <tr>
-              <th>Product</th>
-              <th class="col-date-created">Date Created</th>
-              <th class="col-date-submitted">Date Submitted</th>
+              <th class="sortable" onclick="sortClientTable('product')">Product <span class="sort-arrow"></span></th>
+              <th class="col-date-created sortable" onclick="sortClientTable('date')">Date Created <span class="sort-arrow"></span></th>
+              <th class="col-date-submitted sortable" onclick="sortClientTable('dateSubmitted')">Date Submitted <span class="sort-arrow"></span></th>
               <th class="col-flow">Fulfilment (Flow)</th>
-              <th class="col-mobile-status">Status</th>
+              <th class="col-mobile-status sortable" onclick="sortClientTable('status')">Status <span class="sort-arrow"></span></th>
               <th></th>
             </tr>
           </thead>
@@ -4573,7 +4583,7 @@
   }
 
   function renderDashboard(clientName) {
-    const items = clientData[clientName] || [];
+    const items = [...(clientData[clientName] || [])];
     const tbody = document.getElementById('dash-tbody');
     const emptyState = document.getElementById('dash-empty');
     const table = document.getElementById('dash-table');
@@ -4585,6 +4595,21 @@
       table.style.display = '';
       emptyState.style.display = 'none';
     }
+
+    // Sort client table
+    const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+    const parseDate = d => {
+      if (!d) return new Date(0);
+      const parts = d.split(' ');
+      return new Date(2000 + parseInt(parts[2]), months[parts[1]], parseInt(parts[0]));
+    };
+    const dir = _clientSortDir === 'asc' ? 1 : -1;
+    items.sort((a, b) => {
+      if (_clientSortField === 'product') return dir * a.product.localeCompare(b.product);
+      if (_clientSortField === 'dateSubmitted') return dir * (parseDate(a.dateSubmitted) - parseDate(b.dateSubmitted));
+      if (_clientSortField === 'status') return dir * (getCurrentStepName(a.flow) || '').localeCompare(getCurrentStepName(b.flow) || '');
+      return dir * (parseDate(a.dateCreated) - parseDate(b.dateCreated));
+    });
 
     tbody.innerHTML = items.map(item => {
       const complete = isFlowComplete(item.flow);
@@ -4834,6 +4859,40 @@
   }
 
   let _currentStatusFilter = 'all';
+  let _homeSortField = 'date';
+  let _homeSortDir = 'desc';
+  let _clientSortField = 'date';
+  let _clientSortDir = 'desc';
+
+  function updateSortArrows(tableSelector, field, dir) {
+    document.querySelectorAll(`${tableSelector} th.sortable`).forEach(th => {
+      th.classList.remove('asc', 'desc');
+    });
+    const clickedTh = event.target.closest('th');
+    if (clickedTh) clickedTh.classList.add(dir);
+  }
+
+  function sortHomeTable(field) {
+    if (_homeSortField === field) {
+      _homeSortDir = _homeSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      _homeSortField = field;
+      _homeSortDir = 'asc';
+    }
+    updateSortArrows('#view-home .dash-table', field, _homeSortDir);
+    renderRecentWorkbooks();
+  }
+
+  function sortClientTable(field) {
+    if (_clientSortField === field) {
+      _clientSortDir = _clientSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      _clientSortField = field;
+      _clientSortDir = 'asc';
+    }
+    updateSortArrows('#dash-table', field, _clientSortDir);
+    renderDashboard(document.getElementById('header-title').textContent.replace(' — Workbooks', ''));
+  }
 
   function filterByStatus(status) {
     _currentStatusFilter = status;
@@ -4857,14 +4916,19 @@
       items.forEach(item => all.push({ ...item, client }));
     }
 
-    // Sort by dateCreated descending (most recent first)
+    // Sort
     const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+    const parseDate = d => {
+      if (!d) return new Date(0);
+      const parts = d.split(' ');
+      return new Date(2000 + parseInt(parts[2]), months[parts[1]], parseInt(parts[0]));
+    };
+    const dir = _homeSortDir === 'asc' ? 1 : -1;
     all.sort((a, b) => {
-      const parseDate = d => {
-        const parts = d.split(' ');
-        return new Date(2000 + parseInt(parts[2]), months[parts[1]], parseInt(parts[0]));
-      };
-      return parseDate(b.dateCreated) - parseDate(a.dateCreated);
+      if (_homeSortField === 'product') return dir * a.product.localeCompare(b.product);
+      if (_homeSortField === 'client') return dir * a.client.localeCompare(b.client);
+      if (_homeSortField === 'status') return dir * (getCurrentStepName(a.flow) || '').localeCompare(getCurrentStepName(b.flow) || '');
+      return dir * (parseDate(a.dateCreated) - parseDate(b.dateCreated));
     });
 
     // Apply status filter
