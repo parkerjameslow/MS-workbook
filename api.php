@@ -262,9 +262,15 @@ switch ($action) {
             $stmt->execute([$input['id'], $current['detail_json'], $changedBy]);
         }
 
-        // Now save the new version
-        $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
-        $stmt->execute([json_encode($input['detail']), $input['id']]);
+        // Now save the new version (also update product_name if provided)
+        $newProductName = !empty($input['detail']['product']) ? trim($input['detail']['product']) : null;
+        if ($newProductName) {
+            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, product_name = ?, updated_at = NOW() WHERE id = ?");
+            $stmt->execute([json_encode($input['detail']), $newProductName, $input['id']]);
+        } else {
+            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
+            $stmt->execute([json_encode($input['detail']), $input['id']]);
+        }
 
         // Purge revisions older than 30 days
         $pdo->exec("DELETE FROM workbook_revisions WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");

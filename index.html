@@ -5130,7 +5130,14 @@
   let _isDirty = false; // true once the user has made any edit this session
   const _wbView = document.getElementById('view-workbook');
   _wbView.addEventListener('input', function(e) {
-    if (e.target.matches('input, textarea, select')) { _isDirty = true; autoSaveWorkbook(); }
+    if (e.target.matches('input, textarea, select')) {
+      _isDirty = true;
+      autoSaveWorkbook();
+      // Keep header title in sync when product name is edited
+      if (e.target.id === 'product-name') {
+        document.getElementById('header-title').textContent = currentClient + ' — ' + (e.target.value || 'Workbook');
+      }
+    }
   });
   // Also catch select/dropdown changes (some browsers fire change but not input)
   _wbView.addEventListener('change', function(e) {
