@@ -7,7 +7,7 @@ $payload = file_get_contents('php://input');
 $expected = 'sha256=' . hash_hmac('sha256', $payload, $secret);
 
 if (hash_equals($expected, $signature)) {
-    echo shell_exec('cd /home4/markewq4/public_html/workbook && git pull origin claude/market-sculpt-workbook-3002d 2>&1');
+    echo shell_exec('cd /home4/markewq4/wb.marketsculpt.com && git pull origin claude/market-sculpt-workbook-3002d 2>&1');
     http_response_code(200);
 } else {
     http_response_code(403);
