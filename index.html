@@ -5112,13 +5112,14 @@
   }
 
   // Listen for changes on workbook form fields
+  let _isDirty = false; // true once the user has made any edit this session
   const _wbView = document.getElementById('view-workbook');
   _wbView.addEventListener('input', function(e) {
-    if (e.target.matches('input, textarea, select')) autoSaveWorkbook();
+    if (e.target.matches('input, textarea, select')) { _isDirty = true; autoSaveWorkbook(); }
   });
   // Also catch select/dropdown changes (some browsers fire change but not input)
   _wbView.addEventListener('change', function(e) {
-    if (e.target.matches('select')) autoSaveWorkbook();
+    if (e.target.matches('select')) { _isDirty = true; autoSaveWorkbook(); }
   });
 
   // Save to DB when leaving/refreshing the page
@@ -5149,22 +5150,18 @@
     router();
 
     // Then try loading from database (will override if successful)
-    // Preserve any form edits already made before DB responds
+    // If the user typed something before the DB responded, capture it so we don't lose it
     const preDbClient = currentClient;
     const preDbWbId = currentWorkbookId;
-    let preDbDetail = null;
-    if (preDbClient && preDbWbId) {
-      preDbDetail = collectWorkbookDetail();
-    }
     const dbLoaded = await loadFromDatabase();
     if (dbLoaded) {
       console.log('Data loaded from database');
-      // Restore in-memory edits over the freshly loaded DB data
-      if (preDbClient && preDbWbId && preDbDetail) {
+      // Only preserve pre-DB form state if the user actually made edits before DB responded
+      if (_isDirty && preDbClient && preDbWbId) {
         const preKey = `${preDbClient}|${preDbWbId}`;
-        workbookDetail[preKey] = preDbDetail;
+        workbookDetail[preKey] = collectWorkbookDetail();
       }
-      router(); // Re-render with DB data (will use restored edits)
+      router(); // Re-render with DB data (or user's edits if they were faster)
     } else {
       console.log('Using local/fallback data');
       // Seed the DB with sample data if empty
