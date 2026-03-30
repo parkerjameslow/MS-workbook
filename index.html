@@ -4653,6 +4653,7 @@
       const prevDetail = collectWorkbookDetail();
       const prevKey = `${currentClient}|${currentWorkbookId}`;
       workbookDetail[prevKey] = prevDetail;
+      syncClientDataName(currentClient, currentWorkbookId, prevDetail);
       const prevDbId = dbWorkbookMap[prevKey] || currentWorkbookId;
       apiCall('save_workbook_detail', { id: prevDbId, detail: prevDetail });
       saveToLocalStorage();
@@ -4838,6 +4839,15 @@
     setTimeout(() => { _filling = false; }, 200);
   }
 
+  function syncClientDataName(client, workbookId, detail) {
+    const items = clientData[client] || [];
+    const item = items.find(i => i.id === parseInt(workbookId));
+    if (item && detail.product) {
+      item.product = detail.product;
+      item.description = detail.desc || item.description;
+    }
+  }
+
   function saveCurrentWorkbookIfOpen() {
     // No _appReady check here — navigation saves must always fire
     if (!currentClient || !currentWorkbookId) return;
@@ -4845,6 +4855,7 @@
     const detail = collectWorkbookDetail();
     const key = `${currentClient}|${currentWorkbookId}`;
     workbookDetail[key] = detail;
+    syncClientDataName(currentClient, currentWorkbookId, detail);
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
     showSaveStatus('saving');
     apiCall('save_workbook_detail', { id: dbId, detail: detail })
@@ -5115,13 +5126,7 @@
     apiCall('save_workbook_detail', { id: dbId, detail: detail })
       .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
 
-    // Also update product name in clientData
-    const items = clientData[currentClient] || [];
-    const item = items.find(i => i.id === parseInt(currentWorkbookId));
-    if (item && detail.product) {
-      item.product = detail.product;
-      item.description = detail.desc;
-    }
+    syncClientDataName(currentClient, currentWorkbookId, detail);
 
     saveToLocalStorage();
   }
