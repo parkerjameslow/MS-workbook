@@ -1,3 +1,11 @@
+<?php
+require_once __DIR__ . '/auth.php';
+requireAuth();
+$_msUser     = htmlspecialchars($_SESSION['display_name'] ?? $_SESSION['username'] ?? '', ENT_QUOTES);
+$_msRole     = $_SESSION['role'] ?? 'user';
+$_msUserId   = (int)($_SESSION['user_id'] ?? 0);
+$_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1950,15 +1958,21 @@
     <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:2px;">Logged in as</div>
     <div style="display:flex; align-items:center; gap:6px;">
       <span style="font-size:14px; flex-shrink:0;">👤</span>
-      <input id="sidebar-username" type="text" placeholder="Enter your name…" maxlength="40"
-        style="background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; width:100%; padding:5px 8px; outline:none; font-family:inherit;"
-        oninput="localStorage.setItem('ms_user_name', this.value)"
-        title="Your name — shown in revision history" />
+      <input id="sidebar-username" type="text" readonly
+        value="<?= $_msUser ?>"
+        style="background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; width:100%; padding:5px 8px; outline:none; font-family:inherit; cursor:default;"
+        title="Logged in as <?= $_msUser ?>" />
     </div>
     <button class="sidebar-archive-btn" onclick="openArchiveModal()" title="Archive">
       <span style="font-size:16px;">&#128451;</span>
       <span>Archive</span>
     </button>
+    <?php if ($_msRole === 'admin'): ?>
+    <button class="sidebar-archive-btn" onclick="openUsersModal()" title="Manage Users">
+      <span style="font-size:16px;">👥</span>
+      <span>Users</span>
+    </button>
+    <?php endif; ?>
   </div>
 </aside>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
@@ -1973,6 +1987,7 @@
   </div>
   <div class="header-actions">
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
+    <a href="logout.php" class="btn btn-ghost" style="text-decoration:none;" title="Log out">⏻ <span class="btn-label">Log out</span></a>
     <button class="btn btn-ghost" onclick="openHistoryModal()" title="Revision History">🕘<span class="btn-label"> History</span></button>
     <button class="btn btn-ghost" onclick="window.print()">🖨️<span class="btn-label"> Print / Export</span></button>
     <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️<span class="toggle-label"> Light Mode</span></button>
@@ -2889,6 +2904,34 @@
   </div>
 </div>
 
+<!-- ── Users Modal (admin only) ── -->
+<div class="modal-overlay" id="users-modal-overlay" onclick="if(event.target===this)closeUsersModal()" style="display:none;">
+  <div class="modal" style="max-width:520px; max-height:80vh; display:flex; flex-direction:column;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);">
+      <h3 style="margin:0; font-size:16px;">User Management</h3>
+      <button onclick="closeUsersModal()" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;">✕</button>
+    </div>
+    <div style="padding:16px 20px; overflow-y:auto; flex:1;">
+      <div id="users-list" style="margin-bottom:20px;"></div>
+      <div style="border-top:1px solid var(--border); padding-top:16px;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:10px;">Add New User</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+          <input id="new-user-username" type="text" placeholder="Username" class="field-input" style="font-size:13px;" />
+          <input id="new-user-display" type="text" placeholder="Display Name" class="field-input" style="font-size:13px;" />
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+          <input id="new-user-password" type="password" placeholder="Password" class="field-input" style="font-size:13px;" />
+          <select id="new-user-role" class="field-input" style="font-size:13px;">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <button class="btn-create" onclick="addUser()" style="font-size:13px; padding:8px 16px;">+ Add User</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── History Modal ── -->
 <div class="modal-overlay" id="history-modal-overlay" onclick="if(event.target===this)closeHistoryModal()" style="display:none;">
   <div class="modal" style="max-width:560px; max-height:80vh; display:flex; flex-direction:column;">
@@ -3581,9 +3624,10 @@
   async function apiCall(action, data = null) {
     try {
       const opts = data
-        ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) }
-        : { method: 'GET' };
+        ? { method: 'POST', headers: {'Content-Type':'application/json', 'Accept':'application/json'}, body: JSON.stringify(data) }
+        : { method: 'GET', headers: {'Accept':'application/json'} };
       const res = await fetch(`${API_URL}?action=${action}`, opts);
+      if (res.status === 401) { window.location.href = 'login.php'; return { success: false }; }
       const json = await res.json();
       if (json.success) {
         // Cache to LocalStorage
@@ -4392,6 +4436,52 @@
     return div.innerHTML;
   }
 
+  function openUsersModal() {
+    document.getElementById('users-modal-overlay').style.display = 'flex';
+    loadUsers();
+  }
+  function closeUsersModal() {
+    document.getElementById('users-modal-overlay').style.display = 'none';
+  }
+  function loadUsers() {
+    const list = document.getElementById('users-list');
+    list.innerHTML = '<p style="color:var(--text-muted); font-size:13px;">Loading…</p>';
+    apiCall('get_users').then(data => {
+      if (!data.success) { list.innerHTML = '<p style="color:var(--danger);">Failed to load users.</p>'; return; }
+      if (!data.data.length) { list.innerHTML = '<p style="color:var(--text-muted);">No users yet.</p>'; return; }
+      list.innerHTML = `
+        <div style="font-size:13px; font-weight:600; margin-bottom:8px;">Current Users</div>
+        ${data.data.map(u => `
+          <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border);">
+            <span style="flex:1; font-size:13px;">${u.display_name || u.username} <span style="color:var(--text-muted); font-size:11px;">(${u.username})</span></span>
+            <span style="font-size:11px; background:var(--surface2); padding:2px 8px; border-radius:4px; color:${u.role==='admin'?'var(--accent)':'var(--text-muted)'};">${u.role}</span>
+            ${u.id !== (window.MS_SESSION && window.MS_SESSION.id) ? `<button onclick="deleteUser(${u.id})" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px; padding:0 4px;" title="Delete user">×</button>` : '<span style="width:28px;"></span>'}
+          </div>`).join('')}`;
+    });
+  }
+  function addUser() {
+    const username = document.getElementById('new-user-username').value.trim();
+    const display  = document.getElementById('new-user-display').value.trim();
+    const password = document.getElementById('new-user-password').value;
+    const role     = document.getElementById('new-user-role').value;
+    if (!username || !password) { alert('Username and password are required.'); return; }
+    apiCall('add_user', { username, display_name: display || username, password, role }).then(r => {
+      if (r.success) {
+        document.getElementById('new-user-username').value = '';
+        document.getElementById('new-user-display').value = '';
+        document.getElementById('new-user-password').value = '';
+        loadUsers();
+      } else { alert(r.error || 'Failed to add user.'); }
+    });
+  }
+  function deleteUser(id) {
+    if (!confirm('Delete this user?')) return;
+    apiCall('delete_user', { id }).then(r => {
+      if (r.success) loadUsers();
+      else alert(r.error || 'Failed to delete user.');
+    });
+  }
+
   function closeHistoryModal() {
     document.getElementById('history-modal-overlay').style.display = 'none';
   }
@@ -4858,7 +4948,7 @@
   }
 
   function getCurrentUser() {
-    return localStorage.getItem('ms_user_name') || '';
+    return (window.MS_SESSION && window.MS_SESSION.name) ? window.MS_SESSION.name : (localStorage.getItem('ms_user_name') || '');
   }
 
   function saveCurrentWorkbookIfOpen() {
@@ -5038,6 +5128,9 @@
     }
   }
 
+<script>
+window.MS_SESSION = { name: '<?= addslashes($_msUser) ?>', role: '<?= $_msRole ?>', id: <?= $_msUserId ?>, username: '<?= addslashes($_msUsername) ?>' };
+</script>
   window.addEventListener('hashchange', router);
 
   /* ── Auto-save workbook fields ─────────────────────────────────────────── */
@@ -5213,9 +5306,8 @@
     setTimeout(() => { _appReady = true; }, 210);
 
     // Restore saved username into sidebar input
-    const savedName = localStorage.getItem('ms_user_name') || '';
     const usernameInput = document.getElementById('sidebar-username');
-    if (usernameInput) usernameInput.value = savedName;
+    if (usernameInput && window.MS_SESSION) usernameInput.value = window.MS_SESSION.name;
   })();
 
   async function seedDatabase() {

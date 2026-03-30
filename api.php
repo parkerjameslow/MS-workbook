@@ -25,6 +25,10 @@ try {
     exit;
 }
 
+require_once __DIR__ . '/auth.php';
+requireAuth();
+$sessionUser = getSessionUser();
+
 // Auto-create revisions table if not exists
 $pdo->exec("CREATE TABLE IF NOT EXISTS workbook_revisions (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -34,6 +38,25 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS workbook_revisions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_workbook_date (workbook_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Auto-create users table
+$pdo->exec("CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    display_name VARCHAR(100) NOT NULL DEFAULT '',
+    role ENUM('admin','user') NOT NULL DEFAULT 'user',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Seed default admin if no users exist
+$userCount = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+if ($userCount == 0) {
+    $hash = password_hash('MarketSculpt2025!', PASSWORD_DEFAULT);
+    $pdo->prepare("INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)")
+        ->execute(['admin', $hash, 'Admin', 'admin']);
+}
 
 // Auto-add soft-delete columns if not present
 try {
@@ -535,6 +558,68 @@ switch ($action) {
         }
         break;
 
+    case 'get_users':
+        if ($sessionUser['role'] !== 'admin') {
+            echo json_encode(['success' => false, 'error' => 'Admin only']);
+            break;
+        }
+        $stmt = $pdo->query("SELECT id, username, display_name, role, created_at, last_login FROM users ORDER BY created_at ASC");
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+        break;
+
+    case 'add_user':
+        if ($sessionUser['role'] !== 'admin') {
+            echo json_encode(['success' => false, 'error' => 'Admin only']);
+            break;
+        }
+        if (empty($input['username']) || empty($input['password'])) {
+            echo json_encode(['success' => false, 'error' => 'Username and password required']);
+            break;
+        }
+        try {
+            $hash = password_hash($input['password'], PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)");
+            $stmt->execute([
+                trim($input['username']),
+                $hash,
+                trim($input['display_name'] ?? $input['username']),
+                $input['role'] === 'admin' ? 'admin' : 'user'
+            ]);
+            echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
+        } catch (PDOException $e) {
+            echo json_encode(['success' => false, 'error' => $e->getCode() == 23000 ? 'Username already exists' : $e->getMessage()]);
+        }
+        break;
+
+    case 'delete_user':
+        if ($sessionUser['role'] !== 'admin') {
+            echo json_encode(['success' => false, 'error' => 'Admin only']);
+            break;
+        }
+        if (empty($input['id']) || $input['id'] == $sessionUser['id']) {
+            echo json_encode(['success' => false, 'error' => 'Cannot delete your own account']);
+            break;
+        }
+        $pdo->prepare("DELETE FROM users WHERE id = ?")->execute([$input['id']]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'change_password':
+        $targetId = $input['user_id'] ?? $sessionUser['id'];
+        // Admin can change anyone's password; user can only change own
+        if ($targetId != $sessionUser['id'] && $sessionUser['role'] !== 'admin') {
+            echo json_encode(['success' => false, 'error' => 'Not allowed']);
+            break;
+        }
+        if (empty($input['new_password'])) {
+            echo json_encode(['success' => false, 'error' => 'New password required']);
+            break;
+        }
+        $hash = password_hash($input['new_password'], PASSWORD_DEFAULT);
+        $pdo->prepare("UPDATE users SET password_hash = ? WHERE id = ?")->execute([$hash, $targetId]);
+        echo json_encode(['success' => true]);
+        break;
+
     default:
         echo json_encode(['error' => 'Unknown action', 'available' => [
             'get_clients', 'add_client', 'delete_client',
@@ -544,6 +629,7 @@ switch ($action) {
             'get_revisions', 'get_revision_detail', 'restore_revision',
             'get_archived', 'restore_workbook', 'restore_client',
             'permanent_delete_workbook', 'permanent_delete_client',
-            'upload_image', 'delete_image'
+            'upload_image', 'delete_image',
+            'get_users', 'add_user', 'delete_user', 'change_password'
         ]]);
 }
