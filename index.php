@@ -3006,9 +3006,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const params = new URLSearchParams(window.location.search);
     if (params.get('new_login')) {
       sessionStorage.setItem('ms_auth', '1');
-      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+      const savedHash = params.get('hash');
+      window.history.replaceState({}, '', window.location.pathname);
+      if (savedHash) location.hash = savedHash;
     } else if (!sessionStorage.getItem('ms_auth')) {
-      window.location.href = 'logout.php';
+      const h = location.hash;
+      window.location.href = 'logout.php' + (h ? '?hash=' + encodeURIComponent(h) : '');
     }
   })();
 

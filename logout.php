@@ -1,5 +1,6 @@
 <?php
 session_start();
 session_destroy();
-header('Location: login.php');
+$hash = $_GET['hash'] ?? '';
+header('Location: login.php' . ($hash ? '?hash=' . urlencode($hash) : ''));
 exit;
