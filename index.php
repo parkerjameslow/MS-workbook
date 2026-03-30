@@ -3984,9 +3984,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function revertStatus() {
     const items = clientData[currentClient];
-    if (!items) return;
+    console.log('[revert] currentClient:', currentClient, 'currentWorkbookId:', currentWorkbookId, 'items:', items);
+    if (!items) { console.error('[revert] No items for client:', currentClient); return; }
     const item = items.find(i => i.id === parseInt(currentWorkbookId));
-    if (!item) return;
+    console.log('[revert] item found:', item, 'flow:', item && item.flow);
+    if (!item) { console.error('[revert] Item not found, id:', parseInt(currentWorkbookId), 'available ids:', items.map(i=>i.id)); return; }
 
     for (let i = flowSteps.length - 1; i >= 0; i--) {
       if (item.flow[flowSteps[i]]) {
