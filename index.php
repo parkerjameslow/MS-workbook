@@ -2008,7 +2008,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="header-actions">
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
     <button class="btn btn-ghost" onclick="openHistoryModal()" title="Revision History">🕘<span class="btn-label"> History</span></button>
-    <button class="btn btn-ghost" onclick="window.print()">🖨️<span class="btn-label"> Print / Export</span></button>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-btn" onclick="toggleUserDropdown()" title="Account">
         <span style="font-size:16px;">👤</span>
@@ -2020,6 +2019,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </button>
       <div class="user-dropdown" id="user-dropdown">
         <button class="user-dropdown-item" id="theme-dropdown-btn" onclick="toggleTheme()">☀️ Light Mode</button>
+        <button class="user-dropdown-item" onclick="window.print(); closeUserDropdown()">🖨️ Print / Export</button>
         <button class="user-dropdown-item" onclick="openChangePasswordModal(); closeUserDropdown()">🔑 Change Password</button>
         <?php if ($_msRole === 'admin'): ?>
         <button class="user-dropdown-item" onclick="openUsersModal(); closeUserDropdown()">👥 Manage Users</button>
