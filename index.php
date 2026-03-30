@@ -3423,6 +3423,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── RFQ Line Items ─────────────────────────────────────────────────── */
   let rfqCount = 0;
+  let _wbLocked = false;
 
   function addRfqRow(item = '', qty = '', priceRmb = '', leadTime = '') {
     rfqCount++;
@@ -3457,6 +3458,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     `;
     tbody.appendChild(tr);
     recalcRfqTotals();
+    if (_wbLocked) {
+      tr.querySelectorAll('input, select, textarea, button, span.remove-tier').forEach(el => {
+        if (el.tagName === 'SPAN') { el.style.pointerEvents = 'none'; el.style.opacity = '0.3'; }
+        else { el.disabled = true; el.style.opacity = '0.6'; el.style.cursor = 'not-allowed'; }
+      });
+    }
   }
 
   function removeRfqRow(id) {
@@ -3991,6 +3998,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function lockWorkbookTab(locked) {
+    _wbLocked = locked;
     const tab = document.getElementById('wb-tab-workbook');
     if (!tab) return;
     const fields = tab.querySelectorAll('input:not([type="hidden"]), textarea, select');
@@ -5087,7 +5095,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     showView('view-workbook');
     calcFreight();
     // Delay clearing _filling to let queued input events (from calcFreight etc.) fire while still blocked
-    setTimeout(() => { _filling = false; }, 200);
+    setTimeout(() => {
+      _filling = false;
+      // Re-apply lock after all dynamic rows (RFQ, tiers) have been added
+      if (_wbLocked) lockWorkbookTab(true);
+    }, 200);
   }
 
   function syncClientDataName(client, workbookId, detail) {
