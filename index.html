@@ -5112,19 +5112,27 @@
   }
 
   // Listen for changes on workbook form fields
-  document.getElementById('view-workbook').addEventListener('input', function(e) {
-    if (e.target.matches('input, textarea, select')) {
-      autoSaveWorkbook();
-    }
+  const _wbView = document.getElementById('view-workbook');
+  _wbView.addEventListener('input', function(e) {
+    if (e.target.matches('input, textarea, select')) autoSaveWorkbook();
+  });
+  // Also catch select/dropdown changes (some browsers fire change but not input)
+  _wbView.addEventListener('change', function(e) {
+    if (e.target.matches('select')) autoSaveWorkbook();
   });
 
-  // Save immediately when leaving/refreshing the page
+  // Save to DB when leaving/refreshing the page
   window.addEventListener('beforeunload', function() {
-    if (!currentClient || !currentWorkbookId) return;
+    if (!currentClient || !currentWorkbookId || !_appReady) return;
     clearTimeout(saveTimer);
-    // Don't save on unload — it can overwrite good DB data with stale/incomplete data
-    // All saves happen via autoSaveWorkbook, image upload, or workbook switch
+    const detail = collectWorkbookDetail();
+    const key = `${currentClient}|${currentWorkbookId}`;
+    workbookDetail[key] = detail;
     saveToLocalStorage();
+    // Use sendBeacon so the request survives page unload
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    const payload = JSON.stringify({ action: 'save_workbook_detail', id: dbId, detail: detail });
+    navigator.sendBeacon('api.php', new Blob([payload], { type: 'application/json' }));
   });
 
   /* ── Init ──────────────────────────────────────────────────────────────── */
