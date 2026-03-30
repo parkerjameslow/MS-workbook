@@ -259,9 +259,19 @@ switch ($action) {
             $stmt = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ?");
             $stmt->execute([$input['id']]);
             $current = $stmt->fetch();
-            if ($current && $current['detail_json'] && $current['detail_json'] !== '[]' && $current['detail_json'] !== 'null') {
-                $stmt = $pdo->prepare("INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)");
-                $stmt->execute([$input['id'], $current['detail_json'], $changedBy]);
+            $currentJson = $current['detail_json'] ?? '';
+            $incomingJson = json_encode($input['detail']);
+
+            // Only create a revision if the data actually changed
+            if ($currentJson && $currentJson !== '[]' && $currentJson !== 'null' && $currentJson !== $incomingJson) {
+                // Also skip if last revision already has this exact content (dedup)
+                $lastStmt = $pdo->prepare("SELECT detail_json FROM workbook_revisions WHERE workbook_id = ? ORDER BY created_at DESC LIMIT 1");
+                $lastStmt->execute([$input['id']]);
+                $lastRev = $lastStmt->fetch();
+                if (!$lastRev || $lastRev['detail_json'] !== $currentJson) {
+                    $stmt = $pdo->prepare("INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)");
+                    $stmt->execute([$input['id'], $currentJson, $changedBy]);
+                }
             }
         }
 

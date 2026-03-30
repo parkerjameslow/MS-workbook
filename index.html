@@ -1947,17 +1947,18 @@
     <a class="nav-item" href="#/client/Tweedle Dee">Tweedle Dee</a>
   </nav>
   <div style="padding: 12px 16px; margin-top: auto; border-top: 1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
+    <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:2px;">Logged in as</div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span style="font-size:14px; flex-shrink:0;">👤</span>
+      <input id="sidebar-username" type="text" placeholder="Enter your name…" maxlength="40"
+        style="background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; width:100%; padding:5px 8px; outline:none; font-family:inherit;"
+        oninput="localStorage.setItem('ms_user_name', this.value)"
+        title="Your name — shown in revision history" />
+    </div>
     <button class="sidebar-archive-btn" onclick="openArchiveModal()" title="Archive">
       <span style="font-size:16px;">&#128451;</span>
       <span>Archive</span>
     </button>
-    <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted);">
-      <span style="white-space:nowrap;">👤</span>
-      <input id="sidebar-username" type="text" placeholder="Your name…" maxlength="40"
-        style="background:transparent; border:none; border-bottom:1px solid var(--border); color:var(--text); font-size:11px; width:100%; padding:2px 0; outline:none; font-family:inherit;"
-        oninput="localStorage.setItem('ms_user_name', this.value)"
-        title="Your name — shown in revision history" />
-    </div>
   </div>
 </aside>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
