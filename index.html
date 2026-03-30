@@ -1964,7 +1964,7 @@
     <div class="logo-text" id="header-title" style="font-size:18px; font-weight:700; color:var(--header-title); border-left:3px solid #E8751A; padding-left:12px;">Market Sculpt</div>
   </div>
   <div class="header-actions">
-    <button class="btn btn-ghost" id="btn-history" onclick="openHistoryModal()" title="Revision History" style="display:none;">🕘<span class="btn-label"> History</span></button>
+    <button class="btn btn-ghost" onclick="openHistoryModal()" title="Revision History">🕘<span class="btn-label"> History</span></button>
     <button class="btn btn-ghost" onclick="window.print()">🖨️<span class="btn-label"> Print / Export</span></button>
     <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️<span class="toggle-label"> Light Mode</span></button>
   </div>
@@ -4246,10 +4246,13 @@
   let _historyRevisions = []; // store fetched revisions for diff comparison
 
   function openHistoryModal() {
-    if (!currentWorkbookId) return;
     const overlay = document.getElementById('history-modal-overlay');
     overlay.style.display = 'flex';
     const list = document.getElementById('history-list');
+    if (!currentWorkbookId) {
+      list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">Open a workbook to view its revision history.</p>';
+      return;
+    }
     list.innerHTML = '<p style="color:var(--text-muted); text-align:center;">Loading...</p>';
 
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
@@ -4527,8 +4530,6 @@
   function showView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
-    const historyBtn = document.getElementById('btn-history');
-    if (historyBtn) historyBtn.style.display = viewId === 'view-workbook' ? '' : 'none';
   }
 
   function updateSidebarActive(clientName) {
