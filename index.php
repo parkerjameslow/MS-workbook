@@ -358,6 +358,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .theme-toggle:hover { background: var(--border); }
 
+    /* ── User Dropdown ───────────────────────────────────────────────────── */
+    .user-menu { position: relative; display: flex; align-items: center; }
+    .user-menu-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px 6px 8px;
+      background: none; border: 1px solid transparent;
+      border-radius: var(--radius-sm); cursor: pointer;
+      color: var(--text); font-family: inherit;
+      transition: background 0.15s, border-color 0.15s;
+      border-left: 1px solid var(--border);
+      margin-left: 4px;
+    }
+    .user-menu-btn:hover { background: var(--surface2); border-color: var(--border); }
+    .user-menu-btn .user-name { font-size: 13px; font-weight: 600; line-height: 1.2; }
+    .user-menu-btn .user-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.2; }
+    .user-dropdown {
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      min-width: 200px; z-index: 2000; display: none;
+      padding: 6px 0;
+    }
+    .user-dropdown.open { display: block; }
+    .user-dropdown-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 16px; font-size: 14px; color: var(--text);
+      cursor: pointer; background: none; border: none;
+      width: 100%; text-align: left; font-family: inherit;
+      text-decoration: none; transition: background 0.12s;
+    }
+    .user-dropdown-item:hover { background: var(--surface2); }
+    .user-dropdown-item.danger { color: var(--danger); }
+    .user-dropdown-divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
     /* ── Main Container ──────────────────────────────────────────────────── */
     .container {
       max-width: 1200px;
@@ -1959,12 +1993,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span style="font-size:16px;">&#128451;</span>
       <span>Archive</span>
     </button>
-    <?php if ($_msRole === 'admin'): ?>
-    <button class="sidebar-archive-btn" onclick="openUsersModal()" title="Manage Users">
-      <span style="font-size:16px;">👥</span>
-      <span>Users</span>
-    </button>
-    <?php endif; ?>
   </div>
 </aside>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
@@ -1982,13 +2010,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <button class="btn btn-ghost" onclick="openHistoryModal()" title="Revision History">🕘<span class="btn-label"> History</span></button>
     <button class="btn btn-ghost" onclick="window.print()">🖨️<span class="btn-label"> Print / Export</span></button>
     <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
-    <div style="display:flex; align-items:center; gap:8px; padding:0 4px 0 8px; border-left:1px solid var(--border);">
-      <span style="font-size:16px;">👤</span>
-      <div style="display:flex; flex-direction:column; line-height:1.2;">
-        <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Logged in as</span>
-        <span style="font-size:13px; font-weight:600; color:var(--text);"><?= $_msUser ?></span>
+    <div class="user-menu" id="user-menu">
+      <button class="user-menu-btn" onclick="toggleUserDropdown()" title="Account">
+        <span style="font-size:16px;">👤</span>
+        <div style="display:flex; flex-direction:column; text-align:left;">
+          <span class="user-label">Logged in as</span>
+          <span class="user-name"><?= $_msUser ?></span>
+        </div>
+        <span style="font-size:10px; color:var(--text-muted); margin-left:2px;">▾</span>
+      </button>
+      <div class="user-dropdown" id="user-dropdown">
+        <button class="user-dropdown-item" onclick="openChangePasswordModal(); closeUserDropdown()">🔑 Change Password</button>
+        <?php if ($_msRole === 'admin'): ?>
+        <button class="user-dropdown-item" onclick="openUsersModal(); closeUserDropdown()">👥 Manage Users</button>
+        <?php endif; ?>
+        <hr class="user-dropdown-divider">
+        <a class="user-dropdown-item danger" href="logout.php">⏻ Log Out</a>
       </div>
-      <a href="logout.php" style="text-decoration:none; color:var(--text-muted); font-size:18px; margin-left:4px;" title="Log out">⏻</a>
     </div>
   </div>
 </header>
@@ -2989,6 +3027,73 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const isDark = body.dataset.theme === 'dark';
     body.dataset.theme = isDark ? 'light' : 'dark';
     document.getElementById('theme-btn').textContent = isDark ? '🌙' : '☀️';
+  }
+
+  /* ── User Dropdown ──────────────────────────────────────────────────────── */
+  function toggleUserDropdown() {
+    document.getElementById('user-dropdown').classList.toggle('open');
+  }
+  function closeUserDropdown() {
+    document.getElementById('user-dropdown').classList.remove('open');
+  }
+  document.addEventListener('click', function(e) {
+    const menu = document.getElementById('user-menu');
+    if (menu && !menu.contains(e.target)) closeUserDropdown();
+  });
+
+  /* ── Change Password Modal ──────────────────────────────────────────────── */
+  function openChangePasswordModal() {
+    let modal = document.getElementById('change-password-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'change-password-modal';
+      modal.className = 'modal-overlay';
+      modal.style.cssText = 'display:flex;';
+      modal.innerHTML = `
+        <div class="modal" style="max-width:400px; width:100%;">
+          <div class="modal-header">
+            <h3 style="margin:0; font-size:16px;">Change Password</h3>
+            <button onclick="document.getElementById('change-password-modal').remove()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-muted);">&times;</button>
+          </div>
+          <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;">
+            <div id="cp-error" style="display:none; background:rgba(251,113,133,0.12); border:1px solid rgba(251,113,133,0.35); color:#fb7185; border-radius:8px; padding:8px 12px; font-size:13px;"></div>
+            <div>
+              <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px;">Current Password</label>
+              <input id="cp-current" type="password" class="form-input" style="width:100%;" />
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px;">New Password</label>
+              <input id="cp-new" type="password" class="form-input" style="width:100%;" />
+            </div>
+            <div>
+              <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px;">Confirm New Password</label>
+              <input id="cp-confirm" type="password" class="form-input" style="width:100%;" />
+            </div>
+            <button class="btn btn-primary" onclick="submitChangePassword()">Update Password</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+    } else {
+      modal.style.display = 'flex';
+    }
+  }
+  async function submitChangePassword() {
+    const current = document.getElementById('cp-current').value;
+    const newPw = document.getElementById('cp-new').value;
+    const confirm = document.getElementById('cp-confirm').value;
+    const errEl = document.getElementById('cp-error');
+    errEl.style.display = 'none';
+    if (!current || !newPw || !confirm) { errEl.textContent = 'All fields are required.'; errEl.style.display = 'block'; return; }
+    if (newPw !== confirm) { errEl.textContent = 'New passwords do not match.'; errEl.style.display = 'block'; return; }
+    if (newPw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+    const res = await apiCall('change_password', { current_password: current, new_password: newPw });
+    if (res.success) {
+      document.getElementById('change-password-modal').remove();
+      alert('Password updated successfully.');
+    } else {
+      errEl.textContent = res.error || 'Failed to update password.';
+      errEl.style.display = 'block';
+    }
   }
 
   /* ── Image Upload ──────────────────────────────────────────────────────── */
