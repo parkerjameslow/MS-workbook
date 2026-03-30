@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Update last login
             $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?")->execute([$userRow['id']]);
 
-            header('Location: index.php');
+            header('Location: index.php?new_login=1');
             exit;
         } else {
             $error = 'Invalid username or password.';

@@ -3000,6 +3000,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <script>
+  /* ── Session guard: require login on every hard refresh ─────────────── */
+  (function() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('new_login')) {
+      sessionStorage.setItem('ms_auth', '1');
+      window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    } else if (!sessionStorage.getItem('ms_auth')) {
+      window.location.href = 'logout.php';
+    }
+  })();
+
   /* ── Sidebar Submenu Toggle ─────────────────────────────────────────── */
   function toggleSubmenu(btn) {
     btn.classList.toggle('expanded');
