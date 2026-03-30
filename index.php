@@ -3831,7 +3831,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Status Bar ──────────────────────────────────────────────────────────── */
   const flowSteps = ['quoteChina', 'quoteSubmitted', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
-  const flowLabels = ['Quote for China', 'Quote Submitted', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Order to China'];
+  const flowLabels = ['Quote', 'Quote Submitted', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Order'];
   const flowLabelsShort = ['Quote', 'Submitted', 'Quote', 'Approved', 'Invoice', 'Payment', 'Order'];
   let currentClient = '';
   let currentWorkbookId = '';
