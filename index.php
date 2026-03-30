@@ -2009,7 +2009,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
     <button class="btn btn-ghost" onclick="openHistoryModal()" title="Revision History">🕘<span class="btn-label"> History</span></button>
     <button class="btn btn-ghost" onclick="window.print()">🖨️<span class="btn-label"> Print / Export</span></button>
-    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-btn" onclick="toggleUserDropdown()" title="Account">
         <span style="font-size:16px;">👤</span>
@@ -2020,6 +2019,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span style="font-size:10px; color:var(--text-muted); margin-left:2px;">▾</span>
       </button>
       <div class="user-dropdown" id="user-dropdown">
+        <button class="user-dropdown-item" id="theme-dropdown-btn" onclick="toggleTheme()">☀️ Light Mode</button>
         <button class="user-dropdown-item" onclick="openChangePasswordModal(); closeUserDropdown()">🔑 Change Password</button>
         <?php if ($_msRole === 'admin'): ?>
         <button class="user-dropdown-item" onclick="openUsersModal(); closeUserDropdown()">👥 Manage Users</button>
@@ -3038,7 +3038,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const body = document.body;
     const isDark = body.dataset.theme === 'dark';
     body.dataset.theme = isDark ? 'light' : 'dark';
-    document.getElementById('theme-btn').textContent = isDark ? '🌙' : '☀️';
+    const btn = document.getElementById('theme-dropdown-btn');
+    if (btn) btn.textContent = isDark ? '🌙 Dark Mode' : '☀️ Light Mode';
   }
 
   /* ── User Dropdown ──────────────────────────────────────────────────────── */
