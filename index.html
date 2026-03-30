@@ -3665,7 +3665,7 @@
 
       // Rebuild detail if stored (skip empty arrays from bad saves)
       const detail = wb.detail;
-      if (detail && !Array.isArray(detail) && typeof detail === 'object' && detail.client) {
+      if (detail && !Array.isArray(detail) && typeof detail === 'object' && Object.keys(detail).length > 0) {
         workbookDetail[`${wb.client_name}|${wb.id}`] = detail;
       }
 
@@ -4837,6 +4837,17 @@
     setTimeout(() => { _filling = false; }, 200);
   }
 
+  function saveCurrentWorkbookIfOpen() {
+    if (!currentClient || !currentWorkbookId || !_appReady) return;
+    clearTimeout(saveTimer);
+    const detail = collectWorkbookDetail();
+    const key = `${currentClient}|${currentWorkbookId}`;
+    workbookDetail[key] = detail;
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    apiCall('save_workbook_detail', { id: dbId, detail: detail });
+    saveToLocalStorage();
+  }
+
   function router() {
     const hash = decodeURIComponent(location.hash || '#/');
 
@@ -4846,6 +4857,9 @@
       fillWorkbook(wbMatch[1], wbMatch[2]);
       return;
     }
+
+    // Save current workbook before leaving its view
+    saveCurrentWorkbookIfOpen();
 
     // Match: #/client/{name}
     const clientMatch = hash.match(/^#\/client\/(.+)$/);
@@ -5127,10 +5141,22 @@
     router();
 
     // Then try loading from database (will override if successful)
+    // Preserve any form edits already made before DB responds
+    const preDbClient = currentClient;
+    const preDbWbId = currentWorkbookId;
+    let preDbDetail = null;
+    if (preDbClient && preDbWbId) {
+      preDbDetail = collectWorkbookDetail();
+    }
     const dbLoaded = await loadFromDatabase();
     if (dbLoaded) {
       console.log('Data loaded from database');
-      router(); // Re-render with DB data
+      // Restore in-memory edits over the freshly loaded DB data
+      if (preDbClient && preDbWbId && preDbDetail) {
+        const preKey = `${preDbClient}|${preDbWbId}`;
+        workbookDetail[preKey] = preDbDetail;
+      }
+      router(); // Re-render with DB data (will use restored edits)
     } else {
       console.log('Using local/fallback data');
       // Seed the DB with sample data if empty
