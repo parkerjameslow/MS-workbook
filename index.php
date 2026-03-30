@@ -1955,14 +1955,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <a class="nav-item" href="#/client/Tweedle Dee">Tweedle Dee</a>
   </nav>
   <div style="padding: 12px 16px; margin-top: auto; border-top: 1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
-    <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:2px;">Logged in as</div>
-    <div style="display:flex; align-items:center; gap:6px;">
-      <span style="font-size:14px; flex-shrink:0;">👤</span>
-      <input id="sidebar-username" type="text" readonly
-        value="<?= $_msUser ?>"
-        style="background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; width:100%; padding:5px 8px; outline:none; font-family:inherit; cursor:default;"
-        title="Logged in as <?= $_msUser ?>" />
-    </div>
     <button class="sidebar-archive-btn" onclick="openArchiveModal()" title="Archive">
       <span style="font-size:16px;">&#128451;</span>
       <span>Archive</span>
@@ -1987,10 +1979,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
   <div class="header-actions">
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
-    <a href="logout.php" class="btn btn-ghost" style="text-decoration:none;" title="Log out">⏻ <span class="btn-label">Log out</span></a>
     <button class="btn btn-ghost" onclick="openHistoryModal()" title="Revision History">🕘<span class="btn-label"> History</span></button>
     <button class="btn btn-ghost" onclick="window.print()">🖨️<span class="btn-label"> Print / Export</span></button>
-    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️<span class="toggle-label"> Light Mode</span></button>
+    <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+    <div style="display:flex; align-items:center; gap:8px; padding:0 4px 0 8px; border-left:1px solid var(--border);">
+      <span style="font-size:16px;">👤</span>
+      <div style="display:flex; flex-direction:column; line-height:1.2;">
+        <span style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Logged in as</span>
+        <span style="font-size:13px; font-weight:600; color:var(--text);"><?= $_msUser ?></span>
+      </div>
+      <a href="logout.php" style="text-decoration:none; color:var(--text-muted); font-size:18px; margin-left:4px;" title="Log out">⏻</a>
+    </div>
   </div>
 </header>
 
@@ -5306,8 +5305,6 @@ window.MS_SESSION = { name: '<?= addslashes($_msUser) ?>', role: '<?= $_msRole ?
     setTimeout(() => { _appReady = true; }, 210);
 
     // Restore saved username into sidebar input
-    const usernameInput = document.getElementById('sidebar-username');
-    if (usernameInput && window.MS_SESSION) usernameInput.value = window.MS_SESSION.name;
   })();
 
   async function seedDatabase() {
