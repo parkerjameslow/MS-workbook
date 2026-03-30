@@ -2041,6 +2041,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="section-title" style="margin-right:auto;">All Workbooks</span>
         <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
           <button class="status-filter-btn active" onclick="filterByStatus('all')">All</button>
+          <button class="status-filter-btn" onclick="filterByStatus('none')">No Status</button>
           <button class="status-filter-btn" onclick="filterByStatus('quoteChina')">Quote</button>
           <button class="status-filter-btn" onclick="filterByStatus('quoteSubmitted')">Submitted</button>
           <button class="status-filter-btn" onclick="filterByStatus('quoteClient')">To Client</button>
@@ -5194,6 +5195,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let filtered = all;
     if (_currentStatusFilter === 'complete') {
       filtered = all.filter(item => isFlowComplete(item.flow));
+    } else if (_currentStatusFilter === 'none') {
+      filtered = all.filter(item => getItemCurrentStep(item.flow) === null);
     } else if (_currentStatusFilter !== 'all') {
       filtered = all.filter(item => {
         const currentStep = getItemCurrentStep(item.flow);
