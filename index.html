@@ -1964,6 +1964,7 @@
     <div class="logo-text" id="header-title" style="font-size:18px; font-weight:700; color:var(--header-title); border-left:3px solid #E8751A; padding-left:12px;">Market Sculpt</div>
   </div>
   <div class="header-actions">
+    <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
     <button class="btn btn-ghost" onclick="openHistoryModal()" title="Revision History">🕘<span class="btn-label"> History</span></button>
     <button class="btn btn-ghost" onclick="window.print()">🖨️<span class="btn-label"> Print / Export</span></button>
     <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()">☀️<span class="toggle-label"> Light Mode</span></button>
@@ -4838,14 +4839,26 @@
   }
 
   function saveCurrentWorkbookIfOpen() {
-    if (!currentClient || !currentWorkbookId || !_appReady) return;
+    // No _appReady check here — navigation saves must always fire
+    if (!currentClient || !currentWorkbookId) return;
     clearTimeout(saveTimer);
     const detail = collectWorkbookDetail();
     const key = `${currentClient}|${currentWorkbookId}`;
     workbookDetail[key] = detail;
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
-    apiCall('save_workbook_detail', { id: dbId, detail: detail });
+    showSaveStatus('saving');
+    apiCall('save_workbook_detail', { id: dbId, detail: detail })
+      .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
     saveToLocalStorage();
+  }
+
+  function showSaveStatus(state) {
+    const el = document.getElementById('save-status');
+    if (!el) return;
+    el.textContent = state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved ✓' : 'Save failed';
+    el.style.color = state === 'error' ? 'var(--danger)' : state === 'saved' ? 'var(--success)' : 'var(--text-muted)';
+    el.style.opacity = '1';
+    if (state !== 'saving') setTimeout(() => { el.style.opacity = '0'; }, 2500);
   }
 
   function router() {
@@ -5098,7 +5111,9 @@
 
     // Save to DB
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
-    apiCall('save_workbook_detail', { id: dbId, detail: detail });
+    showSaveStatus('saving');
+    apiCall('save_workbook_detail', { id: dbId, detail: detail })
+      .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
 
     // Also update product name in clientData
     const items = clientData[currentClient] || [];
@@ -5168,8 +5183,8 @@
       seedDatabase();
     }
 
-    // Allow saves now — wait 500ms for any queued events to settle
-    setTimeout(() => { _appReady = true; console.log('App ready — saves enabled'); }, 500);
+    // Allow autosave now — just after _filling clears (200ms in fillWorkbook + small buffer)
+    setTimeout(() => { _appReady = true; }, 210);
   })();
 
   async function seedDatabase() {
