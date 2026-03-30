@@ -252,14 +252,17 @@ switch ($action) {
             break;
         }
         $changedBy = $input['changed_by'] ?? '';
+        $createRevision = !empty($input['create_revision']); // only true on nav saves
 
-        // Save current version as a revision BEFORE overwriting
-        $stmt = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ?");
-        $stmt->execute([$input['id']]);
-        $current = $stmt->fetch();
-        if ($current && $current['detail_json'] && $current['detail_json'] !== '[]' && $current['detail_json'] !== 'null') {
-            $stmt = $pdo->prepare("INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)");
-            $stmt->execute([$input['id'], $current['detail_json'], $changedBy]);
+        // Save current version as a revision BEFORE overwriting (only when explicitly requested)
+        if ($createRevision) {
+            $stmt = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ?");
+            $stmt->execute([$input['id']]);
+            $current = $stmt->fetch();
+            if ($current && $current['detail_json'] && $current['detail_json'] !== '[]' && $current['detail_json'] !== 'null') {
+                $stmt = $pdo->prepare("INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)");
+                $stmt->execute([$input['id'], $current['detail_json'], $changedBy]);
+            }
         }
 
         // Now save the new version (also update product_name if provided)

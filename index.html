@@ -1946,11 +1946,18 @@
     <a class="nav-item" href="#/client/Salt">Salt</a>
     <a class="nav-item" href="#/client/Tweedle Dee">Tweedle Dee</a>
   </nav>
-  <div style="padding: 12px 16px; margin-top: auto; border-top: 1px solid var(--border);">
+  <div style="padding: 12px 16px; margin-top: auto; border-top: 1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
     <button class="sidebar-archive-btn" onclick="openArchiveModal()" title="Archive">
       <span style="font-size:16px;">&#128451;</span>
       <span>Archive</span>
     </button>
+    <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted);">
+      <span style="white-space:nowrap;">👤</span>
+      <input id="sidebar-username" type="text" placeholder="Your name…" maxlength="40"
+        style="background:transparent; border:none; border-bottom:1px solid var(--border); color:var(--text); font-size:11px; width:100%; padding:2px 0; outline:none; font-family:inherit;"
+        oninput="localStorage.setItem('ms_user_name', this.value)"
+        title="Your name — shown in revision history" />
+    </div>
   </div>
 </aside>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
@@ -4655,7 +4662,8 @@
       workbookDetail[prevKey] = prevDetail;
       syncClientDataName(currentClient, currentWorkbookId, prevDetail);
       const prevDbId = dbWorkbookMap[prevKey] || currentWorkbookId;
-      apiCall('save_workbook_detail', { id: prevDbId, detail: prevDetail });
+      // create_revision: true — switching workbooks is a meaningful save point
+      apiCall('save_workbook_detail', { id: prevDbId, detail: prevDetail, changed_by: getCurrentUser(), create_revision: true });
       saveToLocalStorage();
     }
 
@@ -4848,6 +4856,10 @@
     }
   }
 
+  function getCurrentUser() {
+    return localStorage.getItem('ms_user_name') || '';
+  }
+
   function saveCurrentWorkbookIfOpen() {
     // No _appReady check here — navigation saves must always fire
     if (!currentClient || !currentWorkbookId) return;
@@ -4858,7 +4870,8 @@
     syncClientDataName(currentClient, currentWorkbookId, detail);
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
     showSaveStatus('saving');
-    apiCall('save_workbook_detail', { id: dbId, detail: detail })
+    // create_revision: true on navigation saves — these become history entries
+    apiCall('save_workbook_detail', { id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: true })
       .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
     saveToLocalStorage();
   }
@@ -5120,10 +5133,10 @@
     const key = `${currentClient}|${currentWorkbookId}`;
     workbookDetail[key] = detail;
 
-    // Save to DB
+    // Save to DB — autosave does NOT create a revision (only nav saves do)
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
     showSaveStatus('saving');
-    apiCall('save_workbook_detail', { id: dbId, detail: detail })
+    apiCall('save_workbook_detail', { id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: false })
       .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
 
     syncClientDataName(currentClient, currentWorkbookId, detail);
@@ -5197,6 +5210,11 @@
 
     // Allow autosave now — just after _filling clears (200ms in fillWorkbook + small buffer)
     setTimeout(() => { _appReady = true; }, 210);
+
+    // Restore saved username into sidebar input
+    const savedName = localStorage.getItem('ms_user_name') || '';
+    const usernameInput = document.getElementById('sidebar-username');
+    if (usernameInput) usernameInput.value = savedName;
   })();
 
   async function seedDatabase() {
