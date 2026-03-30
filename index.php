@@ -2988,7 +2988,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const body = document.body;
     const isDark = body.dataset.theme === 'dark';
     body.dataset.theme = isDark ? 'light' : 'dark';
-    document.getElementById('theme-btn').innerHTML = isDark ? '🌙<span class="toggle-label"> Dark Mode</span>' : '☀️<span class="toggle-label"> Light Mode</span>';
+    document.getElementById('theme-btn').textContent = isDark ? '🌙' : '☀️';
   }
 
   /* ── Image Upload ──────────────────────────────────────────────────────── */
