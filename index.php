@@ -3970,7 +3970,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const advanceBtn = document.getElementById('btn-advance');
 
     const backBtn = document.getElementById('btn-back-step');
-    backBtn.disabled = currentIdx < 1;
+    backBtn.disabled = currentIdx < 0;
 
     if (currentIdx < flowSteps.length - 1) {
       const nextLabel = flowLabels[currentIdx + 1];
@@ -3984,26 +3984,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function revertStatus() {
     const items = clientData[currentClient];
-    console.log('[revert] currentClient:', currentClient, 'currentWorkbookId:', currentWorkbookId, 'items:', items);
-    if (!items) { console.error('[revert] No items for client:', currentClient); return; }
+    if (!items) return;
     const item = items.find(i => i.id === parseInt(currentWorkbookId));
-    console.log('[revert] item found:', item, 'flow:', item && item.flow);
-    if (!item) { console.error('[revert] Item not found, id:', parseInt(currentWorkbookId), 'available ids:', items.map(i=>i.id)); return; }
+    if (!item) return;
 
     for (let i = flowSteps.length - 1; i >= 0; i--) {
       if (item.flow[flowSteps[i]]) {
-        console.log('[revert] Unsetting step:', flowSteps[i]);
         item.flow[flowSteps[i]] = false;
         break;
       }
     }
 
-    console.log('[revert] Flow after update:', JSON.stringify(item.flow));
     renderStatusBar(item.flow);
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
-    const newStep = flowToStep(item.flow);
-    console.log('[revert] Saving to DB — dbId:', dbId, 'flow_step:', newStep);
-    apiCall('update_flow', { id: dbId, flow_step: newStep }).then(r => console.log('[revert] API result:', r));
+    apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
     saveToLocalStorage();
   }
 
