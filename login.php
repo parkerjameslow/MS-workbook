@@ -211,7 +211,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
       <div class="form-group">
         <label for="password">Password</label>
-        <input id="password" type="password" name="password" autocomplete="current-password" />
+        <div style="position:relative;">
+          <input id="password" type="password" name="password" autocomplete="current-password" style="padding-right:42px;" />
+          <button type="button" onclick="const p=document.getElementById('password');p.type=p.type==='password'?'text':'password';this.textContent=p.type==='password'?'👁':'🙈';" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:#9ba3c0;padding:0;line-height:1;">👁</button>
+        </div>
       </div>
       <button type="submit" class="btn-login">Log In</button>
     </form>

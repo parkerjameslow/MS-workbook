@@ -3985,6 +3985,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       advanceBtn.textContent = 'Completed';
       advanceBtn.disabled = true;
     }
+
+    // Lock Product Overview tab once Quote Submitted (index 1) or beyond
+    lockWorkbookTab(currentIdx >= 1);
+  }
+
+  function lockWorkbookTab(locked) {
+    const tab = document.getElementById('wb-tab-workbook');
+    if (!tab) return;
+    const fields = tab.querySelectorAll('input:not([type="hidden"]), textarea, select');
+    fields.forEach(el => {
+      el.disabled = locked;
+      el.style.opacity = locked ? '0.6' : '';
+      el.style.cursor = locked ? 'not-allowed' : '';
+    });
+    // Also disable RFQ table add/remove buttons and image upload
+    tab.querySelectorAll('button:not(.wb-tab)').forEach(btn => {
+      btn.disabled = locked;
+      btn.style.opacity = locked ? '0.6' : '';
+      btn.style.cursor = locked ? 'default' : '';
+    });
+    // Show/hide lock banner
+    let banner = document.getElementById('wb-lock-banner');
+    if (locked) {
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'wb-lock-banner';
+        banner.style.cssText = 'background:rgba(251,113,133,0.1); border:1px solid rgba(251,113,133,0.3); color:var(--text-muted); font-size:12px; padding:6px 14px; border-radius:6px; margin-bottom:12px; text-align:center;';
+        banner.textContent = '🔒 Fields are locked after Quote Submitted. Use ← to go back and unlock.';
+        tab.insertBefore(banner, tab.firstChild);
+      }
+    } else {
+      if (banner) banner.remove();
+    }
   }
 
   function revertStatus() {
