@@ -3992,15 +3992,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     for (let i = flowSteps.length - 1; i >= 0; i--) {
       if (item.flow[flowSteps[i]]) {
+        console.log('[revert] Unsetting step:', flowSteps[i]);
         item.flow[flowSteps[i]] = false;
         break;
       }
     }
 
+    console.log('[revert] Flow after update:', JSON.stringify(item.flow));
     renderStatusBar(item.flow);
-    // Save flow to DB
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
-    apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
+    const newStep = flowToStep(item.flow);
+    console.log('[revert] Saving to DB — dbId:', dbId, 'flow_step:', newStep);
+    apiCall('update_flow', { id: dbId, flow_step: newStep }).then(r => console.log('[revert] API result:', r));
     saveToLocalStorage();
   }
 
