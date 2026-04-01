@@ -2357,7 +2357,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <button class="btn" onclick="document.getElementById('videoFileInput').click()" type="button" style="white-space:nowrap; flex-shrink:0;">Browse</button>
         </div>
         <div class="video-gallery" id="videoGallery"></div>
-        <input type="file" id="videoFileInput" accept="video/*" multiple onchange="handleVideoFiles(Array.from(this.files)); this.value='';" style="display:none;" />
+        <input type="file" id="videoFileInput" accept="video/*,.mov,.m4v,.mkv" multiple onchange="handleVideoFiles(Array.from(this.files)); this.value='';" style="display:none;" />
       </div>
 
       <!-- Lightbox -->
@@ -3516,14 +3516,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveToLocalStorage();
   }
 
+  const VIDEO_EXTS = new Set(['mp4','mov','webm','avi','mkv','m4v','qt']);
+  function isVideoFile(f) {
+    if (f.type.startsWith('video/')) return true;
+    const ext = f.name.split('.').pop().toLowerCase();
+    return VIDEO_EXTS.has(ext);
+  }
+
   // Drag and drop support for image gallery — accepts both images and videos
   const galleryEl = document.getElementById('imageGallery');
-  galleryEl.addEventListener('dragover', e => { e.preventDefault(); });
+  galleryEl.addEventListener('dragover', e => { e.preventDefault(); galleryEl.style.outline = '2px solid var(--accent)'; });
+  galleryEl.addEventListener('dragleave', e => { if (!galleryEl.contains(e.relatedTarget)) galleryEl.style.outline = ''; });
   galleryEl.addEventListener('drop', e => {
     e.preventDefault();
+    galleryEl.style.outline = '';
     const allFiles = Array.from(e.dataTransfer.files);
     const imageFiles = allFiles.filter(f => f.type.startsWith('image/'));
-    const videoFiles = allFiles.filter(f => f.type.startsWith('video/'));
+    const videoFiles = allFiles.filter(f => !f.type.startsWith('image/') && isVideoFile(f));
     if (imageFiles.length) handleImages({ target: { files: imageFiles } });
     if (videoFiles.length) handleVideoFiles(videoFiles);
   });
@@ -3577,7 +3586,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!files.length || !currentWorkbookId) return;
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     for (const file of files) {
-      if (!file.type.startsWith('video/')) continue;
+      if (!isVideoFile(file)) continue;
       const formData = new FormData();
       formData.append('video', file);
       formData.append('workbook_id', dbId);

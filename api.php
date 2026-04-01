@@ -566,7 +566,7 @@ switch ($action) {
         $wbId = intval($_POST['workbook_id']);
         $file = $_FILES['video'];
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $allowed = ['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v'];
+        $allowed = ['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v', 'qt'];
         if (!in_array($ext, $allowed)) {
             echo json_encode(['success' => false, 'error' => 'Invalid file type. Allowed: mp4, mov, webm, avi, mkv, m4v']);
             break;
