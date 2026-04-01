@@ -2321,14 +2321,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       <!-- ── Additional Fees ── -->
       <div class="subsection">
-        <div class="subsection-title">Additional Fees</div>
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+          <div class="subsection-title" style="margin-bottom:0;">Additional Fees</div>
+          <button class="btn btn-add" style="padding:4px 12px; font-size:12px;" onclick="openAddFeeModal()">+ Add Fee</button>
+        </div>
         <div style="overflow-x:auto;">
-        <table class="tier-table" style="max-width:560px;">
+        <table class="tier-table" style="max-width:620px;">
           <thead>
             <tr>
               <th style="text-align:left; width:38%;">Fee</th>
               <th>Amount (RMB)</th>
               <th>Amount (USD)</th>
+              <th style="width:32px;"></th>
             </tr>
           </thead>
           <tbody>
@@ -2336,28 +2340,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Sample Fee(s)</td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" style="width:130px;" /></div></td>
+              <td></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Tooling Fee(s)</td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" style="width:130px;" /></div></td>
+              <td></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Die Fee(s)</td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" style="width:130px;" /></div></td>
+              <td></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Plate Fee(s)</td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" style="width:130px;" /></div></td>
+              <td></td>
             </tr>
             <tr style="border-top:2px solid var(--border);">
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Design Fee(s)</td>
               <td style="padding:6px 12px; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" style="width:130px;" /></div></td>
+              <td></td>
             </tr>
           </tbody>
+          <tbody id="extra-fee-rows"></tbody>
         </table>
         </div>
       </div>
@@ -2748,6 +2758,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="padding:8px 12px; text-align:right; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-design">—</td>
             </tr>
+          </tbody>
+          <tbody id="pricing-extra-fee-rows"></tbody>
+          <tbody>
             <tr style="border-top:2px solid var(--border); background:rgba(232,117,26,0.06);">
               <td style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fee(s)</td>
               <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:13px; color:var(--accent);" id="pricing-fee-total-rmb">—</td>
@@ -3853,6 +3866,134 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   /* ── Additional Fees ───────────────────────────────────────────────────── */
+  let _extraFeeRows = [];
+  let _extraFeeCounter = 0;
+
+  const FEE_TYPE_LABELS = {
+    sample: 'Sample Fee(s)', tooling: 'Tooling Fee(s)', die: 'Die Fee(s)',
+    plate: 'Plate Fee(s)', design: 'Design Fee(s)'
+  };
+
+  function openAddFeeModal() {
+    let modal = document.getElementById('add-fee-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'add-fee-modal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:flex;';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:420px; width:100%;">
+        <div class="modal-header">
+          <h3 style="margin:0; font-size:16px;">Add Fee</h3>
+          <button onclick="document.getElementById('add-fee-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+          <div id="add-fee-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:13px;"></div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Fee Type</label>
+            <select id="add-fee-type" class="form-input" style="width:100%;" onchange="onAddFeeTypeChange()" autocomplete="off">
+              <option value="sample">Sample Fee(s)</option>
+              <option value="tooling">Tooling Fee(s)</option>
+              <option value="die">Die Fee(s)</option>
+              <option value="plate">Plate Fee(s)</option>
+              <option value="design">Design Fee(s)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Description</label>
+            <input id="add-fee-desc" type="text" class="form-input" style="width:100%;" placeholder="e.g. Rush sample, 2nd colour run…" autocomplete="off" />
+          </div>
+          <div id="add-fee-rmb-row">
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Amount (RMB)</label>
+            <div class="currency-prefix currency-rmb">
+              <input id="add-fee-rmb" type="number" step="0.01" min="0" class="form-input" style="width:100%;padding-left:28px;" placeholder="0.00" oninput="onAddFeeRmbInput()" autocomplete="off" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Amount (USD)</label>
+            <div class="currency-prefix currency-usd">
+              <input id="add-fee-usd" type="number" step="0.01" min="0" class="form-input" style="width:100%;padding-left:28px;" placeholder="0.00" oninput="onAddFeeUsdInput()" autocomplete="off" />
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="confirmAddFee()">Add Fee</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    setTimeout(() => document.getElementById('add-fee-desc')?.focus(), 50);
+  }
+
+  function onAddFeeTypeChange() {
+    const type = document.getElementById('add-fee-type').value;
+    const rmbRow = document.getElementById('add-fee-rmb-row');
+    rmbRow.style.display = type === 'design' ? 'none' : '';
+    if (type === 'design') {
+      document.getElementById('add-fee-rmb').value = '';
+    }
+  }
+
+  function onAddFeeRmbInput() {
+    const rmb = parseFloat(document.getElementById('add-fee-rmb').value) || 0;
+    document.getElementById('add-fee-usd').value = rmb > 0 ? (rmb / USD_TO_RMB).toFixed(2) : '';
+  }
+
+  function onAddFeeUsdInput() {
+    const type = document.getElementById('add-fee-type').value;
+    if (type === 'design') return;
+    const usd = parseFloat(document.getElementById('add-fee-usd').value) || 0;
+    document.getElementById('add-fee-rmb').value = usd > 0 ? (usd * USD_TO_RMB).toFixed(2) : '';
+  }
+
+  function confirmAddFee() {
+    const type  = document.getElementById('add-fee-type').value;
+    const desc  = document.getElementById('add-fee-desc').value.trim();
+    const rmb   = parseFloat(document.getElementById('add-fee-rmb').value) || 0;
+    const usd   = parseFloat(document.getElementById('add-fee-usd').value) || 0;
+    const errEl = document.getElementById('add-fee-error');
+    errEl.style.display = 'none';
+    if (!desc) { errEl.textContent = 'Description is required.'; errEl.style.display = 'block'; return; }
+    if (usd <= 0) { errEl.textContent = 'Please enter an amount.'; errEl.style.display = 'block'; return; }
+    _extraFeeCounter++;
+    _extraFeeRows.push({ id: _extraFeeCounter, type, desc, rmb, usd });
+    document.getElementById('add-fee-modal').remove();
+    renderExtraFeeRows();
+    calcAdditionalFees();
+  }
+
+  function removeExtraFeeRow(id) {
+    _extraFeeRows = _extraFeeRows.filter(r => r.id !== id);
+    renderExtraFeeRows();
+    calcAdditionalFees();
+  }
+
+  function renderExtraFeeRows() {
+    const inputStyle = 'width:130px;';
+    ['extra-fee-rows', 'pricing-extra-fee-rows'].forEach(tbodyId => {
+      const tbody = document.getElementById(tbodyId);
+      if (!tbody) return;
+      const isPricing = tbodyId === 'pricing-extra-fee-rows';
+      tbody.innerHTML = _extraFeeRows.map(r => {
+        const label = `${FEE_TYPE_LABELS[r.type]}: ${r.desc}`;
+        const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
+        const usdFmt = '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits:2});
+        if (isPricing) {
+          return `<tr>
+            <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">${label}</td>
+            <td style="padding:6px 12px; text-align:right; font-size:13px;">${rmbFmt}</td>
+            <td style="padding:6px 12px; text-align:right; font-size:13px; font-weight:600;">${usdFmt}</td>
+          </tr>`;
+        }
+        return `<tr>
+          <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">${label}</td>
+          <td style="padding:6px 12px; font-size:13px; text-align:right;">${rmbFmt}</td>
+          <td style="padding:6px 12px; font-size:13px; text-align:right; font-weight:600;">${usdFmt}</td>
+          <td style="padding:4px 8px; text-align:center;">
+            <span class="remove-tier" onclick="removeExtraFeeRow(${r.id})" title="Remove">&times;</span>
+          </td>
+        </tr>`;
+      }).join('');
+    });
+  }
+
   function convertFee(name, from) {
     const rmbEl = document.getElementById(`fee-${name}-rmb`);
     const usdEl = document.getElementById(`fee-${name}-usd`);
@@ -3879,8 +4020,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const dieRmb     = get('fee-die-rmb');
     const plateRmb   = get('fee-plate-rmb');
 
-    const totalUsd = sample + tooling + die + plate + design;
-    const totalRmb = sampleRmb + toolingRmb + dieRmb + plateRmb;
+    const extraUsd = _extraFeeRows.reduce((s, r) => s + r.usd, 0);
+    const extraRmb = _extraFeeRows.reduce((s, r) => s + r.rmb, 0);
+    const totalUsd = sample + tooling + die + plate + design + extraUsd;
+    const totalRmb = sampleRmb + toolingRmb + dieRmb + plateRmb + extraRmb;
 
     const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
@@ -5277,6 +5420,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('fee-plate-rmb',   data.feePlateRmb);
       _s('fee-plate-usd',   data.feePlateUsd);
       _s('fee-design-usd',  data.feeDesignUsd);
+      _extraFeeRows = [];
+      _extraFeeCounter = 0;
+      if (Array.isArray(data.extraFeeRows)) {
+        data.extraFeeRows.forEach(r => {
+          _extraFeeCounter++;
+          _extraFeeRows.push({ id: _extraFeeCounter, type: r.type, desc: r.desc, rmb: r.rmb || 0, usd: r.usd || 0 });
+        });
+        renderExtraFeeRows();
+      }
       // Product images (gallery)
       if (data.productImages && Array.isArray(data.productImages) && data.productImages.length > 0) {
         _productImages = data.productImages.map(url => ({ url }));
@@ -5621,6 +5773,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       feePlateRmb:   _v('fee-plate-rmb'),
       feePlateUsd:   _v('fee-plate-usd'),
       feeDesignUsd:  _v('fee-design-usd'),
+      extraFeeRows:  _extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd})),
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
       productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
