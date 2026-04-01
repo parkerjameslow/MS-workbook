@@ -767,6 +767,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .lightbox-overlay img { max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; }
     /* Video gallery */
     .video-gallery { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .video-drop-zone {
+      min-height: 62px; border: 2px dashed var(--border); border-radius: var(--radius);
+      margin-top: 10px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .video-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-glow); }
+    .video-drop-hint {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 44px; font-size: 12px; color: var(--text-muted); pointer-events: none;
+    }
     .video-item {
       display: flex; align-items: center; gap: 10px;
       background: var(--surface2); border: 1px solid var(--border);
@@ -2353,9 +2363,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label style="display:block; margin-bottom:8px;">Product Video(s)</label>
         <div class="video-add-row">
           <input type="text" id="videoUrlInput" placeholder="Paste YouTube, Vimeo, or direct video URL…" onkeydown="if(event.key==='Enter'){addProductVideo();event.preventDefault();}" />
-          <button class="btn" onclick="addProductVideo()" type="button" style="white-space:nowrap; flex-shrink:0;">Add</button>
+          <button class="btn" onclick="addProductVideo()" type="button" style="white-space:nowrap; flex-shrink:0;">Add URL</button>
+          <button class="btn" onclick="document.getElementById('videoFileInput').click()" type="button" style="white-space:nowrap; flex-shrink:0;">Browse</button>
         </div>
-        <div class="video-gallery" id="videoGallery"></div>
+        <div class="video-drop-zone" id="videoGallery">
+          <div class="video-drop-hint" id="videoDropHint">Drop video files here (mp4, mov, webm…)</div>
+        </div>
+        <input type="file" id="videoFileInput" accept="video/*" multiple onchange="handleVideoFiles(Array.from(this.files)); this.value='';" style="display:none;" />
       </div>
 
       <!-- Lightbox -->
@@ -3528,6 +3542,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   });
 
+  // Drag and drop support for video gallery
+  const videoGalleryEl = document.getElementById('videoGallery');
+  videoGalleryEl.addEventListener('dragover', e => { e.preventDefault(); videoGalleryEl.classList.add('drag-over'); });
+  videoGalleryEl.addEventListener('dragleave', e => { if (!videoGalleryEl.contains(e.relatedTarget)) videoGalleryEl.classList.remove('drag-over'); });
+  videoGalleryEl.addEventListener('drop', e => {
+    e.preventDefault();
+    videoGalleryEl.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+    if (files.length) handleVideoFiles(files);
+  });
+
   // Clipboard paste — upload images when workbook is open
   document.addEventListener('paste', function(e) {
     if (!currentWorkbookId) return;
@@ -3557,7 +3582,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (vimeoMatch) {
       return { thumb: null, embedUrl: 'https://player.vimeo.com/video/' + vimeoMatch[1] + '?autoplay=1', type: 'iframe' };
     }
-    if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) {
+    if (/\.(mp4|webm|ogg|mov|m4v)(\?|$)/i.test(url) || url.startsWith('uploads/')) {
       return { thumb: null, embedUrl: url, type: 'video' };
     }
     return { thumb: null, embedUrl: url, type: 'link' };
@@ -3573,7 +3598,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveVideoList();
   }
 
-  function removeProductVideo(idx) {
+  async function handleVideoFiles(files) {
+    if (!files.length || !currentWorkbookId) return;
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    for (const file of files) {
+      if (!file.type.startsWith('video/')) continue;
+      const formData = new FormData();
+      formData.append('video', file);
+      formData.append('workbook_id', dbId);
+      try {
+        const res = await fetch('api.php?action=upload_video', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (data.success) {
+          _productVideos.push(data.url);
+          renderVideoGallery();
+          saveVideoList();
+        } else {
+          console.warn('Video upload failed:', data.error);
+        }
+      } catch (err) { console.warn('Video upload error:', err); }
+    }
+  }
+
+  async function removeProductVideo(idx) {
+    const url = _productVideos[idx];
+    if (!url) return;
+    // Delete server-uploaded files from the uploads directory
+    if (url.startsWith('uploads/')) {
+      try { await apiCall('delete_image', { url }); } catch (err) { /* ignore */ }
+    }
     _productVideos.splice(idx, 1);
     renderVideoGallery();
     saveVideoList();
@@ -3581,18 +3634,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function renderVideoGallery() {
     const gallery = document.getElementById('videoGallery');
-    gallery.innerHTML = '';
+    gallery.querySelectorAll('.video-item').forEach(el => el.remove());
+    const hint = document.getElementById('videoDropHint');
+    if (hint) hint.style.display = _productVideos.length ? 'none' : '';
     _productVideos.forEach((url, idx) => {
       const info = getVideoInfo(url);
       const item = document.createElement('div');
       item.className = 'video-item';
+      const label = url.startsWith('uploads/') ? url.split('/').pop() : url;
+      const shortLabel = label.length > 55 ? label.slice(0, 52) + '…' : label;
       const thumbHtml = info.thumb
         ? `<img class="video-thumb" src="${info.thumb}" alt="Video" onclick="openVideoLightbox(${idx})" />`
         : `<div class="video-thumb-placeholder" onclick="openVideoLightbox(${idx})">▶</div>`;
-      const shortUrl = url.length > 60 ? url.slice(0, 57) + '…' : url;
       item.innerHTML = `
         ${thumbHtml}
-        <span class="video-url-label" onclick="openVideoLightbox(${idx})" title="${url}">${shortUrl}</span>
+        <span class="video-url-label" onclick="openVideoLightbox(${idx})" title="${url}">${shortLabel}</span>
         <button class="img-remove" onclick="removeProductVideo(${idx})" title="Remove">✕</button>
       `;
       gallery.appendChild(item);

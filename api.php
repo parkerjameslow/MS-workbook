@@ -558,6 +558,35 @@ switch ($action) {
         }
         break;
 
+    case 'upload_video':
+        if (empty($_FILES['video']) || empty($_POST['workbook_id'])) {
+            echo json_encode(['success' => false, 'error' => 'Video file and workbook_id required']);
+            break;
+        }
+        $wbId = intval($_POST['workbook_id']);
+        $file = $_FILES['video'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowed = ['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v'];
+        if (!in_array($ext, $allowed)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid file type. Allowed: mp4, mov, webm, avi, mkv, m4v']);
+            break;
+        }
+        if ($file['size'] > 500 * 1024 * 1024) {
+            echo json_encode(['success' => false, 'error' => 'File too large (max 500MB)']);
+            break;
+        }
+        $uploadDir = __DIR__ . '/uploads/' . $wbId . '/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+        $filename = uniqid() . '_' . time() . '.' . $ext;
+        $filepath = $uploadDir . $filename;
+        if (move_uploaded_file($file['tmp_name'], $filepath)) {
+            $url = 'uploads/' . $wbId . '/' . $filename;
+            echo json_encode(['success' => true, 'url' => $url, 'filename' => $filename]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Upload failed']);
+        }
+        break;
+
     case 'get_users':
         if ($sessionUser['role'] !== 'admin') {
             echo json_encode(['success' => false, 'error' => 'Admin only']);
@@ -663,7 +692,7 @@ switch ($action) {
             'get_revisions', 'get_revision_detail', 'restore_revision',
             'get_archived', 'restore_workbook', 'restore_client',
             'permanent_delete_workbook', 'permanent_delete_client',
-            'upload_image', 'delete_image',
+            'upload_image', 'delete_image', 'upload_video',
             'get_users', 'add_user', 'delete_user', 'change_password',
             'duplicate_workbook'
         ]]);
