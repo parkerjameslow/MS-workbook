@@ -2746,7 +2746,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr id="tier-1">
             <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">1</td>
             <td><input type="number" min="0" placeholder="e.g. 100" value="100" oninput="recalcTier(1)" style="width:110px;" /></td>
-            <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(1)" style="width:130px;" /></td>
+            <td class="karen-cell"><input type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="recalcTier(1)" style="width:130px;" /></td>
             <td class="tier-col-usd" id="tier-usd-1" style="color:var(--text-muted); font-size:13px;">—</td>
             <td class="total-cell" id="tier-total-1">—</td>
             <td><button class="btn btn-danger-ghost" onclick="removeTierRow(1)">✕</button></td>
@@ -2754,7 +2754,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr id="tier-2">
             <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">2</td>
             <td><input type="number" min="0" placeholder="e.g. 100" value="250" oninput="recalcTier(2)" style="width:110px;" /></td>
-            <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(2)" style="width:130px;" /></td>
+            <td class="karen-cell"><input type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="recalcTier(2)" style="width:130px;" /></td>
             <td class="tier-col-usd" id="tier-usd-2" style="color:var(--text-muted); font-size:13px;">—</td>
             <td class="total-cell" id="tier-total-2">—</td>
             <td><button class="btn btn-danger-ghost" onclick="removeTierRow(2)">✕</button></td>
@@ -2762,7 +2762,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr id="tier-3">
             <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">3</td>
             <td><input type="number" min="0" placeholder="e.g. 100" value="500" oninput="recalcTier(3)" style="width:110px;" /></td>
-            <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(3)" style="width:130px;" /></td>
+            <td class="karen-cell"><input type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="recalcTier(3)" style="width:130px;" /></td>
             <td class="tier-col-usd" id="tier-usd-3" style="color:var(--text-muted); font-size:13px;">—</td>
             <td class="total-cell" id="tier-total-3">—</td>
             <td><button class="btn btn-danger-ghost" onclick="removeTierRow(3)">✕</button></td>
@@ -3726,12 +3726,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function applyRfqRmbToTiers(totalRmb) {
+    const firstRow = document.querySelector('#wb-tier-body tr:first-child');
+    if (!firstRow) return;
+    const id = parseInt(firstRow.id.replace('wb-tier-', ''));
+    firstRow.dataset.price = totalRmb > 0 ? parseFloat(totalRmb).toFixed(2) : '';
     _syncing = true;
-    document.querySelectorAll('#wb-tier-body tr').forEach(row => {
-      const id = parseInt(row.id.replace('wb-tier-', ''));
-      row.dataset.price = totalRmb > 0 ? parseFloat(totalRmb).toFixed(4) : '';
-      recalcWbTier(id);
-    });
+    recalcWbTier(id);
     _syncing = false;
     syncTiersToPricing();
   }
@@ -3804,7 +3804,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
       <td style="color:var(--text); font-size:13px;">${qty ? parseFloat(qty).toLocaleString('en-US') : '—'}</td>
-      <td style="color:var(--text); font-size:13px;">${unitPrice ? '¥ ' + parseFloat(unitPrice).toLocaleString('en-US') : '—'}</td>
+      <td style="color:var(--text); font-size:13px;">${unitPrice ? '¥ ' + parseFloat(unitPrice).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
       <td class="tier-col-usd" id="tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="tier-total-${id}">—</td>
       <td></td>
@@ -3860,6 +3860,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tr = document.createElement('tr');
     tr.id = `wb-tier-${id}`;
     tr.dataset.price = unitPrice || '';
+    // First row: read-only (driven by RFQ total). All others: editable.
+    const rmbCell = (id === 1)
+      ? `<td id="wb-tier-rmb-${id}" style="color:var(--text-muted); font-size:13px;">—</td>`
+      : `<td class="karen-cell">
+          <div class="currency-prefix currency-rmb" style="display:inline-block; position:relative;">
+            <input type="number" step="0.01" min="0" placeholder="0.00" value="${unitPrice}"
+                   oninput="recalcWbTier(${id})"
+                   style="width:110px; padding-left:28px;" />
+          </div>
+        </td>`;
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
       <td>
@@ -3867,7 +3877,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                oninput="recalcWbTier(${id})"
                style="width:110px;" />
       </td>
-      <td id="wb-tier-rmb-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
+      ${rmbCell}
       <td class="tier-col-usd" id="wb-tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="wb-tier-total-${id}">—</td>
       <td>
@@ -3882,12 +3892,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const row = document.getElementById(`wb-tier-${id}`);
     const inputs = row.querySelectorAll('input');
     const qty = parseFloat(inputs[0].value);
-    const rmb = parseFloat(row.dataset.price);
+    let rmb;
+    if (inputs[1]) {
+      // Editable row — read from input and keep dataset in sync
+      rmb = parseFloat(inputs[1].value);
+      row.dataset.price = inputs[1].value;
+    } else {
+      // First row — read-only, driven by RFQ total
+      rmb = parseFloat(row.dataset.price);
+    }
     const usd = rmb / USD_TO_RMB;
     const rmbEl = document.getElementById(`wb-tier-rmb-${id}`);
     const usdEl = document.getElementById(`wb-tier-usd-${id}`);
     const totalEl = document.getElementById(`wb-tier-total-${id}`);
-    if (rmbEl) rmbEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:4, maximumFractionDigits:4}) : '—';
+    if (rmbEl) rmbEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     if (!isNaN(rmb) && rmb > 0) {
       usdEl.textContent = '$' + usd.toFixed(2);
     } else {
