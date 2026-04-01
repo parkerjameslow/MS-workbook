@@ -2736,32 +2736,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- ── Additional Fees ── -->
       <div class="subsection" style="margin-top:24px;">
         <div class="subsection-title">Additional Fees</div>
-        <table class="tier-table" style="max-width:560px;">
+        <table class="tier-table" style="max-width:760px;">
           <thead>
             <tr>
-              <th style="text-align:left; width:40%;">Fee</th>
+              <th style="text-align:left; width:22%;">Fee</th>
+              <th style="text-align:left;">Description</th>
               <th style="text-align:right;">RMB</th>
               <th style="text-align:right;">USD</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-sample-label">Sample Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Sample Fee(s)</td>
+              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-sample-desc"></td>
               <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-sample-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-sample">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-tooling-label">Tooling Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Tooling Fee(s)</td>
+              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-tooling-desc"></td>
               <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-tooling-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-tooling">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-die-label">Die Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Die Fee(s)</td>
+              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-die-desc"></td>
               <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-die-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-die">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-plate-label">Plate Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Plate Fee(s)</td>
+              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-plate-desc"></td>
               <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-plate-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-plate">—</td>
             </tr>
@@ -2769,14 +2774,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tbody id="pricing-extra-fee-rows"></tbody>
           <tbody>
             <tr style="border-top:2px solid var(--border);">
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-design-label">Design Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Design Fee(s)</td>
+              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-design-desc"></td>
               <td style="padding:8px 12px; text-align:right; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-design">—</td>
             </tr>
           </tbody>
           <tbody>
             <tr style="border-top:2px solid var(--border); background:rgba(232,117,26,0.06);">
-              <td style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fee(s)</td>
+              <td colspan="2" style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fee(s)</td>
               <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:13px; color:var(--accent);" id="pricing-fee-total-rmb">—</td>
               <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:14px; color:var(--accent);" id="pricing-fee-total">—</td>
             </tr>
@@ -4082,11 +4088,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pr = document.getElementById('pricing-extra-fee-rows');
     if (pr) {
       pr.innerHTML = _extraFeeRows.map(r => {
-        const label = `${FEE_TYPE_LABELS[r.type]}${r.desc ? ': ' + r.desc : ''}`;
         const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
         const usdFmt = r.usd > 0 ? '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
         return `<tr>
-          <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">${label}</td>
+          <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">${FEE_TYPE_LABELS[r.type]}</td>
+          <td style="padding:6px 12px; font-size:13px;">${r.desc || ''}</td>
           <td style="padding:6px 12px; text-align:right; font-size:13px;">${rmbFmt}</td>
           <td style="padding:6px 12px; text-align:right; font-size:13px; font-weight:600;">${usdFmt}</td>
         </tr>`;
@@ -4115,10 +4121,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pr = document.getElementById('pricing-extra-fee-rows');
     if (pr) {
       pr.innerHTML = _extraFeeRows.map(r => {
-        const label = `${FEE_TYPE_LABELS[r.type]}${r.desc ? ': ' + r.desc : ''}`;
         const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
         const usdFmt = r.usd > 0 ? '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
-        return `<tr><td style="padding:6px 12px;font-size:13px;color:var(--text-muted);">${label}</td>
+        return `<tr>
+          <td style="padding:6px 12px;font-size:13px;color:var(--text-muted);white-space:nowrap;">${FEE_TYPE_LABELS[r.type]}</td>
+          <td style="padding:6px 12px;font-size:13px;">${r.desc || ''}</td>
           <td style="padding:6px 12px;text-align:right;font-size:13px;">${rmbFmt}</td>
           <td style="padding:6px 12px;text-align:right;font-size:13px;font-weight:600;">${usdFmt}</td></tr>`;
       }).join('');
@@ -4160,16 +4167,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
 
-    // Sync descriptions to pricing tab labels
-    const descLabel = (base, id) => {
-      const d = document.getElementById(`fee-${id}-desc`)?.value.trim();
-      return d ? `${base}: ${d}` : base;
-    };
-    document.getElementById('pricing-fee-sample-label').textContent  = descLabel('Sample Fee(s)',  'sample');
-    document.getElementById('pricing-fee-tooling-label').textContent = descLabel('Tooling Fee(s)', 'tooling');
-    document.getElementById('pricing-fee-die-label').textContent     = descLabel('Die Fee(s)',     'die');
-    document.getElementById('pricing-fee-plate-label').textContent   = descLabel('Plate Fee(s)',   'plate');
-    document.getElementById('pricing-fee-design-label').textContent  = descLabel('Design Fee(s)',  'design');
+    // Sync descriptions to pricing tab description cells
+    ['sample','tooling','die','plate','design'].forEach(id => {
+      const d = document.getElementById(`fee-${id}-desc`)?.value.trim() || '';
+      const el = document.getElementById(`pricing-fee-${id}-desc`);
+      if (el) el.textContent = d;
+    });
 
     document.getElementById('pricing-fee-sample').textContent      = fmtUsd(sample);
     document.getElementById('pricing-fee-sample-rmb').textContent  = fmtRmb(sampleRmb);
