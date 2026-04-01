@@ -902,6 +902,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       width: 100%;
       box-sizing: border-box;
     }
+    .specs-input-wrap {
+      position: relative;
+      width: 100%;
+    }
+    .specs-input-wrap input {
+      width: 100%;
+      padding-right: 30px;
+      box-sizing: border-box;
+    }
+    .specs-unit-tag {
+      position: absolute;
+      right: 9px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      pointer-events: none;
+      user-select: none;
+      opacity: 0.55;
+    }
     .specs-dim-divider {
       grid-column: 1 / -1;
       border: none;
@@ -2468,21 +2489,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">in</div>
             <div class="specs-unit-header">cm</div>
             <div class="specs-row-label">Length</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm')" /><span class="specs-unit-tag">cm</span></div>
             <div class="specs-row-label">Width</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm')" /><span class="specs-unit-tag">cm</span></div>
             <div class="specs-row-label">Height</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm')" /><span class="specs-unit-tag">cm</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
-            <input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-kg" oninput="convertWeight('dim-weight-kg','dim-weight-lbs','kg')" />
-            <input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-lbs" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs')" />
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-kg" oninput="convertWeight('dim-weight-kg','dim-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-lbs" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs')" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Packaging Type</div>
               <div class="select-wrapper">
@@ -2513,21 +2534,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">in</div>
             <div class="specs-unit-header">cm</div>
             <div class="specs-row-label">Length</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-in" oninput="convertDim('carton-inner-l-in','carton-inner-l-cm','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-cm" oninput="convertDim('carton-inner-l-cm','carton-inner-l-in','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-in" oninput="convertDim('carton-inner-l-in','carton-inner-l-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-cm" oninput="convertDim('carton-inner-l-cm','carton-inner-l-in','cm')" /><span class="specs-unit-tag">cm</span></div>
             <div class="specs-row-label">Width</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-in" oninput="convertDim('carton-inner-w-in','carton-inner-w-cm','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-cm" oninput="convertDim('carton-inner-w-cm','carton-inner-w-in','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-in" oninput="convertDim('carton-inner-w-in','carton-inner-w-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-cm" oninput="convertDim('carton-inner-w-cm','carton-inner-w-in','cm')" /><span class="specs-unit-tag">cm</span></div>
             <div class="specs-row-label">Height</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-in" oninput="convertDim('carton-inner-h-in','carton-inner-h-cm','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-cm" oninput="convertDim('carton-inner-h-cm','carton-inner-h-in','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-in" oninput="convertDim('carton-inner-h-in','carton-inner-h-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-cm" oninput="convertDim('carton-inner-h-cm','carton-inner-h-in','cm')" /><span class="specs-unit-tag">cm</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
-            <input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg')" />
-            <input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" />
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
               <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" style="width:100%;" />
@@ -2543,21 +2564,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">in</div>
             <div class="specs-unit-header">cm</div>
             <div class="specs-row-label">Length</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm')" /><span class="specs-unit-tag">cm</span></div>
             <div class="specs-row-label">Width</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm')" /><span class="specs-unit-tag">cm</span></div>
             <div class="specs-row-label">Height</div>
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in')" />
-            <input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm')" />
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm')" /><span class="specs-unit-tag">cm</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
-            <input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" />
-            <input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" />
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
               <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" style="width:100%;" />
