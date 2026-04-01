@@ -765,6 +765,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .lightbox-overlay.open { display: flex; }
     .lightbox-overlay img { max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; }
+    /* Video gallery */
+    .video-gallery { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .video-item {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 10px;
+    }
+    .video-thumb { width: 80px; height: 45px; object-fit: cover; border-radius: 4px; flex-shrink: 0; cursor: pointer; }
+    .video-thumb-placeholder {
+      width: 80px; height: 45px; border-radius: 4px; flex-shrink: 0;
+      background: var(--surface3); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; cursor: pointer;
+    }
+    .video-url-label { flex: 1; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .video-url-label:hover { color: var(--accent); }
+    .video-add-row { display: flex; gap: 8px; align-items: center; }
+    .video-add-row input { flex: 1; }
+    .video-lightbox-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.9); z-index: 610; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .video-lightbox-overlay.open { display: flex; }
+    .video-lightbox-inner { position: relative; width: min(90vw, 854px); aspect-ratio: 16/9; cursor: default; }
+    .video-lightbox-inner iframe, .video-lightbox-inner video { width: 100%; height: 100%; border-radius: 8px; border: none; }
 
     /* ── Color Swatch ────────────────────────────────────────────────────── */
     .color-row {
@@ -2319,11 +2344,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="add-text">Add Image</div>
           </div>
         </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Tip: paste an image from clipboard (Ctrl/⌘ + V) to add it instantly</div>
         <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImages(event)" style="display:none;" />
       </div>
+
+      <!-- Product Videos -->
+      <div style="margin-top:18px;">
+        <label style="display:block; margin-bottom:8px;">Product Video(s)</label>
+        <div class="video-add-row">
+          <input type="text" id="videoUrlInput" placeholder="Paste YouTube, Vimeo, or direct video URL…" onkeydown="if(event.key==='Enter'){addProductVideo();event.preventDefault();}" />
+          <button class="btn" onclick="addProductVideo()" type="button" style="white-space:nowrap; flex-shrink:0;">Add</button>
+        </div>
+        <div class="video-gallery" id="videoGallery"></div>
+      </div>
+
       <!-- Lightbox -->
       <div class="lightbox-overlay" id="lightboxOverlay" onclick="this.classList.remove('open')">
         <img id="lightboxImg" src="" alt="Full size" onclick="event.stopPropagation()" />
+      </div>
+      <!-- Video Lightbox -->
+      <div class="video-lightbox-overlay" id="videoLightboxOverlay" onclick="if(event.target===this){document.getElementById('videoLightboxIframe').src='';document.getElementById('videoLightboxVideo').src='';this.classList.remove('open');}">
+        <div class="video-lightbox-inner" onclick="event.stopPropagation()">
+          <iframe id="videoLightboxIframe" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+          <video id="videoLightboxVideo" src="" controls style="display:none;"></video>
+        </div>
       </div>
     </div>
   </div>
@@ -3483,6 +3527,112 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       handleImages({ target: { files: files } });
     }
   });
+
+  // Clipboard paste — upload images when workbook is open
+  document.addEventListener('paste', function(e) {
+    if (!currentWorkbookId) return;
+    const active = document.activeElement;
+    // Don't intercept when user is typing in a text/textarea field
+    if (active && (active.tagName === 'TEXTAREA' || (active.tagName === 'INPUT' && active.type !== 'file' && active.id !== 'videoUrlInput'))) return;
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageItems = items.filter(item => item.type.startsWith('image/'));
+    if (!imageItems.length) return;
+    e.preventDefault();
+    imageItems.forEach(item => {
+      const file = item.getAsFile();
+      if (file) handleImages({ target: { files: [file] } });
+    });
+  });
+
+  /* ── Product Videos ─────────────────────────────────────────────────────── */
+  let _productVideos = [];
+
+  function getVideoInfo(url) {
+    const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    if (ytMatch) {
+      const id = ytMatch[1];
+      return { thumb: 'https://img.youtube.com/vi/' + id + '/mqdefault.jpg', embedUrl: 'https://www.youtube.com/embed/' + id + '?autoplay=1', type: 'iframe' };
+    }
+    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+    if (vimeoMatch) {
+      return { thumb: null, embedUrl: 'https://player.vimeo.com/video/' + vimeoMatch[1] + '?autoplay=1', type: 'iframe' };
+    }
+    if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) {
+      return { thumb: null, embedUrl: url, type: 'video' };
+    }
+    return { thumb: null, embedUrl: url, type: 'link' };
+  }
+
+  function addProductVideo() {
+    const input = document.getElementById('videoUrlInput');
+    const url = input.value.trim();
+    if (!url) return;
+    _productVideos.push(url);
+    input.value = '';
+    renderVideoGallery();
+    saveVideoList();
+  }
+
+  function removeProductVideo(idx) {
+    _productVideos.splice(idx, 1);
+    renderVideoGallery();
+    saveVideoList();
+  }
+
+  function renderVideoGallery() {
+    const gallery = document.getElementById('videoGallery');
+    gallery.innerHTML = '';
+    _productVideos.forEach((url, idx) => {
+      const info = getVideoInfo(url);
+      const item = document.createElement('div');
+      item.className = 'video-item';
+      const thumbHtml = info.thumb
+        ? `<img class="video-thumb" src="${info.thumb}" alt="Video" onclick="openVideoLightbox(${idx})" />`
+        : `<div class="video-thumb-placeholder" onclick="openVideoLightbox(${idx})">▶</div>`;
+      const shortUrl = url.length > 60 ? url.slice(0, 57) + '…' : url;
+      item.innerHTML = `
+        ${thumbHtml}
+        <span class="video-url-label" onclick="openVideoLightbox(${idx})" title="${url}">${shortUrl}</span>
+        <button class="img-remove" onclick="removeProductVideo(${idx})" title="Remove">✕</button>
+      `;
+      gallery.appendChild(item);
+    });
+  }
+
+  function openVideoLightbox(idx) {
+    const url = _productVideos[idx];
+    const info = getVideoInfo(url);
+    const overlay = document.getElementById('videoLightboxOverlay');
+    const iframe = document.getElementById('videoLightboxIframe');
+    const video = document.getElementById('videoLightboxVideo');
+    if (info.type === 'video') {
+      iframe.src = '';
+      iframe.style.display = 'none';
+      video.src = url;
+      video.style.display = '';
+    } else if (info.type === 'iframe') {
+      video.src = '';
+      video.style.display = 'none';
+      iframe.src = info.embedUrl;
+      iframe.style.display = '';
+    } else {
+      window.open(url, '_blank');
+      return;
+    }
+    overlay.classList.add('open');
+  }
+
+  function saveVideoList() {
+    if (!currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (!workbookDetail[key]) workbookDetail[key] = {};
+    workbookDetail[key].productVideos = _productVideos.slice();
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    const detail = collectWorkbookDetail();
+    detail.productVideos = _productVideos.slice();
+    apiCall('save_workbook_detail', { id: dbId, detail: detail });
+    saveToLocalStorage();
+  }
 
   /* ── Product Category / Subcategory ────────────────────────────────────── */
   const SUBCATEGORIES = {
@@ -5776,6 +5926,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _productImages = [];
       }
       renderImageGallery();
+      // Product videos
+      _productVideos = (data.productVideos && Array.isArray(data.productVideos)) ? data.productVideos.slice() : [];
+      renderVideoGallery();
       // Pricing tiers (populate both Workbook and Pricing tab tables)
       const rawTiers = Array.isArray(data.tiers) ? data.tiers : [];
       const validTiers = rawTiers.filter(t => t && t.qty && String(t.qty).trim() !== '');
@@ -5866,9 +6019,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
-      // Clear images
+      // Clear images and videos
       _productImages = [];
       renderImageGallery();
+      _productVideos = [];
+      renderVideoGallery();
       _artImages = [];
       renderArtGallery();
       document.getElementById('product-category').value = '';
@@ -6137,6 +6292,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
       productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
+      productVideos: _productVideos.length > 0 ? _productVideos.slice() : (existing.productVideos || []),
       // Pricing tab
       tiers: collectTiers(),
       // Dimensions & Carton Specifications
