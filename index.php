@@ -2503,7 +2503,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-kg" oninput="convertWeight('dim-weight-kg','dim-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-lbs" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs')" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-input-wrap"><input type="text" readonly placeholder="—" id="dim-weight-lbs" style="color:var(--text-muted); cursor:default;" /></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Packaging Type</div>
               <div class="select-wrapper">
@@ -2548,7 +2548,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-input-wrap"><input type="text" readonly placeholder="—" id="carton-inner-weight-lbs" style="color:var(--text-muted); cursor:default;" /></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
               <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" style="width:100%;" />
@@ -2578,7 +2578,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-input-wrap"><input type="text" readonly placeholder="—" id="carton-outer-weight-lbs" style="color:var(--text-muted); cursor:default;" /></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
               <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" style="width:100%;" />
@@ -3666,9 +3666,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (isNaN(val)) {
       targetEl.value = '';
     } else if (sourceUnit === 'kg') {
-      targetEl.value = (val * KG_TO_LBS).toFixed(2);
+      const totalLbs = val * KG_TO_LBS;
+      const wholeLbs = Math.floor(totalLbs);
+      const oz = Math.round((totalLbs - wholeLbs) * 16 * 10) / 10;
+      targetEl.value = wholeLbs + ' lbs ' + oz.toFixed(1) + ' oz';
     } else {
-      targetEl.value = (val / KG_TO_LBS).toFixed(2);
+      targetEl.value = (val / KG_TO_LBS).toFixed(3);
     }
     convertingWeight = false;
   }
