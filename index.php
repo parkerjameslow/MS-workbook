@@ -791,6 +791,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .video-lightbox-inner { position: relative; width: min(90vw, 854px); aspect-ratio: 16/9; cursor: default; }
     .video-lightbox-inner iframe, .video-lightbox-inner video { width: 100%; height: 100%; border-radius: 8px; border: none; }
 
+    /* ── Add Custom Category / Material ─────────────────────────────────── */
+    .add-custom-btn {
+      background: none; border: none; color: var(--accent); font-size: 11px;
+      cursor: pointer; padding: 0; margin-top: 5px; display: inline-flex; align-items: center; gap: 3px;
+    }
+    .add-custom-btn:hover { text-decoration: underline; }
+    .add-custom-input-row {
+      display: none; gap: 6px; align-items: center; margin-top: 5px;
+    }
+    .add-custom-input-row input { flex: 1; font-size: 13px; }
+    .add-custom-input-row .confirm-btn {
+      background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
+      padding: 4px 10px; font-size: 12px; cursor: pointer; white-space: nowrap;
+    }
+    .add-custom-input-row .cancel-btn {
+      background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; line-height: 1;
+    }
+
     /* ── Color Swatch ────────────────────────────────────────────────────── */
     .color-row {
       display: flex;
@@ -2316,6 +2334,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <option value="other">Other</option>
               </select>
             </div>
+            <button type="button" class="add-custom-btn" id="cat-custom-btn" onclick="showAddCustomInput('cat')">+ Add Category</button>
+            <div class="add-custom-input-row" id="cat-input-row">
+              <input type="text" id="cat-custom-input" placeholder="Custom category name…"
+                     onkeydown="if(event.key==='Enter')confirmAddCustom('cat');if(event.key==='Escape')cancelAddCustom('cat');" />
+              <button type="button" class="confirm-btn" onclick="confirmAddCustom('cat')">Add</button>
+              <button type="button" class="cancel-btn" onclick="cancelAddCustom('cat')">✕</button>
+            </div>
           </div>
           <div class="field">
             <label>Material Type</label>
@@ -2323,6 +2348,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <select id="product-subcategory">
                 <option value="">Select category first...</option>
               </select>
+            </div>
+            <button type="button" class="add-custom-btn" id="mat-custom-btn" onclick="showAddCustomInput('mat')">+ Add Material Type</button>
+            <div class="add-custom-input-row" id="mat-input-row">
+              <input type="text" id="mat-custom-input" placeholder="Custom material type…"
+                     onkeydown="if(event.key==='Enter')confirmAddCustom('mat');if(event.key==='Escape')cancelAddCustom('mat');" />
+              <button type="button" class="confirm-btn" onclick="confirmAddCustom('mat')">Add</button>
+              <button type="button" class="cancel-btn" onclick="cancelAddCustom('mat')">✕</button>
             </div>
           </div>
         </div>
@@ -3736,6 +3768,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     subSel.innerHTML = '<option value="">Select material type...</option>' +
       SUBCATEGORIES[cat].map(s => `<option value="${s}">${s}</option>`).join('');
+  }
+
+  function showAddCustomInput(type) {
+    document.getElementById(type + '-custom-btn').style.display = 'none';
+    const row = document.getElementById(type + '-input-row');
+    row.style.display = 'flex';
+    document.getElementById(type + '-custom-input').focus();
+  }
+
+  function cancelAddCustom(type) {
+    document.getElementById(type + '-custom-btn').style.display = '';
+    document.getElementById(type + '-input-row').style.display = 'none';
+    document.getElementById(type + '-custom-input').value = '';
+  }
+
+  function confirmAddCustom(type) {
+    const input = document.getElementById(type + '-custom-input');
+    const val = input.value.trim();
+    if (!val) { cancelAddCustom(type); return; }
+
+    if (type === 'cat') {
+      const sel = document.getElementById('product-category');
+      const exists = Array.from(sel.options).find(o => o.value.toLowerCase() === val.toLowerCase());
+      if (!exists) {
+        const opt = new Option(val, val);
+        const otherOpt = sel.querySelector('option[value="other"]');
+        otherOpt ? sel.insertBefore(opt, otherOpt) : sel.appendChild(opt);
+      }
+      sel.value = val;
+      updateSubcategories();
+    } else {
+      const sel = document.getElementById('product-subcategory');
+      const exists = Array.from(sel.options).find(o => o.value.toLowerCase() === val.toLowerCase());
+      if (!exists) sel.appendChild(new Option(val, val));
+      sel.value = val;
+    }
+
+    cancelAddCustom(type);
+    if (_appReady) autoSaveWorkbook();
   }
 
   /* ── Art Tab ─────────────────────────────────────────────────────────────── */
@@ -5903,10 +5974,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         convertDim('dim-in-w', 'dim-cm-w', 'in');
         convertDim('dim-in-h', 'dim-cm-h', 'in');
       }
-      // Category / subcategory
-      _s('product-category', data.productCategory);
-      if (data.productCategory) updateSubcategories();
-      _s('product-subcategory', data.productSubcategory);
+      // Category / subcategory — restore custom values that aren't in the predefined list
+      if (data.productCategory) {
+        const catSel = document.getElementById('product-category');
+        if (!catSel.querySelector(`option[value="${CSS.escape(data.productCategory)}"]`)) {
+          const opt = new Option(data.productCategory, data.productCategory);
+          const otherOpt = catSel.querySelector('option[value="other"]');
+          otherOpt ? catSel.insertBefore(opt, otherOpt) : catSel.appendChild(opt);
+        }
+        catSel.value = data.productCategory;
+        updateSubcategories();
+      }
+      if (data.productSubcategory) {
+        const subSel = document.getElementById('product-subcategory');
+        if (!subSel.querySelector(`option[value="${CSS.escape(data.productSubcategory)}"]`)) {
+          subSel.appendChild(new Option(data.productSubcategory, data.productSubcategory));
+        }
+        subSel.value = data.productSubcategory;
+      }
       _s('materials', data.materials);
       _s('pantone-text', data.pantone);
       _s('cmyk', data.cmyk);
