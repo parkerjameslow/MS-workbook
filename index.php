@@ -4391,7 +4391,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Product Name</label>
-            <input id="dup-name" type="text" class="form-input" style="width:100%;" value="${srcName.replace(/"/g,'&quot;')}" autocomplete="off" />
+            <input id="dup-name" type="text" class="form-input" style="width:100%;" placeholder="${srcName.replace(/"/g,'&quot;')}" autocomplete="off" />
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>
@@ -4420,7 +4420,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   async function confirmDuplicate(originalClient, srcDbId) {
     const newClient = document.getElementById('dup-client').value;
-    const newName   = document.getElementById('dup-name').value.trim();
+    const nameEl    = document.getElementById('dup-name');
+    const newName   = nameEl.value.trim() || nameEl.placeholder;
     const qty       = document.getElementById('dup-qty').textContent.replace('—','').trim();
     const cost      = document.getElementById('dup-cost').textContent.replace('$','').replace('—','').trim();
     const errEl     = document.getElementById('dup-error');
