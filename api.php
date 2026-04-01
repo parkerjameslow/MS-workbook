@@ -625,7 +625,7 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
             break;
         }
-        $stmt = $pdo->prepare("SELECT client_id, product_name, description, flow_step, detail_json FROM workbooks WHERE id = ? AND deleted = 0");
+        $stmt = $pdo->prepare("SELECT client_id, product_name, description, flow_step, detail_json FROM workbooks WHERE id = ? AND deleted_at IS NULL");
         $stmt->execute([$input['id']]);
         $src = $stmt->fetch();
         if (!$src) {
