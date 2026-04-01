@@ -477,6 +477,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 22px;
     }
 
+    /* ── Collapsible section cards ── */
+    .section-header-collapsible {
+      cursor: pointer;
+      user-select: none;
+    }
+    .section-header-collapsible:hover {
+      background: color-mix(in srgb, var(--surface2) 85%, var(--border));
+    }
+    .section-chevron {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--text-muted);
+      transition: transform 0.2s ease;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .section-card.collapsed .section-chevron {
+      transform: rotate(-90deg);
+    }
+    .section-card.collapsed .section-body {
+      display: none;
+    }
+
     /* ── Sub-section ─────────────────────────────────────────────────────── */
     .subsection {
       margin-top: 24px;
@@ -2161,8 +2184,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        SECTION 1 — PRODUCT OVERVIEW
   ═══════════════════════════════════════════════════════════════════════ -->
   <div class="section-card">
-    <div class="section-header">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Product Overview</span>
+      <span class="section-chevron">▾</span>
     </div>
     <div class="section-body">
 
@@ -2244,16 +2268,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </div>
 
-  <!-- ══════════════════════════════════════════════════════════════════════
-       SECTION 2 — RFQ
-  ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── Card: RFQ ── -->
   <div class="section-card">
-    <div class="section-header">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">RFQ</span>
+      <span class="section-chevron">▾</span>
     </div>
     <div class="section-body">
-
-      <!-- ── Quote Details (Multi-line) ── -->
       <div class="subsection-title" style="margin-top:0;">Quote Details</div>
       <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Add line items for each product/component in this quote.</p>
       <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
@@ -2318,183 +2339,197 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <textarea placeholder="Additional notes, special requirements, or instructions…" id="quote-qc" style="min-height:70px;"></textarea>
         </div>
       </div>
+    </div>
+  </div>
 
-      <!-- ── Additional Fees ── -->
-      <div class="subsection">
-        <div class="subsection-title">Additional Fees</div>
-        <div style="overflow-x:auto;">
-        <table class="tier-table" style="max-width:820px;">
-          <thead>
-            <tr>
-              <th style="text-align:left; width:22%;">Fee</th>
-              <th style="text-align:left;">Description</th>
-              <th>Amount (RMB)</th>
-              <th>Amount (USD)</th>
-              <th style="width:32px;"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Sample Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-sample-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('sample','Sample Fee(s)')" title="Clear">×</span></td>
-            </tr>
-            <tr>
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Tooling Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-tooling-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('tooling','Tooling Fee(s)')" title="Clear">×</span></td>
-            </tr>
-            <tr>
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Die Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-die-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('die','Die Fee(s)')" title="Clear">×</span></td>
-            </tr>
-            <tr>
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Plate Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-plate-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('plate','Plate Fee(s)')" title="Clear">×</span></td>
-            </tr>
-          </tbody>
-          <tbody id="extra-fee-rows"></tbody>
-          <tbody>
-            <tr style="border-top:2px solid var(--border);">
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Design Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-design-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-              <td style="padding:6px 12px; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
-              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" style="width:130px;" autocomplete="off" /></div></td>
-              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('design','Design Fee(s)')" title="Clear">×</span></td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="5" style="padding:8px 12px; border-bottom:none;">
-                <button class="btn btn-add" style="width:100%; margin:4px 0;" onclick="openAddFeeModal()">+ Add Fee</button>
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-        </div>
+  <!-- ── Card: Additional Fees ── -->
+  <div class="section-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Additional Fees</span>
+      <span class="section-chevron">▾</span>
+    </div>
+    <div class="section-body">
+      <div style="overflow-x:auto;">
+      <table class="tier-table" style="max-width:820px;">
+        <thead>
+          <tr>
+            <th style="text-align:left; width:22%;">Fee</th>
+            <th style="text-align:left;">Description</th>
+            <th>Amount (RMB)</th>
+            <th>Amount (USD)</th>
+            <th style="width:32px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Sample Fee(s)</td>
+            <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-sample-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('sample','Sample Fee(s)')" title="Clear">×</span></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Tooling Fee(s)</td>
+            <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-tooling-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('tooling','Tooling Fee(s)')" title="Clear">×</span></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Die Fee(s)</td>
+            <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-die-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('die','Die Fee(s)')" title="Clear">×</span></td>
+          </tr>
+          <tr>
+            <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Plate Fee(s)</td>
+            <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-plate-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('plate','Plate Fee(s)')" title="Clear">×</span></td>
+          </tr>
+        </tbody>
+        <tbody id="extra-fee-rows"></tbody>
+        <tbody>
+          <tr style="border-top:2px solid var(--border);">
+            <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Design Fee(s)</td>
+            <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-design-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
+            <td style="padding:6px 12px; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" style="width:130px;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('design','Design Fee(s)')" title="Clear">×</span></td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="5" style="padding:8px 12px; border-bottom:none;">
+              <button class="btn btn-add" style="width:100%; margin:4px 0;" onclick="openAddFeeModal()">+ Add Fee</button>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
       </div>
+    </div>
+  </div>
 
-      <!-- ── Dimensions & Carton Specifications (3 columns) ── -->
-      <div class="subsection">
-        <div class="subsection-title">Dimensions & Carton Specifications</div>
-        <div class="specs-three-col">
-          <!-- Column 1: Dimensions -->
-          <div class="specs-col">
-            <div class="specs-col-title">Dimensions</div>
-            <div class="field karen-field">
-              <label>Length</label>
-              <div class="dim-dual">
-                <div class="dim-dual-field">
-                  <input type="number" step="0.01" min="0" placeholder="in" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in')" />
-                  <span class="dim-unit">in</span>
-                </div>
-                <div class="dim-dual-field">
-                  <input type="number" step="0.01" min="0" placeholder="cm" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm')" />
-                  <span class="dim-unit">cm</span>
-                </div>
+  <!-- ── Card: Dimensions & Carton Specifications ── -->
+  <div class="section-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Dimensions & Carton Specifications</span>
+      <span class="section-chevron">▾</span>
+    </div>
+    <div class="section-body">
+      <div class="specs-three-col">
+        <!-- Column 1: Dimensions -->
+        <div class="specs-col">
+          <div class="specs-col-title">Dimensions</div>
+          <div class="field karen-field">
+            <label>Length</label>
+            <div class="dim-dual">
+              <div class="dim-dual-field">
+                <input type="number" step="0.01" min="0" placeholder="in" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in')" />
+                <span class="dim-unit">in</span>
               </div>
-            </div>
-            <div class="field karen-field">
-              <label>Width</label>
-              <div class="dim-dual">
-                <div class="dim-dual-field">
-                  <input type="number" step="0.01" min="0" placeholder="in" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in')" />
-                  <span class="dim-unit">in</span>
-                </div>
-                <div class="dim-dual-field">
-                  <input type="number" step="0.01" min="0" placeholder="cm" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm')" />
-                  <span class="dim-unit">cm</span>
-                </div>
-              </div>
-            </div>
-            <div class="field karen-field">
-              <label>Height</label>
-              <div class="dim-dual">
-                <div class="dim-dual-field">
-                  <input type="number" step="0.01" min="0" placeholder="in" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in')" />
-                  <span class="dim-unit">in</span>
-                </div>
-                <div class="dim-dual-field">
-                  <input type="number" step="0.01" min="0" placeholder="cm" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm')" />
-                  <span class="dim-unit">cm</span>
-                </div>
+              <div class="dim-dual-field">
+                <input type="number" step="0.01" min="0" placeholder="cm" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm')" />
+                <span class="dim-unit">cm</span>
               </div>
             </div>
           </div>
-
-          <!-- Column 2: Inner Carton -->
-          <div class="specs-col">
-            <div class="specs-col-title">Inner Carton</div>
-            <div class="field karen-field">
-              <label>Weight (kg)</label>
-              <input type="number" step="0.001" min="0" placeholder="e.g. 2.500" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg')" />
-            </div>
-            <div class="field">
-              <label>Weight (lbs)</label>
-              <input type="number" step="0.001" min="0" placeholder="e.g. 5.512" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" />
-            </div>
-            <div class="field karen-field">
-              <label>Qty <span style="font-weight:400; text-transform:none;">(units / carton)</span></label>
-              <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" />
+          <div class="field karen-field">
+            <label>Width</label>
+            <div class="dim-dual">
+              <div class="dim-dual-field">
+                <input type="number" step="0.01" min="0" placeholder="in" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in')" />
+                <span class="dim-unit">in</span>
+              </div>
+              <div class="dim-dual-field">
+                <input type="number" step="0.01" min="0" placeholder="cm" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm')" />
+                <span class="dim-unit">cm</span>
+              </div>
             </div>
           </div>
-
-          <!-- Column 3: Outer Carton -->
-          <div class="specs-col">
-            <div class="specs-col-title">Outer Carton</div>
-            <div class="field karen-field">
-              <label>Weight (kg)</label>
-              <input type="number" step="0.001" min="0" placeholder="e.g. 15.000" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" />
-            </div>
-            <div class="field">
-              <label>Weight (lbs)</label>
-              <input type="number" step="0.001" min="0" placeholder="e.g. 33.069" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" />
-            </div>
-            <div class="field karen-field">
-              <label>Qty <span style="font-weight:400; text-transform:none;">(units / carton)</span></label>
-              <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" />
+          <div class="field karen-field">
+            <label>Height</label>
+            <div class="dim-dual">
+              <div class="dim-dual-field">
+                <input type="number" step="0.01" min="0" placeholder="in" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in')" />
+                <span class="dim-unit">in</span>
+              </div>
+              <div class="dim-dual-field">
+                <input type="number" step="0.01" min="0" placeholder="cm" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm')" />
+                <span class="dim-unit">cm</span>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Unit Weight hidden inputs kept for backward compatibility -->
-        <input type="hidden" id="carton-unit-weight" />
-        <input type="hidden" id="carton-unit-weight-lbs" />
+        <!-- Column 2: Inner Carton -->
+        <div class="specs-col">
+          <div class="specs-col-title">Inner Carton</div>
+          <div class="field karen-field">
+            <label>Weight (kg)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 2.500" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg')" />
+          </div>
+          <div class="field">
+            <label>Weight (lbs)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 5.512" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" />
+          </div>
+          <div class="field karen-field">
+            <label>Qty <span style="font-weight:400; text-transform:none;">(units / carton)</span></label>
+            <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" />
+          </div>
+        </div>
+
+        <!-- Column 3: Outer Carton -->
+        <div class="specs-col">
+          <div class="specs-col-title">Outer Carton</div>
+          <div class="field karen-field">
+            <label>Weight (kg)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 15.000" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" />
+          </div>
+          <div class="field">
+            <label>Weight (lbs)</label>
+            <input type="number" step="0.001" min="0" placeholder="e.g. 33.069" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" />
+          </div>
+          <div class="field karen-field">
+            <label>Qty <span style="font-weight:400; text-transform:none;">(units / carton)</span></label>
+            <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" />
+          </div>
+        </div>
       </div>
 
-      <!-- ── Tiered Pricing (synced with Pricing tab) ── -->
-      <div class="subsection">
-        <span class="subsection-title">Tiered Pricing</span>
-        <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-          Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
-        </p>
-        <table class="tier-table" id="wb-tier-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
-              <th class="th-karen"><span class="label-full">Unit Price (RMB) ✎</span><span class="label-short">RMB ✎</span></th>
-              <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
-              <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="wb-tier-body">
-          </tbody>
-        </table>
-        <button class="btn btn-add" style="margin-top:10px;" onclick="addWbTierRow()">+ Add Pricing Tier</button>
-      </div>
+      <!-- Unit Weight hidden inputs kept for backward compatibility -->
+      <input type="hidden" id="carton-unit-weight" />
+      <input type="hidden" id="carton-unit-weight-lbs" />
+    </div>
+  </div>
 
+  <!-- ── Card: Tiered Pricing (Workbook tab) ── -->
+  <div class="section-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Tiered Pricing</span>
+      <span class="section-chevron">▾</span>
+    </div>
+    <div class="section-body">
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+        Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
+      </p>
+      <table class="tier-table" id="wb-tier-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
+            <th class="th-karen"><span class="label-full">Unit Price (RMB) ✎</span><span class="label-short">RMB ✎</span></th>
+            <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
+            <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="wb-tier-body">
+        </tbody>
+      </table>
+      <button class="btn btn-add" style="margin-top:10px;" onclick="addWbTierRow()">+ Add Pricing Tier</button>
     </div>
   </div>
   </div><!-- /#wb-tab-workbook -->
@@ -2683,132 +2718,143 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <!-- ── Tab: Pricing ── -->
   <div id="wb-tab-pricing" class="wb-tab-content">
+
+  <!-- ── Card: Tiered Pricing ── -->
   <div class="section-card">
-    <div class="section-header">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Tiered Pricing</span>
+      <span class="section-chevron">▾</span>
     </div>
     <div class="section-body">
-      <div class="subsection" style="margin-top:0; padding-top:0; border-top:none;">
-        <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-          Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
-        </p>
-        <table class="tier-table" id="tier-table">
-          <thead>
-            <tr>
-              <th class="tier-col-num">#</th>
-              <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
-              <th class="th-karen"><span class="label-full">Unit Price (RMB) ✎</span><span class="label-short">RMB ✎</span></th>
-              <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
-              <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="tier-body">
-            <tr id="tier-1">
-              <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">1</td>
-              <td><input type="number" min="0" placeholder="e.g. 100" value="100" oninput="recalcTier(1)" style="width:110px;" /></td>
-              <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(1)" style="width:130px;" /></td>
-              <td class="tier-col-usd" id="tier-usd-1" style="color:var(--text-muted); font-size:13px;">—</td>
-              <td class="total-cell" id="tier-total-1">—</td>
-              <td><button class="btn btn-danger-ghost" onclick="removeTierRow(1)">✕</button></td>
-            </tr>
-            <tr id="tier-2">
-              <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">2</td>
-              <td><input type="number" min="0" placeholder="e.g. 100" value="250" oninput="recalcTier(2)" style="width:110px;" /></td>
-              <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(2)" style="width:130px;" /></td>
-              <td class="tier-col-usd" id="tier-usd-2" style="color:var(--text-muted); font-size:13px;">—</td>
-              <td class="total-cell" id="tier-total-2">—</td>
-              <td><button class="btn btn-danger-ghost" onclick="removeTierRow(2)">✕</button></td>
-            </tr>
-            <tr id="tier-3">
-              <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">3</td>
-              <td><input type="number" min="0" placeholder="e.g. 100" value="500" oninput="recalcTier(3)" style="width:110px;" /></td>
-              <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(3)" style="width:130px;" /></td>
-              <td class="tier-col-usd" id="tier-usd-3" style="color:var(--text-muted); font-size:13px;">—</td>
-              <td class="total-cell" id="tier-total-3">—</td>
-              <td><button class="btn btn-danger-ghost" onclick="removeTierRow(3)">✕</button></td>
-            </tr>
-          </tbody>
-        </table>
-        <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Tiers are managed from the Workbook tab.</p>
-      </div>
-
-      <!-- ── Additional Fees ── -->
-      <div class="subsection" style="margin-top:24px;">
-        <div class="subsection-title">Additional Fees</div>
-        <table class="tier-table" style="max-width:760px;">
-          <thead>
-            <tr>
-              <th style="text-align:left; width:22%;">Fee</th>
-              <th style="text-align:left;">Description</th>
-              <th style="text-align:right;">RMB</th>
-              <th style="text-align:right;">USD</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Sample Fee(s)</td>
-              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-sample-desc"></td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-sample-rmb">—</td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-sample">—</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Tooling Fee(s)</td>
-              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-tooling-desc"></td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-tooling-rmb">—</td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-tooling">—</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Die Fee(s)</td>
-              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-die-desc"></td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-die-rmb">—</td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-die">—</td>
-            </tr>
-            <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Plate Fee(s)</td>
-              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-plate-desc"></td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-plate-rmb">—</td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-plate">—</td>
-            </tr>
-          </tbody>
-          <tbody id="pricing-extra-fee-rows"></tbody>
-          <tbody>
-            <tr style="border-top:2px solid var(--border);">
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Design Fee(s)</td>
-              <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-design-desc"></td>
-              <td style="padding:8px 12px; text-align:right; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-design">—</td>
-            </tr>
-          </tbody>
-          <tbody>
-            <tr style="border-top:2px solid var(--border); background:rgba(232,117,26,0.06);">
-              <td colspan="2" style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fee(s)</td>
-              <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:13px; color:var(--accent);" id="pricing-fee-total-rmb">—</td>
-              <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:14px; color:var(--accent);" id="pricing-fee-total">—</td>
-            </tr>
-          </tbody>
-        </table>
-        <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Fees are entered in the Workbook tab and added to each tier's total below.</p>
-      </div>
-
-      <!-- ── Grand Total per Tier ── -->
-      <div class="subsection" style="margin-top:24px;" id="pricing-grand-total-section">
-        <div class="subsection-title">Grand Total per Tier (incl. Fees)</div>
-        <table class="tier-table" id="pricing-grand-total-table" style="max-width:480px;">
-          <thead>
-            <tr>
-              <th>Quantity</th>
-              <th style="text-align:right;">Tier Total (USD)</th>
-              <th style="text-align:right;">+ Fees</th>
-              <th style="text-align:right;">Grand Total</th>
-            </tr>
-          </thead>
-          <tbody id="pricing-grand-total-body"></tbody>
-        </table>
-      </div>
-
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+        Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
+      </p>
+      <table class="tier-table" id="tier-table">
+        <thead>
+          <tr>
+            <th class="tier-col-num">#</th>
+            <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
+            <th class="th-karen"><span class="label-full">Unit Price (RMB) ✎</span><span class="label-short">RMB ✎</span></th>
+            <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
+            <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tier-body">
+          <tr id="tier-1">
+            <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">1</td>
+            <td><input type="number" min="0" placeholder="e.g. 100" value="100" oninput="recalcTier(1)" style="width:110px;" /></td>
+            <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(1)" style="width:130px;" /></td>
+            <td class="tier-col-usd" id="tier-usd-1" style="color:var(--text-muted); font-size:13px;">—</td>
+            <td class="total-cell" id="tier-total-1">—</td>
+            <td><button class="btn btn-danger-ghost" onclick="removeTierRow(1)">✕</button></td>
+          </tr>
+          <tr id="tier-2">
+            <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">2</td>
+            <td><input type="number" min="0" placeholder="e.g. 100" value="250" oninput="recalcTier(2)" style="width:110px;" /></td>
+            <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(2)" style="width:130px;" /></td>
+            <td class="tier-col-usd" id="tier-usd-2" style="color:var(--text-muted); font-size:13px;">—</td>
+            <td class="total-cell" id="tier-total-2">—</td>
+            <td><button class="btn btn-danger-ghost" onclick="removeTierRow(2)">✕</button></td>
+          </tr>
+          <tr id="tier-3">
+            <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">3</td>
+            <td><input type="number" min="0" placeholder="e.g. 100" value="500" oninput="recalcTier(3)" style="width:110px;" /></td>
+            <td class="karen-cell"><input type="number" step="0.0001" min="0" placeholder="0.0000" value="" oninput="recalcTier(3)" style="width:130px;" /></td>
+            <td class="tier-col-usd" id="tier-usd-3" style="color:var(--text-muted); font-size:13px;">—</td>
+            <td class="total-cell" id="tier-total-3">—</td>
+            <td><button class="btn btn-danger-ghost" onclick="removeTierRow(3)">✕</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Tiers are managed from the Workbook tab.</p>
     </div>
   </div>
+
+  <!-- ── Card: Additional Fees (Pricing tab) ── -->
+  <div class="section-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Additional Fees</span>
+      <span class="section-chevron">▾</span>
+    </div>
+    <div class="section-body">
+      <table class="tier-table" style="max-width:760px;">
+        <thead>
+          <tr>
+            <th style="text-align:left; width:22%;">Fee</th>
+            <th style="text-align:left;">Description</th>
+            <th style="text-align:right;">RMB</th>
+            <th style="text-align:right;">USD</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Sample Fee(s)</td>
+            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-sample-desc"></td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-sample-rmb">—</td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-sample">—</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Tooling Fee(s)</td>
+            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-tooling-desc"></td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-tooling-rmb">—</td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-tooling">—</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Die Fee(s)</td>
+            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-die-desc"></td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-die-rmb">—</td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-die">—</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Plate Fee(s)</td>
+            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-plate-desc"></td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-plate-rmb">—</td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-plate">—</td>
+          </tr>
+        </tbody>
+        <tbody id="pricing-extra-fee-rows"></tbody>
+        <tbody>
+          <tr style="border-top:2px solid var(--border);">
+            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Design Fee(s)</td>
+            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-design-desc"></td>
+            <td style="padding:8px 12px; text-align:right; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
+            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-design">—</td>
+          </tr>
+        </tbody>
+        <tbody>
+          <tr style="border-top:2px solid var(--border); background:rgba(232,117,26,0.06);">
+            <td colspan="2" style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fee(s)</td>
+            <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:13px; color:var(--accent);" id="pricing-fee-total-rmb">—</td>
+            <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:14px; color:var(--accent);" id="pricing-fee-total">—</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Fees are entered in the Workbook tab and added to each tier's total below.</p>
+    </div>
+  </div>
+
+  <!-- ── Card: Grand Total per Tier ── -->
+  <div class="section-card" id="pricing-grand-total-section">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Grand Total per Tier (incl. Fees)</span>
+      <span class="section-chevron">▾</span>
+    </div>
+    <div class="section-body">
+      <table class="tier-table" id="pricing-grand-total-table" style="max-width:480px;">
+        <thead>
+          <tr>
+            <th>Quantity</th>
+            <th style="text-align:right;">Tier Total (USD)</th>
+            <th style="text-align:right;">+ Fees</th>
+            <th style="text-align:right;">Grand Total</th>
+          </tr>
+        </thead>
+        <tbody id="pricing-grand-total-body"></tbody>
+      </table>
+    </div>
+  </div>
+
   </div><!-- /#wb-tab-pricing -->
 
   <!-- ── Tab: Quote for Client ── -->
@@ -4145,6 +4191,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       rmbEl.value = usd > 0 ? (usd * USD_TO_RMB).toFixed(2) : '';
     }
     calcAdditionalFees();
+  }
+
+  function toggleSection(card) {
+    card.classList.toggle('collapsed');
   }
 
   function calcAdditionalFees() {
