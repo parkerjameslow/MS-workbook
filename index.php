@@ -828,13 +828,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: var(--filled-bg);
       border-color: var(--filled-border);
     }
-    /* RFQ-synced tier price inputs — muted read-only look, no orange tint */
-    #wb-tier-body .karen-cell input[readonly] {
-      background: var(--surface2) !important;
-      cursor: default !important;
-      color: var(--text-muted) !important;
-      border-color: var(--border) !important;
-    }
 
     .total-cell {
       font-weight: 700;
@@ -2529,7 +2522,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr>
             <th>#</th>
             <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
-            <th class="th-karen"><span class="label-full">Unit Price (RMB) ✎</span><span class="label-short">RMB ✎</span></th>
+            <th><span class="label-full">Unit Price (RMB)</span><span class="label-short">RMB</span></th>
             <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
             <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
             <th></th>
@@ -3736,10 +3729,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _syncing = true;
     document.querySelectorAll('#wb-tier-body tr').forEach(row => {
       const id = parseInt(row.id.replace('wb-tier-', ''));
-      const inputs = row.querySelectorAll('input');
-      if (inputs[1]) {
-        inputs[1].value = totalRmb > 0 ? parseFloat(totalRmb).toFixed(4) : '';
-      }
+      row.dataset.price = totalRmb > 0 ? parseFloat(totalRmb).toFixed(4) : '';
       recalcWbTier(id);
     });
     _syncing = false;
@@ -3869,6 +3859,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tbody = document.getElementById('wb-tier-body');
     const tr = document.createElement('tr');
     tr.id = `wb-tier-${id}`;
+    tr.dataset.price = unitPrice || '';
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
       <td>
@@ -3876,13 +3867,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                oninput="recalcWbTier(${id})"
                style="width:110px;" />
       </td>
-      <td class="karen-cell">
-        <div class="currency-prefix currency-rmb" style="display:inline-block; position:relative;">
-          <input type="number" step="0.0001" min="0" placeholder="From RFQ" value="${unitPrice}"
-                 readonly
-                 style="width:130px; padding-left:28px;" />
-        </div>
-      </td>
+      <td id="wb-tier-rmb-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="tier-col-usd" id="wb-tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="wb-tier-total-${id}">—</td>
       <td>
@@ -3897,16 +3882,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const row = document.getElementById(`wb-tier-${id}`);
     const inputs = row.querySelectorAll('input');
     const qty = parseFloat(inputs[0].value);
-    const rmb = parseFloat(inputs[1].value);
+    const rmb = parseFloat(row.dataset.price);
     const usd = rmb / USD_TO_RMB;
+    const rmbEl = document.getElementById(`wb-tier-rmb-${id}`);
     const usdEl = document.getElementById(`wb-tier-usd-${id}`);
     const totalEl = document.getElementById(`wb-tier-total-${id}`);
-    if (!isNaN(rmb)) {
+    if (rmbEl) rmbEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:4, maximumFractionDigits:4}) : '—';
+    if (!isNaN(rmb) && rmb > 0) {
       usdEl.textContent = '$' + usd.toFixed(2);
     } else {
       usdEl.textContent = '—';
     }
-    if (!isNaN(qty) && !isNaN(rmb)) {
+    if (!isNaN(qty) && !isNaN(rmb) && rmb > 0) {
       totalEl.textContent = '$' + (qty * usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     } else {
       totalEl.textContent = '—';
@@ -3930,6 +3917,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const inputs = row.querySelectorAll('input');
       if (inputs.length >= 2) {
         tiers.push({ qty: inputs[0].value, price: inputs[1].value });
+      } else if (inputs.length >= 1) {
+        tiers.push({ qty: inputs[0].value, price: row.dataset.price || '' });
       }
     });
     return tiers;
