@@ -487,14 +487,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .section-chevron {
       margin-left: auto;
-      font-size: 11px;
+      font-size: 20px;
       color: var(--text-muted);
       transition: transform 0.2s ease;
       display: inline-block;
       flex-shrink: 0;
+      line-height: 1;
+      transform: rotate(90deg);
     }
     .section-card.collapsed .section-chevron {
-      transform: rotate(-90deg);
+      transform: rotate(0deg);
     }
     .section-card.collapsed .section-body {
       display: none;
@@ -2186,7 +2188,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Product Overview</span>
-      <span class="section-chevron">▾</span>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
 
@@ -2272,7 +2274,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">RFQ</span>
-      <span class="section-chevron">▾</span>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
       <div class="subsection-title" style="margin-top:0;">Quote Details</div>
@@ -2346,7 +2348,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Additional Fees</span>
-      <span class="section-chevron">▾</span>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
       <div style="overflow-x:auto;">
@@ -2416,7 +2418,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Dimensions & Carton Specifications</span>
-      <span class="section-chevron">▾</span>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
       <div class="specs-three-col">
@@ -2509,7 +2511,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Tiered Pricing</span>
-      <span class="section-chevron">▾</span>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
       <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
@@ -2723,7 +2725,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Tiered Pricing</span>
-      <span class="section-chevron">▾</span>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
       <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
@@ -2775,7 +2777,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Additional Fees</span>
-      <span class="section-chevron">▾</span>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
       <table class="tier-table" style="max-width:760px;">
@@ -2838,7 +2840,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card" id="pricing-grand-total-section">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Grand Total per Tier (incl. Fees)</span>
-      <span class="section-chevron">▾</span>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
       <table class="tier-table" id="pricing-grand-total-table" style="max-width:480px;">
