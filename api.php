@@ -620,6 +620,29 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
+    case 'duplicate_workbook':
+        if (empty($input['id'])) {
+            echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
+            break;
+        }
+        $stmt = $pdo->prepare("SELECT client_id, product_name, description, flow_step, detail_json FROM workbooks WHERE id = ? AND deleted = 0");
+        $stmt->execute([$input['id']]);
+        $src = $stmt->fetch();
+        if (!$src) {
+            echo json_encode(['success' => false, 'error' => 'Workbook not found']);
+            break;
+        }
+        $stmt = $pdo->prepare("INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([
+            $src['client_id'],
+            $src['product_name'] . ' (Copy)',
+            $src['description'],
+            $src['flow_step'],
+            $src['detail_json']
+        ]);
+        echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
+        break;
+
     default:
         echo json_encode(['error' => 'Unknown action', 'available' => [
             'get_clients', 'add_client', 'delete_client',
@@ -630,6 +653,7 @@ switch ($action) {
             'get_archived', 'restore_workbook', 'restore_client',
             'permanent_delete_workbook', 'permanent_delete_client',
             'upload_image', 'delete_image',
-            'get_users', 'add_user', 'delete_user', 'change_password'
+            'get_users', 'add_user', 'delete_user', 'change_password',
+            'duplicate_workbook'
         ]]);
 }

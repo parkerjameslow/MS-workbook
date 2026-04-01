@@ -4338,6 +4338,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   /* ── Delete Workbook Modal ─────────────────────────────────────────────── */
   let pendingDelete = null;
 
+  async function duplicateWorkbook(clientName, workbookId) {
+    document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
+    const dbId = dbWorkbookMap[`${clientName}|${workbookId}`] || workbookId;
+    const r = await apiCall('duplicate_workbook', { id: dbId });
+    if (!r.success) { alert('Duplicate failed: ' + (r.error || 'Unknown error')); return; }
+    // Reload from DB so new workbook appears with correct ID and data
+    await loadFromDatabase();
+    rebuildSidebar();
+    renderDashboard(clientName);
+    // Navigate to the new copy
+    location.hash = `#/client/${encodeURIComponent(clientName)}/workbook/${r.id}`;
+  }
+
   function openDeleteModal(clientName, workbookId, productName) {
     document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
     document.getElementById('delete-product-name').textContent = productName;
@@ -4893,7 +4906,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         </td>
         <td class="col-mobile-status"><span class="mobile-status-badge ${stepClass}">${stepName}</span></td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `}).join('');
 
@@ -5278,7 +5291,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         </td>
         <td class="col-mobile-status"><span class="mobile-status-badge ${stepClass}">${stepName}</span></td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); openDeleteModal('${item.client.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); duplicateWorkbook('${item.client.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${item.client.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
       `;
     }).join('');
