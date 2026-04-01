@@ -2486,17 +2486,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="specs-col-title">Product Dimensions</div>
           <div class="specs-dim-grid">
             <div></div>
-            <div class="specs-unit-header">in</div>
             <div class="specs-unit-header">cm</div>
+            <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in')" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -2531,17 +2531,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="specs-col-title">Inner Carton</div>
           <div class="specs-dim-grid">
             <div></div>
-            <div class="specs-unit-header">in</div>
             <div class="specs-unit-header">cm</div>
+            <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-in" oninput="convertDim('carton-inner-l-in','carton-inner-l-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-cm" oninput="convertDim('carton-inner-l-cm','carton-inner-l-in','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-in" oninput="convertDim('carton-inner-l-in','carton-inner-l-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-in" oninput="convertDim('carton-inner-w-in','carton-inner-w-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-cm" oninput="convertDim('carton-inner-w-cm','carton-inner-w-in','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-in" oninput="convertDim('carton-inner-w-in','carton-inner-w-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-in" oninput="convertDim('carton-inner-h-in','carton-inner-h-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-cm" oninput="convertDim('carton-inner-h-cm','carton-inner-h-in','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-in" oninput="convertDim('carton-inner-h-in','carton-inner-h-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -2561,17 +2561,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="specs-col-title">Outer Carton</div>
           <div class="specs-dim-grid">
             <div></div>
-            <div class="specs-unit-header">in</div>
             <div class="specs-unit-header">cm</div>
+            <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in')" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
