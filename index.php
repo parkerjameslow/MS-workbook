@@ -2322,31 +2322,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- ── Additional Fees ── -->
       <div class="subsection">
         <div class="subsection-title">Additional Fees</div>
-        <div class="form-grid form-grid-2">
-          <div class="field karen-field">
-            <label>Sample Fees</label>
-            <div class="currency-prefix currency-usd">
-              <input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample" oninput="calcAdditionalFees()" />
-            </div>
-          </div>
-          <div class="field karen-field">
-            <label>Tooling Fees</label>
-            <div class="currency-prefix currency-usd">
-              <input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling" oninput="calcAdditionalFees()" />
-            </div>
-          </div>
-          <div class="field karen-field">
-            <label>Dye Fees</label>
-            <div class="currency-prefix currency-usd">
-              <input type="number" step="0.01" min="0" placeholder="0.00" id="fee-dye" oninput="calcAdditionalFees()" />
-            </div>
-          </div>
-          <div class="field karen-field">
-            <label>Design Fees</label>
-            <div class="currency-prefix currency-usd">
-              <input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design" oninput="calcAdditionalFees()" />
-            </div>
-          </div>
+        <div style="overflow-x:auto;">
+        <table class="tier-table" style="max-width:560px;">
+          <thead>
+            <tr>
+              <th style="text-align:left; width:38%;">Fee</th>
+              <th>Amount (RMB)</th>
+              <th>Amount (USD)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Sample Fee(s)</td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" style="width:130px;" /></div></td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" style="width:130px;" /></div></td>
+            </tr>
+            <tr>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Tooling Fee(s)</td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" style="width:130px;" /></div></td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" style="width:130px;" /></div></td>
+            </tr>
+            <tr>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Die Fee(s)</td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" style="width:130px;" /></div></td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" style="width:130px;" /></div></td>
+            </tr>
+            <tr>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Plate Fee(s)</td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" style="width:130px;" /></div></td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" style="width:130px;" /></div></td>
+            </tr>
+            <tr style="border-top:2px solid var(--border);">
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Design Fee(s)</td>
+              <td style="padding:6px 12px; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
+              <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" style="width:130px;" /></div></td>
+            </tr>
+          </tbody>
+        </table>
         </div>
       </div>
 
@@ -2702,26 +2714,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- ── Additional Fees ── -->
       <div class="subsection" style="margin-top:24px;">
         <div class="subsection-title">Additional Fees</div>
-        <table class="tier-table" style="max-width:480px;">
+        <table class="tier-table" style="max-width:560px;">
+          <thead>
+            <tr>
+              <th style="text-align:left; width:40%;">Fee</th>
+              <th style="text-align:right;">RMB</th>
+              <th style="text-align:right;">USD</th>
+            </tr>
+          </thead>
           <tbody>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Sample Fees</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Sample Fee(s)</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-sample-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-sample">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Tooling Fees</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Tooling Fee(s)</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-tooling-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-tooling">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Dye Fees</td>
-              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-dye">—</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Die Fee(s)</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-die-rmb">—</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-die">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Design Fees</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Plate Fee(s)</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-plate-rmb">—</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-plate">—</td>
+            </tr>
+            <tr style="border-top:2px solid var(--border);">
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Design Fee(s)</td>
+              <td style="padding:8px 12px; text-align:right; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-design">—</td>
             </tr>
             <tr style="border-top:2px solid var(--border); background:rgba(232,117,26,0.06);">
-              <td style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fees</td>
+              <td style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fee(s)</td>
+              <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:13px; color:var(--accent);" id="pricing-fee-total-rmb">—</td>
               <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:14px; color:var(--accent);" id="pricing-fee-total">—</td>
             </tr>
           </tbody>
@@ -3824,36 +3853,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   /* ── Additional Fees ───────────────────────────────────────────────────── */
-  function calcAdditionalFees() {
-    const sample  = parseFloat(document.getElementById('fee-sample')?.value)  || 0;
-    const tooling = parseFloat(document.getElementById('fee-tooling')?.value) || 0;
-    const dye     = parseFloat(document.getElementById('fee-dye')?.value)     || 0;
-    const design  = parseFloat(document.getElementById('fee-design')?.value)  || 0;
-    const totalFees = sample + tooling + dye + design;
+  function convertFee(name, from) {
+    const rmbEl = document.getElementById(`fee-${name}-rmb`);
+    const usdEl = document.getElementById(`fee-${name}-usd`);
+    if (!rmbEl || !usdEl) return;
+    if (from === 'rmb') {
+      const rmb = parseFloat(rmbEl.value) || 0;
+      usdEl.value = rmb > 0 ? (rmb / USD_TO_RMB).toFixed(2) : '';
+    } else {
+      const usd = parseFloat(usdEl.value) || 0;
+      rmbEl.value = usd > 0 ? (usd * USD_TO_RMB).toFixed(2) : '';
+    }
+    calcAdditionalFees();
+  }
 
-    const fmt = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    document.getElementById('pricing-fee-sample').textContent  = fmt(sample);
-    document.getElementById('pricing-fee-tooling').textContent = fmt(tooling);
-    document.getElementById('pricing-fee-dye').textContent     = fmt(dye);
-    document.getElementById('pricing-fee-design').textContent  = fmt(design);
-    document.getElementById('pricing-fee-total').textContent   = fmt(totalFees);
+  function calcAdditionalFees() {
+    const get    = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const sample  = get('fee-sample-usd');
+    const tooling = get('fee-tooling-usd');
+    const die     = get('fee-die-usd');
+    const plate   = get('fee-plate-usd');
+    const design  = get('fee-design-usd');
+    const sampleRmb  = get('fee-sample-rmb');
+    const toolingRmb = get('fee-tooling-rmb');
+    const dieRmb     = get('fee-die-rmb');
+    const plateRmb   = get('fee-plate-rmb');
+
+    const totalUsd = sample + tooling + die + plate + design;
+    const totalRmb = sampleRmb + toolingRmb + dieRmb + plateRmb;
+
+    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+
+    document.getElementById('pricing-fee-sample').textContent      = fmtUsd(sample);
+    document.getElementById('pricing-fee-sample-rmb').textContent  = fmtRmb(sampleRmb);
+    document.getElementById('pricing-fee-tooling').textContent     = fmtUsd(tooling);
+    document.getElementById('pricing-fee-tooling-rmb').textContent = fmtRmb(toolingRmb);
+    document.getElementById('pricing-fee-die').textContent         = fmtUsd(die);
+    document.getElementById('pricing-fee-die-rmb').textContent     = fmtRmb(dieRmb);
+    document.getElementById('pricing-fee-plate').textContent       = fmtUsd(plate);
+    document.getElementById('pricing-fee-plate-rmb').textContent   = fmtRmb(plateRmb);
+    document.getElementById('pricing-fee-design').textContent      = fmtUsd(design);
+    document.getElementById('pricing-fee-total').textContent       = fmtUsd(totalUsd);
+    document.getElementById('pricing-fee-total-rmb').textContent   = fmtRmb(totalRmb);
 
     // Grand total per tier
     const tbody = document.getElementById('pricing-grand-total-body');
     if (!tbody) return;
     tbody.innerHTML = '';
     document.querySelectorAll('#tier-body tr').forEach(row => {
-      const qty    = parseFloat(row.dataset.qty);
-      const price  = parseFloat(row.dataset.price);
+      const qty   = parseFloat(row.dataset.qty);
+      const price = parseFloat(row.dataset.price);
       if (isNaN(qty) || isNaN(price)) return;
-      const usd    = price / USD_TO_RMB;
-      const tierTotal = qty * usd;
-      const grand = tierTotal + totalFees;
+      const tierTotal = qty * (price / USD_TO_RMB);
+      const grand = tierTotal + totalUsd;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="padding:8px 12px; font-size:13px;">${qty.toLocaleString()}</td>
         <td style="padding:8px 12px; text-align:right; font-size:13px;">$${tierTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-        <td style="padding:8px 12px; text-align:right; font-size:13px; color:var(--text-muted);">${fmt(totalFees)}</td>
+        <td style="padding:8px 12px; text-align:right; font-size:13px; color:var(--text-muted);">${fmtUsd(totalUsd)}</td>
         <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:700; color:var(--accent);">$${grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
       `;
       tbody.appendChild(tr);
@@ -5210,10 +5268,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       recalcRfqTotals();
       _s('quote-qc', data.qcNotes);
-      _s('fee-sample',  data.feeSample);
-      _s('fee-tooling', data.feeTooling);
-      _s('fee-dye',     data.feeDye);
-      _s('fee-design',  data.feeDesign);
+      _s('fee-sample-rmb',  data.feeSampleRmb);
+      _s('fee-sample-usd',  data.feeSampleUsd);
+      _s('fee-tooling-rmb', data.feeToolingRmb);
+      _s('fee-tooling-usd', data.feeToolingUsd);
+      _s('fee-die-rmb',     data.feeDieRmb);
+      _s('fee-die-usd',     data.feeDieUsd);
+      _s('fee-plate-rmb',   data.feePlateRmb);
+      _s('fee-plate-usd',   data.feePlateUsd);
+      _s('fee-design-usd',  data.feeDesignUsd);
       // Product images (gallery)
       if (data.productImages && Array.isArray(data.productImages) && data.productImages.length > 0) {
         _productImages = data.productImages.map(url => ({ url }));
@@ -5549,10 +5612,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       colorNotes: _v('color-notes'),
       rfqItems: collectRfqItems(),
       qcNotes: _v('quote-qc'),
-      feeSample:  _v('fee-sample'),
-      feeTooling: _v('fee-tooling'),
-      feeDye:     _v('fee-dye'),
-      feeDesign:  _v('fee-design'),
+      feeSampleRmb:  _v('fee-sample-rmb'),
+      feeSampleUsd:  _v('fee-sample-usd'),
+      feeToolingRmb: _v('fee-tooling-rmb'),
+      feeToolingUsd: _v('fee-tooling-usd'),
+      feeDieRmb:     _v('fee-die-rmb'),
+      feeDieUsd:     _v('fee-die-usd'),
+      feePlateRmb:   _v('fee-plate-rmb'),
+      feePlateUsd:   _v('fee-plate-usd'),
+      feeDesignUsd:  _v('fee-design-usd'),
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
       productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
