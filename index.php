@@ -4390,20 +4390,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>
-              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Quantity</label>
-              <input id="dup-qty" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcQty}" />
+              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px;">Quantity</div>
+              <div id="dup-qty" style="font-size:15px;color:var(--text);padding:2px 0;">${srcQty || '—'}</div>
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Unit Price (USD)</label>
-              <input type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcUnitPrice ? '$\u200b' + srcUnitPrice : ''}" />
+              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px;">Unit Price (USD)</div>
+              <div style="font-size:15px;color:var(--text);padding:2px 0;">${srcUnitPrice ? '$' + srcUnitPrice : '—'}</div>
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Shipping Cost (USD)</label>
-              <input id="dup-cost" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcCost ? '$\u200b' + srcCost : ''}" />
+              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px;">Shipping Cost (USD)</div>
+              <div id="dup-cost" style="font-size:15px;color:var(--text);padding:2px 0;">${srcCost ? '$' + srcCost : '—'}</div>
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Total Quote (USD)</label>
-              <input type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);font-weight:700;" readonly value="${srcTotal}" />
+              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px;">Total Quote (USD)</div>
+              <div style="font-size:15px;font-weight:700;color:var(--text);padding:2px 0;">${srcTotal}</div>
             </div>
           </div>
           <button class="btn btn-primary" onclick="confirmDuplicate('${clientName.replace(/'/g,"\\'")}', ${dbId})">Create Workbook</button>
@@ -4416,8 +4416,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   async function confirmDuplicate(originalClient, srcDbId) {
     const newClient = document.getElementById('dup-client').value;
     const newName   = document.getElementById('dup-name').value.trim();
-    const qty       = document.getElementById('dup-qty').value;
-    const cost      = document.getElementById('dup-cost').value;
+    const qty       = document.getElementById('dup-qty').textContent.replace('—','').trim();
+    const cost      = document.getElementById('dup-cost').textContent.replace('$','').replace('—','').trim();
     const errEl     = document.getElementById('dup-error');
     errEl.style.display = 'none';
     if (!newName) { errEl.textContent = 'Product name is required.'; errEl.style.display = 'block'; return; }
