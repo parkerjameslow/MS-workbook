@@ -793,10 +793,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     /* ── Add Custom Category / Material ─────────────────────────────────── */
     .add-custom-btn {
-      background: none; border: none; color: var(--accent); font-size: 11px;
-      cursor: pointer; padding: 0; margin-top: 5px; display: inline-flex; align-items: center; gap: 3px;
+      background: var(--surface2); border: 1px dashed var(--border); color: var(--text-muted);
+      font-size: 13px; font-weight: 600; cursor: pointer; padding: 8px 12px; margin-top: 6px;
+      border-radius: var(--radius-sm); width: 100%; text-align: left; display: block;
     }
-    .add-custom-btn:hover { text-decoration: underline; }
+    .add-custom-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
     .add-custom-input-row {
       display: none; gap: 6px; align-items: center; margin-top: 5px;
     }
