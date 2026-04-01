@@ -4387,11 +4387,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div id="dup-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:13px;"></div>
           <div>
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Client</label>
-            <select id="dup-client" class="form-input" style="width:100%;">${clientOptions}</select>
+            <select id="dup-client" class="form-input" style="width:100%;" autocomplete="off">${clientOptions}</select>
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Product Name</label>
-            <input id="dup-name" type="text" class="form-input" style="width:100%;" value="${srcName.replace(/"/g,'&quot;')}" />
+            <input id="dup-name" type="text" class="form-input" style="width:100%;" value="${srcName.replace(/"/g,'&quot;')}" autocomplete="off" />
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>
