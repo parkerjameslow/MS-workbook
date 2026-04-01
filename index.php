@@ -2319,6 +2319,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>
 
+      <!-- ── Additional Fees ── -->
+      <div class="subsection">
+        <div class="subsection-title">Additional Fees</div>
+        <div class="form-grid form-grid-2">
+          <div class="field karen-field">
+            <label>Sample Fees</label>
+            <div class="currency-prefix currency-usd">
+              <input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample" oninput="calcAdditionalFees()" />
+            </div>
+          </div>
+          <div class="field karen-field">
+            <label>Tooling Fees</label>
+            <div class="currency-prefix currency-usd">
+              <input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling" oninput="calcAdditionalFees()" />
+            </div>
+          </div>
+          <div class="field karen-field">
+            <label>Dye Fees</label>
+            <div class="currency-prefix currency-usd">
+              <input type="number" step="0.01" min="0" placeholder="0.00" id="fee-dye" oninput="calcAdditionalFees()" />
+            </div>
+          </div>
+          <div class="field karen-field">
+            <label>Design Fees</label>
+            <div class="currency-prefix currency-usd">
+              <input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design" oninput="calcAdditionalFees()" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Dimensions & Carton Specifications (3 columns) ── -->
       <div class="subsection">
         <div class="subsection-title">Dimensions & Carton Specifications</div>
@@ -2666,6 +2697,52 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </tbody>
         </table>
         <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Tiers are managed from the Workbook tab.</p>
+      </div>
+
+      <!-- ── Additional Fees ── -->
+      <div class="subsection" style="margin-top:24px;">
+        <div class="subsection-title">Additional Fees</div>
+        <table class="tier-table" style="max-width:480px;">
+          <tbody>
+            <tr>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Sample Fees</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-sample">—</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Tooling Fees</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-tooling">—</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Dye Fees</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-dye">—</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Design Fees</td>
+              <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-design">—</td>
+            </tr>
+            <tr style="border-top:2px solid var(--border); background:rgba(232,117,26,0.06);">
+              <td style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fees</td>
+              <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:14px; color:var(--accent);" id="pricing-fee-total">—</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Fees are entered in the Workbook tab and added to each tier's total below.</p>
+      </div>
+
+      <!-- ── Grand Total per Tier ── -->
+      <div class="subsection" style="margin-top:24px;" id="pricing-grand-total-section">
+        <div class="subsection-title">Grand Total per Tier (incl. Fees)</div>
+        <table class="tier-table" id="pricing-grand-total-table" style="max-width:480px;">
+          <thead>
+            <tr>
+              <th>Quantity</th>
+              <th style="text-align:right;">Tier Total (USD)</th>
+              <th style="text-align:right;">+ Fees</th>
+              <th style="text-align:right;">Grand Total</th>
+            </tr>
+          </thead>
+          <tbody id="pricing-grand-total-body"></tbody>
+        </table>
       </div>
 
     </div>
@@ -3638,6 +3715,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     if (!_filling && !_syncing) {
       syncTiersToWb();
+      calcAdditionalFees();
       autoSaveWorkbook();
     }
   }
@@ -3645,6 +3723,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function removeTierRow(id) {
     document.getElementById(`tier-${id}`)?.remove();
     syncTiersToWb();
+    calcAdditionalFees();
     autoSaveWorkbook();
   }
 
@@ -3742,6 +3821,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     wbTierCount = 0;
     tiers.forEach(t => addWbTierRow(t.qty, t.price));
     _syncing = false;
+  }
+
+  /* ── Additional Fees ───────────────────────────────────────────────────── */
+  function calcAdditionalFees() {
+    const sample  = parseFloat(document.getElementById('fee-sample')?.value)  || 0;
+    const tooling = parseFloat(document.getElementById('fee-tooling')?.value) || 0;
+    const dye     = parseFloat(document.getElementById('fee-dye')?.value)     || 0;
+    const design  = parseFloat(document.getElementById('fee-design')?.value)  || 0;
+    const totalFees = sample + tooling + dye + design;
+
+    const fmt = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('pricing-fee-sample').textContent  = fmt(sample);
+    document.getElementById('pricing-fee-tooling').textContent = fmt(tooling);
+    document.getElementById('pricing-fee-dye').textContent     = fmt(dye);
+    document.getElementById('pricing-fee-design').textContent  = fmt(design);
+    document.getElementById('pricing-fee-total').textContent   = fmt(totalFees);
+
+    // Grand total per tier
+    const tbody = document.getElementById('pricing-grand-total-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    document.querySelectorAll('#tier-body tr').forEach(row => {
+      const qty    = parseFloat(row.dataset.qty);
+      const price  = parseFloat(row.dataset.price);
+      if (isNaN(qty) || isNaN(price)) return;
+      const usd    = price / USD_TO_RMB;
+      const tierTotal = qty * usd;
+      const grand = tierTotal + totalFees;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="padding:8px 12px; font-size:13px;">${qty.toLocaleString()}</td>
+        <td style="padding:8px 12px; text-align:right; font-size:13px;">$${tierTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+        <td style="padding:8px 12px; text-align:right; font-size:13px; color:var(--text-muted);">${fmt(totalFees)}</td>
+        <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:700; color:var(--accent);">$${grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    if (!_filling) autoSaveWorkbook();
   }
 
   /* ── Field Fill State ───────────────────────────────────────────────────── */
@@ -5092,6 +5210,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       recalcRfqTotals();
       _s('quote-qc', data.qcNotes);
+      _s('fee-sample',  data.feeSample);
+      _s('fee-tooling', data.feeTooling);
+      _s('fee-dye',     data.feeDye);
+      _s('fee-design',  data.feeDesign);
       // Product images (gallery)
       if (data.productImages && Array.isArray(data.productImages) && data.productImages.length > 0) {
         _productImages = data.productImages.map(url => ({ url }));
@@ -5113,6 +5235,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         addTierRow(250); addWbTierRow(250);
         addTierRow(500); addWbTierRow(500);
       }
+      calcAdditionalFees();
       // Shipping tab
       _s('carton-unit-weight', data.cartonUnitWeight);
       _s('carton-inner-weight', data.cartonInnerWeight);
@@ -5426,6 +5549,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       colorNotes: _v('color-notes'),
       rfqItems: collectRfqItems(),
       qcNotes: _v('quote-qc'),
+      feeSample:  _v('fee-sample'),
+      feeTooling: _v('fee-tooling'),
+      feeDye:     _v('fee-dye'),
+      feeDesign:  _v('fee-design'),
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
       productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
