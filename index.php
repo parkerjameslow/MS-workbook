@@ -2339,35 +2339,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-sample-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" style="width:130px;" /></div></td>
-              <td></td>
+              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('sample','Sample Fee(s)')" title="Clear">×</span></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Tooling Fee(s)</td>
               <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-tooling-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" style="width:130px;" /></div></td>
-              <td></td>
+              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('tooling','Tooling Fee(s)')" title="Clear">×</span></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Die Fee(s)</td>
               <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-die-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" style="width:130px;" /></div></td>
-              <td></td>
+              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('die','Die Fee(s)')" title="Clear">×</span></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Plate Fee(s)</td>
               <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-plate-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" style="width:130px;" /></div></td>
-              <td></td>
+              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('plate','Plate Fee(s)')" title="Clear">×</span></td>
             </tr>
             <tr style="border-top:2px solid var(--border);">
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Design Fee(s)</td>
               <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-design-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:6px 12px; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" style="width:130px;" /></div></td>
-              <td></td>
+              <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('design','Design Fee(s)')" title="Clear">×</span></td>
             </tr>
           </tbody>
           <tbody id="extra-fee-rows"></tbody>
@@ -3969,7 +3969,73 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     calcAdditionalFees();
   }
 
+  function openClearFeeModal(name, label) {
+    let modal = document.getElementById('clear-fee-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'clear-fee-modal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:flex;';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:380px; width:100%;">
+        <div class="modal-header">
+          <h3 style="margin:0; font-size:16px;">Clear Fee</h3>
+          <button onclick="document.getElementById('clear-fee-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+          <p style="font-size:14px; color:var(--text-muted); margin:0;">
+            Clear all values for <strong style="color:var(--text);">${label}</strong>? This cannot be undone.
+          </p>
+          <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn btn-ghost" onclick="document.getElementById('clear-fee-modal').remove()">Cancel</button>
+            <button class="btn btn-danger-ghost" onclick="confirmClearFee('${name}')">Clear</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  function confirmClearFee(name) {
+    ['desc', 'rmb', 'usd'].forEach(field => {
+      const el = document.getElementById(`fee-${name}-${field}`);
+      if (el) el.value = '';
+    });
+    document.getElementById('clear-fee-modal').remove();
+    calcAdditionalFees();
+    autoSaveWorkbook();
+  }
+
+  function openDeleteExtraFeeModal(id) {
+    const row = _extraFeeRows.find(r => r.id === id);
+    if (!row) return;
+    const label = `${FEE_TYPE_LABELS[row.type]}${row.desc ? ': ' + row.desc : ''}`;
+    let modal = document.getElementById('clear-fee-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'clear-fee-modal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:flex;';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:380px; width:100%;">
+        <div class="modal-header">
+          <h3 style="margin:0; font-size:16px;">Remove Fee</h3>
+          <button onclick="document.getElementById('clear-fee-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+          <p style="font-size:14px; color:var(--text-muted); margin:0;">
+            Remove <strong style="color:var(--text);">${label}</strong>? This cannot be undone.
+          </p>
+          <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button class="btn btn-ghost" onclick="document.getElementById('clear-fee-modal').remove()">Cancel</button>
+            <button class="btn btn-danger-ghost" onclick="removeExtraFeeRow(${id})">Remove</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
   function removeExtraFeeRow(id) {
+    document.getElementById('clear-fee-modal')?.remove();
     _extraFeeRows = _extraFeeRows.filter(r => r.id !== id);
     renderExtraFeeRows();
     calcAdditionalFees();
@@ -4002,7 +4068,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               style="width:130px;" /></div>
           </td>
           <td style="padding:4px 8px; text-align:center;">
-            <span class="remove-tier" onclick="removeExtraFeeRow(${r.id})" title="Remove">&times;</span>
+            <span class="remove-tier" onclick="openDeleteExtraFeeModal(${r.id})" title="Remove">&times;</span>
           </td>
         </tr>`;
       }).join('');
