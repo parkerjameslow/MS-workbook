@@ -4345,8 +4345,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const srcItem = (clientData[clientName] || []).find(i => i.id === parseInt(workbookId));
     const srcName = srcItem ? srcItem.product + ' (Copy)' : 'Workbook (Copy)';
     const srcDetail = workbookDetail[`${clientName}|${workbookId}`] || {};
-    const srcQty = srcDetail.quoteClQty || '';
-    const srcCost = srcDetail.quoteClShipping || '';
+    const srcQty       = srcDetail.quoteClQty       || '';
+    const srcUnitPrice = srcDetail.quoteClUnitPrice  || '';
+    const srcCost      = srcDetail.quoteClShipping   || '';
+    const _q = parseFloat(srcQty) || 0;
+    const _u = parseFloat(srcUnitPrice) || 0;
+    const _s = parseFloat(srcCost) || 0;
+    const srcTotal = (_q * _u + _s) > 0
+      ? '$' + (_q * _u + _s).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+      : '—';
 
     // Build client options
     const clientOptions = Object.keys(clientData).sort().map(n =>
@@ -4376,13 +4383,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Product Name</label>
             <input id="dup-name" type="text" class="form-input" style="width:100%;" value="${srcName.replace(/"/g,'&quot;')}" />
           </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Qty Ordered</label>
-            <input id="dup-qty" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcQty}" />
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Total Order Cost (incl. Shipping)</label>
-            <input id="dup-cost" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcCost}" />
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Quantity</label>
+              <input id="dup-qty" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcQty}" />
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Unit Price (USD)</label>
+              <input type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcUnitPrice ? '$\u200b' + srcUnitPrice : ''}" />
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Shipping Cost (USD)</label>
+              <input id="dup-cost" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcCost ? '$\u200b' + srcCost : ''}" />
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Total Quote (USD)</label>
+              <input type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);font-weight:700;" readonly value="${srcTotal}" />
+            </div>
           </div>
           <button class="btn btn-primary" onclick="confirmDuplicate('${clientName.replace(/'/g,"\\'")}', ${dbId})">Create Workbook</button>
         </div>
