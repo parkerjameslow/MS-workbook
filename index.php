@@ -2337,7 +2337,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <button type="button" class="add-custom-btn" id="cat-custom-btn" onclick="showAddCustomInput('cat')">+ Add Category</button>
             <div class="add-custom-input-row" id="cat-input-row">
-              <input type="text" id="cat-custom-input" placeholder="Custom category name…"
+              <div class="select-wrapper" style="flex:1;">
+                <select id="cat-custom-select" onchange="onAddCustomSelectChange('cat')">
+                  <option value="">Select a category…</option>
+                  <option value="packaging">Packaging</option>
+                  <option value="apparel">Apparel</option>
+                  <option value="furniture">Furniture</option>
+                  <option value="electronics">Electronics</option>
+                  <option value="promotional">Promotional Products</option>
+                  <option value="food-beverage">Food &amp; Beverage</option>
+                  <option value="toys">Toys &amp; Games</option>
+                  <option value="beauty">Beauty &amp; Personal Care</option>
+                  <option value="home-garden">Home &amp; Garden</option>
+                  <option value="sports">Sports &amp; Outdoors</option>
+                  <option value="stationery">Stationery &amp; Office</option>
+                  <option value="__custom__">Custom…</option>
+                </select>
+              </div>
+              <input type="text" id="cat-custom-input" placeholder="Type custom category…" style="display:none; flex:1;"
                      onkeydown="if(event.key==='Enter')confirmAddCustom('cat');if(event.key==='Escape')cancelAddCustom('cat');" />
               <button type="button" class="confirm-btn" onclick="confirmAddCustom('cat')">Add</button>
               <button type="button" class="cancel-btn" onclick="cancelAddCustom('cat')">✕</button>
@@ -2352,7 +2369,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <button type="button" class="add-custom-btn" id="mat-custom-btn" onclick="showAddCustomInput('mat')">+ Add Material Type</button>
             <div class="add-custom-input-row" id="mat-input-row">
-              <input type="text" id="mat-custom-input" placeholder="Custom material type…"
+              <div class="select-wrapper" style="flex:1;">
+                <select id="mat-custom-select" onchange="onAddCustomSelectChange('mat')">
+                  <option value="">Select a material…</option>
+                </select>
+              </div>
+              <input type="text" id="mat-custom-input" placeholder="Type custom material…" style="display:none; flex:1;"
                      onkeydown="if(event.key==='Enter')confirmAddCustom('mat');if(event.key==='Escape')cancelAddCustom('mat');" />
               <button type="button" class="confirm-btn" onclick="confirmAddCustom('mat')">Add</button>
               <button type="button" class="cancel-btn" onclick="cancelAddCustom('mat')">✕</button>
@@ -3775,35 +3797,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById(type + '-custom-btn').style.display = 'none';
     const row = document.getElementById(type + '-input-row');
     row.style.display = 'flex';
-    document.getElementById(type + '-custom-input').focus();
+    // Populate material dropdown dynamically from current category
+    if (type === 'mat') {
+      const cat = document.getElementById('product-category').value;
+      const matSel = document.getElementById('mat-custom-select');
+      matSel.innerHTML = '<option value="">Select a material…</option>';
+      const opts = (cat && SUBCATEGORIES[cat]) ? SUBCATEGORIES[cat] : Object.values(SUBCATEGORIES).flat();
+      opts.forEach(m => matSel.appendChild(new Option(m, m)));
+      matSel.appendChild(new Option('Custom…', '__custom__'));
+    }
+    document.getElementById(type + '-custom-select').focus();
+  }
+
+  function onAddCustomSelectChange(type) {
+    const sel = document.getElementById(type + '-custom-select');
+    const input = document.getElementById(type + '-custom-input');
+    if (sel.value === '__custom__') {
+      sel.style.display = 'none';
+      input.style.display = '';
+      input.focus();
+    } else {
+      input.style.display = 'none';
+    }
   }
 
   function cancelAddCustom(type) {
     document.getElementById(type + '-custom-btn').style.display = '';
     document.getElementById(type + '-input-row').style.display = 'none';
-    document.getElementById(type + '-custom-input').value = '';
+    const sel = document.getElementById(type + '-custom-select');
+    sel.value = '';
+    sel.style.display = '';
+    const input = document.getElementById(type + '-custom-input');
+    input.value = '';
+    input.style.display = 'none';
   }
 
   function confirmAddCustom(type) {
+    const sel = document.getElementById(type + '-custom-select');
     const input = document.getElementById(type + '-custom-input');
-    const val = input.value.trim();
-    if (!val) { cancelAddCustom(type); return; }
+    // Determine value: custom text input takes priority if visible, otherwise use select
+    const val = (input.style.display !== 'none' ? input.value.trim() : sel.value) || '';
+    if (!val || val === '__custom__') { cancelAddCustom(type); return; }
 
     if (type === 'cat') {
-      const sel = document.getElementById('product-category');
-      const exists = Array.from(sel.options).find(o => o.value.toLowerCase() === val.toLowerCase());
+      const mainSel = document.getElementById('product-category');
+      const exists = Array.from(mainSel.options).find(o => o.value.toLowerCase() === val.toLowerCase());
       if (!exists) {
         const opt = new Option(val, val);
-        const otherOpt = sel.querySelector('option[value="other"]');
-        otherOpt ? sel.insertBefore(opt, otherOpt) : sel.appendChild(opt);
+        const otherOpt = mainSel.querySelector('option[value="other"]');
+        otherOpt ? mainSel.insertBefore(opt, otherOpt) : mainSel.appendChild(opt);
       }
-      sel.value = val;
+      mainSel.value = val;
       updateSubcategories();
     } else {
-      const sel = document.getElementById('product-subcategory');
-      const exists = Array.from(sel.options).find(o => o.value.toLowerCase() === val.toLowerCase());
-      if (!exists) sel.appendChild(new Option(val, val));
-      sel.value = val;
+      const mainSel = document.getElementById('product-subcategory');
+      const exists = Array.from(mainSel.options).find(o => o.value.toLowerCase() === val.toLowerCase());
+      if (!exists) mainSel.appendChild(new Option(val, val));
+      mainSel.value = val;
     }
 
     cancelAddCustom(type);
