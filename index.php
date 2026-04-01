@@ -575,6 +575,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cursor: default;
       opacity: 1 !important;
     }
+    #duplicate-modal input[readonly] {
+      background: var(--surface2) !important;
+      border-color: var(--border) !important;
+      opacity: 0.7 !important;
+    }
     .lead-time-suffix {
       position: relative;
     }
