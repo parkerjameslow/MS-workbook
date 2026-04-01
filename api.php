@@ -648,6 +648,7 @@ switch ($action) {
         if (!empty($input['cost'])) $detail['quoteClShipping']  = $input['cost'];
 
         $newName = !empty($input['product_name']) ? trim($input['product_name']) : $src['product_name'] . ' (Copy)';
+        $detail['product'] = $newName;
         $stmt = $pdo->prepare("INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json) VALUES (?, ?, ?, 0, ?)");
         $stmt->execute([$targetClientId, $newName, $src['description'], json_encode($detail)]);
         echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);

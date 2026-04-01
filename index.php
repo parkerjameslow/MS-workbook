@@ -4384,7 +4384,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Total Order Cost (incl. Shipping)</label>
             <input id="dup-cost" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcCost}" />
           </div>
-          <button class="btn btn-primary" onclick="confirmDuplicate('${clientName.replace(/'/g,"\\'")}', ${dbId})">Create Duplicate</button>
+          <button class="btn btn-primary" onclick="confirmDuplicate('${clientName.replace(/'/g,"\\'")}', ${dbId})">Create Workbook</button>
         </div>
       </div>`;
     document.body.appendChild(modal);
