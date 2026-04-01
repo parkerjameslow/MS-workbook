@@ -767,16 +767,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .lightbox-overlay img { max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; }
     /* Video gallery */
     .video-gallery { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-    .video-drop-zone {
-      min-height: 62px; border: 2px dashed var(--border); border-radius: var(--radius);
-      margin-top: 10px; padding: 8px; display: flex; flex-direction: column; gap: 8px;
-      transition: border-color 0.15s, background 0.15s;
-    }
-    .video-drop-zone.drag-over { border-color: var(--accent); background: var(--accent-glow); }
-    .video-drop-hint {
-      display: flex; align-items: center; justify-content: center;
-      min-height: 44px; font-size: 12px; color: var(--text-muted); pointer-events: none;
-    }
     .video-item {
       display: flex; align-items: center; gap: 10px;
       background: var(--surface2); border: 1px solid var(--border);
@@ -2351,10 +2341,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <!-- images inserted dynamically -->
           <div class="image-add-btn" onclick="document.getElementById('imgInput').click()">
             <div class="add-icon">+</div>
-            <div class="add-text">Add Image</div>
+            <div class="add-text">Image or Video</div>
           </div>
         </div>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Tip: paste an image from clipboard (Ctrl/⌘ + V) to add it instantly</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop images or videos here, or paste from clipboard (Ctrl/⌘ + V)</div>
         <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImages(event)" style="display:none;" />
       </div>
 
@@ -2366,9 +2356,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <button class="btn" onclick="addProductVideo()" type="button" style="white-space:nowrap; flex-shrink:0;">Add URL</button>
           <button class="btn" onclick="document.getElementById('videoFileInput').click()" type="button" style="white-space:nowrap; flex-shrink:0;">Browse</button>
         </div>
-        <div class="video-drop-zone" id="videoGallery">
-          <div class="video-drop-hint" id="videoDropHint">Drop video files here (mp4, mov, webm…)</div>
-        </div>
+        <div class="video-gallery" id="videoGallery"></div>
         <input type="file" id="videoFileInput" accept="video/*" multiple onchange="handleVideoFiles(Array.from(this.files)); this.value='';" style="display:none;" />
       </div>
 
@@ -3528,29 +3516,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveToLocalStorage();
   }
 
-  // Drag and drop support for gallery
+  // Drag and drop support for image gallery — accepts both images and videos
   const galleryEl = document.getElementById('imageGallery');
   galleryEl.addEventListener('dragover', e => { e.preventDefault(); });
   galleryEl.addEventListener('drop', e => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    if (files.length) {
-      const dt = new DataTransfer();
-      files.forEach(f => dt.items.add(f));
-      document.getElementById('imgInput').files = dt.files;
-      handleImages({ target: { files: files } });
-    }
-  });
-
-  // Drag and drop support for video gallery
-  const videoGalleryEl = document.getElementById('videoGallery');
-  videoGalleryEl.addEventListener('dragover', e => { e.preventDefault(); videoGalleryEl.classList.add('drag-over'); });
-  videoGalleryEl.addEventListener('dragleave', e => { if (!videoGalleryEl.contains(e.relatedTarget)) videoGalleryEl.classList.remove('drag-over'); });
-  videoGalleryEl.addEventListener('drop', e => {
-    e.preventDefault();
-    videoGalleryEl.classList.remove('drag-over');
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
-    if (files.length) handleVideoFiles(files);
+    const allFiles = Array.from(e.dataTransfer.files);
+    const imageFiles = allFiles.filter(f => f.type.startsWith('image/'));
+    const videoFiles = allFiles.filter(f => f.type.startsWith('video/'));
+    if (imageFiles.length) handleImages({ target: { files: imageFiles } });
+    if (videoFiles.length) handleVideoFiles(videoFiles);
   });
 
   // Clipboard paste — upload images when workbook is open
@@ -3635,8 +3610,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function renderVideoGallery() {
     const gallery = document.getElementById('videoGallery');
     gallery.querySelectorAll('.video-item').forEach(el => el.remove());
-    const hint = document.getElementById('videoDropHint');
-    if (hint) hint.style.display = _productVideos.length ? 'none' : '';
     _productVideos.forEach((url, idx) => {
       const info = getVideoInfo(url);
       const item = document.createElement('div');
