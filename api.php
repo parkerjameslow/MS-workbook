@@ -625,21 +625,31 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
             break;
         }
-        $stmt = $pdo->prepare("SELECT client_id, product_name, description, flow_step, detail_json FROM workbooks WHERE id = ? AND deleted_at IS NULL");
+        $stmt = $pdo->prepare("SELECT client_id, product_name, description, detail_json FROM workbooks WHERE id = ? AND deleted_at IS NULL");
         $stmt->execute([$input['id']]);
         $src = $stmt->fetch();
         if (!$src) {
             echo json_encode(['success' => false, 'error' => 'Workbook not found']);
             break;
         }
-        $stmt = $pdo->prepare("INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json) VALUES (?, ?, ?, ?, ?)");
-        $stmt->execute([
-            $src['client_id'],
-            $src['product_name'] . ' (Copy)',
-            $src['description'],
-            $src['flow_step'],
-            $src['detail_json']
-        ]);
+
+        // Resolve target client (may differ from source)
+        $targetClientId = $src['client_id'];
+        if (!empty($input['target_client'])) {
+            $cs = $pdo->prepare("SELECT id FROM clients WHERE name = ? AND deleted_at IS NULL");
+            $cs->execute([trim($input['target_client'])]);
+            $cl = $cs->fetch();
+            if ($cl) $targetClientId = $cl['id'];
+        }
+
+        // Merge qty/cost into detail JSON, reset flow to 0
+        $detail = json_decode($src['detail_json'] ?? '{}', true) ?: [];
+        if (!empty($input['qty']))  $detail['quoteClQty']      = $input['qty'];
+        if (!empty($input['cost'])) $detail['quoteClShipping']  = $input['cost'];
+
+        $newName = !empty($input['product_name']) ? trim($input['product_name']) : $src['product_name'] . ' (Copy)';
+        $stmt = $pdo->prepare("INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json) VALUES (?, ?, ?, 0, ?)");
+        $stmt->execute([$targetClientId, $newName, $src['description'], json_encode($detail)]);
         echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
         break;
 

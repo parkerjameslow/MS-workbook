@@ -4341,14 +4341,70 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   async function duplicateWorkbook(clientName, workbookId) {
     document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
     const dbId = dbWorkbookMap[`${clientName}|${workbookId}`] || workbookId;
-    const r = await apiCall('duplicate_workbook', { id: dbId });
-    if (!r.success) { alert('Duplicate failed: ' + (r.error || 'Unknown error')); return; }
-    // Reload from DB so new workbook appears with correct ID and data
+    // Get source product name
+    const srcItem = (clientData[clientName] || []).find(i => i.id === parseInt(workbookId));
+    const srcName = srcItem ? srcItem.product + ' (Copy)' : 'Workbook (Copy)';
+
+    // Build client options
+    const clientOptions = Object.keys(clientData).sort().map(n =>
+      `<option value="${n.replace(/"/g,'&quot;')}"${n === clientName ? ' selected' : ''}>${n}</option>`
+    ).join('');
+
+    // Show modal
+    let modal = document.getElementById('duplicate-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'duplicate-modal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:flex;';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:460px; width:100%;">
+        <div class="modal-header">
+          <h3 style="margin:0; font-size:16px;">Duplicate Workbook</h3>
+          <button onclick="document.getElementById('duplicate-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+          <div id="dup-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:13px;"></div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Client</label>
+            <select id="dup-client" class="form-input" style="width:100%;">${clientOptions}</select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Product Name</label>
+            <input id="dup-name" type="text" class="form-input" style="width:100%;" value="${srcName.replace(/"/g,'&quot;')}" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Qty Ordered</label>
+            <input id="dup-qty" type="number" min="0" class="form-input" style="width:100%;" placeholder="e.g. 500" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Total Order Cost (incl. Shipping)</label>
+            <input id="dup-cost" type="number" step="0.01" min="0" class="form-input" style="width:100%;" placeholder="e.g. 1250.00" />
+          </div>
+          <button class="btn btn-primary" onclick="confirmDuplicate('${clientName.replace(/'/g,"\\'")}', ${dbId})">Create Duplicate</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    setTimeout(() => document.getElementById('dup-name')?.focus(), 50);
+  }
+
+  async function confirmDuplicate(originalClient, srcDbId) {
+    const newClient = document.getElementById('dup-client').value;
+    const newName   = document.getElementById('dup-name').value.trim();
+    const qty       = document.getElementById('dup-qty').value;
+    const cost      = document.getElementById('dup-cost').value;
+    const errEl     = document.getElementById('dup-error');
+    errEl.style.display = 'none';
+    if (!newName) { errEl.textContent = 'Product name is required.'; errEl.style.display = 'block'; return; }
+
+    // Create duplicate with flow reset to 0
+    const r = await apiCall('duplicate_workbook', { id: srcDbId, target_client: newClient, product_name: newName, qty, cost });
+    if (!r.success) { errEl.textContent = r.error || 'Duplicate failed.'; errEl.style.display = 'block'; return; }
+
+    document.getElementById('duplicate-modal').remove();
     await loadFromDatabase();
     rebuildSidebar();
-    renderDashboard(clientName);
-    // Navigate to the new copy
-    location.hash = `#/client/${encodeURIComponent(clientName)}/workbook/${r.id}`;
+    location.hash = `#/client/${encodeURIComponent(newClient)}/workbook/${r.id}`;
   }
 
   function openDeleteModal(clientName, workbookId, productName) {
