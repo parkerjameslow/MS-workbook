@@ -2321,10 +2321,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       <!-- ── Additional Fees ── -->
       <div class="subsection">
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-          <div class="subsection-title" style="margin-bottom:0;">Additional Fees</div>
-          <button class="btn btn-add" style="padding:4px 12px; font-size:12px;" onclick="openAddFeeModal()">+ Add Fee</button>
-        </div>
+        <div class="subsection-title">Additional Fees</div>
         <div style="overflow-x:auto;">
         <table class="tier-table" style="max-width:820px;">
           <thead>
@@ -2374,6 +2371,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </tr>
           </tbody>
           <tbody id="extra-fee-rows"></tbody>
+          <tfoot>
+            <tr>
+              <td colspan="5" style="padding:8px 12px; border-bottom:none;">
+                <button class="btn btn-add" style="width:100%; margin:4px 0;" onclick="openAddFeeModal()">+ Add Fee</button>
+              </td>
+            </tr>
+          </tfoot>
         </table>
         </div>
       </div>
@@ -3972,32 +3976,84 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renderExtraFeeRows() {
-    const inputStyle = 'width:130px;';
-    ['extra-fee-rows', 'pricing-extra-fee-rows'].forEach(tbodyId => {
-      const tbody = document.getElementById(tbodyId);
-      if (!tbody) return;
-      const isPricing = tbodyId === 'pricing-extra-fee-rows';
-      tbody.innerHTML = _extraFeeRows.map(r => {
-        const label = `${FEE_TYPE_LABELS[r.type]}: ${r.desc}`;
-        const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
-        const usdFmt = '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits:2});
-        if (isPricing) {
-          return `<tr>
-            <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">${label}</td>
-            <td style="padding:6px 12px; text-align:right; font-size:13px;">${rmbFmt}</td>
-            <td style="padding:6px 12px; text-align:right; font-size:13px; font-weight:600;">${usdFmt}</td>
-          </tr>`;
-        }
-        return `<tr>
-          <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">${label}</td>
-          <td style="padding:6px 12px; font-size:13px; text-align:right;">${rmbFmt}</td>
-          <td style="padding:6px 12px; font-size:13px; text-align:right; font-weight:600;">${usdFmt}</td>
+    // Workbook tab — editable inputs
+    const wb = document.getElementById('extra-fee-rows');
+    if (wb) {
+      wb.innerHTML = _extraFeeRows.map(r => {
+        const isDesign = r.type === 'design';
+        const typeLabel = FEE_TYPE_LABELS[r.type];
+        const descEsc = r.desc.replace(/"/g, '&quot;');
+        return `<tr id="extra-fee-tr-${r.id}">
+          <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">${typeLabel}</td>
+          <td style="padding:4px 8px;">
+            <input type="text" class="form-input" placeholder="Description…" value="${descEsc}"
+              oninput="updateExtraFeeField(${r.id},'desc',this.value)" style="width:100%;" />
+          </td>
+          <td style="padding:4px 8px;">
+            ${isDesign
+              ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;padding:0 8px;">USD only</span>`
+              : `<div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00"
+                  value="${r.rmb || ''}" oninput="updateExtraFeeField(${r.id},'rmb',this.value)"
+                  style="width:130px;" /></div>`}
+          </td>
+          <td style="padding:4px 8px;">
+            <div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00"
+              value="${r.usd || ''}" oninput="updateExtraFeeField(${r.id},'usd',this.value)"
+              style="width:130px;" /></div>
+          </td>
           <td style="padding:4px 8px; text-align:center;">
             <span class="remove-tier" onclick="removeExtraFeeRow(${r.id})" title="Remove">&times;</span>
           </td>
         </tr>`;
       }).join('');
-    });
+    }
+
+    // Pricing tab — read-only display
+    const pr = document.getElementById('pricing-extra-fee-rows');
+    if (pr) {
+      pr.innerHTML = _extraFeeRows.map(r => {
+        const label = `${FEE_TYPE_LABELS[r.type]}${r.desc ? ': ' + r.desc : ''}`;
+        const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
+        const usdFmt = r.usd > 0 ? '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
+        return `<tr>
+          <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">${label}</td>
+          <td style="padding:6px 12px; text-align:right; font-size:13px;">${rmbFmt}</td>
+          <td style="padding:6px 12px; text-align:right; font-size:13px; font-weight:600;">${usdFmt}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  function updateExtraFeeField(id, field, value) {
+    const row = _extraFeeRows.find(r => r.id === id);
+    if (!row) return;
+    if (field === 'desc') {
+      row.desc = value;
+    } else if (field === 'rmb') {
+      row.rmb = parseFloat(value) || 0;
+      row.usd = row.rmb > 0 ? parseFloat((row.rmb / USD_TO_RMB).toFixed(2)) : 0;
+      // Update the USD input without re-rendering
+      const tr = document.getElementById(`extra-fee-tr-${id}`);
+      if (tr) { const usdIn = tr.querySelectorAll('input[type="number"]')[1]; if (usdIn) usdIn.value = row.usd || ''; }
+    } else if (field === 'usd') {
+      row.usd = parseFloat(value) || 0;
+      row.rmb = row.usd > 0 ? parseFloat((row.usd * USD_TO_RMB).toFixed(2)) : 0;
+      const tr = document.getElementById(`extra-fee-tr-${id}`);
+      if (tr) { const rmbIn = tr.querySelector('input[type="number"]'); if (rmbIn) rmbIn.value = row.rmb || ''; }
+    }
+    // Refresh only pricing tab display (don't re-render workbook rows — would lose focus)
+    const pr = document.getElementById('pricing-extra-fee-rows');
+    if (pr) {
+      pr.innerHTML = _extraFeeRows.map(r => {
+        const label = `${FEE_TYPE_LABELS[r.type]}${r.desc ? ': ' + r.desc : ''}`;
+        const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
+        const usdFmt = r.usd > 0 ? '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
+        return `<tr><td style="padding:6px 12px;font-size:13px;color:var(--text-muted);">${label}</td>
+          <td style="padding:6px 12px;text-align:right;font-size:13px;">${rmbFmt}</td>
+          <td style="padding:6px 12px;text-align:right;font-size:13px;font-weight:600;">${usdFmt}</td></tr>`;
+      }).join('');
+    }
+    calcAdditionalFees();
   }
 
   function convertFee(name, from) {
