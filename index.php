@@ -2326,10 +2326,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <button class="btn btn-add" style="padding:4px 12px; font-size:12px;" onclick="openAddFeeModal()">+ Add Fee</button>
         </div>
         <div style="overflow-x:auto;">
-        <table class="tier-table" style="max-width:620px;">
+        <table class="tier-table" style="max-width:820px;">
           <thead>
             <tr>
-              <th style="text-align:left; width:38%;">Fee</th>
+              <th style="text-align:left; width:22%;">Fee</th>
+              <th style="text-align:left;">Description</th>
               <th>Amount (RMB)</th>
               <th>Amount (USD)</th>
               <th style="width:32px;"></th>
@@ -2337,31 +2338,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </thead>
           <tbody>
             <tr>
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Sample Fee(s)</td>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Sample Fee(s)</td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-sample-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" style="width:130px;" /></div></td>
               <td></td>
             </tr>
             <tr>
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Tooling Fee(s)</td>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Tooling Fee(s)</td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-tooling-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" style="width:130px;" /></div></td>
               <td></td>
             </tr>
             <tr>
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Die Fee(s)</td>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Die Fee(s)</td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-die-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" style="width:130px;" /></div></td>
               <td></td>
             </tr>
             <tr>
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Plate Fee(s)</td>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Plate Fee(s)</td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-plate-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" style="width:130px;" /></div></td>
               <td></td>
             </tr>
             <tr style="border-top:2px solid var(--border);">
-              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted);">Design Fee(s)</td>
+              <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Design Fee(s)</td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-design-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
               <td style="padding:6px 12px; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" style="width:130px;" /></div></td>
               <td></td>
@@ -5411,15 +5417,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       recalcRfqTotals();
       _s('quote-qc', data.qcNotes);
-      _s('fee-sample-rmb',  data.feeSampleRmb);
-      _s('fee-sample-usd',  data.feeSampleUsd);
-      _s('fee-tooling-rmb', data.feeToolingRmb);
-      _s('fee-tooling-usd', data.feeToolingUsd);
-      _s('fee-die-rmb',     data.feeDieRmb);
-      _s('fee-die-usd',     data.feeDieUsd);
-      _s('fee-plate-rmb',   data.feePlateRmb);
-      _s('fee-plate-usd',   data.feePlateUsd);
-      _s('fee-design-usd',  data.feeDesignUsd);
+      _s('fee-sample-desc',  data.feeSampleDesc);
+      _s('fee-sample-rmb',   data.feeSampleRmb);
+      _s('fee-sample-usd',   data.feeSampleUsd);
+      _s('fee-tooling-desc', data.feeToolingDesc);
+      _s('fee-tooling-rmb',  data.feeToolingRmb);
+      _s('fee-tooling-usd',  data.feeToolingUsd);
+      _s('fee-die-desc',     data.feeDieDesc);
+      _s('fee-die-rmb',      data.feeDieRmb);
+      _s('fee-die-usd',      data.feeDieUsd);
+      _s('fee-plate-desc',   data.feePlateDesc);
+      _s('fee-plate-rmb',    data.feePlateRmb);
+      _s('fee-plate-usd',    data.feePlateUsd);
+      _s('fee-design-desc',  data.feeDesignDesc);
+      _s('fee-design-usd',   data.feeDesignUsd);
       _extraFeeRows = [];
       _extraFeeCounter = 0;
       if (Array.isArray(data.extraFeeRows)) {
@@ -5764,15 +5775,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       colorNotes: _v('color-notes'),
       rfqItems: collectRfqItems(),
       qcNotes: _v('quote-qc'),
-      feeSampleRmb:  _v('fee-sample-rmb'),
-      feeSampleUsd:  _v('fee-sample-usd'),
-      feeToolingRmb: _v('fee-tooling-rmb'),
-      feeToolingUsd: _v('fee-tooling-usd'),
-      feeDieRmb:     _v('fee-die-rmb'),
-      feeDieUsd:     _v('fee-die-usd'),
-      feePlateRmb:   _v('fee-plate-rmb'),
-      feePlateUsd:   _v('fee-plate-usd'),
-      feeDesignUsd:  _v('fee-design-usd'),
+      feeSampleDesc:  _v('fee-sample-desc'),
+      feeSampleRmb:   _v('fee-sample-rmb'),
+      feeSampleUsd:   _v('fee-sample-usd'),
+      feeToolingDesc: _v('fee-tooling-desc'),
+      feeToolingRmb:  _v('fee-tooling-rmb'),
+      feeToolingUsd:  _v('fee-tooling-usd'),
+      feeDieDesc:     _v('fee-die-desc'),
+      feeDieRmb:      _v('fee-die-rmb'),
+      feeDieUsd:      _v('fee-die-usd'),
+      feePlateDesc:   _v('fee-plate-desc'),
+      feePlateRmb:    _v('fee-plate-rmb'),
+      feePlateUsd:    _v('fee-plate-usd'),
+      feeDesignDesc:  _v('fee-design-desc'),
+      feeDesignUsd:   _v('fee-design-usd'),
       extraFeeRows:  _extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd})),
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
