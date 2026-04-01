@@ -828,6 +828,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: var(--filled-bg);
       border-color: var(--filled-border);
     }
+    /* RFQ-synced tier price inputs — muted read-only look, no orange tint */
+    #wb-tier-body .karen-cell input[readonly] {
+      background: var(--surface2) !important;
+      cursor: default !important;
+      color: var(--text-muted) !important;
+      border-color: var(--border) !important;
+    }
 
     .total-cell {
       font-weight: 700;
@@ -3722,6 +3729,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('rfq-total-usd-sum').textContent = totalUsdUnit ? '$' + totalUsdUnit.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('rfq-total-usd').textContent = totalUsd ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('rfq-max-lead').textContent = maxLead ? maxLead + ' days' : '—';
+    applyRfqRmbToTiers(totalRmb);
+  }
+
+  function applyRfqRmbToTiers(totalRmb) {
+    _syncing = true;
+    document.querySelectorAll('#wb-tier-body tr').forEach(row => {
+      const id = parseInt(row.id.replace('wb-tier-', ''));
+      const inputs = row.querySelectorAll('input');
+      if (inputs[1]) {
+        inputs[1].value = totalRmb > 0 ? parseFloat(totalRmb).toFixed(4) : '';
+      }
+      recalcWbTier(id);
+    });
+    _syncing = false;
+    syncTiersToPricing();
   }
 
   function collectRfqItems() {
@@ -3856,8 +3878,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </td>
       <td class="karen-cell">
         <div class="currency-prefix currency-rmb" style="display:inline-block; position:relative;">
-          <input type="number" step="0.0001" min="0" placeholder="0.0000" value="${unitPrice}"
-                 oninput="recalcWbTier(${id})"
+          <input type="number" step="0.0001" min="0" placeholder="From RFQ" value="${unitPrice}"
+                 readonly
                  style="width:130px; padding-left:28px;" />
         </div>
       </td>
@@ -5653,6 +5675,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         addTierRow(250); addWbTierRow(250);
         addTierRow(500); addWbTierRow(500);
       }
+      recalcRfqTotals(); // sync RFQ unit price total → tier RMB inputs
       calcAdditionalFees();
       // Shipping tab
       _s('carton-unit-weight', data.cartonUnitWeight);
