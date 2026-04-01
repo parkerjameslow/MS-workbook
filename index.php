@@ -794,6 +794,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 16px 12px;
     }
 
+    .remove-tier {
+      cursor: pointer;
+      user-select: none;
+    }
+
     .karen-cell.field-filled input {
       background: var(--filled-bg);
       border-color: var(--filled-border);
