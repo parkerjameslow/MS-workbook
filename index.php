@@ -4341,9 +4341,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   async function duplicateWorkbook(clientName, workbookId) {
     document.querySelectorAll('.action-menu.open').forEach(m => m.classList.remove('open'));
     const dbId = dbWorkbookMap[`${clientName}|${workbookId}`] || workbookId;
-    // Get source product name
+    // Get source product name and detail
     const srcItem = (clientData[clientName] || []).find(i => i.id === parseInt(workbookId));
     const srcName = srcItem ? srcItem.product + ' (Copy)' : 'Workbook (Copy)';
+    const srcDetail = workbookDetail[`${clientName}|${workbookId}`] || {};
+    const srcQty = srcDetail.quoteClQty || '';
+    const srcCost = srcDetail.quoteClShipping || '';
 
     // Build client options
     const clientOptions = Object.keys(clientData).sort().map(n =>
@@ -4375,11 +4378,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Qty Ordered</label>
-            <input id="dup-qty" type="number" min="0" class="form-input" style="width:100%;" placeholder="e.g. 500" />
+            <input id="dup-qty" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcQty}" />
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Total Order Cost (incl. Shipping)</label>
-            <input id="dup-cost" type="number" step="0.01" min="0" class="form-input" style="width:100%;" placeholder="e.g. 1250.00" />
+            <input id="dup-cost" type="text" class="form-input" style="width:100%;opacity:0.7;cursor:default;background:var(--surface2);" readonly value="${srcCost}" />
           </div>
           <button class="btn btn-primary" onclick="confirmDuplicate('${clientName.replace(/'/g,"\\'")}', ${dbId})">Create Duplicate</button>
         </div>
