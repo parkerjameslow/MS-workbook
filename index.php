@@ -2336,41 +2336,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tbody>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Sample Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-sample-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-sample-desc" oninput="calcAdditionalFees()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('sample','Sample Fee(s)')" title="Clear">×</span></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Tooling Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-tooling-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-tooling-desc" oninput="calcAdditionalFees()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('tooling','Tooling Fee(s)')" title="Clear">×</span></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Die Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-die-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-die-desc" oninput="calcAdditionalFees()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('die','Die Fee(s)')" title="Clear">×</span></td>
             </tr>
             <tr>
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Plate Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-plate-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-plate-desc" oninput="calcAdditionalFees()" style="width:100%;" /></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" style="width:130px;" /></div></td>
               <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('plate','Plate Fee(s)')" title="Clear">×</span></td>
             </tr>
+          </tbody>
+          <tbody id="extra-fee-rows"></tbody>
+          <tbody>
             <tr style="border-top:2px solid var(--border);">
               <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Design Fee(s)</td>
-              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-design-desc" oninput="if(!_filling)autoSaveWorkbook()" style="width:100%;" /></td>
+              <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-design-desc" oninput="calcAdditionalFees()" style="width:100%;" /></td>
               <td style="padding:6px 12px; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
               <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" style="width:130px;" /></div></td>
               <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('design','Design Fee(s)')" title="Clear">×</span></td>
             </tr>
           </tbody>
-          <tbody id="extra-fee-rows"></tbody>
           <tfoot>
             <tr>
               <td colspan="5" style="padding:8px 12px; border-bottom:none;">
@@ -2744,32 +2746,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </thead>
           <tbody>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Sample Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-sample-label">Sample Fee(s)</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-sample-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-sample">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Tooling Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-tooling-label">Tooling Fee(s)</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-tooling-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-tooling">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Die Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-die-label">Die Fee(s)</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-die-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-die">—</td>
             </tr>
             <tr>
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Plate Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-plate-label">Plate Fee(s)</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-plate-rmb">—</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-plate">—</td>
             </tr>
+          </tbody>
+          <tbody id="pricing-extra-fee-rows"></tbody>
+          <tbody>
             <tr style="border-top:2px solid var(--border);">
-              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;">Design Fee(s)</td>
+              <td style="padding:8px 12px; color:var(--text-muted); font-size:13px;" id="pricing-fee-design-label">Design Fee(s)</td>
               <td style="padding:8px 12px; text-align:right; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
               <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-design">—</td>
             </tr>
           </tbody>
-          <tbody id="pricing-extra-fee-rows"></tbody>
           <tbody>
             <tr style="border-top:2px solid var(--border); background:rgba(232,117,26,0.06);">
               <td style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fee(s)</td>
@@ -4155,6 +4159,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+
+    // Sync descriptions to pricing tab labels
+    const descLabel = (base, id) => {
+      const d = document.getElementById(`fee-${id}-desc`)?.value.trim();
+      return d ? `${base}: ${d}` : base;
+    };
+    document.getElementById('pricing-fee-sample-label').textContent  = descLabel('Sample Fee(s)',  'sample');
+    document.getElementById('pricing-fee-tooling-label').textContent = descLabel('Tooling Fee(s)', 'tooling');
+    document.getElementById('pricing-fee-die-label').textContent     = descLabel('Die Fee(s)',     'die');
+    document.getElementById('pricing-fee-plate-label').textContent   = descLabel('Plate Fee(s)',   'plate');
+    document.getElementById('pricing-fee-design-label').textContent  = descLabel('Design Fee(s)',  'design');
 
     document.getElementById('pricing-fee-sample').textContent      = fmtUsd(sample);
     document.getElementById('pricing-fee-sample-rmb').textContent  = fmtRmb(sampleRmb);
