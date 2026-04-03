@@ -6566,6 +6566,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   window.MS_SESSION = { name: '<?= addslashes($_msUser) ?>', role: '<?= $_msRole ?>', id: <?= $_msUserId ?>, username: '<?= addslashes($_msUsername) ?>' };
   window.addEventListener('hashchange', router);
 
+  // Force-clear sidebar search after Chrome autofill runs
+  (function clearSidebarSearch() {
+    const clear = () => { const el = document.getElementById('sidebar-search'); if (el) el.value = ''; };
+    clear();
+    setTimeout(clear, 100);
+    setTimeout(clear, 500);
+  })();
+
   /* ── Auto-save workbook fields ─────────────────────────────────────────── */
   let saveTimer = null;
 
