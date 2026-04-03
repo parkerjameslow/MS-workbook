@@ -1375,7 +1375,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 0;
+      padding: 0 0 0 16px;
       margin-bottom: 16px;
     }
     .btn-back:hover { opacity: 0.7; }
