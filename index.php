@@ -3433,9 +3433,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <h3 style="margin:0; font-size:16px;">&#128451; Archive</h3>
       <button onclick="closeArchiveModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-muted);">&times;</button>
     </div>
-    <div style="display:flex; gap:0; border-bottom:1px solid var(--border);">
-      <button class="archive-tab active" onclick="switchArchiveTab('workbooks', this)" style="flex:1; padding:10px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600; border-bottom:2px solid var(--accent);">Workbooks</button>
-      <button class="archive-tab" onclick="switchArchiveTab('clients', this)" style="flex:1; padding:10px; border:none; background:transparent; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600; color:var(--text-muted); border-bottom:2px solid transparent;">Clients</button>
+    <div style="padding:12px 20px; border-bottom:1px solid var(--border); background:var(--surface);">
+      <div style="display:flex; background:var(--surface2); border-radius:8px; padding:3px; gap:3px;">
+        <button class="archive-tab active" onclick="switchArchiveTab('workbooks', this)" style="flex:1; padding:7px 12px; border:none; border-radius:6px; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600; background:var(--surface); box-shadow:0 1px 3px rgba(0,0,0,0.15); color:var(--text); transition:all 0.15s;">Workbooks</button>
+        <button class="archive-tab" onclick="switchArchiveTab('clients', this)" style="flex:1; padding:7px 12px; border:none; border-radius:6px; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600; background:transparent; box-shadow:none; color:var(--text-muted); transition:all 0.15s;">Clients</button>
+      </div>
     </div>
     <div id="archive-list" style="overflow-y:auto; flex:1; padding:12px 20px;">
       <p style="color:var(--text-muted); text-align:center;">Loading...</p>
@@ -5819,12 +5821,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     archiveTab = tab;
     document.querySelectorAll('.archive-tab').forEach(t => {
       t.classList.remove('active');
-      t.style.borderBottomColor = 'transparent';
+      t.style.background = 'transparent';
+      t.style.boxShadow = 'none';
       t.style.color = 'var(--text-muted)';
     });
     btn.classList.add('active');
-    btn.style.borderBottomColor = 'var(--accent)';
-    btn.style.color = '';
+    btn.style.background = 'var(--surface)';
+    btn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)';
+    btn.style.color = 'var(--text)';
     renderArchiveList();
   }
 
