@@ -2248,6 +2248,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
+    <!-- Billings -->
+    <div class="nav-section collapsed" id="nav-section-billings">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-billings')">
+        <span>Billings</span>
+        <span class="nav-section-chevron">›</span>
+      </div>
+      <div class="nav-section-body">
+        <div class="nav-placeholder">Coming soon…</div>
+      </div>
+    </div>
+
+    <!-- Commission -->
+    <div class="nav-section collapsed" id="nav-section-commission">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-commission')">
+        <span>Commission</span>
+        <span class="nav-section-chevron">›</span>
+      </div>
+      <div class="nav-section-body">
+        <div class="nav-placeholder">Coming soon…</div>
+      </div>
+    </div>
+
   </nav>
 
   <div class="sidebar-bottom" style="padding: 8px;">
