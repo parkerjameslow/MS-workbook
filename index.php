@@ -5290,22 +5290,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Product Name</label>
             <input id="dup-name" type="text" class="form-input" style="width:100%;" placeholder="${srcName.replace(/"/g,'&quot;')}" autocomplete="off" />
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div>
-              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px;">Quantity</div>
-              <div id="dup-qty" style="font-size:15px;color:var(--text);padding:2px 0;">${srcQty || '—'}</div>
-            </div>
-            <div>
-              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px;">Unit Price (USD)</div>
-              <div style="font-size:15px;color:var(--text);padding:2px 0;">${srcUnitPrice ? '$' + srcUnitPrice : '—'}</div>
-            </div>
-            <div>
-              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px;">Shipping Cost (USD)</div>
-              <div id="dup-cost" style="font-size:15px;color:var(--text);padding:2px 0;">${srcCost ? '$' + srcCost : '—'}</div>
-            </div>
-            <div>
-              <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px;">Total Quote (USD)</div>
-              <div style="font-size:15px;font-weight:700;color:var(--text);padding:2px 0;">${srcTotal}</div>
+          <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;">
+              <div style="padding:12px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Quantity</div>
+                <div id="dup-qty" style="font-size:15px;color:var(--text);">${srcQty || '—'}</div>
+              </div>
+              <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Unit Price (USD)</div>
+                <div style="font-size:15px;color:var(--text);">${srcUnitPrice ? '$' + srcUnitPrice : '—'}</div>
+              </div>
+              <div style="padding:12px 16px;border-right:1px solid var(--border);background:var(--surface2);">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Shipping Cost (USD)</div>
+                <div id="dup-cost" style="font-size:15px;color:var(--text);">${srcCost ? '$' + srcCost : '—'}</div>
+              </div>
+              <div style="padding:12px 16px;background:var(--surface2);">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Total Quote (USD)</div>
+                <div style="font-size:16px;font-weight:700;color:var(--text);">${srcTotal}</div>
+              </div>
             </div>
           </div>
           <button class="btn btn-primary" onclick="confirmDuplicate('${clientName.replace(/'/g,"\\'")}', ${dbId})">Create Workbook</button>
