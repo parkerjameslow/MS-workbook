@@ -1343,30 +1343,69 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       margin-bottom: 8px;
     }
 
+    /* ── Segment Control (reusable tab style) ──────────────────────────── */
+    .seg-control {
+      display: flex;
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .seg-tab {
+      flex: 1;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      box-shadow: none;
+    }
+
+    .seg-tab.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+
+    .seg-tab:not(.active):hover {
+      color: var(--text);
+    }
+
     /* ── Workbook Tabs ──────────────────────────────────────────────────── */
     .wb-tabs {
       display: flex;
-      gap: 4px;
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
       align-items: center;
     }
 
     .wb-tab {
-      padding: 8px 20px;
+      padding: 7px 16px;
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--text-muted);
       background: transparent;
       border: none;
-      border-radius: 20px;
+      border-radius: 6px;
       cursor: pointer;
       transition: all 0.15s;
       white-space: nowrap;
+      box-shadow: none;
     }
 
     .wb-tab.active {
-      background: var(--accent);
-      color: #fff;
-      font-weight: 500;
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
     }
 
     .wb-tab:not(.active):hover {
@@ -3433,10 +3472,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <h3 style="margin:0; font-size:16px;">&#128451; Archive</h3>
       <button onclick="closeArchiveModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-muted);">&times;</button>
     </div>
-    <div style="padding:12px 20px; border-bottom:1px solid var(--border); background:var(--surface);">
-      <div style="display:flex; background:var(--surface2); border-radius:8px; padding:3px; gap:3px;">
-        <button class="archive-tab active" onclick="switchArchiveTab('workbooks', this)" style="flex:1; padding:7px 12px; border:none; border-radius:6px; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600; background:var(--surface); box-shadow:0 1px 3px rgba(0,0,0,0.15); color:var(--text); transition:all 0.15s;">Workbooks</button>
-        <button class="archive-tab" onclick="switchArchiveTab('clients', this)" style="flex:1; padding:7px 12px; border:none; border-radius:6px; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600; background:transparent; box-shadow:none; color:var(--text-muted); transition:all 0.15s;">Clients</button>
+    <div style="padding:12px 20px; border-bottom:1px solid var(--border);">
+      <div class="seg-control">
+        <button class="archive-tab seg-tab active" onclick="switchArchiveTab('workbooks', this)">Workbooks</button>
+        <button class="archive-tab seg-tab" onclick="switchArchiveTab('clients', this)">Clients</button>
       </div>
     </div>
     <div id="archive-list" style="overflow-y:auto; flex:1; padding:12px 20px;">
@@ -5819,16 +5858,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function switchArchiveTab(tab, btn) {
     archiveTab = tab;
-    document.querySelectorAll('.archive-tab').forEach(t => {
-      t.classList.remove('active');
-      t.style.background = 'transparent';
-      t.style.boxShadow = 'none';
-      t.style.color = 'var(--text-muted)';
-    });
+    document.querySelectorAll('.archive-tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
-    btn.style.background = 'var(--surface)';
-    btn.style.boxShadow = '0 1px 3px rgba(0,0,0,0.15)';
-    btn.style.color = 'var(--text)';
     renderArchiveList();
   }
 
