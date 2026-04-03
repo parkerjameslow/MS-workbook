@@ -2180,10 +2180,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- Search -->
   <div style="padding: 0 10px 8px;">
     <div style="position:relative;">
-      <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none;">🔍</span>
-      <input id="sidebar-search" type="text" placeholder="Search clients…"
-        onfocus="this.value=''; filterSidebarSearch('')" oninput="filterSidebarSearch(this.value)"
-        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none; cursor:text;" />
+      <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">🔍</span>
+      <span id="sidebar-search-ph" style="position:absolute; left:28px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">Search clients…</span>
+      <input id="sidebar-search" type="text"
+        onfocus="this.style.color='var(--text)'; document.getElementById('sidebar-search-ph').style.display='none'; this.value=''; filterSidebarSearch('')"
+        onblur="if(!this.value){this.style.color='transparent'; document.getElementById('sidebar-search-ph').style.display='';}"
+        oninput="filterSidebarSearch(this.value)"
+        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:transparent; outline:none; cursor:text;" />
     </div>
   </div>
 
