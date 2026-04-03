@@ -2182,11 +2182,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div style="position:relative;">
       <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">🔍</span>
       <span id="sidebar-search-ph" style="position:absolute; left:28px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">Search clients…</span>
-      <input id="sidebar-search" type="text"
-        onfocus="this.style.color='var(--text)'; document.getElementById('sidebar-search-ph').style.display='none'; this.value=''; filterSidebarSearch('')"
-        onblur="if(!this.value){this.style.color='transparent'; document.getElementById('sidebar-search-ph').style.display='';}"
-        oninput="filterSidebarSearch(this.value)"
+      <input id="sidebar-search" type="text" autocomplete="new-password"
+        onfocus="this.style.color='var(--text)'; document.getElementById('sidebar-search-ph').style.display='none'; this.value=''; filterSidebarSearch(''); showRecentNav();"
+        onblur="setTimeout(()=>{ if(!this.value){this.style.color='transparent'; document.getElementById('sidebar-search-ph').style.display='';} hideRecentNav(); }, 150)"
+        oninput="hideRecentNav(); filterSidebarSearch(this.value)"
         style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:transparent; outline:none; cursor:text;" />
+      <div id="sidebar-recent-dropdown" style="display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:100; overflow:hidden;"></div>
     </div>
   </div>
 
@@ -4994,6 +4995,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
+  /* ── Recent Nav ─────────────────────────────────────────────────────── */
+  const RECENT_NAV_KEY = 'ms_recent_nav';
+  const RECENT_NAV_MAX = 10;
+
+  function getRecentNav() {
+    try { return JSON.parse(localStorage.getItem(RECENT_NAV_KEY) || '[]'); } catch { return []; }
+  }
+
+  function addRecentNav(item) {
+    let list = getRecentNav();
+    // Remove duplicate
+    list = list.filter(r => !(r.type === item.type && r.label === item.label && r.href === item.href));
+    list.unshift(item);
+    if (list.length > RECENT_NAV_MAX) list = list.slice(0, RECENT_NAV_MAX);
+    localStorage.setItem(RECENT_NAV_KEY, JSON.stringify(list));
+  }
+
+  function showRecentNav() {
+    const dropdown = document.getElementById('sidebar-recent-dropdown');
+    if (!dropdown) return;
+    const list = getRecentNav();
+    if (!list.length) { dropdown.style.display = 'none'; return; }
+    dropdown.innerHTML = list.map((r, i) => `
+      <a href="${r.href}" onclick="hideRecentNav()" style="display:flex; align-items:center; gap:8px; padding:8px 12px; font-size:12px; color:var(--text); text-decoration:none; border-bottom:${i < list.length-1 ? '1px solid var(--border)' : 'none'};">
+        <span style="font-size:11px; color:var(--text-muted); flex-shrink:0;">${r.type === 'workbook' ? '📋' : '👤'}</span>
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.label}</span>
+        ${r.sub ? `<span style="font-size:11px; color:var(--text-muted); margin-left:auto; flex-shrink:0;">${r.sub}</span>` : ''}
+      </a>
+    `).join('');
+    dropdown.style.display = 'block';
+  }
+
+  function hideRecentNav() {
+    const dropdown = document.getElementById('sidebar-recent-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+  }
+
   function makeClientNavItem(name) {
     const a = document.createElement('a');
     a.className = 'nav-item';
@@ -6120,6 +6158,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('header-title').textContent = clientName + ' — Workbooks';
     updateSidebarActive(clientName);
     showView('view-dashboard');
+    addRecentNav({ type: 'client', label: clientName, href: `#/client/${encodeURIComponent(clientName)}` });
   }
 
   function fillWorkbook(clientName, workbookId) {
@@ -6368,6 +6407,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     updateSidebarActive(clientName);
     fillQuoteInvoice(clientName, prodName);
     showView('view-workbook');
+    addRecentNav({ type: 'workbook', label: prodName, sub: clientName, href: `#/client/${encodeURIComponent(clientName)}/workbook/${workbookId}` });
     calcFreight();
     // Delay clearing _filling to let queued input events (from calcFreight etc.) fire while still blocked
     setTimeout(() => {
