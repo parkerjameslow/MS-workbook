@@ -914,13 +914,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .specs-three-col {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
-      gap: 24px;
+      gap: 0;
     }
     .specs-col {
       display: flex;
       flex-direction: column;
       gap: 16px;
+      padding: 0 24px;
+      border-right: 1px solid var(--border);
     }
+    .specs-col:first-child { padding-left: 0; }
+    .specs-col:last-child { padding-right: 0; border-right: none; }
     .specs-col-title {
       font-size: 12px;
       font-weight: 700;
