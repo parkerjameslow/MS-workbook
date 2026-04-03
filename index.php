@@ -5017,13 +5017,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!dropdown) return;
     const list = getRecentNav();
     if (!list.length) { dropdown.style.display = 'none'; return; }
-    dropdown.innerHTML = list.map((r, i) => `
-      <a href="${r.href}" onclick="hideRecentNav(); resetSidebarSearch();" style="display:flex; align-items:center; gap:8px; padding:7px 12px; font-size:12px; color:var(--text); text-decoration:none; border-radius:6px; margin:2px 4px;">
-        <span style="font-size:11px; color:var(--text-muted); flex-shrink:0;">${r.type === 'workbook' ? '📋' : '👤'}</span>
-        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.label}</span>
-        ${r.sub ? `<span style="font-size:11px; color:var(--text-muted); margin-left:auto; flex-shrink:0;">${r.sub}</span>` : ''}
-      </a>
-    `).join('');
+    dropdown.innerHTML = list.map((r, i) => {
+      const avatarClient = r.type === 'workbook' ? r.sub : r.label;
+      const avatar = clientAvatarHTML(avatarClient, 20);
+      return `
+        <a href="${r.href}" onclick="hideRecentNav(); resetSidebarSearch();" style="display:flex; align-items:center; gap:8px; padding:7px 12px; font-size:12px; color:var(--text); text-decoration:none; border-radius:6px; margin:2px 4px;">
+          ${avatar}
+          <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.label}</span>
+          ${r.sub ? `<span style="font-size:11px; color:var(--text-muted); margin-left:auto; flex-shrink:0; padding-left:6px;">${r.sub}</span>` : ''}
+        </a>`;
+    }).join('');
     dropdown.style.display = 'block';
   }
 
@@ -5040,10 +5043,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     filterSidebarSearch('');
   }
 
+  function getClientLogo(clientName) {
+    const workbooks = clientData[clientName] || [];
+    for (const wb of workbooks) {
+      const detail = workbookDetail[`${clientName}|${wb.id}`];
+      if (detail && detail.artImages && detail.artImages.length > 0) return detail.artImages[0];
+    }
+    return null;
+  }
+
+  function clientAvatarHTML(clientName, size = 20) {
+    const logo = getClientLogo(clientName);
+    if (logo) {
+      return `<img src="${logo}" style="width:${size}px; height:${size}px; border-radius:4px; object-fit:contain; flex-shrink:0; background:var(--surface);" />`;
+    }
+    const initials = clientName.trim().charAt(0).toUpperCase();
+    return `<span style="width:${size}px; height:${size}px; border-radius:4px; background:var(--accent); color:#fff; font-size:${Math.round(size*0.55)}px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${initials}</span>`;
+  }
+
   function makeClientNavItem(name) {
     const a = document.createElement('a');
     a.className = 'nav-item';
     a.href = `#/client/${encodeURIComponent(name)}`;
+
+    const avatar = document.createElement('span');
+    avatar.innerHTML = clientAvatarHTML(name, 20);
+    avatar.style.display = 'flex';
+    avatar.style.flexShrink = '0';
+    a.appendChild(avatar.firstElementChild || avatar);
 
     const span = document.createElement('span');
     span.textContent = name;
