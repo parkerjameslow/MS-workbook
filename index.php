@@ -1483,6 +1483,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .diff-toggle:hover { text-decoration: underline; }
     .archive-item { display:flex; justify-content:space-between; align-items:center; padding:11px 10px; border-bottom:1px solid var(--border); border-radius:6px; margin:0 -10px; cursor:default; transition: background 0.12s; }
     .archive-item:hover { background: var(--surface2); }
+    #sidebar-recent-dropdown a:hover { background: var(--surface2); }
 
     .modal-title {
       font-size: 18px;
@@ -5017,7 +5018,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const list = getRecentNav();
     if (!list.length) { dropdown.style.display = 'none'; return; }
     dropdown.innerHTML = list.map((r, i) => `
-      <a href="${r.href}" onclick="hideRecentNav(); resetSidebarSearch();" style="display:flex; align-items:center; gap:8px; padding:8px 12px; font-size:12px; color:var(--text); text-decoration:none; border-bottom:${i < list.length-1 ? '1px solid var(--border)' : 'none'};">
+      <a href="${r.href}" onclick="hideRecentNav(); resetSidebarSearch();" style="display:flex; align-items:center; gap:8px; padding:7px 12px; font-size:12px; color:var(--text); text-decoration:none; border-radius:6px; margin:2px 4px;">
         <span style="font-size:11px; color:var(--text-muted); flex-shrink:0;">${r.type === 'workbook' ? '📋' : '👤'}</span>
         <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.label}</span>
         ${r.sub ? `<span style="font-size:11px; color:var(--text-muted); margin-left:auto; flex-shrink:0;">${r.sub}</span>` : ''}
