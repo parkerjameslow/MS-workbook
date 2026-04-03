@@ -107,22 +107,58 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       height: auto;
     }
 
+    /* ── Sidebar Nav ─────────────────────────────────────────────────────── */
     .sidebar-nav {
       flex: 1;
-      padding: 0 12px;
+      padding: 0 0 8px;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: 0;
+      overflow-y: auto;
+    }
+
+    /* Section headers (Starred, Clients, Orders, etc.) */
+    .nav-section-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px 4px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+    .nav-section-header:hover { color: var(--text); }
+    .nav-section-chevron {
+      margin-left: auto;
+      font-size: 9px;
+      transition: transform 0.18s;
+      opacity: 0.6;
+    }
+    .nav-section.collapsed .nav-section-chevron { transform: rotate(-90deg); }
+    .nav-section.collapsed .nav-section-body { display: none; }
+    .nav-section-body { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 6px; }
+
+    /* Coming-soon placeholder items */
+    .nav-placeholder {
+      padding: 7px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      opacity: 0.5;
+      font-style: italic;
     }
 
     .nav-item {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 10px 12px;
+      gap: 8px;
+      padding: 7px 10px;
       border-radius: var(--radius-sm);
       color: var(--sidebar-text);
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 500;
       cursor: pointer;
       transition: all 0.15s;
@@ -131,12 +167,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: none;
       width: 100%;
       text-align: left;
+      box-sizing: border-box;
     }
 
-    .nav-item:hover {
-      background: var(--surface2);
-      color: var(--text);
-    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
 
     .nav-item.active {
       background: var(--sidebar-active-bg);
@@ -145,62 +179,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-left: 3px solid #E8751A;
     }
 
-    .nav-item .client-delete-btn {
+    /* Star button */
+    .nav-star-btn {
       display: none;
       margin-left: auto;
       background: none;
       border: none;
       color: var(--text-muted);
-      font-size: 14px;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 4px;
+      line-height: 1;
+      flex-shrink: 0;
+      opacity: 0.5;
+    }
+    .nav-item:hover .nav-star-btn { display: inline-flex; }
+    .nav-item .nav-star-btn.starred { display: inline-flex; color: #f5a623; opacity: 1; }
+    .nav-star-btn:hover { opacity: 1 !important; }
+
+    /* Delete button (shown when active) */
+    .nav-item .client-delete-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 13px;
       font-weight: 700;
       cursor: pointer;
-      padding: 2px 6px;
+      padding: 2px 5px;
       border-radius: var(--radius-sm);
       line-height: 1;
-    }
-
-    .nav-item .client-delete-btn:hover {
-      color: #e53e3e;
-      background: rgba(229, 62, 62, 0.1);
-    }
-
-    .nav-item.active .client-delete-btn {
-      display: inline-flex;
-    }
-
-    .nav-item-icon {
-      width: 20px;
-      text-align: center;
-      font-size: 16px;
       flex-shrink: 0;
     }
+    .nav-item.active .client-delete-btn { display: inline-flex; }
+    .nav-item .client-delete-btn:hover { color: #e53e3e; background: rgba(229,62,62,0.1); }
 
-    .nav-item-chevron {
-      margin-left: auto;
-      font-size: 10px;
-      color: var(--text-muted);
-      transition: transform 0.2s;
-    }
+    /* When both star and delete are shown on active starred item */
+    .nav-item.active .nav-star-btn { display: inline-flex; }
 
-    .nav-item.expanded .nav-item-chevron {
-      transform: rotate(90deg);
-    }
-
-    .nav-submenu {
-      display: none;
-      padding-left: 44px;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .nav-submenu.open {
-      display: flex;
-    }
-
-    .nav-submenu .nav-item {
-      padding: 7px 12px;
-      font-size: 13px;
-    }
+    .nav-item-icon { width: 16px; text-align: center; font-size: 14px; flex-shrink: 0; }
+    .nav-item-chevron { margin-left: auto; font-size: 10px; color: var(--text-muted); transition: transform 0.2s; }
+    .nav-item.expanded .nav-item-chevron { transform: rotate(90deg); }
+    .nav-submenu { display: none; padding-left: 44px; flex-direction: column; gap: 2px; }
+    .nav-submenu.open { display: flex; }
+    .nav-submenu .nav-item { padding: 7px 12px; font-size: 13px; }
 
     .sidebar-bottom {
       padding: 12px;
@@ -2099,22 +2122,70 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <img src="assets/logo.png" alt="Market Sculpt" />
   </a>
 
-  <div style="padding: 0 12px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;">
-    <button class="sidebar-add-btn" onclick="openNewWorkbookModal()">+ Add Workbook</button>
-    <button class="sidebar-add-btn" onclick="openAddClientModal()">+ Add Client</button>
-  </div>
-  <div style="padding: 0 16px 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Clients</div>
-  <nav class="sidebar-nav">
-    <a class="nav-item" href="#/client/BAM">BAM</a>
-    <a class="nav-item" href="#/client/Bloom">Bloom</a>
-    <a class="nav-item" href="#/client/Candy Pan">Candy Pan</a>
-    <a class="nav-item" href="#/client/Fresh Her">Fresh Her</a>
-    <a class="nav-item" href="#/client/Kids United">Kids United</a>
-    <a class="nav-item" href="#/client/Nut Garden">Nut Garden</a>
-    <a class="nav-item" href="#/client/Salt">Salt</a>
-    <a class="nav-item" href="#/client/Tweedle Dee">Tweedle Dee</a>
+  <nav class="sidebar-nav" id="sidebar-nav">
+
+    <!-- ★ Starred -->
+    <div class="nav-section" id="nav-section-starred">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-starred')">
+        <span>★ Starred</span>
+        <span class="nav-section-chevron">▼</span>
+      </div>
+      <div class="nav-section-body" id="starred-list">
+        <!-- populated by rebuildSidebar() -->
+      </div>
+    </div>
+
+    <!-- Clients -->
+    <div class="nav-section" id="nav-section-clients">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-clients')">
+        <span>Clients</span>
+        <span class="nav-section-chevron">▼</span>
+      </div>
+      <div class="nav-section-body" id="client-list">
+        <!-- populated by rebuildSidebar() -->
+      </div>
+      <div style="padding: 2px 8px 8px;">
+        <button class="sidebar-add-btn" onclick="openNewWorkbookModal()" style="margin-bottom:4px;">+ Add Workbook</button>
+        <button class="sidebar-add-btn" onclick="openAddClientModal()">+ Add Client</button>
+      </div>
+    </div>
+
+    <!-- Orders -->
+    <div class="nav-section collapsed" id="nav-section-orders">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-orders')">
+        <span>Orders</span>
+        <span class="nav-section-chevron">▼</span>
+      </div>
+      <div class="nav-section-body">
+        <div class="nav-placeholder">Coming soon…</div>
+      </div>
+    </div>
+
+    <!-- Samples -->
+    <div class="nav-section collapsed" id="nav-section-samples">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-samples')">
+        <span>Samples</span>
+        <span class="nav-section-chevron">▼</span>
+      </div>
+      <div class="nav-section-body">
+        <div class="nav-placeholder">Coming soon…</div>
+      </div>
+    </div>
+
+    <!-- Containers -->
+    <div class="nav-section collapsed" id="nav-section-containers">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-containers')">
+        <span>Containers</span>
+        <span class="nav-section-chevron">▼</span>
+      </div>
+      <div class="nav-section-body">
+        <div class="nav-placeholder">Coming soon…</div>
+      </div>
+    </div>
+
   </nav>
-  <div style="padding: 12px 16px; margin-top: auto; border-top: 1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
+
+  <div class="sidebar-bottom">
     <button class="sidebar-archive-btn" onclick="openArchiveModal()" title="Archive">
       <span style="font-size:16px;">&#128451;</span>
       <span>Archive</span>
@@ -4765,32 +4836,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return true;
   }
 
-  function rebuildSidebar() {
-    const nav = document.querySelector('.sidebar-nav');
-    nav.innerHTML = '';
-    const sorted = Object.keys(clientData).sort();
-    sorted.forEach(name => {
-      const a = document.createElement('a');
-      a.className = 'nav-item';
-      a.href = `#/client/${encodeURIComponent(name)}`;
+  /* ── Starred Clients ─────────────────────────────────────────────────── */
+  let _starredClients = new Set(JSON.parse(localStorage.getItem('ms_starred_clients') || '[]'));
 
-      const span = document.createElement('span');
-      span.textContent = name;
-      a.appendChild(span);
+  function toggleNavSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    section.classList.toggle('collapsed');
+    // Persist collapsed state
+    const collapsed = JSON.parse(localStorage.getItem('ms_nav_collapsed') || '{}');
+    collapsed[sectionId] = section.classList.contains('collapsed');
+    localStorage.setItem('ms_nav_collapsed', JSON.stringify(collapsed));
+  }
 
-      const delBtn = document.createElement('button');
-      delBtn.className = 'client-delete-btn';
-      delBtn.title = 'Delete client';
-      delBtn.textContent = '✕';
-      delBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openDeleteClientModal(name);
-      });
-      a.appendChild(delBtn);
+  function toggleStarClient(name, e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (_starredClients.has(name)) {
+      _starredClients.delete(name);
+    } else {
+      _starredClients.add(name);
+    }
+    localStorage.setItem('ms_starred_clients', JSON.stringify([..._starredClients]));
+    rebuildSidebar();
+    // Re-apply active state
+    const hash = location.hash;
+    const m = hash.match(/^#\/client\/([^/]+)/);
+    if (m) updateSidebarActive(decodeURIComponent(m[1]));
+  }
 
-      nav.appendChild(a);
+  function restoreNavSectionStates() {
+    const collapsed = JSON.parse(localStorage.getItem('ms_nav_collapsed') || '{}');
+    Object.entries(collapsed).forEach(([id, isCollapsed]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('collapsed', isCollapsed);
     });
+  }
+
+  function rebuildSidebar() {
+    const sorted = Object.keys(clientData).sort();
+
+    // ── Starred list ──
+    const starredList = document.getElementById('starred-list');
+    starredList.innerHTML = '';
+    const starredSection = document.getElementById('nav-section-starred');
+    const starredNames = sorted.filter(n => _starredClients.has(n));
+    if (starredNames.length === 0) {
+      starredSection.style.display = 'none';
+    } else {
+      starredSection.style.display = '';
+      starredNames.forEach(name => starredList.appendChild(makeClientNavItem(name)));
+    }
+
+    // ── Full client list ──
+    const clientList = document.getElementById('client-list');
+    clientList.innerHTML = '';
+    sorted.forEach(name => clientList.appendChild(makeClientNavItem(name)));
 
     // Rebuild modal dropdown
     const select = document.getElementById('modal-client');
@@ -4802,6 +4904,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       opt.textContent = name;
       select.appendChild(opt);
     });
+  }
+
+  function makeClientNavItem(name) {
+    const a = document.createElement('a');
+    a.className = 'nav-item';
+    a.href = `#/client/${encodeURIComponent(name)}`;
+
+    const span = document.createElement('span');
+    span.textContent = name;
+    span.style.flex = '1';
+    span.style.overflow = 'hidden';
+    span.style.textOverflow = 'ellipsis';
+    span.style.whiteSpace = 'nowrap';
+    a.appendChild(span);
+
+    const starBtn = document.createElement('button');
+    starBtn.className = 'nav-star-btn' + (_starredClients.has(name) ? ' starred' : '');
+    starBtn.title = _starredClients.has(name) ? 'Unstar' : 'Star';
+    starBtn.textContent = '★';
+    starBtn.addEventListener('click', (e) => toggleStarClient(name, e));
+    a.appendChild(starBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'client-delete-btn';
+    delBtn.title = 'Delete client';
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openDeleteClientModal(name);
+    });
+    a.appendChild(delBtn);
+
+    return a;
   }
 
   function flowToStep(flow) {
@@ -5792,7 +5928,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function updateSidebarActive(clientName) {
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => {
-      const name = a.querySelector('span') ? a.querySelector('span').textContent.trim() : a.textContent.trim();
+      const nameSpan = a.querySelector('span');
+      const name = nameSpan ? nameSpan.textContent.trim() : a.textContent.trim();
       a.classList.toggle('active', name === clientName);
     });
   }
@@ -6533,6 +6670,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Try loading from LocalStorage immediately for fast render
     loadFromLocalStorage();
     rebuildSidebar();
+    restoreNavSectionStates();
     router();
 
     // Then try loading from database (will override if successful)
