@@ -5276,9 +5276,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     modal.style.cssText = 'display:flex;';
     modal.innerHTML = `
       <div class="modal" style="max-width:460px; width:100%;">
-        <div class="modal-header">
-          <h3 style="margin:0; font-size:16px;">Duplicate Workbook</h3>
-          <button onclick="document.getElementById('duplicate-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px;">
+          <h3 style="margin:0; font-size:18px; font-weight:700;">Duplicate Workbook</h3>
+          <button onclick="document.getElementById('duplicate-modal').remove()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--text-muted);padding:0;margin:-2px -2px 0 0;">&times;</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
           <div id="dup-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:13px;"></div>
