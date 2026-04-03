@@ -6463,6 +6463,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function router() {
+    hideRecentNav();
+    resetSidebarSearch();
     const hash = decodeURIComponent(location.hash || '#/');
 
     // Match: #/client/{name}/workbook/{id}
