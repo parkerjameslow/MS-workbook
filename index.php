@@ -2189,9 +2189,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   </nav>
 
-  <div class="sidebar-bottom">
-    <button class="sidebar-archive-btn" onclick="openArchiveModal()" title="Archive">
-      <span style="font-size:16px;">&#128451;</span>
+  <div class="sidebar-bottom" style="padding: 8px;">
+    <button class="nav-item" onclick="openArchiveModal()" style="width:100%;">
+      <span style="font-size:14px; opacity:0.7;">&#128451;</span>
       <span>Archive</span>
     </button>
   </div>
