@@ -1483,8 +1483,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .diff-toggle:hover { text-decoration: underline; }
     .archive-item { display:flex; justify-content:space-between; align-items:center; padding:11px 10px; border-bottom:1px solid var(--border); border-radius:6px; margin:0 -10px; cursor:default; transition: background 0.12s; }
     .archive-item:hover { background: var(--surface2); }
-    #sidebar-search:-webkit-autofill,
-    #sidebar-search:-webkit-autofill:focus { -webkit-box-shadow: 0 0 0 1000px var(--surface2) inset !important; -webkit-text-fill-color: transparent !important; }
 
     .modal-title {
       font-size: 18px;
@@ -2181,12 +2179,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div style="padding: 0 10px 8px;">
     <div style="position:relative;">
       <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">🔍</span>
+      <div id="sidebar-search" contenteditable="true" spellcheck="false"
+        onfocus="document.getElementById('sidebar-search-ph').style.display='none'; this.textContent=''; filterSidebarSearch(''); showRecentNav();"
+        onblur="setTimeout(()=>{ if(!this.textContent.trim()){document.getElementById('sidebar-search-ph').style.display=''; this.textContent='';} hideRecentNav(); }, 150)"
+        oninput="hideRecentNav(); filterSidebarSearch(this.textContent)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();}"
+        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none; cursor:text; min-height:28px; line-height:16px; white-space:nowrap; overflow:hidden;"></div>
       <span id="sidebar-search-ph" style="position:absolute; left:28px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">Search clients…</span>
-      <input id="sidebar-search" type="text" autocomplete="new-password"
-        onfocus="this.style.color='var(--text)'; document.getElementById('sidebar-search-ph').style.display='none'; this.value=''; filterSidebarSearch(''); showRecentNav();"
-        onblur="setTimeout(()=>{ if(!this.value){this.style.color='transparent'; document.getElementById('sidebar-search-ph').style.display='';} hideRecentNav(); }, 150)"
-        oninput="hideRecentNav(); filterSidebarSearch(this.value)"
-        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:transparent; outline:none; cursor:text;" />
       <div id="sidebar-recent-dropdown" style="display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:100; overflow:hidden;"></div>
     </div>
   </div>
@@ -4939,7 +4938,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function rebuildSidebar() {
     const searchEl = document.getElementById('sidebar-search');
-    if (searchEl) searchEl.value = '';
+    if (searchEl) { searchEl.textContent = ''; document.getElementById('sidebar-search-ph').style.display = ''; }
     const sorted = Object.keys(clientData).sort();
 
     // ── Starred list ──
