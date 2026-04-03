@@ -2190,7 +2190,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         oninput="hideRecentNav(); filterSidebarSearch(this.textContent)"
         onkeydown="if(event.key==='Enter'){event.preventDefault();}"
         style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none; cursor:text; min-height:28px; line-height:16px; white-space:nowrap; overflow:hidden;"></div>
-      <span id="sidebar-search-ph" style="position:absolute; left:28px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">Search clients…</span>
+      <span id="sidebar-search-ph" style="position:absolute; left:28px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">Search</span>
       <div id="sidebar-recent-dropdown" style="display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:100; overflow:hidden;"></div>
     </div>
   </div>
@@ -2237,10 +2237,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
-    <!-- Containers -->
+    <!-- Shipments -->
     <div class="nav-section collapsed" id="nav-section-containers">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-containers')">
-        <span>Containers</span>
+        <span>Shipments</span>
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
