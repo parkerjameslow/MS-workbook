@@ -5300,11 +5300,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Unit Price (USD)</div>
                 <div style="font-size:15px;color:var(--text);">${srcUnitPrice ? '$' + srcUnitPrice : '—'}</div>
               </div>
-              <div style="padding:12px 16px;border-right:1px solid var(--border);background:var(--surface2);">
+              <div style="padding:12px 16px;border-right:1px solid var(--border);">
                 <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Shipping Cost (USD)</div>
                 <div id="dup-cost" style="font-size:15px;color:var(--text);">${srcCost ? '$' + srcCost : '—'}</div>
               </div>
-              <div style="padding:12px 16px;background:var(--surface2);">
+              <div style="padding:12px 16px;">
                 <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Total Quote (USD)</div>
                 <div style="font-size:16px;font-weight:700;color:var(--text);">${srcTotal}</div>
               </div>
