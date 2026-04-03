@@ -5017,7 +5017,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const list = getRecentNav();
     if (!list.length) { dropdown.style.display = 'none'; return; }
     dropdown.innerHTML = list.map((r, i) => `
-      <a href="${r.href}" onclick="hideRecentNav()" style="display:flex; align-items:center; gap:8px; padding:8px 12px; font-size:12px; color:var(--text); text-decoration:none; border-bottom:${i < list.length-1 ? '1px solid var(--border)' : 'none'};">
+      <a href="${r.href}" onclick="hideRecentNav(); resetSidebarSearch();" style="display:flex; align-items:center; gap:8px; padding:8px 12px; font-size:12px; color:var(--text); text-decoration:none; border-bottom:${i < list.length-1 ? '1px solid var(--border)' : 'none'};">
         <span style="font-size:11px; color:var(--text-muted); flex-shrink:0;">${r.type === 'workbook' ? '📋' : '👤'}</span>
         <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.label}</span>
         ${r.sub ? `<span style="font-size:11px; color:var(--text-muted); margin-left:auto; flex-shrink:0;">${r.sub}</span>` : ''}
@@ -5029,6 +5029,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function hideRecentNav() {
     const dropdown = document.getElementById('sidebar-recent-dropdown');
     if (dropdown) dropdown.style.display = 'none';
+  }
+
+  function resetSidebarSearch() {
+    const el = document.getElementById('sidebar-search');
+    const ph = document.getElementById('sidebar-search-ph');
+    if (el) el.textContent = '';
+    if (ph) ph.style.display = '';
+    filterSidebarSearch('');
   }
 
   function makeClientNavItem(name) {
