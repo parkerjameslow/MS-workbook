@@ -2179,8 +2179,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div style="padding: 0 10px 8px;">
     <div style="position:relative;">
       <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none;">🔍</span>
-      <input id="sidebar-search" type="search" placeholder="Search clients…" autocomplete="off" oninput="filterSidebarSearch(this.value)"
-        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none; -webkit-appearance:none;" />
+      <input id="sidebar-search" type="text" placeholder="Search clients…" readonly
+        onfocus="this.removeAttribute('readonly')" oninput="filterSidebarSearch(this.value)"
+        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none; cursor:text;" />
     </div>
   </div>
 
@@ -6566,13 +6567,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   window.MS_SESSION = { name: '<?= addslashes($_msUser) ?>', role: '<?= $_msRole ?>', id: <?= $_msUserId ?>, username: '<?= addslashes($_msUsername) ?>' };
   window.addEventListener('hashchange', router);
 
-  // Force-clear sidebar search after Chrome autofill runs
-  (function clearSidebarSearch() {
-    const clear = () => { const el = document.getElementById('sidebar-search'); if (el) el.value = ''; };
-    clear();
-    setTimeout(clear, 100);
-    setTimeout(clear, 500);
-  })();
 
   /* ── Auto-save workbook fields ─────────────────────────────────────────── */
   let saveTimer = null;
