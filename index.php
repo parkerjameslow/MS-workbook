@@ -134,11 +134,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .nav-section-header:hover { color: var(--text); }
     .nav-section-chevron {
       margin-left: auto;
-      font-size: 9px;
-      transition: transform 0.18s;
-      opacity: 0.6;
+      font-size: 16px;
+      color: var(--text-muted);
+      transition: transform 0.2s ease;
+      display: inline-block;
+      flex-shrink: 0;
+      line-height: 1;
+      transform: rotate(90deg);
+      opacity: 0.7;
     }
-    .nav-section.collapsed .nav-section-chevron { transform: rotate(-90deg); }
+    .nav-section.collapsed .nav-section-chevron { transform: rotate(0deg); }
     .nav-section.collapsed .nav-section-body { display: none; }
     .nav-section-body { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 6px; }
 
@@ -2122,39 +2127,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <img src="assets/logo.png" alt="Market Sculpt" />
   </a>
 
+  <!-- Add buttons at top -->
+  <div style="padding: 0 10px 10px; display: flex; flex-direction: column; gap: 5px;">
+    <button class="sidebar-add-btn" onclick="openNewWorkbookModal()">+ Add Workbook</button>
+    <button class="sidebar-add-btn" onclick="openAddClientModal()">+ Add Client</button>
+  </div>
+  <hr style="border:none; border-top:1px solid var(--border); margin: 0 0 6px;" />
+
   <nav class="sidebar-nav" id="sidebar-nav">
 
     <!-- ★ Starred -->
     <div class="nav-section" id="nav-section-starred">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-starred')">
         <span>★ Starred</span>
-        <span class="nav-section-chevron">▼</span>
+        <span class="nav-section-chevron">›</span>
       </div>
-      <div class="nav-section-body" id="starred-list">
-        <!-- populated by rebuildSidebar() -->
-      </div>
+      <div class="nav-section-body" id="starred-list"></div>
     </div>
 
     <!-- Clients -->
     <div class="nav-section" id="nav-section-clients">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-clients')">
         <span>Clients</span>
-        <span class="nav-section-chevron">▼</span>
+        <span class="nav-section-chevron">›</span>
       </div>
-      <div class="nav-section-body" id="client-list">
-        <!-- populated by rebuildSidebar() -->
-      </div>
-      <div style="padding: 2px 8px 8px;">
-        <button class="sidebar-add-btn" onclick="openNewWorkbookModal()" style="margin-bottom:4px;">+ Add Workbook</button>
-        <button class="sidebar-add-btn" onclick="openAddClientModal()">+ Add Client</button>
-      </div>
+      <div class="nav-section-body" id="client-list"></div>
     </div>
 
     <!-- Orders -->
     <div class="nav-section collapsed" id="nav-section-orders">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-orders')">
         <span>Orders</span>
-        <span class="nav-section-chevron">▼</span>
+        <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
         <div class="nav-placeholder">Coming soon…</div>
@@ -2165,7 +2169,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="nav-section collapsed" id="nav-section-samples">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-samples')">
         <span>Samples</span>
-        <span class="nav-section-chevron">▼</span>
+        <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
         <div class="nav-placeholder">Coming soon…</div>
@@ -2176,7 +2180,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="nav-section collapsed" id="nav-section-containers">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-containers')">
         <span>Containers</span>
-        <span class="nav-section-chevron">▼</span>
+        <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
         <div class="nav-placeholder">Coming soon…</div>
