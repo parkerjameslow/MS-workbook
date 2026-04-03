@@ -2179,8 +2179,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div style="padding: 0 10px 8px;">
     <div style="position:relative;">
       <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none;">🔍</span>
-      <input id="sidebar-search" type="text" placeholder="Search clients…" autocomplete="off" oninput="filterSidebarSearch(this.value)"
-        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
+      <input id="sidebar-search" type="search" placeholder="Search clients…" autocomplete="off" oninput="filterSidebarSearch(this.value)"
+        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none; -webkit-appearance:none;" />
     </div>
   </div>
 
