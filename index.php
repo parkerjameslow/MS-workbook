@@ -2175,6 +2175,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
   <hr style="border:none; border-top:1px solid var(--border); margin: 0 0 6px;" />
 
+  <!-- Search -->
+  <div style="padding: 0 10px 8px;">
+    <div style="position:relative;">
+      <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none;">🔍</span>
+      <input id="sidebar-search" type="text" placeholder="Search clients…" oninput="filterSidebarSearch(this.value)"
+        style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
+    </div>
+  </div>
+
   <nav class="sidebar-nav" id="sidebar-nav">
 
     <!-- ★ Starred -->
@@ -4922,6 +4931,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function rebuildSidebar() {
+    const searchEl = document.getElementById('sidebar-search');
+    if (searchEl) searchEl.value = '';
     const sorted = Object.keys(clientData).sort();
 
     // ── Starred list ──
@@ -4951,6 +4962,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       opt.textContent = name;
       select.appendChild(opt);
     });
+  }
+
+  function filterSidebarSearch(query) {
+    const q = query.trim().toLowerCase();
+    const starredSection = document.getElementById('nav-section-starred');
+    const clientSection = document.getElementById('nav-section-clients');
+
+    // Filter starred list
+    document.querySelectorAll('#starred-list .nav-item').forEach(el => {
+      const name = el.querySelector('span')?.textContent?.toLowerCase() || '';
+      el.style.display = (!q || name.includes(q)) ? '' : 'none';
+    });
+
+    // Filter client list
+    document.querySelectorAll('#client-list .nav-item').forEach(el => {
+      const name = el.querySelector('span')?.textContent?.toLowerCase() || '';
+      el.style.display = (!q || name.includes(q)) ? '' : 'none';
+    });
+
+    // Expand clients section when searching so results are visible
+    if (q) {
+      clientSection.classList.remove('collapsed');
+      if (starredSection.style.display !== 'none') starredSection.classList.remove('collapsed');
+    }
   }
 
   function makeClientNavItem(name) {
