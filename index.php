@@ -1483,6 +1483,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .diff-toggle:hover { text-decoration: underline; }
     .archive-item { display:flex; justify-content:space-between; align-items:center; padding:11px 10px; border-bottom:1px solid var(--border); border-radius:6px; margin:0 -10px; cursor:default; transition: background 0.12s; }
     .archive-item:hover { background: var(--surface2); }
+    #sidebar-search:-webkit-autofill,
+    #sidebar-search:-webkit-autofill:focus { -webkit-box-shadow: 0 0 0 1000px var(--surface2) inset !important; -webkit-text-fill-color: transparent !important; }
 
     .modal-title {
       font-size: 18px;
@@ -2179,8 +2181,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div style="padding: 0 10px 8px;">
     <div style="position:relative;">
       <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none;">🔍</span>
-      <input id="sidebar-search" type="text" placeholder="Search clients…" readonly
-        onfocus="this.removeAttribute('readonly')" oninput="filterSidebarSearch(this.value)"
+      <input id="sidebar-search" type="text" placeholder="Search clients…"
+        onfocus="this.value=''; filterSidebarSearch('')" oninput="filterSidebarSearch(this.value)"
         style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none; cursor:text;" />
     </div>
   </div>
