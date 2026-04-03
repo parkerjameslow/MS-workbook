@@ -1442,6 +1442,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .diff-arrow { color: var(--text-muted); margin: 0 2px; }
     .diff-toggle { background: none; border: none; color: var(--primary); font-size: 11px; cursor: pointer; padding: 4px 0; margin-top: 4px; }
     .diff-toggle:hover { text-decoration: underline; }
+    .archive-item { display:flex; justify-content:space-between; align-items:center; padding:11px 10px; border-bottom:1px solid var(--border); border-radius:6px; margin:0 -10px; cursor:default; transition: background 0.12s; }
+    .archive-item:hover { background: var(--surface2); }
 
     .modal-title {
       font-size: 18px;
@@ -5854,27 +5856,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     if (archiveTab === 'workbooks') {
       list.innerHTML = items.map(wb => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border);">
+        <div class="archive-item">
           <div style="flex:1; min-width:0;">
             <div style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${wb.product_name}</div>
             <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${wb.client_name} &middot; Deleted ${new Date(wb.deleted_at).toLocaleDateString()}${wb.deleted_by ? ' by ' + wb.deleted_by : ''}</div>
           </div>
           <div style="display:flex; gap:14px; flex-shrink:0; margin-left:16px;">
-            <button onclick="restoreArchivedWorkbook(${wb.id})" style="${actionStyle} color:var(--success);">Restore</button>
-            <button onclick="permanentDeleteWorkbook(${wb.id})" style="${actionStyle} color:var(--danger);">Delete</button>
+            <button onclick="restoreArchivedWorkbook(${wb.id})" style="${actionStyle} color:var(--success);" title="Restore workbook">Restore</button>
+            <button onclick="permanentDeleteWorkbook(${wb.id})" style="${actionStyle} color:var(--danger);" title="Permanently delete">Delete</button>
           </div>
         </div>
       `).join('');
     } else {
       list.innerHTML = items.map(cl => `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border);">
+        <div class="archive-item">
           <div style="flex:1; min-width:0;">
             <div style="font-size:13px; font-weight:600;">${cl.name}</div>
             <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Deleted ${new Date(cl.deleted_at).toLocaleDateString()}${cl.deleted_by ? ' by ' + cl.deleted_by : ''}</div>
           </div>
           <div style="display:flex; gap:14px; flex-shrink:0; margin-left:16px;">
-            <button onclick="restoreArchivedClient(${cl.id})" style="${actionStyle} color:var(--success);">Restore</button>
-            <button onclick="permanentDeleteClient(${cl.id})" style="${actionStyle} color:var(--danger);">Delete</button>
+            <button onclick="restoreArchivedClient(${cl.id})" style="${actionStyle} color:var(--success);" title="Restore client">Restore</button>
+            <button onclick="permanentDeleteClient(${cl.id})" style="${actionStyle} color:var(--danger);" title="Permanently delete">Delete</button>
           </div>
         </div>
       `).join('');
