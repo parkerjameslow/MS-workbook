@@ -146,6 +146,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .nav-section.collapsed .nav-section-chevron { transform: rotate(0deg); }
     .nav-section.collapsed .nav-section-body { display: none; }
     .nav-section-body { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 6px; }
+    .nav-badge {
+      display: none;
+      font-size: 10px; font-weight: 700; line-height: 1;
+      background: var(--accent); color: #fff;
+      border-radius: 10px; padding: 2px 6px;
+      margin-left: 6px; flex-shrink: 0;
+    }
+    .nav-section.collapsed .nav-badge { display: inline-flex; align-items: center; }
 
     /* Coming-soon placeholder items */
     .nav-placeholder {
@@ -2201,6 +2209,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="nav-section" id="nav-section-starred">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-starred')">
         <span>★ Starred</span>
+        <span class="nav-badge" id="badge-starred"></span>
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body" id="starred-list"></div>
@@ -2210,6 +2219,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="nav-section" id="nav-section-clients">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-clients')">
         <span>Clients</span>
+        <span class="nav-badge" id="badge-clients"></span>
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body" id="client-list"></div>
@@ -5053,11 +5063,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       starredSection.style.display = '';
       starredNames.forEach(name => starredList.appendChild(makeClientNavItem(name)));
     }
+    const starredBadge = document.getElementById('badge-starred');
+    if (starredBadge) starredBadge.textContent = starredNames.length || '';
 
     // ── Full client list ──
     const clientList = document.getElementById('client-list');
     clientList.innerHTML = '';
     sorted.forEach(name => clientList.appendChild(makeClientNavItem(name)));
+    const clientBadge = document.getElementById('badge-clients');
+    if (clientBadge) clientBadge.textContent = sorted.length || '';
 
     // Rebuild modal dropdown
     const select = document.getElementById('modal-client');
