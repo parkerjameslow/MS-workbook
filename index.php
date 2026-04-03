@@ -3228,6 +3228,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-body">
       <p style="color:var(--text-muted); margin-bottom:16px;">Upload artwork files, logos, and design assets for this product.</p>
 
+      <!-- Client Logo -->
+      <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border);">
+        <label style="display:block; margin-bottom:10px; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Client Logo</label>
+        <div style="display:flex; align-items:center; gap:16px;">
+          <div id="client-logo-preview" onclick="document.getElementById('clientLogoInput').click()" style="width:72px; height:72px; border-radius:10px; border:2px dashed var(--border); display:flex; align-items:center; justify-content:center; cursor:pointer; background:var(--surface2); overflow:hidden; flex-shrink:0; transition:border-color 0.15s;">
+            <span id="client-logo-placeholder" style="font-size:24px; color:var(--text-muted);">🖼</span>
+          </div>
+          <div>
+            <button onclick="document.getElementById('clientLogoInput').click()" class="btn-create" style="font-size:12px; padding:7px 14px;">Upload Logo</button>
+            <button id="client-logo-remove-btn" onclick="removeClientLogo()" style="display:none; margin-left:8px; background:none; border:none; cursor:pointer; font-size:12px; color:var(--danger); font-family:inherit; font-weight:600;">Remove</button>
+            <p style="font-size:11px; color:var(--text-muted); margin-top:6px; margin-bottom:0;">Used as the client avatar in the sidebar and search.</p>
+          </div>
+        </div>
+        <input type="file" id="clientLogoInput" accept="image/*" onchange="handleClientLogoUpload(event)" style="display:none;" />
+      </div>
+
       <div class="form-grid form-grid-2">
         <div class="field">
           <label>Art Status</label>
@@ -3932,6 +3948,64 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Art Tab ─────────────────────────────────────────────────────────────── */
   let _artImages = [];
+  let _clientLogo = null;
+
+  async function handleClientLogoUpload(e) {
+    const file = e.target.files[0];
+    if (!file || !currentWorkbookId) return;
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('workbook_id', dbId);
+    const res = await fetch('api.php?action=upload_image', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.success) {
+      _clientLogo = data.url;
+      renderClientLogo();
+      saveClientLogo();
+      rebuildSidebar();
+    }
+    e.target.value = '';
+  }
+
+  async function removeClientLogo() {
+    if (!_clientLogo) return;
+    try { await apiCall('delete_image', { url: _clientLogo }); } catch {}
+    _clientLogo = null;
+    renderClientLogo();
+    saveClientLogo();
+    rebuildSidebar();
+  }
+
+  function renderClientLogo() {
+    const preview = document.getElementById('client-logo-preview');
+    const placeholder = document.getElementById('client-logo-placeholder');
+    const removeBtn = document.getElementById('client-logo-remove-btn');
+    if (!preview) return;
+    if (_clientLogo) {
+      preview.style.border = '2px solid var(--border)';
+      placeholder.style.display = 'none';
+      let img = preview.querySelector('img');
+      if (!img) { img = document.createElement('img'); preview.appendChild(img); }
+      img.src = _clientLogo;
+      img.style.cssText = 'width:100%; height:100%; object-fit:contain;';
+      if (removeBtn) removeBtn.style.display = '';
+    } else {
+      preview.style.border = '2px dashed var(--border)';
+      placeholder.style.display = '';
+      const img = preview.querySelector('img');
+      if (img) img.remove();
+      if (removeBtn) removeBtn.style.display = 'none';
+    }
+  }
+
+  function saveClientLogo() {
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (!workbookDetail[key]) workbookDetail[key] = {};
+    workbookDetail[key].clientLogo = _clientLogo || '';
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    apiCall('save_workbook_detail', { id: dbId, detail: collectWorkbookDetail() });
+  }
 
   async function handleArtFiles(e) {
     const files = Array.from(e.target.files);
@@ -5045,6 +5119,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function getClientLogo(clientName) {
     const workbooks = clientData[clientName] || [];
+    // Prefer dedicated clientLogo first
+    for (const wb of workbooks) {
+      const detail = workbookDetail[`${clientName}|${wb.id}`];
+      if (detail && detail.clientLogo) return detail.clientLogo;
+    }
+    // Fall back to first art image
     for (const wb of workbooks) {
       const detail = workbookDetail[`${clientName}|${wb.id}`];
       if (detail && detail.artImages && detail.artImages.length > 0) return detail.artImages[0];
@@ -6404,6 +6484,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _artImages = [];
       }
       renderArtGallery();
+      _clientLogo = data.clientLogo || null;
+      renderClientLogo();
     } else {
       // Fill with basic info from the client list
       const items = clientData[clientName] || [];
@@ -6423,6 +6505,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       renderVideoGallery();
       _artImages = [];
       renderArtGallery();
+      _clientLogo = null;
+      renderClientLogo();
       document.getElementById('product-category').value = '';
       document.getElementById('product-category-2').value = '';
       document.getElementById('cat2-wrap').classList.remove('has-value');
@@ -6755,6 +6839,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       artDueDate: _v('art-due-date'),
       artNotes: _v('art-notes'),
       artImages: _artImages.length > 0 ? _artImages.map(i => i.url) : (existing.artImages || []),
+      clientLogo: _clientLogo || existing.clientLogo || '',
     };
     return detail;
   }
