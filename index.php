@@ -1791,9 +1791,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
-      align-items: start;
+      align-items: stretch;
     }
     .sh-left-col { display: flex; flex-direction: column; gap: 16px; }
+    .sh-left-col .sh-box { flex: 1; }
 
     .sh-box {
       background: var(--surface2);
@@ -3365,12 +3366,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div class="freight-tip" id="freight-tip"></div>
 
-        <div class="sh-box-title" style="margin-top:16px;">Est. Cost by Method</div>
-        <div class="freight-result"><span class="freight-result-label">Slow Boat</span><span class="freight-result-value" id="freight-res-slow">—</span></div>
-        <div class="freight-result"><span class="freight-result-label">Fast Boat</span><span class="freight-result-value" id="freight-res-fast">—</span></div>
-        <div class="freight-result"><span class="freight-result-label">Air + UPS</span><span class="freight-result-value" id="freight-res-airupp">—</span></div>
-        <div class="freight-result"><span class="freight-result-label">Direct Air</span><span class="freight-result-value" id="freight-res-directair">—</span></div>
-        <div class="freight-result"><span class="freight-result-label">Volume (CBM)</span><span class="freight-result-value" id="freight-cmp-sea">—</span></div>
+        <div class="freight-result">
+          <span class="freight-result-label">Volume (CBM)</span>
+          <span class="freight-result-value" id="freight-cmp-sea">—</span>
+        </div>
+
+        <!-- Harmonized Code -->
+        <div class="sh-box-title" style="margin-top:16px;">Harmonized Code</div>
+        <div style="margin-bottom:6px;">
+          <input type="text" id="freight-hs-code" placeholder="e.g. 9403.20.0010"
+            style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); font-size:14px; font-family:'SF Mono','Consolas',monospace; box-sizing:border-box; letter-spacing:0.05em;"
+            oninput="if(_appReady) autoSaveWorkbook()" />
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); line-height:1.5;">The HTS/HS code used for customs classification and duty rate determination.</div>
       </div><!-- /.sh-results-box -->
 
     </div><!-- /.sh-top-row -->
@@ -6637,7 +6645,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rfqItems:'RFQ Line Items', qcNotes:'Quote Notes',
     cartonUnitWeight:'Unit Weight', cartonInnerWeight:'Inner Carton Weight', cartonInnerCount:'Inner Carton Qty',
     cartonOuterWeight:'Outer Carton Weight', cartonOuterCount:'Outer Carton Qty',
-    freightMode:'Shipping Method', freightCartons:'Number of Cartons',
+    freightMode:'Shipping Method', freightHsCode:'HS Code',
     quoteDate:'Quote Date', quoteValidUntil:'Valid Until', quoteClQty:'Quote Qty',
     quoteClUnitPrice:'Quote Unit Price', quoteClShipping:'Quote Shipping', quoteClNotes:'Quote Notes',
     invNumber:'Invoice #', invDate:'Invoice Date', invDueDate:'Due Date',
@@ -7262,7 +7270,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
       _s('freight-mode', data.freightMode);
-      _s('freight-cartons', data.freightCartons);
+      _s('freight-hs-code', data.freightHsCode);
       // Quote for Client tab
       _s('quote-date', data.quoteDate);
       _s('quote-valid-until', data.quoteValidUntil);
@@ -7619,7 +7627,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cartonOuterCount: _v('carton-outer-count'),
       palletTotalCartons: _v('pallet-total-cartons'),
       freightMode: _v('freight-mode'),
-      freightCartons: _v('freight-cartons'),
+      freightHsCode: _v('freight-hs-code'),
       // Quote for Client tab
       quoteDate: _v('quote-date'),
       quoteValidUntil: _v('quote-valid-until'),
