@@ -2839,11 +2839,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
-            <!-- Packing diagram -->
-            <div class="specs-full-row" id="carton-pack-wrap" style="display:none; margin-top:10px;">
-              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:5px;">Pack arrangement</div>
-              <canvas id="carton-pack-canvas" width="300" height="110" style="width:100%; border-radius:6px; background:var(--surface2);"></canvas>
-            </div>
           </div>
         </div>
 
@@ -2864,21 +2859,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-body">
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
         <canvas id="pallet-canvas" width="480" height="360" style="flex-shrink:0; border-radius:8px; background:var(--surface2);"></canvas>
-        <div style="display:flex; flex-direction:column; gap:16px; flex:1; min-width:200px;">
-          <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Pallet Footprint (top view)</div>
-            <canvas id="pallet-grid-canvas" width="220" height="180" style="width:100%; max-width:220px; border-radius:6px; background:var(--surface2);"></canvas>
-          </div>
-          <div>
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:14px;">Pallet Stats</div>
-            <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
-            <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
-              <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Outer Cartons to Ship</label>
-              <input type="number" min="0" placeholder="e.g. 500" id="pallet-total-cartons"
-                style="width:100%; box-sizing:border-box;"
-                oninput="renderPalletViz()" />
-              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Enter your total shipment carton count to calculate pallets needed.</div>
-            </div>
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:14px;">Pallet Stats</div>
+          <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
+          <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+            <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Outer Cartons to Ship</label>
+            <input type="number" min="0" placeholder="e.g. 500" id="pallet-total-cartons"
+              style="width:100%; box-sizing:border-box;"
+              oninput="renderPalletViz()" />
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Enter your total shipment carton count to calculate pallets needed.</div>
           </div>
         </div>
       </div>
@@ -4246,12 +4235,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       const badge = document.getElementById('outer-calc-badge');
       if (badge) badge.style.display = '';
-      // Packing diagram: show how inner cartons (or products) sit inside outer
-      const itemLabel = innerDims ? 'inners' : 'units';
-      renderPackingDiagram(outerDims.nx, outerDims.ny, outerDims.nz, itemLabel);
-    } else {
-      const wrap = document.getElementById('carton-pack-wrap');
-      if (wrap) wrap.style.display = 'none';
     }
     renderPalletViz();
   }
@@ -4328,16 +4311,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       document.getElementById('pallet-stats').innerHTML = '<span style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</span>';
       const inlineEl = document.getElementById('pallet-inline-stats');
       if (inlineEl) { inlineEl.style.display = 'none'; inlineEl.textContent = ''; }
-      renderPalletGrid(null, 0);
       return;
     }
 
     const layout = bestPalletOrientation(bL, bW);
     const perLayer = layout.cols * layout.rows;
     const maxLayers = Math.max(1, Math.floor(MAX_LOAD_H / bH));
-    // Draw 2D overhead grid
-    const totalCartonsForGrid = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
-    renderPalletGrid(layout, totalCartonsForGrid);
     const showLayers = Math.min(maxLayers, 12); // cap visual layers
 
     // Scale to fit canvas — origin near top, stack grows upward
@@ -4415,103 +4394,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const palletPart = palletsNeeded !== null ? ` &nbsp;·&nbsp; <strong style="color:var(--accent);">${palletsNeeded} pallets</strong>` : '';
       inlineEl.innerHTML = `<span style="opacity:0.75;">Pallet:</span> <strong>${perLayer}</strong> / layer &nbsp;·&nbsp; <strong>${totalPerPallet}</strong> / pallet${palletPart}`;
     }
-  }
-
-  /* ── Packing Diagram (outer carton interior) ─────────────────────────── */
-  function renderPackingDiagram(nx, ny, nz, itemLabel) {
-    const canvas = document.getElementById('carton-pack-canvas');
-    const wrap   = document.getElementById('carton-pack-wrap');
-    if (!canvas) return;
-    if (!nx || !ny) { if (wrap) wrap.style.display = 'none'; return; }
-    if (wrap) wrap.style.display = '';
-
-    const ctx = canvas.getContext('2d');
-    const CW = canvas.width, CH = canvas.height;
-    ctx.clearRect(0, 0, CW, CH);
-
-    // Draw top-down grid (nx cols × ny rows) inside outer carton footprint
-    const PAD = 14, GAP = 2;
-    const cellW = (CW - PAD * 2 - GAP * (nx - 1)) / nx;
-    const cellH = (CH - PAD * 2 - GAP * (ny - 1)) / ny;
-
-    // Outer border
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(PAD - 4, PAD - 4, CW - (PAD - 4) * 2, CH - (PAD - 4) * 2);
-
-    // Grid cells
-    for (let row = 0; row < ny; row++) {
-      for (let col = 0; col < nx; col++) {
-        const x = PAD + col * (cellW + GAP);
-        const y = PAD + row * (cellH + GAP);
-        ctx.fillStyle = '#E8751A';
-        ctx.globalAlpha = 0.82;
-        ctx.beginPath();
-        ctx.roundRect ? ctx.roundRect(x, y, cellW, cellH, 3) : ctx.rect(x, y, cellW, cellH);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-        ctx.lineWidth = 0.8;
-        ctx.stroke();
-      }
-    }
-
-    // Labels
-    ctx.fillStyle = '#666';
-    ctx.font = `bold 10px -apple-system, sans-serif`;
-    ctx.textAlign = 'center';
-    const layerText = nz > 1 ? `${nx} × ${ny} · ${nz} layers  =  ${nx * ny * nz} ${itemLabel}` : `${nx} × ${ny}  =  ${nx * ny} ${itemLabel}`;
-    ctx.fillText(layerText, CW / 2, CH - 3);
-  }
-
-  /* ── Pallet Grid (top-down overhead view) ────────────────────────────── */
-  function renderPalletGrid(layout, totalCartons) {
-    const canvas = document.getElementById('pallet-grid-canvas');
-    if (!canvas || !layout) return;
-    const ctx = canvas.getContext('2d');
-    const CW = canvas.width, CH = canvas.height;
-    ctx.clearRect(0, 0, CW, CH);
-
-    const PAD = 16;
-    // Pallet footprint proportional to 40×48 (PALLET_L × PALLET_W in cm)
-    const scaleX = (CW - PAD * 2) / PALLET_L;
-    const scaleY = (CH - PAD * 2 - 14) / PALLET_W;
-    const s = Math.min(scaleX, scaleY);
-    const pw = PALLET_L * s, ph = PALLET_W * s;
-    const ox = (CW - pw) / 2, oy = PAD;
-
-    // Pallet background
-    ctx.fillStyle = '#d4d4d4';
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(ox, oy, pw, ph, 4); else ctx.rect(ox, oy, pw, ph);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Draw each carton footprint
-    const bw = layout.bL * s, bh = layout.bW * s;
-    for (let row = 0; row < layout.rows; row++) {
-      for (let col = 0; col < layout.cols; col++) {
-        const idx = row * layout.cols + col;
-        const x = ox + col * bw + 1, y = oy + row * bh + 1;
-        // Dim out cartons beyond total shipped (if total known)
-        const isShipped = totalCartons === 0 || idx < totalCartons;
-        ctx.fillStyle = isShipped ? '#E8751A' : 'rgba(232,117,26,0.18)';
-        ctx.globalAlpha = isShipped ? 0.85 : 1;
-        ctx.fillRect(x, y, bw - 2, bh - 2);
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(x, y, bw - 2, bh - 2);
-      }
-    }
-
-    // Labels
-    ctx.fillStyle = '#666';
-    ctx.font = 'bold 9px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${layout.cols} × ${layout.rows}  =  ${layout.cols * layout.rows} / layer · 40 × 48 in pallet`, CW / 2, oy + ph + 11);
   }
 
   let convertingDim = false;
