@@ -2739,14 +2739,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">cm</div>
             <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm'); autoCalcCartons()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in'); autoCalcCartons()" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm'); autoCalcCartons()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in'); autoCalcCartons()" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm'); autoCalcCartons()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in'); autoCalcCartons()" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -2778,7 +2778,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         <!-- Column 2: Inner Carton -->
         <div class="specs-col">
-          <div class="specs-col-title">Inner Carton</div>
+          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between;">
+            <span>Inner Carton</span>
+            <span id="inner-calc-badge" style="display:none; font-size:10px; font-weight:600; color:var(--accent); opacity:0.8;">auto</span>
+          </div>
           <div class="specs-dim-grid">
             <div></div>
             <div class="specs-unit-header">cm</div>
@@ -2801,14 +2804,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
-              <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" style="width:100%;" />
+              <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons()" />
             </div>
           </div>
         </div>
 
         <!-- Column 3: Outer Carton -->
         <div class="specs-col">
-          <div class="specs-col-title">Outer Carton</div>
+          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between;">
+            <span>Outer Carton</span>
+            <span id="outer-calc-badge" style="display:none; font-size:10px; font-weight:600; color:var(--accent); opacity:0.8;">auto</span>
+          </div>
           <div class="specs-dim-grid">
             <div></div>
             <div class="specs-unit-header">cm</div>
@@ -2831,7 +2837,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
-              <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" style="width:100%;" />
+              <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons()" />
             </div>
           </div>
         </div>
@@ -4130,6 +4136,72 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   /* ── Weight Conversion (kg ↔ lbs) ─────────────────────────────────────── */
   const KG_TO_LBS = 2.20462;
   let convertingWeight = false;
+
+  /* ── Carton Auto-Calculation ──────────────────────────────────────────── */
+  function bestCartonDims(pL, pW, pH, qty, padding) {
+    // Find all factor triplets (a*b*c = qty), pick arrangement closest to a cube
+    let best = null, bestScore = Infinity;
+    for (let a = 1; a <= qty; a++) {
+      if (qty % a) continue;
+      for (let b = a; b <= qty / a; b++) {
+        if ((qty / a) % b) continue;
+        const c = qty / a / b;
+        // Try all 6 permutations of (a,b,c) assigned to (L,W,H)
+        [[a,b,c],[a,c,b],[b,a,c],[b,c,a],[c,a,b],[c,b,a]].forEach(([x,y,z]) => {
+          const L = x * pL + padding, W = y * pW + padding, H = z * pH + padding;
+          const avg = (L + W + H) / 3;
+          const score = (L-avg)**2 + (W-avg)**2 + (H-avg)**2;
+          if (score < bestScore) { bestScore = score; best = { L, W, H }; }
+        });
+      }
+    }
+    return best;
+  }
+
+  function setCartonDimFields(prefix, L, W, H) {
+    const r = v => Math.round(v * 100) / 100;
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = r(val); };
+    set(prefix + '-l-cm', L); convertDim(prefix + '-l-cm', prefix + '-l-in', 'cm');
+    set(prefix + '-w-cm', W); convertDim(prefix + '-w-cm', prefix + '-w-in', 'cm');
+    set(prefix + '-h-cm', H); convertDim(prefix + '-h-cm', prefix + '-h-in', 'cm');
+  }
+
+  function autoCalcCartons() {
+    const pL = parseFloat(document.getElementById('dim-cm-l').value);
+    const pW = parseFloat(document.getElementById('dim-cm-w').value);
+    const pH = parseFloat(document.getElementById('dim-cm-h').value);
+    const innerQty = parseInt(document.getElementById('carton-inner-count').value);
+    const outerQty = parseInt(document.getElementById('carton-outer-count').value);
+    const PADDING = 2; // 2cm carton wall allowance
+
+    if (!pL || !pW || !pH) return;
+
+    let innerDims = null;
+
+    // ── Inner carton ──
+    if (innerQty >= 1) {
+      innerDims = bestCartonDims(pL, pW, pH, innerQty, PADDING);
+      setCartonDimFields('carton-inner', innerDims.L, innerDims.W, innerDims.H);
+      const badge = document.getElementById('inner-calc-badge');
+      if (badge) badge.style.display = '';
+    }
+
+    // ── Outer carton ──
+    if (outerQty >= 1) {
+      let outerDims;
+      if (innerDims && innerQty >= 1 && outerQty > innerQty && outerQty % innerQty === 0) {
+        // Stack inner cartons inside outer
+        const innerCartons = outerQty / innerQty;
+        outerDims = bestCartonDims(innerDims.L, innerDims.W, innerDims.H, innerCartons, PADDING);
+      } else {
+        // Calculate directly from product dims
+        outerDims = bestCartonDims(pL, pW, pH, outerQty, PADDING);
+      }
+      setCartonDimFields('carton-outer', outerDims.L, outerDims.W, outerDims.H);
+      const badge = document.getElementById('outer-calc-badge');
+      if (badge) badge.style.display = '';
+    }
+  }
 
   let convertingDim = false;
   function convertDim(sourceId, targetId, sourceUnit) {
