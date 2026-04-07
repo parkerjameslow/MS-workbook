@@ -892,6 +892,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 16px 12px;
     }
 
+    /* Sample checkbox in RFQ table */
+    .rfq-sample-label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      position: relative;
+    }
+    .rfq-sample-label input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .rfq-sample-icon {
+      font-size: 14px;
+      line-height: 1;
+      min-width: 18px;
+      text-align: center;
+    }
+    .rfq-sample-row {
+      background: rgba(107,147,255,0.06) !important;
+      outline: 1px solid rgba(107,147,255,0.25);
+      outline-offset: -1px;
+    }
+
+    /* Samples dashboard status select */
+    .sample-status-sel option {
+      background: var(--surface);
+      color: var(--text);
+    }
+
     .remove-tier {
       cursor: pointer;
       user-select: none;
@@ -2583,13 +2616,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
 
     <!-- Samples -->
-    <div class="nav-section collapsed" id="nav-section-samples">
+    <div class="nav-section" id="nav-section-samples">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-samples')">
-        <span>Samples</span>
+        <span>🧪 Samples</span>
+        <span class="nav-badge" id="badge-samples"></span>
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
-        <div class="nav-placeholder">Coming soon…</div>
+        <a class="nav-item" id="nav-samples-all" href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'">All Samples</a>
       </div>
     </div>
 
@@ -2935,6 +2969,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <table class="tier-table" id="rfq-table" style="min-width:700px; border-collapse:collapse;">
         <colgroup>
           <col style="width:40px;">
+          <col style="width:50px;">
           <col style="width:22%;">
           <col style="width:10%;">
           <col style="width:16%;">
@@ -2946,6 +2981,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <thead>
           <tr>
             <th>#</th>
+            <th style="text-align:center;" title="Sample Request">SAMPLE</th>
             <th>ITEM</th>
             <th>QTY</th>
             <th>UNIT PRICE (RMB)</th>
@@ -2959,6 +2995,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <tfoot>
           <tr>
             <td style="padding:0; border-bottom:none;"></td>
+            <td style="padding:0; border-bottom:none;"></td>
             <td style="padding:4px 12px; border-bottom:none;">
               <button class="btn btn-add" style="width:100%; margin:4px 0;" onclick="addRfqRow()">+ Add Line Item</button>
             </td>
@@ -2966,6 +3003,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </tr>
           <tr style="background:var(--surface2);">
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">#</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:center;" title="Sample Request">SAMPLE</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">ITEM</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">QTY</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">UNIT PRICE (RMB)</th>
@@ -2975,6 +3013,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <th style="border-bottom:1px solid var(--border);"></th>
           </tr>
           <tr id="rfq-totals" style="border-top:2px solid var(--border); font-weight:700; background:rgba(232, 117, 26, 0.08);">
+            <td></td>
             <td></td>
             <td style="font-weight:700; color:#374151; padding-left:26px;">TOTALS</td>
             <td id="rfq-total-qty" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
@@ -3782,6 +3821,71 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
 </main>
 </div><!-- /#view-workbook -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: SAMPLES DASHBOARD
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-samples" class="view">
+  <main class="container">
+
+    <!-- Hero Header -->
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
+      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #a855f7)); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">🧪</div>
+      <div>
+        <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">Sample Requests</h1>
+        <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Track all sample requests across your workbooks</p>
+      </div>
+      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+        <span id="samples-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 samples</span>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div id="samples-stats-row" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px;"></div>
+
+    <!-- Samples Table -->
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">All Sample Requests</span>
+        <div style="display:flex; gap:6px;">
+          <button class="status-filter-btn active" id="samples-filter-all" onclick="filterSamples('all', this)">All</button>
+          <button class="status-filter-btn" id="samples-filter-pending" onclick="filterSamples('pending', this)">Pending</button>
+          <button class="status-filter-btn" id="samples-filter-requested" onclick="filterSamples('requested', this)">Requested</button>
+          <button class="status-filter-btn" id="samples-filter-received" onclick="filterSamples('received', this)">Received</button>
+          <button class="status-filter-btn" id="samples-filter-approved" onclick="filterSamples('approved', this)">Approved</button>
+        </div>
+      </div>
+      <div class="section-body" style="padding:0;">
+        <div class="table-scroll-wrapper">
+        <table class="dash-table" id="samples-table">
+          <thead>
+            <tr>
+              <th>ITEM</th>
+              <th class="col-client">CLIENT</th>
+              <th>WORKBOOK</th>
+              <th style="text-align:right;">QTY</th>
+              <th style="text-align:right;">UNIT PRICE (RMB)</th>
+              <th style="text-align:right;">UNIT PRICE (USD)</th>
+              <th>LEAD TIME</th>
+              <th style="text-align:center;">STATUS</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="samples-tbody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+        </div>
+        <div id="samples-empty" style="display:none; padding:60px 20px; text-align:center;">
+          <div style="font-size:48px; margin-bottom:16px;">🧪</div>
+          <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:8px;">No sample requests yet</div>
+          <div style="font-size:13px; color:var(--text-muted); max-width:320px; margin:0 auto;">Check the <strong>Sample</strong> checkbox on RFQ line items in any workbook to track them here.</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div><!-- /#view-samples -->
 
 </div><!-- /.app-content -->
 </div><!-- /.app-layout -->
@@ -4894,7 +4998,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let rfqCount = 0;
   let _wbLocked = false;
 
-  function addRfqRow(item = '', qty = '', priceRmb = '', leadTime = '') {
+  function addRfqRow(item = '', qty = '', priceRmb = '', leadTime = '', sample = false) {
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
@@ -4914,9 +5018,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tr.ondragleave = null;
       tr.ondrop = null;
     }
+    if (sample) {
+      tr.classList.add('rfq-sample-row');
+    }
     const handleAttr = isFirstRow ? '' : `draggable="true" onmousedown="this.closest('tr').draggable=true" onmouseup="this.closest('tr').draggable=false" ondragstart="event.dataTransfer.setData('text/plain','${id}'); this.closest('tr').style.opacity='0.4'" ondragend="this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false"`;
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
+      <td style="text-align:center; padding:4px 8px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /><span class="rfq-sample-icon">${sample ? '🧪' : ''}</span></label></td>
       <td><input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
@@ -4958,7 +5066,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function recalcRfqRow(id) {
     const row = document.getElementById(`rfq-${id}`);
     if (!row) return;
-    const inputs = row.querySelectorAll('input');
+    const inputs = row.querySelectorAll('input:not([type="checkbox"])');
     const qty = parseFloat(inputs[1]?.value) || 0;
     const rmb = parseFloat(inputs[2]?.value) || 0;
     const usd = rmb / USD_TO_RMB;
@@ -4975,7 +5083,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rows = document.querySelectorAll('#rfq-body tr');
     let totalQty = 0, totalUsd = 0, totalRmb = 0, totalUsdUnit = 0, maxLead = 0;
     rows.forEach(row => {
-      const inputs = row.querySelectorAll('input');
+      const inputs = row.querySelectorAll('input:not([type="checkbox"])');
       const qty = parseFloat(inputs[1]?.value) || 0;
       const rmb = parseFloat(inputs[2]?.value) || 0;
       const lead = inputs[3]?.value || '';
@@ -4988,7 +5096,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
     // Total qty comes only from the first (fixed) row
     const firstRow = document.querySelector('#rfq-body tr');
-    const firstQty = firstRow ? parseFloat(firstRow.querySelectorAll('input')[1]?.value) || 0 : 0;
+    const firstQty = firstRow ? parseFloat(firstRow.querySelectorAll('input:not([type="checkbox"])')[1]?.value) || 0 : 0;
     document.getElementById('rfq-total-qty').textContent = firstQty ? firstQty.toLocaleString('en-US') : '—';
     document.getElementById('rfq-total-rmb').textContent = totalRmb ? '¥ ' + totalRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('rfq-total-usd-sum').textContent = totalUsdUnit ? '$' + totalUsdUnit.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
@@ -5012,15 +5120,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rows = document.querySelectorAll('#rfq-body tr');
     const items = [];
     rows.forEach(row => {
-      const inputs = row.querySelectorAll('input');
+      const inputs = row.querySelectorAll('input:not([type="checkbox"])');
+      const sampleCheck = row.querySelector('.rfq-sample-check');
       items.push({
         item: inputs[0]?.value || '',
         qty: inputs[1]?.value || '',
         priceRmb: inputs[2]?.value || '',
-        leadTime: inputs[3]?.value || ''
+        leadTime: inputs[3]?.value || '',
+        sample: sampleCheck?.checked || false
       });
     });
     return items;
+  }
+
+  function toggleRfqSample(checkbox) {
+    const row = checkbox.closest('tr');
+    const iconSpan = checkbox.nextElementSibling;
+    if (checkbox.checked) {
+      row.classList.add('rfq-sample-row');
+      if (iconSpan) iconSpan.textContent = '🧪';
+    } else {
+      row.classList.remove('rfq-sample-row');
+      if (iconSpan) iconSpan.textContent = '';
+    }
+    if (_appReady) autoSaveWorkbook();
   }
 
   function rfqDropRow(e, targetId) {
@@ -5749,6 +5872,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     sorted.forEach(name => clientList.appendChild(makeClientNavItem(name)));
     const clientBadge = document.getElementById('badge-clients');
     if (clientBadge) clientBadge.textContent = sorted.length || '';
+
+    // ── Samples badge ──
+    const sampleCount = collectAllSamples().length;
+    const samplesBadge = document.getElementById('badge-samples');
+    if (samplesBadge) samplesBadge.textContent = sampleCount > 0 ? sampleCount : '';
 
     // Rebuild modal dropdown
     const select = document.getElementById('modal-client');
@@ -7177,7 +7305,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const hasRfqData = data.rfqItems && Array.isArray(data.rfqItems) && data.rfqItems.length > 0
         && data.rfqItems.some(i => i.item || i.qty || i.priceRmb || i.leadTime);
       if (hasRfqData) {
-        data.rfqItems.forEach(item => addRfqRow(item.item, item.qty, item.priceRmb, item.leadTime));
+        data.rfqItems.forEach(item => addRfqRow(item.item, item.qty, item.priceRmb, item.leadTime, item.sample || false));
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
         addRfqRow('', data.qty, data.unitPriceRmb, data.leadTime);
@@ -7389,6 +7517,165 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (state !== 'saving') setTimeout(() => { el.style.opacity = '0'; }, 2500);
   }
 
+  /* ── Samples Dashboard ────────────────────────────────────────────────── */
+  const SAMPLE_STATUSES = ['pending', 'requested', 'received', 'approved'];
+  const SAMPLE_STATUS_LABELS = { pending: 'Pending', requested: 'Requested', received: 'Received', approved: 'Approved' };
+  const SAMPLE_STATUS_COLORS = {
+    pending:   { bg: 'rgba(107,147,255,0.12)', border: 'rgba(107,147,255,0.4)', text: '#6b93ff' },
+    requested: { bg: 'rgba(251,175,52,0.12)',  border: 'rgba(251,175,52,0.4)', text: '#f59e0b' },
+    received:  { bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.4)', text: '#4ade80' },
+    approved:  { bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.4)', text: '#34d399' },
+  };
+
+  // sampleMeta is stored alongside rfqItems: sampleStatuses[rowIndex] = 'pending'|'received' etc.
+  let _samplesFilter = 'all';
+
+  function collectAllSamples() {
+    const results = [];
+    for (const [key, detail] of Object.entries(workbookDetail)) {
+      if (!detail || !detail.rfqItems) continue;
+      const [clientName, workbookId] = key.split('|');
+      detail.rfqItems.forEach((item, idx) => {
+        if (!item.sample) return;
+        const status = (detail.sampleStatuses && detail.sampleStatuses[idx]) || 'pending';
+        const usdPrice = item.priceRmb ? (parseFloat(item.priceRmb) / 7.2).toFixed(2) : '';
+        results.push({
+          clientName,
+          workbookId,
+          product: detail.product || 'Untitled',
+          item: item.item || '—',
+          qty: item.qty || '—',
+          priceRmb: item.priceRmb || '',
+          priceUsd: usdPrice,
+          leadTime: item.leadTime || '',
+          status,
+          rowIndex: idx,
+          key
+        });
+      });
+    }
+    return results;
+  }
+
+  function renderSamplesDashboard() {
+    document.getElementById('header-title').textContent = 'Sample Requests';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    const samplesNav = document.getElementById('nav-samples-all');
+    if (samplesNav) samplesNav.classList.add('active');
+    showView('view-samples');
+
+    const allSamples = collectAllSamples();
+
+    // Update count badge
+    const countBadge = document.getElementById('samples-count-badge');
+    if (countBadge) countBadge.textContent = allSamples.length === 1 ? '1 sample' : `${allSamples.length} samples`;
+
+    // Update samples badge in nav
+    const navBadge = document.getElementById('badge-samples');
+    if (navBadge) navBadge.textContent = allSamples.length > 0 ? allSamples.length : '';
+
+    // Stats row
+    const statsRow = document.getElementById('samples-stats-row');
+    if (statsRow) {
+      const counts = { pending: 0, requested: 0, received: 0, approved: 0 };
+      allSamples.forEach(s => { if (counts[s.status] !== undefined) counts[s.status]++; });
+      const statCards = [
+        { label: 'Total Samples', value: allSamples.length, icon: '🧪', color: 'var(--accent)' },
+        { label: 'Pending', value: counts.pending, icon: '⏳', color: '#6b93ff' },
+        { label: 'Requested', value: counts.requested, icon: '📦', color: '#f59e0b' },
+        { label: 'Received', value: counts.received, icon: '✅', color: '#4ade80' },
+        { label: 'Approved', value: counts.approved, icon: '🎉', color: '#34d399' },
+      ];
+      statsRow.innerHTML = statCards.map(c => `
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; display:flex; align-items:center; gap:10px;">
+          <span style="font-size:22px;">${c.icon}</span>
+          <div>
+            <div style="font-size:20px; font-weight:700; color:${c.color}; line-height:1.1;">${c.value}</div>
+            <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">${c.label}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    renderSamplesTable(allSamples);
+  }
+
+  function renderSamplesTable(allSamples) {
+    const tbody = document.getElementById('samples-tbody');
+    const emptyEl = document.getElementById('samples-empty');
+    const tableEl = document.getElementById('samples-table');
+
+    const filtered = _samplesFilter === 'all' ? allSamples : allSamples.filter(s => s.status === _samplesFilter);
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = '';
+      if (tableEl) tableEl.style.display = 'none';
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (tableEl) tableEl.style.display = '';
+
+    tbody.innerHTML = filtered.map((s, i) => {
+      const sc = SAMPLE_STATUS_COLORS[s.status] || SAMPLE_STATUS_COLORS.pending;
+      const statusBadge = `<span style="display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text};">${SAMPLE_STATUS_LABELS[s.status] || s.status}</span>`;
+      const wbHref = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
+      const rmb = s.priceRmb ? `¥${parseFloat(s.priceRmb).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      const usd = s.priceUsd ? `$${parseFloat(s.priceUsd).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      const lead = s.leadTime ? `${s.leadTime} days` : '—';
+      return `
+        <tr>
+          <td style="font-weight:600; color:var(--text);">${s.item}</td>
+          <td class="col-client" style="color:var(--text-muted);">${s.clientName}</td>
+          <td>
+            <a href="${wbHref}" style="color:var(--accent); text-decoration:none; font-size:12px;" onclick="event.stopPropagation()">
+              ${s.product}
+            </a>
+          </td>
+          <td style="text-align:right; font-weight:600;">${s.qty !== '—' ? parseFloat(s.qty).toLocaleString('en-US') : '—'}</td>
+          <td style="text-align:right;">${rmb}</td>
+          <td style="text-align:right; color:var(--success);">${usd}</td>
+          <td style="color:var(--text-muted);">${lead}</td>
+          <td style="text-align:center;">
+            <select class="sample-status-sel" onchange="updateSampleStatus('${s.key}', ${s.rowIndex}, this.value)"
+              style="background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center;">
+              ${SAMPLE_STATUSES.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${SAMPLE_STATUS_LABELS[st]}</option>`).join('')}
+            </select>
+          </td>
+          <td>
+            <a href="${wbHref}" class="btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="location.hash='${wbHref.substring(1)}'">Open →</a>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function updateSampleStatus(key, rowIndex, newStatus) {
+    if (!workbookDetail[key]) return;
+    if (!workbookDetail[key].sampleStatuses) workbookDetail[key].sampleStatuses = {};
+    workbookDetail[key].sampleStatuses[rowIndex] = newStatus;
+    // Save to DB
+    const [clientName, workbookId] = key.split('|');
+    const dbId = dbWorkbookMap[key] || workbookId;
+    apiCall('save_workbook_detail', { id: dbId, detail: workbookDetail[key], changed_by: getCurrentUser() });
+    saveToLocalStorage();
+    // Re-render table and stats
+    const freshSamples = collectAllSamples();
+    renderSamplesTable(freshSamples);
+    // Update count badge
+    const countBadge = document.getElementById('samples-count-badge');
+    if (countBadge) countBadge.textContent = freshSamples.length === 1 ? '1 sample' : `${freshSamples.length} samples`;
+    const navBadge = document.getElementById('badge-samples');
+    if (navBadge) navBadge.textContent = freshSamples.length > 0 ? freshSamples.length : '';
+  }
+
+  function filterSamples(filter, btn) {
+    _samplesFilter = filter;
+    document.querySelectorAll('#view-samples .status-filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderSamplesTable(collectAllSamples());
+  }
+
   function router() {
     hideRecentNav();
     resetSidebarSearch();
@@ -7403,6 +7690,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Save current workbook before leaving its view
     saveCurrentWorkbookIfOpen();
+
+    // Match: #/samples
+    if (hash === '#/samples') {
+      renderSamplesDashboard();
+      return;
+    }
 
     // Match: #/client/{name}
     const clientMatch = hash.match(/^#\/client\/(.+)$/);
@@ -7649,6 +7942,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       artNotes: _v('art-notes'),
       artImages: _artImages.length > 0 ? _artImages.map(i => i.url) : (existing.artImages || []),
       clientLogo: _clientLogo || existing.clientLogo || '',
+      // Preserve sample statuses (managed from samples dashboard, not DOM-driven)
+      sampleStatuses: existing.sampleStatuses || {},
     };
     return detail;
   }
