@@ -1883,7 +1883,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
 
-    /* Shipping method bar — single bordered row */
+    /* Shipping method bar */
     .freight-method-rate-row { margin-bottom: 14px; }
     .freight-method-label {
       display: block;
@@ -1896,21 +1896,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .freight-method-bar {
       display: flex;
-      align-items: stretch;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      overflow: hidden;
+      align-items: center;
+      gap: 8px;
       height: 40px;
     }
     .freight-method-bar-select {
       flex: 1;
       min-width: 0;
+      height: 100%;
     }
     .freight-method-bar-select select {
       width: 100%;
       height: 100%;
       padding: 0 10px;
-      border: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
       background: var(--surface);
       color: var(--text);
       font-size: 13px;
@@ -1919,33 +1919,56 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cursor: pointer;
       appearance: auto;
     }
+    /* Pill badges */
     .freight-method-bar-rate {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
       padding: 0 14px;
-      border-left: 1px solid var(--border);
+      height: 100%;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
       background: var(--surface2);
       white-space: nowrap;
     }
-    .freight-method-bar-sym {
-      font-size: 14px;
-      font-weight: 700;
-    }
+    .freight-method-bar-sym { font-size: 14px; font-weight: 700; }
     .freight-method-bar-val {
       font-family: 'SF Mono', 'Consolas', monospace;
       font-size: 14px;
       font-weight: 700;
     }
-    .freight-method-bar-unit {
-      font-size: 10px;
-      color: var(--text-muted);
-      font-weight: 600;
-    }
+    .freight-method-bar-unit { font-size: 10px; color: var(--text-muted); font-weight: 600; }
+    .freight-method-bar-rate.rmb { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
     .freight-method-bar-rate.rmb .freight-method-bar-sym,
     .freight-method-bar-rate.rmb .freight-method-bar-val { color: var(--accent); }
+    .freight-method-bar-rate.usd { border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
     .freight-method-bar-rate.usd .freight-method-bar-sym,
     .freight-method-bar-rate.usd .freight-method-bar-val { color: var(--success); }
+
+    /* Cartons display (read-only) */
+    .sh-cartons-display {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-top: 14px;
+    }
+    .sh-cartons-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    .sh-cartons-val {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      font-family: 'SF Mono', 'Consolas', monospace;
+    }
+    .sh-cartons-unit {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
 
     /* Comparison table with 5 columns */
     .freight-cmp-table th,
@@ -3199,7 +3222,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Outer Cartons to Ship</label>
             <input type="number" min="0" placeholder="e.g. 500" id="pallet-total-cartons"
               style="width:100%; box-sizing:border-box;"
-              oninput="renderPalletViz()" />
+              oninput="renderPalletViz(); syncShippingDims(); calcFreight();" />
             <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Enter your total shipment carton count to calculate pallets needed.</div>
           </div>
         </div>
@@ -3275,11 +3298,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="sh-dim-val" id="sh-wt-lbs">—</span><span class="sh-dim-unit">lbs</span>
             </div>
           </div>
-          <div style="margin-top:14px;">
-            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:5px;">Cartons in Shipment</label>
-            <input type="number" step="1" min="1" placeholder="e.g. 500" id="freight-cartons"
-              style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); font-size:14px; box-sizing:border-box;"
-              oninput="calcFreight()" />
+          <div class="sh-cartons-display">
+            <span class="sh-cartons-label">Cartons in Shipment</span>
+            <span class="sh-cartons-val" id="sh-cartons-val">—</span>
+            <span class="sh-cartons-unit">cartons</span>
           </div>
         </div>
 
@@ -6109,6 +6131,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const get = id => parseFloat(document.getElementById(id)?.value) || 0;
     const fmt = v => v > 0 ? v.toFixed(2) : '—';
 
+    // Cartons in shipment (from pallet-total-cartons)
+    const totalCartons = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
+    const cartonsEl = document.getElementById('sh-cartons-val');
+    if (cartonsEl) cartonsEl.textContent = totalCartons > 0 ? totalCartons.toLocaleString() : '—';
+
     const lCm  = get('carton-outer-l-cm');
     const wCm  = get('carton-outer-w-cm');
     const hCm  = get('carton-outer-h-cm');
@@ -6141,7 +6168,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const mode     = document.getElementById('freight-mode').value;
     const rate     = freightMethodRates[mode];        // RMB per kg
-    const cartons  = parseInt(document.getElementById('freight-cartons')?.value) || 1;
+    const cartons  = parseInt(document.getElementById('pallet-total-cartons')?.value) || 1;
     const exchange = FREIGHT_EXCHANGE_RATE;
 
     // Update rate chip displays
