@@ -2820,14 +2820,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">cm</div>
             <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -2847,6 +2847,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- Hidden inputs kept for backward compatibility -->
       <input type="hidden" id="carton-unit-weight" />
       <input type="hidden" id="carton-unit-weight-lbs" />
+    </div>
+  </div>
+
+  <!-- ── Card: Pallet Visualization ── -->
+  <div class="section-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Pallet View — 40 × 48 Standard</span>
+      <span class="section-chevron">›</span>
+    </div>
+    <div class="section-body">
+      <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
+        <canvas id="pallet-canvas" width="480" height="360" style="flex-shrink:0; border-radius:8px; background:var(--surface2);"></canvas>
+        <div style="flex:1; min-width:200px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:14px;">Pallet Stats</div>
+          <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -4201,6 +4218,127 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const badge = document.getElementById('outer-calc-badge');
       if (badge) badge.style.display = '';
     }
+    renderPalletViz();
+  }
+
+  /* ── Pallet Visualization ─────────────────────────────────────────────── */
+  const PALLET_L = 101.6;    // cm (40 in)
+  const PALLET_W = 121.92;   // cm (48 in)
+  const PALLET_DECK = 15;    // cm pallet deck height
+  const MAX_LOAD_H = 182;    // cm max stack height above deck (~72 in)
+
+  function isoProj(wx, wy, wz, s, ox, oy) {
+    return { x: ox + (wx - wz) * s, y: oy - (wx + wz) * s * 0.5 - wy * s };
+  }
+
+  function isoFace(ctx, pts, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke || 'rgba(0,0,0,0.13)';
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+
+  function shadeRgb(hex, amt) {
+    const n = parseInt(hex.replace('#',''), 16);
+    const r = Math.min(255, Math.max(0, (n>>16) + amt));
+    const g = Math.min(255, Math.max(0, ((n>>8)&0xff) + amt));
+    const b = Math.min(255, Math.max(0, (n&0xff) + amt));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function drawIsoBox(ctx, wx, wy, wz, bw, bh, bd, s, ox, oy, hex) {
+    const p = (x,y,z) => isoProj(x,y,z,s,ox,oy);
+    // Top face (brightest)
+    isoFace(ctx, [p(wx,wy+bh,wz), p(wx+bw,wy+bh,wz), p(wx+bw,wy+bh,wz+bd), p(wx,wy+bh,wz+bd)], shadeRgb(hex, 20));
+    // Front-left face (facing -z direction)
+    isoFace(ctx, [p(wx,wy,wz), p(wx+bw,wy,wz), p(wx+bw,wy+bh,wz), p(wx,wy+bh,wz)], hex);
+    // Front-right face (facing +x direction)
+    isoFace(ctx, [p(wx+bw,wy,wz), p(wx+bw,wy,wz+bd), p(wx+bw,wy+bh,wz+bd), p(wx+bw,wy+bh,wz)], shadeRgb(hex, -45));
+  }
+
+  function bestPalletOrientation(bL, bW) {
+    const o1 = { cols: Math.floor(PALLET_L/bL), rows: Math.floor(PALLET_W/bW), bL, bW };
+    const o2 = { cols: Math.floor(PALLET_L/bW), rows: Math.floor(PALLET_W/bL), bL: bW, bW: bL };
+    return (o1.cols * o1.rows >= o2.cols * o2.rows) ? o1 : o2;
+  }
+
+  function renderPalletViz() {
+    const canvas = document.getElementById('pallet-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const CW = canvas.width, CH = canvas.height;
+    ctx.clearRect(0, 0, CW, CH);
+
+    const bL = parseFloat(document.getElementById('carton-outer-l-cm').value);
+    const bW = parseFloat(document.getElementById('carton-outer-w-cm').value);
+    const bH = parseFloat(document.getElementById('carton-outer-h-cm').value);
+
+    if (!bL || !bW || !bH) {
+      ctx.fillStyle = '#aaa';
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Enter outer carton dimensions', CW/2, CH/2 - 8);
+      ctx.fillText('to see pallet visualization', CW/2, CH/2 + 10);
+      document.getElementById('pallet-stats').innerHTML = '<span style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</span>';
+      return;
+    }
+
+    const layout = bestPalletOrientation(bL, bW);
+    const perLayer = layout.cols * layout.rows;
+    const maxLayers = Math.max(1, Math.floor(MAX_LOAD_H / bH));
+    const showLayers = Math.min(maxLayers, 12); // cap visual layers
+
+    // Scale to fit canvas
+    const worldSpan = PALLET_L + PALLET_W;
+    const worldH = PALLET_DECK + showLayers * bH;
+    const s = Math.min((CW * 0.44) / worldSpan, (CH * 0.78) / (worldSpan * 0.5 + worldH));
+    const ox = CW * 0.54;
+    const oy = CH * 0.93;
+
+    // Draw pallet deck
+    drawIsoBox(ctx, 0, 0, 0, PALLET_L, PALLET_DECK, PALLET_W, s, ox, oy, '#a8a8a8');
+
+    // Draw boxes back-to-front using diagonal sweep (painter's algorithm)
+    for (let layer = 0; layer < showLayers; layer++) {
+      for (let diag = layout.cols + layout.rows - 2; diag >= 0; diag--) {
+        for (let col = Math.min(diag, layout.cols-1); col >= Math.max(0, diag - layout.rows + 1); col--) {
+          const row = diag - col;
+          drawIsoBox(ctx,
+            col * layout.bL, PALLET_DECK + layer * bH, row * layout.bW,
+            layout.bL, bH, layout.bW, s, ox, oy, '#E8751A');
+        }
+      }
+    }
+
+    // Pallet label
+    ctx.fillStyle = '#888';
+    ctx.font = `${Math.round(s * 8)}px -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    const labelPt = isoProj(PALLET_L/2, 0, PALLET_W + 4, s, ox, oy);
+    ctx.fillText('40 × 48 in', labelPt.x, labelPt.y + 4);
+
+    // Stats
+    const surfaceUse = Math.round((layout.cols * layout.bL * layout.rows * layout.bW) / (PALLET_L * PALLET_W) * 100);
+    const totalPerPallet = perLayer * maxLayers;
+    const outerQty = parseInt(document.getElementById('carton-outer-count').value) || 0;
+    const palletsNeeded = outerQty > 0 ? Math.ceil(outerQty / totalPerPallet) : null;
+
+    document.getElementById('pallet-stats').innerHTML = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perLayer}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">cartons / layer</div></div>
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${maxLayers}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">max layers</div></div>
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalPerPallet}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">cartons / pallet</div></div>
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">surface coverage</div></div>
+        ${palletsNeeded !== null ? `<div style="grid-column:span 2; padding-top:8px; border-top:1px solid var(--border);"><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed for ${outerQty} cartons</div></div>` : ''}
+      </div>
+      <div style="margin-top:16px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
+        Box orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer
+      </div>`;
   }
 
   let convertingDim = false;
@@ -6598,6 +6736,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       renderArtGallery();
       _clientLogo = data.clientLogo || null;
       renderClientLogo();
+      setTimeout(renderPalletViz, 50);
     } else {
       // Fill with basic info from the client list
       const items = clientData[clientName] || [];
