@@ -4165,7 +4165,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Carton Auto-Calculation ──────────────────────────────────────────── */
   function bestCartonDims(pL, pW, pH, qty, padding) {
-    // Find all factor triplets (a*b*c = qty), pick arrangement closest to a cube
+    // Fill base layer first (side by side), then stack up
+    // Primary score: minimize nz (layers stacked in height)
+    // Secondary score: make base footprint (L×W) as square as possible
     // Returns { L, W, H, nx, ny, nz } where nx*ny*nz = qty
     let best = null, bestScore = Infinity;
     for (let a = 1; a <= qty; a++) {
@@ -4175,8 +4177,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const c = qty / a / b;
         [[a,b,c],[a,c,b],[b,a,c],[b,c,a],[c,a,b],[c,b,a]].forEach(([x,y,z]) => {
           const L = x * pL + padding, W = y * pW + padding, H = z * pH + padding;
-          const avg = (L + W + H) / 3;
-          const score = (L-avg)**2 + (W-avg)**2 + (H-avg)**2;
+          // z = items stacked in height — minimize this first, then square up the base
+          const score = z * 1e8 + (L - W) * (L - W);
           if (score < bestScore) { bestScore = score; best = { L, W, H, nx: x, ny: y, nz: z }; }
         });
       }
@@ -4210,8 +4212,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const el = document.getElementById(id);
       if (!el) return;
       el.style.display = '';
-      const layerNote = nz > 1 ? `, ${nz} high` : '';
-      el.textContent = `${nx} × ${ny}${layerNote}  =  ${nx * ny * nz} ${itemWord} per carton`;
+      const layerNote = nz > 1 ? ` × ${nz} layers` : ' (single layer)';
+      el.textContent = `${nx} × ${ny}${layerNote}  =  ${nx * ny * nz} ${itemWord}`;
     };
 
     // ── Inner carton: sized to hold innerQty products ──
