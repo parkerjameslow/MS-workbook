@@ -1793,8 +1793,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       gap: 16px;
       align-items: stretch;
     }
-    .sh-left-col { display: flex; flex-direction: column; gap: 16px; }
-    .sh-left-col .sh-box { flex: 1; }
+    .sh-left-col { display: flex; flex-direction: column; gap: 16px; height: 100%; }
+    .sh-left-col .sh-box:last-child { flex: 1; }
 
     .sh-box {
       background: var(--surface2);
@@ -3364,8 +3364,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="freight-extra" id="freight-extra" style="display:none;">
           Extra cost due to volumetric: <span></span>
         </div>
-        <div class="freight-tip" id="freight-tip"></div>
-
         <div class="freight-result">
           <span class="freight-result-label">Volume (CBM)</span>
           <span class="freight-result-value" id="freight-cmp-sea">—</span>
