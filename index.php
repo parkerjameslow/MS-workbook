@@ -1784,6 +1784,80 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-top: 1px solid var(--border);
     }
 
+    /* Shipping tab top grid: carton dims + pallet stats */
+    .sh-top-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    @media (max-width: 640px) { .sh-top-grid { grid-template-columns: 1fr; } }
+
+    /* Compact dim rows */
+    .sh-dim-table { display: flex; flex-direction: column; gap: 6px; }
+    .sh-dim-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 13px;
+    }
+    .sh-dim-row-wt {
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .sh-dim-lbl {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      min-width: 18px;
+    }
+    .sh-dim-val { font-weight: 700; color: var(--text); min-width: 52px; text-align: right; }
+    .sh-dim-unit { font-size: 10px; color: var(--text-muted); font-weight: 600; min-width: 16px; }
+    .sh-dim-sep { color: var(--border); font-weight: 300; padding: 0 2px; }
+
+    /* Pallet stats panel in shipping tab */
+    .sh-pallet-stats-panel {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+    .sh-pallet-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px 24px;
+    }
+    .sh-pallet-stat { }
+    .sh-pallet-stat-val {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1;
+    }
+    .sh-pallet-stat-val.accent { color: var(--accent); }
+    .sh-pallet-stat-lbl {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+    .sh-pallet-divider {
+      grid-column: span 2;
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 4px 0;
+    }
+    .sh-pallet-section-label {
+      grid-column: span 2;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+
     /* Compact method + rate row */
     .freight-method-rate-row {
       display: flex;
@@ -3138,229 +3212,181 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <!-- ── Tab: Shipping ── -->
   <div id="wb-tab-shipping" class="wb-tab-content">
+
+  <!-- ── Section 1: Outer Carton & Pallet Stats ── -->
   <div class="section-card">
     <div class="section-header">
-      <span class="section-title">Shipping Weight Calculator</span>
+      <span class="section-title">Outer Carton &amp; Pallet Stats</span>
     </div>
-    <div class="section-body">
-      <div class="subsection" style="margin-top:0; padding-top:0; border-top:none;">
-        <div class="subsection-title" style="display:none;">Shipping Weight Calculator</div>
-        <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-          Carriers charge the greater of Actual Weight or Volumetric Weight. Dimensions and weight are pulled from the outer carton entered on the Workbook tab.
-        </p>
+    <div class="section-body" style="padding-top:16px;">
+      <div class="sh-top-grid">
 
-        <div class="freight-calc">
-          <!-- INPUT PANEL -->
-          <div class="freight-panel">
-            <div class="freight-panel-title">Outer Carton</div>
-
-            <!-- Read-only dims synced from workbook tab -->
-            <div class="freight-carton-info" id="freight-carton-info">
-              <div class="freight-info-row">
-                <span class="freight-info-label">Length</span>
-                <span class="freight-info-vals">
-                  <span id="sh-l-cm" class="freight-info-val">—</span><span class="freight-info-unit">cm</span>
-                  <span class="freight-info-sep">/</span>
-                  <span id="sh-l-in" class="freight-info-val">—</span><span class="freight-info-unit">in</span>
-                </span>
-              </div>
-              <div class="freight-info-row">
-                <span class="freight-info-label">Width</span>
-                <span class="freight-info-vals">
-                  <span id="sh-w-cm" class="freight-info-val">—</span><span class="freight-info-unit">cm</span>
-                  <span class="freight-info-sep">/</span>
-                  <span id="sh-w-in" class="freight-info-val">—</span><span class="freight-info-unit">in</span>
-                </span>
-              </div>
-              <div class="freight-info-row">
-                <span class="freight-info-label">Height</span>
-                <span class="freight-info-vals">
-                  <span id="sh-h-cm" class="freight-info-val">—</span><span class="freight-info-unit">cm</span>
-                  <span class="freight-info-sep">/</span>
-                  <span id="sh-h-in" class="freight-info-val">—</span><span class="freight-info-unit">in</span>
-                </span>
-              </div>
-              <div class="freight-info-row">
-                <span class="freight-info-label">Weight</span>
-                <span class="freight-info-vals">
-                  <span id="sh-wt-kg" class="freight-info-val">—</span><span class="freight-info-unit">kg</span>
-                  <span class="freight-info-sep">/</span>
-                  <span id="sh-wt-lbs" class="freight-info-val">—</span><span class="freight-info-unit">lbs</span>
-                </span>
-              </div>
+        <!-- Left: compact carton dims -->
+        <div>
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Dimensions &amp; Weight</div>
+          <div class="sh-dim-table">
+            <div class="sh-dim-row">
+              <span class="sh-dim-lbl">L</span>
+              <span class="sh-dim-val" id="sh-l-cm">—</span><span class="sh-dim-unit">cm</span>
+              <span class="sh-dim-sep">/</span>
+              <span class="sh-dim-val" id="sh-l-in">—</span><span class="sh-dim-unit">in</span>
             </div>
-
-            <div class="freight-field">
-              <label>Number of Cartons in Shipment</label>
-              <input type="number" step="1" min="1" placeholder="e.g. 500" id="freight-cartons" oninput="calcFreight()" />
+            <div class="sh-dim-row">
+              <span class="sh-dim-lbl">W</span>
+              <span class="sh-dim-val" id="sh-w-cm">—</span><span class="sh-dim-unit">cm</span>
+              <span class="sh-dim-sep">/</span>
+              <span class="sh-dim-val" id="sh-w-in">—</span><span class="sh-dim-unit">in</span>
             </div>
-
-            <!-- Collapsible Shipping sub-section -->
-            <div class="freight-subsection-header" id="freight-shipping-header" onclick="toggleFreightShipping()">
-              <span class="freight-subsection-title">Shipping</span>
-              <span class="freight-subsection-chevron">›</span>
+            <div class="sh-dim-row">
+              <span class="sh-dim-lbl">H</span>
+              <span class="sh-dim-val" id="sh-h-cm">—</span><span class="sh-dim-unit">cm</span>
+              <span class="sh-dim-sep">/</span>
+              <span class="sh-dim-val" id="sh-h-in">—</span><span class="sh-dim-unit">in</span>
             </div>
-
-            <div class="freight-subsection-body" id="freight-shipping-body">
-
-              <!-- Compact method + rate row -->
-              <div class="freight-method-rate-row">
-                <div class="freight-method-select-wrap">
-                  <label class="freight-method-label">Shipping Method</label>
-                  <div class="select-wrap">
-                    <select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
-                      <option value="slow" selected>Slow Boat</option>
-                      <option value="fast">Fast Boat</option>
-                      <option value="airupp">Air + UPS</option>
-                      <option value="directair">Direct Air</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="freight-rate-chips">
-                  <div class="freight-rate-chip rmb-chip">
-                    <span class="freight-rate-chip-label">¥/kg</span>
-                    <span class="freight-rate-chip-val" id="freight-rate-rmb-display">12.00</span>
-                  </div>
-                  <div class="freight-rate-chip usd-chip">
-                    <span class="freight-rate-chip-label">$/kg</span>
-                    <span class="freight-rate-chip-val" id="freight-rate-usd-display">1.67</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Comparison table — per method breakdown -->
-              <table class="freight-ref-table freight-cmp-table" style="margin-bottom:4px;">
-                <thead>
-                  <tr>
-                    <th>Method</th>
-                    <th>Total Weight</th>
-                    <th>¥ / kg</th>
-                    <th>Cost (¥)</th>
-                    <th>Cost ($)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>Slow Boat</td>
-                    <td id="freight-wt-slow">—</td>
-                    <td>12.00</td>
-                    <td id="freight-rmb-slow">—</td>
-                    <td id="freight-usd-slow">—</td>
-                  </tr>
-                  <tr>
-                    <td>Fast Boat</td>
-                    <td id="freight-wt-fast">—</td>
-                    <td>14.00</td>
-                    <td id="freight-rmb-fast">—</td>
-                    <td id="freight-usd-fast">—</td>
-                  </tr>
-                  <tr>
-                    <td>Air + UPS</td>
-                    <td id="freight-wt-airupp">—</td>
-                    <td>44.00</td>
-                    <td id="freight-rmb-airupp">—</td>
-                    <td id="freight-usd-airupp">—</td>
-                  </tr>
-                  <tr>
-                    <td>Direct Air</td>
-                    <td id="freight-wt-directair">—</td>
-                    <td>65.00</td>
-                    <td id="freight-rmb-directair">—</td>
-                    <td id="freight-usd-directair">—</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div class="sh-dim-row sh-dim-row-wt">
+              <span class="sh-dim-lbl">Wt</span>
+              <span class="sh-dim-val" id="sh-wt-kg">—</span><span class="sh-dim-unit">kg</span>
+              <span class="sh-dim-sep">/</span>
+              <span class="sh-dim-val" id="sh-wt-lbs">—</span><span class="sh-dim-unit">lbs</span>
             </div>
           </div>
 
-          <!-- RESULTS PANEL -->
-          <div class="freight-panel">
-            <div class="freight-panel-title">Results</div>
-
-            <div class="freight-result">
-              <span class="freight-result-label">Actual Weight</span>
-              <span class="freight-result-value" id="freight-out-actual">10.00 kg</span>
-            </div>
-            <div class="freight-result">
-              <span class="freight-result-label">Volumetric Weight</span>
-              <span class="freight-result-value" id="freight-out-vol">20.00 kg</span>
-            </div>
-            <div class="freight-result">
-              <span class="freight-result-label">Chargeable Weight</span>
-              <span class="freight-result-value highlight" id="freight-out-charge">20.00 kg</span>
-            </div>
-            <div class="freight-result">
-              <span class="freight-result-label">Formula Used</span>
-              <span class="freight-result-value" id="freight-out-formula" style="font-size:12px;">(60 × 50 × 40) ÷ 6,000</span>
-            </div>
-
-            <!-- Bar comparison -->
-            <div class="freight-bars">
-              <div class="freight-bar-col">
-                <span class="freight-bar-val" id="freight-bar-actual-val">10</span>
-                <div class="freight-bar actual-bar" id="freight-bar-actual" style="height:50%"></div>
-                <span class="freight-bar-label">Actual</span>
-              </div>
-              <div class="freight-bar-col">
-                <span class="freight-bar-val" id="freight-bar-vol-val">20</span>
-                <div class="freight-bar vol-bar" id="freight-bar-vol" style="height:100%"></div>
-                <span class="freight-bar-label">Volumetric</span>
-              </div>
-              <div class="freight-bar-col">
-                <span class="freight-bar-val" id="freight-bar-charge-val">20</span>
-                <div class="freight-bar charge-bar" id="freight-bar-charge" style="height:100%"></div>
-                <span class="freight-bar-label">Chargeable</span>
-              </div>
-            </div>
-
-            <!-- Verdict -->
-            <div class="freight-verdict volumetric" id="freight-verdict">
-              Volumetric weight applies — package is bulky/light.
-            </div>
-
-            <!-- Cost -->
-            <div class="freight-result" style="margin-top:14px;">
-              <span class="freight-result-label">Estimated Shipping Cost</span>
-              <span class="freight-result-value cost" id="freight-out-cost">$90.00</span>
-            </div>
-
-            <div class="freight-extra" id="freight-extra">
-              Extra cost due to volumetric: <span>$45.00</span>
-            </div>
-
-            <!-- Tip -->
-            <div class="freight-tip" id="freight-tip">
-              Tip: Reduce void/air space in packaging to lower volumetric weight.
-            </div>
-
-            <!-- Mode comparison -->
-            <div class="freight-panel-title" style="margin-top:16px;">Est. Cost by Method</div>
-            <div class="freight-result">
-              <span class="freight-result-label">Slow Boat</span>
-              <span class="freight-result-value" id="freight-res-slow">—</span>
-            </div>
-            <div class="freight-result">
-              <span class="freight-result-label">Fast Boat</span>
-              <span class="freight-result-value" id="freight-res-fast">—</span>
-            </div>
-            <div class="freight-result">
-              <span class="freight-result-label">Air + UPS</span>
-              <span class="freight-result-value" id="freight-res-airupp">—</span>
-            </div>
-            <div class="freight-result">
-              <span class="freight-result-label">Direct Air</span>
-              <span class="freight-result-value" id="freight-res-directair">—</span>
-            </div>
-            <div class="freight-result">
-              <span class="freight-result-label">Volume (CBM)</span>
-              <span class="freight-result-value" id="freight-cmp-sea">—</span>
-            </div>
+          <div style="margin-top:16px;">
+            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:5px;">Cartons in Shipment</label>
+            <input type="number" step="1" min="1" placeholder="e.g. 500" id="freight-cartons"
+              style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); font-size:14px; box-sizing:border-box;"
+              oninput="calcFreight()" />
           </div>
         </div>
-      </div>
 
+        <!-- Right: pallet stats -->
+        <div class="sh-pallet-stats-panel">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Pallet Stats</div>
+          <div id="sh-pallet-stats-body">
+            <span style="font-size:12px; color:var(--text-muted); font-style:italic;">Enter outer carton dimensions on the Workbook tab to see pallet stats.</span>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
+
+  <!-- ── Section 2: Shipping Calculator ── -->
+  <div class="section-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Shipping Calculator</span>
+      <span class="section-chevron">›</span>
+    </div>
+    <div class="section-body" style="padding-top:16px;">
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:16px;">
+        Carriers charge the greater of Actual Weight or Volumetric Weight. Dimensions and weight are pulled from the outer carton entered on the Workbook tab.
+      </p>
+
+      <div class="freight-calc">
+        <!-- LEFT: Method + rate + table -->
+        <div class="freight-panel">
+          <div class="freight-panel-title">Shipping</div>
+
+          <!-- Compact method + rate row -->
+          <div class="freight-method-rate-row">
+            <div class="freight-method-select-wrap">
+              <label class="freight-method-label">Shipping Method</label>
+              <div class="select-wrap">
+                <select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
+                  <option value="slow" selected>Slow Boat</option>
+                  <option value="fast">Fast Boat</option>
+                  <option value="airupp">Air + UPS</option>
+                  <option value="directair">Direct Air</option>
+                </select>
+              </div>
+            </div>
+            <div class="freight-rate-chips">
+              <div class="freight-rate-chip rmb-chip">
+                <span class="freight-rate-chip-label">¥/kg</span>
+                <span class="freight-rate-chip-val" id="freight-rate-rmb-display">12.00</span>
+              </div>
+              <div class="freight-rate-chip usd-chip">
+                <span class="freight-rate-chip-label">$/kg</span>
+                <span class="freight-rate-chip-val" id="freight-rate-usd-display">1.67</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Comparison table -->
+          <table class="freight-ref-table freight-cmp-table" style="margin-bottom:4px;">
+            <thead>
+              <tr><th>Method</th><th>Total Weight</th><th>¥ / kg</th><th>Cost (¥)</th><th>Cost ($)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Slow Boat</td><td id="freight-wt-slow">—</td><td>12.00</td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
+              <tr><td>Fast Boat</td><td id="freight-wt-fast">—</td><td>14.00</td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
+              <tr><td>Air + UPS</td><td id="freight-wt-airupp">—</td><td>44.00</td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
+              <tr><td>Direct Air</td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- RIGHT: Results -->
+        <div class="freight-panel">
+          <div class="freight-panel-title">Results</div>
+
+          <div class="freight-result">
+            <span class="freight-result-label">Actual Weight</span>
+            <span class="freight-result-value" id="freight-out-actual">—</span>
+          </div>
+          <div class="freight-result">
+            <span class="freight-result-label">Volumetric Weight</span>
+            <span class="freight-result-value" id="freight-out-vol">—</span>
+          </div>
+          <div class="freight-result">
+            <span class="freight-result-label">Chargeable Weight</span>
+            <span class="freight-result-value highlight" id="freight-out-charge">—</span>
+          </div>
+          <div class="freight-result">
+            <span class="freight-result-label">Formula Used</span>
+            <span class="freight-result-value" id="freight-out-formula" style="font-size:12px;">—</span>
+          </div>
+
+          <div class="freight-bars">
+            <div class="freight-bar-col">
+              <span class="freight-bar-val" id="freight-bar-actual-val">—</span>
+              <div class="freight-bar actual-bar" id="freight-bar-actual" style="height:50%"></div>
+              <span class="freight-bar-label">Actual</span>
+            </div>
+            <div class="freight-bar-col">
+              <span class="freight-bar-val" id="freight-bar-vol-val">—</span>
+              <div class="freight-bar vol-bar" id="freight-bar-vol" style="height:100%"></div>
+              <span class="freight-bar-label">Volumetric</span>
+            </div>
+            <div class="freight-bar-col">
+              <span class="freight-bar-val" id="freight-bar-charge-val">—</span>
+              <div class="freight-bar charge-bar" id="freight-bar-charge" style="height:100%"></div>
+              <span class="freight-bar-label">Chargeable</span>
+            </div>
+          </div>
+
+          <div class="freight-verdict volumetric" id="freight-verdict">—</div>
+
+          <div class="freight-result" style="margin-top:14px;">
+            <span class="freight-result-label">Estimated Shipping Cost</span>
+            <span class="freight-result-value cost" id="freight-out-cost">—</span>
+          </div>
+          <div class="freight-extra" id="freight-extra" style="display:none;">
+            Extra cost due to volumetric: <span></span>
+          </div>
+          <div class="freight-tip" id="freight-tip"></div>
+
+          <div class="freight-panel-title" style="margin-top:16px;">Est. Cost by Method</div>
+          <div class="freight-result"><span class="freight-result-label">Slow Boat</span><span class="freight-result-value" id="freight-res-slow">—</span></div>
+          <div class="freight-result"><span class="freight-result-label">Fast Boat</span><span class="freight-result-value" id="freight-res-fast">—</span></div>
+          <div class="freight-result"><span class="freight-result-label">Air + UPS</span><span class="freight-result-value" id="freight-res-airupp">—</span></div>
+          <div class="freight-result"><span class="freight-result-label">Direct Air</span><span class="freight-result-value" id="freight-res-directair">—</span></div>
+          <div class="freight-result"><span class="freight-result-label">Volume (CBM)</span><span class="freight-result-value" id="freight-cmp-sea">—</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   </div><!-- /#wb-tab-shipping -->
 
   <!-- ── Tab: Pricing ── -->
@@ -4729,6 +4755,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         Box orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer
       </div>`;
 
+    // Store pallet stats globally so shipping tab can read them
+    window._palletStats = { perLayer, maxLayers, totalPerPallet, surfaceUse, outerQtyVal, productsPerOuter, totalCartons, palletsNeeded, totalInners, totalProducts };
+
     // Inline summary in the Outer Carton column header
     const inlineEl = document.getElementById('pallet-inline-stats');
     if (inlineEl) {
@@ -4736,6 +4765,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const palletPart = palletsNeeded !== null ? ` &nbsp;·&nbsp; <strong style="color:var(--accent);">${palletsNeeded} pallets</strong>` : '';
       inlineEl.innerHTML = `<span style="opacity:0.75;">Pallet:</span> <strong>${perLayer}</strong> / layer &nbsp;·&nbsp; <strong>${totalPerPallet}</strong> / pallet${palletPart}`;
     }
+
+    // Refresh shipping tab pallet stats if visible
+    syncShippingPalletStats();
   }
 
   let convertingDim = false;
@@ -6004,7 +6036,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.querySelectorAll('.wb-tab').forEach(el => el.classList.remove('active'));
     document.getElementById('wb-tab-' + tabName).classList.add('active');
     btn.classList.add('active');
-    if (tabName === 'shipping') { syncShippingDims(); calcFreight(); }
+    if (tabName === 'shipping') { syncShippingDims(); syncShippingPalletStats(); calcFreight(); }
   }
 
   /* ── Shipping Calculator ─────────────────────────────────────────────────── */
@@ -6027,6 +6059,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const body   = document.getElementById('freight-shipping-body');
     header.classList.toggle('collapsed');
     body.classList.toggle('collapsed');
+  }
+
+  // Render pallet stats into the shipping tab panel
+  function syncShippingPalletStats() {
+    const el = document.getElementById('sh-pallet-stats-body');
+    if (!el) return;
+    const ps = window._palletStats;
+    if (!ps) {
+      el.innerHTML = '<span style="font-size:12px; color:var(--text-muted); font-style:italic;">Enter outer carton dimensions on the Workbook tab to see pallet stats.</span>';
+      return;
+    }
+    const stat = (val, lbl, accent) =>
+      `<div class="sh-pallet-stat">
+        <div class="sh-pallet-stat-val${accent ? ' accent' : ''}">${val}</div>
+        <div class="sh-pallet-stat-lbl">${lbl}</div>
+      </div>`;
+
+    let html = `<div class="sh-pallet-grid">
+      ${stat(ps.perLayer,       'outer cartons / layer')}
+      ${stat(ps.maxLayers,      'max layers')}
+      ${stat(ps.totalPerPallet, 'outer cartons / pallet')}
+      ${stat(ps.surfaceUse + '%', 'surface coverage')}
+      ${ps.productsPerOuter > 0 ? stat(ps.outerQtyVal, 'inner cartons / outer') + stat(ps.productsPerOuter, 'products / outer carton') : ''}`;
+
+    if (ps.totalCartons > 0) {
+      html += `<hr class="sh-pallet-divider">
+        <div class="sh-pallet-section-label">Shipment of ${ps.totalCartons} cartons</div>
+        ${stat(ps.palletsNeeded, 'pallets needed', true)}
+        ${ps.totalInners > 0 ? stat(ps.totalInners, 'total inner cartons') : '<div></div>'}
+        ${ps.totalProducts > 0 ? `<div class="sh-pallet-stat" style="grid-column:span 2;"><div class="sh-pallet-stat-val">${ps.totalProducts.toLocaleString()}</div><div class="sh-pallet-stat-lbl">total products</div></div>` : ''}`;
+    }
+    html += '</div>';
+    el.innerHTML = html;
   }
 
   // Sync outer carton dims/weight display from workbook fields
