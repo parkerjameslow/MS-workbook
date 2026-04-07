@@ -2618,7 +2618,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <!-- Samples -->
     <div class="nav-section" id="nav-section-samples">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-samples')">
-        <span>🧪 Samples</span>
+        <span>Samples</span>
         <span class="nav-badge" id="badge-samples"></span>
         <span class="nav-section-chevron">›</span>
       </div>
@@ -3830,7 +3830,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     <!-- Hero Header -->
     <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
-      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #a855f7)); display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">🧪</div>
+      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #a855f7)); flex-shrink:0;"></div>
       <div>
         <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">Sample Requests</h1>
         <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Track all sample requests across your workbooks</p>
@@ -3877,7 +3877,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </table>
         </div>
         <div id="samples-empty" style="display:none; padding:60px 20px; text-align:center;">
-          <div style="font-size:48px; margin-bottom:16px;">🧪</div>
           <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:8px;">No sample requests yet</div>
           <div style="font-size:13px; color:var(--text-muted); max-width:320px; margin:0 auto;">Check the <strong>Sample</strong> checkbox on RFQ line items in any workbook to track them here.</div>
         </div>
@@ -5024,7 +5023,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const handleAttr = isFirstRow ? '' : `draggable="true" onmousedown="this.closest('tr').draggable=true" onmouseup="this.closest('tr').draggable=false" ondragstart="event.dataTransfer.setData('text/plain','${id}'); this.closest('tr').style.opacity='0.4'" ondragend="this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false"`;
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="text-align:center; padding:4px 8px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /><span class="rfq-sample-icon">${sample ? '🧪' : ''}</span></label></td>
+      <td style="text-align:center; padding:4px 8px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
       <td><input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
@@ -5138,7 +5137,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const iconSpan = checkbox.nextElementSibling;
     if (checkbox.checked) {
       row.classList.add('rfq-sample-row');
-      if (iconSpan) iconSpan.textContent = '🧪';
     } else {
       row.classList.remove('rfq-sample-row');
       if (iconSpan) iconSpan.textContent = '';
@@ -7580,7 +7578,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const counts = { pending: 0, requested: 0, received: 0, approved: 0 };
       allSamples.forEach(s => { if (counts[s.status] !== undefined) counts[s.status]++; });
       const statCards = [
-        { label: 'Total Samples', value: allSamples.length, icon: '🧪', color: 'var(--accent)' },
+        { label: 'Total Samples', value: allSamples.length, icon: '◆', color: 'var(--accent)' },
         { label: 'Pending', value: counts.pending, icon: '⏳', color: '#6b93ff' },
         { label: 'Requested', value: counts.requested, icon: '📦', color: '#f59e0b' },
         { label: 'Received', value: counts.received, icon: '✅', color: '#4ade80' },
