@@ -1784,6 +1784,80 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-top: 1px solid var(--border);
     }
 
+    /* Compact method + rate row */
+    .freight-method-rate-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .freight-method-select-wrap {
+      flex: 1;
+      min-width: 0;
+    }
+    .freight-method-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .freight-method-select-wrap .select-wrap select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      height: 38px;
+      box-sizing: border-box;
+    }
+    .freight-rate-chips {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding-bottom: 1px;
+    }
+    .freight-rate-chip {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      white-space: nowrap;
+    }
+    .freight-rate-chip-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      min-width: 28px;
+    }
+    .freight-rate-chip-val {
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .rmb-chip .freight-rate-chip-val { color: var(--accent); }
+    .usd-chip .freight-rate-chip-val { color: var(--success); }
+
+    /* Comparison table with 5 columns */
+    .freight-cmp-table th,
+    .freight-cmp-table td {
+      text-align: right;
+      font-size: 11px;
+    }
+    .freight-cmp-table th:first-child,
+    .freight-cmp-table td:first-child {
+      text-align: left;
+    }
+
     /* Collapsible shipping sub-section */
     .freight-subsection-header {
       display: flex;
@@ -3128,43 +3202,72 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
 
             <div class="freight-subsection-body" id="freight-shipping-body">
-              <div class="freight-field">
-                <label>Shipping Method</label>
-                <div class="select-wrap"><select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
-                  <option value="slow" selected>Slow Boat</option>
-                  <option value="fast">Fast Boat</option>
-                  <option value="airupp">Air + UPS</option>
-                  <option value="directair">Direct Air</option>
-                </select></div>
-              </div>
 
-              <div class="freight-rate-row">
-                <div class="freight-field">
-                  <label id="freight-rate-label">Rate per kg (RMB)</label>
-                  <div class="currency-prefix currency-rmb">
-                    <input type="number" step="0.01" min="0" value="12" id="freight-rate" oninput="calcFreight()" />
+              <!-- Compact method + rate row -->
+              <div class="freight-method-rate-row">
+                <div class="freight-method-select-wrap">
+                  <label class="freight-method-label">Shipping Method</label>
+                  <div class="select-wrap">
+                    <select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
+                      <option value="slow" selected>Slow Boat</option>
+                      <option value="fast">Fast Boat</option>
+                      <option value="airupp">Air + UPS</option>
+                      <option value="directair">Direct Air</option>
+                    </select>
                   </div>
                 </div>
-                <div class="freight-rate-usd">
-                  <span class="freight-rate-usd-label">≈&nbsp;$</span>
-                  <span id="freight-rate-usd-val">—</span>
-                  <span class="freight-rate-usd-unit">/kg</span>
+                <div class="freight-rate-chips">
+                  <div class="freight-rate-chip rmb-chip">
+                    <span class="freight-rate-chip-label">¥/kg</span>
+                    <span class="freight-rate-chip-val" id="freight-rate-rmb-display">12.00</span>
+                  </div>
+                  <div class="freight-rate-chip usd-chip">
+                    <span class="freight-rate-chip-label">$/kg</span>
+                    <span class="freight-rate-chip-val" id="freight-rate-usd-display">1.67</span>
+                  </div>
                 </div>
               </div>
 
-              <div class="freight-field">
-                <label>Exchange Rate (¥ per $1 USD)</label>
-                <input type="number" step="0.01" min="1" value="7.2" id="freight-exchange-rate" oninput="calcFreight()" />
-              </div>
-
-              <!-- Reference table — estimated cost per method -->
-              <table class="freight-ref-table" style="margin-bottom:4px;">
-                <thead><tr><th>Method</th><th>Rate (RMB/kg)</th><th>Est. Total Cost</th></tr></thead>
+              <!-- Comparison table — per method breakdown -->
+              <table class="freight-ref-table freight-cmp-table" style="margin-bottom:4px;">
+                <thead>
+                  <tr>
+                    <th>Method</th>
+                    <th>Total Weight</th>
+                    <th>¥ / kg</th>
+                    <th>Cost (¥)</th>
+                    <th>Cost ($)</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  <tr><td>Slow Boat</td><td>¥ 12.00</td><td id="freight-cmp-slow">—</td></tr>
-                  <tr><td>Fast Boat</td><td>¥ 14.00</td><td id="freight-cmp-fast">—</td></tr>
-                  <tr><td>Air + UPS</td><td>¥ 44.00</td><td id="freight-cmp-airupp">—</td></tr>
-                  <tr><td>Direct Air</td><td>¥ 65.00</td><td id="freight-cmp-directair">—</td></tr>
+                  <tr>
+                    <td>Slow Boat</td>
+                    <td id="freight-wt-slow">—</td>
+                    <td>12.00</td>
+                    <td id="freight-rmb-slow">—</td>
+                    <td id="freight-usd-slow">—</td>
+                  </tr>
+                  <tr>
+                    <td>Fast Boat</td>
+                    <td id="freight-wt-fast">—</td>
+                    <td>14.00</td>
+                    <td id="freight-rmb-fast">—</td>
+                    <td id="freight-usd-fast">—</td>
+                  </tr>
+                  <tr>
+                    <td>Air + UPS</td>
+                    <td id="freight-wt-airupp">—</td>
+                    <td>44.00</td>
+                    <td id="freight-rmb-airupp">—</td>
+                    <td id="freight-usd-airupp">—</td>
+                  </tr>
+                  <tr>
+                    <td>Direct Air</td>
+                    <td id="freight-wt-directair">—</td>
+                    <td>65.00</td>
+                    <td id="freight-rmb-directair">—</td>
+                    <td id="freight-usd-directair">—</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -5908,9 +6011,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const freightMethodRates    = { slow: 12, fast: 14, airupp: 44, directair: 65 };
   const freightMethodDivisors = { slow: 6000, fast: 6000, airupp: 5000, directair: 5000 };
 
+  const FREIGHT_EXCHANGE_RATE = 7.2; // ¥ per $1 USD
+
   function updateFreightRate() {
     const mode = document.getElementById('freight-mode').value;
-    document.getElementById('freight-rate').value = freightMethodRates[mode];
+    const r = freightMethodRates[mode];
+    const rmbEl = document.getElementById('freight-rate-rmb-display');
+    const usdEl = document.getElementById('freight-rate-usd-display');
+    if (rmbEl) rmbEl.textContent = r.toFixed(2);
+    if (usdEl) usdEl.textContent = (r / FREIGHT_EXCHANGE_RATE).toFixed(2);
   }
 
   function toggleFreightShipping() {
@@ -5956,13 +6065,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const actualKg = get('carton-outer-weight');  // kg per carton
 
     const mode     = document.getElementById('freight-mode').value;
-    const rate     = get('freight-rate');             // RMB per kg
+    const rate     = freightMethodRates[mode];        // RMB per kg
     const cartons  = parseInt(document.getElementById('freight-cartons')?.value) || 1;
-    const exchange = get('freight-exchange-rate') || 7.2;  // ¥ per $1 USD
+    const exchange = FREIGHT_EXCHANGE_RATE;
 
-    // USD equivalent rate display
-    const rateUsd = exchange > 0 ? rate / exchange : 0;
-    document.getElementById('freight-rate-usd-val').textContent = rateUsd.toFixed(2);
+    // Update rate chip displays
+    const rmbEl = document.getElementById('freight-rate-rmb-display');
+    const usdEl = document.getElementById('freight-rate-usd-display');
+    if (rmbEl) rmbEl.textContent = rate.toFixed(2);
+    if (usdEl) usdEl.textContent = (rate / exchange).toFixed(2);
 
     if (!lCm || !wCm || !hCm) {
       ['freight-out-actual','freight-out-vol','freight-out-charge','freight-out-formula','freight-out-cost'].forEach(id => {
@@ -6025,7 +6136,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tipEl.textContent = 'Tip: Weights match perfectly. No size penalty applies.';
     }
 
-    // Method comparison — estimated total cost per method
+    // Method comparison — 5-column table + results panel
     [
       { key: 'slow',      div: 6000, r: freightMethodRates.slow },
       { key: 'fast',      div: 6000, r: freightMethodRates.fast },
@@ -6033,15 +6144,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       { key: 'directair', div: 5000, r: freightMethodRates.directair },
     ].forEach(m => {
       const vw = volume / m.div;
-      const cw = Math.max(actualKg, vw) * cartons;
+      const cw = Math.max(actualKg, vw) * cartons;  // total chargeable kg
       const cr = cw * m.r;
-      const cu = exchange > 0 ? cr / exchange : 0;
-      const val = '¥ ' + cr.toFixed(2) + '  /  $ ' + cu.toFixed(2);
-      // Update both the input-panel table and results panel comparison
-      const tblEl = document.getElementById('freight-cmp-' + m.key);
+      const cu = cr / exchange;
+      const combinedVal = '¥ ' + cr.toFixed(2) + '  /  $ ' + cu.toFixed(2);
+      // 5-column breakdown table
+      const wtEl  = document.getElementById('freight-wt-'  + m.key);
+      const rmbEl = document.getElementById('freight-rmb-' + m.key);
+      const usdEl = document.getElementById('freight-usd-' + m.key);
+      if (wtEl)  wtEl.textContent  = cw.toFixed(2) + ' kg';
+      if (rmbEl) rmbEl.textContent = '¥ ' + cr.toFixed(2);
+      if (usdEl) usdEl.textContent = '$ ' + cu.toFixed(2);
+      // Results panel comparison
       const resEl = document.getElementById('freight-res-' + m.key);
-      if (tblEl) tblEl.textContent = val;
-      if (resEl) resEl.textContent = val;
+      if (resEl) resEl.textContent = combinedVal;
     });
 
     const cbm = volume / 1000000;
@@ -6419,8 +6535,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rfqItems:'RFQ Line Items', qcNotes:'Quote Notes',
     cartonUnitWeight:'Unit Weight', cartonInnerWeight:'Inner Carton Weight', cartonInnerCount:'Inner Carton Qty',
     cartonOuterWeight:'Outer Carton Weight', cartonOuterCount:'Outer Carton Qty',
-    freightMode:'Shipping Method', freightRate:'Shipping Rate',
-    freightCartons:'Number of Cartons', freightExchangeRate:'Exchange Rate (¥/$)',
+    freightMode:'Shipping Method', freightCartons:'Number of Cartons',
     quoteDate:'Quote Date', quoteValidUntil:'Valid Until', quoteClQty:'Quote Qty',
     quoteClUnitPrice:'Quote Unit Price', quoteClShipping:'Quote Shipping', quoteClNotes:'Quote Notes',
     invNumber:'Invoice #', invDate:'Invoice Date', invDueDate:'Due Date',
@@ -7045,9 +7160,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
       _s('freight-mode', data.freightMode);
-      _s('freight-rate', data.freightRate);
       _s('freight-cartons', data.freightCartons);
-      _s('freight-exchange-rate', data.freightExchangeRate);
       // Quote for Client tab
       _s('quote-date', data.quoteDate);
       _s('quote-valid-until', data.quoteValidUntil);
@@ -7404,9 +7517,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cartonOuterCount: _v('carton-outer-count'),
       palletTotalCartons: _v('pallet-total-cartons'),
       freightMode: _v('freight-mode'),
-      freightRate: _v('freight-rate'),
       freightCartons: _v('freight-cartons'),
-      freightExchangeRate: _v('freight-exchange-rate'),
       // Quote for Client tab
       quoteDate: _v('quote-date'),
       quoteValidUntil: _v('quote-valid-until'),
