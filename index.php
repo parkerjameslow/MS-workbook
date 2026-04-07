@@ -2861,6 +2861,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="flex:1; min-width:200px;">
           <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:14px;">Pallet Stats</div>
           <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
+          <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+            <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Outer Cartons to Ship</label>
+            <input type="number" min="0" placeholder="e.g. 500" id="pallet-total-cartons"
+              style="width:100%; box-sizing:border-box;"
+              oninput="renderPalletViz()" />
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Enter your total shipment carton count to calculate pallets needed.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -4345,8 +4352,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Stats
     const surfaceUse = Math.round((layout.cols * layout.bL * layout.rows * layout.bW) / (PALLET_L * PALLET_W) * 100);
     const totalPerPallet = perLayer * maxLayers;
-    const outerQty = parseInt(document.getElementById('carton-outer-count').value) || 0;
-    const palletsNeeded = outerQty > 0 ? Math.ceil(outerQty / totalPerPallet) : null;
+    const totalCartons = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
+    const palletsNeeded = totalCartons > 0 ? Math.ceil(totalCartons / totalPerPallet) : null;
 
     document.getElementById('pallet-stats').innerHTML = `
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
@@ -4354,7 +4361,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${maxLayers}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">max layers</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalPerPallet}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">cartons / pallet</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">surface coverage</div></div>
-        ${palletsNeeded !== null ? `<div style="grid-column:span 2; padding-top:8px; border-top:1px solid var(--border);"><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed for ${outerQty} cartons</div></div>` : ''}
+        ${palletsNeeded !== null ? `<div style="grid-column:span 2; padding-top:8px; border-top:1px solid var(--border);"><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed for ${totalCartons} cartons</div></div>` : ''}
       </div>
       <div style="margin-top:16px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
         Box orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer
@@ -6719,6 +6726,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('carton-inner-count', data.cartonInnerCount);
       _s('carton-outer-weight', data.cartonOuterWeight);
       _s('carton-outer-count', data.cartonOuterCount);
+      _s('pallet-total-cartons', data.palletTotalCartons);
       if (data.cartonUnitWeight) convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg');
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
@@ -7086,6 +7094,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cartonInnerCount: _v('carton-inner-count'),
       cartonOuterWeight: _v('carton-outer-weight'),
       cartonOuterCount: _v('carton-outer-count'),
+      palletTotalCartons: _v('pallet-total-cartons'),
       freightDimUnit: _v('freight-dim-unit'),
       freightL: _v('freight-l'),
       freightW: _v('freight-w'),
