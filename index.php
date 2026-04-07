@@ -828,13 +828,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .video-lightbox-inner iframe, .video-lightbox-inner video { width: 100%; height: 100%; border-radius: 8px; border: none; }
 
     /* ── Secondary Category / Material dropdowns ─────────────────────────── */
-    .secondary-select-wrap { margin-top: 8px; opacity: 0.3; pointer-events: none; transition: opacity 0.2s; }
-    .secondary-select-wrap.unlocked { opacity: 0.65; pointer-events: auto; }
-    .secondary-select-wrap.unlocked.has-value { opacity: 1; }
+    .secondary-select-wrap { margin-top: 8px; opacity: 0.3; pointer-events: none; transition: opacity 0.2s, border-color 0.2s; }
+    .secondary-select-wrap.unlocked { opacity: 1; pointer-events: auto; }
+    .secondary-select-wrap.unlocked select { border-color: #3b82f6 !important; }
+    .secondary-select-wrap.unlocked.has-value select { border-color: #22c55e !important; }
     .secondary-select-label {
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--text-muted); margin-bottom: 4px;
+      color: var(--text-muted); margin-bottom: 4px; transition: color 0.2s;
     }
+    .secondary-select-wrap.unlocked .secondary-select-label { color: #3b82f6; }
+    .secondary-select-wrap.unlocked.has-value .secondary-select-label { color: #22c55e; }
 
     /* ── Color Swatch ────────────────────────────────────────────────────── */
     .color-row {
@@ -2863,7 +2866,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
         <canvas id="pallet-canvas" width="480" height="360" style="flex-shrink:0; border-radius:8px; background:var(--surface2);"></canvas>
         <div style="flex:1; min-width:200px;">
-          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:14px;">Pallet Stats</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);">Pallet Stats</div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label style="font-size:11px; color:var(--text-muted); white-space:nowrap;">Max height</label>
+              <input type="number" id="pallet-max-height" value="60" min="1" max="120" step="1"
+                style="width:56px; text-align:center; font-size:12px;"
+                oninput="renderPalletViz()" />
+              <span style="font-size:11px; color:var(--text-muted);">in</span>
+            </div>
+          </div>
           <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
           <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
             <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Outer Cartons to Ship</label>
@@ -4287,7 +4299,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const PALLET_L = 101.6;    // cm (40 in)
   const PALLET_W = 121.92;   // cm (48 in)
   const PALLET_DECK = 15;    // cm pallet deck height
-  const MAX_LOAD_H = 182;    // cm max stack height above deck (~72 in)
+  const MAX_LOAD_H_DEFAULT = 152.4; // cm default max stack height (60 in)
   const ISO_COS30 = Math.cos(Math.PI / 6); // 0.866
   const ISO_SIN30 = 0.5;
 
@@ -4381,7 +4393,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
-    const maxLayers = Math.max(1, Math.floor(MAX_LOAD_H / bH));
+    const maxLoadHIn = parseFloat(document.getElementById('pallet-max-height').value) || 60;
+    const maxLoadH = maxLoadHIn * 2.54; // convert inches to cm
+    const maxLayers = Math.max(1, Math.floor(maxLoadH / bH));
     const showLayers = Math.min(maxLayers, 12); // cap visual layers
 
     // Scale to fit canvas — origin near top, stack grows upward
