@@ -1650,13 +1650,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       margin-bottom: 10px;
     }
 
-    .freight-row-3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
     .freight-field label {
       display: block;
       font-size: 11px;
@@ -1678,10 +1671,117 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-size: 13px;
       font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
       height: 38px;
+      box-sizing: border-box;
     }
 
     .freight-field select {
       font-family: inherit;
+    }
+
+    /* Outer carton info display */
+    .freight-carton-info {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      margin-bottom: 12px;
+    }
+
+    .freight-info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .freight-info-row:last-child { border-bottom: none; }
+
+    .freight-info-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--text-muted);
+      min-width: 52px;
+    }
+
+    .freight-info-vals {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 12px;
+    }
+
+    .freight-info-val {
+      font-weight: 700;
+      color: var(--text);
+      min-width: 42px;
+      text-align: right;
+    }
+
+    .freight-info-unit {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-weight: 600;
+      min-width: 18px;
+    }
+
+    .freight-info-sep {
+      color: var(--border);
+      padding: 0 4px;
+      font-weight: 300;
+    }
+
+    .freight-no-dims {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-style: italic;
+      text-align: center;
+      padding: 10px 0;
+    }
+
+    /* Rate row with USD equivalent */
+    .freight-rate-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .freight-rate-row .freight-field { flex: 1; margin-bottom: 0; }
+
+    .freight-rate-usd {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding-bottom: 9px;
+      white-space: nowrap;
+    }
+
+    .freight-rate-usd-label {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .freight-rate-usd-val {
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--success);
+    }
+
+    .freight-rate-usd-unit {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .freight-section-divider {
+      margin: 16px 0;
+      border: none;
+      border-top: 1px solid var(--border);
     }
 
     .freight-result {
@@ -2928,92 +3028,95 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="subsection" style="margin-top:0; padding-top:0; border-top:none;">
         <div class="subsection-title" style="display:none;">Shipping Weight Calculator</div>
         <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-          Carriers charge the greater of Actual Weight or Volumetric Weight. This calculator determines the chargeable weight and estimated cost.
+          Carriers charge the greater of Actual Weight or Volumetric Weight. Dimensions and weight are pulled from the outer carton entered on the Workbook tab.
         </p>
 
         <div class="freight-calc">
           <!-- INPUT PANEL -->
           <div class="freight-panel">
-            <div class="freight-panel-title">Inputs</div>
+            <div class="freight-panel-title">Outer Carton</div>
 
-            <div class="freight-field" style="margin-bottom:10px;">
-              <label>Dimension Unit</label>
-              <div class="select-wrap"><select id="freight-dim-unit" onchange="updateFreightDimLabels(); calcFreight()">
-                <option value="in" selected>Inches (in)</option>
-                <option value="cm">Centimeters (cm)</option>
-                <option value="mm">Millimeters (mm)</option>
+            <!-- Read-only dims synced from workbook tab -->
+            <div class="freight-carton-info" id="freight-carton-info">
+              <div class="freight-info-row">
+                <span class="freight-info-label">Length</span>
+                <span class="freight-info-vals">
+                  <span id="sh-l-cm" class="freight-info-val">—</span><span class="freight-info-unit">cm</span>
+                  <span class="freight-info-sep">/</span>
+                  <span id="sh-l-in" class="freight-info-val">—</span><span class="freight-info-unit">in</span>
+                </span>
+              </div>
+              <div class="freight-info-row">
+                <span class="freight-info-label">Width</span>
+                <span class="freight-info-vals">
+                  <span id="sh-w-cm" class="freight-info-val">—</span><span class="freight-info-unit">cm</span>
+                  <span class="freight-info-sep">/</span>
+                  <span id="sh-w-in" class="freight-info-val">—</span><span class="freight-info-unit">in</span>
+                </span>
+              </div>
+              <div class="freight-info-row">
+                <span class="freight-info-label">Height</span>
+                <span class="freight-info-vals">
+                  <span id="sh-h-cm" class="freight-info-val">—</span><span class="freight-info-unit">cm</span>
+                  <span class="freight-info-sep">/</span>
+                  <span id="sh-h-in" class="freight-info-val">—</span><span class="freight-info-unit">in</span>
+                </span>
+              </div>
+              <div class="freight-info-row">
+                <span class="freight-info-label">Weight</span>
+                <span class="freight-info-vals">
+                  <span id="sh-wt-kg" class="freight-info-val">—</span><span class="freight-info-unit">kg</span>
+                  <span class="freight-info-sep">/</span>
+                  <span id="sh-wt-lbs" class="freight-info-val">—</span><span class="freight-info-unit">lbs</span>
+                </span>
+              </div>
+            </div>
+
+            <div class="freight-field">
+              <label>Number of Cartons in Shipment</label>
+              <input type="number" step="1" min="1" placeholder="e.g. 500" id="freight-cartons" oninput="calcFreight()" />
+            </div>
+
+            <hr class="freight-section-divider" />
+            <div class="freight-panel-title" style="margin-top:0;">Shipping</div>
+
+            <div class="freight-field">
+              <label>Shipping Method</label>
+              <div class="select-wrap"><select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
+                <option value="slow" selected>Slow Boat</option>
+                <option value="fast">Fast Boat</option>
+                <option value="airupp">Air + UPS</option>
+                <option value="directair">Direct Air</option>
               </select></div>
             </div>
 
-            <div class="freight-row-3">
-              <div class="freight-field">
-                <label>Length</label>
-                <div class="dim-dual-field no-spin">
-                  <input type="number" step="0.01" min="0" value="60" id="freight-l" oninput="calcFreight()" />
-                  <span class="dim-unit freight-dim-label">in</span>
-                </div>
-              </div>
-              <div class="freight-field">
-                <label>Width</label>
-                <div class="dim-dual-field no-spin">
-                  <input type="number" step="0.01" min="0" value="50" id="freight-w" oninput="calcFreight()" />
-                  <span class="dim-unit freight-dim-label">in</span>
-                </div>
-              </div>
-              <div class="freight-field">
-                <label>Height</label>
-                <div class="dim-dual-field no-spin">
-                  <input type="number" step="0.01" min="0" value="40" id="freight-h" oninput="calcFreight()" />
-                  <span class="dim-unit freight-dim-label">in</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="freight-row">
-              <div class="freight-field">
-                <label>Weight Unit</label>
-                <div class="select-wrap"><select id="freight-wt-unit" onchange="calcFreight()">
-                  <option value="kg" selected>Kilograms (kg)</option>
-                  <option value="lbs">Pounds (lbs)</option>
-                </select></div>
-              </div>
-              <div class="freight-field">
-                <label>Actual Weight</label>
-                <input type="number" step="0.01" min="0" value="10" id="freight-actual" oninput="calcFreight()" />
-              </div>
-            </div>
-
-            <div class="freight-row">
-              <div class="freight-field">
-                <label>Shipping Method</label>
-                <div class="select-wrap"><select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
-                  <option value="slow" selected>Slow Boat</option>
-                  <option value="fast">Fast Boat</option>
-                  <option value="airupp">Air + UPS</option>
-                  <option value="directair">Direct Air</option>
-                </select></div>
-              </div>
+            <div class="freight-rate-row">
               <div class="freight-field">
                 <label id="freight-rate-label">Rate per kg (RMB)</label>
                 <div class="currency-prefix currency-rmb">
                   <input type="number" step="0.01" min="0" value="12" id="freight-rate" oninput="calcFreight()" />
                 </div>
               </div>
+              <div class="freight-rate-usd">
+                <span class="freight-rate-usd-label">≈&nbsp;$</span>
+                <span id="freight-rate-usd-val">—</span>
+                <span class="freight-rate-usd-unit">/kg</span>
+              </div>
             </div>
 
             <div class="freight-field" style="margin-bottom:0;">
-              <label>Number of Cartons</label>
-              <input type="number" step="1" min="1" value="1" id="freight-cartons" oninput="calcFreight()" />
+              <label>Exchange Rate (¥ per $1 USD)</label>
+              <input type="number" step="0.01" min="1" value="7.2" id="freight-exchange-rate" oninput="calcFreight()" />
             </div>
 
-            <!-- Reference table -->
+            <!-- Reference table — estimated cost per method -->
             <table class="freight-ref-table">
-              <thead><tr><th>Method</th><th>Rate / kg</th><th>Divisor</th></tr></thead>
+              <thead><tr><th>Method</th><th>Rate (RMB/kg)</th><th>Est. Total Cost</th></tr></thead>
               <tbody>
-                <tr><td>Slow Boat</td><td>$12.00</td><td>÷ 6,000</td></tr>
-                <tr><td>Fast Boat</td><td>$14.00</td><td>÷ 6,000</td></tr>
-                <tr><td>Air + UPS</td><td>$44.00</td><td>÷ 5,000</td></tr>
-                <tr><td>Direct Air</td><td>$65.00</td><td>÷ 5,000</td></tr>
+                <tr><td>Slow Boat</td><td>¥ 12.00</td><td id="freight-cmp-slow">—</td></tr>
+                <tr><td>Fast Boat</td><td>¥ 14.00</td><td id="freight-cmp-fast">—</td></tr>
+                <tr><td>Air + UPS</td><td>¥ 44.00</td><td id="freight-cmp-airupp">—</td></tr>
+                <tr><td>Direct Air</td><td>¥ 65.00</td><td id="freight-cmp-directair">—</td></tr>
               </tbody>
             </table>
           </div>
@@ -3079,18 +3182,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
 
             <!-- Mode comparison -->
-            <div class="freight-panel-title" style="margin-top:16px;">Volumetric by Divisor</div>
+            <div class="freight-panel-title" style="margin-top:16px;">Est. Cost by Method</div>
             <div class="freight-result">
-              <span class="freight-result-label">Slow / Fast Boat (÷ 6,000)</span>
-              <span class="freight-result-value" id="freight-cmp-air">20.00 kg</span>
+              <span class="freight-result-label">Slow Boat</span>
+              <span class="freight-result-value" id="freight-res-slow">—</span>
             </div>
             <div class="freight-result">
-              <span class="freight-result-label">Air + UPS / Direct Air (÷ 5,000)</span>
-              <span class="freight-result-value" id="freight-cmp-express">24.00 kg</span>
+              <span class="freight-result-label">Fast Boat</span>
+              <span class="freight-result-value" id="freight-res-fast">—</span>
+            </div>
+            <div class="freight-result">
+              <span class="freight-result-label">Air + UPS</span>
+              <span class="freight-result-value" id="freight-res-airupp">—</span>
+            </div>
+            <div class="freight-result">
+              <span class="freight-result-label">Direct Air</span>
+              <span class="freight-result-value" id="freight-res-directair">—</span>
             </div>
             <div class="freight-result">
               <span class="freight-result-label">Volume (CBM)</span>
-              <span class="freight-result-value" id="freight-cmp-sea">0.1200 CBM</span>
+              <span class="freight-result-value" id="freight-cmp-sea">—</span>
             </div>
           </div>
         </div>
@@ -5741,11 +5852,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.querySelectorAll('.wb-tab').forEach(el => el.classList.remove('active'));
     document.getElementById('wb-tab-' + tabName).classList.add('active');
     btn.classList.add('active');
-    if (tabName === 'shipping') calcFreight();
+    if (tabName === 'shipping') { syncShippingDims(); calcFreight(); }
   }
 
   /* ── Shipping Calculator ─────────────────────────────────────────────────── */
-  const freightMethodRates = { slow: 12, fast: 14, airupp: 44, directair: 65 };
+  const freightMethodRates    = { slow: 12, fast: 14, airupp: 44, directair: 65 };
   const freightMethodDivisors = { slow: 6000, fast: 6000, airupp: 5000, directair: 5000 };
 
   function updateFreightRate() {
@@ -5753,73 +5864,97 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('freight-rate').value = freightMethodRates[mode];
   }
 
-  function updateFreightDimLabels() {
-    const unit = document.getElementById('freight-dim-unit').value;
-    document.querySelectorAll('.freight-dim-label').forEach(el => { el.textContent = unit; });
+  // Sync outer carton dims/weight display from workbook fields
+  function syncShippingDims() {
+    const get = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const fmt = v => v > 0 ? v.toFixed(2) : '—';
+
+    const lCm  = get('carton-outer-l-cm');
+    const wCm  = get('carton-outer-w-cm');
+    const hCm  = get('carton-outer-h-cm');
+    const lIn  = get('carton-outer-l-in') || (lCm ? lCm / 2.54 : 0);
+    const wIn  = get('carton-outer-w-in') || (wCm ? wCm / 2.54 : 0);
+    const hIn  = get('carton-outer-h-in') || (hCm ? hCm / 2.54 : 0);
+    const wtKg  = get('carton-outer-weight');
+    const wtLbs = get('carton-outer-weight-lbs') || (wtKg ? wtKg * 2.20462 : 0);
+
+    document.getElementById('sh-l-cm').textContent  = fmt(lCm);
+    document.getElementById('sh-l-in').textContent  = fmt(lIn);
+    document.getElementById('sh-w-cm').textContent  = fmt(wCm);
+    document.getElementById('sh-w-in').textContent  = fmt(wIn);
+    document.getElementById('sh-h-cm').textContent  = fmt(hCm);
+    document.getElementById('sh-h-in').textContent  = fmt(hIn);
+    document.getElementById('sh-wt-kg').textContent  = fmt(wtKg);
+    document.getElementById('sh-wt-lbs').textContent = fmt(wtLbs);
   }
 
   function calcFreight() {
-    let l = parseFloat(document.getElementById('freight-l').value) || 0;
-    let w = parseFloat(document.getElementById('freight-w').value) || 0;
-    let h = parseFloat(document.getElementById('freight-h').value) || 0;
-    let actual = parseFloat(document.getElementById('freight-actual').value) || 0;
-    const dimUnit = document.getElementById('freight-dim-unit').value;
-    const wtUnit = document.getElementById('freight-wt-unit').value;
-    const mode = document.getElementById('freight-mode').value;
-    const rate = parseFloat(document.getElementById('freight-rate').value) || 0;
-    const cartons = parseInt(document.getElementById('freight-cartons').value) || 1;
+    syncShippingDims();
 
-    // Convert to cm
-    let lCm = l, wCm = w, hCm = h;
-    if (dimUnit === 'in') { lCm = l * 2.54; wCm = w * 2.54; hCm = h * 2.54; }
-    if (dimUnit === 'mm') { lCm = l / 10; wCm = w / 10; hCm = h / 10; }
+    const get = id => parseFloat(document.getElementById(id)?.value) || 0;
 
-    // Convert to kg if lbs
-    const actualKg = wtUnit === 'lbs' ? actual / 2.20462 : actual;
+    // Dims pulled from workbook outer carton (already in cm)
+    const lCm      = get('carton-outer-l-cm');
+    const wCm      = get('carton-outer-w-cm');
+    const hCm      = get('carton-outer-h-cm');
+    const actualKg = get('carton-outer-weight');  // kg per carton
 
-    const volume = lCm * wCm * hCm;
-    const divisor = freightMethodDivisors[mode];
-    const volWeight = volume / divisor;
+    const mode     = document.getElementById('freight-mode').value;
+    const rate     = get('freight-rate');             // RMB per kg
+    const cartons  = parseInt(document.getElementById('freight-cartons')?.value) || 1;
+    const exchange = get('freight-exchange-rate') || 7.2;  // ¥ per $1 USD
+
+    // USD equivalent rate display
+    const rateUsd = exchange > 0 ? rate / exchange : 0;
+    document.getElementById('freight-rate-usd-val').textContent = rateUsd.toFixed(2);
+
+    if (!lCm || !wCm || !hCm) {
+      ['freight-out-actual','freight-out-vol','freight-out-charge','freight-out-formula','freight-out-cost'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '—';
+      });
+      return;
+    }
+
+    const volume    = lCm * wCm * hCm;  // cm³
+    const divisor   = freightMethodDivisors[mode];
+    const volWeight = volume / divisor;  // kg per carton (volumetric)
+
+    const chargePerCarton = Math.max(actualKg, volWeight);
+    const totalActual     = actualKg * cartons;
+    const totalVol        = volWeight * cartons;
+    const totalCharge     = chargePerCarton * cartons;
+    const totalCostRmb    = totalCharge * rate;
+    const totalCostUsd    = exchange > 0 ? totalCostRmb / exchange : 0;
+
     const formulaStr = `(${lCm.toFixed(0)} × ${wCm.toFixed(0)} × ${hCm.toFixed(0)}) ÷ ${divisor.toLocaleString()}`;
 
-    const chargeWeight = Math.max(actualKg, volWeight);
-    const totalCost = chargeWeight * rate * cartons;
-
-    // Display weight in selected unit
-    const displayWt = (kg) => wtUnit === 'lbs' ? (kg * 2.20462).toFixed(2) + ' lbs' : kg.toFixed(2) + ' kg';
-    const displayWtShort = (kg) => wtUnit === 'lbs' ? (kg * 2.20462).toFixed(1) : kg.toFixed(1);
-    const wtLabel = wtUnit === 'lbs' ? 'lbs' : 'kg';
-
-    // Update rate label
-    const rateLabelEl = document.getElementById('freight-rate-label');
-    if (rateLabelEl) rateLabelEl.textContent = 'Rate per ' + wtLabel + ' (RMB)';
-
-    // Update results
-    document.getElementById('freight-out-actual').textContent = displayWt(actualKg);
-    document.getElementById('freight-out-vol').textContent = displayWt(volWeight);
-    document.getElementById('freight-out-charge').textContent = displayWt(chargeWeight);
+    // Results (total for shipment, dual units)
+    document.getElementById('freight-out-actual').textContent  = totalActual.toFixed(2)  + ' kg  /  ' + (totalActual  * 2.20462).toFixed(2) + ' lbs';
+    document.getElementById('freight-out-vol').textContent     = totalVol.toFixed(2)     + ' kg  /  ' + (totalVol     * 2.20462).toFixed(2) + ' lbs';
+    document.getElementById('freight-out-charge').textContent  = totalCharge.toFixed(2)  + ' kg  /  ' + (totalCharge  * 2.20462).toFixed(2) + ' lbs';
     document.getElementById('freight-out-formula').textContent = formulaStr;
-    document.getElementById('freight-out-cost').textContent = '$' + totalCost.toFixed(2);
+    document.getElementById('freight-out-cost').textContent    = '¥ ' + totalCostRmb.toFixed(2) + '  /  $ ' + totalCostUsd.toFixed(2);
 
     // Bar chart
-    const maxWt = Math.max(actualKg, volWeight, 0.01);
-    document.getElementById('freight-bar-actual').style.height = ((actualKg / maxWt) * 100) + '%';
-    document.getElementById('freight-bar-vol').style.height = ((volWeight / maxWt) * 100) + '%';
-    document.getElementById('freight-bar-charge').style.height = ((chargeWeight / maxWt) * 100) + '%';
-    document.getElementById('freight-bar-actual-val').textContent = displayWtShort(actualKg);
-    document.getElementById('freight-bar-vol-val').textContent = displayWtShort(volWeight);
-    document.getElementById('freight-bar-charge-val').textContent = displayWtShort(chargeWeight);
+    const maxWt = Math.max(totalActual, totalVol, 0.01);
+    document.getElementById('freight-bar-actual').style.height = ((totalActual / maxWt) * 100) + '%';
+    document.getElementById('freight-bar-vol').style.height    = ((totalVol    / maxWt) * 100) + '%';
+    document.getElementById('freight-bar-charge').style.height = ((totalCharge / maxWt) * 100) + '%';
+    document.getElementById('freight-bar-actual-val').textContent = totalActual.toFixed(1);
+    document.getElementById('freight-bar-vol-val').textContent    = totalVol.toFixed(1);
+    document.getElementById('freight-bar-charge-val').textContent = totalCharge.toFixed(1);
 
     // Verdict
     const verdictEl = document.getElementById('freight-verdict');
-    const extraEl = document.getElementById('freight-extra');
-    const tipEl = document.getElementById('freight-tip');
+    const extraEl   = document.getElementById('freight-extra');
+    const tipEl     = document.getElementById('freight-tip');
 
     if (volWeight > actualKg) {
       verdictEl.className = 'freight-verdict volumetric';
       verdictEl.textContent = 'Volumetric weight applies — package is bulky/light.';
-      const extraCost = (volWeight - actualKg) * rate * cartons;
-      extraEl.innerHTML = 'Extra cost due to volumetric: <span>$' + extraCost.toFixed(2) + '</span>';
+      const extraCostRmb = (volWeight - actualKg) * rate * cartons;
+      extraEl.innerHTML = 'Extra cost due to volumetric: <span>¥ ' + extraCostRmb.toFixed(2) + '  /  $ ' + (extraCostRmb / exchange).toFixed(2) + '</span>';
       extraEl.style.display = 'block';
       tipEl.textContent = 'Tip: Reduce void/air space in packaging to lower volumetric weight.';
     } else if (actualKg > volWeight) {
@@ -5834,14 +5969,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tipEl.textContent = 'Tip: Weights match perfectly. No size penalty applies.';
     }
 
-    // Method comparison
-    const volBoat = volume / 6000;
-    const volAir = volume / 5000;
-    const cmpSuffix = wtUnit === 'lbs' ? ' lbs' : ' kg';
-    document.getElementById('freight-cmp-air').textContent = wtUnit === 'lbs' ? (volBoat * 2.20462).toFixed(2) + cmpSuffix + ' (÷ 6,000)' : volBoat.toFixed(2) + cmpSuffix + ' (÷ 6,000)';
-    document.getElementById('freight-cmp-express').textContent = wtUnit === 'lbs' ? (volAir * 2.20462).toFixed(2) + cmpSuffix + ' (÷ 5,000)' : volAir.toFixed(2) + cmpSuffix + ' (÷ 5,000)';
+    // Method comparison — estimated total cost per method
+    [
+      { key: 'slow',      div: 6000, r: freightMethodRates.slow },
+      { key: 'fast',      div: 6000, r: freightMethodRates.fast },
+      { key: 'airupp',    div: 5000, r: freightMethodRates.airupp },
+      { key: 'directair', div: 5000, r: freightMethodRates.directair },
+    ].forEach(m => {
+      const vw = volume / m.div;
+      const cw = Math.max(actualKg, vw) * cartons;
+      const cr = cw * m.r;
+      const cu = exchange > 0 ? cr / exchange : 0;
+      const val = '¥ ' + cr.toFixed(2) + '  /  $ ' + cu.toFixed(2);
+      // Update both the input-panel table and results panel comparison
+      const tblEl = document.getElementById('freight-cmp-' + m.key);
+      const resEl = document.getElementById('freight-res-' + m.key);
+      if (tblEl) tblEl.textContent = val;
+      if (resEl) resEl.textContent = val;
+    });
+
     const cbm = volume / 1000000;
-    document.getElementById('freight-cmp-sea').textContent = cbm.toFixed(4) + ' CBM';
+    document.getElementById('freight-cmp-sea').textContent = (cbm * cartons).toFixed(4) + ' CBM';
   }
 
   /* ── Quote & Invoice Calcs ───────────────────────────────────────────────── */
@@ -6215,9 +6363,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rfqItems:'RFQ Line Items', qcNotes:'Quote Notes',
     cartonUnitWeight:'Unit Weight', cartonInnerWeight:'Inner Carton Weight', cartonInnerCount:'Inner Carton Qty',
     cartonOuterWeight:'Outer Carton Weight', cartonOuterCount:'Outer Carton Qty',
-    freightDimUnit:'Dimension Unit', freightL:'Freight Length', freightW:'Freight Width', freightH:'Freight Height',
-    freightWtUnit:'Weight Unit', freightActual:'Actual Weight', freightMode:'Shipping Method',
-    freightRate:'Shipping Rate', freightCartons:'Number of Cartons',
+    freightMode:'Shipping Method', freightRate:'Shipping Rate',
+    freightCartons:'Number of Cartons', freightExchangeRate:'Exchange Rate (¥/$)',
     quoteDate:'Quote Date', quoteValidUntil:'Valid Until', quoteClQty:'Quote Qty',
     quoteClUnitPrice:'Quote Unit Price', quoteClShipping:'Quote Shipping', quoteClNotes:'Quote Notes',
     invNumber:'Invoice #', invDate:'Invoice Date', invDueDate:'Due Date',
@@ -6841,16 +6988,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (data.cartonUnitWeight) convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg');
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
-      _s('freight-dim-unit', data.freightDimUnit);
-      updateFreightDimLabels();
-      _s('freight-l', data.freightL);
-      _s('freight-w', data.freightW);
-      _s('freight-h', data.freightH);
-      _s('freight-wt-unit', data.freightWtUnit);
-      _s('freight-actual', data.freightActual);
       _s('freight-mode', data.freightMode);
       _s('freight-rate', data.freightRate);
       _s('freight-cartons', data.freightCartons);
+      _s('freight-exchange-rate', data.freightExchangeRate);
       // Quote for Client tab
       _s('quote-date', data.quoteDate);
       _s('quote-valid-until', data.quoteValidUntil);
@@ -7206,15 +7347,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cartonOuterWeight: _v('carton-outer-weight'),
       cartonOuterCount: _v('carton-outer-count'),
       palletTotalCartons: _v('pallet-total-cartons'),
-      freightDimUnit: _v('freight-dim-unit'),
-      freightL: _v('freight-l'),
-      freightW: _v('freight-w'),
-      freightH: _v('freight-h'),
-      freightWtUnit: _v('freight-wt-unit'),
-      freightActual: _v('freight-actual'),
       freightMode: _v('freight-mode'),
       freightRate: _v('freight-rate'),
       freightCartons: _v('freight-cartons'),
+      freightExchangeRate: _v('freight-exchange-rate'),
       // Quote for Client tab
       quoteDate: _v('quote-date'),
       quoteValidUntil: _v('quote-valid-until'),
