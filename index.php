@@ -2994,7 +2994,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 </select></div>
               </div>
               <div class="freight-field">
-                <label>Rate per kg (RMB)</label>
+                <label id="freight-rate-label">Rate per kg (RMB)</label>
                 <div class="currency-prefix currency-rmb">
                   <input type="number" step="0.01" min="0" value="12" id="freight-rate" oninput="calcFreight()" />
                 </div>
@@ -5785,10 +5785,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const chargeWeight = Math.max(actualKg, volWeight);
     const totalCost = chargeWeight * rate * cartons;
 
+    // Display weight in selected unit
+    const displayWt = (kg) => wtUnit === 'lbs' ? (kg * 2.20462).toFixed(2) + ' lbs' : kg.toFixed(2) + ' kg';
+    const displayWtShort = (kg) => wtUnit === 'lbs' ? (kg * 2.20462).toFixed(1) : kg.toFixed(1);
+    const wtLabel = wtUnit === 'lbs' ? 'lbs' : 'kg';
+
+    // Update rate label
+    const rateLabelEl = document.getElementById('freight-rate-label');
+    if (rateLabelEl) rateLabelEl.textContent = 'Rate per ' + wtLabel + ' (RMB)';
+
     // Update results
-    document.getElementById('freight-out-actual').textContent = actualKg.toFixed(2) + ' kg';
-    document.getElementById('freight-out-vol').textContent = volWeight.toFixed(2) + ' kg';
-    document.getElementById('freight-out-charge').textContent = chargeWeight.toFixed(2) + ' kg';
+    document.getElementById('freight-out-actual').textContent = displayWt(actualKg);
+    document.getElementById('freight-out-vol').textContent = displayWt(volWeight);
+    document.getElementById('freight-out-charge').textContent = displayWt(chargeWeight);
     document.getElementById('freight-out-formula').textContent = formulaStr;
     document.getElementById('freight-out-cost').textContent = '$' + totalCost.toFixed(2);
 
@@ -5797,9 +5806,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('freight-bar-actual').style.height = ((actualKg / maxWt) * 100) + '%';
     document.getElementById('freight-bar-vol').style.height = ((volWeight / maxWt) * 100) + '%';
     document.getElementById('freight-bar-charge').style.height = ((chargeWeight / maxWt) * 100) + '%';
-    document.getElementById('freight-bar-actual-val').textContent = actualKg.toFixed(1);
-    document.getElementById('freight-bar-vol-val').textContent = volWeight.toFixed(1);
-    document.getElementById('freight-bar-charge-val').textContent = chargeWeight.toFixed(1);
+    document.getElementById('freight-bar-actual-val').textContent = displayWtShort(actualKg);
+    document.getElementById('freight-bar-vol-val').textContent = displayWtShort(volWeight);
+    document.getElementById('freight-bar-charge-val').textContent = displayWtShort(chargeWeight);
 
     // Verdict
     const verdictEl = document.getElementById('freight-verdict');
@@ -5828,8 +5837,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Method comparison
     const volBoat = volume / 6000;
     const volAir = volume / 5000;
-    document.getElementById('freight-cmp-air').textContent = volBoat.toFixed(2) + ' kg (÷ 6,000)';
-    document.getElementById('freight-cmp-express').textContent = volAir.toFixed(2) + ' kg (÷ 5,000)';
+    const cmpSuffix = wtUnit === 'lbs' ? ' lbs' : ' kg';
+    document.getElementById('freight-cmp-air').textContent = wtUnit === 'lbs' ? (volBoat * 2.20462).toFixed(2) + cmpSuffix + ' (÷ 6,000)' : volBoat.toFixed(2) + cmpSuffix + ' (÷ 6,000)';
+    document.getElementById('freight-cmp-express').textContent = wtUnit === 'lbs' ? (volAir * 2.20462).toFixed(2) + cmpSuffix + ' (÷ 5,000)' : volAir.toFixed(2) + cmpSuffix + ' (÷ 5,000)';
     const cbm = volume / 1000000;
     document.getElementById('freight-cmp-sea').textContent = cbm.toFixed(4) + ' CBM';
   }
