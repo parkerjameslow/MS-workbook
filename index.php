@@ -4226,9 +4226,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const PALLET_W = 121.92;   // cm (48 in)
   const PALLET_DECK = 15;    // cm pallet deck height
   const MAX_LOAD_H = 182;    // cm max stack height above deck (~72 in)
+  const ISO_COS30 = Math.cos(Math.PI / 6); // 0.866
+  const ISO_SIN30 = 0.5;
 
+  // Camera from above: +x goes right-down, +z goes left-down, +y goes up
   function isoProj(wx, wy, wz, s, ox, oy) {
-    return { x: ox + (wx - wz) * s, y: oy - (wx + wz) * s * 0.5 - wy * s };
+    return {
+      x: ox + (wx - wz) * ISO_COS30 * s,
+      y: oy + (wx + wz) * ISO_SIN30 * s - wy * s
+    };
   }
 
   function isoFace(ctx, pts, fill, stroke) {
@@ -4253,12 +4259,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function drawIsoBox(ctx, wx, wy, wz, bw, bh, bd, s, ox, oy, hex) {
     const p = (x,y,z) => isoProj(x,y,z,s,ox,oy);
-    // Top face (brightest)
-    isoFace(ctx, [p(wx,wy+bh,wz), p(wx+bw,wy+bh,wz), p(wx+bw,wy+bh,wz+bd), p(wx,wy+bh,wz+bd)], shadeRgb(hex, 20));
-    // Front-left face (facing -z direction)
-    isoFace(ctx, [p(wx,wy,wz), p(wx+bw,wy,wz), p(wx+bw,wy+bh,wz), p(wx,wy+bh,wz)], hex);
-    // Front-right face (facing +x direction)
-    isoFace(ctx, [p(wx+bw,wy,wz), p(wx+bw,wy,wz+bd), p(wx+bw,wy+bh,wz+bd), p(wx+bw,wy+bh,wz)], shadeRgb(hex, -45));
+    // Top face (+y) — brightest
+    isoFace(ctx, [p(wx,wy+bh,wz), p(wx+bw,wy+bh,wz), p(wx+bw,wy+bh,wz+bd), p(wx,wy+bh,wz+bd)], shadeRgb(hex, 25));
+    // Right face (+x at wx+bw) — medium
+    isoFace(ctx, [p(wx+bw,wy,wz), p(wx+bw,wy,wz+bd), p(wx+bw,wy+bh,wz+bd), p(wx+bw,wy+bh,wz)], hex);
+    // Front face (+z at wz+bd) — darkest
+    isoFace(ctx, [p(wx,wy,wz+bd), p(wx+bw,wy,wz+bd), p(wx+bw,wy+bh,wz+bd), p(wx,wy+bh,wz+bd)], shadeRgb(hex, -40));
   }
 
   function bestPalletOrientation(bL, bW) {
@@ -4293,20 +4299,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const maxLayers = Math.max(1, Math.floor(MAX_LOAD_H / bH));
     const showLayers = Math.min(maxLayers, 12); // cap visual layers
 
-    // Scale to fit canvas
-    const worldSpan = PALLET_L + PALLET_W;
-    const worldH = PALLET_DECK + showLayers * bH;
-    const s = Math.min((CW * 0.44) / worldSpan, (CH * 0.78) / (worldSpan * 0.5 + worldH));
-    const ox = CW * 0.54;
-    const oy = CH * 0.93;
+    // Scale to fit canvas — origin near top, stack grows upward
+    const footprintSpan = PALLET_L + PALLET_W;
+    const stackH = PALLET_DECK + showLayers * bH;
+    const s = Math.min(
+      (CW * 0.82) / (footprintSpan * ISO_COS30),
+      (CH * 0.88) / (stackH + footprintSpan * ISO_SIN30)
+    );
+    const ox = CW / 2 + (PALLET_W - PALLET_L) * ISO_COS30 * s / 2;
+    const oy = stackH * s + 10; // near top of canvas
 
     // Draw pallet deck
     drawIsoBox(ctx, 0, 0, 0, PALLET_L, PALLET_DECK, PALLET_W, s, ox, oy, '#a8a8a8');
 
-    // Draw boxes back-to-front using diagonal sweep (painter's algorithm)
+    // Draw boxes back-to-front: diag 0 (back corner) → max (front corner)
     for (let layer = 0; layer < showLayers; layer++) {
-      for (let diag = layout.cols + layout.rows - 2; diag >= 0; diag--) {
-        for (let col = Math.min(diag, layout.cols-1); col >= Math.max(0, diag - layout.rows + 1); col--) {
+      for (let diag = 0; diag <= layout.cols + layout.rows - 2; diag++) {
+        for (let col = Math.max(0, diag - layout.rows + 1); col <= Math.min(diag, layout.cols - 1); col++) {
           const row = diag - col;
           drawIsoBox(ctx,
             col * layout.bL, PALLET_DECK + layer * bH, row * layout.bW,
