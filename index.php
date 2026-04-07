@@ -2835,8 +2835,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
-              <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
-              <input type="number" min="0" placeholder="e.g. 100" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons()" />
+              <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(inner cartons / outer)</span></div>
+              <input type="number" min="0" placeholder="e.g. 4" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons()" />
             </div>
           </div>
         </div>
@@ -4193,8 +4193,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pL = parseFloat(document.getElementById('dim-cm-l').value);
     const pW = parseFloat(document.getElementById('dim-cm-w').value);
     const pH = parseFloat(document.getElementById('dim-cm-h').value);
-    const innerQty = parseInt(document.getElementById('carton-inner-count').value);
-    const outerQty = parseInt(document.getElementById('carton-outer-count').value);
+    const innerQty = parseInt(document.getElementById('carton-inner-count').value);  // products per inner carton
+    const outerQty = parseInt(document.getElementById('carton-outer-count').value);  // inner cartons per outer carton
     const PADDING = 2; // 2cm carton wall allowance
 
     if (!pL || !pW || !pH) return;
@@ -4203,7 +4203,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const productWeightKg = parseFloat(document.getElementById('dim-weight-kg').value);
 
-    // ── Inner carton ──
+    // ── Inner carton: sized to hold innerQty products ──
     if (innerQty >= 1) {
       innerDims = bestCartonDims(pL, pW, pH, innerQty, PADDING);
       setCartonDimFields('carton-inner', innerDims.L, innerDims.W, innerDims.H);
@@ -4215,20 +4215,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (badge) badge.style.display = '';
     }
 
-    // ── Outer carton ──
+    // ── Outer carton: sized to hold outerQty inner cartons ──
+    // outerQty = number of INNER CARTONS per outer carton (not products)
     if (outerQty >= 1) {
       let outerDims;
-      if (innerDims && innerQty >= 1 && outerQty > innerQty && outerQty % innerQty === 0) {
-        // Stack inner cartons inside outer
-        const innerCartons = outerQty / innerQty;
-        outerDims = bestCartonDims(innerDims.L, innerDims.W, innerDims.H, innerCartons, PADDING);
+      if (innerDims) {
+        // Stack outer carton from inner carton dims
+        outerDims = bestCartonDims(innerDims.L, innerDims.W, innerDims.H, outerQty, PADDING);
       } else {
-        // Calculate directly from product dims
+        // No inner defined — outer qty treated as products per outer
         outerDims = bestCartonDims(pL, pW, pH, outerQty, PADDING);
       }
       setCartonDimFields('carton-outer', outerDims.L, outerDims.W, outerDims.H);
       if (!isNaN(productWeightKg) && productWeightKg > 0) {
-        document.getElementById('carton-outer-weight').value = (productWeightKg * outerQty).toFixed(3);
+        // Outer weight = product weight × products per inner × inner cartons per outer
+        const productsPerOuter = innerDims && innerQty >= 1 ? innerQty * outerQty : outerQty;
+        document.getElementById('carton-outer-weight').value = (productWeightKg * productsPerOuter).toFixed(3);
         convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
       }
       const badge = document.getElementById('outer-calc-badge');
@@ -4355,15 +4357,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalCartons = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
     const palletsNeeded = totalCartons > 0 ? Math.ceil(totalCartons / totalPerPallet) : null;
 
+    // Derived product counts
+    const innerQtyVal  = parseInt(document.getElementById('carton-inner-count').value) || 0; // products per inner
+    const outerQtyVal  = parseInt(document.getElementById('carton-outer-count').value) || 0; // inner cartons per outer
+    const productsPerOuter = (innerQtyVal > 0 && outerQtyVal > 0) ? innerQtyVal * outerQtyVal : 0;
+    const totalInners  = (totalCartons > 0 && outerQtyVal > 0) ? totalCartons * outerQtyVal : 0;
+    const totalProducts = (totalCartons > 0 && productsPerOuter > 0) ? totalCartons * productsPerOuter : 0;
+
     document.getElementById('pallet-stats').innerHTML = `
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perLayer}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">cartons / layer</div></div>
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perLayer}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">outer cartons / layer</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${maxLayers}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">max layers</div></div>
-        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalPerPallet}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">cartons / pallet</div></div>
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalPerPallet}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">outer cartons / pallet</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">surface coverage</div></div>
-        ${palletsNeeded !== null ? `<div style="grid-column:span 2; padding-top:8px; border-top:1px solid var(--border);"><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed for ${totalCartons} cartons</div></div>` : ''}
+        ${productsPerOuter > 0 ? `
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${outerQtyVal}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">inner cartons / outer</div></div>
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${productsPerOuter}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">products / outer carton</div></div>` : ''}
       </div>
-      <div style="margin-top:16px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
+      ${totalCartons > 0 ? `
+      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalCartons} outer cartons</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed</div></div>
+          ${totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>'}
+          ${totalProducts > 0 ? `<div style="grid-column:span 2;"><div style="font-size:22px; font-weight:700; color:var(--text);">${totalProducts.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total products</div></div>` : ''}
+        </div>
+      </div>` : ''}
+      <div style="margin-top:14px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
         Box orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer
       </div>`;
 
@@ -4371,7 +4391,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const inlineEl = document.getElementById('pallet-inline-stats');
     if (inlineEl) {
       inlineEl.style.display = '';
-      inlineEl.innerHTML = `<span style="opacity:0.75;">Pallet:</span> <strong>${perLayer}</strong> / layer &nbsp;·&nbsp; <strong>${maxLayers}</strong> layers &nbsp;·&nbsp; <strong>${totalPerPallet}</strong> / pallet${palletsNeeded !== null ? ` &nbsp;·&nbsp; <strong style="color:var(--accent);">${palletsNeeded} pallets</strong>` : ''}`;
+      const palletPart = palletsNeeded !== null ? ` &nbsp;·&nbsp; <strong style="color:var(--accent);">${palletsNeeded} pallets</strong>` : '';
+      inlineEl.innerHTML = `<span style="opacity:0.75;">Pallet:</span> <strong>${perLayer}</strong> / layer &nbsp;·&nbsp; <strong>${totalPerPallet}</strong> / pallet${palletPart}`;
     }
   }
 
