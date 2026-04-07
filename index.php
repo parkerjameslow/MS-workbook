@@ -3626,7 +3626,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const isDark = body.dataset.theme === 'dark';
     body.dataset.theme = isDark ? 'light' : 'dark';
     const btn = document.getElementById('theme-dropdown-btn');
-    if (btn) btn.textContent = isDark ? '🌙 Dark Mode' : '☀️ Light Mode';
+    if (btn) btn.textContent = isDark ? 'Dark Mode' : 'Light Mode';
   }
 
   /* ── User Dropdown ──────────────────────────────────────────────────────── */
