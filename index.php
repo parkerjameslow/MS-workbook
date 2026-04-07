@@ -1784,6 +1784,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-top: 1px solid var(--border);
     }
 
+    /* Collapsible shipping sub-section */
+    .freight-subsection-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      margin: 0 -18px;
+      padding: 8px 18px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+      margin-bottom: 14px;
+    }
+    .freight-subsection-header:hover {
+      background: color-mix(in srgb, var(--surface2) 85%, var(--border));
+    }
+    .freight-subsection-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+    .freight-subsection-chevron {
+      font-size: 16px;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+      line-height: 1;
+    }
+    .freight-subsection-header.collapsed .freight-subsection-chevron {
+      transform: rotate(-90deg);
+    }
+    .freight-subsection-body {
+      overflow: hidden;
+      transition: max-height 0.25s ease, opacity 0.2s;
+      max-height: 600px;
+      opacity: 1;
+    }
+    .freight-subsection-body.collapsed {
+      max-height: 0;
+      opacity: 0;
+    }
+
     .freight-result {
       display: flex;
       justify-content: space-between;
@@ -3077,48 +3121,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <input type="number" step="1" min="1" placeholder="e.g. 500" id="freight-cartons" oninput="calcFreight()" />
             </div>
 
-            <hr class="freight-section-divider" />
-            <div class="freight-panel-title" style="margin-top:0;">Shipping</div>
-
-            <div class="freight-field">
-              <label>Shipping Method</label>
-              <div class="select-wrap"><select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
-                <option value="slow" selected>Slow Boat</option>
-                <option value="fast">Fast Boat</option>
-                <option value="airupp">Air + UPS</option>
-                <option value="directair">Direct Air</option>
-              </select></div>
+            <!-- Collapsible Shipping sub-section -->
+            <div class="freight-subsection-header" id="freight-shipping-header" onclick="toggleFreightShipping()">
+              <span class="freight-subsection-title">Shipping</span>
+              <span class="freight-subsection-chevron">›</span>
             </div>
 
-            <div class="freight-rate-row">
+            <div class="freight-subsection-body" id="freight-shipping-body">
               <div class="freight-field">
-                <label id="freight-rate-label">Rate per kg (RMB)</label>
-                <div class="currency-prefix currency-rmb">
-                  <input type="number" step="0.01" min="0" value="12" id="freight-rate" oninput="calcFreight()" />
+                <label>Shipping Method</label>
+                <div class="select-wrap"><select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
+                  <option value="slow" selected>Slow Boat</option>
+                  <option value="fast">Fast Boat</option>
+                  <option value="airupp">Air + UPS</option>
+                  <option value="directair">Direct Air</option>
+                </select></div>
+              </div>
+
+              <div class="freight-rate-row">
+                <div class="freight-field">
+                  <label id="freight-rate-label">Rate per kg (RMB)</label>
+                  <div class="currency-prefix currency-rmb">
+                    <input type="number" step="0.01" min="0" value="12" id="freight-rate" oninput="calcFreight()" />
+                  </div>
+                </div>
+                <div class="freight-rate-usd">
+                  <span class="freight-rate-usd-label">≈&nbsp;$</span>
+                  <span id="freight-rate-usd-val">—</span>
+                  <span class="freight-rate-usd-unit">/kg</span>
                 </div>
               </div>
-              <div class="freight-rate-usd">
-                <span class="freight-rate-usd-label">≈&nbsp;$</span>
-                <span id="freight-rate-usd-val">—</span>
-                <span class="freight-rate-usd-unit">/kg</span>
+
+              <div class="freight-field">
+                <label>Exchange Rate (¥ per $1 USD)</label>
+                <input type="number" step="0.01" min="1" value="7.2" id="freight-exchange-rate" oninput="calcFreight()" />
               </div>
-            </div>
 
-            <div class="freight-field" style="margin-bottom:0;">
-              <label>Exchange Rate (¥ per $1 USD)</label>
-              <input type="number" step="0.01" min="1" value="7.2" id="freight-exchange-rate" oninput="calcFreight()" />
+              <!-- Reference table — estimated cost per method -->
+              <table class="freight-ref-table" style="margin-bottom:4px;">
+                <thead><tr><th>Method</th><th>Rate (RMB/kg)</th><th>Est. Total Cost</th></tr></thead>
+                <tbody>
+                  <tr><td>Slow Boat</td><td>¥ 12.00</td><td id="freight-cmp-slow">—</td></tr>
+                  <tr><td>Fast Boat</td><td>¥ 14.00</td><td id="freight-cmp-fast">—</td></tr>
+                  <tr><td>Air + UPS</td><td>¥ 44.00</td><td id="freight-cmp-airupp">—</td></tr>
+                  <tr><td>Direct Air</td><td>¥ 65.00</td><td id="freight-cmp-directair">—</td></tr>
+                </tbody>
+              </table>
             </div>
-
-            <!-- Reference table — estimated cost per method -->
-            <table class="freight-ref-table">
-              <thead><tr><th>Method</th><th>Rate (RMB/kg)</th><th>Est. Total Cost</th></tr></thead>
-              <tbody>
-                <tr><td>Slow Boat</td><td>¥ 12.00</td><td id="freight-cmp-slow">—</td></tr>
-                <tr><td>Fast Boat</td><td>¥ 14.00</td><td id="freight-cmp-fast">—</td></tr>
-                <tr><td>Air + UPS</td><td>¥ 44.00</td><td id="freight-cmp-airupp">—</td></tr>
-                <tr><td>Direct Air</td><td>¥ 65.00</td><td id="freight-cmp-directair">—</td></tr>
-              </tbody>
-            </table>
           </div>
 
           <!-- RESULTS PANEL -->
@@ -5862,6 +5911,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function updateFreightRate() {
     const mode = document.getElementById('freight-mode').value;
     document.getElementById('freight-rate').value = freightMethodRates[mode];
+  }
+
+  function toggleFreightShipping() {
+    const header = document.getElementById('freight-shipping-header');
+    const body   = document.getElementById('freight-shipping-body');
+    header.classList.toggle('collapsed');
+    body.classList.toggle('collapsed');
   }
 
   // Sync outer carton dims/weight display from workbook fields
