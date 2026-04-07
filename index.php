@@ -2312,14 +2312,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span style="font-size:10px; color:var(--text-muted); margin-left:2px;">▾</span>
       </button>
       <div class="user-dropdown" id="user-dropdown">
-        <button class="user-dropdown-item" id="theme-dropdown-btn" onclick="toggleTheme()">☀️ Light Mode</button>
-        <button class="user-dropdown-item" onclick="window.print(); closeUserDropdown()">🖨️ Print / Export</button>
-        <button class="user-dropdown-item" onclick="openChangePasswordModal(); closeUserDropdown()">🔑 Change Password</button>
+        <button class="user-dropdown-item" onclick="openChangePasswordModal(); closeUserDropdown()">Change Password</button>
+        <button class="user-dropdown-item" onclick="openHistoryModal(); closeUserDropdown()">History</button>
+        <button class="user-dropdown-item" id="theme-dropdown-btn" onclick="toggleTheme()">Light Mode</button>
         <?php if ($_msRole === 'admin'): ?>
-        <button class="user-dropdown-item" onclick="openUsersModal(); closeUserDropdown()">👥 Manage Users</button>
+        <button class="user-dropdown-item" onclick="openUsersModal(); closeUserDropdown()">Manage Users</button>
         <?php endif; ?>
+        <button class="user-dropdown-item" onclick="window.print(); closeUserDropdown()">Print / Export</button>
         <hr class="user-dropdown-divider">
-        <a class="user-dropdown-item danger" href="logout.php">⏻ Log Out</a>
+        <a class="user-dropdown-item danger" href="logout.php">Log Out</a>
       </div>
     </div>
   </div>
