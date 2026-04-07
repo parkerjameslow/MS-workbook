@@ -2415,9 +2415,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="wb-tab active" onclick="switchWbTab('workbook', this)"><span class="tab-full">Workbook</span><span class="tab-short">Work</span></button>
         <button class="wb-tab" onclick="switchWbTab('shipping', this)"><span class="tab-full">Shipping</span><span class="tab-short">Ship</span></button>
         <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
-        <button class="wb-tab" onclick="switchWbTab('quote', this)"><span class="tab-full">Quote for Client</span><span class="tab-short">Quote</span></button>
         <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
-        <button class="wb-tab" onclick="switchWbTab('invoice', this)"><span class="tab-full">Office Invoice</span><span class="tab-short">Invoice</span></button>
       </div>
     </div>
   </div>
@@ -2752,7 +2750,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-kg" oninput="convertWeight('dim-weight-kg','dim-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-kg" oninput="convertWeight('dim-weight-kg','dim-weight-lbs','kg'); autoCalcCartons()" /><span class="specs-unit-tag">kg</span></div>
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="dim-weight-lbs" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs')" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Packaging Type</div>
@@ -3220,7 +3218,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div><!-- /#wb-tab-pricing -->
 
   <!-- ── Tab: Quote for Client ── -->
-  <div id="wb-tab-quote" class="wb-tab-content">
+  <div id="wb-tab-quote" class="wb-tab-content" style="display:none!important">
   <div class="section-card">
     <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
       <span class="section-title">Quote for Client</span>
@@ -3344,7 +3342,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div><!-- /#wb-tab-art -->
 
   <!-- ── Tab: Office Invoice ── -->
-  <div id="wb-tab-invoice" class="wb-tab-content">
+  <div id="wb-tab-invoice" class="wb-tab-content" style="display:none!important">
   <div class="section-card">
     <div class="section-header">
       <span class="section-title">Office Invoice</span>
@@ -4195,10 +4193,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     let innerDims = null;
 
+    const productWeightKg = parseFloat(document.getElementById('dim-weight-kg').value);
+
     // ── Inner carton ──
     if (innerQty >= 1) {
       innerDims = bestCartonDims(pL, pW, pH, innerQty, PADDING);
       setCartonDimFields('carton-inner', innerDims.L, innerDims.W, innerDims.H);
+      if (!isNaN(productWeightKg) && productWeightKg > 0) {
+        document.getElementById('carton-inner-weight').value = (productWeightKg * innerQty).toFixed(3);
+        convertWeight('carton-inner-weight', 'carton-inner-weight-lbs', 'kg');
+      }
       const badge = document.getElementById('inner-calc-badge');
       if (badge) badge.style.display = '';
     }
@@ -4215,6 +4219,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         outerDims = bestCartonDims(pL, pW, pH, outerQty, PADDING);
       }
       setCartonDimFields('carton-outer', outerDims.L, outerDims.W, outerDims.H);
+      if (!isNaN(productWeightKg) && productWeightKg > 0) {
+        document.getElementById('carton-outer-weight').value = (productWeightKg * outerQty).toFixed(3);
+        convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
+      }
       const badge = document.getElementById('outer-calc-badge');
       if (badge) badge.style.display = '';
     }
