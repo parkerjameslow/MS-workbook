@@ -1858,17 +1858,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
 
-    /* Compact method + rate row */
-    .freight-method-rate-row {
-      display: flex;
-      align-items: flex-end;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-    .freight-method-select-wrap {
-      flex: 1;
-      min-width: 0;
-    }
+    /* Shipping method bar — single bordered row */
+    .freight-method-rate-row { margin-bottom: 14px; }
     .freight-method-label {
       display: block;
       font-size: 11px;
@@ -1876,50 +1867,60 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       text-transform: uppercase;
       letter-spacing: 0.03em;
       color: var(--text-muted);
-      margin-bottom: 4px;
+      margin-bottom: 5px;
     }
-    .freight-method-select-wrap .select-wrap select {
-      width: 100%;
-      padding: 8px 10px;
+    .freight-method-bar {
+      display: flex;
+      align-items: stretch;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
+      overflow: hidden;
+      height: 40px;
+    }
+    .freight-method-bar-select {
+      flex: 1;
+      min-width: 0;
+    }
+    .freight-method-bar-select select {
+      width: 100%;
+      height: 100%;
+      padding: 0 10px;
+      border: none;
       background: var(--surface);
       color: var(--text);
       font-size: 13px;
       font-family: inherit;
-      height: 38px;
-      box-sizing: border-box;
+      outline: none;
+      cursor: pointer;
+      appearance: auto;
     }
-    .freight-rate-chips {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      padding-bottom: 1px;
-    }
-    .freight-rate-chip {
+    .freight-method-bar-rate {
       display: flex;
       align-items: center;
-      gap: 5px;
-      padding: 4px 8px;
-      border-radius: var(--radius-sm);
-      border: 1px solid var(--border);
-      background: var(--surface);
+      gap: 4px;
+      padding: 0 14px;
+      border-left: 1px solid var(--border);
+      background: var(--surface2);
       white-space: nowrap;
     }
-    .freight-rate-chip-label {
-      font-size: 10px;
+    .freight-method-bar-sym {
+      font-size: 14px;
       font-weight: 700;
-      text-transform: uppercase;
-      color: var(--text-muted);
-      min-width: 28px;
     }
-    .freight-rate-chip-val {
+    .freight-method-bar-val {
       font-family: 'SF Mono', 'Consolas', monospace;
-      font-size: 12px;
+      font-size: 14px;
       font-weight: 700;
     }
-    .rmb-chip .freight-rate-chip-val { color: var(--accent); }
-    .usd-chip .freight-rate-chip-val { color: var(--success); }
+    .freight-method-bar-unit {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .freight-method-bar-rate.rmb .freight-method-bar-sym,
+    .freight-method-bar-rate.rmb .freight-method-bar-val { color: var(--accent); }
+    .freight-method-bar-rate.usd .freight-method-bar-sym,
+    .freight-method-bar-rate.usd .freight-method-bar-val { color: var(--success); }
 
     /* Comparison table with 5 columns */
     .freight-cmp-table th,
@@ -3287,11 +3288,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="freight-panel">
           <div class="freight-panel-title">Shipping</div>
 
-          <!-- Compact method + rate row -->
+          <!-- Method + rate single bar -->
           <div class="freight-method-rate-row">
-            <div class="freight-method-select-wrap">
-              <label class="freight-method-label">Shipping Method</label>
-              <div class="select-wrap">
+            <label class="freight-method-label">Shipping Method</label>
+            <div class="freight-method-bar">
+              <div class="freight-method-bar-select">
                 <select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
                   <option value="slow" selected>Slow Boat</option>
                   <option value="fast">Fast Boat</option>
@@ -3299,15 +3300,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   <option value="directair">Direct Air</option>
                 </select>
               </div>
-            </div>
-            <div class="freight-rate-chips">
-              <div class="freight-rate-chip rmb-chip">
-                <span class="freight-rate-chip-label">¥/kg</span>
-                <span class="freight-rate-chip-val" id="freight-rate-rmb-display">12.00</span>
+              <div class="freight-method-bar-rate rmb">
+                <span class="freight-method-bar-sym">¥</span>
+                <span class="freight-method-bar-val" id="freight-rate-rmb-display">12.00</span>
+                <span class="freight-method-bar-unit">per kg</span>
               </div>
-              <div class="freight-rate-chip usd-chip">
-                <span class="freight-rate-chip-label">$/kg</span>
-                <span class="freight-rate-chip-val" id="freight-rate-usd-display">1.67</span>
+              <div class="freight-method-bar-rate usd">
+                <span class="freight-method-bar-sym">$</span>
+                <span class="freight-method-bar-val" id="freight-rate-usd-display">1.67</span>
+                <span class="freight-method-bar-unit">per kg</span>
               </div>
             </div>
           </div>
