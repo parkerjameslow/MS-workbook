@@ -2804,6 +2804,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
               <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons()" />
             </div>
+            <div class="specs-full-row" id="inner-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
           </div>
         </div>
 
@@ -2837,6 +2838,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(inner cartons / outer)</span></div>
               <input type="number" min="0" placeholder="e.g. 4" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons()" />
             </div>
+            <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
           </div>
@@ -4204,16 +4206,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const productWeightKg = parseFloat(document.getElementById('dim-weight-kg').value);
 
+    const setHint = (id, nx, ny, nz, itemWord) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = '';
+      const layerNote = nz > 1 ? `, ${nz} high` : '';
+      el.textContent = `${nx} × ${ny}${layerNote}  =  ${nx * ny * nz} ${itemWord} per carton`;
+    };
+
     // ── Inner carton: sized to hold innerQty products ──
     if (innerQty >= 1) {
       innerDims = bestCartonDims(pL, pW, pH, innerQty, PADDING);
       setCartonDimFields('carton-inner', innerDims.L, innerDims.W, innerDims.H);
+      setHint('inner-arrange-hint', innerDims.nx, innerDims.ny, innerDims.nz, innerQty === 1 ? 'unit' : 'units');
       if (!isNaN(productWeightKg) && productWeightKg > 0) {
         document.getElementById('carton-inner-weight').value = (productWeightKg * innerQty).toFixed(3);
         convertWeight('carton-inner-weight', 'carton-inner-weight-lbs', 'kg');
       }
       const badge = document.getElementById('inner-calc-badge');
       if (badge) badge.style.display = '';
+    } else {
+      const h = document.getElementById('inner-arrange-hint');
+      if (h) h.style.display = 'none';
     }
 
     // ── Outer carton: sized to hold outerQty inner cartons ──
@@ -4221,11 +4235,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (outerQty >= 1) {
       let outerDims;
       if (innerDims) {
-        // Stack outer carton from inner carton dims
         outerDims = bestCartonDims(innerDims.L, innerDims.W, innerDims.H, outerQty, PADDING);
+        setHint('outer-arrange-hint', outerDims.nx, outerDims.ny, outerDims.nz, outerQty === 1 ? 'inner' : 'inners');
       } else {
-        // No inner defined — outer qty treated as products per outer
         outerDims = bestCartonDims(pL, pW, pH, outerQty, PADDING);
+        setHint('outer-arrange-hint', outerDims.nx, outerDims.ny, outerDims.nz, outerQty === 1 ? 'unit' : 'units');
       }
       setCartonDimFields('carton-outer', outerDims.L, outerDims.W, outerDims.H);
       if (!isNaN(productWeightKg) && productWeightKg > 0) {
@@ -4235,6 +4249,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       const badge = document.getElementById('outer-calc-badge');
       if (badge) badge.style.display = '';
+    } else {
+      const h = document.getElementById('outer-arrange-hint');
+      if (h) h.style.display = 'none';
     }
     renderPalletViz();
   }
