@@ -828,8 +828,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .video-lightbox-inner iframe, .video-lightbox-inner video { width: 100%; height: 100%; border-radius: 8px; border: none; }
 
     /* ── Secondary Category / Material dropdowns ─────────────────────────── */
-    .secondary-select-wrap { margin-top: 8px; opacity: 0.38; transition: opacity 0.2s; }
-    .secondary-select-wrap.has-value { opacity: 1; }
+    .secondary-select-wrap { margin-top: 8px; opacity: 0.3; pointer-events: none; transition: opacity 0.2s; }
+    .secondary-select-wrap.unlocked { opacity: 0.65; pointer-events: auto; }
+    .secondary-select-wrap.unlocked.has-value { opacity: 1; }
     .secondary-select-label {
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
       color: var(--text-muted); margin-bottom: 4px;
@@ -2493,7 +2494,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="secondary-select-wrap" id="cat2-wrap">
               <div class="secondary-select-label">Secondary Category</div>
               <div class="select-wrapper">
-                <select id="product-category-2" onchange="onSecondaryChange('cat2-wrap', this); updateSubcategories();">
+                <select id="product-category-2" disabled onchange="onSecondaryChange('cat2-wrap', this); updateSubcategories();">
                   <option value="">None</option>
                   <option value="packaging">Packaging</option>
                   <option value="apparel">Apparel</option>
@@ -2514,14 +2515,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="field">
             <label>Material Type</label>
             <div class="select-wrapper">
-              <select id="product-subcategory">
+              <select id="product-subcategory" onchange="checkSecondaryLock()">
                 <option value="">Select category first...</option>
               </select>
             </div>
             <div class="secondary-select-wrap" id="mat2-wrap">
               <div class="secondary-select-label">Secondary Material</div>
               <div class="select-wrapper">
-                <select id="product-subcategory-2" onchange="onSecondaryChange('mat2-wrap', this)">
+                <select id="product-subcategory-2" disabled onchange="onSecondaryChange('mat2-wrap', this)">
                   <option value="">None</option>
                 </select>
               </div>
@@ -4007,6 +4008,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       matOpts.map(s => `<option value="${s}">${s}</option>`).join('');
     if (prev2) subSel2.value = prev2;
     document.getElementById('mat2-wrap').classList.toggle('has-value', !!subSel2.value);
+    checkSecondaryLock();
+  }
+
+  function checkSecondaryLock() {
+    const cat = document.getElementById('product-category').value;
+    const mat = document.getElementById('product-subcategory').value;
+    const ready = !!(cat && mat);
+
+    const cat2Wrap = document.getElementById('cat2-wrap');
+    const mat2Wrap = document.getElementById('mat2-wrap');
+    const cat2Sel  = document.getElementById('product-category-2');
+    const mat2Sel  = document.getElementById('product-subcategory-2');
+
+    if (ready) {
+      cat2Wrap.classList.add('unlocked');
+      mat2Wrap.classList.add('unlocked');
+      cat2Sel.disabled = false;
+      mat2Sel.disabled = false;
+    } else {
+      cat2Wrap.classList.remove('unlocked', 'has-value');
+      mat2Wrap.classList.remove('unlocked', 'has-value');
+      cat2Sel.disabled = true;  cat2Sel.value = '';
+      mat2Sel.disabled = true;  mat2Sel.value = '';
+    }
   }
 
   function onSecondaryChange(wrapId, sel) {
@@ -6691,6 +6716,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('product-subcategory', data.productSubcategory);
       _s('product-subcategory-2', data.productSubcategory2 || '');
       document.getElementById('mat2-wrap').classList.toggle('has-value', !!data.productSubcategory2);
+      checkSecondaryLock();
       _s('materials', data.materials);
       _s('pantone-text', data.pantone);
       _s('cmyk', data.cmyk);
