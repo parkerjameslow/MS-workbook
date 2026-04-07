@@ -4316,6 +4316,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const layout = bestPalletOrientation(bL, bW);
     const perLayer = layout.cols * layout.rows;
+
+    // Carton too large to fit on pallet — show warning instead of empty view
+    if (perLayer === 0) {
+      ctx.fillStyle = '#aaa';
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Outer carton is too large for a 40 × 48 pallet.', CW/2, CH/2 - 10);
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.fillText(`Carton: ${bL.toFixed(1)} × ${bW.toFixed(1)} cm — Pallet: ${PALLET_L} × ${PALLET_W} cm`, CW/2, CH/2 + 10);
+      ctx.fillText('Try reducing the number of inner cartons per outer.', CW/2, CH/2 + 28);
+      document.getElementById('pallet-stats').innerHTML = `
+        <div style="color:#f59e0b; font-size:13px; font-weight:600; margin-bottom:8px;">⚠ Outer carton exceeds pallet dimensions</div>
+        <div style="font-size:12px; color:var(--text-muted); line-height:1.6;">
+          The outer carton footprint (${bL.toFixed(1)} × ${bW.toFixed(1)} cm) is larger than the 40 × 48 in pallet (101.6 × 121.9 cm).<br><br>
+          Try reducing the <strong>inner cartons / outer</strong> qty so the outer carton fits on the pallet.
+        </div>`;
+      const inlineEl = document.getElementById('pallet-inline-stats');
+      if (inlineEl) { inlineEl.style.display = ''; inlineEl.innerHTML = '<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>'; }
+      return;
+    }
+
     const maxLayers = Math.max(1, Math.floor(MAX_LOAD_H / bH));
     const showLayers = Math.min(maxLayers, 12); // cap visual layers
 
