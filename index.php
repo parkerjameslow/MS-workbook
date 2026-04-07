@@ -2813,6 +2813,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span>Outer Carton</span>
             <span id="outer-calc-badge" style="display:none; font-size:10px; font-weight:600; color:var(--accent); opacity:0.8;">auto</span>
           </div>
+          <div id="pallet-inline-stats" style="display:none; font-size:11px; color:var(--accent); margin-bottom:8px; line-height:1.5;"></div>
           <div class="specs-dim-grid">
             <div></div>
             <div class="specs-unit-header">cm</div>
@@ -4299,6 +4300,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ctx.fillText('Enter outer carton dimensions', CW/2, CH/2 - 8);
       ctx.fillText('to see pallet visualization', CW/2, CH/2 + 10);
       document.getElementById('pallet-stats').innerHTML = '<span style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</span>';
+      const inlineEl = document.getElementById('pallet-inline-stats');
+      if (inlineEl) { inlineEl.style.display = 'none'; inlineEl.textContent = ''; }
       return;
     }
 
@@ -4356,6 +4359,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="margin-top:16px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
         Box orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer
       </div>`;
+
+    // Inline summary in the Outer Carton column header
+    const inlineEl = document.getElementById('pallet-inline-stats');
+    if (inlineEl) {
+      inlineEl.style.display = '';
+      inlineEl.innerHTML = `<span style="opacity:0.75;">Pallet:</span> <strong>${perLayer}</strong> / layer &nbsp;·&nbsp; <strong>${maxLayers}</strong> layers &nbsp;·&nbsp; <strong>${totalPerPallet}</strong> / pallet${palletsNeeded !== null ? ` &nbsp;·&nbsp; <strong style="color:var(--accent);">${palletsNeeded} pallets</strong>` : ''}`;
+    }
   }
 
   let convertingDim = false;
