@@ -905,15 +905,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       letter-spacing: 0.05em;
       color: var(--text-muted);
     }
+    .sh-tier-select-wrap {
+      position: relative;
+      width: 100%;
+    }
     .sh-tier-selector select {
-      padding: 9px 56px 9px 14px;
+      padding: 9px 44px 9px 14px;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       background: var(--surface2);
       color: var(--text);
       font-size: 13px;
       width: 100%;
-      appearance: auto;
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+    .sh-tier-select-arrow {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1;
     }
     .sh-tier-details {
       display: none;
@@ -3370,9 +3386,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="sh-tier-selector">
       <div class="sh-tier-selector-left">
         <span class="sh-tier-selector-label">Pricing Tier</span>
-        <select id="sh-tier-select" onchange="onShippingTierSelect()">
-          <option value="">— Select a tier —</option>
-        </select>
+        <div class="sh-tier-select-wrap">
+          <select id="sh-tier-select" onchange="onShippingTierSelect()">
+            <option value="">— Select a tier —</option>
+          </select>
+          <span class="sh-tier-select-arrow">&#x2335;</span>
+        </div>
       </div>
       <div class="sh-tier-details" id="sh-tier-details">
         <div class="sh-tier-detail-item"><span class="sh-tier-detail-label">Quantity</span><span class="sh-tier-detail-val" id="sh-td-qty">—</span></div>
