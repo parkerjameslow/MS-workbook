@@ -883,6 +883,68 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     .tier-table tr:last-child td { border-bottom: none; }
 
+    /* ── Tier selector bar (single row) ── */
+    .sh-tier-bar { padding: 0 !important; overflow: hidden; }
+    .sh-tier-row {
+      display: flex;
+      align-items: stretch;
+      height: 52px;
+    }
+    .sh-tier-select-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sh-tier-row-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .sh-tier-select-wrap select {
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      cursor: pointer;
+      appearance: auto;
+      min-width: 160px;
+    }
+    #sh-tier-details { display: none; }
+    #sh-tier-details.visible { display: flex; }
+    .sh-tier-stat {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
+      flex: 1;
+      padding: 0 20px;
+      border-right: 1px solid var(--border);
+    }
+    .sh-tier-stat:last-child { border-right: none; }
+    .sh-tier-stat-label {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .sh-tier-stat-val {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
     .sh-tier-detail-item { display: flex; flex-direction: column; gap: 3px; }
     .sh-tier-detail-label {
       font-size: 10px;
@@ -3437,27 +3499,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="sh-layout">
 
     <!-- ══ PRICING TIER selector — above outer carton + results ══ -->
-    <div class="sh-box" style="margin-bottom:0; padding:14px 18px;">
-      <div class="freight-method-rate-row" style="margin-bottom:0; align-items:center; flex-wrap:wrap; gap:12px;">
-        <label class="freight-method-label" style="flex-shrink:0;">Pricing Tier</label>
-        <div class="freight-method-bar-select" style="flex:0 0 auto; min-width:120px; max-width:200px;">
+    <div class="sh-box sh-tier-bar" style="margin-bottom:0;">
+      <div class="sh-tier-row">
+        <div class="sh-tier-select-wrap">
+          <span class="sh-tier-row-label">Pricing Tier</span>
           <select id="sh-tier-select" onchange="onShippingTierSelect()">
             <option value="">— Select a tier —</option>
           </select>
         </div>
-        <!-- Inline details — shown when a tier is selected -->
-        <div id="sh-tier-details" style="display:none; gap:24px; flex-wrap:wrap; align-items:center;">
-          <div class="sh-tier-detail-item">
-            <span class="sh-tier-detail-label">Unit Price (RMB)</span>
-            <span class="sh-tier-detail-val" id="sh-td-rmb-full">—</span>
+        <div id="sh-tier-details" style="flex:1; gap:0; align-items:stretch;">
+          <div class="sh-tier-stat">
+            <span class="sh-tier-stat-label">Unit (RMB)</span>
+            <span class="sh-tier-stat-val" id="sh-td-rmb-full">—</span>
           </div>
-          <div class="sh-tier-detail-item">
-            <span class="sh-tier-detail-label">Unit Price (USD)</span>
-            <span class="sh-tier-detail-val" id="sh-td-usd-full">—</span>
+          <div class="sh-tier-stat">
+            <span class="sh-tier-stat-label">Unit (USD)</span>
+            <span class="sh-tier-stat-val" id="sh-td-usd-full">—</span>
           </div>
-          <div class="sh-tier-detail-item">
-            <span class="sh-tier-detail-label">Total Product Cost</span>
-            <span class="sh-tier-detail-val" id="sh-td-total">—</span>
+          <div class="sh-tier-stat">
+            <span class="sh-tier-stat-label">Total Product Cost</span>
+            <span class="sh-tier-stat-val" id="sh-td-total">—</span>
           </div>
         </div>
       </div>
@@ -5556,7 +5617,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const detailBar = document.getElementById('sh-tier-details');
     const row = id ? document.getElementById(`wb-tier-${id}`) : null;
     if (!row) {
-      if (detailBar) detailBar.style.display = 'none';
+      if (detailBar) detailBar.classList.remove('visible');
       return;
     }
     const inputs = row.querySelectorAll('input');
@@ -5569,7 +5630,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('sh-td-rmb-full').textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('sh-td-usd-full').textContent = !isNaN(usd) ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('sh-td-total').textContent    = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    if (detailBar) detailBar.style.display = 'flex';
+    if (detailBar) detailBar.classList.add('visible');
     renderPricingTab();
 
     // Recalculate total outer cartons for this tier qty and refresh freight
