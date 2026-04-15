@@ -5052,7 +5052,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td><input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
-      <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + usdVal : '—'}</td>
+      <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td>${isFirstRow ? '' : '<span class="remove-tier" onclick="removeRfqRow(' + id + ')" title="Remove">&times;</span>'}</td>
@@ -5097,7 +5097,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const total = qty * usd;
     const usdEl = document.getElementById(`rfq-usd-${id}`);
     const totalEl = document.getElementById(`rfq-total-${id}`);
-    if (usdEl) usdEl.textContent = rmb ? '$' + usd.toFixed(2) : '—';
+    if (usdEl) usdEl.textContent = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
@@ -5244,7 +5244,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalEl = document.getElementById(`tier-total-${id}`);
     const usdEl = document.getElementById(`tier-usd-${id}`);
     if (!isNaN(rmb)) {
-      usdEl.textContent = '$' + usd.toFixed(2);
+      usdEl.textContent = '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     } else {
       usdEl.textContent = '—';
     }
@@ -5325,7 +5325,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalEl = document.getElementById(`wb-tier-total-${id}`);
     if (rmbEl) rmbEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     if (!isNaN(rmb) && rmb > 0) {
-      usdEl.textContent = '$' + usd.toFixed(2);
+      usdEl.textContent = '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     } else {
       usdEl.textContent = '—';
     }
@@ -6360,7 +6360,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('freight-out-vol').textContent     = totalVol.toFixed(2)     + ' kg  /  ' + (totalVol     * 2.20462).toFixed(2) + ' lbs';
     document.getElementById('freight-out-charge').textContent  = totalCharge.toFixed(2)  + ' kg  /  ' + (totalCharge  * 2.20462).toFixed(2) + ' lbs';
     document.getElementById('freight-out-formula').textContent = formulaStr;
-    document.getElementById('freight-out-cost').textContent    = '¥ ' + totalCostRmb.toFixed(2) + '  /  $ ' + totalCostUsd.toFixed(2);
+    document.getElementById('freight-out-cost').textContent    = '¥ ' + totalCostRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + totalCostUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
     // Bar chart
     const maxWt = Math.max(totalActual, totalVol, 0.01);
@@ -6379,7 +6379,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       verdictEl.className = 'freight-verdict volumetric';
       verdictEl.textContent = 'Volumetric weight applies — package is bulky/light.';
       const extraCostRmb = (volWeight - actualKg) * rate * cartons;
-      extraEl.innerHTML = 'Extra cost due to volumetric: <span>¥ ' + extraCostRmb.toFixed(2) + '  /  $ ' + (extraCostRmb / exchange).toFixed(2) + '</span>';
+      extraEl.innerHTML = 'Extra cost due to volumetric: <span>¥ ' + extraCostRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + (extraCostRmb / exchange).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</span>';
       extraEl.style.display = 'block';
     } else if (actualKg > volWeight) {
       verdictEl.className = 'freight-verdict actual';
@@ -6402,14 +6402,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const cw = Math.max(actualKg, vw) * cartons;  // total chargeable kg
       const cr = cw * m.r;
       const cu = cr / exchange;
-      const combinedVal = '¥ ' + cr.toFixed(2) + '  /  $ ' + cu.toFixed(2);
+      const combinedVal = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
       // 5-column breakdown table
       const wtEl  = document.getElementById('freight-wt-'  + m.key);
       const rmbEl = document.getElementById('freight-rmb-' + m.key);
       const usdEl = document.getElementById('freight-usd-' + m.key);
       if (wtEl)  wtEl.textContent  = cw.toFixed(2) + ' kg';
-      if (rmbEl) rmbEl.textContent = '¥ ' + cr.toFixed(2);
-      if (usdEl) usdEl.textContent = '$ ' + cu.toFixed(2);
+      if (rmbEl) rmbEl.textContent = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      if (usdEl) usdEl.textContent = '$ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
       // Results panel comparison
       const resEl = document.getElementById('freight-res-' + m.key);
       if (resEl) resEl.textContent = combinedVal;
