@@ -1826,7 +1826,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       letter-spacing: 0.06em;
       color: var(--text-muted);
     }
-    .qr-expand-toggle .section-chevron { margin-left: 0; padding-right: 2px; }
+    .qr-expand-toggle .section-chevron { margin-left: 0; padding-right: 2px; font-size: 14px; line-height: 1; vertical-align: middle; position: relative; top: -1px; }
 
     .pricing-quote-ref-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .pricing-quote-ref-table th {
