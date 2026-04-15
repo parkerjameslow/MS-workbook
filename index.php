@@ -880,6 +880,109 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     .tier-table tr:last-child td { border-bottom: none; }
 
+    .tier-selected {
+      background: rgba(39, 174, 96, 0.08) !important;
+      outline: 2px solid rgba(39, 174, 96, 0.4);
+      outline-offset: -2px;
+    }
+    .tier-select-btn {
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      border: 1.5px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tier-select-btn:hover {
+      border-color: #27ae60;
+      color: #27ae60;
+    }
+    .tier-select-btn.selected {
+      background: #27ae60;
+      border-color: #27ae60;
+      color: #fff;
+    }
+    .selected-tier-card {
+      margin-top: 12px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      border: 1.5px solid rgba(39, 174, 96, 0.4);
+      background: rgba(39, 174, 96, 0.07);
+      font-size: 13px;
+      display: none;
+    }
+    .selected-tier-card .stc-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #27ae60;
+      margin-bottom: 6px;
+    }
+    .selected-tier-card .stc-row {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .selected-tier-card .stc-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .selected-tier-card .stc-item-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .selected-tier-card .stc-item-val {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .sh-tier-ref {
+      margin-top: 14px;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      border: 1.5px solid rgba(39, 174, 96, 0.4);
+      background: rgba(39, 174, 96, 0.07);
+      font-size: 12px;
+      display: none;
+    }
+    .sh-tier-ref-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #27ae60;
+      margin-bottom: 6px;
+    }
+    .sh-tier-ref-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .sh-tier-ref-item {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .sh-tier-ref-item-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+    .sh-tier-ref-item-val {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
     #rfq-table td {
       padding: 14px 12px;
     }
@@ -3290,12 +3393,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
             <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
             <th></th>
+            <th></th>
           </tr>
         </thead>
         <tbody id="wb-tier-body">
         </tbody>
       </table>
       <button class="btn btn-add" style="margin-top:10px;" onclick="addWbTierRow()">+ Add Pricing Tier</button>
+      <div class="selected-tier-card" id="wb-selected-tier-card">
+        <div class="stc-label">Selected Tier</div>
+        <div class="stc-row" id="wb-selected-tier-row"></div>
+      </div>
     </div>
   </div>
   </div><!-- /#wb-tab-workbook -->
@@ -3417,6 +3525,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             oninput="if(_appReady) autoSaveWorkbook()" />
         </div>
         <div style="font-size:11px; color:var(--text-muted); line-height:1.5;">The HTS/HS code used for customs classification and duty rate determination.</div>
+
+        <!-- Selected Tier Pricing Reference -->
+        <div class="sh-tier-ref" id="sh-tier-ref">
+          <div class="sh-tier-ref-title">Selected Tier Pricing</div>
+          <div class="sh-tier-ref-row" id="sh-tier-ref-row"></div>
+        </div>
       </div><!-- /.sh-results-box -->
 
     </div><!-- /.sh-top-row -->
@@ -3519,6 +3633,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </tbody>
       </table>
       <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Tiers are managed from the Workbook tab.</p>
+      <div class="selected-tier-card" id="pricing-selected-tier-card">
+        <div class="stc-label">Selected Tier</div>
+        <div class="stc-row" id="pricing-selected-tier-row"></div>
+      </div>
     </div>
   </div>
 
@@ -5149,6 +5267,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
     _syncing = false;
     syncTiersToPricing();
+    // Auto-select tier 1 when RFQ updates (it reflects the RFQ qty/price)
+    _selectedTierId = 1;
+    selectTier(1);
   }
 
   function collectRfqItems() {
@@ -5281,6 +5402,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── Workbook tab tier pricing (synced with Pricing tab) ──
   let wbTierCount = 0;
   let _syncing = false;
+  let _selectedTierId = 1;
 
   function addWbTierRow(qty = '', unitPrice = '') {
     wbTierCount++;
@@ -5311,6 +5433,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ${rmbCell}
       <td class="tier-col-usd" id="wb-tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="wb-tier-total-${id}">—</td>
+      <td><button id="wb-tier-sel-btn-${id}" class="tier-select-btn" onclick="selectTier(${id})">Select</button></td>
       <td>${isFirst ? '' : `<button class="btn btn-danger-ghost" onclick="removeWbTierRow(${id})">✕</button>`}</td>
     `;
     tbody.appendChild(tr);
@@ -5342,14 +5465,83 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     if (!_filling && !_syncing) {
       syncTiersToPricing();
+      if (id === _selectedTierId) renderSelectedTierSummary();
       autoSaveWorkbook();
     }
   }
 
   function removeWbTierRow(id) {
+    // If the removed tier was selected, fall back to tier 1
+    if (_selectedTierId === id) _selectedTierId = 1;
     document.getElementById(`wb-tier-${id}`)?.remove();
     syncTiersToPricing();
+    renderSelectedTierSummary();
     autoSaveWorkbook();
+  }
+
+  function selectTier(id) {
+    _selectedTierId = id;
+    // Update button states
+    document.querySelectorAll('#wb-tier-body .tier-select-btn').forEach(btn => btn.classList.remove('selected'));
+    const btn = document.getElementById(`wb-tier-sel-btn-${id}`);
+    if (btn) btn.classList.add('selected');
+    // Highlight selected row
+    document.querySelectorAll('#wb-tier-body tr').forEach(r => r.classList.remove('tier-selected'));
+    const row = document.getElementById(`wb-tier-${id}`);
+    if (row) row.classList.add('tier-selected');
+    renderSelectedTierSummary();
+    if (_appReady) autoSaveWorkbook();
+  }
+
+  function renderSelectedTierSummary() {
+    const row = document.getElementById(`wb-tier-${_selectedTierId}`);
+    const cards = [
+      { card: document.getElementById('wb-selected-tier-card'), inner: document.getElementById('wb-selected-tier-row') },
+      { card: document.getElementById('pricing-selected-tier-card'), inner: document.getElementById('pricing-selected-tier-row') },
+    ];
+    const shRef = document.getElementById('sh-tier-ref');
+    const shRefRow = document.getElementById('sh-tier-ref-row');
+
+    if (!row) {
+      cards.forEach(c => { if (c.card) c.card.style.display = 'none'; });
+      if (shRef) shRef.style.display = 'none';
+      return;
+    }
+
+    const inputs = row.querySelectorAll('input');
+    const qty = inputs[0]?.value || '—';
+    const rmb = parseFloat(row.dataset.price);
+    const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
+    const totalUsd = !isNaN(parseFloat(qty)) && !isNaN(usd) ? parseFloat(qty) * usd : NaN;
+
+    const fmtRmb = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const fmtUsd = !isNaN(usd) ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const fmtTotal = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+
+    const html = `
+      <div class="stc-item"><span class="stc-item-label">Tier</span><span class="stc-item-val">${_selectedTierId}</span></div>
+      <div class="stc-item"><span class="stc-item-label">Quantity</span><span class="stc-item-val">${parseInt(qty).toLocaleString('en-US') || qty}</span></div>
+      <div class="stc-item"><span class="stc-item-label">Unit Price (RMB)</span><span class="stc-item-val">${fmtRmb}</span></div>
+      <div class="stc-item"><span class="stc-item-label">Unit Price (USD)</span><span class="stc-item-val">${fmtUsd}</span></div>
+      <div class="stc-item"><span class="stc-item-label">Total Price (USD)</span><span class="stc-item-val">${fmtTotal}</span></div>
+    `;
+    cards.forEach(c => {
+      if (c.card && c.inner) {
+        c.inner.innerHTML = html;
+        c.card.style.display = '';
+      }
+    });
+
+    if (shRef && shRefRow) {
+      shRefRow.innerHTML = `
+        <div class="sh-tier-ref-item"><span class="sh-tier-ref-item-label">Tier</span><span class="sh-tier-ref-item-val">${_selectedTierId}</span></div>
+        <div class="sh-tier-ref-item"><span class="sh-tier-ref-item-label">Qty</span><span class="sh-tier-ref-item-val">${parseInt(qty).toLocaleString('en-US') || qty}</span></div>
+        <div class="sh-tier-ref-item"><span class="sh-tier-ref-item-label">Unit (RMB)</span><span class="sh-tier-ref-item-val">${fmtRmb}</span></div>
+        <div class="sh-tier-ref-item"><span class="sh-tier-ref-item-label">Unit (USD)</span><span class="sh-tier-ref-item-val">${fmtUsd}</span></div>
+        <div class="sh-tier-ref-item"><span class="sh-tier-ref-item-label">Total (USD)</span><span class="sh-tier-ref-item-val">${fmtTotal}</span></div>
+      `;
+      shRef.style.display = '';
+    }
   }
 
   function collectTiersFrom(tbodyId) {
@@ -7390,6 +7582,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         addTierRow(500); addWbTierRow(500);
       }
       recalcRfqTotals(); // sync RFQ unit price total → tier RMB inputs
+      // Restore selected tier (default to 1 if not saved)
+      _selectedTierId = data.selectedTierIdx || 1;
+      selectTier(_selectedTierId);
       calcAdditionalFees();
       // Dimensions & Carton Specifications (new fields)
       _s('dim-weight-kg',  data.dimWeightKg);
@@ -7483,6 +7678,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       addTierRow(100); addWbTierRow(100);
       addTierRow(250); addWbTierRow(250);
       addTierRow(500); addWbTierRow(500);
+      _selectedTierId = 1;
+      selectTier(1);
     }
 
     // Trigger filled state on all inputs
@@ -7968,6 +8165,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       clientLogo: _clientLogo || existing.clientLogo || '',
       // Preserve sample statuses (managed from samples dashboard, not DOM-driven)
       sampleStatuses: existing.sampleStatuses || {},
+      // Selected pricing tier
+      selectedTierIdx: _selectedTierId,
     };
     return detail;
   }
