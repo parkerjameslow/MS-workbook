@@ -895,9 +895,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       align-items: center;
       gap: 10px;
       padding: 0 16px;
-      border-right: 1px solid var(--border);
       flex-shrink: 0;
-      position: relative;
     }
     .sh-tier-row-label {
       font-size: 11px;
@@ -907,9 +905,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
       white-space: nowrap;
     }
-    .sh-tier-select-wrap select {
+    .sh-tier-select-inner {
+      position: relative;
+    }
+    .sh-tier-select-inner::after {
+      content: '';
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--text-muted);
+      pointer-events: none;
+    }
+    .sh-tier-select-inner select {
       height: 32px;
-      padding: 0 36px 0 10px;
+      padding: 0 28px 0 10px;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       background: var(--surface);
@@ -921,19 +935,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       appearance: none;
       -webkit-appearance: none;
       min-width: 160px;
-    }
-    .sh-tier-select-wrap::after {
-      content: '';
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 0;
-      height: 0;
-      border-left: 4px solid transparent;
-      border-right: 4px solid transparent;
-      border-top: 5px solid var(--text-muted);
-      pointer-events: none;
     }
     #sh-tier-details { display: none; }
     #sh-tier-details.visible { display: flex; }
@@ -3514,9 +3515,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="sh-tier-row">
         <div class="sh-tier-select-wrap">
           <span class="sh-tier-row-label">Pricing Tier</span>
-          <select id="sh-tier-select" onchange="onShippingTierSelect()">
-            <option value="">— Select a tier —</option>
-          </select>
+          <div class="sh-tier-select-inner">
+            <select id="sh-tier-select" onchange="onShippingTierSelect()">
+              <option value="">— Select a tier —</option>
+            </select>
+          </div>
         </div>
         <div id="sh-tier-details" style="gap:0; align-items:stretch;">
           <div class="sh-tier-stat">
