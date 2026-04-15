@@ -5285,9 +5285,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tbody = document.getElementById('wb-tier-body');
     const tr = document.createElement('tr');
     tr.id = `wb-tier-${id}`;
-    tr.dataset.price = unitPrice || '';
-    // First row: read-only (driven by RFQ total). All others: editable.
+    // First row: read-only (driven by RFQ total). All others: inherit tier-1 price by default.
     const isFirst = (id === 1);
+    // For new non-first rows with no saved price, inherit from tier 1
+    if (!isFirst && !unitPrice) {
+      const tier1 = document.getElementById('wb-tier-1');
+      if (tier1 && tier1.dataset.price) unitPrice = tier1.dataset.price;
+    }
+    tr.dataset.price = unitPrice || '';
     const rmbCell = isFirst
       ? `<td id="wb-tier-rmb-${id}" style="font-size:13px;">
            <span style="color:var(--text-muted);" id="wb-tier-rmb-val-${id}">—</span>
