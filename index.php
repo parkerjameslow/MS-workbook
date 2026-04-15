@@ -5279,8 +5279,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.id = `wb-tier-${id}`;
     tr.dataset.price = unitPrice || '';
     // First row: read-only (driven by RFQ total). All others: editable.
-    const rmbCell = (id === 1)
-      ? `<td id="wb-tier-rmb-${id}" style="color:var(--text-muted); font-size:13px;">—</td>`
+    const isFirst = (id === 1);
+    const rmbCell = isFirst
+      ? `<td id="wb-tier-rmb-${id}" style="font-size:13px;">
+           <span style="color:var(--text-muted);" id="wb-tier-rmb-val-${id}">—</span>
+           <span style="font-size:10px; font-weight:600; color:var(--accent); opacity:0.8; margin-left:6px; vertical-align:middle;">auto</span>
+         </td>`
       : `<td class="karen-cell">
           <div class="currency-prefix currency-rmb" style="display:inline-block; position:relative;">
             <input type="number" step="0.01" min="0" placeholder="0.00" value="${unitPrice}"
@@ -5298,9 +5302,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ${rmbCell}
       <td class="tier-col-usd" id="wb-tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="wb-tier-total-${id}">—</td>
-      <td>
-        <button class="btn btn-danger-ghost" onclick="removeWbTierRow(${id})">✕</button>
-      </td>
+      <td>${isFirst ? '' : `<button class="btn btn-danger-ghost" onclick="removeWbTierRow(${id})">✕</button>`}</td>
     `;
     tbody.appendChild(tr);
     recalcWbTier(id);
@@ -5323,7 +5325,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rmbEl = document.getElementById(`wb-tier-rmb-${id}`);
     const usdEl = document.getElementById(`wb-tier-usd-${id}`);
     const totalEl = document.getElementById(`wb-tier-total-${id}`);
-    if (rmbEl) rmbEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const rmbValEl = document.getElementById(`wb-tier-rmb-val-${id}`) || rmbEl;
+    if (rmbEl) {
+      const display = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+      if (rmbValEl !== rmbEl) rmbValEl.textContent = display; else rmbEl.textContent = display;
+    }
     if (!isNaN(rmb) && rmb > 0) {
       usdEl.textContent = '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     } else {
