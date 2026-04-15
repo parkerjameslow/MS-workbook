@@ -3538,6 +3538,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
+    <!-- ══ SHIPPING METHOD ══ -->
+    <div class="sh-box sh-shipping-box">
+      <div class="sh-box-title">Shipping</div>
+
+      <!-- Method + rate single bar -->
+      <div class="freight-method-rate-row">
+        <label class="freight-method-label">Shipping Method</label>
+        <div class="freight-method-bar">
+          <div class="freight-method-bar-select">
+            <select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
+              <option value="slow" selected>Slow Boat</option>
+              <option value="fast">Fast Boat</option>
+              <option value="airupp">Air + UPS</option>
+              <option value="directair">Direct Air</option>
+            </select>
+          </div>
+          <div class="freight-method-bar-rate rmb">
+            <span class="freight-method-bar-sym">¥</span>
+            <span class="freight-method-bar-val" id="freight-rate-rmb-display">12.00</span>
+            <span class="freight-method-bar-unit">per kg</span>
+          </div>
+          <div class="freight-method-bar-rate usd">
+            <span class="freight-method-bar-sym">$</span>
+            <span class="freight-method-bar-val" id="freight-rate-usd-display">1.67</span>
+            <span class="freight-method-bar-unit">per kg</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comparison table — full width -->
+      <table class="freight-ref-table freight-cmp-table">
+        <thead>
+          <tr><th>Method</th><th>Total Weight</th><th>¥ / kg</th><th>Cost (¥)</th><th>Cost ($)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Slow Boat</td><td id="freight-wt-slow">—</td><td>12.00</td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
+          <tr><td>Fast Boat</td><td id="freight-wt-fast">—</td><td>14.00</td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
+          <tr><td>Air + UPS</td><td id="freight-wt-airupp">—</td><td>44.00</td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
+          <tr><td>Direct Air</td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
+        </tbody>
+      </table>
+    </div><!-- /.sh-shipping-box -->
+
     <!-- ══ TOP ROW: left col (stacked) + right col (results) ══ -->
     <div class="sh-top-row">
 
@@ -3664,49 +3707,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div><!-- /.sh-results-box -->
 
     </div><!-- /.sh-top-row -->
-
-    <!-- ══ BOTTOM ROW: full-width Shipping Method bar + table ══ -->
-    <div class="sh-box sh-shipping-box">
-      <div class="sh-box-title">Shipping</div>
-
-      <!-- Method + rate single bar -->
-      <div class="freight-method-rate-row">
-        <label class="freight-method-label">Shipping Method</label>
-        <div class="freight-method-bar">
-          <div class="freight-method-bar-select">
-            <select id="freight-mode" onchange="updateFreightRate(); calcFreight()">
-              <option value="slow" selected>Slow Boat</option>
-              <option value="fast">Fast Boat</option>
-              <option value="airupp">Air + UPS</option>
-              <option value="directair">Direct Air</option>
-            </select>
-          </div>
-          <div class="freight-method-bar-rate rmb">
-            <span class="freight-method-bar-sym">¥</span>
-            <span class="freight-method-bar-val" id="freight-rate-rmb-display">12.00</span>
-            <span class="freight-method-bar-unit">per kg</span>
-          </div>
-          <div class="freight-method-bar-rate usd">
-            <span class="freight-method-bar-sym">$</span>
-            <span class="freight-method-bar-val" id="freight-rate-usd-display">1.67</span>
-            <span class="freight-method-bar-unit">per kg</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Comparison table — full width -->
-      <table class="freight-ref-table freight-cmp-table">
-        <thead>
-          <tr><th>Method</th><th>Total Weight</th><th>¥ / kg</th><th>Cost (¥)</th><th>Cost ($)</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Slow Boat</td><td id="freight-wt-slow">—</td><td>12.00</td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
-          <tr><td>Fast Boat</td><td id="freight-wt-fast">—</td><td>14.00</td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
-          <tr><td>Air + UPS</td><td id="freight-wt-airupp">—</td><td>44.00</td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
-          <tr><td>Direct Air</td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
-        </tbody>
-      </table>
-    </div><!-- /.sh-shipping-box -->
 
   </div><!-- /.sh-layout -->
   </div><!-- /#wb-tab-shipping -->
