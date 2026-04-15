@@ -6639,7 +6639,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
 
     const cbm = volume / 1000000;
-    document.getElementById('freight-cmp-sea').textContent = (cbm * cartons).toFixed(4) + ' CBM';
+    document.getElementById('freight-cmp-sea').textContent = (cbm * cartons).toFixed(2) + ' CBM';
   }
 
   /* ── Quote & Invoice Calcs ───────────────────────────────────────────────── */
