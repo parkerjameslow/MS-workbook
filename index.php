@@ -4839,11 +4839,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     };
     hint.style.display = '';
     hint.innerHTML = `<strong>Est. total outer weight:</strong><br>${totalKg.toFixed(2)} kg &nbsp;/&nbsp; ${fmtLbs(totalLbs)}<br><span style="opacity:0.75;">${outerQty} inner carton${outerQty > 1 ? 's' : ''} × ${innerKg.toFixed(2)} kg each</span>`;
-    // Also auto-fill the outer weight field if it differs
+    // Always sync outer weight from inner weight × inner cartons per outer
     const outerWtEl = document.getElementById('carton-outer-weight');
-    if (outerWtEl && (!outerWtEl.value || parseFloat(outerWtEl.value) === 0)) {
+    if (outerWtEl) {
       outerWtEl.value = totalKg.toFixed(2);
       convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
+      calcFreight();
     }
   }
 
