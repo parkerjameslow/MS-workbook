@@ -3009,14 +3009,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
 
     <!-- Shipments -->
-    <div class="nav-section collapsed" id="nav-section-containers">
-      <div class="nav-section-header" onclick="toggleNavSection('nav-section-containers')">
-        <span>Shipments</span>
+    <div class="nav-section" id="nav-section-containers">
+      <div class="nav-section-header" style="cursor:default;">
+        <a href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" style="flex:1; text-decoration:none; color:inherit; font-size:inherit; font-weight:inherit; cursor:pointer;">Shipments</a>
         <span class="nav-badge" id="badge-shipments"></span>
-        <span class="nav-section-chevron">›</span>
+        <span class="nav-section-chevron" onclick="toggleNavSection('nav-section-containers')" style="cursor:pointer; padding:4px 0 4px 8px; margin:-4px 0 -4px 0;">›</span>
       </div>
       <div class="nav-section-body" id="shipments-nav-body">
-        <a class="nav-item" href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" style="font-size:12px;">All Shipments</a>
         <div id="shipments-nav-list"></div>
       </div>
     </div>
@@ -8965,6 +8964,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const ni = localStorage.getItem('ms_nextShipmentId');
       if (sd) Object.assign(shipmentData, JSON.parse(sd));
       if (ni) _nextShipmentId = parseInt(ni) || 1;
+    } catch(e) {}
+    // Ensure the shipments nav section is never persisted as collapsed
+    try {
+      const nc = JSON.parse(localStorage.getItem('ms_nav_collapsed') || '{}');
+      if (nc['nav-section-containers']) {
+        delete nc['nav-section-containers'];
+        localStorage.setItem('ms_nav_collapsed', JSON.stringify(nc));
+      }
     } catch(e) {}
   }
 
