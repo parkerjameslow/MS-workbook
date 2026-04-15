@@ -3395,7 +3395,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div id="wb-tab-shipping" class="wb-tab-content">
   <div class="sh-layout">
 
-    <!-- ══ Tier Selector ══ -->
+    <!-- ══ PRICING TIER selector — above outer carton + results ══ -->
+    <div class="sh-box" style="margin-bottom:0; padding:14px 18px;">
+      <div class="freight-method-rate-row" style="margin-bottom:0;">
+        <label class="freight-method-label">Pricing Tier</label>
+        <div class="freight-method-bar">
+          <div class="freight-method-bar-select">
+            <select id="sh-tier-select" onchange="onShippingTierSelect()">
+              <option value="">— Select a tier —</option>
+            </select>
+          </div>
+          <div class="freight-method-bar-rate rmb" id="sh-tier-pill-rmb" style="display:none;">
+            <span class="freight-method-bar-sym">¥</span>
+            <span class="freight-method-bar-val" id="sh-td-rmb">—</span>
+            <span class="freight-method-bar-unit">per unit</span>
+          </div>
+          <div class="freight-method-bar-rate usd" id="sh-tier-pill-usd" style="display:none;">
+            <span class="freight-method-bar-sym">$</span>
+            <span class="freight-method-bar-val" id="sh-td-usd">—</span>
+            <span class="freight-method-bar-unit">per unit</span>
+          </div>
+        </div>
+        <span id="sh-td-qty"   style="display:none;">—</span>
+        <span id="sh-td-total" style="display:none;">—</span>
+        <div id="sh-tier-details" style="display:none;"></div>
+      </div>
+    </div>
+
     <!-- ══ TOP ROW: left col (stacked) + right col (results) ══ -->
     <div class="sh-top-row">
 
@@ -3522,33 +3548,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div><!-- /.sh-results-box -->
 
     </div><!-- /.sh-top-row -->
-
-    <!-- ══ PRICING TIER selector — above outer carton ══ -->
-    <div class="sh-box" style="margin-bottom:0;">
-      <div class="freight-method-rate-row" style="margin-bottom:0;">
-        <label class="freight-method-label">Pricing Tier</label>
-        <div class="freight-method-bar">
-          <div class="freight-method-bar-select">
-            <select id="sh-tier-select" onchange="onShippingTierSelect()">
-              <option value="">— Select a tier —</option>
-            </select>
-          </div>
-          <div class="freight-method-bar-rate rmb" id="sh-tier-pill-rmb" style="display:none;">
-            <span class="freight-method-bar-sym">¥</span>
-            <span class="freight-method-bar-val" id="sh-td-rmb">—</span>
-            <span class="freight-method-bar-unit">per unit</span>
-          </div>
-          <div class="freight-method-bar-rate usd" id="sh-tier-pill-usd" style="display:none;">
-            <span class="freight-method-bar-sym">$</span>
-            <span class="freight-method-bar-val" id="sh-td-usd">—</span>
-            <span class="freight-method-bar-unit">per unit</span>
-          </div>
-        </div>
-        <span id="sh-td-qty"   style="display:none;">—</span>
-        <span id="sh-td-total" style="display:none;">—</span>
-        <div id="sh-tier-details" style="display:none;"></div>
-      </div>
-    </div>
 
     <!-- ══ BOTTOM ROW: full-width Shipping Method bar + table ══ -->
     <div class="sh-box sh-shipping-box">
