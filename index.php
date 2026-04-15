@@ -3183,11 +3183,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg'); updateOuterWeightHint()" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs'); updateOuterWeightHint()" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
-              <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons()" />
+              <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
             </div>
             <div class="specs-full-row" id="inner-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
           </div>
@@ -3221,9 +3221,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(inner cartons / outer)</span></div>
-              <input type="number" min="0" placeholder="e.g. 4" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons()" />
+              <input type="number" min="0" placeholder="e.g. 4" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
             </div>
             <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
+            <div class="specs-full-row" id="outer-weight-hint" style="display:none; margin-top:8px; padding:8px 10px; background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius:var(--radius-sm); font-size:11px; color:var(--accent); line-height:1.6;"></div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
           </div>
@@ -4723,6 +4724,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (h) h.style.display = 'none';
     }
     renderPalletViz();
+    updateOuterWeightHint();
+  }
+
+  function updateOuterWeightHint() {
+    const hint = document.getElementById('outer-weight-hint');
+    if (!hint) return;
+    const innerKg  = parseFloat(document.getElementById('carton-inner-weight')?.value) || 0;
+    const outerQty = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    if (!innerKg || !outerQty) { hint.style.display = 'none'; return; }
+    const totalKg  = innerKg * outerQty;
+    const totalLbs = totalKg * 2.20462;
+    const fmtLbs = val => {
+      const lbs = Math.floor(val);
+      const oz  = Math.round((val - lbs) * 16);
+      return oz > 0 ? `${lbs} lbs ${oz} oz` : `${lbs} lbs`;
+    };
+    hint.style.display = '';
+    hint.innerHTML = `<strong>Est. total outer weight:</strong><br>${totalKg.toFixed(3)} kg &nbsp;/&nbsp; ${fmtLbs(totalLbs)}<br><span style="opacity:0.75;">${outerQty} inner carton${outerQty > 1 ? 's' : ''} × ${innerKg.toFixed(3)} kg each</span>`;
+    // Also auto-fill the outer weight field if it differs
+    const outerWtEl = document.getElementById('carton-outer-weight');
+    if (outerWtEl && (!outerWtEl.value || parseFloat(outerWtEl.value) === 0)) {
+      outerWtEl.value = totalKg.toFixed(3);
+      convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
+    }
   }
 
   /* ── Pallet Visualization ─────────────────────────────────────────────── */
@@ -7389,6 +7414,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (data.cartonUnitWeight) convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg');
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
+      updateOuterWeightHint();
       _s('freight-mode', data.freightMode);
       _s('freight-hs-code', data.freightHsCode);
       // Quote for Client tab
