@@ -5511,14 +5511,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     detailsEl.classList.add('visible');
 
     // Recalculate total outer cartons for this tier qty and refresh freight
-    const tierQty    = parseInt(qty) || 0;
+    const tierQty        = parseInt(qty) || 0;
     const unitsPerInner  = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
     const innersPerOuter = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
     const unitsPerOuter  = unitsPerInner * innersPerOuter;
-    if (tierQty > 0 && unitsPerOuter > 0) {
-      const totalCartons = Math.ceil(tierQty / unitsPerOuter);
-      const palletEl = document.getElementById('pallet-total-cartons');
-      if (palletEl) {
+    const unitWeightKg   = parseFloat(document.getElementById('dim-weight-kg')?.value) || 0;
+    const outerWeightKg  = parseFloat(document.getElementById('carton-outer-weight')?.value) || 0;
+    const palletEl = document.getElementById('pallet-total-cartons');
+
+    if (tierQty > 0 && palletEl) {
+      let totalCartons = null;
+      if (unitsPerOuter > 0) {
+        // Best path: carton counts are configured
+        totalCartons = Math.ceil(tierQty / unitsPerOuter);
+      } else if (unitWeightKg > 0 && outerWeightKg > 0 && outerWeightKg >= unitWeightKg) {
+        // Fallback: estimate units-per-outer from weight ratio
+        const estimatedUnitsPerOuter = Math.max(1, Math.round(outerWeightKg / unitWeightKg));
+        totalCartons = Math.ceil(tierQty / estimatedUnitsPerOuter);
+      } else if (unitWeightKg > 0) {
+        // Last resort: treat each unit as its own carton so total weight = unit_weight × tier_qty
+        const outerWtEl = document.getElementById('carton-outer-weight');
+        if (outerWtEl) {
+          outerWtEl.value = unitWeightKg.toFixed(2);
+          convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
+        }
+        totalCartons = tierQty;
+      }
+      if (totalCartons !== null) {
         palletEl.value = totalCartons;
         calcFreight();
       }
