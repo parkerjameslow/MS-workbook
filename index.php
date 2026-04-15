@@ -4690,7 +4690,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       setCartonDimFields('carton-inner', innerDims.L, innerDims.W, innerDims.H);
       setHint('inner-arrange-hint', innerDims.nx, innerDims.ny, innerDims.nz, innerQty === 1 ? 'unit' : 'units');
       if (!isNaN(productWeightKg) && productWeightKg > 0) {
-        document.getElementById('carton-inner-weight').value = (productWeightKg * innerQty).toFixed(3);
+        document.getElementById('carton-inner-weight').value = (productWeightKg * innerQty).toFixed(2);
         convertWeight('carton-inner-weight', 'carton-inner-weight-lbs', 'kg');
       }
       const badge = document.getElementById('inner-calc-badge');
@@ -4714,7 +4714,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       setCartonDimFields('carton-outer', outerDims.L, outerDims.W, outerDims.H);
       if (!isNaN(productWeightKg) && productWeightKg > 0) {
         const productsPerOuter = innerDims && innerQty >= 1 ? innerQty * outerQty : outerQty;
-        document.getElementById('carton-outer-weight').value = (productWeightKg * productsPerOuter).toFixed(3);
+        document.getElementById('carton-outer-weight').value = (productWeightKg * productsPerOuter).toFixed(2);
         convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
       }
       const badge = document.getElementById('outer-calc-badge');
@@ -4741,11 +4741,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return oz > 0 ? `${lbs} lbs ${oz} oz` : `${lbs} lbs`;
     };
     hint.style.display = '';
-    hint.innerHTML = `<strong>Est. total outer weight:</strong><br>${totalKg.toFixed(3)} kg &nbsp;/&nbsp; ${fmtLbs(totalLbs)}<br><span style="opacity:0.75;">${outerQty} inner carton${outerQty > 1 ? 's' : ''} × ${innerKg.toFixed(3)} kg each</span>`;
+    hint.innerHTML = `<strong>Est. total outer weight:</strong><br>${totalKg.toFixed(2)} kg &nbsp;/&nbsp; ${fmtLbs(totalLbs)}<br><span style="opacity:0.75;">${outerQty} inner carton${outerQty > 1 ? 's' : ''} × ${innerKg.toFixed(2)} kg each</span>`;
     // Also auto-fill the outer weight field if it differs
     const outerWtEl = document.getElementById('carton-outer-weight');
     if (outerWtEl && (!outerWtEl.value || parseFloat(outerWtEl.value) === 0)) {
-      outerWtEl.value = totalKg.toFixed(3);
+      outerWtEl.value = totalKg.toFixed(2);
       convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
     }
   }
@@ -4980,7 +4980,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (isNaN(totalLbs)) {
         targetEl.value = '';
       } else {
-        targetEl.value = (totalLbs / KG_TO_LBS).toFixed(3);
+        targetEl.value = (totalLbs / KG_TO_LBS).toFixed(2);
       }
     }
     convertingWeight = false;
