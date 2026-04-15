@@ -5547,6 +5547,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       if (totalCartons !== null) {
         palletEl.value = totalCartons;
+        renderPalletViz();
         calcFreight();
       }
     }
