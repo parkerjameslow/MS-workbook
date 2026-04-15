@@ -1721,6 +1721,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .pricing-grand-total-label { font-size: 13px; font-weight: 600; opacity: 0.88; }
     .pricing-grand-total-value { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+    .qr-collapsed-summary {
+      display: none;
+      gap: 28px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 0 8px 0 20px;
+      flex: 1;
+    }
+    .section-card.collapsed .qr-collapsed-summary { display: flex; }
+    .qr-sum-item { display: flex; flex-direction: column; gap: 2px; }
+    .qr-sum-label {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .qr-sum-val { font-size: 13px; font-weight: 700; color: var(--text); }
+
     .pricing-quote-ref-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .pricing-quote-ref-table th {
       font-size: 10px;
@@ -3622,9 +3641,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div id="wb-tab-pricing" class="wb-tab-content">
 
   <!-- ── Card: Quote Reference ── -->
-  <div class="section-card">
-    <div class="section-header">
+  <div class="section-card collapsed" id="pricing-quote-ref-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Quote Reference</span>
+      <div class="qr-collapsed-summary" id="pricing-quote-ref-summary">
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Unit (RMB)</span>
+          <span class="qr-sum-val" id="qrs-rmb">—</span>
+        </div>
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Unit (USD)</span>
+          <span class="qr-sum-val" id="qrs-usd">—</span>
+        </div>
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Total (USD)</span>
+          <span class="qr-sum-val" id="qrs-total">—</span>
+        </div>
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Lead Time</span>
+          <span class="qr-sum-val" id="qrs-lead">—</span>
+        </div>
+      </div>
+      <span class="section-chevron">›</span>
     </div>
     <div class="section-body" id="pricing-quote-ref-body">
       <span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>
@@ -6532,6 +6570,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         refEl.innerHTML = html;
       }
     }
+
+    // Populate collapsed summary from already-computed rfq totals
+    const qrsRmb   = document.getElementById('qrs-rmb');
+    const qrsUsd   = document.getElementById('qrs-usd');
+    const qrsTotal = document.getElementById('qrs-total');
+    const qrsLead  = document.getElementById('qrs-lead');
+    if (qrsRmb)   qrsRmb.textContent   = document.getElementById('rfq-total-rmb')?.textContent     || '—';
+    if (qrsUsd)   qrsUsd.textContent   = document.getElementById('rfq-total-usd-sum')?.textContent || '—';
+    if (qrsTotal) qrsTotal.textContent = document.getElementById('rfq-total-usd')?.textContent     || '—';
+    if (qrsLead)  qrsLead.textContent  = document.getElementById('rfq-max-lead')?.textContent      || '—';
 
     // Delivered Cost Summary
     const noSelEl  = document.getElementById('pricing-no-selection-msg');
