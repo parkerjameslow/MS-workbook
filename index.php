@@ -5134,6 +5134,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!firstRow) return;
     const id = parseInt(firstRow.id.replace('wb-tier-', ''));
     firstRow.dataset.price = totalRmb > 0 ? parseFloat(totalRmb).toFixed(2) : '';
+    // Sync qty from first RFQ row (inputs[1] = qty, excluding checkbox)
+    const rfqFirstRow = document.querySelector('#rfq-body tr:first-child');
+    const rfqInputs = rfqFirstRow ? rfqFirstRow.querySelectorAll('input:not([type="checkbox"])') : [];
+    const rfqQty = rfqInputs[1]?.value;
+    const tierQtyInput = firstRow.querySelector('input[type="number"]');
+    if (tierQtyInput && rfqQty) {
+      tierQtyInput.value = rfqQty;
+    }
     _syncing = true;
     recalcWbTier(id);
     _syncing = false;
@@ -5297,7 +5305,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td>
         <input type="number" min="0" placeholder="e.g. 100" value="${qty}"
                oninput="recalcWbTier(${id})"
-               style="width:110px;" />
+               style="width:110px;${isFirst ? ' background:var(--surface2); color:var(--text-muted); cursor:not-allowed;' : ''}"
+               ${isFirst ? 'readonly title="Auto-populated from Quote Details qty"' : ''} />
       </td>
       ${rmbCell}
       <td class="tier-col-usd" id="wb-tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
