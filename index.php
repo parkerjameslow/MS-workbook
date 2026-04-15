@@ -1732,6 +1732,86 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     .sidebar-add-btn:hover { opacity: 0.85; }
 
+    /* ── Pricing Tab Summary ─────────────────────────────────────────────── */
+    .pricing-summary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 680px) {
+      .pricing-summary-grid { grid-template-columns: 1fr; }
+    }
+    .pricing-cost-block {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+      background: var(--bg);
+    }
+    .pricing-cost-block-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+    .pricing-cost-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 6px 0;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+    .pricing-cost-row:last-child { border-bottom: none; }
+    .pricing-cost-row-label { color: var(--text-muted); }
+    .pricing-cost-row-value { font-weight: 600; color: var(--text); }
+    .pricing-cost-subtotal {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 2px solid var(--border);
+    }
+    .pricing-cost-subtotal .pricing-cost-row-label { font-weight: 700; color: var(--text); font-size: 13px; }
+    .pricing-cost-subtotal .pricing-cost-row-value { font-size: 15px; color: var(--accent); }
+    .pricing-grand-total-bar {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 10px;
+      padding: 18px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .pricing-grand-total-label { font-size: 13px; font-weight: 600; opacity: 0.88; }
+    .pricing-grand-total-value { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+    .pricing-quote-ref-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .pricing-quote-ref-table th {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: 6px 10px 8px;
+      text-align: left;
+      border-bottom: 2px solid var(--border);
+      white-space: nowrap;
+    }
+    .pricing-quote-ref-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .pricing-quote-ref-table tbody tr:last-child td { border-bottom: none; }
+    .pricing-quote-ref-table .main-row { background: rgba(232,117,26,0.05); }
+    .pricing-no-selection {
+      padding: 24px 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
+      text-align: center;
+    }
+
     /* ── Shipping Calculator ─────────────────────────────────────────────── */
     .freight-calc {
       display: grid;
@@ -3580,140 +3660,108 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- ── Tab: Pricing ── -->
   <div id="wb-tab-pricing" class="wb-tab-content">
 
-  <!-- ── Card: Tiered Pricing ── -->
+  <!-- ── Card: Quote Reference ── -->
   <div class="section-card">
-    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-      <span class="section-title">Tiered Pricing</span>
-      <span class="section-chevron">›</span>
+    <div class="section-header">
+      <span class="section-title">Quote Reference</span>
     </div>
-    <div class="section-body">
-      <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-        Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
-      </p>
-      <table class="tier-table" id="tier-table">
-        <thead>
-          <tr>
-            <th class="tier-col-num">#</th>
-            <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
-            <th class="th-karen"><span class="label-full">Unit Price (RMB) ✎</span><span class="label-short">RMB ✎</span></th>
-            <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
-            <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="tier-body">
-          <tr id="tier-1">
-            <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">1</td>
-            <td><input type="number" min="0" placeholder="e.g. 100" value="100" oninput="recalcTier(1)" style="width:110px;" /></td>
-            <td class="karen-cell"><input type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="recalcTier(1)" style="width:130px;" /></td>
-            <td class="tier-col-usd" id="tier-usd-1" style="color:var(--text-muted); font-size:13px;">—</td>
-            <td class="total-cell" id="tier-total-1">—</td>
-            <td><button class="btn btn-danger-ghost" onclick="removeTierRow(1)">✕</button></td>
-          </tr>
-          <tr id="tier-2">
-            <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">2</td>
-            <td><input type="number" min="0" placeholder="e.g. 100" value="250" oninput="recalcTier(2)" style="width:110px;" /></td>
-            <td class="karen-cell"><input type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="recalcTier(2)" style="width:130px;" /></td>
-            <td class="tier-col-usd" id="tier-usd-2" style="color:var(--text-muted); font-size:13px;">—</td>
-            <td class="total-cell" id="tier-total-2">—</td>
-            <td><button class="btn btn-danger-ghost" onclick="removeTierRow(2)">✕</button></td>
-          </tr>
-          <tr id="tier-3">
-            <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">3</td>
-            <td><input type="number" min="0" placeholder="e.g. 100" value="500" oninput="recalcTier(3)" style="width:110px;" /></td>
-            <td class="karen-cell"><input type="number" step="0.01" min="0" placeholder="0.00" value="" oninput="recalcTier(3)" style="width:130px;" /></td>
-            <td class="tier-col-usd" id="tier-usd-3" style="color:var(--text-muted); font-size:13px;">—</td>
-            <td class="total-cell" id="tier-total-3">—</td>
-            <td><button class="btn btn-danger-ghost" onclick="removeTierRow(3)">✕</button></td>
-          </tr>
-        </tbody>
-      </table>
-      <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Tiers are managed from the Workbook tab.</p>
+    <div class="section-body" id="pricing-quote-ref-body">
+      <span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>
     </div>
   </div>
 
-  <!-- ── Card: Additional Fees (Pricing tab) ── -->
+  <!-- ── Card: Delivered Cost Summary ── -->
   <div class="section-card">
-    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-      <span class="section-title">Additional Fees</span>
-      <span class="section-chevron">›</span>
+    <div class="section-header">
+      <span class="section-title">Delivered Cost Summary</span>
     </div>
     <div class="section-body">
-      <table class="tier-table" style="max-width:760px;">
-        <thead>
-          <tr>
-            <th style="text-align:left; width:22%;">Fee</th>
-            <th style="text-align:left;">Description</th>
-            <th style="text-align:right;">RMB</th>
-            <th style="text-align:right;">USD</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Sample Fee(s)</td>
-            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-sample-desc"></td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-sample-rmb">—</td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-sample">—</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Tooling Fee(s)</td>
-            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-tooling-desc"></td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-tooling-rmb">—</td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-tooling">—</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Die Fee(s)</td>
-            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-die-desc"></td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-die-rmb">—</td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-die">—</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Plate Fee(s)</td>
-            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-plate-desc"></td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px;" id="pricing-fee-plate-rmb">—</td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-plate">—</td>
-          </tr>
-        </tbody>
-        <tbody id="pricing-extra-fee-rows"></tbody>
-        <tbody>
-          <tr style="border-top:2px solid var(--border);">
-            <td style="padding:8px 12px; color:var(--text-muted); font-size:13px; white-space:nowrap;">Design Fee(s)</td>
-            <td style="padding:8px 12px; font-size:13px;" id="pricing-fee-design-desc"></td>
-            <td style="padding:8px 12px; text-align:right; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
-            <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:600;" id="pricing-fee-design">—</td>
-          </tr>
-        </tbody>
-        <tbody>
-          <tr style="border-top:2px solid var(--border); background:rgba(232,117,26,0.06);">
-            <td colspan="2" style="padding:10px 12px; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.04em;">Total Additional Fee(s)</td>
-            <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:13px; color:var(--accent);" id="pricing-fee-total-rmb">—</td>
-            <td style="padding:10px 12px; text-align:right; font-weight:700; font-size:14px; color:var(--accent);" id="pricing-fee-total">—</td>
-          </tr>
-        </tbody>
-      </table>
-      <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Fees are entered in the Workbook tab and added to each tier's total below.</p>
+      <div id="pricing-no-selection-msg" class="pricing-no-selection">
+        Select a pricing tier on the Shipping tab to see your delivered cost summary.
+      </div>
+      <div id="pricing-summary-view" style="display:none;">
+        <div class="pricing-summary-grid">
+
+          <!-- Product Cost -->
+          <div class="pricing-cost-block">
+            <div class="pricing-cost-block-title">Product Cost</div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Quantity</span>
+              <span class="pricing-cost-row-value" id="ps-qty">—</span>
+            </div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Unit Price (RMB)</span>
+              <span class="pricing-cost-row-value" id="ps-unit-rmb">—</span>
+            </div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Unit Price (USD)</span>
+              <span class="pricing-cost-row-value" id="ps-unit-usd">—</span>
+            </div>
+            <div class="pricing-cost-subtotal">
+              <div class="pricing-cost-row">
+                <span class="pricing-cost-row-label">Total Product Cost</span>
+                <span class="pricing-cost-row-value" id="ps-product-total">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shipping Cost -->
+          <div class="pricing-cost-block">
+            <div class="pricing-cost-block-title">Shipping Cost</div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Method</span>
+              <span class="pricing-cost-row-value" id="ps-sh-method">—</span>
+            </div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Chargeable Weight</span>
+              <span class="pricing-cost-row-value" id="ps-sh-weight">—</span>
+            </div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Rate</span>
+              <span class="pricing-cost-row-value" id="ps-sh-rate">—</span>
+            </div>
+            <div class="pricing-cost-subtotal">
+              <div class="pricing-cost-row">
+                <span class="pricing-cost-row-label">Total Shipping Cost</span>
+                <span class="pricing-cost-row-value" id="ps-sh-total">—</span>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /.pricing-summary-grid -->
+
+        <!-- Grand Total bar -->
+        <div class="pricing-grand-total-bar">
+          <div class="pricing-grand-total-label">Total Delivered Cost (USD)</div>
+          <div class="pricing-grand-total-value" id="ps-grand-total">—</div>
+        </div>
+
+      </div><!-- /#pricing-summary-view -->
     </div>
   </div>
 
-  <!-- ── Card: Grand Total per Tier ── -->
-  <div class="section-card" id="pricing-grand-total-section">
-    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-      <span class="section-title">Grand Total per Tier (incl. Fees)</span>
-      <span class="section-chevron">›</span>
-    </div>
-    <div class="section-body">
-      <table class="tier-table" id="pricing-grand-total-table" style="max-width:480px;">
-        <thead>
-          <tr>
-            <th>Quantity</th>
-            <th style="text-align:right;">Tier Total (USD)</th>
-            <th style="text-align:right;">+ Fees</th>
-            <th style="text-align:right;">Grand Total</th>
-          </tr>
-        </thead>
-        <tbody id="pricing-grand-total-body"></tbody>
-      </table>
-    </div>
+  <!-- Hidden: legacy elements kept for calcAdditionalFees() compatibility -->
+  <div style="display:none;" aria-hidden="true">
+    <table><thead></thead><tbody id="tier-body"></tbody></table>
+    <span id="pricing-fee-sample-desc"></span>
+    <span id="pricing-fee-sample-rmb"></span>
+    <span id="pricing-fee-sample"></span>
+    <span id="pricing-fee-tooling-desc"></span>
+    <span id="pricing-fee-tooling-rmb"></span>
+    <span id="pricing-fee-tooling"></span>
+    <span id="pricing-fee-die-desc"></span>
+    <span id="pricing-fee-die-rmb"></span>
+    <span id="pricing-fee-die"></span>
+    <span id="pricing-fee-plate-desc"></span>
+    <span id="pricing-fee-plate-rmb"></span>
+    <span id="pricing-fee-plate"></span>
+    <span id="pricing-fee-design-desc"></span>
+    <span id="pricing-fee-design"></span>
+    <tbody id="pricing-extra-fee-rows"></tbody>
+    <span id="pricing-fee-total-rmb"></span>
+    <span id="pricing-fee-total"></span>
+    <table><tbody id="pricing-grand-total-body"></tbody></table>
+    <div id="pricing-grand-total-section"></div>
   </div>
 
   </div><!-- /#wb-tab-pricing -->
@@ -5522,6 +5570,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('sh-td-usd').textContent  = !isNaN(usd) ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('sh-td-total').textContent = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     detailsEl.classList.add('visible');
+    renderPricingTab();
 
     // Recalculate total outer cartons for this tier qty and refresh freight
     const tierQty        = parseInt(qty) || 0;
@@ -6441,6 +6490,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('wb-tab-' + tabName).classList.add('active');
     btn.classList.add('active');
     if (tabName === 'shipping') { syncShippingDims(); syncShippingPalletStats(); calcFreight(); }
+    if (tabName === 'pricing')  { renderPricingTab(); }
   }
 
   /* ── Shipping Calculator ─────────────────────────────────────────────────── */
@@ -6456,6 +6506,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const usdEl = document.getElementById('freight-rate-usd-display');
     if (rmbEl) rmbEl.textContent = r.toFixed(2);
     if (usdEl) usdEl.textContent = (r / FREIGHT_EXCHANGE_RATE).toFixed(2);
+    renderPricingTab();
   }
 
   function toggleFreightShipping() {
@@ -6463,6 +6514,100 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const body   = document.getElementById('freight-shipping-body');
     header.classList.toggle('collapsed');
     body.classList.toggle('collapsed');
+  }
+
+  /* ── Pricing Tab Summary Renderer ──────────────────────────────────────── */
+  function renderPricingTab() {
+    // Quote Reference — read live from rfq-body
+    const rfqRows = document.querySelectorAll('#rfq-body tr');
+    const refEl = document.getElementById('pricing-quote-ref-body');
+    if (refEl) {
+      if (rfqRows.length === 0) {
+        refEl.innerHTML = '<span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>';
+      } else {
+        let html = `<div style="overflow-x:auto;">
+          <table class="pricing-quote-ref-table">
+            <thead><tr>
+              <th>#</th><th>Item</th>
+              <th style="text-align:right;">Qty</th>
+              <th style="text-align:right;">Unit (RMB)</th>
+              <th style="text-align:right;">Unit (USD)</th>
+              <th style="text-align:right;">Total (USD)</th>
+              <th>Lead Time</th>
+            </tr></thead><tbody>`;
+        rfqRows.forEach((row, i) => {
+          const inputs = row.querySelectorAll('input:not([type="checkbox"])');
+          const item     = inputs[0]?.value || '—';
+          const qty      = inputs[1]?.value || '';
+          const priceRmb = inputs[2]?.value || '';
+          const leadTime = inputs[3]?.value || '';
+          const rowId    = row.id.replace('rfq-', '');
+          const usd      = document.getElementById(`rfq-usd-${rowId}`)?.textContent   || '—';
+          const total    = document.getElementById(`rfq-total-${rowId}`)?.textContent || '—';
+          const isSample = row.classList.contains('rfq-sample-row');
+          html += `<tr class="${i === 0 ? 'main-row' : ''}">
+            <td style="color:var(--text-muted); white-space:nowrap;">
+              ${i+1}${isSample ? ' <span style="font-size:10px;color:var(--accent);background:rgba(232,117,26,0.12);padding:1px 6px;border-radius:4px;font-weight:700;">SAMPLE</span>' : ''}
+            </td>
+            <td style="font-weight:500;">${item}</td>
+            <td style="text-align:right;">${qty ? parseInt(qty).toLocaleString('en-US') : '—'}</td>
+            <td style="text-align:right; color:var(--text-muted);">${priceRmb ? '¥' + parseFloat(priceRmb).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+            <td style="text-align:right;">${usd}</td>
+            <td style="text-align:right; font-weight:600; color:var(--accent);">${total}</td>
+            <td style="color:var(--text-muted);">${leadTime ? leadTime + ' days' : '—'}</td>
+          </tr>`;
+        });
+        html += '</tbody></table></div>';
+        refEl.innerHTML = html;
+      }
+    }
+
+    // Delivered Cost Summary
+    const noSelEl  = document.getElementById('pricing-no-selection-msg');
+    const summaryEl = document.getElementById('pricing-summary-view');
+    if (!_selectedTierId) {
+      if (noSelEl)  noSelEl.style.display  = '';
+      if (summaryEl) summaryEl.style.display = 'none';
+      return;
+    }
+    if (noSelEl)  noSelEl.style.display  = 'none';
+    if (summaryEl) summaryEl.style.display = '';
+
+    const e = id => document.getElementById(id);
+    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+
+    // Tier data from Workbook tab
+    const tierRow    = document.getElementById(`wb-tier-${_selectedTierId}`);
+    const tierInputs = tierRow?.querySelectorAll('input');
+    const tierQty    = parseInt(tierInputs?.[0]?.value) || 0;
+    const tierRmb    = parseFloat(tierRow?.dataset.price) || 0;
+    const tierUsd    = tierRmb > 0 ? tierRmb / USD_TO_RMB : 0;
+    const productTotal = tierQty > 0 && tierUsd > 0 ? tierQty * tierUsd : 0;
+
+    if (e('ps-qty'))          e('ps-qty').textContent          = tierQty > 0 ? tierQty.toLocaleString('en-US') + ' units' : '—';
+    if (e('ps-unit-rmb'))     e('ps-unit-rmb').textContent     = fmtRmb(tierRmb);
+    if (e('ps-unit-usd'))     e('ps-unit-usd').textContent     = tierUsd > 0 ? '$' + tierUsd.toFixed(4) : '—';
+    if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
+
+    // Shipping data from freight results
+    const mode = document.getElementById('freight-mode')?.value || 'slow';
+    const modeNames = { slow: 'Slow Boat', fast: 'Fast Boat', airupp: 'Air + UPS', directair: 'Direct Air' };
+    const rateRmb = freightMethodRates[mode] || 0;
+    const rateUsd = rateRmb / FREIGHT_EXCHANGE_RATE;
+    const weightText   = e('freight-wt-' + mode)?.textContent || '—';
+    const chargeableKg = parseFloat(weightText) || 0;
+    const shippingRmb  = chargeableKg > 0 ? chargeableKg * rateRmb : 0;
+    const shippingUsd  = shippingRmb > 0 ? shippingRmb / FREIGHT_EXCHANGE_RATE : 0;
+
+    if (e('ps-sh-method'))  e('ps-sh-method').textContent  = modeNames[mode] || '—';
+    if (e('ps-sh-weight'))  e('ps-sh-weight').textContent  = chargeableKg > 0 ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg' : '—';
+    if (e('ps-sh-rate'))    e('ps-sh-rate').textContent    = rateRmb > 0 ? `¥${rateRmb} / kg  ($${rateUsd.toFixed(2)}/kg)` : '—';
+    if (e('ps-sh-total'))   e('ps-sh-total').textContent   = shippingUsd > 0 ? `${fmtRmb(shippingRmb)}  /  ${fmtUsd(shippingUsd)}` : '—';
+
+    // Grand total
+    const grandTotal = productTotal + shippingUsd;
+    if (e('ps-grand-total')) e('ps-grand-total').textContent = grandTotal > 0 ? '$' + grandTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
   }
 
   // Render pallet stats into the shipping tab panel
