@@ -5508,6 +5508,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('sh-td-usd').textContent  = !isNaN(usd) ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('sh-td-total').textContent = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     detailsEl.classList.add('visible');
+
+    // Recalculate total outer cartons for this tier qty and refresh freight
+    const tierQty    = parseInt(qty) || 0;
+    const unitsPerInner  = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    const innersPerOuter = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    const unitsPerOuter  = unitsPerInner * innersPerOuter;
+    if (tierQty > 0 && unitsPerOuter > 0) {
+      const totalCartons = Math.ceil(tierQty / unitsPerOuter);
+      const palletEl = document.getElementById('pallet-total-cartons');
+      if (palletEl) {
+        palletEl.value = totalCartons;
+        calcFreight();
+      }
+    }
   }
 
   function collectTiersFrom(tbodyId) {
