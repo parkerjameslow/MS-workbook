@@ -5466,7 +5466,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
       let label = `Tier ${id}`;
       if (qty) label += ` — ${parseInt(qty).toLocaleString('en-US')} units`;
-      if (!isNaN(rmb) && rmb > 0) label += ` @ ¥${rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} / unit`;
       const opt = document.createElement('option');
       opt.value = id;
       opt.textContent = label;
