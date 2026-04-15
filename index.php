@@ -897,6 +897,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 0 16px;
       border-right: 1px solid var(--border);
       flex-shrink: 0;
+      position: relative;
     }
     .sh-tier-row-label {
       font-size: 11px;
@@ -908,7 +909,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .sh-tier-select-wrap select {
       height: 32px;
-      padding: 0 10px;
+      padding: 0 36px 0 10px;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       background: var(--surface);
@@ -917,8 +918,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-family: inherit;
       outline: none;
       cursor: pointer;
-      appearance: auto;
+      appearance: none;
+      -webkit-appearance: none;
       min-width: 160px;
+    }
+    .sh-tier-select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--text-muted);
+      pointer-events: none;
     }
     #sh-tier-details { display: none; }
     #sh-tier-details.visible { display: flex; }
@@ -927,11 +942,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       flex-direction: column;
       justify-content: center;
       gap: 3px;
-      flex: 1;
       padding: 0 20px;
-      border-right: 1px solid var(--border);
     }
-    .sh-tier-stat:last-child { border-right: none; }
     .sh-tier-stat-label {
       font-size: 9px;
       font-weight: 700;
@@ -3506,7 +3518,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <option value="">— Select a tier —</option>
           </select>
         </div>
-        <div id="sh-tier-details" style="flex:1; gap:0; align-items:stretch;">
+        <div id="sh-tier-details" style="gap:0; align-items:stretch;">
           <div class="sh-tier-stat">
             <span class="sh-tier-stat-label">Unit (RMB)</span>
             <span class="sh-tier-stat-val" id="sh-td-rmb-full">—</span>
