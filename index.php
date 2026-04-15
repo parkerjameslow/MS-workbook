@@ -884,18 +884,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 14px 18px;
+      padding: 16px 24px;
       margin-bottom: 18px;
       display: flex;
       align-items: flex-start;
-      gap: 14px;
+      gap: 28px;
       flex-wrap: wrap;
     }
     .sh-tier-selector-left {
       display: flex;
       flex-direction: column;
       gap: 6px;
-      min-width: 220px;
+      min-width: 300px;
+      flex: 0 0 300px;
     }
     .sh-tier-selector-label {
       font-size: 11px;
@@ -905,21 +906,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
     .sh-tier-selector select {
-      padding: 8px 10px;
+      padding: 9px 36px 9px 14px;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       background: var(--surface2);
       color: var(--text);
       font-size: 13px;
       width: 100%;
+      appearance: auto;
     }
     .sh-tier-details {
       display: none;
       flex: 1;
-      gap: 16px;
+      gap: 28px;
       flex-wrap: wrap;
       align-items: center;
       padding-top: 20px;
+      justify-content: space-between;
     }
     .sh-tier-details.visible { display: flex; }
     .sh-tier-detail-item {
@@ -5444,7 +5447,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
       let label = `Tier ${id}`;
       if (qty) label += ` — ${parseInt(qty).toLocaleString('en-US')} units`;
-      if (!isNaN(usd)) label += ` @ $${usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} / unit`;
+      if (!isNaN(rmb) && rmb > 0) label += ` @ ¥${rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} / unit`;
       const opt = document.createElement('option');
       opt.value = id;
       opt.textContent = label;
