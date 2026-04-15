@@ -4437,7 +4437,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div><!-- /.app-layout -->
 
 <!-- ── New Shipment Modal ──────────────────────────────────────────────── -->
-<div class="modal-overlay" id="modal-new-shipment" onclick="if(event.target===this)closeNewShipmentModal()">
+<div class="modal-overlay" id="modal-new-shipment" onclick="if(event.target===this)closeNewShipmentModal()" style="z-index:1000;">
   <div class="modal" style="max-width:400px;">
     <div class="modal-title">New Shipment</div>
     <form onsubmit="createShipment(event)">
@@ -4464,7 +4464,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <!-- ── Add Workbook to Shipment Modal ─────────────────────────────────── -->
-<div class="modal-overlay" id="modal-add-workbook" onclick="if(event.target===this)closeAddWorkbookModal()">
+<div class="modal-overlay" id="modal-add-workbook" onclick="if(event.target===this)closeAddWorkbookModal()" style="z-index:1000;">
   <div class="modal" style="max-width:560px;">
     <div class="modal-title">Add Workbook</div>
     <input type="text" class="wb-picker-search" id="wb-picker-search" placeholder="Search products or clients…" oninput="filterWbPicker(this.value)" />
@@ -9044,11 +9044,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function openNewShipmentModal() {
     document.getElementById('new-ship-name').value = '';
     document.getElementById('new-ship-container').value = '40hc';
-    document.getElementById('modal-new-shipment').classList.add('active');
+    document.getElementById('modal-new-shipment').classList.add('open');
     setTimeout(() => document.getElementById('new-ship-name').focus(), 80);
   }
   function closeNewShipmentModal() {
-    document.getElementById('modal-new-shipment').classList.remove('active');
+    document.getElementById('modal-new-shipment').classList.remove('open');
   }
 
   function createShipment(e) {
@@ -9255,10 +9255,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _wbPickerSelected = null;
     document.getElementById('wb-picker-search').value = '';
     buildWbPickerList('');
-    document.getElementById('modal-add-workbook').classList.add('active');
+    document.getElementById('modal-add-workbook').classList.add('open');
   }
   function closeAddWorkbookModal() {
-    document.getElementById('modal-add-workbook').classList.remove('active');
+    document.getElementById('modal-add-workbook').classList.remove('open');
     _wbPickerSelected = null;
   }
 
