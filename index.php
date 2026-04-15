@@ -3714,38 +3714,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- ── Tab: Pricing ── -->
   <div id="wb-tab-pricing" class="wb-tab-content">
 
-  <!-- ── Card: Quote Reference ── -->
-  <div class="section-card collapsed" id="pricing-quote-ref-card">
-    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-      <span class="section-title">Quote Reference</span>
-      <div class="qr-collapsed-summary" id="pricing-quote-ref-summary">
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Unit (RMB)</span>
-          <span class="qr-sum-val" id="qrs-rmb">—</span>
-        </div>
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Unit (USD)</span>
-          <span class="qr-sum-val" id="qrs-usd">—</span>
-        </div>
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Total (USD)</span>
-          <span class="qr-sum-val" id="qrs-total">—</span>
-        </div>
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Lead Time</span>
-          <span class="qr-sum-val" id="qrs-lead">—</span>
-        </div>
-      </div>
-      <div class="qr-expand-toggle">
-        <span class="qr-expand-label">All Line Items</span>
-        <span class="section-chevron">›</span>
-      </div>
-    </div>
-    <div class="section-body" id="pricing-quote-ref-body">
-      <span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>
-    </div>
-  </div>
-
   <!-- ── Card: Delivered Cost Summary ── -->
   <div class="section-card">
     <div class="section-header">
@@ -3813,6 +3781,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
 
       </div><!-- /#pricing-summary-view -->
+    </div>
+  </div>
+
+  <!-- ── Card: Quote Reference ── -->
+  <div class="section-card collapsed" id="pricing-quote-ref-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Quote Reference</span>
+      <div class="qr-collapsed-summary" id="pricing-quote-ref-summary">
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Unit (RMB)</span>
+          <span class="qr-sum-val" id="qrs-rmb">—</span>
+        </div>
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Unit (USD)</span>
+          <span class="qr-sum-val" id="qrs-usd">—</span>
+        </div>
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Total (USD)</span>
+          <span class="qr-sum-val" id="qrs-total">—</span>
+        </div>
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Lead Time</span>
+          <span class="qr-sum-val" id="qrs-lead">—</span>
+        </div>
+      </div>
+      <div class="qr-expand-toggle">
+        <span class="qr-expand-label">All Line Items</span>
+        <span class="section-chevron">›</span>
+      </div>
+    </div>
+    <div class="section-body" id="pricing-quote-ref-body">
+      <span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>
     </div>
   </div>
 
