@@ -5130,20 +5130,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function applyRfqRmbToTiers(totalRmb) {
-    const firstRow = document.querySelector('#wb-tier-body tr:first-child');
-    if (!firstRow) return;
-    const id = parseInt(firstRow.id.replace('wb-tier-', ''));
-    firstRow.dataset.price = totalRmb > 0 ? parseFloat(totalRmb).toFixed(2) : '';
-    // Sync qty from first RFQ row (inputs[1] = qty, excluding checkbox)
+    const rows = document.querySelectorAll('#wb-tier-body tr');
+    if (!rows.length) return;
+    const price = totalRmb > 0 ? parseFloat(totalRmb).toFixed(2) : '';
+    // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
+    rows.forEach(row => { row.dataset.price = price; });
+    // Sync qty from first RFQ row into first tier row
     const rfqFirstRow = document.querySelector('#rfq-body tr:first-child');
     const rfqInputs = rfqFirstRow ? rfqFirstRow.querySelectorAll('input:not([type="checkbox"])') : [];
     const rfqQty = rfqInputs[1]?.value;
-    const tierQtyInput = firstRow.querySelector('input[type="number"]');
-    if (tierQtyInput && rfqQty) {
-      tierQtyInput.value = rfqQty;
-    }
+    const firstTierQtyInput = rows[0].querySelector('input[type="number"]');
+    if (firstTierQtyInput && rfqQty) firstTierQtyInput.value = rfqQty;
+    // Recalc all rows
     _syncing = true;
-    recalcWbTier(id);
+    rows.forEach(row => {
+      const id = parseInt(row.id.replace('wb-tier-', ''));
+      recalcWbTier(id);
+    });
     _syncing = false;
     syncTiersToPricing();
   }
@@ -5293,18 +5296,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (tier1 && tier1.dataset.price) unitPrice = tier1.dataset.price;
     }
     tr.dataset.price = unitPrice || '';
-    const rmbCell = isFirst
-      ? `<td id="wb-tier-rmb-${id}" style="font-size:13px;">
-           <span style="color:var(--text-muted);" id="wb-tier-rmb-val-${id}">—</span>
-           <span style="font-size:10px; font-weight:600; color:var(--accent); opacity:0.8; margin-left:6px; vertical-align:middle;">auto</span>
-         </td>`
-      : `<td class="karen-cell">
-          <div class="currency-prefix currency-rmb" style="display:inline-block; position:relative;">
-            <input type="number" step="0.01" min="0" placeholder="0.00" value="${unitPrice}"
-                   oninput="recalcWbTier(${id})"
-                   style="width:110px; padding-left:28px;" />
-          </div>
-        </td>`;
+    // All price cells are view-only — driven by RFQ total
+    const rmbCell = `<td id="wb-tier-rmb-${id}" style="font-size:13px; color:var(--text-muted);">
+        <span id="wb-tier-rmb-val-${id}">—</span>
+      </td>`;
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
       <td>
@@ -5326,23 +5321,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const row = document.getElementById(`wb-tier-${id}`);
     const inputs = row.querySelectorAll('input');
     const qty = parseFloat(inputs[0].value);
-    let rmb;
-    if (inputs[1]) {
-      // Editable row — read from input and keep dataset in sync
-      rmb = parseFloat(inputs[1].value);
-      row.dataset.price = inputs[1].value;
-    } else {
-      // First row — read-only, driven by RFQ total
-      rmb = parseFloat(row.dataset.price);
-    }
+    // All rows are view-only for price — read from dataset
+    const rmb = parseFloat(row.dataset.price);
     const usd = rmb / USD_TO_RMB;
-    const rmbEl = document.getElementById(`wb-tier-rmb-${id}`);
+    const rmbValEl = document.getElementById(`wb-tier-rmb-val-${id}`);
     const usdEl = document.getElementById(`wb-tier-usd-${id}`);
     const totalEl = document.getElementById(`wb-tier-total-${id}`);
-    const rmbValEl = document.getElementById(`wb-tier-rmb-val-${id}`) || rmbEl;
-    if (rmbEl) {
-      const display = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-      if (rmbValEl !== rmbEl) rmbValEl.textContent = display; else rmbEl.textContent = display;
+    if (rmbValEl) {
+      rmbValEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     }
     if (!isNaN(rmb) && rmb > 0) {
       usdEl.textContent = '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -5371,9 +5357,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tiers = [];
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
-      if (inputs.length >= 2) {
-        tiers.push({ qty: inputs[0].value, price: inputs[1].value });
-      } else if (inputs.length >= 1) {
+      if (inputs.length >= 1) {
         tiers.push({ qty: inputs[0].value, price: row.dataset.price || '' });
       }
     });
