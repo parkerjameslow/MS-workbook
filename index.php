@@ -1785,12 +1785,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pricing-grand-total-value { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
     .qr-collapsed-summary {
       display: flex;
-      gap: 0;
+      gap: 32px;
       align-items: center;
       flex-wrap: wrap;
-      margin: 0 16px 0 20px;
-      flex: 1;
-      justify-content: space-between;
+      margin: 0 16px 0 24px;
     }
     .qr-sum-item { display: flex; flex-direction: column; gap: 2px; }
     .qr-sum-label {
@@ -1806,6 +1804,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       align-items: center;
       gap: 6px;
       flex-shrink: 0;
+      margin-left: auto;
       padding-right: 6px;
     }
     .qr-expand-label {
