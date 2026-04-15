@@ -1722,14 +1722,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pricing-grand-total-label { font-size: 13px; font-weight: 600; opacity: 0.88; }
     .pricing-grand-total-value { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
     .qr-collapsed-summary {
-      display: none;
-      gap: 28px;
+      display: flex;
+      gap: 0;
       align-items: center;
       flex-wrap: wrap;
-      margin: 0 8px 0 20px;
+      margin: 0 16px 0 20px;
       flex: 1;
+      justify-content: space-between;
     }
-    .section-card.collapsed .qr-collapsed-summary { display: flex; }
     .qr-sum-item { display: flex; flex-direction: column; gap: 2px; }
     .qr-sum-label {
       font-size: 9px;
@@ -1739,6 +1739,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
     .qr-sum-val { font-size: 13px; font-weight: 700; color: var(--text); }
+    .qr-expand-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      padding-right: 6px;
+    }
+    .qr-expand-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .qr-expand-toggle .section-chevron { margin-left: 0; padding-right: 2px; }
 
     .pricing-quote-ref-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .pricing-quote-ref-table th {
@@ -3646,7 +3661,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="qr-sum-val" id="qrs-lead">—</span>
         </div>
       </div>
-      <span class="section-chevron">›</span>
+      <div class="qr-expand-toggle">
+        <span class="qr-expand-label">All Line Items</span>
+        <span class="section-chevron">›</span>
+      </div>
     </div>
     <div class="section-body" id="pricing-quote-ref-body">
       <span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>
