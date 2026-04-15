@@ -3439,6 +3439,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="sh-dim-val" id="sh-wt-lbs">—</span><span class="sh-dim-unit">lbs</span>
             </div>
           </div>
+          <div class="sh-dim-table" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
+            <div class="sh-dim-row">
+              <span class="sh-dim-lbl" style="min-width:90px; font-size:11px;">Inner / Outer</span>
+              <span class="sh-dim-val" id="sh-inner-per-outer">—</span><span class="sh-dim-unit">inner cartons</span>
+            </div>
+            <div class="sh-dim-row">
+              <span class="sh-dim-lbl" style="min-width:90px; font-size:11px;">Units / Outer</span>
+              <span class="sh-dim-val" id="sh-units-per-outer">—</span><span class="sh-dim-unit">products</span>
+            </div>
+          </div>
           <div class="sh-cartons-display">
             <span class="sh-cartons-label">Cartons in Shipment</span>
             <span class="sh-cartons-val" id="sh-cartons-val">—</span>
@@ -6515,6 +6525,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('sh-h-in').textContent  = fmt(hIn);
     document.getElementById('sh-wt-kg').textContent  = fmt(wtKg);
     document.getElementById('sh-wt-lbs').textContent = fmt(wtLbs);
+
+    const innerPerOuter  = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    const unitsPerInner  = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    const unitsPerOuter  = innerPerOuter > 0 && unitsPerInner > 0 ? innerPerOuter * unitsPerInner : 0;
+    const ipo = document.getElementById('sh-inner-per-outer');
+    const upo = document.getElementById('sh-units-per-outer');
+    if (ipo) ipo.textContent = innerPerOuter > 0 ? innerPerOuter : '—';
+    if (upo) upo.textContent = unitsPerOuter > 0 ? unitsPerOuter : '—';
   }
 
   function calcFreight() {
