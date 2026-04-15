@@ -3523,12 +3523,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     </div><!-- /.sh-top-row -->
 
-    <!-- ══ BOTTOM ROW: full-width Shipping Method bar + table ══ -->
-    <div class="sh-box sh-shipping-box">
-      <div class="sh-box-title">Shipping</div>
-
-      <!-- Pricing Tier selector — same style as Shipping Method bar -->
-      <div class="freight-method-rate-row">
+    <!-- ══ PRICING TIER selector — above outer carton ══ -->
+    <div class="sh-box" style="margin-bottom:0;">
+      <div class="freight-method-rate-row" style="margin-bottom:0;">
         <label class="freight-method-label">Pricing Tier</label>
         <div class="freight-method-bar">
           <div class="freight-method-bar-select">
@@ -3547,14 +3544,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="freight-method-bar-unit">per unit</span>
           </div>
         </div>
-        <!-- Hidden spans for qty/total still updated by renderShippingTierDetails -->
         <span id="sh-td-qty"   style="display:none;">—</span>
         <span id="sh-td-total" style="display:none;">—</span>
         <div id="sh-tier-details" style="display:none;"></div>
       </div>
+    </div>
+
+    <!-- ══ BOTTOM ROW: full-width Shipping Method bar + table ══ -->
+    <div class="sh-box sh-shipping-box">
+      <div class="sh-box-title">Shipping</div>
 
       <!-- Method + rate single bar -->
-      <div class="freight-method-rate-row" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+      <div class="freight-method-rate-row">
         <label class="freight-method-label">Shipping Method</label>
         <div class="freight-method-bar">
           <div class="freight-method-bar-select">
