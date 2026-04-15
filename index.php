@@ -2753,6 +2753,182 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       select { }
       input[type="number"] { }
     }
+
+    /* ══ Shipments ══════════════════════════════════════════════════════ */
+    .shipment-list-empty {
+      text-align: center; padding: 60px 20px;
+    }
+    .shipment-list-empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.3; }
+    .shipment-list-empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .shipment-list-empty-sub { font-size: 13px; color: var(--text-muted); }
+
+    .shipment-cards { display: flex; flex-direction: column; gap: 10px; }
+    .shipment-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .shipment-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+    .shipment-card-main { flex: 1; min-width: 0; }
+    .shipment-card-name { font-size: 15px; font-weight: 600; }
+    .shipment-card-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+    .shipment-card-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .shipment-container-tag {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      background: rgba(107,147,255,0.12); border: 1px solid rgba(107,147,255,0.3);
+      color: var(--accent); border-radius: 20px; padding: 3px 10px;
+    }
+    .ship-status-badge {
+      font-size: 11px; font-weight: 600; border-radius: 20px; padding: 3px 10px;
+      text-transform: capitalize;
+    }
+    .ship-status-planning  { background: rgba(107,147,255,0.1); color: #6b93ff; }
+    .ship-status-booked    { background: rgba(251,175,52,0.12); color: #f59e0b; }
+    .ship-status-in_transit { background: rgba(74,222,128,0.12); color: #4ade80; }
+    .ship-status-delivered  { background: rgba(52,211,153,0.12); color: #34d399; }
+
+    /* Detail header */
+    .ship-detail-header {
+      display: flex; align-items: flex-start; gap: 16px;
+      margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .ship-detail-name-wrap { flex: 1; min-width: 200px; }
+    .ship-detail-name {
+      font-size: 22px; font-weight: 700; border: none; background: transparent;
+      color: var(--text); width: 100%; outline: none; padding: 2px 0;
+      border-bottom: 2px solid transparent; transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    .ship-detail-name:focus { border-bottom-color: var(--accent); }
+    .ship-detail-controls {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+    }
+    .ship-detail-controls select {
+      height: 34px; padding: 0 12px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); background: var(--surface2); color: var(--text);
+      font-size: 13px; font-family: inherit; outline: none; cursor: pointer;
+    }
+
+    /* Container type tabs */
+    .container-type-row {
+      display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .container-type-btn {
+      padding: 8px 18px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: var(--surface2);
+      color: var(--text-muted); font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .container-type-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .container-type-btn.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+
+    /* Utilization bars */
+    .ship-util-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 16px; margin-bottom: 24px;
+    }
+    @media (max-width: 600px) { .ship-util-grid { grid-template-columns: 1fr; } }
+    .ship-util-block {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px;
+    }
+    .ship-util-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px;
+    }
+    .ship-util-values {
+      display: flex; align-items: baseline; gap: 4px; margin-bottom: 8px;
+    }
+    .ship-util-current { font-size: 20px; font-weight: 700; }
+    .ship-util-max { font-size: 13px; color: var(--text-muted); }
+    .ship-util-track {
+      height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+    }
+    .ship-util-fill {
+      height: 100%; border-radius: 3px; transition: width 0.4s ease;
+      background: var(--accent);
+    }
+    .ship-util-fill.warn  { background: #f59e0b; }
+    .ship-util-fill.danger { background: #ef4444; }
+    .ship-util-pct { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+    /* Workbook entries table */
+    .ship-wb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .ship-wb-table th {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-muted); padding: 8px 12px; text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .ship-wb-table td {
+      padding: 12px 12px; border-bottom: 1px solid var(--border); vertical-align: middle;
+    }
+    .ship-wb-table tr:last-child td { border-bottom: none; }
+    .ship-wb-product { font-weight: 600; }
+    .ship-wb-client { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+    .ship-wb-stat { font-weight: 600; }
+    .ship-wb-stat-sub { font-size: 11px; color: var(--text-muted); }
+    .ship-wb-remove {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 16px; padding: 4px 8px; border-radius: var(--radius-sm);
+      transition: color 0.15s, background 0.15s;
+    }
+    .ship-wb-remove:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
+    .ship-add-wb-btn {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 14px; padding: 10px 16px;
+      border: 1.5px dashed var(--border); border-radius: var(--radius-sm);
+      background: none; color: var(--text-muted); font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; width: 100%;
+    }
+    .ship-add-wb-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(107,147,255,0.05); }
+
+    /* Add Workbook Modal */
+    .modal-wb-picker { max-height: 420px; overflow-y: auto; margin: 0 -6px; }
+    .wb-picker-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 10px; border-radius: var(--radius-sm); cursor: pointer;
+      transition: background 0.12s;
+    }
+    .wb-picker-item:hover { background: var(--surface2); }
+    .wb-picker-info { flex: 1; min-width: 0; }
+    .wb-picker-product { font-size: 13px; font-weight: 600; }
+    .wb-picker-client { font-size: 11px; color: var(--text-muted); }
+    .wb-picker-tiers { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .wb-picker-qty {
+      width: 80px; height: 30px; padding: 0 8px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+      font-size: 12px; font-family: inherit; outline: none; text-align: right;
+    }
+    .wb-picker-search {
+      width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
+      font-size: 13px; font-family: inherit; outline: none; margin-bottom: 12px;
+    }
+    .wb-picker-search:focus { border-color: var(--accent); }
+    .nav-shipment-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 10px 5px 16px; border-radius: var(--radius-sm);
+      color: var(--text-muted); font-size: 13px; cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+    }
+    .nav-shipment-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-shipment-item.active { background: rgba(107,147,255,0.12); color: var(--accent); font-weight: 600; }
+    .nav-shipment-dot {
+      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+      background: var(--text-muted);
+    }
+    .nav-shipment-dot.planning   { background: #6b93ff; }
+    .nav-shipment-dot.booked     { background: #f59e0b; }
+    .nav-shipment-dot.in_transit { background: #4ade80; }
+    .nav-shipment-dot.delivered  { background: #34d399; }
   </style>
 </head>
 <body data-theme="light">
@@ -2836,10 +3012,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="nav-section collapsed" id="nav-section-containers">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-containers')">
         <span>Shipments</span>
+        <span class="nav-badge" id="badge-shipments"></span>
         <span class="nav-section-chevron">›</span>
       </div>
-      <div class="nav-section-body">
-        <div class="nav-placeholder">Coming soon…</div>
+      <div class="nav-section-body" id="shipments-nav-body">
+        <a class="nav-item" href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" style="font-size:12px;">All Shipments</a>
+        <div id="shipments-nav-list"></div>
       </div>
     </div>
 
@@ -4121,8 +4299,184 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </main>
 </div><!-- /#view-samples -->
 
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: SHIPMENTS LIST
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-shipments" class="view">
+  <main class="container">
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Shipments</span>
+        <button class="btn btn-primary" onclick="openNewShipmentModal()">+ New Shipment</button>
+      </div>
+      <div class="section-body">
+        <div id="shipment-list-content">
+          <div class="shipment-list-empty">
+            <div class="shipment-list-empty-icon">🚢</div>
+            <div class="shipment-list-empty-title">No shipments yet</div>
+            <div class="shipment-list-empty-sub">Create a shipment to start consolidating workbooks into a container.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div><!-- /#view-shipments -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: SHIPMENT DETAIL
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-shipment-detail" class="view">
+  <main class="container">
+
+    <!-- Breadcrumb -->
+    <div style="margin-bottom:16px;">
+      <a href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" style="font-size:12px; color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+        ‹ All Shipments
+      </a>
+    </div>
+
+    <!-- Header: name + status + dates -->
+    <div class="ship-detail-header">
+      <div class="ship-detail-name-wrap">
+        <input type="text" class="ship-detail-name" id="ship-detail-name" placeholder="Shipment name…"
+          oninput="onShipmentNameChange()" />
+      </div>
+      <div class="ship-detail-controls">
+        <select id="ship-detail-status" onchange="onShipmentStatusChange()">
+          <option value="planning">Planning</option>
+          <option value="booked">Booked</option>
+          <option value="in_transit">In Transit</option>
+          <option value="delivered">Delivered</option>
+        </select>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">ETD</label>
+          <input type="date" id="ship-detail-etd" style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange()" />
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">ETA</label>
+          <input type="date" id="ship-detail-eta" style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange()" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Container type selector -->
+    <div style="margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Container Type</div>
+    <div class="container-type-row" id="ship-container-btns">
+      <button class="container-type-btn active" data-type="20ft" onclick="setContainerType('20ft')">20' Standard <span style="font-weight:400; opacity:0.7;">· 25 CBM · 21,700 kg</span></button>
+      <button class="container-type-btn" data-type="40ft"  onclick="setContainerType('40ft')">40' Standard <span style="font-weight:400; opacity:0.7;">· 55 CBM · 26,500 kg</span></button>
+      <button class="container-type-btn" data-type="40hc"  onclick="setContainerType('40hc')">40' High Cube <span style="font-weight:400; opacity:0.7;">· 65 CBM · 26,500 kg</span></button>
+    </div>
+
+    <!-- Container utilization -->
+    <div class="ship-util-grid" id="ship-util-grid">
+      <div class="ship-util-block">
+        <div class="ship-util-label">Volume (CBM)</div>
+        <div class="ship-util-values">
+          <span class="ship-util-current" id="ship-util-cbm-cur">0</span>
+          <span class="ship-util-max" id="ship-util-cbm-max">/ 25</span>
+        </div>
+        <div class="ship-util-track"><div class="ship-util-fill" id="ship-util-cbm-bar" style="width:0%"></div></div>
+        <div class="ship-util-pct" id="ship-util-cbm-pct">0% full</div>
+      </div>
+      <div class="ship-util-block">
+        <div class="ship-util-label">Weight (kg)</div>
+        <div class="ship-util-values">
+          <span class="ship-util-current" id="ship-util-wt-cur">0</span>
+          <span class="ship-util-max" id="ship-util-wt-max">/ 21,700</span>
+        </div>
+        <div class="ship-util-track"><div class="ship-util-fill" id="ship-util-wt-bar" style="width:0%"></div></div>
+        <div class="ship-util-pct" id="ship-util-wt-pct">0% full</div>
+      </div>
+      <div class="ship-util-block">
+        <div class="ship-util-label">Pallets</div>
+        <div class="ship-util-values">
+          <span class="ship-util-current" id="ship-util-pal-cur">0</span>
+          <span class="ship-util-max" id="ship-util-pal-max">/ 10</span>
+        </div>
+        <div class="ship-util-track"><div class="ship-util-fill" id="ship-util-pal-bar" style="width:0%"></div></div>
+        <div class="ship-util-pct" id="ship-util-pal-pct">0% full</div>
+      </div>
+    </div>
+
+    <!-- Workbook entries -->
+    <div class="section-card" style="margin-bottom:0;">
+      <div class="section-header">
+        <span class="section-title">Workbooks in this Shipment</span>
+        <span id="ship-wb-count" style="font-size:12px; color:var(--text-muted); margin-left:6px;"></span>
+      </div>
+      <div class="section-body" style="padding:0;">
+        <div id="ship-wb-empty" style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:13px;">
+          No workbooks added yet. Click below to add one.
+        </div>
+        <table class="ship-wb-table" id="ship-wb-table" style="display:none;">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th style="text-align:right;">Qty</th>
+              <th style="text-align:right;">Cartons</th>
+              <th style="text-align:right;">Pallets</th>
+              <th style="text-align:right;">CBM</th>
+              <th style="text-align:right;">Weight</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ship-wb-tbody"></tbody>
+        </table>
+        <div style="padding:12px 16px 14px;">
+          <button class="ship-add-wb-btn" onclick="openAddWorkbookModal()">
+            <span style="font-size:18px; line-height:1;">+</span> Add Workbook
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div><!-- /#view-shipment-detail -->
+
 </div><!-- /.app-content -->
 </div><!-- /.app-layout -->
+
+<!-- ── New Shipment Modal ──────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-new-shipment" onclick="if(event.target===this)closeNewShipmentModal()">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-title">New Shipment</div>
+    <form onsubmit="createShipment(event)">
+      <div class="modal-field">
+        <label>Shipment Name <span class="required">*</span></label>
+        <input type="text" id="new-ship-name" placeholder="e.g. May 2026 Container" required />
+      </div>
+      <div class="modal-field">
+        <label>Container Type</label>
+        <div class="select-wrap">
+          <select id="new-ship-container">
+            <option value="20ft">20' Standard — 25 CBM · 21,700 kg</option>
+            <option value="40ft">40' Standard — 55 CBM · 26,500 kg</option>
+            <option value="40hc" selected>40' High Cube — 65 CBM · 26,500 kg</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeNewShipmentModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Shipment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Add Workbook to Shipment Modal ─────────────────────────────────── -->
+<div class="modal-overlay" id="modal-add-workbook" onclick="if(event.target===this)closeAddWorkbookModal()">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title">Add Workbook</div>
+    <input type="text" class="wb-picker-search" id="wb-picker-search" placeholder="Search products or clients…" oninput="filterWbPicker(this.value)" />
+    <div class="modal-wb-picker" id="wb-picker-list">
+      <!-- populated by JS -->
+    </div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button type="button" class="btn btn-ghost" onclick="closeAddWorkbookModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="confirmAddWorkbook()">Add Selected</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── New Workbook Modal ─────────────────────────────────────────────── -->
 <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
@@ -8172,6 +8526,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/shipments
+    if (hash === '#/shipments') {
+      renderShipmentsList();
+      return;
+    }
+
+    // Match: #/shipment/{id}
+    const shipMatch = hash.match(/^#\/shipment\/(\d+)$/);
+    if (shipMatch) {
+      renderShipmentDetail(shipMatch[1]);
+      return;
+    }
+
     // Match: #/client/{name}
     const clientMatch = hash.match(/^#\/client\/(.+)$/);
     if (clientMatch) {
@@ -8497,7 +8864,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   (async function init() {
     // Try loading from LocalStorage immediately for fast render
     loadFromLocalStorage();
+    loadShipments();
     rebuildSidebar();
+    rebuildShipmentsNav();
     restoreNavSectionStates();
     router();
 
@@ -8568,6 +8937,444 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveToLocalStorage();
     console.log('Database seeded with sample data');
   }
+
+  /* ══════════════════════════════════════════════════════════════════════
+     SHIPMENTS MODULE
+  ══════════════════════════════════════════════════════════════════════ */
+
+  let shipmentData = {};   // id → shipment object
+  let _nextShipmentId = 1;
+  let _currentShipmentId = null;
+  let _wbPickerSelected = null; // { clientName, workbookId, qty }
+
+  const CONTAINER_SPECS = {
+    '20ft': { label: "20' Standard",  cbm: 25,  maxKg: 21700, maxPallets: 10 },
+    '40ft': { label: "40' Standard",  cbm: 55,  maxKg: 26500, maxPallets: 20 },
+    '40hc': { label: "40' High Cube", cbm: 65,  maxKg: 26500, maxPallets: 21 },
+  };
+
+  // ── Persistence ──────────────────────────────────────────────────────
+  function saveShipments() {
+    try { localStorage.setItem('ms_shipmentData', JSON.stringify(shipmentData)); } catch(e) {}
+    try { localStorage.setItem('ms_nextShipmentId', String(_nextShipmentId)); } catch(e) {}
+  }
+
+  function loadShipments() {
+    try {
+      const sd = localStorage.getItem('ms_shipmentData');
+      const ni = localStorage.getItem('ms_nextShipmentId');
+      if (sd) Object.assign(shipmentData, JSON.parse(sd));
+      if (ni) _nextShipmentId = parseInt(ni) || 1;
+    } catch(e) {}
+  }
+
+  // ── Calculations ─────────────────────────────────────────────────────
+  function calcWorkbookShipStats(detail, qty) {
+    qty = parseInt(qty) || 0;
+    const outerLCm     = parseFloat(detail.cartonOuterLCm)    || 0;
+    const outerWCm     = parseFloat(detail.cartonOuterWCm)    || 0;
+    const outerHCm     = parseFloat(detail.cartonOuterHCm)    || 0;
+    const outerWeightKg = parseFloat(detail.cartonOuterWeight) || 0;
+    const innerCount   = parseInt(detail.cartonInnerCount)    || 0;
+    const outerCount   = parseInt(detail.cartonOuterCount)    || 0;
+    const unitsPerOuter = innerCount * outerCount;
+
+    let totalCartons = 0;
+    if (unitsPerOuter > 0 && qty > 0) totalCartons = Math.ceil(qty / unitsPerOuter);
+
+    let cbmPerCarton = 0;
+    if (outerLCm > 0 && outerWCm > 0 && outerHCm > 0)
+      cbmPerCarton = (outerLCm * outerWCm * outerHCm) / 1000000;
+    const totalCbm = parseFloat((cbmPerCarton * totalCartons).toFixed(2));
+    const totalWeightKg = parseFloat((outerWeightKg * totalCartons).toFixed(1));
+
+    // Pallet stacking: standard 40×48" pallet = 121.9 × 101.6 cm, max height 180 cm
+    const PL = 121.9, PW = 101.6, PH = 180;
+    let palletsNeeded = 0;
+    if (outerLCm > 0 && outerWCm > 0 && outerHCm > 0 && totalCartons > 0) {
+      const perRow    = Math.max(1, Math.floor(PL / outerLCm));
+      const perCol    = Math.max(1, Math.floor(PW / outerWCm));
+      const perLayer  = perRow * perCol;
+      const maxLayers = Math.max(1, Math.floor(PH / outerHCm));
+      const perPallet = Math.max(1, perLayer * maxLayers);
+      palletsNeeded   = Math.ceil(totalCartons / perPallet);
+    } else if (totalCartons > 0) {
+      // Fallback: assume 20 cartons/pallet
+      palletsNeeded = Math.ceil(totalCartons / 20);
+    }
+
+    return { qty, totalCartons, totalCbm, totalWeightKg, palletsNeeded, unitsPerOuter };
+  }
+
+  function shipmentTotals(shipment) {
+    let totalCbm = 0, totalKg = 0, totalPallets = 0;
+    (shipment.entries || []).forEach(entry => {
+      const key = `${entry.clientName}|${entry.workbookId}`;
+      const detail = workbookDetail[key];
+      if (!detail) return;
+      const s = calcWorkbookShipStats(detail, entry.qty);
+      totalCbm     += s.totalCbm;
+      totalKg      += s.totalWeightKg;
+      totalPallets += s.palletsNeeded;
+    });
+    return {
+      cbm:     parseFloat(totalCbm.toFixed(2)),
+      kg:      parseFloat(totalKg.toFixed(1)),
+      pallets: totalPallets,
+    };
+  }
+
+  // ── Nav ──────────────────────────────────────────────────────────────
+  function rebuildShipmentsNav() {
+    const list = document.getElementById('shipments-nav-list');
+    const badge = document.getElementById('badge-shipments');
+    if (!list) return;
+    const ids = Object.keys(shipmentData);
+    if (badge) badge.textContent = ids.length || '';
+    list.innerHTML = ids.map(id => {
+      const s = shipmentData[id];
+      const statusDot = `<span class="nav-shipment-dot ${s.status}"></span>`;
+      return `<div class="nav-shipment-item" id="nav-ship-${id}" onclick="location.hash='#/shipment/${id}'">
+        ${statusDot}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.name}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Create ────────────────────────────────────────────────────────────
+  function openNewShipmentModal() {
+    document.getElementById('new-ship-name').value = '';
+    document.getElementById('new-ship-container').value = '40hc';
+    document.getElementById('modal-new-shipment').classList.add('active');
+    setTimeout(() => document.getElementById('new-ship-name').focus(), 80);
+  }
+  function closeNewShipmentModal() {
+    document.getElementById('modal-new-shipment').classList.remove('active');
+  }
+
+  function createShipment(e) {
+    e.preventDefault();
+    const name      = document.getElementById('new-ship-name').value.trim();
+    const container = document.getElementById('new-ship-container').value;
+    if (!name) return;
+    const id = _nextShipmentId++;
+    shipmentData[id] = {
+      id, name,
+      containerType: container,
+      status: 'planning',
+      dateCreated: new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'2-digit'}),
+      etd: '', eta: '',
+      entries: [],
+    };
+    saveShipments();
+    rebuildShipmentsNav();
+    closeNewShipmentModal();
+    location.hash = `#/shipment/${id}`;
+  }
+
+  // ── List view ────────────────────────────────────────────────────────
+  function renderShipmentsList() {
+    document.getElementById('header-title').textContent = 'Shipments';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-shipment-item').forEach(el => el.classList.remove('active'));
+    showView('view-shipments');
+
+    const ids = Object.keys(shipmentData);
+    const el  = document.getElementById('shipment-list-content');
+    if (!el) return;
+
+    if (ids.length === 0) {
+      el.innerHTML = `<div class="shipment-list-empty">
+        <div class="shipment-list-empty-icon">🚢</div>
+        <div class="shipment-list-empty-title">No shipments yet</div>
+        <div class="shipment-list-empty-sub">Create a shipment to consolidate workbooks into a container.</div>
+      </div>`;
+      return;
+    }
+
+    el.innerHTML = `<div class="shipment-cards">${ids.map(id => {
+      const s    = shipmentData[id];
+      const spec = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
+      const tot  = shipmentTotals(s);
+      const wbCount = (s.entries || []).length;
+      return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
+        <div class="shipment-card-main">
+          <div class="shipment-card-name">${s.name}</div>
+          <div class="shipment-card-meta">
+            ${wbCount} workbook${wbCount !== 1 ? 's' : ''}
+            · ${tot.cbm} / ${spec.cbm} CBM
+            · ${tot.kg.toLocaleString('en-US')} kg
+            · ${tot.pallets} pallet${tot.pallets !== 1 ? 's' : ''}
+            ${s.etd ? ' · ETD ' + s.etd : ''}
+          </div>
+        </div>
+        <div class="shipment-card-right">
+          <span class="shipment-container-tag">${spec.label}</span>
+          <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
+  // ── Detail view ──────────────────────────────────────────────────────
+  function renderShipmentDetail(id) {
+    _currentShipmentId = parseInt(id);
+    const s = shipmentData[_currentShipmentId];
+    if (!s) { location.hash = '#/shipments'; return; }
+
+    document.getElementById('header-title').textContent = s.name;
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-shipment-item').forEach(el => el.classList.remove('active'));
+    const navEl = document.getElementById(`nav-ship-${id}`);
+    if (navEl) navEl.classList.add('active');
+
+    // Fill header fields
+    document.getElementById('ship-detail-name').value   = s.name;
+    document.getElementById('ship-detail-status').value = s.status;
+    document.getElementById('ship-detail-etd').value    = s.etd || '';
+    document.getElementById('ship-detail-eta').value    = s.eta || '';
+
+    // Container type buttons
+    document.querySelectorAll('.container-type-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.type === s.containerType);
+    });
+
+    renderShipmentWorkbooks();
+    renderShipmentUtilization();
+    showView('view-shipment-detail');
+  }
+
+  function renderShipmentWorkbooks() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    const tbody  = document.getElementById('ship-wb-tbody');
+    const table  = document.getElementById('ship-wb-table');
+    const empty  = document.getElementById('ship-wb-empty');
+    const count  = document.getElementById('ship-wb-count');
+    const entries = s.entries || [];
+
+    if (count) count.textContent = entries.length > 0 ? `${entries.length} item${entries.length !== 1 ? 's' : ''}` : '';
+
+    if (entries.length === 0) {
+      if (table) table.style.display = 'none';
+      if (empty) empty.style.display = '';
+      return;
+    }
+    if (table) table.style.display = '';
+    if (empty) empty.style.display = 'none';
+
+    tbody.innerHTML = entries.map((entry, idx) => {
+      const key    = `${entry.clientName}|${entry.workbookId}`;
+      const detail = workbookDetail[key] || {};
+      const stats  = calcWorkbookShipStats(detail, entry.qty);
+      const hasDims = stats.totalCartons > 0;
+
+      const cartons = hasDims ? stats.totalCartons.toLocaleString('en-US') : '—';
+      const pallets = hasDims ? stats.palletsNeeded : '—';
+      const cbm     = hasDims ? stats.totalCbm + ' m³' : '—';
+      const weight  = hasDims ? stats.totalWeightKg.toLocaleString('en-US') + ' kg' : '—';
+
+      return `<tr>
+        <td>
+          <div class="ship-wb-product">${detail.product || entry.workbookId}</div>
+          <div class="ship-wb-client">${entry.clientName}</div>
+        </td>
+        <td style="text-align:right;" class="ship-wb-stat">${parseInt(entry.qty).toLocaleString('en-US')}</td>
+        <td style="text-align:right;" class="ship-wb-stat">${cartons}</td>
+        <td style="text-align:right;" class="ship-wb-stat">${pallets}</td>
+        <td style="text-align:right;" class="ship-wb-stat">${cbm}</td>
+        <td style="text-align:right;" class="ship-wb-stat">${weight}</td>
+        <td style="text-align:right;">
+          <button class="ship-wb-remove" onclick="removeWorkbookFromShipment(${idx})" title="Remove">×</button>
+        </td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderShipmentUtilization() {
+    const s    = shipmentData[_currentShipmentId];
+    if (!s) return;
+    const spec = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
+    const tot  = shipmentTotals(s);
+
+    function setUtil(prefix, val, max, unit) {
+      const pct = max > 0 ? Math.min(100, (val / max) * 100) : 0;
+      const cls = pct >= 100 ? 'danger' : pct >= 85 ? 'warn' : '';
+      const cur = document.getElementById(`ship-util-${prefix}-cur`);
+      const mx  = document.getElementById(`ship-util-${prefix}-max`);
+      const bar = document.getElementById(`ship-util-${prefix}-bar`);
+      const pctEl = document.getElementById(`ship-util-${prefix}-pct`);
+      if (cur) cur.textContent = val.toLocaleString('en-US');
+      if (mx)  mx.textContent  = `/ ${max.toLocaleString('en-US')}`;
+      if (bar) { bar.style.width = pct.toFixed(1) + '%'; bar.className = 'ship-util-fill' + (cls ? ' ' + cls : ''); }
+      if (pctEl) pctEl.textContent = pct.toFixed(0) + '% full';
+    }
+
+    setUtil('cbm', tot.cbm,    spec.cbm,        'm³');
+    setUtil('wt',  tot.kg,     spec.maxKg,       'kg');
+    setUtil('pal', tot.pallets, spec.maxPallets,  '');
+  }
+
+  // ── Container type selector ──────────────────────────────────────────
+  function setContainerType(type) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.containerType = type;
+    saveShipments();
+    document.querySelectorAll('.container-type-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.type === type);
+    });
+    renderShipmentUtilization();
+  }
+
+  // ── Inline edits ─────────────────────────────────────────────────────
+  function onShipmentNameChange() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.name = document.getElementById('ship-detail-name').value;
+    saveShipments();
+    rebuildShipmentsNav();
+    document.getElementById('header-title').textContent = s.name;
+  }
+  function onShipmentStatusChange() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.status = document.getElementById('ship-detail-status').value;
+    saveShipments();
+    rebuildShipmentsNav();
+  }
+  function onShipmentDateChange() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.etd = document.getElementById('ship-detail-etd').value;
+    s.eta = document.getElementById('ship-detail-eta').value;
+    saveShipments();
+  }
+
+  // ── Add Workbook modal ───────────────────────────────────────────────
+  function openAddWorkbookModal() {
+    _wbPickerSelected = null;
+    document.getElementById('wb-picker-search').value = '';
+    buildWbPickerList('');
+    document.getElementById('modal-add-workbook').classList.add('active');
+  }
+  function closeAddWorkbookModal() {
+    document.getElementById('modal-add-workbook').classList.remove('active');
+    _wbPickerSelected = null;
+  }
+
+  function buildWbPickerList(query) {
+    const list = document.getElementById('wb-picker-list');
+    if (!list) return;
+    query = (query || '').toLowerCase();
+
+    // Collect all workbooks
+    const all = [];
+    Object.entries(clientData).forEach(([clientName, wbs]) => {
+      (wbs || []).forEach(wb => {
+        const key    = `${clientName}|${wb.id}`;
+        const detail = workbookDetail[key] || {};
+        const product = detail.product || wb.product || '—';
+        if (query && !product.toLowerCase().includes(query) && !clientName.toLowerCase().includes(query)) return;
+        const tiers  = (detail.tiers || []);
+        const tierStr = tiers.length > 0
+          ? tiers.map(t => `${parseInt(t.qty || 0).toLocaleString('en-US')} units`).join(' · ')
+          : 'No tiers set';
+        all.push({ clientName, workbookId: wb.id, product, tierStr, detail });
+      });
+    });
+
+    if (all.length === 0) {
+      list.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No workbooks found.</div>';
+      return;
+    }
+
+    list.innerHTML = all.map((item, i) => {
+      const isSelected = _wbPickerSelected &&
+        _wbPickerSelected.clientName === item.clientName &&
+        _wbPickerSelected.workbookId === item.workbookId;
+
+      // Default qty: first tier qty or 1000
+      const defaultQty = item.detail.tiers && item.detail.tiers[0]
+        ? item.detail.tiers[0].qty : '1000';
+
+      return `<div class="wb-picker-item${isSelected ? ' selected' : ''}" id="wp-item-${i}"
+          onclick="selectWbPickerItem(${i}, '${item.clientName.replace(/'/g,"\\'")}', ${item.workbookId})">
+        <div style="width:34px; height:34px; border-radius:8px; background:rgba(107,147,255,0.12); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--accent); flex-shrink:0;">
+          ${item.product.charAt(0).toUpperCase()}
+        </div>
+        <div class="wb-picker-info">
+          <div class="wb-picker-product">${item.product}</div>
+          <div class="wb-picker-client">${item.clientName}</div>
+          <div class="wb-picker-tiers">${item.tierStr}</div>
+        </div>
+        <input type="number" class="wb-picker-qty" id="wp-qty-${i}" value="${defaultQty}"
+          min="1" placeholder="Qty"
+          onclick="event.stopPropagation()"
+          oninput="onWbPickerQtyChange(${i}, '${item.clientName.replace(/'/g,"\\'")}', ${item.workbookId})" />
+      </div>`;
+    }).join('');
+  }
+
+  function filterWbPicker(query) {
+    buildWbPickerList(query);
+  }
+
+  function selectWbPickerItem(idx, clientName, workbookId) {
+    // Toggle selection
+    if (_wbPickerSelected &&
+        _wbPickerSelected.clientName === clientName &&
+        _wbPickerSelected.workbookId === workbookId) {
+      _wbPickerSelected = null;
+    } else {
+      const qtyEl = document.getElementById(`wp-qty-${idx}`);
+      _wbPickerSelected = {
+        clientName, workbookId,
+        qty: qtyEl ? parseInt(qtyEl.value) || 1000 : 1000,
+      };
+    }
+    buildWbPickerList(document.getElementById('wb-picker-search').value);
+  }
+
+  function onWbPickerQtyChange(idx, clientName, workbookId) {
+    if (_wbPickerSelected &&
+        _wbPickerSelected.clientName === clientName &&
+        _wbPickerSelected.workbookId === workbookId) {
+      const qtyEl = document.getElementById(`wp-qty-${idx}`);
+      if (qtyEl) _wbPickerSelected.qty = parseInt(qtyEl.value) || 1000;
+    }
+  }
+
+  function confirmAddWorkbook() {
+    if (!_wbPickerSelected) { alert('Select a workbook first.'); return; }
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.entries.push({
+      clientName:  _wbPickerSelected.clientName,
+      workbookId:  _wbPickerSelected.workbookId,
+      qty:         _wbPickerSelected.qty || 1000,
+    });
+    saveShipments();
+    closeAddWorkbookModal();
+    renderShipmentWorkbooks();
+    renderShipmentUtilization();
+  }
+
+  function removeWorkbookFromShipment(idx) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.entries.splice(idx, 1);
+    saveShipments();
+    renderShipmentWorkbooks();
+    renderShipmentUtilization();
+  }
+
+  // ── CSS for selected picker item ─────────────────────────────────────
+  (function() {
+    const style = document.createElement('style');
+    style.textContent = '.wb-picker-item.selected { background: rgba(107,147,255,0.1); outline: 2px solid rgba(107,147,255,0.4); border-radius: var(--radius-sm); }';
+    document.head.appendChild(style);
+  })();
+
 </script>
 </body>
 </html>
