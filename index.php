@@ -2809,10 +2809,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .ship-detail-controls {
       display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
     }
+    .ship-select-wrap {
+      position: relative; display: inline-block;
+    }
+    .ship-select-wrap::after {
+      content: '';
+      position: absolute;
+      right: 10px; top: 50%;
+      transform: translateY(-50%);
+      width: 0; height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid var(--text-muted);
+      pointer-events: none;
+    }
     .ship-detail-controls select {
-      height: 34px; padding: 0 12px; border: 1px solid var(--border);
+      height: 34px; padding: 0 28px 0 12px; border: 1px solid var(--border);
       border-radius: var(--radius-sm); background: var(--surface2); color: var(--text);
       font-size: 13px; font-family: inherit; outline: none; cursor: pointer;
+      appearance: none; -webkit-appearance: none;
     }
 
     /* Container type tabs */
@@ -4341,12 +4356,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           oninput="onShipmentNameChange()" />
       </div>
       <div class="ship-detail-controls">
+        <div class="ship-select-wrap">
         <select id="ship-detail-status" onchange="onShipmentStatusChange()">
           <option value="planning">Planning</option>
           <option value="booked">Booked</option>
           <option value="in_transit">In Transit</option>
           <option value="delivered">Delivered</option>
         </select>
+        </div>
         <div style="display:flex; align-items:center; gap:6px;">
           <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">ETD</label>
           <input type="date" id="ship-detail-etd" style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange()" />
