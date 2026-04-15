@@ -7582,9 +7582,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         addTierRow(500); addWbTierRow(500);
       }
       recalcRfqTotals(); // sync RFQ unit price total → tier RMB inputs
-      // Restore selected tier in dropdown
       _selectedTierId = data.selectedTierIdx || null;
-      populateTierDropdown();
       calcAdditionalFees();
       // Dimensions & Carton Specifications (new fields)
       _s('dim-weight-kg',  data.dimWeightKg);
@@ -7614,6 +7612,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
       updateOuterWeightHint();
+      // Restore selected tier dropdown AFTER carton/weight fields are loaded
+      populateTierDropdown();
       _s('freight-mode', data.freightMode);
       _s('freight-hs-code', data.freightHsCode);
       // Quote for Client tab
