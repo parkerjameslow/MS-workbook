@@ -3423,43 +3423,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     <!-- ══ PRICING TIER selector — above outer carton + results ══ -->
     <div class="sh-box" style="margin-bottom:0; padding:14px 18px;">
-      <div class="freight-method-rate-row" style="margin-bottom:0;">
-        <label class="freight-method-label">Pricing Tier</label>
-        <div class="freight-method-bar">
-          <div class="freight-method-bar-select">
-            <select id="sh-tier-select" onchange="onShippingTierSelect()">
-              <option value="">— Select a tier —</option>
-            </select>
+      <div class="freight-method-rate-row" style="margin-bottom:0; align-items:center; flex-wrap:wrap; gap:12px;">
+        <label class="freight-method-label" style="flex-shrink:0;">Pricing Tier</label>
+        <div class="freight-method-bar-select" style="flex:0 0 auto; min-width:120px; max-width:200px;">
+          <select id="sh-tier-select" onchange="onShippingTierSelect()">
+            <option value="">— Select a tier —</option>
+          </select>
+        </div>
+        <!-- Inline details — shown when a tier is selected -->
+        <div id="sh-tier-details" style="display:none; gap:24px; flex-wrap:wrap; align-items:center;">
+          <div class="sh-tier-detail-item">
+            <span class="sh-tier-detail-label">Unit Price (RMB)</span>
+            <span class="sh-tier-detail-val" id="sh-td-rmb-full">—</span>
           </div>
-          <div class="freight-method-bar-rate rmb" id="sh-tier-pill-rmb" style="display:none;">
-            <span class="freight-method-bar-sym">¥</span>
-            <span class="freight-method-bar-val" id="sh-td-rmb">—</span>
-            <span class="freight-method-bar-unit">per unit</span>
+          <div class="sh-tier-detail-item">
+            <span class="sh-tier-detail-label">Unit Price (USD)</span>
+            <span class="sh-tier-detail-val" id="sh-td-usd-full">—</span>
           </div>
-          <div class="freight-method-bar-rate usd" id="sh-tier-pill-usd" style="display:none;">
-            <span class="freight-method-bar-sym">$</span>
-            <span class="freight-method-bar-val" id="sh-td-usd">—</span>
-            <span class="freight-method-bar-unit">per unit</span>
+          <div class="sh-tier-detail-item">
+            <span class="sh-tier-detail-label">Total Product Cost</span>
+            <span class="sh-tier-detail-val" id="sh-td-total">—</span>
           </div>
-        </div>
-      </div>
-      <!-- Detail strip — shown when a tier is selected -->
-      <div id="sh-tier-details" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); gap:32px; flex-wrap:wrap;">
-        <div class="sh-tier-detail-item">
-          <span class="sh-tier-detail-label">Quantity</span>
-          <span class="sh-tier-detail-val" id="sh-td-qty">—</span>
-        </div>
-        <div class="sh-tier-detail-item">
-          <span class="sh-tier-detail-label">Unit Price (RMB)</span>
-          <span class="sh-tier-detail-val" id="sh-td-rmb-full">—</span>
-        </div>
-        <div class="sh-tier-detail-item">
-          <span class="sh-tier-detail-label">Unit Price (USD)</span>
-          <span class="sh-tier-detail-val" id="sh-td-usd-full">—</span>
-        </div>
-        <div class="sh-tier-detail-item">
-          <span class="sh-tier-detail-label">Total Product Cost</span>
-          <span class="sh-tier-detail-val" id="sh-td-total">—</span>
         </div>
       </div>
     </div>
@@ -5551,14 +5535,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renderShippingTierDetails(id) {
-    const rmbPill   = document.getElementById('sh-tier-pill-rmb');
-    const usdPill   = document.getElementById('sh-tier-pill-usd');
     const detailBar = document.getElementById('sh-tier-details');
     const row = id ? document.getElementById(`wb-tier-${id}`) : null;
     if (!row) {
-      if (rmbPill)   rmbPill.style.display   = 'none';
-      if (usdPill)   usdPill.style.display   = 'none';
-      if (detailBar) detailBar.style.display  = 'none';
+      if (detailBar) detailBar.style.display = 'none';
       return;
     }
     const inputs = row.querySelectorAll('input');
@@ -5567,14 +5547,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
     const totalUsd = qty && !isNaN(usd) ? parseFloat(qty) * usd : NaN;
 
-    // Pills (number only — symbol in HTML)
-    document.getElementById('sh-td-rmb').textContent = (!isNaN(rmb) && rmb > 0) ? rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    document.getElementById('sh-td-usd').textContent = !isNaN(usd) ? usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    if (rmbPill) rmbPill.style.display = (!isNaN(rmb) && rmb > 0) ? '' : 'none';
-    if (usdPill) usdPill.style.display = !isNaN(usd) ? '' : 'none';
-
-    // Detail strip
-    document.getElementById('sh-td-qty').textContent      = qty ? parseInt(qty).toLocaleString('en-US') : '—';
+    // Inline details
     document.getElementById('sh-td-rmb-full').textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('sh-td-usd-full').textContent = !isNaN(usd) ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     document.getElementById('sh-td-total').textContent    = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
