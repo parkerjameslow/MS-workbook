@@ -5518,24 +5518,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const unitsPerInner  = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
     const innersPerOuter = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
     const unitsPerOuter  = unitsPerInner * innersPerOuter;
+    const innerWeightKg  = parseFloat(document.getElementById('carton-inner-weight')?.value) || 0;
     const unitWeightKg   = parseFloat(document.getElementById('dim-weight-kg')?.value) || 0;
     const outerWeightKg  = parseFloat(document.getElementById('carton-outer-weight')?.value) || 0;
     const palletEl = document.getElementById('pallet-total-cartons');
 
+    // Derive effective unit weight: prefer explicit dim-weight-kg, fall back to inner_weight / inner_count
+    const effectiveUnitWt = unitWeightKg > 0 ? unitWeightKg :
+      (innerWeightKg > 0 && unitsPerInner > 0 ? innerWeightKg / unitsPerInner : 0);
+
     if (tierQty > 0 && palletEl) {
       let totalCartons = null;
       if (unitsPerOuter > 0) {
-        // Best path: carton counts are configured
+        // Best path: carton counts are fully configured
         totalCartons = Math.ceil(tierQty / unitsPerOuter);
-      } else if (unitWeightKg > 0 && outerWeightKg > 0 && outerWeightKg >= unitWeightKg) {
+      } else if (effectiveUnitWt > 0 && outerWeightKg > 0 && outerWeightKg >= effectiveUnitWt) {
         // Fallback: estimate units-per-outer from weight ratio
-        const estimatedUnitsPerOuter = Math.max(1, Math.round(outerWeightKg / unitWeightKg));
+        const estimatedUnitsPerOuter = Math.max(1, Math.round(outerWeightKg / effectiveUnitWt));
         totalCartons = Math.ceil(tierQty / estimatedUnitsPerOuter);
-      } else if (unitWeightKg > 0) {
+      } else if (effectiveUnitWt > 0) {
         // Last resort: treat each unit as its own carton so total weight = unit_weight × tier_qty
         const outerWtEl = document.getElementById('carton-outer-weight');
         if (outerWtEl) {
-          outerWtEl.value = unitWeightKg.toFixed(2);
+          outerWtEl.value = effectiveUnitWt.toFixed(3);
           convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
         }
         totalCartons = tierQty;
