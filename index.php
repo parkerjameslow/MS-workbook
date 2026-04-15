@@ -906,7 +906,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
     .sh-tier-selector select {
-      padding: 9px 36px 9px 14px;
+      padding: 9px 56px 9px 14px;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       background: var(--surface2);
