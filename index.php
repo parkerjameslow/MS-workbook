@@ -883,7 +883,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     .tier-table tr:last-child td { border-bottom: none; }
 
-    /* old sh-tier-detail-val kept for any external references */
+    .sh-tier-detail-item { display: flex; flex-direction: column; gap: 3px; }
+    .sh-tier-detail-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+    }
     .sh-tier-detail-val {
       font-size: 14px;
       font-weight: 600;
@@ -3416,9 +3423,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="freight-method-bar-unit">per unit</span>
           </div>
         </div>
-        <span id="sh-td-qty"   style="display:none;">—</span>
-        <span id="sh-td-total" style="display:none;">—</span>
-        <div id="sh-tier-details" style="display:none;"></div>
+      </div>
+      <!-- Detail strip — shown when a tier is selected -->
+      <div id="sh-tier-details" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); gap:32px; flex-wrap:wrap;">
+        <div class="sh-tier-detail-item">
+          <span class="sh-tier-detail-label">Quantity</span>
+          <span class="sh-tier-detail-val" id="sh-td-qty">—</span>
+        </div>
+        <div class="sh-tier-detail-item">
+          <span class="sh-tier-detail-label">Unit Price (RMB)</span>
+          <span class="sh-tier-detail-val" id="sh-td-rmb-full">—</span>
+        </div>
+        <div class="sh-tier-detail-item">
+          <span class="sh-tier-detail-label">Unit Price (USD)</span>
+          <span class="sh-tier-detail-val" id="sh-td-usd-full">—</span>
+        </div>
+        <div class="sh-tier-detail-item">
+          <span class="sh-tier-detail-label">Total Product Cost</span>
+          <span class="sh-tier-detail-val" id="sh-td-total">—</span>
+        </div>
       </div>
     </div>
 
@@ -5490,12 +5513,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renderShippingTierDetails(id) {
-    const rmbPill = document.getElementById('sh-tier-pill-rmb');
-    const usdPill = document.getElementById('sh-tier-pill-usd');
+    const rmbPill   = document.getElementById('sh-tier-pill-rmb');
+    const usdPill   = document.getElementById('sh-tier-pill-usd');
+    const detailBar = document.getElementById('sh-tier-details');
     const row = id ? document.getElementById(`wb-tier-${id}`) : null;
     if (!row) {
-      if (rmbPill) rmbPill.style.display = 'none';
-      if (usdPill) usdPill.style.display = 'none';
+      if (rmbPill)   rmbPill.style.display   = 'none';
+      if (usdPill)   usdPill.style.display   = 'none';
+      if (detailBar) detailBar.style.display  = 'none';
       return;
     }
     const inputs = row.querySelectorAll('input');
@@ -5504,15 +5529,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
     const totalUsd = qty && !isNaN(usd) ? parseFloat(qty) * usd : NaN;
 
-    // Update pill values (just the number, without currency symbol — symbol is in HTML)
-    document.getElementById('sh-td-rmb').textContent   = (!isNaN(rmb) && rmb > 0) ? rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    document.getElementById('sh-td-usd').textContent   = !isNaN(usd) ? usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    document.getElementById('sh-td-qty').textContent   = qty ? parseInt(qty).toLocaleString('en-US') : '—';
-    document.getElementById('sh-td-total').textContent = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-
-    // Show pills when tier is selected
+    // Pills (number only — symbol in HTML)
+    document.getElementById('sh-td-rmb').textContent = (!isNaN(rmb) && rmb > 0) ? rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('sh-td-usd').textContent = !isNaN(usd) ? usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     if (rmbPill) rmbPill.style.display = (!isNaN(rmb) && rmb > 0) ? '' : 'none';
     if (usdPill) usdPill.style.display = !isNaN(usd) ? '' : 'none';
+
+    // Detail strip
+    document.getElementById('sh-td-qty').textContent      = qty ? parseInt(qty).toLocaleString('en-US') : '—';
+    document.getElementById('sh-td-rmb-full').textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('sh-td-usd-full').textContent = !isNaN(usd) ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('sh-td-total').textContent    = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    if (detailBar) detailBar.style.display = 'flex';
     renderPricingTab();
 
     // Recalculate total outer cartons for this tier qty and refresh freight
