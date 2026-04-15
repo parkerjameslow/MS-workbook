@@ -883,78 +883,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     .tier-table tr:last-child td { border-bottom: none; }
 
-    .sh-tier-selector {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px 24px;
-      margin-bottom: 18px;
-      display: flex;
-      align-items: flex-start;
-      gap: 28px;
-      flex-wrap: wrap;
-    }
-    .sh-tier-selector-left {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-width: 300px;
-      flex: 0 0 300px;
-    }
-    .sh-tier-selector-label {
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-    }
-    .sh-tier-select-wrap {
-      position: relative;
-      width: 100%;
-    }
-    .sh-tier-selector select {
-      padding: 9px 44px 9px 14px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: var(--surface2);
-      color: var(--text);
-      font-size: 13px;
-      width: 100%;
-      appearance: none;
-      -webkit-appearance: none;
-      cursor: pointer;
-    }
-    .sh-tier-select-arrow {
-      position: absolute;
-      right: 14px;
-      top: 50%;
-      transform: translateY(-50%);
-      pointer-events: none;
-      color: var(--text-muted);
-      font-size: 13px;
-      line-height: 1;
-    }
-    .sh-tier-details {
-      display: none;
-      flex: 1;
-      gap: 28px;
-      flex-wrap: wrap;
-      align-items: center;
-      padding-top: 20px;
-      justify-content: space-between;
-    }
-    .sh-tier-details.visible { display: flex; }
-    .sh-tier-detail-item {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .sh-tier-detail-label {
-      font-size: 10px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
+    /* old sh-tier-detail-val kept for any external references */
     .sh-tier-detail-val {
       font-size: 14px;
       font-weight: 600;
@@ -1519,7 +1448,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     .wb-tab {
-      padding: 7px 16px;
+      padding: 7px 20px;
       font-size: 13px;
       font-weight: 600;
       color: var(--text-muted);
@@ -2950,14 +2879,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div id="view-workbook" class="view">
 <main class="container">
   <div class="wb-sticky-bar">
-    <div style="display:flex; justify-content:space-between; align-items:center;">
-      <button class="btn-back" id="btn-back" onclick="history.back()" style="margin-bottom:0;">← Back to Workbooks</button>
+    <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
+      <button class="btn-back" id="btn-back" onclick="history.back()" style="margin-bottom:0; justify-self:start;">← Back to Workbooks</button>
       <div class="wb-tabs">
         <button class="wb-tab active" onclick="switchWbTab('workbook', this)"><span class="tab-full">Workbook</span><span class="tab-short">Work</span></button>
         <button class="wb-tab" onclick="switchWbTab('shipping', this)"><span class="tab-full">Shipping</span><span class="tab-short">Ship</span></button>
         <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
         <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
       </div>
+      <div></div>
     </div>
   </div>
 
@@ -3466,24 +3396,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="sh-layout">
 
     <!-- ══ Tier Selector ══ -->
-    <div class="sh-tier-selector">
-      <div class="sh-tier-selector-left">
-        <span class="sh-tier-selector-label">Pricing Tier</span>
-        <div class="sh-tier-select-wrap">
-          <select id="sh-tier-select" onchange="onShippingTierSelect()">
-            <option value="">— Select a tier —</option>
-          </select>
-          <span class="sh-tier-select-arrow">&#x2335;</span>
-        </div>
-      </div>
-      <div class="sh-tier-details" id="sh-tier-details">
-        <div class="sh-tier-detail-item"><span class="sh-tier-detail-label">Quantity</span><span class="sh-tier-detail-val" id="sh-td-qty">—</span></div>
-        <div class="sh-tier-detail-item"><span class="sh-tier-detail-label">Unit Price (RMB)</span><span class="sh-tier-detail-val" id="sh-td-rmb">—</span></div>
-        <div class="sh-tier-detail-item"><span class="sh-tier-detail-label">Unit Price (USD)</span><span class="sh-tier-detail-val" id="sh-td-usd">—</span></div>
-        <div class="sh-tier-detail-item"><span class="sh-tier-detail-label">Total Product Cost</span><span class="sh-tier-detail-val" id="sh-td-total">—</span></div>
-      </div>
-    </div>
-
     <!-- ══ TOP ROW: left col (stacked) + right col (results) ══ -->
     <div class="sh-top-row">
 
@@ -3615,8 +3527,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="sh-box sh-shipping-box">
       <div class="sh-box-title">Shipping</div>
 
-      <!-- Method + rate single bar -->
+      <!-- Pricing Tier selector — same style as Shipping Method bar -->
       <div class="freight-method-rate-row">
+        <label class="freight-method-label">Pricing Tier</label>
+        <div class="freight-method-bar">
+          <div class="freight-method-bar-select">
+            <select id="sh-tier-select" onchange="onShippingTierSelect()">
+              <option value="">— Select a tier —</option>
+            </select>
+          </div>
+          <div class="freight-method-bar-rate rmb" id="sh-tier-pill-rmb" style="display:none;">
+            <span class="freight-method-bar-sym">¥</span>
+            <span class="freight-method-bar-val" id="sh-td-rmb">—</span>
+            <span class="freight-method-bar-unit">per unit</span>
+          </div>
+          <div class="freight-method-bar-rate usd" id="sh-tier-pill-usd" style="display:none;">
+            <span class="freight-method-bar-sym">$</span>
+            <span class="freight-method-bar-val" id="sh-td-usd">—</span>
+            <span class="freight-method-bar-unit">per unit</span>
+          </div>
+        </div>
+        <!-- Hidden spans for qty/total still updated by renderShippingTierDetails -->
+        <span id="sh-td-qty"   style="display:none;">—</span>
+        <span id="sh-td-total" style="display:none;">—</span>
+        <div id="sh-tier-details" style="display:none;"></div>
+      </div>
+
+      <!-- Method + rate single bar -->
+      <div class="freight-method-rate-row" style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
         <label class="freight-method-label">Shipping Method</label>
         <div class="freight-method-bar">
           <div class="freight-method-bar-select">
@@ -5552,11 +5490,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renderShippingTierDetails(id) {
-    const detailsEl = document.getElementById('sh-tier-details');
-    if (!detailsEl) return;
+    const rmbPill = document.getElementById('sh-tier-pill-rmb');
+    const usdPill = document.getElementById('sh-tier-pill-usd');
     const row = id ? document.getElementById(`wb-tier-${id}`) : null;
     if (!row) {
-      detailsEl.classList.remove('visible');
+      if (rmbPill) rmbPill.style.display = 'none';
+      if (usdPill) usdPill.style.display = 'none';
       return;
     }
     const inputs = row.querySelectorAll('input');
@@ -5565,11 +5504,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
     const totalUsd = qty && !isNaN(usd) ? parseFloat(qty) * usd : NaN;
 
-    document.getElementById('sh-td-qty').textContent  = qty ? parseInt(qty).toLocaleString('en-US') : '—';
-    document.getElementById('sh-td-rmb').textContent  = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    document.getElementById('sh-td-usd').textContent  = !isNaN(usd) ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    // Update pill values (just the number, without currency symbol — symbol is in HTML)
+    document.getElementById('sh-td-rmb').textContent   = (!isNaN(rmb) && rmb > 0) ? rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('sh-td-usd').textContent   = !isNaN(usd) ? usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('sh-td-qty').textContent   = qty ? parseInt(qty).toLocaleString('en-US') : '—';
     document.getElementById('sh-td-total').textContent = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    detailsEl.classList.add('visible');
+
+    // Show pills when tier is selected
+    if (rmbPill) rmbPill.style.display = (!isNaN(rmb) && rmb > 0) ? '' : 'none';
+    if (usdPill) usdPill.style.display = !isNaN(usd) ? '' : 'none';
     renderPricingTab();
 
     // Recalculate total outer cartons for this tier qty and refresh freight
