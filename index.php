@@ -6349,7 +6349,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Verdict
     const verdictEl = document.getElementById('freight-verdict');
     const extraEl   = document.getElementById('freight-extra');
-    const tipEl     = document.getElementById('freight-tip');
 
     if (volWeight > actualKg) {
       verdictEl.className = 'freight-verdict volumetric';
@@ -6357,17 +6356,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const extraCostRmb = (volWeight - actualKg) * rate * cartons;
       extraEl.innerHTML = 'Extra cost due to volumetric: <span>¥ ' + extraCostRmb.toFixed(2) + '  /  $ ' + (extraCostRmb / exchange).toFixed(2) + '</span>';
       extraEl.style.display = 'block';
-      tipEl.textContent = 'Tip: Reduce void/air space in packaging to lower volumetric weight.';
     } else if (actualKg > volWeight) {
       verdictEl.className = 'freight-verdict actual';
       verdictEl.textContent = 'Actual weight applies — package is dense.';
       extraEl.style.display = 'none';
-      tipEl.textContent = 'Tip: Your packaging density is efficient for this shipping method.';
     } else {
       verdictEl.className = 'freight-verdict equal';
       verdictEl.textContent = 'Weights are equal — no volumetric surcharge.';
       extraEl.style.display = 'none';
-      tipEl.textContent = 'Tip: Weights match perfectly. No size penalty applies.';
     }
 
     // Method comparison — 5-column table + results panel
