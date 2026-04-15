@@ -8065,12 +8065,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         { label: 'Approved', value: counts.approved, icon: '🎉', color: '#34d399' },
       ];
       statsRow.innerHTML = statCards.map(c => `
-        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; display:flex; align-items:center; gap:10px;">
-          <span style="font-size:22px;">${c.icon}</span>
-          <div>
-            <div style="font-size:20px; font-weight:700; color:${c.color}; line-height:1.1;">${c.value}</div>
-            <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">${c.label}</div>
-          </div>
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;">
+          <div style="font-size:20px; font-weight:700; color:${c.color}; line-height:1.1;">${c.value}</div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-top:3px;">${c.label}</div>
         </div>
       `).join('');
     }
