@@ -8919,6 +8919,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _nextShipmentId = 1;
   let _currentShipmentId = null;
   let _wbPickerSelected = new Set();
+  const CONTAINER_SPECS = {
+    '20ft': { label: "20' Standard",  cbm: 25,  maxKg: 21700, maxPallets: 10 },
+    '40ft': { label: "40' Standard",  cbm: 55,  maxKg: 26500, maxPallets: 20 },
+    '40hc': { label: "40' High Cube", cbm: 65,  maxKg: 26500, maxPallets: 21 },
+  };
 
   /* ── Init ──────────────────────────────────────────────────────────────── */
   // Footer date
@@ -9009,13 +9014,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      SHIPMENTS MODULE
   ══════════════════════════════════════════════════════════════════════ */
 
-  // shipmentData, _nextShipmentId, _currentShipmentId, _wbPickerSelected declared above init()
-
-  const CONTAINER_SPECS = {
-    '20ft': { label: "20' Standard",  cbm: 25,  maxKg: 21700, maxPallets: 10 },
-    '40ft': { label: "40' Standard",  cbm: 55,  maxKg: 26500, maxPallets: 20 },
-    '40hc': { label: "40' High Cube", cbm: 65,  maxKg: 26500, maxPallets: 21 },
-  };
+  // shipmentData, _nextShipmentId, _currentShipmentId, _wbPickerSelected, CONTAINER_SPECS declared above init()
 
   // ── Persistence ──────────────────────────────────────────────────────
   function saveShipments() {
