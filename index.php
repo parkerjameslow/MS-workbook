@@ -3082,7 +3082,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
 
     <!-- Clients -->
-    <div class="nav-section" id="nav-section-clients">
+    <div class="nav-section collapsed" id="nav-section-clients">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-clients')">
         <span>Clients</span>
         <span class="nav-badge" id="badge-clients"></span>
@@ -6592,8 +6592,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Rebuild workbook data
     result.workbooks.forEach(wb => {
       let flowStep = parseInt(wb.flow_step) || 0;
-      // Migrate old 8-step flow: if step >= 3 (old shippingDims), shift down by 1
-      if (flowStep >= 3 && flowLabels.length === 7) flowStep = Math.max(flowStep - 1, 0);
       const flow = {};
       flowSteps.forEach((s, i) => { flow[s] = i < flowStep; });
 
