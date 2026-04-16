@@ -3160,6 +3160,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       transition: color 0.15s, background 0.15s;
     }
     .order-sheet-remove:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
+    /* Shipment order cards */
+    .ship-order-card {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface2); margin-bottom: 10px; overflow: hidden;
+      cursor: pointer; transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .ship-order-card:last-child { margin-bottom: 0; }
+    .ship-order-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+    .ship-order-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .soc-client { font-size: 15px; font-weight: 800; color: var(--text); }
+    .soc-name   { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+    .ship-order-card-body {
+      display: flex; flex-wrap: wrap; gap: 20px;
+      padding: 10px 14px 12px; align-items: flex-start;
+    }
+    .soc-workbooks { flex: 1; min-width: 160px; }
+    .soc-wb-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 4px; }
+    .soc-wb-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+      border: 1px solid rgba(107,147,255,0.35); background: rgba(107,147,255,0.1);
+      color: var(--accent); margin: 2px 4px 2px 0; cursor: pointer;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .soc-wb-pill:hover { border-color: var(--accent); background: rgba(107,147,255,0.18); }
+    .soc-stats { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+    .soc-stat { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+    .soc-stat-val { font-size: 14px; font-weight: 700; color: var(--text); }
+    .soc-stat-lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .soc-cost { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+    .soc-cost-usd { font-size: 14px; font-weight: 700; color: var(--text); }
+    .soc-cost-rmb { font-size: 12px; font-weight: 600; color: var(--text-muted); }
     .order-sheet-wb-header td {
       background: var(--surface); padding: 10px 12px 8px;
       border-bottom: 1px solid var(--border);
@@ -4652,35 +4688,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
-    <!-- Workbook entries -->
+    <!-- Order entries -->
     <div class="section-card" style="margin-bottom:0;">
       <div class="section-header">
-        <span class="section-title">Workbooks in this Shipment</span>
-        <span id="ship-wb-count" style="font-size:12px; color:var(--text-muted); margin-left:6px;"></span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="section-title">Orders in this Shipment</span>
+          <span id="ship-order-count" style="font-size:12px; color:var(--text-muted);"></span>
+        </div>
+        <button class="btn btn-primary" style="font-size:12px; padding:5px 12px;" onclick="openAddOrderToShipmentModal()">+ Add Order</button>
       </div>
-      <div class="section-body" style="padding:0;">
-        <div id="ship-wb-empty" style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:13px;">
-          No workbooks added yet. Click below to add one.
+      <div class="section-body" style="padding:12px 16px;">
+        <div id="ship-order-empty" style="padding:30px 0; text-align:center; color:var(--text-muted); font-size:13px;">
+          No orders added yet.
         </div>
-        <table class="ship-wb-table" id="ship-wb-table" style="display:none;">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th style="text-align:right;">Qty</th>
-              <th style="text-align:right;">Cartons</th>
-              <th style="text-align:right;">Pallets</th>
-              <th style="text-align:right;">CBM</th>
-              <th style="text-align:right;">Weight</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="ship-wb-tbody"></tbody>
-        </table>
-        <div style="padding:12px 16px 14px;">
-          <button class="ship-add-wb-btn" onclick="openAddWorkbookModal()">
-            <span style="font-size:18px; line-height:1;">+</span> Add Workbook
-          </button>
-        </div>
+        <div id="ship-order-list"></div>
       </div>
     </div>
 
@@ -4833,17 +4854,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
-<!-- ── Add Workbook to Shipment Modal ─────────────────────────────────── -->
-<div class="modal-overlay" id="modal-add-workbook" onclick="if(event.target===this)closeAddWorkbookModal()" style="z-index:1000;">
+<!-- ── Add Order to Shipment Modal ────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-add-order-to-shipment" onclick="if(event.target===this)closeAddOrderToShipmentModal()" style="z-index:1000;">
   <div class="modal" style="max-width:560px;">
-    <div class="modal-title">Add Workbook</div>
-    <input type="text" class="wb-picker-search" id="wb-picker-search" placeholder="Search products or clients…" oninput="filterWbPicker(this.value)" />
-    <div class="modal-wb-picker" id="wb-picker-list">
-      <!-- populated by JS -->
+    <div class="modal-title">Add Order to Shipment</div>
+    <div class="modal-field" style="margin-bottom:12px;">
+      <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Client</label>
+      <select id="ship-order-picker-client" onchange="onShipOrderClientChange()"
+        style="width:100%; height:38px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;">
+        <option value="">Select a client…</option>
+      </select>
+    </div>
+    <div id="ship-order-picker-section" style="display:none;">
+      <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders…" oninput="filterShipOrderPicker(this.value)" />
+      <div class="modal-wb-picker" id="ship-order-picker-list">
+        <!-- populated by JS -->
+      </div>
     </div>
     <div class="modal-actions" style="margin-top:14px;">
-      <button type="button" class="btn btn-ghost" onclick="closeAddWorkbookModal()">Cancel</button>
-      <button type="button" class="btn btn-primary" onclick="confirmAddWorkbook()" id="wb-picker-confirm-btn">Add to Shipment</button>
+      <button type="button" class="btn btn-ghost" onclick="closeAddOrderToShipmentModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="confirmAddOrderToShipment()">Add to Shipment</button>
     </div>
   </div>
 </div>
@@ -9306,6 +9336,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _orderFilter = 'all';
   let _orderPickerSelected = new Set();
   let _orderAddPickerSelected = new Set();
+  let _shipOrderPickerSelected = new Set();
 
   /* ── Shipments module state (must be declared before init) ─────────────── */
   let shipmentData = {};
@@ -9473,16 +9504,58 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return { qty, totalCartons, totalCbm, totalWeightKg, palletsNeeded, unitsPerOuter };
   }
 
+  function orderShipStats(orderId) {
+    const order = orderData[orderId];
+    if (!order) return { qty: 0, totalCartons: 0, totalCbm: 0, totalWeightKg: 0, palletsNeeded: 0, totalRmb: 0, totalUsd: 0, wbCount: 0 };
+    let qty = 0, totalCartons = 0, totalCbm = 0, totalWeightKg = 0, palletsNeeded = 0, totalRmb = 0, totalUsd = 0;
+    const exchange = 7.2;
+    (order.entries || []).forEach(wbEntry => {
+      const key    = `${wbEntry.clientName}|${wbEntry.workbookId}`;
+      const detail = workbookDetail[key];
+      if (!detail) return;
+      const tiers  = Array.isArray(detail.tiers) ? detail.tiers : [];
+      const tier   = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+      const wbQty  = tier ? (parseFloat(tier.qty)   || 0) : 0;
+      const price  = tier ? (parseFloat(tier.price) || 0) : 0;
+      qty        += wbQty;
+      totalRmb   += price * wbQty;
+      totalUsd   += (price / exchange) * wbQty;
+      const s = calcWorkbookShipStats(detail, wbQty);
+      totalCartons  += s.totalCartons;
+      totalCbm      += s.totalCbm;
+      totalWeightKg += s.totalWeightKg;
+      palletsNeeded += s.palletsNeeded;
+    });
+    return {
+      wbCount:      (order.entries || []).length,
+      qty:          qty,
+      totalCartons: totalCartons,
+      totalCbm:     parseFloat(totalCbm.toFixed(2)),
+      totalWeightKg: parseFloat(totalWeightKg.toFixed(1)),
+      palletsNeeded: Math.ceil(palletsNeeded),
+      totalRmb:     Math.round(totalRmb * 100) / 100,
+      totalUsd:     Math.round(totalUsd * 100) / 100,
+    };
+  }
+
   function shipmentTotals(shipment) {
     let totalCbm = 0, totalKg = 0, totalPallets = 0;
     (shipment.entries || []).forEach(entry => {
-      const key = `${entry.clientName}|${entry.workbookId}`;
-      const detail = workbookDetail[key];
-      if (!detail) return;
-      const s = calcWorkbookShipStats(detail, entry.qty);
-      totalCbm     += s.totalCbm;
-      totalKg      += s.totalWeightKg;
-      totalPallets += s.palletsNeeded;
+      if (entry.orderId) {
+        const s = orderShipStats(entry.orderId);
+        totalCbm     += s.totalCbm;
+        totalKg      += s.totalWeightKg;
+        totalPallets += s.palletsNeeded;
+      } else {
+        // Legacy workbook entry
+        const key    = `${entry.clientName}|${entry.workbookId}`;
+        const detail = workbookDetail[key];
+        if (!detail) return;
+        const s = calcWorkbookShipStats(detail, entry.qty);
+        totalCbm     += s.totalCbm;
+        totalKg      += s.totalWeightKg;
+        totalPallets += s.palletsNeeded;
+      }
     });
     return {
       cbm:     parseFloat(totalCbm.toFixed(2)),
@@ -9610,15 +9683,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const entries = s.entries || [];
       const wbCount = entries.length;
 
-      const wbPills = wbCount === 0
-        ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No workbooks added</span>`
-        : entries.map(e => {
-            const key    = `${e.clientName}|${e.workbookId}`;
-            const detail = workbookDetail[key];
-            const prod   = detail ? (detail.product || 'Untitled') : 'Untitled';
-            const href   = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
-            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/shipments'; _wbBackLabel='Back to Shipments'; location.hash='${href}'">${prod}<span class="sc-wb-pill-arrow">→</span></span>`;
+      const orderEntries = entries.filter(e => e.orderId);
+      const wbPills = orderEntries.length === 0
+        ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No orders added</span>`
+        : orderEntries.map(e => {
+            const order = orderData[e.orderId];
+            if (!order) return '';
+            const href = `#/order/${e.orderId}`;
+            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${order.clientName} – ${order.name}<span class="sc-wb-pill-arrow">→</span></span>`;
           }).join('');
+      const wbCount = orderEntries.length;
 
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
@@ -9626,7 +9700,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="sc-eta">${etaLabel} ${eta}</span>
         </div>
         <div class="sc-wb-list">
-          <div class="sc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
+          <div class="sc-wb-count">${wbCount} order${wbCount !== 1 ? 's' : ''}</div>
           ${wbPills}
         </div>
         <div class="sc-right-wrap">
@@ -9696,62 +9770,94 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       btn.classList.toggle('active', btn.dataset.type === s.containerType);
     });
 
-    renderShipmentWorkbooks();
+    renderShipmentOrders();
     renderShipmentUtilization();
     showView('view-shipment-detail');
   }
 
-  function renderShipmentWorkbooks() {
+  function renderShipmentOrders() {
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
-    const tbody  = document.getElementById('ship-wb-tbody');
-    const table  = document.getElementById('ship-wb-table');
-    const empty  = document.getElementById('ship-wb-empty');
-    const count  = document.getElementById('ship-wb-count');
+    const listEl  = document.getElementById('ship-order-list');
+    const emptyEl = document.getElementById('ship-order-empty');
+    const countEl = document.getElementById('ship-order-count');
     const entries = s.entries || [];
 
-    if (count) count.textContent = entries.length > 0 ? `${entries.length} item${entries.length !== 1 ? 's' : ''}` : '';
+    const orderEntries = entries.filter(e => e.orderId);
+    if (countEl) countEl.textContent = orderEntries.length > 0 ? `${orderEntries.length} order${orderEntries.length !== 1 ? 's' : ''}` : '';
 
-    if (entries.length === 0) {
-      if (table) table.style.display = 'none';
-      if (empty) empty.style.display = '';
+    if (orderEntries.length === 0) {
+      if (emptyEl) emptyEl.style.display = '';
+      if (listEl)  listEl.innerHTML = '';
       return;
     }
-    if (table) table.style.display = '';
-    if (empty) empty.style.display = 'none';
+    if (emptyEl) emptyEl.style.display = 'none';
 
-    tbody.innerHTML = entries.map((entry, idx) => {
-      const key    = `${entry.clientName}|${entry.workbookId}`;
-      const detail = workbookDetail[key] || {};
-      const stats  = calcWorkbookShipStats(detail, entry.qty);
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    listEl.innerHTML = entries.map((entry, idx) => {
+      if (!entry.orderId) return ''; // skip legacy workbook entries
+      const order = orderData[entry.orderId];
+      if (!order) return '';
+      const stats  = orderShipStats(entry.orderId);
+      const orderHref = `#/order/${entry.orderId}`;
+
       const hasDims = stats.totalCartons > 0;
+      const qtyStr     = stats.qty > 0 ? stats.qty.toLocaleString('en-US') : '—';
+      const cartonStr  = hasDims ? stats.totalCartons.toLocaleString('en-US') : '—';
+      const palletStr  = hasDims ? stats.palletsNeeded : '—';
+      const cbmStr     = hasDims ? stats.totalCbm + ' m³' : '—';
+      const weightStr  = hasDims ? stats.totalWeightKg.toLocaleString('en-US') + ' kg' : '—';
+      const usdStr     = stats.totalUsd > 0 ? `$${fmt2(stats.totalUsd)}` : '—';
+      const rmbStr     = stats.totalRmb > 0 ? `¥${fmt2(stats.totalRmb)}` : '';
 
-      const cartons = hasDims ? stats.totalCartons.toLocaleString('en-US') : '—';
-      const pallets = hasDims ? stats.palletsNeeded : '—';
-      const cbm     = hasDims ? stats.totalCbm + ' m³' : '—';
-      const weight  = hasDims ? stats.totalWeightKg.toLocaleString('en-US') + ' kg' : '—';
+      // Workbook pills
+      const wbPills = (order.entries || []).map(wbEntry => {
+        const key    = `${wbEntry.clientName}|${wbEntry.workbookId}`;
+        const detail = workbookDetail[key] || {};
+        const prod   = detail.product || wbEntry.workbookId;
+        const href   = `#/client/${encodeURIComponent(wbEntry.clientName)}/workbook/${wbEntry.workbookId}`;
+        return `<span class="soc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/shipment/${_currentShipmentId}'; _wbBackLabel='Back to Shipment'; location.hash='${href}'">${prod} →</span>`;
+      }).join('');
 
-      const wbHref = `#/client/${encodeURIComponent(entry.clientName)}/workbook/${entry.workbookId}`;
-      return `<tr>
-        <td>
-          <div class="ship-wb-product">
-            <a class="ship-wb-link" href="${wbHref}" onclick="_wbBackHash='#/shipment/${_currentShipmentId}'; _wbBackLabel='Back to Shipment'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
-              ${detail.product || entry.workbookId}
-              <span class="ship-wb-link-arrow">→</span>
-            </a>
+      return `<div class="ship-order-card" onclick="location.hash='${orderHref}'">
+        <div class="ship-order-card-header">
+          <div>
+            <div class="soc-client">${order.clientName}</div>
+            <div class="soc-name">${order.name} &nbsp;·&nbsp; ${stats.wbCount} workbook${stats.wbCount !== 1 ? 's' : ''}</div>
           </div>
-          <div class="ship-wb-client">${entry.clientName}</div>
-        </td>
-        <td style="text-align:right;" class="ship-wb-stat">${parseInt(entry.qty).toLocaleString('en-US')}</td>
-        <td style="text-align:right;" class="ship-wb-stat">${cartons}</td>
-        <td style="text-align:right;" class="ship-wb-stat">${pallets}</td>
-        <td style="text-align:right;" class="ship-wb-stat">${cbm}</td>
-        <td style="text-align:right;" class="ship-wb-stat">${weight}</td>
-        <td style="text-align:right;">
-          <button class="ship-wb-remove" onclick="removeWorkbookFromShipment(${idx})" title="Remove">×</button>
-        </td>
-      </tr>`;
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div class="soc-cost">
+              <span class="soc-cost-usd">${usdStr}</span>
+              ${rmbStr ? `<span class="soc-cost-rmb">${rmbStr}</span>` : ''}
+            </div>
+            <button class="ship-wb-remove" onclick="event.stopPropagation(); removeOrderFromShipment(${idx})" title="Remove">×</button>
+          </div>
+        </div>
+        <div class="ship-order-card-body">
+          <div class="soc-workbooks">
+            <div class="soc-wb-label">Workbooks</div>
+            ${wbPills || '<span style="font-size:12px;color:var(--text-muted);font-style:italic;">None</span>'}
+          </div>
+          <div class="soc-stats">
+            <div class="soc-stat"><span class="soc-stat-val">${qtyStr}</span><span class="soc-stat-lbl">Units</span></div>
+            <div class="soc-stat"><span class="soc-stat-val">${cartonStr}</span><span class="soc-stat-lbl">Cartons</span></div>
+            <div class="soc-stat"><span class="soc-stat-val">${palletStr}</span><span class="soc-stat-lbl">Pallets</span></div>
+            <div class="soc-stat"><span class="soc-stat-val">${cbmStr}</span><span class="soc-stat-lbl">CBM</span></div>
+            <div class="soc-stat"><span class="soc-stat-val">${weightStr}</span><span class="soc-stat-lbl">Weight</span></div>
+          </div>
+        </div>
+      </div>`;
     }).join('');
+  }
+
+  function removeOrderFromShipment(idx) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.entries.splice(idx, 1);
+    saveShipments();
+    renderShipmentOrders();
+    renderShipmentUtilization();
   }
 
   function renderShipmentUtilization() {
@@ -9817,16 +9923,126 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveShipments();
   }
 
-  // ── Add Workbook modal ───────────────────────────────────────────────
-  function openAddWorkbookModal() {
-    _wbPickerSelected = new Set();
-    document.getElementById('wb-picker-search').value = '';
-    buildWbPickerList('');
-    document.getElementById('modal-add-workbook').classList.add('open');
+  // ── Add Order to Shipment modal ──────────────────────────────────────
+  function openAddOrderToShipmentModal() {
+    _shipOrderPickerSelected = new Set();
+    const sel = document.getElementById('ship-order-picker-client');
+    sel.innerHTML = '<option value="">Select a client…</option>';
+    Object.keys(clientData).sort().forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    document.getElementById('ship-order-picker-section').style.display = 'none';
+    document.getElementById('ship-order-picker-search').value = '';
+    document.getElementById('ship-order-picker-list').innerHTML = '';
+    document.getElementById('modal-add-order-to-shipment').classList.add('open');
   }
-  function closeAddWorkbookModal() {
-    document.getElementById('modal-add-workbook').classList.remove('open');
-    _wbPickerSelected = new Set();
+
+  function closeAddOrderToShipmentModal() {
+    document.getElementById('modal-add-order-to-shipment').classList.remove('open');
+    _shipOrderPickerSelected = new Set();
+  }
+
+  function onShipOrderClientChange() {
+    const client  = document.getElementById('ship-order-picker-client').value;
+    const section = document.getElementById('ship-order-picker-section');
+    if (!client) { section.style.display = 'none'; _shipOrderPickerSelected = new Set(); return; }
+    _shipOrderPickerSelected = new Set();
+    document.getElementById('ship-order-picker-search').value = '';
+    section.style.display = '';
+    buildShipOrderPickerList('');
+  }
+
+  function buildShipOrderPickerList(query) {
+    const list = document.getElementById('ship-order-picker-list');
+    if (!list) return;
+    const client = document.getElementById('ship-order-picker-client').value;
+    if (!client) return;
+    query = (query || '').toLowerCase();
+
+    // Orders for this client not already in shipment
+    const s = shipmentData[_currentShipmentId];
+    const alreadyIn = new Set((s ? s.entries : []).filter(e => e.orderId).map(e => String(e.orderId)));
+
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
+    const color = palette[Object.keys(clientData).sort().indexOf(client) % palette.length];
+
+    const orders = Object.values(orderData).filter(o => o.clientName === client);
+
+    if (orders.length === 0) {
+      list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No orders found for this client.</div>`;
+      return;
+    }
+
+    let html = '';
+    let shown = 0;
+    orders.forEach(order => {
+      if (query && !order.name.toLowerCase().includes(query)) return;
+      shown++;
+      const id        = String(order.id);
+      const isChecked = _shipOrderPickerSelected.has(id);
+      const inShip    = alreadyIn.has(id);
+      const tot       = orderTotals(order);
+      const usdStr    = tot.totalUsd > 0 ? `$${fmt2(tot.totalUsd)}` : '—';
+      const rmbStr    = tot.totalRmb > 0 ? `¥${fmt2(tot.totalRmb)}` : '';
+      const wbCount   = (order.entries || []).length;
+      const initials  = client.substring(0, 3).toUpperCase();
+
+      html += `<div class="wb-picker-item${isChecked ? ' selected' : ''}${inShip ? ' disabled' : ''}"
+          style="${inShip ? 'opacity:0.4; pointer-events:none;' : ''}"
+          onclick="toggleShipOrderPickerItem('${id}')">
+        <div style="width:40px; height:40px; border-radius:8px; background:${color}22; border:1px solid ${color}44; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:${color}; flex-shrink:0; letter-spacing:0.02em;">
+          ${initials}
+        </div>
+        <div class="wb-picker-info">
+          <div class="wb-picker-product">${order.name}</div>
+          <div class="wb-picker-client">${wbCount} workbook${wbCount !== 1 ? 's' : ''}${inShip ? ' · Already in shipment' : ''}</div>
+          <div class="wb-picker-tiers">${usdStr}${rmbStr ? ' &nbsp;·&nbsp; ' + rmbStr : ''}</div>
+        </div>
+        <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
+          ${isChecked ? '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+        </div>
+      </div>`;
+    });
+
+    if (shown === 0) {
+      list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No orders match your search.</div>`;
+      return;
+    }
+    list.innerHTML = html;
+  }
+
+  function filterShipOrderPicker(query) {
+    buildShipOrderPickerList(query);
+  }
+
+  function toggleShipOrderPickerItem(id) {
+    if (_shipOrderPickerSelected.has(id)) {
+      _shipOrderPickerSelected.delete(id);
+    } else {
+      _shipOrderPickerSelected.add(id);
+    }
+    buildShipOrderPickerList(document.getElementById('ship-order-picker-search').value);
+  }
+
+  function confirmAddOrderToShipment() {
+    if (_shipOrderPickerSelected.size === 0) { alert('Select at least one order.'); return; }
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    _shipOrderPickerSelected.forEach(id => {
+      const orderId = parseInt(id);
+      const alreadyIn = (s.entries || []).some(e => e.orderId === orderId);
+      if (!alreadyIn) {
+        s.entries = s.entries || [];
+        s.entries.push({ orderId });
+      }
+    });
+    saveShipments();
+    closeAddOrderToShipmentModal();
+    renderShipmentOrders();
+    renderShipmentUtilization();
   }
 
   function buildWbPickerList(query) {
@@ -9916,8 +10132,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     });
     saveShipments();
-    closeAddWorkbookModal();
-    renderShipmentWorkbooks();
+    closeAddOrderToShipmentModal();
+    renderShipmentOrders();
     renderShipmentUtilization();
   }
 
@@ -9926,7 +10142,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!s) return;
     s.entries.splice(idx, 1);
     saveShipments();
-    renderShipmentWorkbooks();
+    renderShipmentOrders();
     renderShipmentUtilization();
   }
 
