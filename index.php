@@ -8888,6 +8888,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     navigator.sendBeacon('api.php', new Blob([payload], { type: 'application/json' }));
   });
 
+  /* ── Shipments module state (must be declared before init) ─────────────── */
+  let shipmentData = {};
+  let _nextShipmentId = 1;
+  let _currentShipmentId = null;
+  let _wbPickerSelected = new Set();
+
   /* ── Init ──────────────────────────────────────────────────────────────── */
   // Footer date
   document.getElementById('gen-date').textContent = new Date().toLocaleDateString('en-US', {
@@ -8977,10 +8983,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      SHIPMENTS MODULE
   ══════════════════════════════════════════════════════════════════════ */
 
-  let shipmentData = {};   // id → shipment object
-  let _nextShipmentId = 1;
-  let _currentShipmentId = null;
-  let _wbPickerSelected = new Set(); // Set of "clientName|workbookId" keys
+  // shipmentData, _nextShipmentId, _currentShipmentId, _wbPickerSelected declared above init()
 
   const CONTAINER_SPECS = {
     '20ft': { label: "20' Standard",  cbm: 25,  maxKg: 21700, maxPallets: 10 },
