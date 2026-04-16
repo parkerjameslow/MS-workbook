@@ -2792,35 +2792,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .shipment-list-empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
     .shipment-list-empty-sub { font-size: 13px; color: var(--text-muted); }
 
-    .shipment-cards { display: flex; flex-direction: column; gap: 8px; }
+    .shipment-cards { display: flex; flex-direction: column; gap: 6px; }
     .shipment-card {
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 14px 18px;
+      padding: 12px 16px;
       cursor: pointer;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
       transition: box-shadow 0.15s, border-color 0.15s;
     }
     .shipment-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
-    .shipment-card-row1 { display: flex; align-items: center; gap: 10px; }
-    .shipment-card-name { font-size: 15px; font-weight: 700; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .shipment-card-row2 { font-size: 12px; color: var(--text-muted); }
-    .shipment-card-row2 strong { color: var(--text); font-weight: 600; }
-    .shipment-card-row3 { display: flex; align-items: center; gap: 0; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+    .shipment-card-row1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .shipment-card-name { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; max-width: 220px; }
+    .shipment-card-wbline { font-size: 12px; color: var(--text-muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .shipment-card-row2 { display: flex; align-items: center; gap: 0; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
     .sc-stat-inline { color: var(--text); font-weight: 600; }
     .sc-divider { margin: 0 10px; opacity: 0.3; }
-    .shipment-container-tag {
-      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
-      background: rgba(107,147,255,0.12); border: 1px solid rgba(107,147,255,0.3);
-      color: var(--accent); border-radius: 20px; padding: 3px 10px;
-    }
     .ship-status-badge {
-      font-size: 11px; font-weight: 600; border-radius: 20px; padding: 3px 10px;
-      text-transform: capitalize;
+      font-size: 12px; font-weight: 700; border-radius: 6px; padding: 3px 10px;
+      text-transform: capitalize; flex-shrink: 0;
     }
+    .shipment-container-tag {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-muted); flex-shrink: 0;
+    }
+    .sc-section-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-muted); padding: 12px 0 4px; margin-top: 4px;
+    }
+    .sc-section-label:first-child { padding-top: 0; margin-top: 0; }
+    .ship-filter-bar {
+      display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap;
+    }
+    .ship-filter-btn {
+      font-size: 12px; font-weight: 600; padding: 5px 14px;
+      border-radius: 20px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text-muted);
+      cursor: pointer; transition: all 0.12s;
+    }
+    .ship-filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .ship-filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     .ship-status-planning  { background: rgba(107,147,255,0.1); color: #6b93ff; }
     .ship-status-booked    { background: rgba(251,175,52,0.12); color: #f59e0b; }
     .ship-status-in_transit { background: rgba(74,222,128,0.12); color: #4ade80; }
@@ -8896,6 +8910,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _nextShipmentId = 1;
   let _currentShipmentId = null;
   let _wbPickerSelected = new Set();
+  let _shipFilter = 'all';
   const CONTAINER_SPECS = {
     '20ft': { label: "20' Standard",  cbm: 25,  maxKg: 21700, maxPallets: 10 },
     '40ft': { label: "40' Standard",  cbm: 55,  maxKg: 26500, maxPallets: 20 },
@@ -9134,11 +9149,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const shipNav = document.getElementById('nav-shipments-link');
     if (shipNav) shipNav.classList.add('active');
     showView('view-shipments');
+    renderShipmentsContent();
+  }
 
-    const ids = Object.keys(shipmentData);
-    const el  = document.getElementById('shipment-list-content');
+  function filterShipments(status, btn) {
+    _shipFilter = status;
+    document.querySelectorAll('.ship-filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderShipmentsContent();
+  }
+
+  function renderShipmentsContent() {
+    const el = document.getElementById('shipment-list-content');
     if (!el) return;
 
+    const ids = Object.keys(shipmentData);
     if (ids.length === 0) {
       el.innerHTML = `<div class="shipment-list-empty">
         <div class="shipment-list-empty-icon">🚢</div>
@@ -9148,35 +9173,46 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
-    el.innerHTML = `<div class="shipment-cards">${ids.map(id => {
+    const STATUS_ORDER = ['planning', 'booked', 'in_transit', 'delivered'];
+    const filterLabels = { all: 'All', planning: 'Planning', booked: 'Booked', in_transit: 'In Transit', delivered: 'Delivered' };
+
+    // Counts per status for badges on filter buttons
+    const counts = { all: ids.length };
+    ids.forEach(id => {
+      const st = shipmentData[id].status;
+      counts[st] = (counts[st] || 0) + 1;
+    });
+
+    const filterBar = `<div class="ship-filter-bar">
+      ${['all','planning','booked','in_transit','delivered'].map(s =>
+        `<button class="ship-filter-btn${_shipFilter === s ? ' active' : ''}" onclick="filterShipments('${s}', this)">
+          ${filterLabels[s]}${counts[s] ? ` <span style="opacity:0.7">(${counts[s]})</span>` : ''}
+        </button>`
+      ).join('')}
+    </div>`;
+
+    function buildCard(id) {
       const s       = shipmentData[id];
       const spec    = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
       const tot     = shipmentTotals(s);
       const entries = s.entries || [];
       const wbCount = entries.length;
       const cbmPct  = spec.cbm > 0 ? Math.round((tot.cbm / spec.cbm) * 100) : 0;
-
-      // Workbook names inline
       const wbNames = entries.map(e => {
         const detail = workbookDetail[`${e.clientName}|${e.workbookId}`];
         return detail ? (detail.product || 'Untitled') : 'Untitled';
       });
-      const wbLine = wbCount === 0
-        ? 'No workbooks added'
-        : `<strong>${wbCount} workbook${wbCount !== 1 ? 's' : ''}:</strong> ${wbNames.join(', ')}`;
-
-      // Stats row
+      const wbLabel = wbCount === 0 ? 'No workbooks' : `${wbCount} workbook${wbCount !== 1 ? 's' : ''}: ${wbNames.join(', ')}`;
       const etd = s.etd || '—';
       const eta = s.eta || '—';
-
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
         <div class="shipment-card-row1">
           <span class="shipment-card-name">${s.name}</span>
+          <span class="shipment-card-wbline">${wbLabel}</span>
           <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
           <span class="shipment-container-tag">${spec.label}</span>
         </div>
-        <div class="shipment-card-row2">${wbLine}</div>
-        <div class="shipment-card-row3">
+        <div class="shipment-card-row2">
           <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
           <span class="sc-divider">|</span>
           <span><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg</span>
@@ -9188,7 +9224,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span>ETA <span class="sc-stat-inline">${eta}</span></span>
         </div>
       </div>`;
-    }).join('')}</div>`;
+    }
+
+    // Split into active and delivered
+    const filtered = ids.filter(id => _shipFilter === 'all' || shipmentData[id].status === _shipFilter);
+    const active    = filtered.filter(id => shipmentData[id].status !== 'delivered');
+    const delivered = filtered.filter(id => shipmentData[id].status === 'delivered');
+
+    // Sort active by status order
+    active.sort((a, b) => STATUS_ORDER.indexOf(shipmentData[a].status) - STATUS_ORDER.indexOf(shipmentData[b].status));
+
+    let html = filterBar;
+
+    if (active.length > 0) {
+      html += `<div class="shipment-cards">${active.map(buildCard).join('')}</div>`;
+    }
+
+    if (delivered.length > 0) {
+      html += `<div class="sc-section-label" style="margin-top:${active.length > 0 ? '20px' : '0'}">Delivered</div>
+        <div class="shipment-cards" style="opacity:0.7">${delivered.map(buildCard).join('')}</div>`;
+    }
+
+    if (active.length === 0 && delivered.length === 0) {
+      html += `<div style="padding:30px 0; text-align:center; color:var(--text-muted); font-size:13px;">No shipments match this filter.</div>`;
+    }
+
+    el.innerHTML = html;
   }
 
   // ── Detail view ──────────────────────────────────────────────────────
