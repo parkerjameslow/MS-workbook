@@ -2807,8 +2807,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .shipment-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
     /* Left: title + eta */
-    .sc-left { display: flex; flex-direction: column; gap: 2px; min-width: 140px; max-width: 200px; flex-shrink: 0; }
-    .sc-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sc-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 340px; }
+    .sc-title-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .sc-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+    .sc-wbs { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
     .sc-eta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
     .sc-eta strong { color: var(--text); font-weight: 600; }
     /* Center: stats block */
@@ -9205,10 +9207,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const spec   = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
       const tot    = shipmentTotals(s);
       const cbmPct = spec.cbm > 0 ? Math.round((tot.cbm / spec.cbm) * 100) : 0;
-      const eta = s.eta ? `<strong>${s.eta}</strong>` : '—';
+      const eta     = s.eta ? `<strong>${s.eta}</strong>` : '—';
+      const entries = s.entries || [];
+      const wbCount = entries.length;
+      const wbNames = entries.map(e => {
+        const detail = workbookDetail[`${e.clientName}|${e.workbookId}`];
+        return detail ? (detail.product || 'Untitled') : 'Untitled';
+      });
+      const wbLabel = wbCount === 0 ? 'No workbooks' : `${wbCount} workbook${wbCount !== 1 ? 's' : ''}: ${wbNames.join(', ')}`;
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
-          <span class="sc-title">${s.name}</span>
+          <div class="sc-title-row">
+            <span class="sc-title">${s.name}</span>
+            <span class="sc-wbs">${wbLabel}</span>
+          </div>
           <span class="sc-eta">ETA ${eta}</span>
         </div>
         <div class="sc-stats-pill">
