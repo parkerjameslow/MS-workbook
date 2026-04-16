@@ -9370,9 +9370,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const cbm     = hasDims ? stats.totalCbm + ' m³' : '—';
       const weight  = hasDims ? stats.totalWeightKg.toLocaleString('en-US') + ' kg' : '—';
 
+      const wbHref = `#/client/${encodeURIComponent(entry.clientName)}/workbook/${entry.workbookId}`;
       return `<tr>
         <td>
-          <div class="ship-wb-product">${detail.product || entry.workbookId}</div>
+          <div class="ship-wb-product">
+            <a href="${wbHref}" onclick="_wbBackHash='#/shipment/${_currentShipmentId}'; _wbBackLabel='Back to Shipment'; event.preventDefault(); location.hash='${wbHref.substring(1)}'" style="color:var(--accent); text-decoration:none; font-weight:600;">${detail.product || entry.workbookId}</a>
+          </div>
           <div class="ship-wb-client">${entry.clientName}</div>
         </td>
         <td style="text-align:right;" class="ship-wb-stat">${parseInt(entry.qty).toLocaleString('en-US')}</td>
