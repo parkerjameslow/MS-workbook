@@ -7023,8 +7023,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const FREIGHT_EXCHANGE_RATE = 7.2; // ¥ per $1 USD
 
   function updateFreightRate() {
-    const mode = document.getElementById('freight-mode').value;
-    const r = freightMethodRates[mode] || freightMethodRates['slow'];
+    const rawMode = document.getElementById('freight-mode').value;
+    const mode = freightMethodRates[rawMode] ? rawMode : 'slow';
+    const r = freightMethodRates[mode];
     const rmbEl = document.getElementById('freight-rate-rmb-display');
     const usdEl = document.getElementById('freight-rate-usd-display');
     if (rmbEl) rmbEl.textContent = r.toFixed(2);
@@ -7224,8 +7225,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const hCm      = get('carton-outer-h-cm');
     const actualKg = get('carton-outer-weight');  // kg per carton
 
-    const mode     = document.getElementById('freight-mode').value;
-    const rate     = freightMethodRates[mode] || freightMethodRates['slow']; // fallback to slow if mode unknown
+    const rawMode  = document.getElementById('freight-mode').value;
+    const mode     = freightMethodRates[rawMode] ? rawMode : 'slow'; // fallback to slow if mode unknown/empty
+    const rate     = freightMethodRates[mode];
     const cartons  = parseInt(document.getElementById('pallet-total-cartons')?.value) || 1;
     const exchange = FREIGHT_EXCHANGE_RATE;
 
