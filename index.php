@@ -2820,16 +2820,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .sc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
     .sc-wb-pill {
-      display: inline-flex; align-items: center;
+      display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
       font-size: 12px; font-weight: 500;
-      padding: 4px 12px; border-radius: 20px;
-      border: 1px solid var(--border); background: var(--surface);
-      color: var(--text); cursor: pointer;
+      padding: 4px 10px; border-radius: 20px;
+      border: 1px solid rgba(107,147,255,0.35); background: rgba(107,147,255,0.1);
+      color: var(--accent); cursor: pointer;
       transition: border-color 0.12s, color 0.12s, background 0.12s;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       max-width: 100%;
     }
-    .sc-wb-pill:hover { border-color: var(--accent); color: var(--accent); background: rgba(107,147,255,0.07); }
+    .sc-wb-pill:hover { border-color: var(--accent); background: rgba(107,147,255,0.18); }
+    .sc-wb-pill-arrow { font-size: 11px; opacity: 0.75; flex-shrink: 0; }
     /* Right: stats + status inline */
     .sc-right-wrap {
       flex: 1;
@@ -8166,15 +8167,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Back button context
     const backBtn = document.getElementById('btn-back');
     if (backBtn) {
-      if (_wbBackHash) {
-        const bHash = _wbBackHash, bLabel = _wbBackLabel;
-        backBtn.textContent = `← ${bLabel}`;
-        backBtn.onclick = () => { _wbBackHash = null; _wbBackLabel = null; location.hash = bHash; };
-        _wbBackHash = null; _wbBackLabel = null;
-      } else {
-        backBtn.textContent = '← Back to Workbooks';
-        backBtn.onclick = () => history.back();
-      }
+      const bHash  = _wbBackHash  || `#/client/${encodeURIComponent(clientName)}`;
+      const bLabel = _wbBackLabel || 'Back to Workbooks';
+      backBtn.textContent = `← ${bLabel}`;
+      backBtn.onclick = (e) => { e.preventDefault(); _wbBackHash = null; _wbBackLabel = null; location.hash = bHash; };
+      _wbBackHash = null; _wbBackLabel = null;
     }
 
     // Reset to default Workbook tab
@@ -9269,7 +9266,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const detail = workbookDetail[key];
             const prod   = detail ? (detail.product || 'Untitled') : 'Untitled';
             const href   = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
-            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/shipments'; _wbBackLabel='Back to Shipments'; location.hash='${href}'">${prod}</span>`;
+            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/shipments'; _wbBackLabel='Back to Shipments'; location.hash='${href}'">${prod}<span class="sc-wb-pill-arrow">→</span></span>`;
           }).join('');
 
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
