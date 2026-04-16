@@ -2839,7 +2839,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sc-stats-row { font-size: 12px; color: var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 0; }
     .sc-stat-inline { color: var(--text); font-weight: 600; }
     .sc-divider { margin: 0 10px; opacity: 0.25; }
-    .sc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+    .sc-right { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; flex-shrink: 0; min-width: 90px; }
+    .sc-right .ship-status-badge { width: 100%; text-align: center; box-sizing: border-box; }
+    .sc-right .shipment-container-tag { width: 100%; text-align: center; }
     .ship-status-badge {
       font-size: 13px; font-weight: 800; border-radius: 8px; padding: 5px 14px;
       text-transform: capitalize; letter-spacing: 0.02em;
