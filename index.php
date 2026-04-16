@@ -4830,9 +4830,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div class="modal-overlay" id="modal-new-order" onclick="if(event.target===this)closeNewOrderModal()" style="z-index:1000;">
   <div class="modal" style="max-width:560px;">
     <div class="modal-title">Create Order</div>
-    <input type="text" class="wb-picker-search" id="order-picker-search" placeholder="Search products or clients…" oninput="filterOrderPicker(this.value)" />
-    <div class="modal-wb-picker" id="order-picker-list">
-      <!-- populated by JS -->
+    <div class="modal-field" style="margin-bottom:12px;">
+      <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Client</label>
+      <select id="order-picker-client" onchange="onOrderPickerClientChange()"
+        style="width:100%; height:38px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;">
+        <option value="">Select a client…</option>
+      </select>
+    </div>
+    <div id="order-picker-wb-section" style="display:none;">
+      <input type="text" class="wb-picker-search" id="order-picker-search" placeholder="Search workbooks…" oninput="filterOrderPicker(this.value)" />
+      <div class="modal-wb-picker" id="order-picker-list">
+        <!-- populated by JS -->
+      </div>
     </div>
     <div class="modal-actions" style="margin-top:14px;">
       <button type="button" class="btn btn-ghost" onclick="closeNewOrderModal()">Cancel</button>
@@ -9958,8 +9967,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── Create Order modal ───────────────────────────────────────────────
   function openNewOrderModal() {
     _orderPickerSelected = new Set();
+    // Populate client dropdown
+    const sel = document.getElementById('order-picker-client');
+    sel.innerHTML = '<option value="">Select a client…</option>';
+    Object.keys(clientData).sort().forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    // Hide workbook section until client chosen
+    document.getElementById('order-picker-wb-section').style.display = 'none';
     document.getElementById('order-picker-search').value = '';
-    buildOrderPickerList('');
+    document.getElementById('order-picker-list').innerHTML = '';
     document.getElementById('modal-new-order').classList.add('open');
   }
 
@@ -9968,9 +9988,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _orderPickerSelected = new Set();
   }
 
+  function onOrderPickerClientChange() {
+    const client = document.getElementById('order-picker-client').value;
+    const section = document.getElementById('order-picker-wb-section');
+    if (!client) {
+      section.style.display = 'none';
+      _orderPickerSelected = new Set();
+      return;
+    }
+    _orderPickerSelected = new Set();
+    document.getElementById('order-picker-search').value = '';
+    section.style.display = '';
+    buildOrderPickerList('');
+  }
+
   function buildOrderPickerList(query) {
     const list = document.getElementById('order-picker-list');
     if (!list) return;
+    const clientName = document.getElementById('order-picker-client').value;
+    if (!clientName) return;
     query = (query || '').toLowerCase();
 
     // Status groups: latest → earliest
@@ -9986,42 +10022,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       { key: 'new',              label: 'New' },
     ];
 
-    // Client colour palette for avatars
     const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
-    const clientColors = {};
-    let colorIdx = 0;
-    function getClientColor(name) {
-      if (!clientColors[name]) clientColors[name] = palette[colorIdx++ % palette.length];
-      return clientColors[name];
-    }
+    const color = palette[Object.keys(clientData).sort().indexOf(clientName) % palette.length];
 
-    // Bucket all workbooks by status
     const buckets = {};
     statusGroups.forEach(g => { buckets[g.key] = []; });
 
-    Object.entries(clientData).forEach(([clientName, wbs]) => {
-      (wbs || []).forEach(wb => {
-        const key     = `${clientName}|${wb.id}`;
-        const detail  = workbookDetail[key] || {};
-        const product = detail.product || wb.product || '—';
-        if (query && !product.toLowerCase().includes(query) && !clientName.toLowerCase().includes(query)) return;
-        const tiers   = (detail.tiers || []);
-        const tierStr = tiers.length > 0
-          ? tiers.map(t => `${parseInt(t.qty || 0).toLocaleString('en-US')} units`).join(' · ')
-          : 'No tiers set';
-        const item = { clientName, workbookId: wb.id, product, tierStr, key };
+    (clientData[clientName] || []).forEach(wb => {
+      const key     = `${clientName}|${wb.id}`;
+      const detail  = workbookDetail[key] || {};
+      const product = detail.product || wb.product || '—';
+      if (query && !product.toLowerCase().includes(query)) return;
+      const tiers   = (detail.tiers || []);
+      const tierStr = tiers.length > 0
+        ? tiers.map(t => `${parseInt(t.qty || 0).toLocaleString('en-US')} units`).join(' · ')
+        : 'No tiers set';
+      const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
-        const flow = wb.flow || {};
-        if (isFlowComplete(flow)) {
-          buckets['complete'].push(item);
-        } else {
-          const lastStep = [...flowSteps].reverse().find(s => flow[s]);
-          buckets[lastStep || 'new'].push(item);
-        }
-      });
+      const flow = wb.flow || {};
+      if (isFlowComplete(flow)) {
+        buckets['complete'].push(item);
+      } else {
+        const lastStep = [...flowSteps].reverse().find(s => flow[s]);
+        buckets[lastStep || 'new'].push(item);
+      }
     });
 
-    // Render grouped list
     let html = '';
     let totalItems = 0;
     statusGroups.forEach(group => {
@@ -10030,7 +10056,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       totalItems += items.length;
       html += `<div class="wb-picker-group-label">${group.label}</div>`;
       items.forEach(item => {
-        const color     = getClientColor(item.clientName);
         const isChecked = _orderPickerSelected.has(item.key);
         const initials  = item.clientName.substring(0, 3).toUpperCase();
         html += `<div class="wb-picker-item${isChecked ? ' selected' : ''}"
@@ -10040,7 +10065,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div class="wb-picker-info">
             <div class="wb-picker-product">${item.product}</div>
-            <div class="wb-picker-client">${item.clientName}</div>
             <div class="wb-picker-tiers">${item.tierStr}</div>
           </div>
           <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
@@ -10052,7 +10076,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     if (totalItems === 0) {
       list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">
-        ${query ? 'No workbooks match your search.' : 'No workbooks found.'}
+        ${query ? 'No workbooks match your search.' : 'No workbooks found for this client.'}
       </div>`;
       return;
     }
@@ -10073,19 +10097,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function createOrder() {
+    const clientName = document.getElementById('order-picker-client').value;
+    if (!clientName) { alert('Please select a client.'); return; }
     if (_orderPickerSelected.size === 0) { alert('Select at least one workbook.'); return; }
 
     const entries = [];
     _orderPickerSelected.forEach(key => {
       const lastPipe   = key.lastIndexOf('|');
-      const clientName = key.substring(0, lastPipe);
       const workbookId = key.substring(lastPipe + 1);
       entries.push({ clientName, workbookId });
     });
-
-    // Use single client name or "Multiple Clients" if mixed
-    const clients    = [...new Set(entries.map(e => e.clientName))];
-    const clientName = clients.length === 1 ? clients[0] : 'Multiple Clients';
 
     const id  = _nextOrderId++;
     const num = String(id).padStart(3, '0');
