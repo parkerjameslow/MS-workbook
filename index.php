@@ -3084,8 +3084,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .oc-grand-usd { font-size: 15px; font-weight: 800; color: var(--text); }
     .oc-grand-rmb { font-size: 13px; font-weight: 700; color: var(--text-muted); }
     .oc-right-wrap {
-      flex: 1;
-      display: flex; align-items: center; justify-content: space-between;
+      flex: 0 0 160px;
+      display: flex; align-items: center; justify-content: flex-end;
       border-left: 2px solid var(--border); padding-left: 16px;
     }
     .oc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; min-width: 100px; }
