@@ -3160,6 +3160,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       transition: color 0.15s, background 0.15s;
     }
     .order-sheet-remove:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
+    .order-sheet-wb-header td {
+      background: var(--surface); padding: 10px 12px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .order-sheet-wb-header:not(:first-child) td { border-top: 2px solid var(--border); }
+    .order-sheet-line-row td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .order-sheet-line-row:last-of-type td { border-bottom: none; }
 
     /* Deposit tracking */
     .order-deposit-row {
@@ -4756,12 +4763,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <table class="order-sheet-table" id="order-sheet-table" style="display:none;">
           <thead>
             <tr>
-              <th>Product</th>
-              <th>Client</th>
+              <th>Item</th>
               <th style="text-align:right;">Qty</th>
-              <th style="text-align:right;">Unit Price (RMB)</th>
-              <th style="text-align:right;">Unit Price (USD)</th>
-              <th style="text-align:right;">Subtotal (USD)</th>
+              <th style="text-align:right;">Unit (RMB)</th>
+              <th style="text-align:right;">Unit (USD)</th>
+              <th style="text-align:right;">Total (RMB)</th>
+              <th style="text-align:right;">Total (USD)</th>
               <th></th>
             </tr>
           </thead>
@@ -10306,7 +10313,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const count = document.getElementById('order-wb-count');
     const entries = o.entries || [];
 
-    if (count) count.textContent = entries.length > 0 ? `${entries.length} item${entries.length !== 1 ? 's' : ''}` : '';
+    if (count) count.textContent = entries.length > 0 ? `${entries.length} workbook${entries.length !== 1 ? 's' : ''}` : '';
 
     if (entries.length === 0) {
       if (table) table.style.display = 'none';
@@ -10319,56 +10326,68 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const exchange = 7.2;
     let grandUsd = 0, grandRmb = 0;
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     tbody.innerHTML = entries.map((entry, idx) => {
-      const key = `${entry.clientName}|${entry.workbookId}`;
-      const detail = workbookDetail[key] || {};
-      const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
-      const selectedIdx = detail.selectedTierIdx;
-      const tier = tiers.find(t => t.id == selectedIdx) || tiers[0];
-
+      const key     = `${entry.clientName}|${entry.workbookId}`;
+      const detail  = workbookDetail[key] || {};
       const product = detail.product || entry.workbookId;
-      const wbHref = `#/client/${encodeURIComponent(entry.clientName)}/workbook/${entry.workbookId}`;
+      const wbHref  = `#/client/${encodeURIComponent(entry.clientName)}/workbook/${entry.workbookId}`;
+      const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
 
-      let qtyStr = '—', unitRmb = '—', unitUsd = '—', subtotalUsd = '—';
-      if (tier && tier.price) {
-        const priceRmb = parseFloat(tier.price) || 0;
-        const qty = parseFloat(tier.qty) || 0;
-        const subtotal = (priceRmb / exchange) * qty;
-        grandRmb += priceRmb * qty;
-        grandUsd += subtotal;
-        qtyStr = qty > 0 ? qty.toLocaleString('en-US') : '—';
-        unitRmb = priceRmb > 0 ? `¥${priceRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-        unitUsd = priceRmb > 0 ? `$${(priceRmb / exchange).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-        subtotalUsd = subtotal > 0 ? `$${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-      }
-
-      return `<tr>
-        <td>
+      // Workbook header row
+      let rows = `<tr class="order-sheet-wb-header">
+        <td colspan="6">
           <a class="order-sheet-product-link" href="${wbHref}"
             onclick="_wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
             ${product} <span style="font-size:11px; opacity:0.5;">→</span>
           </a>
         </td>
-        <td style="color:var(--text-muted); font-size:12px;">${entry.clientName}</td>
-        <td style="text-align:right; font-weight:600;">${qtyStr}</td>
-        <td style="text-align:right;">${unitRmb}</td>
-        <td style="text-align:right;">${unitUsd}</td>
-        <td style="text-align:right; font-weight:700;">${subtotalUsd}</td>
         <td style="text-align:right;">
           <button class="order-sheet-remove" onclick="removeWorkbookFromOrder(${idx})" title="Remove">×</button>
         </td>
       </tr>`;
+
+      if (rfqItems.length === 0) {
+        rows += `<tr>
+          <td colspan="7" style="padding:8px 12px 12px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
+        </tr>`;
+      } else {
+        rows += rfqItems.map(item => {
+          const priceRmb   = parseFloat(item.priceRmb) || 0;
+          const qty        = parseFloat(item.qty) || 0;
+          const subtotalRmb = priceRmb * qty;
+          const subtotalUsd = subtotalRmb / exchange;
+          grandRmb += subtotalRmb;
+          grandUsd += subtotalUsd;
+
+          const qtyStr      = qty      > 0 ? qty.toLocaleString('en-US') : '—';
+          const unitRmbStr  = priceRmb > 0 ? `¥${fmt2(priceRmb)}`           : '—';
+          const unitUsdStr  = priceRmb > 0 ? `$${fmt2(priceRmb / exchange)}` : '—';
+          const totRmbStr   = subtotalRmb > 0 ? `¥${fmt2(subtotalRmb)}` : '—';
+          const totUsdStr   = subtotalUsd > 0 ? `$${fmt2(subtotalUsd)}` : '—';
+
+          return `<tr class="order-sheet-line-row">
+            <td style="padding-left:24px;">${item.item || '—'}</td>
+            <td style="text-align:right;">${qtyStr}</td>
+            <td style="text-align:right; color:var(--text-muted);">${unitRmbStr}</td>
+            <td style="text-align:right; color:var(--text-muted);">${unitUsdStr}</td>
+            <td style="text-align:right; font-weight:600;">${totRmbStr}</td>
+            <td style="text-align:right; font-weight:600;">${totUsdStr}</td>
+            <td></td>
+          </tr>`;
+        }).join('');
+      }
+
+      return rows;
     }).join('');
 
     // Grand total footer
-    const grandUsdStr = grandUsd > 0 ? `$${grandUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-    const grandRmbStr = grandRmb > 0 ? `¥${grandRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+    const grandUsdStr = grandUsd > 0 ? `$${fmt2(grandUsd)}` : '—';
+    const grandRmbStr = grandRmb > 0 ? `¥${fmt2(grandRmb)}` : '—';
     tfoot.innerHTML = `<tr>
-      <td colspan="2" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
-      <td></td>
-      <td style="text-align:right; color:var(--text-muted); font-size:12px;">${grandRmbStr}</td>
-      <td></td>
+      <td colspan="4" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
+      <td style="text-align:right; font-weight:700; color:var(--text-muted);">${grandRmbStr}</td>
       <td style="text-align:right; font-size:15px; font-weight:800;">${grandUsdStr}</td>
       <td></td>
     </tr>`;
