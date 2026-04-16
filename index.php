@@ -9257,7 +9257,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const s      = shipmentData[id];
       const spec   = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
       const tot    = shipmentTotals(s);
-      const cbmPct = spec.cbm > 0 ? Math.round((tot.cbm / spec.cbm) * 100) : 0;
+      const cbmPct    = spec.cbm       > 0 ? Math.round((tot.cbm     / spec.cbm)       * 100) : 0;
+      const kgPct     = spec.maxKg     > 0 ? Math.round((tot.kg      / spec.maxKg)     * 100) : 0;
+      const palletPct = spec.maxPallets > 0 ? Math.round((tot.pallets / spec.maxPallets) * 100) : 0;
       const isDelivered = s.status === 'delivered';
       const eta = isDelivered
         ? (s.deliveredOn ? `<strong style="color:#34d399">${s.deliveredOn}</strong>` : '—')
@@ -9289,9 +9291,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="sc-stats-row">
             <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
             <span class="sc-divider">|</span>
-            <span><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg</span>
+            <span><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg (${kgPct}%)</span>
             <span class="sc-divider">|</span>
-            <span><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''}</span>
+            <span><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''} (${palletPct}%)</span>
           </div>
           <div class="sc-right">
             <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
