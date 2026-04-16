@@ -6888,6 +6888,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const flowLabelsShort = ['Quote', 'Submitted', 'Quote', 'Approved', 'Invoice', 'Payment', 'Order'];
   let currentClient = '';
   let currentWorkbookId = '';
+  let _wbBackHash  = null;  // set before navigating into a workbook from a non-client context
+  let _wbBackLabel = null;
 
   function renderStatusBar(flow) {
     const statusFlow = document.getElementById('status-flow');
@@ -8150,6 +8152,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     currentClient = clientName;
     currentWorkbookId = workbookId;
 
+    // Back button context
+    const backBtn = document.getElementById('btn-back');
+    if (backBtn) {
+      if (_wbBackHash) {
+        const bHash = _wbBackHash, bLabel = _wbBackLabel;
+        backBtn.textContent = `← ${bLabel}`;
+        backBtn.onclick = () => { _wbBackHash = null; _wbBackLabel = null; location.hash = bHash; };
+        _wbBackHash = null; _wbBackLabel = null;
+      } else {
+        backBtn.textContent = '← Back to Workbooks';
+        backBtn.onclick = () => history.back();
+      }
+    }
+
     // Reset to default Workbook tab
     document.querySelectorAll('.wb-tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.wb-tab').forEach(el => el.classList.remove('active'));
@@ -9242,7 +9258,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const detail = workbookDetail[key];
             const prod   = detail ? (detail.product || 'Untitled') : 'Untitled';
             const href   = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
-            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${prod}</span>`;
+            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/shipments'; _wbBackLabel='Back to Shipments'; location.hash='${href}'">${prod}</span>`;
           }).join('');
 
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
