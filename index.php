@@ -2813,7 +2813,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sc-eta strong { color: var(--text); font-weight: 600; }
     /* Center: workbook list */
     .sc-wb-list {
-      flex: 0 0 180px; min-width: 0;
+      flex: 0 0 300px; min-width: 0;
       display: flex; flex-direction: column; gap: 4px; justify-content: center;
       border-left: 2px solid var(--border);
       padding: 4px 14px;
@@ -2830,17 +2830,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       max-width: 100%;
     }
     .sc-wb-pill:hover { border-color: var(--accent); color: var(--accent); background: rgba(107,147,255,0.07); }
-    /* Right: stats + status */
+    /* Right: stats + status inline */
     .sc-right-wrap {
       flex: 1;
-      display: flex; align-items: center; justify-content: flex-end; gap: 20px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
       border-left: 2px solid var(--border); padding-left: 16px;
     }
-    .sc-stats-col { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+    .sc-stats-row { font-size: 12px; color: var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 0; }
     .sc-stat-inline { color: var(--text); font-weight: 600; }
-    .sc-divider { margin: 0 6px; opacity: 0.25; }
-    .sc-stats-row { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
-    /* Right: status + container */
+    .sc-divider { margin: 0 10px; opacity: 0.25; }
     .sc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
     .ship-status-badge {
       font-size: 13px; font-weight: 800; border-radius: 8px; padding: 5px 14px;
@@ -9271,10 +9269,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${wbPills}
         </div>
         <div class="sc-right-wrap">
-          <div class="sc-stats-col">
-            <span class="sc-stats-row"><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
-            <span class="sc-stats-row"><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg</span>
-            <span class="sc-stats-row"><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''}</span>
+          <div class="sc-stats-row">
+            <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
+            <span class="sc-divider">|</span>
+            <span><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg</span>
+            <span class="sc-divider">|</span>
+            <span><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''}</span>
           </div>
           <div class="sc-right">
             <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
