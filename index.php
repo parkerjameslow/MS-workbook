@@ -10215,9 +10215,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="oc-totals-usd">${usdStr}</span>
             ${rmbStr ? `<span class="oc-totals-rmb">${rmbStr}</span>` : ''}
           </div>
-          <div class="oc-right">
-            <span class="order-status-badge order-status-${o.status}">${statusLabel}</span>
-          </div>
         </div>
       </div>`;
     }
