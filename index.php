@@ -2800,33 +2800,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 12px 16px;
       cursor: pointer;
       display: flex;
-      flex-direction: column;
-      gap: 5px;
+      align-items: center;
+      gap: 14px;
       transition: box-shadow 0.15s, border-color 0.15s;
+      min-width: 0;
     }
     .shipment-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
-    .shipment-card-row1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .shipment-card-name { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; max-width: 220px; }
-    .shipment-card-wbline { font-size: 12px; color: var(--text-muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .shipment-card-row2 { display: flex; align-items: center; gap: 0; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+    /* Left: title + eta */
+    .sc-left { display: flex; flex-direction: column; gap: 2px; min-width: 140px; max-width: 200px; flex-shrink: 0; }
+    .sc-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sc-eta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .sc-eta strong { color: var(--text); font-weight: 600; }
+    /* Center: stats pill */
+    .sc-stats-pill {
+      flex: 1; min-width: 0;
+      display: flex; align-items: center; gap: 0;
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 6px 18px; background: var(--surface);
+      font-size: 12px; color: var(--text-muted);
+      overflow: hidden;
+    }
     .sc-stat-inline { color: var(--text); font-weight: 600; }
-    .sc-divider { margin: 0 10px; opacity: 0.3; }
+    .sc-divider { margin: 0 10px; opacity: 0.25; }
+    /* Right: status + container */
+    .sc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
     .ship-status-badge {
-      font-size: 12px; font-weight: 700; border-radius: 6px; padding: 3px 10px;
-      text-transform: capitalize; flex-shrink: 0;
+      font-size: 11px; font-weight: 700; border-radius: 20px; padding: 3px 11px;
+      text-transform: capitalize;
     }
     .shipment-container-tag {
-      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
-      color: var(--text-muted); flex-shrink: 0;
+      font-size: 10px; color: var(--text-muted); font-weight: 500; white-space: nowrap;
     }
     .sc-section-label {
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
-      color: var(--text-muted); padding: 12px 0 4px; margin-top: 4px;
+      color: var(--text-muted); padding: 14px 0 4px;
     }
-    .sc-section-label:first-child { padding-top: 0; margin-top: 0; }
-    .ship-filter-bar {
-      display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap;
-    }
+    .ship-filter-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
     .ship-filter-btn {
       font-size: 12px; font-weight: 600; padding: 5px 14px;
       border-radius: 20px; border: 1px solid var(--border);
@@ -9192,36 +9201,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>`;
 
     function buildCard(id) {
-      const s       = shipmentData[id];
-      const spec    = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
-      const tot     = shipmentTotals(s);
-      const entries = s.entries || [];
-      const wbCount = entries.length;
-      const cbmPct  = spec.cbm > 0 ? Math.round((tot.cbm / spec.cbm) * 100) : 0;
-      const wbNames = entries.map(e => {
-        const detail = workbookDetail[`${e.clientName}|${e.workbookId}`];
-        return detail ? (detail.product || 'Untitled') : 'Untitled';
-      });
-      const wbLabel = wbCount === 0 ? 'No workbooks' : `${wbCount} workbook${wbCount !== 1 ? 's' : ''}: ${wbNames.join(', ')}`;
-      const etd = s.etd || '—';
-      const eta = s.eta || '—';
+      const s      = shipmentData[id];
+      const spec   = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
+      const tot    = shipmentTotals(s);
+      const cbmPct = spec.cbm > 0 ? Math.round((tot.cbm / spec.cbm) * 100) : 0;
+      const eta    = s.eta ? `<strong>${s.eta}</strong>` : '—';
+      const etd    = s.etd ? `<strong>${s.etd}</strong>` : '—';
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
-        <div class="shipment-card-row1">
-          <span class="shipment-card-name">${s.name}</span>
-          <span class="shipment-card-wbline">${wbLabel}</span>
-          <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
-          <span class="shipment-container-tag">${spec.label}</span>
+        <div class="sc-left">
+          <span class="sc-title">${s.name}</span>
+          <span class="sc-eta">ETD ${etd} &nbsp;·&nbsp; ETA ${eta}</span>
         </div>
-        <div class="shipment-card-row2">
+        <div class="sc-stats-pill">
           <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
           <span class="sc-divider">|</span>
           <span><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg</span>
           <span class="sc-divider">|</span>
           <span><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''}</span>
-          <span class="sc-divider">|</span>
-          <span>ETD <span class="sc-stat-inline">${etd}</span></span>
-          <span class="sc-divider">|</span>
-          <span>ETA <span class="sc-stat-inline">${eta}</span></span>
+        </div>
+        <div class="sc-right">
+          <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
+          <span class="shipment-container-tag">${spec.label}</span>
         </div>
       </div>`;
     }
