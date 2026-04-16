@@ -2800,30 +2800,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 12px 16px;
       cursor: pointer;
       display: flex;
-      align-items: center;
-      gap: 14px;
+      align-items: stretch;
+      gap: 0;
       transition: box-shadow 0.15s, border-color 0.15s;
       min-width: 0;
     }
     .shipment-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
     /* Left: title + eta */
-    .sc-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 340px; }
-    .sc-title-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-    .sc-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
-    .sc-wbs { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .sc-left { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 130px; flex: 0 0 160px; padding-right: 16px; }
+    .sc-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sc-eta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
     .sc-eta strong { color: var(--text); font-weight: 600; }
-    /* Center: stats block */
-    .sc-stats-pill {
+    /* Center: workbook list */
+    .sc-wb-list {
       flex: 1; min-width: 0;
-      display: flex; align-items: center; gap: 0;
+      display: flex; flex-direction: column; gap: 4px; justify-content: center;
       border-left: 2px solid var(--border);
-      border-right: 2px solid var(--border);
-      padding: 4px 20px;
-      font-size: 12px; color: var(--text-muted);
+      padding: 4px 16px;
     }
+    .sc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
+    .sc-wb-pill {
+      display: inline-flex; align-items: center;
+      font-size: 12px; font-weight: 500;
+      padding: 4px 12px; border-radius: 20px;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); cursor: pointer;
+      transition: border-color 0.12s, color 0.12s, background 0.12s;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    .sc-wb-pill:hover { border-color: var(--accent); color: var(--accent); background: rgba(107,147,255,0.07); }
+    /* Right: stats + status */
+    .sc-right-wrap {
+      display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+      border-left: 2px solid var(--border); padding-left: 16px;
+    }
+    .sc-stats-col { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
     .sc-stat-inline { color: var(--text); font-weight: 600; }
-    .sc-divider { margin: 0 10px; opacity: 0.25; }
+    .sc-divider { margin: 0 6px; opacity: 0.25; }
+    .sc-stats-row { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
     /* Right: status + container */
     .sc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
     .ship-status-badge {
@@ -9218,29 +9233,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const etaLabel = isDelivered ? 'Delivered' : 'ETA';
       const entries = s.entries || [];
       const wbCount = entries.length;
-      const wbNames = entries.map(e => {
-        const detail = workbookDetail[`${e.clientName}|${e.workbookId}`];
-        return detail ? (detail.product || 'Untitled') : 'Untitled';
-      });
-      const wbLabel = wbCount === 0 ? 'No workbooks' : `${wbCount} workbook${wbCount !== 1 ? 's' : ''}: ${wbNames.join(', ')}`;
+
+      const wbPills = wbCount === 0
+        ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No workbooks added</span>`
+        : entries.map(e => {
+            const key    = `${e.clientName}|${e.workbookId}`;
+            const detail = workbookDetail[key];
+            const prod   = detail ? (detail.product || 'Untitled') : 'Untitled';
+            const href   = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
+            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${prod}</span>`;
+          }).join('');
+
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
-          <div class="sc-title-row">
-            <span class="sc-title">${s.name}</span>
-            <span class="sc-wbs">${wbLabel}</span>
-          </div>
+          <span class="sc-title">${s.name}</span>
           <span class="sc-eta">${etaLabel} ${eta}</span>
         </div>
-        <div class="sc-stats-pill">
-          <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
-          <span class="sc-divider">|</span>
-          <span><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg</span>
-          <span class="sc-divider">|</span>
-          <span><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''}</span>
+        <div class="sc-wb-list">
+          <div class="sc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
+          ${wbPills}
         </div>
-        <div class="sc-right">
-          <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
-          <span class="shipment-container-tag">${spec.label}</span>
+        <div class="sc-right-wrap">
+          <div class="sc-stats-col">
+            <span class="sc-stats-row"><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
+            <span class="sc-stats-row"><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg</span>
+            <span class="sc-stats-row"><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="sc-right">
+            <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
+            <span class="shipment-container-tag">${spec.label}</span>
+          </div>
         </div>
       </div>`;
     }
