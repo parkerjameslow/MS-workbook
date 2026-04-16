@@ -3160,6 +3160,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       transition: color 0.15s, background 0.15s;
     }
     .order-sheet-remove:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
+    .card-delete-btn {
+      background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px 6px;
+      border-radius: var(--radius-sm); opacity: 0.35; transition: opacity 0.15s, background 0.15s;
+      line-height: 1;
+    }
+    .card-delete-btn:hover { opacity: 1; background: rgba(239,68,68,0.1); }
     /* Shipment order cards */
     .ship-order-card {
       border: 1px solid var(--border); border-radius: var(--radius);
@@ -9681,8 +9687,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : (s.eta ? `<strong>${s.eta}</strong>` : '—');
       const etaLabel = isDelivered ? 'Delivered' : 'ETA';
       const entries = s.entries || [];
-      const wbCount = entries.length;
-
       const orderEntries = entries.filter(e => e.orderId);
       const wbPills = orderEntries.length === 0
         ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No orders added</span>`
@@ -9714,6 +9718,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="sc-right">
             <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
             <span class="shipment-container-tag">${spec.label}</span>
+            <button class="card-delete-btn" onclick="event.stopPropagation(); deleteShipment(${id})" title="Delete shipment">🗑</button>
           </div>
         </div>
       </div>`;
@@ -9849,6 +9854,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>`;
     }).join('');
+  }
+
+  function deleteShipment(id) {
+    const s = shipmentData[id];
+    if (!s) return;
+    if (!confirm(`Delete "${s.name}"? This cannot be undone.`)) return;
+    delete shipmentData[id];
+    saveShipments();
+    rebuildShipmentsNav();
+    renderShipmentsContent();
+  }
+
+  function deleteOrder(id) {
+    const o = orderData[id];
+    if (!o) return;
+    if (!confirm(`Delete "${o.name}"? This cannot be undone.`)) return;
+    delete orderData[id];
+    saveOrders();
+    rebuildOrdersNav();
+    renderOrdersContent();
   }
 
   function removeOrderFromShipment(idx) {
@@ -10469,6 +10494,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="oc-grand-usd">${usdStr}</span>
             ${rmbStr ? `<span class="oc-grand-rmb">${rmbStr}</span>` : ''}
           </div>
+          <button class="card-delete-btn" onclick="event.stopPropagation(); deleteOrder(${id})" title="Delete order">🗑</button>
         </div>
       </div>`;
     }
