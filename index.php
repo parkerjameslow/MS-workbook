@@ -3069,22 +3069,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 4px 14px;
     }
     .oc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
-    .oc-wb-row {
-      display: flex; align-items: center; gap: 10px; cursor: pointer;
-      padding: 3px 6px; border-radius: 6px; margin: 0 -6px;
-      transition: background 0.1s;
+    .oc-wb-row { display: flex; align-items: center; gap: 10px; }
+    .oc-wb-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px;
+      border: 1px solid rgba(107,147,255,0.35); background: rgba(107,147,255,0.1);
+      color: var(--accent); cursor: pointer; white-space: nowrap;
+      transition: border-color 0.12s, background 0.12s;
     }
-    .oc-wb-row:hover { background: var(--surface); }
-    .oc-wb-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
-    .oc-wb-prices { font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+    .oc-wb-pill:hover { border-color: var(--accent); background: rgba(107,147,255,0.18); }
+    .oc-wb-prices { font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+    .oc-grand-total { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
+    .oc-grand-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
+    .oc-grand-usd { font-size: 15px; font-weight: 800; color: var(--text); }
+    .oc-grand-rmb { font-size: 13px; font-weight: 700; color: var(--text-muted); }
     .oc-right-wrap {
       flex: 1;
       display: flex; align-items: center; justify-content: space-between;
       border-left: 2px solid var(--border); padding-left: 16px;
     }
-    .oc-totals { display: flex; flex-direction: column; gap: 3px; }
-    .oc-totals-usd { font-size: 14px; font-weight: 700; color: var(--text); }
-    .oc-totals-rmb { font-size: 14px; font-weight: 700; color: var(--text); }
     .oc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; min-width: 100px; }
 
     .order-status-badge {
@@ -10214,11 +10217,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               if (totalRmb > 0) wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
               if (totalUsd > 0) wbUsd = `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             }
-            const priceStr = wbRmb && wbUsd ? `<span class="oc-wb-prices">${wbRmb} &nbsp;·&nbsp; ${wbUsd}</span>` : '';
-            return `<div class="oc-wb-row" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">
-              <span class="oc-wb-name">${prod}</span>
+            const priceStr = (wbRmb || wbUsd)
+              ? `<span class="oc-wb-prices">${[wbRmb, wbUsd].filter(Boolean).join('&nbsp;&nbsp;')}</span>`
+              : '';
+            return `<div class="oc-wb-row">
+              <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
               ${priceStr}
-              <span class="sc-wb-pill-arrow" style="flex-shrink:0;">→</span>
             </div>`;
           }).join('');
 
@@ -10237,9 +10241,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${wbPills}
         </div>
         <div class="oc-right-wrap">
-          <div class="oc-totals">
-            <span class="oc-totals-usd">${usdStr}</span>
-            ${rmbStr ? `<span class="oc-totals-rmb">${rmbStr}</span>` : ''}
+          <div class="oc-grand-total">
+            <span class="oc-grand-label">Total</span>
+            <span class="oc-grand-usd">${usdStr}</span>
+            ${rmbStr ? `<span class="oc-grand-rmb">${rmbStr}</span>` : ''}
           </div>
         </div>
       </div>`;
