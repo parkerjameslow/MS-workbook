@@ -137,18 +137,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .nav-section-header:hover { color: var(--text); }
     .nav-section-chevron {
       margin-left: auto;
-      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
       color: var(--text-muted);
       transition: transform 0.2s ease;
-      display: inline-block;
-      flex-shrink: 0;
-      line-height: 1;
       transform: rotate(90deg);
       opacity: 0.7;
+      font-size: 12px;
+      line-height: 1;
     }
     .nav-section.collapsed .nav-section-chevron { transform: rotate(0deg); }
     .nav-section.collapsed .nav-section-body { display: none; }
     .nav-section-body { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 6px; }
+    .nav-section-title-link {
+      flex: 1; text-decoration: none; color: inherit; font: inherit;
+      letter-spacing: inherit; text-transform: inherit;
+    }
+    .nav-section-title-link:hover { color: var(--text); }
+    .nav-sample-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 10px 5px 16px; border-radius: var(--radius-sm);
+      color: var(--text-muted); font-size: 13px; cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+    }
+    .nav-sample-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-sample-item.active { background: rgba(107,147,255,0.12); color: var(--accent); font-weight: 600; }
+    .nav-sample-dot {
+      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+      background: var(--text-muted);
+    }
+    .nav-sample-dot.pending   { background: #6b93ff; }
+    .nav-sample-dot.requested { background: #f59e0b; }
+    .nav-sample-dot.received  { background: #4ade80; }
+    .nav-sample-dot.approved  { background: #34d399; }
     .nav-badge {
       display: none;
       font-size: 10px; font-weight: 700; line-height: 1;
@@ -3013,22 +3038,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     <!-- Samples -->
     <div class="nav-section" id="nav-section-samples">
-      <div class="nav-section-header" onclick="toggleNavSection('nav-section-samples')">
-        <span>Samples</span>
+      <div class="nav-section-header" style="cursor:default;">
+        <a href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'" class="nav-section-title-link">Samples</a>
         <span class="nav-badge" id="badge-samples"></span>
-        <span class="nav-section-chevron">›</span>
+        <span class="nav-section-chevron" onclick="toggleNavSection('nav-section-samples')" style="cursor:pointer;">›</span>
       </div>
-      <div class="nav-section-body">
-        <a class="nav-item" id="nav-samples-all" href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'">All Samples</a>
+      <div class="nav-section-body" id="samples-nav-list">
+        <!-- populated by rebuildSamplesNav() -->
       </div>
     </div>
 
     <!-- Shipments -->
     <div class="nav-section" id="nav-section-containers">
       <div class="nav-section-header" style="cursor:default;">
-        <a href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" style="flex:1; text-decoration:none; color:inherit; font-size:inherit; font-weight:inherit; cursor:pointer;">Shipments</a>
+        <a href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" class="nav-section-title-link">Shipments</a>
         <span class="nav-badge" id="badge-shipments"></span>
-        <span class="nav-section-chevron" onclick="toggleNavSection('nav-section-containers')" style="cursor:pointer; padding:4px 0 4px 8px; margin:-4px 0 -4px 0;">›</span>
+        <span class="nav-section-chevron" onclick="toggleNavSection('nav-section-containers')" style="cursor:pointer;">›</span>
       </div>
       <div class="nav-section-body" id="shipments-nav-body">
         <div id="shipments-nav-list"></div>
@@ -6605,10 +6630,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const clientBadge = document.getElementById('badge-clients');
     if (clientBadge) clientBadge.textContent = sorted.length || '';
 
-    // ── Samples badge ──
-    const sampleCount = collectAllSamples().length;
-    const samplesBadge = document.getElementById('badge-samples');
-    if (samplesBadge) samplesBadge.textContent = sampleCount > 0 ? sampleCount : '';
+    // ── Samples nav ──
+    rebuildSamplesNav();
 
     // Rebuild modal dropdown
     const select = document.getElementById('modal-client');
@@ -8507,6 +8530,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Re-render table and stats
     const freshSamples = collectAllSamples();
     renderSamplesTable(freshSamples);
+    rebuildSamplesNav();
     // Update count badge
     const countBadge = document.getElementById('samples-count-badge');
     if (countBadge) countBadge.textContent = freshSamples.length === 1 ? '1 sample' : `${freshSamples.length} samples`;
@@ -8883,6 +8907,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     loadShipments();
     rebuildSidebar();
     rebuildShipmentsNav();
+    rebuildSamplesNav();
     restoreNavSectionStates();
     router();
 
@@ -9060,6 +9085,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const statusDot = `<span class="nav-shipment-dot ${s.status}"></span>`;
       return `<div class="nav-shipment-item" id="nav-ship-${id}" onclick="location.hash='#/shipment/${id}'">
         ${statusDot}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.name}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function rebuildSamplesNav() {
+    const list = document.getElementById('samples-nav-list');
+    const badge = document.getElementById('badge-samples');
+    if (!list) return;
+    const samples = collectAllSamples();
+    if (badge) badge.textContent = samples.length || '';
+    list.innerHTML = samples.map((s, i) => {
+      const label = s.item && s.item !== '—' ? s.item : s.product;
+      return `<div class="nav-sample-item" id="nav-sample-${i}" onclick="location.hash='#/samples'">
+        <span class="nav-sample-dot ${s.status}"></span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>
       </div>`;
     }).join('');
   }
