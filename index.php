@@ -8119,7 +8119,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const stepName = getCurrentStepName(item.flow);
       const stepClass = complete ? 'complete' : 'in-progress';
       return `
-      <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">
+      <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
         <td class="product-name">${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
@@ -8134,7 +8134,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         </td>
         <td class="col-mobile-status"><span class="mobile-status-badge ${stepClass}">${stepName}</span></td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `}).join('');
 
@@ -8614,7 +8614,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function router() {
     hideRecentNav();
     resetSidebarSearch();
-    const hash = decodeURIComponent(location.hash || '#/');
+    let hash;
+    try { hash = decodeURIComponent(location.hash || '#/'); }
+    catch(e) { hash = location.hash || '#/'; }
 
     // Match: #/client/{name}/workbook/{id}
     const wbMatch = hash.match(/^#\/client\/(.+?)\/workbook\/(\d+)$/);
@@ -8755,7 +8757,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const stepClass = complete ? 'complete' : 'in-progress';
 
       return `
-      <tr class="${complete ? 'row-complete' : ''}" style="cursor:pointer;" onclick="location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">
+      <tr class="${complete ? 'row-complete' : ''}" style="cursor:pointer;" onclick="location.hash='#/client/${encodeURIComponent(item.client).replace(/'/g,'%27')}/workbook/${item.id}'">
         <td class="product-name">${item.product}</td>
         <td class="col-client">${item.client}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
@@ -8787,7 +8789,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   window.MS_SESSION = { name: '<?= addslashes($_msUser) ?>', role: '<?= $_msRole ?>', id: <?= $_msUserId ?>, username: '<?= addslashes($_msUsername) ?>' };
-  window.addEventListener('hashchange', router);
+  window.addEventListener('hashchange', () => {
+    try { router(); }
+    catch(e) { console.error('[MS Router Error]', e); }
+  });
 
 
   /* ── Auto-save workbook fields ─────────────────────────────────────────── */
