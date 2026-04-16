@@ -3063,12 +3063,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .oc-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
     .oc-date  { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
     .oc-wb-list {
-      flex: 0 0 300px; min-width: 0;
+      flex: 1; min-width: 0;
       display: flex; flex-direction: column; gap: 4px; justify-content: center;
       border-left: 2px solid var(--border);
       padding: 4px 14px;
     }
     .oc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
+    .oc-wb-row {
+      display: flex; align-items: center; gap: 10px; cursor: pointer;
+      padding: 3px 6px; border-radius: 6px; margin: 0 -6px;
+      transition: background 0.1s;
+    }
+    .oc-wb-row:hover { background: var(--surface); }
+    .oc-wb-name { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+    .oc-wb-prices { font-size: 12px; font-weight: 600; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
     .oc-right-wrap {
       flex: 1;
       display: flex; align-items: center; justify-content: space-between;
@@ -10193,7 +10201,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const detail = workbookDetail[key];
             const prod = detail ? (detail.product || 'Untitled') : 'Untitled';
             const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
-            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">${prod}<span class="sc-wb-pill-arrow">→</span></span>`;
+            // Per-workbook pricing
+            const tiers = detail && Array.isArray(detail.tiers) ? detail.tiers : [];
+            const tier = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+            let wbRmb = '', wbUsd = '';
+            if (tier && tier.price) {
+              const priceRmb = parseFloat(tier.price) || 0;
+              const qty = parseFloat(tier.qty) || 0;
+              const exchange = 7.2;
+              const totalRmb = priceRmb * qty;
+              const totalUsd = (priceRmb / exchange) * qty;
+              if (totalRmb > 0) wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              if (totalUsd > 0) wbUsd = `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            }
+            const priceStr = wbRmb && wbUsd ? `<span class="oc-wb-prices">${wbRmb} &nbsp;·&nbsp; ${wbUsd}</span>` : '';
+            return `<div class="oc-wb-row" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">
+              <span class="oc-wb-name">${prod}</span>
+              ${priceStr}
+              <span class="sc-wb-pill-arrow" style="flex-shrink:0;">→</span>
+            </div>`;
           }).join('');
 
       const statusLabel = o.status.replace('_', ' ');
