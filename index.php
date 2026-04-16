@@ -153,11 +153,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .nav-section.collapsed .nav-section-chevron { transform: rotate(0deg); }
     .nav-section.collapsed .nav-section-body { display: none; }
     .nav-section-body { display: flex; flex-direction: column; gap: 1px; padding: 0 8px 6px; }
-    .nav-section-title-link {
-      flex: 1; text-decoration: none; color: inherit; font: inherit;
-      letter-spacing: inherit; text-transform: inherit;
+    .nav-flat-link {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: var(--radius-sm);
+      color: var(--text-muted); font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      text-decoration: none; cursor: pointer;
+      transition: background 0.12s, color 0.12s;
     }
-    .nav-section-title-link:hover { color: var(--text); }
+    .nav-flat-link:hover { background: var(--surface2); color: var(--text); }
+    .nav-flat-link.active { color: var(--accent); }
     .nav-sample-item {
       display: flex; align-items: center; gap: 6px;
       padding: 5px 10px 5px 16px; border-radius: var(--radius-sm);
@@ -3037,28 +3042,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
 
     <!-- Samples -->
-    <div class="nav-section" id="nav-section-samples">
-      <div class="nav-section-header" style="cursor:default;">
-        <a href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'" class="nav-section-title-link">Samples</a>
-        <span class="nav-badge" id="badge-samples"></span>
-        <span class="nav-section-chevron" onclick="toggleNavSection('nav-section-samples')" style="cursor:pointer;">›</span>
-      </div>
-      <div class="nav-section-body" id="samples-nav-list">
-        <!-- populated by rebuildSamplesNav() -->
-      </div>
-    </div>
+    <a id="nav-samples-link" href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'" class="nav-flat-link">
+      <span>Samples</span>
+      <span class="nav-badge" id="badge-samples"></span>
+    </a>
 
     <!-- Shipments -->
-    <div class="nav-section" id="nav-section-containers">
-      <div class="nav-section-header" style="cursor:default;">
-        <a href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" class="nav-section-title-link">Shipments</a>
-        <span class="nav-badge" id="badge-shipments"></span>
-        <span class="nav-section-chevron" onclick="toggleNavSection('nav-section-containers')" style="cursor:pointer;">›</span>
-      </div>
-      <div class="nav-section-body" id="shipments-nav-body">
-        <div id="shipments-nav-list"></div>
-      </div>
-    </div>
+    <a id="nav-shipments-link" href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" class="nav-flat-link">
+      <span>Shipments</span>
+      <span class="nav-badge" id="badge-shipments"></span>
+    </a>
 
     <!-- Billings -->
     <div class="nav-section collapsed" id="nav-section-billings">
@@ -8431,7 +8424,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function renderSamplesDashboard() {
     document.getElementById('header-title').textContent = 'Sample Requests';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
-    const samplesNav = document.getElementById('nav-samples-all');
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const samplesNav = document.getElementById('nav-samples-link');
     if (samplesNav) samplesNav.classList.add('active');
     showView('view-samples');
 
@@ -9090,18 +9084,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function rebuildSamplesNav() {
-    const list = document.getElementById('samples-nav-list');
     const badge = document.getElementById('badge-samples');
-    if (!list) return;
-    const samples = collectAllSamples();
-    if (badge) badge.textContent = samples.length || '';
-    list.innerHTML = samples.map((s, i) => {
-      const label = s.item && s.item !== '—' ? s.item : s.product;
-      return `<div class="nav-sample-item" id="nav-sample-${i}" onclick="location.hash='#/samples'">
-        <span class="nav-sample-dot ${s.status}"></span>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span>
-      </div>`;
-    }).join('');
+    if (!badge) return;
+    const count = collectAllSamples().length;
+    badge.textContent = count || '';
   }
 
   // ── Create ────────────────────────────────────────────────────────────
@@ -9139,7 +9125,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function renderShipmentsList() {
     document.getElementById('header-title').textContent = 'Shipments';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
-    document.querySelectorAll('.nav-shipment-item').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const shipNav = document.getElementById('nav-shipments-link');
+    if (shipNav) shipNav.classList.add('active');
     showView('view-shipments');
 
     const ids = Object.keys(shipmentData);
@@ -9187,9 +9175,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     document.getElementById('header-title').textContent = s.name;
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
-    document.querySelectorAll('.nav-shipment-item').forEach(el => el.classList.remove('active'));
-    const navEl = document.getElementById(`nav-ship-${id}`);
-    if (navEl) navEl.classList.add('active');
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const shipNav = document.getElementById('nav-shipments-link');
+    if (shipNav) shipNav.classList.add('active');
 
     // Fill header fields
     document.getElementById('ship-detail-name').value   = s.name;
