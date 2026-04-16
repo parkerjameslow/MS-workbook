@@ -10193,7 +10193,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           }).join('');
 
       const statusLabel = o.status.replace('_', ' ');
-      const totalStr = tot.totalUsd > 0 ? `$${tot.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+      const usdStr = tot.totalUsd > 0 ? `$${tot.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+      const rmbStr = tot.totalRmb > 0 ? `¥${tot.totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
 
       return `<div class="order-card" onclick="location.hash='#/order/${id}'">
         <div class="oc-left">
@@ -10207,7 +10208,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-right-wrap">
           <div class="oc-right">
             <span class="order-status-badge order-status-${o.status}">${statusLabel}</span>
-            <span class="order-total-value">${totalStr}</span>
+            <span class="order-total-value">${usdStr}</span>
+            ${rmbStr ? `<span style="font-size:11px; color:var(--text-muted); font-weight:600;">${rmbStr}</span>` : ''}
             <span class="order-client-tag">${o.clientName}</span>
           </div>
         </div>
