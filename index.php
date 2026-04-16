@@ -3008,6 +3008,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
       font-size: 12px; font-family: inherit; outline: none; text-align: right;
     }
+    .wb-picker-group-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-muted); padding: 10px 6px 4px; margin-top: 2px;
+    }
+    .wb-picker-group-label:first-child { padding-top: 4px; }
     .wb-picker-search {
       width: 100%; padding: 8px 12px; border: 1px solid var(--border);
       border-radius: var(--radius-sm); background: var(--surface); color: var(--text);
@@ -4828,28 +4833,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
 <!-- ── Create Order Modal ─────────────────────────────────────────────── -->
 <div class="modal-overlay" id="modal-new-order" onclick="if(event.target===this)closeNewOrderModal()" style="z-index:1000;">
-  <div class="modal" style="max-width:520px;">
+  <div class="modal" style="max-width:560px;">
     <div class="modal-title">Create Order</div>
-    <form onsubmit="createOrder(event)">
-      <div class="modal-field">
-        <label>Client <span class="required">*</span></label>
-        <div class="select-wrap">
-          <select id="new-order-client" required onchange="onOrderModalClientChange()">
-            <option value="">Select a client…</option>
-          </select>
-        </div>
-      </div>
-      <div class="modal-field" id="new-order-wb-field" style="display:none;">
-        <label>Workbooks (client-approved)</label>
-        <div id="new-order-wb-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--radius-sm); margin-top:4px;">
-          <!-- populated by JS -->
-        </div>
-      </div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-ghost" onclick="closeNewOrderModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Create Order</button>
-      </div>
-    </form>
+    <input type="text" class="wb-picker-search" id="order-picker-search" placeholder="Search products or clients…" oninput="filterOrderPicker(this.value)" />
+    <div class="modal-wb-picker" id="order-picker-list">
+      <!-- populated by JS -->
+    </div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button type="button" class="btn btn-ghost" onclick="closeNewOrderModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="createOrder()">Create Order</button>
+    </div>
   </div>
 </div>
 
@@ -9270,6 +9263,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _nextOrderId = 1;
   let _currentOrderId = null;
   let _orderFilter = 'all';
+  let _orderPickerSelected = new Set();
 
   /* ── Shipments module state (must be declared before init) ─────────────── */
   let shipmentData = {};
@@ -9952,73 +9946,142 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // ── Create Order modal ───────────────────────────────────────────────
   function openNewOrderModal() {
-    // Populate client dropdown
-    const select = document.getElementById('new-order-client');
-    select.innerHTML = '<option value="">Select a client…</option>';
-    Object.keys(clientData).sort().forEach(name => {
-      const opt = document.createElement('option');
-      opt.textContent = name;
-      opt.value = name;
-      select.appendChild(opt);
-    });
-    document.getElementById('new-order-wb-field').style.display = 'none';
-    document.getElementById('new-order-wb-list').innerHTML = '';
+    _orderPickerSelected = new Set();
+    document.getElementById('order-picker-search').value = '';
+    buildOrderPickerList('');
     document.getElementById('modal-new-order').classList.add('open');
   }
 
   function closeNewOrderModal() {
     document.getElementById('modal-new-order').classList.remove('open');
+    _orderPickerSelected = new Set();
   }
 
-  function onOrderModalClientChange() {
-    const client = document.getElementById('new-order-client').value;
-    const field = document.getElementById('new-order-wb-field');
-    const list = document.getElementById('new-order-wb-list');
-    if (!client) { field.style.display = 'none'; list.innerHTML = ''; return; }
+  function buildOrderPickerList(query) {
+    const list = document.getElementById('order-picker-list');
+    if (!list) return;
+    query = (query || '').toLowerCase();
 
-    // Get workbooks for this client where clientApproved is true
-    const wbs = (clientData[client] || []).filter(wb => wb.flow && wb.flow.clientApproved);
+    // Status groups: latest → earliest
+    const statusGroups = [
+      { key: 'complete',         label: 'Complete' },
+      { key: 'orderChina',       label: 'Order Placed' },
+      { key: 'confirmedPayment', label: 'Payment Confirmed' },
+      { key: 'officeInvoice',    label: 'Office Invoice' },
+      { key: 'clientApproved',   label: 'Client Approved' },
+      { key: 'quoteClient',      label: 'Quote Sent to Client' },
+      { key: 'quoteSubmitted',   label: 'Quote Submitted' },
+      { key: 'quoteChina',       label: 'Quote from China' },
+      { key: 'new',              label: 'New' },
+    ];
 
-    if (wbs.length === 0) {
-      list.innerHTML = '<div style="padding:16px 12px; color:var(--text-muted); font-size:13px; text-align:center;">No client-approved workbooks for this client.</div>';
-      field.style.display = '';
-      return;
+    // Client colour palette for avatars
+    const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
+    const clientColors = {};
+    let colorIdx = 0;
+    function getClientColor(name) {
+      if (!clientColors[name]) clientColors[name] = palette[colorIdx++ % palette.length];
+      return clientColors[name];
     }
 
-    // Determine the furthest completed step label for display
-    list.innerHTML = wbs.map(wb => {
-      const key = `${client}|${wb.id}`;
-      const detail = workbookDetail[key] || {};
-      const product = detail.product || wb.product || `Workbook #${wb.id}`;
-      // Find last completed flow step
-      const lastStep = [...flowSteps].reverse().find(s => wb.flow[s]);
-      const stepLabel = lastStep ? flowLabels[flowSteps.indexOf(lastStep)] : 'Client Approved';
-      return `<label class="order-wb-check-item">
-        <input type="checkbox" name="order-wb-select" value="${wb.id}" />
-        <div class="order-wb-check-info">
-          <div class="order-wb-check-product">${product}</div>
-          <div class="order-wb-check-status">Status: ${stepLabel}</div>
-        </div>
-      </label>`;
-    }).join('');
+    // Bucket all workbooks by status
+    const buckets = {};
+    statusGroups.forEach(g => { buckets[g.key] = []; });
 
-    field.style.display = '';
+    Object.entries(clientData).forEach(([clientName, wbs]) => {
+      (wbs || []).forEach(wb => {
+        const key     = `${clientName}|${wb.id}`;
+        const detail  = workbookDetail[key] || {};
+        const product = detail.product || wb.product || '—';
+        if (query && !product.toLowerCase().includes(query) && !clientName.toLowerCase().includes(query)) return;
+        const tiers   = (detail.tiers || []);
+        const tierStr = tiers.length > 0
+          ? tiers.map(t => `${parseInt(t.qty || 0).toLocaleString('en-US')} units`).join(' · ')
+          : 'No tiers set';
+        const item = { clientName, workbookId: wb.id, product, tierStr, key };
+
+        const flow = wb.flow || {};
+        if (isFlowComplete(flow)) {
+          buckets['complete'].push(item);
+        } else {
+          const lastStep = [...flowSteps].reverse().find(s => flow[s]);
+          buckets[lastStep || 'new'].push(item);
+        }
+      });
+    });
+
+    // Render grouped list
+    let html = '';
+    let totalItems = 0;
+    statusGroups.forEach(group => {
+      const items = buckets[group.key];
+      if (!items || items.length === 0) return;
+      totalItems += items.length;
+      html += `<div class="wb-picker-group-label">${group.label}</div>`;
+      items.forEach(item => {
+        const color     = getClientColor(item.clientName);
+        const isChecked = _orderPickerSelected.has(item.key);
+        const initials  = item.clientName.substring(0, 3).toUpperCase();
+        html += `<div class="wb-picker-item${isChecked ? ' selected' : ''}"
+            onclick="toggleOrderPickerItem('${item.key.replace(/'/g,"\\'")}')">
+          <div style="width:40px; height:40px; border-radius:8px; background:${color}22; border:1px solid ${color}44; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:${color}; flex-shrink:0; letter-spacing:0.02em;">
+            ${initials}
+          </div>
+          <div class="wb-picker-info">
+            <div class="wb-picker-product">${item.product}</div>
+            <div class="wb-picker-client">${item.clientName}</div>
+            <div class="wb-picker-tiers">${item.tierStr}</div>
+          </div>
+          <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
+            ${isChecked ? '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+          </div>
+        </div>`;
+      });
+    });
+
+    if (totalItems === 0) {
+      list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">
+        ${query ? 'No workbooks match your search.' : 'No workbooks found.'}
+      </div>`;
+      return;
+    }
+    list.innerHTML = html;
   }
 
-  function createOrder(e) {
-    e.preventDefault();
-    const client = document.getElementById('new-order-client').value;
-    if (!client) { alert('Please select a client.'); return; }
+  function filterOrderPicker(query) {
+    buildOrderPickerList(query);
+  }
 
-    const checked = [...document.querySelectorAll('#new-order-wb-list input[type="checkbox"]:checked')];
-    const entries = checked.map(cb => ({ clientName: client, workbookId: cb.value }));
+  function toggleOrderPickerItem(key) {
+    if (_orderPickerSelected.has(key)) {
+      _orderPickerSelected.delete(key);
+    } else {
+      _orderPickerSelected.add(key);
+    }
+    buildOrderPickerList(document.getElementById('order-picker-search').value);
+  }
 
-    const id = _nextOrderId++;
+  function createOrder() {
+    if (_orderPickerSelected.size === 0) { alert('Select at least one workbook.'); return; }
+
+    const entries = [];
+    _orderPickerSelected.forEach(key => {
+      const lastPipe   = key.lastIndexOf('|');
+      const clientName = key.substring(0, lastPipe);
+      const workbookId = key.substring(lastPipe + 1);
+      entries.push({ clientName, workbookId });
+    });
+
+    // Use single client name or "Multiple Clients" if mixed
+    const clients    = [...new Set(entries.map(e => e.clientName))];
+    const clientName = clients.length === 1 ? clients[0] : 'Multiple Clients';
+
+    const id  = _nextOrderId++;
     const num = String(id).padStart(3, '0');
     orderData[id] = {
       id,
       name: `Order #${num}`,
-      clientName: client,
+      clientName,
       status: 'draft',
       dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
       poNumber: '',
