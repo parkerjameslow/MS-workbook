@@ -3058,8 +3058,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       min-width: 0;
     }
     .order-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
-    .oc-left { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 130px; flex: 0 0 180px; padding-right: 16px; }
-    .oc-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .oc-left { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 130px; flex: 0 0 180px; padding-right: 16px; }
+    .oc-client { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .oc-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
     .oc-date  { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
     .oc-wb-list {
       flex: 0 0 300px; min-width: 0;
@@ -3070,9 +3071,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .oc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
     .oc-right-wrap {
       flex: 1;
-      display: flex; align-items: center; justify-content: flex-end; gap: 16px;
+      display: flex; align-items: center; justify-content: space-between;
       border-left: 2px solid var(--border); padding-left: 16px;
     }
+    .oc-totals { display: flex; flex-direction: column; gap: 3px; }
+    .oc-totals-usd { font-size: 15px; font-weight: 800; color: var(--text); }
+    .oc-totals-rmb { font-size: 11px; font-weight: 600; color: var(--text-muted); }
     .oc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; min-width: 100px; }
 
     .order-status-badge {
@@ -10198,6 +10202,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       return `<div class="order-card" onclick="location.hash='#/order/${id}'">
         <div class="oc-left">
+          <span class="oc-client">${o.clientName}</span>
           <span class="oc-title">${o.name}</span>
           <span class="oc-date">${o.dateCreated}</span>
         </div>
@@ -10206,11 +10211,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${wbPills}
         </div>
         <div class="oc-right-wrap">
+          <div class="oc-totals">
+            <span class="oc-totals-usd">${usdStr}</span>
+            ${rmbStr ? `<span class="oc-totals-rmb">${rmbStr}</span>` : ''}
+          </div>
           <div class="oc-right">
             <span class="order-status-badge order-status-${o.status}">${statusLabel}</span>
-            <span class="order-total-value">${usdStr}</span>
-            ${rmbStr ? `<span style="font-size:11px; color:var(--text-muted); font-weight:600;">${rmbStr}</span>` : ''}
-            <span class="order-client-tag">${o.clientName}</span>
           </div>
         </div>
       </div>`;
