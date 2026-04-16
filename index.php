@@ -7024,7 +7024,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function updateFreightRate() {
     const mode = document.getElementById('freight-mode').value;
-    const r = freightMethodRates[mode];
+    const r = freightMethodRates[mode] || freightMethodRates['slow'];
     const rmbEl = document.getElementById('freight-rate-rmb-display');
     const usdEl = document.getElementById('freight-rate-usd-display');
     if (rmbEl) rmbEl.textContent = r.toFixed(2);
@@ -7225,7 +7225,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const actualKg = get('carton-outer-weight');  // kg per carton
 
     const mode     = document.getElementById('freight-mode').value;
-    const rate     = freightMethodRates[mode];        // RMB per kg
+    const rate     = freightMethodRates[mode] || freightMethodRates['slow']; // fallback to slow if mode unknown
     const cartons  = parseInt(document.getElementById('pallet-total-cartons')?.value) || 1;
     const exchange = FREIGHT_EXCHANGE_RATE;
 
