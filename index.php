@@ -2811,22 +2811,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sc-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sc-eta { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
     .sc-eta strong { color: var(--text); font-weight: 600; }
-    /* Center: stats pill */
+    /* Center: stats block */
     .sc-stats-pill {
       flex: 1; min-width: 0;
       display: flex; align-items: center; gap: 0;
-      border: 1px solid var(--border); border-radius: 999px;
-      padding: 6px 18px; background: var(--surface);
+      border-left: 2px solid var(--border);
+      border-right: 2px solid var(--border);
+      padding: 4px 20px;
       font-size: 12px; color: var(--text-muted);
-      overflow: hidden;
     }
     .sc-stat-inline { color: var(--text); font-weight: 600; }
     .sc-divider { margin: 0 10px; opacity: 0.25; }
     /* Right: status + container */
-    .sc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+    .sc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
     .ship-status-badge {
-      font-size: 11px; font-weight: 700; border-radius: 20px; padding: 3px 11px;
-      text-transform: capitalize;
+      font-size: 13px; font-weight: 800; border-radius: 8px; padding: 5px 14px;
+      text-transform: capitalize; letter-spacing: 0.02em;
     }
     .shipment-container-tag {
       font-size: 10px; color: var(--text-muted); font-weight: 500; white-space: nowrap;
@@ -9205,12 +9205,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const spec   = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
       const tot    = shipmentTotals(s);
       const cbmPct = spec.cbm > 0 ? Math.round((tot.cbm / spec.cbm) * 100) : 0;
-      const eta    = s.eta ? `<strong>${s.eta}</strong>` : '—';
-      const etd    = s.etd ? `<strong>${s.etd}</strong>` : '—';
+      const eta = s.eta ? `<strong>${s.eta}</strong>` : '—';
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
           <span class="sc-title">${s.name}</span>
-          <span class="sc-eta">ETD ${etd} &nbsp;·&nbsp; ETA ${eta}</span>
+          <span class="sc-eta">ETA ${eta}</span>
         </div>
         <div class="sc-stats-pill">
           <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
