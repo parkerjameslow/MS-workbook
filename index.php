@@ -3069,7 +3069,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 4px 14px;
     }
     .oc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
-    .oc-wb-row { display: flex; align-items: center; gap: 10px; }
+    .oc-wb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .oc-wb-pill {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px;
