@@ -4489,7 +4489,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
     <div class="modal-actions" style="margin-top:14px;">
       <button type="button" class="btn btn-ghost" onclick="closeAddWorkbookModal()">Cancel</button>
-      <button type="button" class="btn btn-primary" onclick="confirmAddWorkbook()">Add Selected</button>
+      <button type="button" class="btn btn-primary" onclick="confirmAddWorkbook()" id="wb-picker-confirm-btn">Add to Shipment</button>
     </div>
   </div>
 </div>
@@ -8961,7 +8961,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let shipmentData = {};   // id → shipment object
   let _nextShipmentId = 1;
   let _currentShipmentId = null;
-  let _wbPickerSelected = null; // { clientName, workbookId, qty }
+  let _wbPickerSelected = new Set(); // Set of "clientName|workbookId" keys
 
   const CONTAINER_SPECS = {
     '20ft': { label: "20' Standard",  cbm: 25,  maxKg: 21700, maxPallets: 10 },
@@ -9276,14 +9276,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // ── Add Workbook modal ───────────────────────────────────────────────
   function openAddWorkbookModal() {
-    _wbPickerSelected = null;
+    _wbPickerSelected = new Set();
     document.getElementById('wb-picker-search').value = '';
     buildWbPickerList('');
     document.getElementById('modal-add-workbook').classList.add('open');
   }
   function closeAddWorkbookModal() {
     document.getElementById('modal-add-workbook').classList.remove('open');
-    _wbPickerSelected = null;
+    _wbPickerSelected = new Set();
   }
 
   function buildWbPickerList(query) {
@@ -9291,10 +9291,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!list) return;
     query = (query || '').toLowerCase();
 
-    // Collect all workbooks
+    // Collect completed workbooks only
     const all = [];
     Object.entries(clientData).forEach(([clientName, wbs]) => {
       (wbs || []).forEach(wb => {
+        // Only include completed workbooks
+        if (!isFlowComplete(wb.flow || {})) return;
         const key    = `${clientName}|${wb.id}`;
         const detail = workbookDetail[key] || {};
         const product = detail.product || wb.product || '—';
@@ -9303,38 +9305,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const tierStr = tiers.length > 0
           ? tiers.map(t => `${parseInt(t.qty || 0).toLocaleString('en-US')} units`).join(' · ')
           : 'No tiers set';
-        all.push({ clientName, workbookId: wb.id, product, tierStr, detail });
+        all.push({ clientName, workbookId: wb.id, product, tierStr, detail, key: `${clientName}|${wb.id}` });
       });
     });
 
     if (all.length === 0) {
-      list.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No workbooks found.</div>';
+      list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">
+        ${query ? 'No completed workbooks match your search.' : 'No completed workbooks found.'}
+      </div>`;
       return;
     }
 
-    list.innerHTML = all.map((item, i) => {
-      const isSelected = _wbPickerSelected &&
-        _wbPickerSelected.clientName === item.clientName &&
-        _wbPickerSelected.workbookId === item.workbookId;
+    // Client colour palette for avatars
+    const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
+    const clientColors = {};
+    let colorIdx = 0;
 
-      // Default qty: first tier qty or 1000
-      const defaultQty = item.detail.tiers && item.detail.tiers[0]
-        ? item.detail.tiers[0].qty : '1000';
+    list.innerHTML = all.map((item) => {
+      if (!clientColors[item.clientName]) {
+        clientColors[item.clientName] = palette[colorIdx++ % palette.length];
+      }
+      const color      = clientColors[item.clientName];
+      const isChecked  = _wbPickerSelected.has(item.key);
+      // Client avatar: up to 3 chars of client name
+      const initials   = item.clientName.substring(0, 3).toUpperCase();
 
-      return `<div class="wb-picker-item${isSelected ? ' selected' : ''}" id="wp-item-${i}"
-          onclick="selectWbPickerItem(${i}, '${item.clientName.replace(/'/g,"\\'")}', ${item.workbookId})">
-        <div style="width:34px; height:34px; border-radius:8px; background:rgba(107,147,255,0.12); display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; color:var(--accent); flex-shrink:0;">
-          ${item.product.charAt(0).toUpperCase()}
+      return `<div class="wb-picker-item${isChecked ? ' selected' : ''}"
+          onclick="toggleWbPickerItem('${item.key.replace(/'/g,"\\'")}')">
+        <div style="width:40px; height:40px; border-radius:8px; background:${color}22; border:1px solid ${color}44; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:${color}; flex-shrink:0; letter-spacing:0.02em;">
+          ${initials}
         </div>
         <div class="wb-picker-info">
           <div class="wb-picker-product">${item.product}</div>
           <div class="wb-picker-client">${item.clientName}</div>
           <div class="wb-picker-tiers">${item.tierStr}</div>
         </div>
-        <input type="number" class="wb-picker-qty" id="wp-qty-${i}" value="${defaultQty}"
-          min="1" placeholder="Qty"
-          onclick="event.stopPropagation()"
-          oninput="onWbPickerQtyChange(${i}, '${item.clientName.replace(/'/g,"\\'")}', ${item.workbookId})" />
+        <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
+          ${isChecked ? '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+        </div>
       </div>`;
     }).join('');
   }
@@ -9343,39 +9351,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     buildWbPickerList(query);
   }
 
-  function selectWbPickerItem(idx, clientName, workbookId) {
-    // Toggle selection
-    if (_wbPickerSelected &&
-        _wbPickerSelected.clientName === clientName &&
-        _wbPickerSelected.workbookId === workbookId) {
-      _wbPickerSelected = null;
+  function toggleWbPickerItem(key) {
+    if (_wbPickerSelected.has(key)) {
+      _wbPickerSelected.delete(key);
     } else {
-      const qtyEl = document.getElementById(`wp-qty-${idx}`);
-      _wbPickerSelected = {
-        clientName, workbookId,
-        qty: qtyEl ? parseInt(qtyEl.value) || 1000 : 1000,
-      };
+      _wbPickerSelected.add(key);
     }
     buildWbPickerList(document.getElementById('wb-picker-search').value);
   }
 
-  function onWbPickerQtyChange(idx, clientName, workbookId) {
-    if (_wbPickerSelected &&
-        _wbPickerSelected.clientName === clientName &&
-        _wbPickerSelected.workbookId === workbookId) {
-      const qtyEl = document.getElementById(`wp-qty-${idx}`);
-      if (qtyEl) _wbPickerSelected.qty = parseInt(qtyEl.value) || 1000;
-    }
-  }
-
   function confirmAddWorkbook() {
-    if (!_wbPickerSelected) { alert('Select a workbook first.'); return; }
+    if (_wbPickerSelected.size === 0) { alert('Select at least one workbook.'); return; }
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
-    s.entries.push({
-      clientName:  _wbPickerSelected.clientName,
-      workbookId:  _wbPickerSelected.workbookId,
-      qty:         _wbPickerSelected.qty || 1000,
+    _wbPickerSelected.forEach(key => {
+      const [clientName, workbookId] = key.split('|');
+      // Don't add duplicates
+      const alreadyAdded = s.entries.some(e => e.clientName === clientName && String(e.workbookId) === String(workbookId));
+      if (!alreadyAdded) {
+        s.entries.push({ clientName, workbookId: parseInt(workbookId) || workbookId, qty: 1000 });
+      }
     });
     saveShipments();
     closeAddWorkbookModal();
