@@ -3066,6 +3066,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <nav class="sidebar-nav" id="sidebar-nav">
 
+    <!-- All Workbooks -->
+    <a id="nav-all-workbooks" href="#/" onclick="event.preventDefault(); location.hash='#/'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+      <span>All Workbooks</span>
+    </a>
+
     <!-- ★ Starred -->
     <div class="nav-section" id="nav-section-starred">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-starred')">
@@ -8659,6 +8664,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Default: home
     document.getElementById('header-title').textContent = 'Market Sculpt';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const allWbNav = document.getElementById('nav-all-workbooks');
+    if (allWbNav) allWbNav.classList.add('active');
     renderRecentWorkbooks();
     showView('view-home');
   }
