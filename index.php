@@ -2792,49 +2792,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .shipment-list-empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
     .shipment-list-empty-sub { font-size: 13px; color: var(--text-muted); }
 
-    .shipment-cards { display: flex; flex-direction: column; gap: 12px; }
+    .shipment-cards { display: flex; flex-direction: column; gap: 8px; }
     .shipment-card {
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 18px 20px;
+      padding: 14px 18px;
       cursor: pointer;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 6px;
       transition: box-shadow 0.15s, border-color 0.15s;
     }
     .shipment-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
-    .shipment-card-top { display: flex; align-items: center; gap: 10px; }
-    .shipment-card-name { font-size: 16px; font-weight: 700; flex: 1; min-width: 0; }
-    .shipment-card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-    .shipment-card-stats {
-      display: flex; flex-wrap: wrap; gap: 8px;
-    }
-    .sc-stat {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 6px 14px; min-width: 72px;
-    }
-    .sc-stat-val { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.2; }
-    .sc-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
-    .sc-stat-cbm .sc-stat-val { color: var(--accent); }
-    .shipment-card-dates { display: flex; gap: 16px; flex-wrap: wrap; }
-    .sc-date {
-      display: flex; align-items: baseline; gap: 5px;
-    }
-    .sc-date-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
-    .sc-date-val { font-size: 13px; font-weight: 600; color: var(--text); }
-    .sc-date-val.empty { color: var(--text-muted); font-weight: 400; font-style: italic; }
-    .shipment-card-wbs { display: flex; flex-wrap: wrap; gap: 6px; }
-    .sc-wb-pill {
-      font-size: 11px; padding: 3px 10px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 20px; color: var(--text-muted);
-      white-space: nowrap;
-    }
-    .sc-wb-pill strong { color: var(--text); font-weight: 600; }
+    .shipment-card-row1 { display: flex; align-items: center; gap: 10px; }
+    .shipment-card-name { font-size: 15px; font-weight: 700; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .shipment-card-row2 { font-size: 12px; color: var(--text-muted); }
+    .shipment-card-row2 strong { color: var(--text); font-weight: 600; }
+    .shipment-card-row3 { display: flex; align-items: center; gap: 0; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+    .sc-stat-inline { color: var(--text); font-weight: 600; }
+    .sc-divider { margin: 0 10px; opacity: 0.3; }
     .shipment-container-tag {
       font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
       background: rgba(107,147,255,0.12); border: 1px solid rgba(107,147,255,0.3);
@@ -9172,58 +9149,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     el.innerHTML = `<div class="shipment-cards">${ids.map(id => {
-      const s    = shipmentData[id];
-      const spec = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
-      const tot  = shipmentTotals(s);
+      const s       = shipmentData[id];
+      const spec    = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
+      const tot     = shipmentTotals(s);
       const entries = s.entries || [];
       const wbCount = entries.length;
       const cbmPct  = spec.cbm > 0 ? Math.round((tot.cbm / spec.cbm) * 100) : 0;
 
-      // Workbook pills
-      const wbPills = entries.map(e => {
-        const key    = `${e.clientName}|${e.workbookId}`;
-        const detail = workbookDetail[key];
-        const prod   = detail ? (detail.product || 'Untitled') : 'Untitled';
-        return `<span class="sc-wb-pill"><strong>${e.clientName}</strong> · ${prod}</span>`;
-      }).join('');
+      // Workbook names inline
+      const wbNames = entries.map(e => {
+        const detail = workbookDetail[`${e.clientName}|${e.workbookId}`];
+        return detail ? (detail.product || 'Untitled') : 'Untitled';
+      });
+      const wbLine = wbCount === 0
+        ? 'No workbooks added'
+        : `<strong>${wbCount} workbook${wbCount !== 1 ? 's' : ''}:</strong> ${wbNames.join(', ')}`;
 
-      // Dates
-      const etdVal = s.etd ? `<span class="sc-date-val">${s.etd}</span>` : `<span class="sc-date-val empty">—</span>`;
-      const etaVal = s.eta ? `<span class="sc-date-val">${s.eta}</span>` : `<span class="sc-date-val empty">—</span>`;
+      // Stats row
+      const etd = s.etd || '—';
+      const eta = s.eta || '—';
 
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
-        <div class="shipment-card-top">
-          <div class="shipment-card-name">${s.name}</div>
-          <div class="shipment-card-right">
-            <span class="shipment-container-tag">${spec.label}</span>
-            <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
-          </div>
+        <div class="shipment-card-row1">
+          <span class="shipment-card-name">${s.name}</span>
+          <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
+          <span class="shipment-container-tag">${spec.label}</span>
         </div>
-        <div class="shipment-card-stats">
-          <div class="sc-stat">
-            <span class="sc-stat-val">${wbCount}</span>
-            <span class="sc-stat-label">Workbook${wbCount !== 1 ? 's' : ''}</span>
-          </div>
-          <div class="sc-stat sc-stat-cbm">
-            <span class="sc-stat-val">${tot.cbm} <span style="font-size:11px;font-weight:400;color:var(--text-muted)">/ ${spec.cbm}</span></span>
-            <span class="sc-stat-label">CBM (${cbmPct}%)</span>
-          </div>
-          <div class="sc-stat">
-            <span class="sc-stat-val">${tot.kg.toLocaleString('en-US')}</span>
-            <span class="sc-stat-label">kg</span>
-          </div>
-          <div class="sc-stat">
-            <span class="sc-stat-val">${tot.pallets}</span>
-            <span class="sc-stat-label">Pallet${tot.pallets !== 1 ? 's' : ''}</span>
-          </div>
-          <div class="sc-stat" style="margin-left:auto; border:none; background:transparent; align-items:flex-start; padding-right:0;">
-            <div class="shipment-card-dates">
-              <div class="sc-date"><span class="sc-date-label">ETD</span>${etdVal}</div>
-              <div class="sc-date"><span class="sc-date-label">ETA</span>${etaVal}</div>
-            </div>
-          </div>
+        <div class="shipment-card-row2">${wbLine}</div>
+        <div class="shipment-card-row3">
+          <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
+          <span class="sc-divider">|</span>
+          <span><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg</span>
+          <span class="sc-divider">|</span>
+          <span><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''}</span>
+          <span class="sc-divider">|</span>
+          <span>ETD <span class="sc-stat-inline">${etd}</span></span>
+          <span class="sc-divider">|</span>
+          <span>ETA <span class="sc-stat-inline">${eta}</span></span>
         </div>
-        ${wbCount > 0 ? `<div class="shipment-card-wbs">${wbPills}</div>` : ''}
       </div>`;
     }).join('')}</div>`;
   }
