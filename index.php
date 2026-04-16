@@ -4418,6 +4418,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">ETA</label>
           <input type="date" id="ship-detail-eta" style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange()" />
         </div>
+        <div id="ship-delivered-wrap" style="display:none; align-items:center; gap:6px;">
+          <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#34d399;">Delivered On</label>
+          <input type="date" id="ship-detail-delivered" style="height:34px; padding:0 10px; border:1px solid rgba(52,211,153,0.4); border-radius:var(--radius-sm); background:rgba(52,211,153,0.08); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange()" />
+        </div>
       </div>
     </div>
 
@@ -9207,7 +9211,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const spec   = CONTAINER_SPECS[s.containerType] || CONTAINER_SPECS['40hc'];
       const tot    = shipmentTotals(s);
       const cbmPct = spec.cbm > 0 ? Math.round((tot.cbm / spec.cbm) * 100) : 0;
-      const eta     = s.eta ? `<strong>${s.eta}</strong>` : '—';
+      const isDelivered = s.status === 'delivered';
+      const eta = isDelivered
+        ? (s.deliveredOn ? `<strong style="color:#34d399">${s.deliveredOn}</strong>` : '—')
+        : (s.eta ? `<strong>${s.eta}</strong>` : '—');
+      const etaLabel = isDelivered ? 'Delivered' : 'ETA';
       const entries = s.entries || [];
       const wbCount = entries.length;
       const wbNames = entries.map(e => {
@@ -9221,7 +9229,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="sc-title">${s.name}</span>
             <span class="sc-wbs">${wbLabel}</span>
           </div>
-          <span class="sc-eta">ETA ${eta}</span>
+          <span class="sc-eta">${etaLabel} ${eta}</span>
         </div>
         <div class="sc-stats-pill">
           <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
@@ -9276,10 +9284,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (shipNav) shipNav.classList.add('active');
 
     // Fill header fields
-    document.getElementById('ship-detail-name').value   = s.name;
-    document.getElementById('ship-detail-status').value = s.status;
-    document.getElementById('ship-detail-etd').value    = s.etd || '';
-    document.getElementById('ship-detail-eta').value    = s.eta || '';
+    document.getElementById('ship-detail-name').value      = s.name;
+    document.getElementById('ship-detail-status').value    = s.status;
+    document.getElementById('ship-detail-etd').value       = s.etd || '';
+    document.getElementById('ship-detail-eta').value       = s.eta || '';
+    document.getElementById('ship-detail-delivered').value = s.deliveredOn || '';
+    document.getElementById('ship-delivered-wrap').style.display = s.status === 'delivered' ? 'flex' : 'none';
 
     // Container type buttons
     document.querySelectorAll('.container-type-btn').forEach(btn => {
@@ -9387,14 +9397,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
     s.status = document.getElementById('ship-detail-status').value;
+    const wrap = document.getElementById('ship-delivered-wrap');
+    if (wrap) wrap.style.display = s.status === 'delivered' ? 'flex' : 'none';
     saveShipments();
     rebuildShipmentsNav();
   }
   function onShipmentDateChange() {
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
-    s.etd = document.getElementById('ship-detail-etd').value;
-    s.eta = document.getElementById('ship-detail-eta').value;
+    s.etd         = document.getElementById('ship-detail-etd').value;
+    s.eta         = document.getElementById('ship-detail-eta').value;
+    s.deliveredOn = document.getElementById('ship-detail-delivered').value;
     saveShipments();
   }
 
