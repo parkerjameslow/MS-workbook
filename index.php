@@ -3075,8 +3075,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-left: 2px solid var(--border); padding-left: 16px;
     }
     .oc-totals { display: flex; flex-direction: column; gap: 3px; }
-    .oc-totals-usd { font-size: 15px; font-weight: 800; color: var(--text); }
-    .oc-totals-rmb { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .oc-totals-usd { font-size: 14px; font-weight: 700; color: var(--text); }
+    .oc-totals-rmb { font-size: 14px; font-weight: 700; color: var(--text); }
     .oc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; min-width: 100px; }
 
     .order-status-badge {
