@@ -2813,10 +2813,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sc-eta strong { color: var(--text); font-weight: 600; }
     /* Center: workbook list */
     .sc-wb-list {
-      flex: 1; min-width: 0;
+      flex: 0 0 180px; min-width: 0;
       display: flex; flex-direction: column; gap: 4px; justify-content: center;
       border-left: 2px solid var(--border);
-      padding: 4px 16px;
+      padding: 4px 14px;
     }
     .sc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
     .sc-wb-pill {
@@ -2832,7 +2832,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sc-wb-pill:hover { border-color: var(--accent); color: var(--accent); background: rgba(107,147,255,0.07); }
     /* Right: stats + status */
     .sc-right-wrap {
-      display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+      flex: 1;
+      display: flex; align-items: center; justify-content: flex-end; gap: 20px;
       border-left: 2px solid var(--border); padding-left: 16px;
     }
     .sc-stats-col { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
