@@ -3030,6 +3030,139 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .nav-shipment-dot.booked     { background: #f59e0b; }
     .nav-shipment-dot.in_transit { background: #4ade80; }
     .nav-shipment-dot.delivered  { background: #34d399; }
+
+    /* ══ Orders ═════════════════════════════════════════════════════════ */
+    .order-list-empty {
+      text-align: center; padding: 60px 20px;
+    }
+    .order-list-empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.3; }
+    .order-list-empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .order-list-empty-sub { font-size: 13px; color: var(--text-muted); }
+
+    .order-cards { display: flex; flex-direction: column; gap: 6px; }
+    .order-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      transition: box-shadow 0.15s, border-color 0.15s;
+      min-width: 0;
+    }
+    .order-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+    .oc-left { display: flex; flex-direction: column; justify-content: center; gap: 4px; min-width: 130px; flex: 0 0 180px; padding-right: 16px; }
+    .oc-title { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .oc-date  { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .oc-wb-list {
+      flex: 0 0 300px; min-width: 0;
+      display: flex; flex-direction: column; gap: 4px; justify-content: center;
+      border-left: 2px solid var(--border);
+      padding: 4px 14px;
+    }
+    .oc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
+    .oc-right-wrap {
+      flex: 1;
+      display: flex; align-items: center; justify-content: flex-end; gap: 16px;
+      border-left: 2px solid var(--border); padding-left: 16px;
+    }
+    .oc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; min-width: 100px; }
+
+    .order-status-badge {
+      font-size: 13px; font-weight: 800; border-radius: 8px; padding: 5px 14px;
+      text-transform: capitalize; letter-spacing: 0.02em;
+    }
+    .order-status-draft       { background: rgba(150,150,150,0.12); color: #9ca3af; }
+    .order-status-confirmed   { background: rgba(107,147,255,0.1);  color: #6b93ff; }
+    .order-status-in_production { background: rgba(251,175,52,0.12); color: #f59e0b; }
+    .order-status-complete    { background: rgba(52,211,153,0.12);  color: #34d399; }
+
+    .order-filter-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
+    .order-filter-btn {
+      font-size: 12px; font-weight: 600; padding: 5px 14px;
+      border-radius: 20px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text-muted);
+      cursor: pointer; transition: all 0.12s;
+    }
+    .order-filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .order-filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    .order-total-value { font-size: 13px; font-weight: 700; color: var(--text); }
+    .order-client-tag  { font-size: 11px; color: var(--text-muted); }
+
+    /* Order detail */
+    .order-detail-header {
+      display: flex; align-items: flex-start; gap: 16px;
+      margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .order-detail-name-wrap { flex: 1; min-width: 200px; }
+    .order-detail-name {
+      font-size: 22px; font-weight: 700; border: none; background: transparent;
+      color: var(--text); width: 100%; outline: none; padding: 2px 0;
+      border-bottom: 2px solid transparent; transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    .order-detail-name:focus { border-bottom-color: var(--accent); }
+    .order-detail-controls {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+    }
+
+    /* Order sheet table */
+    .order-sheet-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .order-sheet-table th {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-muted); padding: 8px 12px; text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .order-sheet-table td {
+      padding: 12px 12px; border-bottom: 1px solid var(--border); vertical-align: middle;
+    }
+    .order-sheet-table tfoot td {
+      padding: 10px 12px; font-weight: 700; border-top: 2px solid var(--border);
+      border-bottom: none;
+    }
+    .order-sheet-table tr:last-child td { border-bottom: none; }
+    .order-sheet-product { font-weight: 600; }
+    .order-sheet-product-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 600;
+      padding: 4px 10px 4px 12px; border-radius: 20px;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); cursor: pointer; text-decoration: none;
+      transition: border-color 0.12s, color 0.12s, background 0.12s;
+    }
+    .order-sheet-product-link:hover { border-color: var(--accent); color: var(--accent); background: rgba(107,147,255,0.07); }
+    .order-sheet-remove {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: 16px; padding: 4px 8px; border-radius: var(--radius-sm);
+      transition: color 0.15s, background 0.15s;
+    }
+    .order-sheet-remove:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
+
+    /* Deposit tracking */
+    .order-deposit-row {
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .order-deposit-row:last-child { border-bottom: none; }
+    .order-deposit-label { font-size: 13px; font-weight: 600; flex: 1; }
+    .order-deposit-amount { font-size: 14px; font-weight: 700; min-width: 100px; text-align: right; }
+    .order-deposit-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+
+    /* New order modal workbook checklist */
+    .order-wb-check-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background 0.12s;
+    }
+    .order-wb-check-item:last-child { border-bottom: none; }
+    .order-wb-check-item:hover { background: var(--surface); }
+    .order-wb-check-item input[type="checkbox"] { flex-shrink: 0; }
+    .order-wb-check-info { flex: 1; min-width: 0; }
+    .order-wb-check-product { font-size: 13px; font-weight: 600; }
+    .order-wb-check-status  { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
   </style>
 </head>
 <body data-theme="light">
@@ -3092,15 +3225,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
 
     <!-- Orders -->
-    <div class="nav-section collapsed" id="nav-section-orders">
-      <div class="nav-section-header" onclick="toggleNavSection('nav-section-orders')">
-        <span>Orders</span>
-        <span class="nav-section-chevron">›</span>
-      </div>
-      <div class="nav-section-body">
-        <div class="nav-placeholder">Coming soon…</div>
-      </div>
-    </div>
+    <a id="nav-orders-link" href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" class="nav-flat-link">
+      <span>Orders</span>
+      <span class="nav-badge" id="badge-orders"></span>
+    </a>
 
     <!-- Samples -->
     <a id="nav-samples-link" href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'" class="nav-flat-link">
@@ -4532,6 +4660,127 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </main>
 </div><!-- /#view-shipment-detail -->
 
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: ORDERS LIST
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-orders" class="view">
+  <main class="container">
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Orders</span>
+        <button class="btn btn-primary" onclick="openNewOrderModal()">+ Create Order</button>
+      </div>
+      <div class="section-body">
+        <div id="order-list-content">
+          <div class="order-list-empty">
+            <div class="order-list-empty-icon">📋</div>
+            <div class="order-list-empty-title">No orders yet</div>
+            <div class="order-list-empty-sub">Create an order to track approved workbooks through production.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div><!-- /#view-orders -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: ORDER DETAIL
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-order-detail" class="view">
+  <main class="container">
+
+    <!-- Breadcrumb -->
+    <div style="margin-bottom:16px;">
+      <a href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" style="font-size:12px; color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+        ← Back to Orders
+      </a>
+    </div>
+
+    <!-- Header: name + status + client + PO -->
+    <div class="order-detail-header">
+      <div class="order-detail-name-wrap">
+        <input type="text" class="order-detail-name" id="order-detail-name" placeholder="Order name…"
+          oninput="onOrderNameChange()" />
+      </div>
+      <div class="order-detail-controls">
+        <div class="ship-select-wrap">
+          <select id="order-detail-status" onchange="onOrderStatusChange()">
+            <option value="draft">Draft</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="in_production">In Production</option>
+            <option value="complete">Complete</option>
+          </select>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">PO #</label>
+          <input type="text" id="order-detail-po" placeholder="PO number…"
+            style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; width:140px;"
+            oninput="onOrderPoChange()" />
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">Deposit %</label>
+          <input type="number" id="order-detail-deposit-pct" min="0" max="100" step="1"
+            style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; width:70px;"
+            oninput="onOrderDepositPctChange()" />
+        </div>
+        <div id="order-detail-client-tag" style="font-size:12px; color:var(--text-muted); padding:0 4px;"></div>
+        <div id="order-detail-date-tag" style="font-size:12px; color:var(--text-muted); padding:0 4px;"></div>
+      </div>
+    </div>
+
+    <!-- Order Sheet -->
+    <div class="section-card" style="margin-bottom:16px;">
+      <div class="section-header">
+        <span class="section-title">Order Sheet</span>
+        <span id="order-wb-count" style="font-size:12px; color:var(--text-muted); margin-left:6px;"></span>
+      </div>
+      <div class="section-body" style="padding:0;">
+        <div id="order-sheet-empty" style="padding:40px 20px; text-align:center; color:var(--text-muted); font-size:13px;">
+          No workbooks in this order.
+        </div>
+        <table class="order-sheet-table" id="order-sheet-table" style="display:none;">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Client</th>
+              <th style="text-align:right;">Qty</th>
+              <th style="text-align:right;">Unit Price (RMB)</th>
+              <th style="text-align:right;">Unit Price (USD)</th>
+              <th style="text-align:right;">Subtotal (USD)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="order-sheet-tbody"></tbody>
+          <tfoot id="order-sheet-tfoot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Deposit Tracking -->
+    <div class="section-card" style="margin-bottom:16px;" id="order-deposit-card">
+      <div class="section-header">
+        <span class="section-title">Payment Tracking</span>
+      </div>
+      <div class="section-body">
+        <div id="order-deposit-rows"></div>
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="section-card" style="margin-bottom:0;">
+      <div class="section-header">
+        <span class="section-title">Notes</span>
+      </div>
+      <div class="section-body">
+        <textarea id="order-detail-notes" placeholder="Add notes about this order…"
+          style="width:100%; min-height:100px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; padding:10px 12px; outline:none; resize:vertical; box-sizing:border-box;"
+          oninput="onOrderNotesChange()"></textarea>
+      </div>
+    </div>
+
+  </main>
+</div><!-- /#view-order-detail -->
+
 </div><!-- /.app-content -->
 </div><!-- /.app-layout -->
 
@@ -4574,6 +4823,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button type="button" class="btn btn-ghost" onclick="closeAddWorkbookModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="confirmAddWorkbook()" id="wb-picker-confirm-btn">Add to Shipment</button>
     </div>
+  </div>
+</div>
+
+<!-- ── Create Order Modal ─────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-new-order" onclick="if(event.target===this)closeNewOrderModal()" style="z-index:1000;">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title">Create Order</div>
+    <form onsubmit="createOrder(event)">
+      <div class="modal-field">
+        <label>Client <span class="required">*</span></label>
+        <div class="select-wrap">
+          <select id="new-order-client" required onchange="onOrderModalClientChange()">
+            <option value="">Select a client…</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-field" id="new-order-wb-field" style="display:none;">
+        <label>Workbooks (client-approved)</label>
+        <div id="new-order-wb-list" style="max-height:260px; overflow-y:auto; border:1px solid var(--border); border-radius:var(--radius-sm); margin-top:4px;">
+          <!-- populated by JS -->
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeNewOrderModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Order</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -6689,6 +6965,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // ── Samples nav ──
     rebuildSamplesNav();
 
+    // ── Orders nav ──
+    rebuildOrdersNav();
+
     // Rebuild modal dropdown
     const select = document.getElementById('modal-client');
     const firstOpt = select.options[0];
@@ -8652,6 +8931,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/orders
+    if (hash === '#/orders') {
+      renderOrdersList();
+      return;
+    }
+
+    // Match: #/order/{id}
+    const orderMatch = hash.match(/^#\/order\/(\d+)$/);
+    if (orderMatch) {
+      renderOrderDetail(orderMatch[1]);
+      return;
+    }
+
     // Match: #/client/{name}
     const clientMatch = hash.match(/^#\/client\/(.+)$/);
     if (clientMatch) {
@@ -8973,6 +9265,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     navigator.sendBeacon('api.php', new Blob([payload], { type: 'application/json' }));
   });
 
+  /* ── Orders module state (must be declared before init) ────────────────── */
+  let orderData = {};
+  let _nextOrderId = 1;
+  let _currentOrderId = null;
+  let _orderFilter = 'all';
+
   /* ── Shipments module state (must be declared before init) ─────────────── */
   let shipmentData = {};
   let _nextShipmentId = 1;
@@ -8996,8 +9294,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Try loading from LocalStorage immediately for fast render
     loadFromLocalStorage();
     loadShipments();
+    loadOrders();
     rebuildSidebar();
     rebuildShipmentsNav();
+    rebuildOrdersNav();
     rebuildSamplesNav();
     restoreNavSectionStates();
     router();
@@ -9600,6 +9900,442 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     style.textContent = '.wb-picker-item.selected { background: rgba(107,147,255,0.1); outline: 2px solid rgba(107,147,255,0.4); border-radius: var(--radius-sm); }';
     document.head.appendChild(style);
   })();
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ORDERS MODULE
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── Persistence ──────────────────────────────────────────────────────
+  function saveOrders() {
+    try { localStorage.setItem('ms_orderData', JSON.stringify(orderData)); } catch(e) {}
+    try { localStorage.setItem('ms_nextOrderId', String(_nextOrderId)); } catch(e) {}
+  }
+
+  function loadOrders() {
+    try {
+      const d = localStorage.getItem('ms_orderData');
+      const n = localStorage.getItem('ms_nextOrderId');
+      if (d) { orderData = JSON.parse(d); }
+      if (n) { _nextOrderId = Math.max(parseInt(n) || 1, ...Object.keys(orderData).map(Number).map(x => x + 1), 1); }
+    } catch(e) { orderData = {}; _nextOrderId = 1; }
+  }
+
+  // ── Totals helper ────────────────────────────────────────────────────
+  function orderTotals(order) {
+    let totalUsd = 0, totalRmb = 0;
+    (order.entries || []).forEach(e => {
+      const key = `${e.clientName}|${e.workbookId}`;
+      const detail = workbookDetail[key];
+      if (!detail) return;
+      const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
+      const selectedIdx = detail.selectedTierIdx;
+      const tier = tiers.find(t => t.id == selectedIdx) || tiers[0];
+      if (tier && tier.price) {
+        const priceRmb = parseFloat(tier.price) || 0;
+        const qty = parseFloat(tier.qty) || 0;
+        const exchange = 7.2;
+        totalRmb += priceRmb * qty;
+        totalUsd += (priceRmb / exchange) * qty;
+      }
+    });
+    return { totalUsd: Math.round(totalUsd * 100) / 100, totalRmb: Math.round(totalRmb * 100) / 100 };
+  }
+
+  // ── Nav ──────────────────────────────────────────────────────────────
+  function rebuildOrdersNav() {
+    const badge = document.getElementById('badge-orders');
+    if (!badge) return;
+    const ids = Object.keys(orderData);
+    const activeCount = ids.filter(id => orderData[id].status !== 'complete').length;
+    badge.textContent = activeCount || '';
+  }
+
+  // ── Create Order modal ───────────────────────────────────────────────
+  function openNewOrderModal() {
+    // Populate client dropdown
+    const select = document.getElementById('new-order-client');
+    select.innerHTML = '<option value="">Select a client…</option>';
+    Object.keys(clientData).sort().forEach(name => {
+      const opt = document.createElement('option');
+      opt.textContent = name;
+      opt.value = name;
+      select.appendChild(opt);
+    });
+    document.getElementById('new-order-wb-field').style.display = 'none';
+    document.getElementById('new-order-wb-list').innerHTML = '';
+    document.getElementById('modal-new-order').classList.add('open');
+  }
+
+  function closeNewOrderModal() {
+    document.getElementById('modal-new-order').classList.remove('open');
+  }
+
+  function onOrderModalClientChange() {
+    const client = document.getElementById('new-order-client').value;
+    const field = document.getElementById('new-order-wb-field');
+    const list = document.getElementById('new-order-wb-list');
+    if (!client) { field.style.display = 'none'; list.innerHTML = ''; return; }
+
+    // Get workbooks for this client where clientApproved is true
+    const wbs = (clientData[client] || []).filter(wb => wb.flow && wb.flow.clientApproved);
+
+    if (wbs.length === 0) {
+      list.innerHTML = '<div style="padding:16px 12px; color:var(--text-muted); font-size:13px; text-align:center;">No client-approved workbooks for this client.</div>';
+      field.style.display = '';
+      return;
+    }
+
+    // Determine the furthest completed step label for display
+    list.innerHTML = wbs.map(wb => {
+      const key = `${client}|${wb.id}`;
+      const detail = workbookDetail[key] || {};
+      const product = detail.product || wb.product || `Workbook #${wb.id}`;
+      // Find last completed flow step
+      const lastStep = [...flowSteps].reverse().find(s => wb.flow[s]);
+      const stepLabel = lastStep ? flowLabels[flowSteps.indexOf(lastStep)] : 'Client Approved';
+      return `<label class="order-wb-check-item">
+        <input type="checkbox" name="order-wb-select" value="${wb.id}" />
+        <div class="order-wb-check-info">
+          <div class="order-wb-check-product">${product}</div>
+          <div class="order-wb-check-status">Status: ${stepLabel}</div>
+        </div>
+      </label>`;
+    }).join('');
+
+    field.style.display = '';
+  }
+
+  function createOrder(e) {
+    e.preventDefault();
+    const client = document.getElementById('new-order-client').value;
+    if (!client) { alert('Please select a client.'); return; }
+
+    const checked = [...document.querySelectorAll('#new-order-wb-list input[type="checkbox"]:checked')];
+    const entries = checked.map(cb => ({ clientName: client, workbookId: cb.value }));
+
+    const id = _nextOrderId++;
+    const num = String(id).padStart(3, '0');
+    orderData[id] = {
+      id,
+      name: `Order #${num}`,
+      clientName: client,
+      status: 'draft',
+      dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
+      poNumber: '',
+      depositPct: 30,
+      notes: '',
+      entries,
+    };
+    saveOrders();
+    rebuildOrdersNav();
+    closeNewOrderModal();
+    location.hash = `#/order/${id}`;
+  }
+
+  // ── List view ────────────────────────────────────────────────────────
+  function renderOrdersList() {
+    document.getElementById('header-title').textContent = 'Orders';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const ordNav = document.getElementById('nav-orders-link');
+    if (ordNav) ordNav.classList.add('active');
+    showView('view-orders');
+    renderOrdersContent();
+  }
+
+  function filterOrders(status, btn) {
+    _orderFilter = status;
+    document.querySelectorAll('.order-filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderOrdersContent();
+  }
+
+  function renderOrdersContent() {
+    const el = document.getElementById('order-list-content');
+    if (!el) return;
+
+    const ids = Object.keys(orderData);
+    if (ids.length === 0) {
+      el.innerHTML = `<div class="order-list-empty">
+        <div class="order-list-empty-icon">📋</div>
+        <div class="order-list-empty-title">No orders yet</div>
+        <div class="order-list-empty-sub">Create an order to track approved workbooks through production.</div>
+      </div>`;
+      return;
+    }
+
+    const STATUS_ORDER = ['draft', 'confirmed', 'in_production', 'complete'];
+    const filterLabels = { all: 'All', draft: 'Draft', confirmed: 'Confirmed', in_production: 'In Production', complete: 'Complete' };
+
+    const counts = { all: ids.length };
+    ids.forEach(id => {
+      const st = orderData[id].status;
+      counts[st] = (counts[st] || 0) + 1;
+    });
+
+    const filterBar = `<div class="order-filter-bar">
+      ${['all','draft','confirmed','in_production','complete'].map(s =>
+        `<button class="order-filter-btn${_orderFilter === s ? ' active' : ''}" onclick="filterOrders('${s}', this)">
+          ${filterLabels[s]}${counts[s] ? ` <span style="opacity:0.7">(${counts[s]})</span>` : ''}
+        </button>`
+      ).join('')}
+    </div>`;
+
+    function buildOrderCard(id) {
+      const o = orderData[id];
+      const tot = orderTotals(o);
+      const entries = o.entries || [];
+      const wbCount = entries.length;
+
+      const wbPills = wbCount === 0
+        ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No workbooks</span>`
+        : entries.map(e => {
+            const key = `${e.clientName}|${e.workbookId}`;
+            const detail = workbookDetail[key];
+            const prod = detail ? (detail.product || 'Untitled') : 'Untitled';
+            const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
+            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">${prod}<span class="sc-wb-pill-arrow">→</span></span>`;
+          }).join('');
+
+      const statusLabel = o.status.replace('_', ' ');
+      const totalStr = tot.totalUsd > 0 ? `$${tot.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+
+      return `<div class="order-card" onclick="location.hash='#/order/${id}'">
+        <div class="oc-left">
+          <span class="oc-title">${o.name}</span>
+          <span class="oc-date">${o.dateCreated}</span>
+        </div>
+        <div class="oc-wb-list">
+          <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
+          ${wbPills}
+        </div>
+        <div class="oc-right-wrap">
+          <div class="oc-right">
+            <span class="order-status-badge order-status-${o.status}">${statusLabel}</span>
+            <span class="order-total-value">${totalStr}</span>
+            <span class="order-client-tag">${o.clientName}</span>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    const filtered = ids.filter(id => _orderFilter === 'all' || orderData[id].status === _orderFilter);
+    const active   = filtered.filter(id => orderData[id].status !== 'complete');
+    const complete = filtered.filter(id => orderData[id].status === 'complete');
+
+    active.sort((a, b) => STATUS_ORDER.indexOf(orderData[a].status) - STATUS_ORDER.indexOf(orderData[b].status));
+
+    let html = filterBar;
+
+    if (active.length > 0) {
+      html += `<div class="order-cards">${active.map(buildOrderCard).join('')}</div>`;
+    }
+    if (complete.length > 0) {
+      html += `<div class="sc-section-label" style="margin-top:${active.length > 0 ? '20px' : '0'}">Complete</div>
+        <div class="order-cards" style="opacity:0.7">${complete.map(buildOrderCard).join('')}</div>`;
+    }
+    if (active.length === 0 && complete.length === 0) {
+      html += `<div style="padding:30px 0; text-align:center; color:var(--text-muted); font-size:13px;">No orders match this filter.</div>`;
+    }
+
+    el.innerHTML = html;
+  }
+
+  // ── Detail view ──────────────────────────────────────────────────────
+  function renderOrderDetail(id) {
+    _currentOrderId = parseInt(id);
+    const o = orderData[_currentOrderId];
+    if (!o) { location.hash = '#/orders'; return; }
+
+    document.getElementById('header-title').textContent = o.name;
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const ordNav = document.getElementById('nav-orders-link');
+    if (ordNav) ordNav.classList.add('active');
+
+    document.getElementById('order-detail-name').value = o.name;
+    document.getElementById('order-detail-status').value = o.status;
+    document.getElementById('order-detail-po').value = o.poNumber || '';
+    document.getElementById('order-detail-deposit-pct').value = o.depositPct != null ? o.depositPct : 30;
+    document.getElementById('order-detail-notes').value = o.notes || '';
+    document.getElementById('order-detail-client-tag').textContent = o.clientName;
+    document.getElementById('order-detail-date-tag').textContent = o.dateCreated;
+
+    renderOrderSheet();
+    renderOrderDepositTracking();
+    showView('view-order-detail');
+  }
+
+  function renderOrderSheet() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    const tbody = document.getElementById('order-sheet-tbody');
+    const tfoot = document.getElementById('order-sheet-tfoot');
+    const table = document.getElementById('order-sheet-table');
+    const empty = document.getElementById('order-sheet-empty');
+    const count = document.getElementById('order-wb-count');
+    const entries = o.entries || [];
+
+    if (count) count.textContent = entries.length > 0 ? `${entries.length} item${entries.length !== 1 ? 's' : ''}` : '';
+
+    if (entries.length === 0) {
+      if (table) table.style.display = 'none';
+      if (empty) empty.style.display = '';
+      if (tfoot) tfoot.innerHTML = '';
+      return;
+    }
+    if (table) table.style.display = '';
+    if (empty) empty.style.display = 'none';
+
+    const exchange = 7.2;
+    let grandUsd = 0, grandRmb = 0;
+
+    tbody.innerHTML = entries.map((entry, idx) => {
+      const key = `${entry.clientName}|${entry.workbookId}`;
+      const detail = workbookDetail[key] || {};
+      const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
+      const selectedIdx = detail.selectedTierIdx;
+      const tier = tiers.find(t => t.id == selectedIdx) || tiers[0];
+
+      const product = detail.product || entry.workbookId;
+      const wbHref = `#/client/${encodeURIComponent(entry.clientName)}/workbook/${entry.workbookId}`;
+
+      let qtyStr = '—', unitRmb = '—', unitUsd = '—', subtotalUsd = '—';
+      if (tier && tier.price) {
+        const priceRmb = parseFloat(tier.price) || 0;
+        const qty = parseFloat(tier.qty) || 0;
+        const subtotal = (priceRmb / exchange) * qty;
+        grandRmb += priceRmb * qty;
+        grandUsd += subtotal;
+        qtyStr = qty > 0 ? qty.toLocaleString('en-US') : '—';
+        unitRmb = priceRmb > 0 ? `¥${priceRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+        unitUsd = priceRmb > 0 ? `$${(priceRmb / exchange).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+        subtotalUsd = subtotal > 0 ? `$${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+      }
+
+      return `<tr>
+        <td>
+          <a class="order-sheet-product-link" href="${wbHref}"
+            onclick="_wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
+            ${product} <span style="font-size:11px; opacity:0.5;">→</span>
+          </a>
+        </td>
+        <td style="color:var(--text-muted); font-size:12px;">${entry.clientName}</td>
+        <td style="text-align:right; font-weight:600;">${qtyStr}</td>
+        <td style="text-align:right;">${unitRmb}</td>
+        <td style="text-align:right;">${unitUsd}</td>
+        <td style="text-align:right; font-weight:700;">${subtotalUsd}</td>
+        <td style="text-align:right;">
+          <button class="order-sheet-remove" onclick="removeWorkbookFromOrder(${idx})" title="Remove">×</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    // Grand total footer
+    const grandUsdStr = grandUsd > 0 ? `$${grandUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+    const grandRmbStr = grandRmb > 0 ? `¥${grandRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+    tfoot.innerHTML = `<tr>
+      <td colspan="2" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
+      <td></td>
+      <td style="text-align:right; color:var(--text-muted); font-size:12px;">${grandRmbStr}</td>
+      <td></td>
+      <td style="text-align:right; font-size:15px; font-weight:800;">${grandUsdStr}</td>
+      <td></td>
+    </tr>`;
+  }
+
+  function renderOrderDepositTracking() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    const container = document.getElementById('order-deposit-rows');
+    if (!container) return;
+
+    const tot = orderTotals(o);
+    const pct = o.depositPct != null ? o.depositPct : 30;
+    const depositAmt = Math.round(tot.totalUsd * (pct / 100) * 100) / 100;
+    const balanceAmt = Math.round((tot.totalUsd - depositAmt) * 100) / 100;
+
+    const depositPaid = o.depositPaid || false;
+    const balancePaid = o.balancePaid || false;
+
+    const fmtUsd = v => v > 0 ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00';
+
+    container.innerHTML = `
+      <div class="order-deposit-row">
+        <span class="order-deposit-label">${pct}% Deposit</span>
+        <span class="order-deposit-amount">${fmtUsd(depositAmt)}</span>
+        <label class="order-deposit-check">
+          <input type="checkbox" ${depositPaid ? 'checked' : ''} onchange="onOrderDepositPaidChange('deposit', this.checked)" />
+          Paid
+        </label>
+      </div>
+      <div class="order-deposit-row">
+        <span class="order-deposit-label">${100 - pct}% Balance</span>
+        <span class="order-deposit-amount">${fmtUsd(balanceAmt)}</span>
+        <label class="order-deposit-check">
+          <input type="checkbox" ${balancePaid ? 'checked' : ''} onchange="onOrderDepositPaidChange('balance', this.checked)" />
+          Paid
+        </label>
+      </div>`;
+  }
+
+  function removeWorkbookFromOrder(idx) {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    o.entries.splice(idx, 1);
+    saveOrders();
+    renderOrderSheet();
+    renderOrderDepositTracking();
+  }
+
+  // ── Inline edits ─────────────────────────────────────────────────────
+  function onOrderNameChange() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    o.name = document.getElementById('order-detail-name').value;
+    saveOrders();
+    rebuildOrdersNav();
+    document.getElementById('header-title').textContent = o.name;
+  }
+
+  function onOrderStatusChange() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    o.status = document.getElementById('order-detail-status').value;
+    saveOrders();
+    rebuildOrdersNav();
+  }
+
+  function onOrderPoChange() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    o.poNumber = document.getElementById('order-detail-po').value;
+    saveOrders();
+  }
+
+  function onOrderDepositPctChange() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    const val = parseInt(document.getElementById('order-detail-deposit-pct').value) || 30;
+    o.depositPct = Math.min(100, Math.max(0, val));
+    saveOrders();
+    renderOrderDepositTracking();
+  }
+
+  function onOrderNotesChange() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    o.notes = document.getElementById('order-detail-notes').value;
+    saveOrders();
+  }
+
+  function onOrderDepositPaidChange(type, checked) {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    if (type === 'deposit') o.depositPaid = checked;
+    if (type === 'balance') o.balancePaid = checked;
+    saveOrders();
+  }
 
 </script>
 </body>
