@@ -2961,6 +2961,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .ship-wb-table tr:last-child td { border-bottom: none; }
     .ship-wb-product { font-weight: 600; }
+    .ship-wb-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; font-weight: 600;
+      padding: 4px 10px 4px 12px; border-radius: 20px;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); cursor: pointer; text-decoration: none;
+      transition: border-color 0.12s, color 0.12s, background 0.12s;
+    }
+    .ship-wb-link:hover { border-color: var(--accent); color: var(--accent); background: rgba(107,147,255,0.07); }
+    .ship-wb-link-arrow { font-size: 11px; opacity: 0.5; transition: opacity 0.12s, transform 0.12s; }
+    .ship-wb-link:hover .ship-wb-link-arrow { opacity: 1; transform: translateX(2px); }
     .ship-wb-client { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
     .ship-wb-stat { font-weight: 600; }
     .ship-wb-stat-sub { font-size: 11px; color: var(--text-muted); }
@@ -9376,7 +9387,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return `<tr>
         <td>
           <div class="ship-wb-product">
-            <a href="${wbHref}" onclick="_wbBackHash='#/shipment/${_currentShipmentId}'; _wbBackLabel='Back to Shipment'; event.preventDefault(); location.hash='${wbHref.substring(1)}'" style="color:var(--accent); text-decoration:none; font-weight:600;">${detail.product || entry.workbookId}</a>
+            <a class="ship-wb-link" href="${wbHref}" onclick="_wbBackHash='#/shipment/${_currentShipmentId}'; _wbBackLabel='Back to Shipment'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
+              ${detail.product || entry.workbookId}
+              <span class="ship-wb-link-arrow">→</span>
+            </a>
           </div>
           <div class="ship-wb-client">${entry.clientName}</div>
         </td>
