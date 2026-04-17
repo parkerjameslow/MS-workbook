@@ -4883,17 +4883,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="modal" style="max-width:560px;">
     <div class="modal-title">Add Order to Shipment</div>
     <div class="modal-field" style="margin-bottom:12px;">
-      <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Client</label>
-      <select id="ship-order-picker-client" onchange="onShipOrderClientChange()"
-        style="width:100%; height:38px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;">
-        <option value="">Select a client…</option>
-      </select>
-    </div>
-    <div id="ship-order-picker-section" style="display:none;">
-      <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders…" oninput="filterShipOrderPicker(this.value)" />
-      <div class="modal-wb-picker" id="ship-order-picker-list">
-        <!-- populated by JS -->
+      <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Filter by Client</label>
+      <div class="ship-select-wrap" style="width:100%;">
+        <select id="ship-order-picker-client" onchange="onShipOrderClientChange()"
+          style="width:100%; height:38px; padding:0 28px 0 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none;">
+          <option value="">All clients</option>
+        </select>
       </div>
+    </div>
+    <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders…" oninput="filterShipOrderPicker(this.value)" />
+    <div class="modal-wb-picker" id="ship-order-picker-list">
+      <!-- populated by JS -->
     </div>
     <div class="modal-actions" style="margin-top:14px;">
       <button type="button" class="btn btn-ghost" onclick="closeAddOrderToShipmentModal()">Cancel</button>
@@ -10066,16 +10066,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── Add Order to Shipment modal ──────────────────────────────────────
   function openAddOrderToShipmentModal() {
     _shipOrderPickerSelected = new Set();
+    // Populate client filter dropdown
     const sel = document.getElementById('ship-order-picker-client');
-    sel.innerHTML = '<option value="">Select a client…</option>';
+    sel.innerHTML = '<option value="">All clients</option>';
     Object.keys(clientData).sort().forEach(name => {
       const opt = document.createElement('option');
       opt.value = name; opt.textContent = name;
       sel.appendChild(opt);
     });
-    document.getElementById('ship-order-picker-section').style.display = 'none';
     document.getElementById('ship-order-picker-search').value = '';
-    document.getElementById('ship-order-picker-list').innerHTML = '';
+    buildShipOrderPickerList('');
     document.getElementById('modal-add-order-to-shipment').classList.add('open');
   }
 
@@ -10085,70 +10085,75 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function onShipOrderClientChange() {
-    const client  = document.getElementById('ship-order-picker-client').value;
-    const section = document.getElementById('ship-order-picker-section');
-    if (!client) { section.style.display = 'none'; _shipOrderPickerSelected = new Set(); return; }
-    _shipOrderPickerSelected = new Set();
-    document.getElementById('ship-order-picker-search').value = '';
-    section.style.display = '';
-    buildShipOrderPickerList('');
+    buildShipOrderPickerList(document.getElementById('ship-order-picker-search').value);
   }
 
   function buildShipOrderPickerList(query) {
     const list = document.getElementById('ship-order-picker-list');
     if (!list) return;
-    const client = document.getElementById('ship-order-picker-client').value;
-    if (!client) return;
+    const filterClient = document.getElementById('ship-order-picker-client').value;
     query = (query || '').toLowerCase();
 
-    // Orders for this client not already in shipment
     const s = shipmentData[_currentShipmentId];
     const alreadyIn = new Set((s ? s.entries : []).filter(e => e.orderId).map(e => String(e.orderId)));
 
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
-    const color = palette[Object.keys(clientData).sort().indexOf(client) % palette.length];
+    const sortedClients = Object.keys(clientData).sort();
 
-    const orders = Object.values(orderData).filter(o => o.clientName === client);
-
-    if (orders.length === 0) {
-      list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No orders found for this client.</div>`;
-      return;
-    }
+    // Group orders by client
+    const clients = filterClient ? [filterClient] : sortedClients;
 
     let html = '';
-    let shown = 0;
-    orders.forEach(order => {
-      if (query && !order.name.toLowerCase().includes(query)) return;
-      shown++;
-      const id        = String(order.id);
-      const isChecked = _shipOrderPickerSelected.has(id);
-      const inShip    = alreadyIn.has(id);
-      const tot       = orderTotals(order);
-      const usdStr    = tot.totalUsd > 0 ? `$${fmt2(tot.totalUsd)}` : '—';
-      const rmbStr    = tot.totalRmb > 0 ? `¥${fmt2(tot.totalRmb)}` : '';
-      const wbCount   = (order.entries || []).length;
-      const initials  = client.substring(0, 3).toUpperCase();
+    let totalShown = 0;
 
-      html += `<div class="wb-picker-item${isChecked ? ' selected' : ''}${inShip ? ' disabled' : ''}"
-          style="${inShip ? 'opacity:0.4; pointer-events:none;' : ''}"
-          onclick="toggleShipOrderPickerItem('${id}')">
-        <div style="width:40px; height:40px; border-radius:8px; background:${color}22; border:1px solid ${color}44; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:${color}; flex-shrink:0; letter-spacing:0.02em;">
-          ${initials}
-        </div>
-        <div class="wb-picker-info">
-          <div class="wb-picker-product">${order.name}</div>
-          <div class="wb-picker-client">${wbCount} workbook${wbCount !== 1 ? 's' : ''}${inShip ? ' · Already in shipment' : ''}</div>
-          <div class="wb-picker-tiers">${usdStr}${rmbStr ? ' &nbsp;·&nbsp; ' + rmbStr : ''}</div>
-        </div>
-        <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
-          ${isChecked ? '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
-        </div>
-      </div>`;
+    clients.forEach(clientName => {
+      const orders = Object.values(orderData).filter(o => o.clientName === clientName);
+      const color    = palette[sortedClients.indexOf(clientName) % palette.length];
+      const initials = clientName.substring(0, 3).toUpperCase();
+
+      const matchedOrders = orders.filter(o =>
+        !query || o.name.toLowerCase().includes(query) || clientName.toLowerCase().includes(query)
+      );
+      if (matchedOrders.length === 0) return;
+
+      // Client group label (only when showing all clients)
+      if (!filterClient) {
+        html += `<div class="wb-picker-group-label">${clientName}</div>`;
+      }
+
+      matchedOrders.forEach(order => {
+        totalShown++;
+        const id        = String(order.id);
+        const isChecked = _shipOrderPickerSelected.has(id);
+        const inShip    = alreadyIn.has(id);
+        const tot       = orderTotals(order);
+        const usdStr    = tot.totalUsd > 0 ? `$${fmt2(tot.totalUsd)}` : '—';
+        const rmbStr    = tot.totalRmb > 0 ? `¥${fmt2(tot.totalRmb)}` : '';
+        const wbCount   = (order.entries || []).length;
+
+        html += `<div class="wb-picker-item${isChecked ? ' selected' : ''}"
+            style="${inShip ? 'opacity:0.4; pointer-events:none;' : ''}"
+            onclick="toggleShipOrderPickerItem('${id}')">
+          <div style="width:40px; height:40px; border-radius:8px; background:${color}22; border:1px solid ${color}44; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:${color}; flex-shrink:0; letter-spacing:0.02em;">
+            ${initials}
+          </div>
+          <div class="wb-picker-info">
+            <div class="wb-picker-product">${order.name}</div>
+            <div class="wb-picker-client">${clientName} &nbsp;·&nbsp; ${wbCount} workbook${wbCount !== 1 ? 's' : ''}${inShip ? ' · Already in shipment' : ''}</div>
+            <div class="wb-picker-tiers">${usdStr}${rmbStr ? ' &nbsp;·&nbsp; ' + rmbStr : ''}</div>
+          </div>
+          <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
+            ${isChecked ? '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+          </div>
+        </div>`;
+      });
     });
 
-    if (shown === 0) {
-      list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">No orders match your search.</div>`;
+    if (totalShown === 0) {
+      list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">
+        ${query ? 'No orders match your search.' : 'No orders found.'}
+      </div>`;
       return;
     }
     list.innerHTML = html;
