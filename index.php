@@ -3160,12 +3160,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       transition: color 0.15s, background 0.15s;
     }
     .order-sheet-remove:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
-    .card-delete-btn {
-      background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px 6px;
-      border-radius: var(--radius-sm); opacity: 0.35; transition: opacity 0.15s, background 0.15s;
-      line-height: 1;
+    .btn-danger {
+      background: transparent; border: 1px solid rgba(239,68,68,0.4); color: #ef4444;
+      font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: var(--radius-sm);
+      cursor: pointer; transition: background 0.15s, border-color 0.15s;
     }
-    .card-delete-btn:hover { opacity: 1; background: rgba(239,68,68,0.1); }
+    .btn-danger:hover { background: rgba(239,68,68,0.08); border-color: #ef4444; }
     /* Shipment order cards */
     .ship-order-card {
       border: 1px solid var(--border); border-radius: var(--radius);
@@ -4652,6 +4652,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#34d399;">Delivered On</label>
           <input type="date" id="ship-detail-delivered" style="height:34px; padding:0 10px; border:1px solid rgba(52,211,153,0.4); border-radius:var(--radius-sm); background:rgba(52,211,153,0.08); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange()" />
         </div>
+        <button class="btn-danger" onclick="deleteShipment(_currentShipmentId)">Delete</button>
       </div>
     </div>
 
@@ -4771,6 +4772,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             oninput="onOrderDepositPctChange()" />
         </div>
         <div id="order-detail-date-tag" style="font-size:12px; color:var(--text-muted); padding:0 4px;"></div>
+        <button class="btn-danger" onclick="deleteOrder(_currentOrderId)">Delete</button>
       </div>
     </div>
 
@@ -9718,7 +9720,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="sc-right">
             <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
             <span class="shipment-container-tag">${spec.label}</span>
-            <button class="card-delete-btn" onclick="event.stopPropagation(); deleteShipment(${id})" title="Delete shipment">🗑</button>
           </div>
         </div>
       </div>`;
@@ -9863,7 +9864,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     delete shipmentData[id];
     saveShipments();
     rebuildShipmentsNav();
-    renderShipmentsContent();
+    location.hash = '#/shipments';
   }
 
   function deleteOrder(id) {
@@ -9873,7 +9874,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     delete orderData[id];
     saveOrders();
     rebuildOrdersNav();
-    renderOrdersContent();
+    location.hash = '#/orders';
   }
 
   function removeOrderFromShipment(idx) {
@@ -10494,7 +10495,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="oc-grand-usd">${usdStr}</span>
             ${rmbStr ? `<span class="oc-grand-rmb">${rmbStr}</span>` : ''}
           </div>
-          <button class="card-delete-btn" onclick="event.stopPropagation(); deleteOrder(${id})" title="Delete order">🗑</button>
         </div>
       </div>`;
     }
