@@ -6604,20 +6604,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     body.innerHTML = _shipmentSplits.map(row => {
       const cost = calcSplitCost(row.method, row.qty);
       const costStr = `<span id="split-cost-${row.id}" style="font-size:12px; font-weight:600; color:var(--text-muted); white-space:nowrap;">${cost ? `${cost.rmbStr} &nbsp;·&nbsp; ${cost.usdStr}` : ''}</span>`;
-      return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+      return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
         <input type="number" min="0" step="1" value="${row.qty}"
-          style="width:80px; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;"
+          style="width:80px; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; flex-shrink:0;"
           oninput="onSplitChange(${row.id}, 'qty', this.value)" placeholder="Qty" />
-        <span style="font-size:12px; color:var(--text-muted); white-space:nowrap;">units →</span>
+        <span style="font-size:12px; color:var(--text-muted); white-space:nowrap; flex-shrink:0;">units →</span>
         <div class="ship-select-wrap" style="width:140px; flex-shrink:0;">
           <select onchange="onSplitChange(${row.id}, 'method', this.value)"
             style="width:100%; height:32px; padding:0 28px 0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none;">
             ${Object.entries(SPLIT_METHOD_LABELS).map(([k,v]) => `<option value="${k}"${row.method===k?' selected':''}>${v}</option>`).join('')}
           </select>
         </div>
+        <span style="flex:1;"></span>
         ${costStr}
         <button onclick="removeShipmentSplit(${row.id})"
-          style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:16px; padding:2px 6px; border-radius:var(--radius-sm); transition:color 0.15s;"
+          style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:16px; padding:2px 6px; border-radius:var(--radius-sm); transition:color 0.15s; flex-shrink:0;"
           onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--text-muted)'">×</button>
       </div>`;
     }).join('');
