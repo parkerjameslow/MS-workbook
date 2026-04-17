@@ -6581,7 +6581,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function onSplitChange(id, field, value) {
     const row = _shipmentSplits.find(r => r.id === id);
-    if (row) { row[field] = value; renderShipmentSplitSummary(); autoSaveWorkbook(); }
+    if (!row) return;
+    row[field] = value;
+    // Update the cost span in-place so the qty input doesn't lose focus
+    const costEl = document.getElementById(`split-cost-${id}`);
+    if (costEl) {
+      const cost = calcSplitCost(row.method, row.qty);
+      costEl.innerHTML = cost ? `${cost.rmbStr} &nbsp;·&nbsp; ${cost.usdStr}` : '';
+    }
+    renderShipmentSplitSummary();
+    autoSaveWorkbook();
   }
 
   function renderShipmentSplits() {
@@ -6594,7 +6603,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     body.innerHTML = _shipmentSplits.map(row => {
       const cost = calcSplitCost(row.method, row.qty);
-      const costStr = cost ? `<span style="font-size:12px; font-weight:600; color:var(--text-muted); white-space:nowrap;">${cost.rmbStr} &nbsp;·&nbsp; ${cost.usdStr}</span>` : '';
+      const costStr = `<span id="split-cost-${row.id}" style="font-size:12px; font-weight:600; color:var(--text-muted); white-space:nowrap;">${cost ? `${cost.rmbStr} &nbsp;·&nbsp; ${cost.usdStr}` : ''}</span>`;
       return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
         <input type="number" min="0" step="1" value="${row.qty}"
           style="width:80px; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;"
