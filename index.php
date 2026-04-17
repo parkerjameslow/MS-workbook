@@ -3209,6 +3209,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .order-sheet-wb-header:not(:first-child) td { border-top: 2px solid var(--border); }
     .order-sheet-line-row td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
     .order-sheet-line-row:last-of-type td { border-bottom: none; }
+    .split-badge {
+      display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
+      padding: 2px 8px; border-radius: 20px; margin-left: 4px;
+      background: rgba(107,147,255,0.1); border: 1px solid rgba(107,147,255,0.3); color: var(--accent);
+    }
 
     /* Deposit tracking */
     .order-deposit-row {
@@ -4047,6 +4052,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr><td>Direct Air</td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
         </tbody>
       </table>
+      <!-- Shipment Split -->
+      <hr class="freight-section-divider" />
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <div>
+          <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Shipment Split</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Split qty across multiple shipping methods</div>
+        </div>
+        <button class="btn btn-ghost" style="font-size:12px; padding:4px 10px;" onclick="addShipmentSplit()">+ Add Split</button>
+      </div>
+      <div id="shipment-split-body"></div>
+      <div id="shipment-split-summary" style="font-size:12px; color:var(--text-muted); margin-top:6px;"></div>
     </div><!-- /.sh-shipping-box -->
 
     <!-- ══ TOP ROW: left col (stacked) + right col (results) ══ -->
@@ -6520,6 +6536,92 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _syncing = false;
   }
 
+  /* ── Shipment Splits ───────────────────────────────────────────────────── */
+  let _shipmentSplits = [];
+  let _splitCounter = 0;
+
+  const SPLIT_METHOD_LABELS = { slow: 'Slow Boat', fast: 'Fast Boat', airupp: 'Air + UPS', directair: 'Direct Air' };
+
+  function addShipmentSplit() {
+    _splitCounter++;
+    _shipmentSplits.push({ id: _splitCounter, method: 'slow', qty: '' });
+    renderShipmentSplits();
+    autoSaveWorkbook();
+  }
+
+  function removeShipmentSplit(id) {
+    _shipmentSplits = _shipmentSplits.filter(r => r.id !== id);
+    renderShipmentSplits();
+    autoSaveWorkbook();
+  }
+
+  function onSplitChange(id, field, value) {
+    const row = _shipmentSplits.find(r => r.id === id);
+    if (row) { row[field] = value; renderShipmentSplitSummary(); autoSaveWorkbook(); }
+  }
+
+  function renderShipmentSplits() {
+    const body = document.getElementById('shipment-split-body');
+    if (!body) return;
+    if (_shipmentSplits.length === 0) {
+      body.innerHTML = `<div style="font-size:12px; color:var(--text-muted); font-style:italic; padding:4px 0;">No splits defined — full quantity ships as one.</div>`;
+      renderShipmentSplitSummary();
+      return;
+    }
+    body.innerHTML = _shipmentSplits.map(row => `
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+        <input type="number" min="0" step="1" value="${row.qty}"
+          style="width:80px; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;"
+          oninput="onSplitChange(${row.id}, 'qty', this.value)" placeholder="Qty" />
+        <span style="font-size:12px; color:var(--text-muted);">units →</span>
+        <select onchange="onSplitChange(${row.id}, 'method', this.value)"
+          style="flex:1; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;">
+          ${Object.entries(SPLIT_METHOD_LABELS).map(([k,v]) => `<option value="${k}"${row.method===k?' selected':''}>${v}</option>`).join('')}
+        </select>
+        <button onclick="removeShipmentSplit(${row.id})"
+          style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:16px; padding:2px 6px; border-radius:var(--radius-sm); transition:color 0.15s;"
+          onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--text-muted)'">×</button>
+      </div>
+    `).join('');
+    renderShipmentSplitSummary();
+  }
+
+  function renderShipmentSplitSummary() {
+    const el = document.getElementById('shipment-split-summary');
+    if (!el) return;
+    if (_shipmentSplits.length === 0) { el.textContent = ''; return; }
+    const total = _shipmentSplits.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+    // Get selected tier qty for comparison
+    const tierQty = (() => {
+      const rows = document.querySelectorAll('#wb-tier-body tr');
+      let qty = 0;
+      rows.forEach(row => {
+        const idMatch = row.id && row.id.match(/wb-tier-(\d+)/);
+        if (idMatch) {
+          const tid = parseInt(idMatch[1]);
+          if (tid == _selectedTierId) {
+            const qtyEl = row.querySelector('[id^="wb-tier-qty-"]');
+            if (qtyEl) qty = parseInt(qtyEl.value) || 0;
+          }
+        }
+      });
+      return qty;
+    })();
+    const parts = Object.entries(
+      _shipmentSplits.reduce((acc, r) => {
+        const m = r.method || 'slow';
+        acc[m] = (acc[m] || 0) + (parseInt(r.qty) || 0);
+        return acc;
+      }, {})
+    ).map(([m, q]) => `${q.toLocaleString('en-US')} ${SPLIT_METHOD_LABELS[m] || m}`).join(' · ');
+    const overMsg = tierQty > 0 && total > tierQty ? ` <span style="color:#ef4444;">(exceeds tier qty of ${tierQty.toLocaleString('en-US')})</span>` : '';
+    el.innerHTML = `<span style="font-weight:600;">${total.toLocaleString('en-US')} total</span> &nbsp;·&nbsp; ${parts}${overMsg}`;
+  }
+
+  function collectShipmentSplits() {
+    return _shipmentSplits.map(r => ({ method: r.method, qty: parseInt(r.qty) || 0 })).filter(r => r.qty > 0);
+  }
+
   /* ── Additional Fees ───────────────────────────────────────────────────── */
   let _extraFeeRows = [];
   let _extraFeeCounter = 0;
@@ -8628,6 +8730,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         });
         renderExtraFeeRows();
       }
+      // Shipment splits
+      _shipmentSplits = [];
+      _splitCounter = 0;
+      if (Array.isArray(data.shipmentSplits)) {
+        data.shipmentSplits.forEach(r => {
+          _splitCounter++;
+          _shipmentSplits.push({ id: _splitCounter, method: r.method || 'slow', qty: r.qty || '' });
+        });
+      }
+      renderShipmentSplits();
       // Product images (gallery)
       if (data.productImages && Array.isArray(data.productImages) && data.productImages.length > 0) {
         _productImages = data.productImages.map(url => ({ url }));
@@ -9271,6 +9383,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       sampleStatuses: existing.sampleStatuses || {},
       // Selected pricing tier
       selectedTierIdx: _selectedTierId,
+      // Shipment split
+      shipmentSplits: collectShipmentSplits(),
     };
     return detail;
   }
@@ -10576,6 +10690,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const product = detail.product || entry.workbookId;
       const wbHref  = `#/client/${encodeURIComponent(entry.clientName)}/workbook/${entry.workbookId}`;
       const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
+      const splits   = Array.isArray(detail.shipmentSplits) ? detail.shipmentSplits.filter(s => s.qty > 0) : [];
+      const splitBadges = splits.map(s => {
+        const label = { slow:'Slow Boat', fast:'Fast Boat', airupp:'Air + UPS', directair:'Direct Air' }[s.method] || s.method;
+        return `<span class="split-badge">${s.qty.toLocaleString('en-US')} ${label}</span>`;
+      }).join('');
 
       // Workbook header row
       let rows = `<tr class="order-sheet-wb-header">
@@ -10584,6 +10703,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             onclick="_wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
             ${product} <span style="font-size:11px; opacity:0.5;">→</span>
           </a>
+          ${splitBadges}
         </td>
         <td style="text-align:right;">
           <button class="order-sheet-remove" onclick="removeWorkbookFromOrder(${idx})" title="Remove">×</button>
