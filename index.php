@@ -6542,6 +6542,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   const SPLIT_METHOD_LABELS = { slow: 'Slow Boat', fast: 'Fast Boat', airupp: 'Air + UPS', directair: 'Direct Air' };
 
+  function calcSplitCost(method, qty) {
+    qty = parseInt(qty) || 0;
+    if (qty <= 0) return null;
+    const get = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const lCm      = get('carton-outer-l-cm');
+    const wCm      = get('carton-outer-w-cm');
+    const hCm      = get('carton-outer-h-cm');
+    const actualKg = get('carton-outer-weight');
+    const innerCount = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    const outerCount = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    const unitsPerOuter = innerCount * outerCount;
+    if (!lCm || !wCm || !hCm || !actualKg || unitsPerOuter <= 0) return null;
+    const cartons  = Math.ceil(qty / unitsPerOuter);
+    const rate     = freightMethodRates[method] || freightMethodRates.slow;
+    const divisor  = freightMethodDivisors[method] || freightMethodDivisors.slow;
+    const volWeight = (lCm * wCm * hCm) / divisor;
+    const chargePerCarton = Math.max(actualKg, volWeight);
+    const totalCharge = chargePerCarton * cartons;
+    const rmb = totalCharge * rate;
+    const usd = rmb / FREIGHT_EXCHANGE_RATE;
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return { rmbStr: `¥${fmt2(rmb)}`, usdStr: `$${fmt2(usd)}` };
+  }
+
   function addShipmentSplit() {
     _splitCounter++;
     _shipmentSplits.push({ id: _splitCounter, method: 'slow', qty: '' });
@@ -6568,21 +6592,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       renderShipmentSplitSummary();
       return;
     }
-    body.innerHTML = _shipmentSplits.map(row => `
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+    body.innerHTML = _shipmentSplits.map(row => {
+      const cost = calcSplitCost(row.method, row.qty);
+      const costStr = cost ? `<span style="font-size:12px; font-weight:600; color:var(--text-muted); white-space:nowrap;">${cost.rmbStr} &nbsp;·&nbsp; ${cost.usdStr}</span>` : '';
+      return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
         <input type="number" min="0" step="1" value="${row.qty}"
           style="width:80px; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;"
           oninput="onSplitChange(${row.id}, 'qty', this.value)" placeholder="Qty" />
-        <span style="font-size:12px; color:var(--text-muted);">units →</span>
-        <select onchange="onSplitChange(${row.id}, 'method', this.value)"
-          style="flex:1; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;">
-          ${Object.entries(SPLIT_METHOD_LABELS).map(([k,v]) => `<option value="${k}"${row.method===k?' selected':''}>${v}</option>`).join('')}
-        </select>
+        <span style="font-size:12px; color:var(--text-muted); white-space:nowrap;">units →</span>
+        <div class="ship-select-wrap" style="flex:1; min-width:120px;">
+          <select onchange="onSplitChange(${row.id}, 'method', this.value)"
+            style="width:100%; height:32px; padding:0 28px 0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none;">
+            ${Object.entries(SPLIT_METHOD_LABELS).map(([k,v]) => `<option value="${k}"${row.method===k?' selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        ${costStr}
         <button onclick="removeShipmentSplit(${row.id})"
           style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:16px; padding:2px 6px; border-radius:var(--radius-sm); transition:color 0.15s;"
           onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--text-muted)'">×</button>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
     renderShipmentSplitSummary();
   }
 
