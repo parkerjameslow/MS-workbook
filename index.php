@@ -3342,7 +3342,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <div class="sidebar-bottom" style="padding: 8px;">
     <button class="nav-item" onclick="openArchiveModal()" style="width:100%;">
-      <span style="font-size:14px; opacity:0.7;">&#128451;</span>
       <span>Archive</span>
     </button>
   </div>
@@ -6424,6 +6423,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const opt = document.createElement('option');
       opt.value = id;
       opt.textContent = label;
+      opt.dataset.qty = qty ? (parseInt(qty) || 0) : 0;
       sel.appendChild(opt);
     });
     // Restore previous selection if still valid
@@ -6609,7 +6609,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           style="width:80px; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;"
           oninput="onSplitChange(${row.id}, 'qty', this.value)" placeholder="Qty" />
         <span style="font-size:12px; color:var(--text-muted); white-space:nowrap;">units →</span>
-        <div class="ship-select-wrap" style="flex:1; min-width:120px;">
+        <div class="ship-select-wrap" style="width:140px; flex-shrink:0;">
           <select onchange="onSplitChange(${row.id}, 'method', this.value)"
             style="width:100%; height:32px; padding:0 28px 0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none;">
             ${Object.entries(SPLIT_METHOD_LABELS).map(([k,v]) => `<option value="${k}"${row.method===k?' selected':''}>${v}</option>`).join('')}
@@ -6629,21 +6629,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!el) return;
     if (_shipmentSplits.length === 0) { el.textContent = ''; return; }
     const total = _shipmentSplits.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
-    // Get selected tier qty for comparison
+    // Get selected tier qty — read from the data-qty attribute stored on the selected option
     const tierQty = (() => {
-      const rows = document.querySelectorAll('#wb-tier-body tr');
-      let qty = 0;
-      rows.forEach(row => {
-        const idMatch = row.id && row.id.match(/wb-tier-(\d+)/);
-        if (idMatch) {
-          const tid = parseInt(idMatch[1]);
-          if (tid == _selectedTierId) {
-            const qtyEl = row.querySelector('[id^="wb-tier-qty-"]');
-            if (qtyEl) qty = parseInt(qtyEl.value) || 0;
-          }
-        }
-      });
-      return qty;
+      const sel = document.getElementById('sh-tier-select');
+      if (!sel || !sel.value) return 0;
+      const opt = sel.options[sel.selectedIndex];
+      return opt ? (parseInt(opt.dataset.qty) || 0) : 0;
     })();
     const parts = Object.entries(
       _shipmentSplits.reduce((acc, r) => {
@@ -6652,8 +6643,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return acc;
       }, {})
     ).map(([m, q]) => `${q.toLocaleString('en-US')} ${SPLIT_METHOD_LABELS[m] || m}`).join(' · ');
-    const overMsg = tierQty > 0 && total > tierQty ? ` <span style="color:#ef4444;">(exceeds tier qty of ${tierQty.toLocaleString('en-US')})</span>` : '';
-    el.innerHTML = `<span style="font-weight:600;">${total.toLocaleString('en-US')} total</span> &nbsp;·&nbsp; ${parts}${overMsg}`;
+    const isOver = tierQty > 0 && total > tierQty;
+    const totalStyle = isOver ? 'font-weight:600; color:#ef4444;' : 'font-weight:600;';
+    const overMsg = isOver ? ` <span style="color:#ef4444; font-weight:600;">⚠ exceeds tier qty of ${tierQty.toLocaleString('en-US')}</span>` : '';
+    el.innerHTML = `<span style="${totalStyle}">${total.toLocaleString('en-US')} total</span> &nbsp;·&nbsp; ${parts}${overMsg}`;
+    el.style.color = isOver ? '#ef4444' : '';
   }
 
   function collectShipmentSplits() {
@@ -9851,6 +9845,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${order.clientName} – ${order.name}<span class="sc-wb-pill-arrow">→</span></span>`;
           }).join('');
       const wbCount = orderEntries.length;
+      const overStyle = 'color:#ef4444 !important; font-weight:700;';
+      const cbmOver = cbmPct > 100; const kgOver = kgPct > 100; const palOver = palletPct > 100;
 
       return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
@@ -9863,11 +9859,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div class="sc-right-wrap">
           <div class="sc-stats-row">
-            <span><span class="sc-stat-inline">${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
+            <span${cbmOver ? ` style="${overStyle}"` : ''}><span class="sc-stat-inline"${cbmOver ? ` style="${overStyle}"` : ''}>${tot.cbm}/${spec.cbm}</span> CBM (${cbmPct}%)</span>
             <span class="sc-divider">|</span>
-            <span><span class="sc-stat-inline">${tot.kg.toLocaleString('en-US')}</span> kg (${kgPct}%)</span>
+            <span${kgOver ? ` style="${overStyle}"` : ''}><span class="sc-stat-inline"${kgOver ? ` style="${overStyle}"` : ''}>${tot.kg.toLocaleString('en-US')}</span> kg (${kgPct}%)</span>
             <span class="sc-divider">|</span>
-            <span><span class="sc-stat-inline">${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''} (${palletPct}%)</span>
+            <span${palOver ? ` style="${overStyle}"` : ''}><span class="sc-stat-inline"${palOver ? ` style="${overStyle}"` : ''}>${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''} (${palletPct}%)</span>
           </div>
           <div class="sc-right">
             <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
@@ -10045,16 +10041,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tot  = shipmentTotals(s);
 
     function setUtil(prefix, val, max, unit) {
-      const pct = max > 0 ? Math.min(100, (val / max) * 100) : 0;
-      const cls = pct >= 100 ? 'danger' : pct >= 85 ? 'warn' : '';
+      const rawPct = max > 0 ? (val / max) * 100 : 0;
+      const isOver = rawPct > 100;
+      const barPct = Math.min(100, rawPct);
+      const cls = isOver ? 'danger' : rawPct >= 85 ? 'warn' : '';
       const cur = document.getElementById(`ship-util-${prefix}-cur`);
       const mx  = document.getElementById(`ship-util-${prefix}-max`);
       const bar = document.getElementById(`ship-util-${prefix}-bar`);
       const pctEl = document.getElementById(`ship-util-${prefix}-pct`);
-      if (cur) cur.textContent = val.toLocaleString('en-US');
+      if (cur) {
+        cur.textContent = val.toLocaleString('en-US');
+        cur.style.color = isOver ? '#ef4444' : '';
+      }
       if (mx)  mx.textContent  = `/ ${max.toLocaleString('en-US')}`;
-      if (bar) { bar.style.width = pct.toFixed(1) + '%'; bar.className = 'ship-util-fill' + (cls ? ' ' + cls : ''); }
-      if (pctEl) pctEl.textContent = pct.toFixed(0) + '% full';
+      if (bar) { bar.style.width = barPct.toFixed(1) + '%'; bar.className = 'ship-util-fill' + (cls ? ' ' + cls : ''); }
+      if (pctEl) {
+        pctEl.textContent = rawPct.toFixed(0) + '% full';
+        pctEl.style.color = isOver ? '#ef4444' : '';
+        pctEl.style.fontWeight = isOver ? '700' : '';
+      }
     }
 
     setUtil('cbm', tot.cbm,    spec.cbm,        'm³');
