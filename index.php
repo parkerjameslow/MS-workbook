@@ -4947,7 +4947,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <form id="new-workbook-form" onsubmit="createWorkbook(event)">
       <div class="modal-field">
         <label>Product Name <span class="required">*</span></label>
-        <input type="text" id="modal-product" placeholder="e.g. Custom Tote Bag" required />
+        <input type="text" id="modal-product" placeholder="e.g. Custom Tote Bag" required oninput="debounceSuggestCategories()" />
       </div>
       <div class="modal-field" id="modal-client-field">
         <label>Client <span class="required">*</span></label>
@@ -4961,8 +4961,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div class="modal-field">
         <label>Description <span class="required">*</span></label>
-        <textarea id="modal-desc" placeholder="Brief description of the product…" required></textarea>
+        <textarea id="modal-desc" placeholder="Brief description of the product…" required
+          oninput="debounceSuggestCategories()"></textarea>
       </div>
+      <div id="modal-suggest-area" style="margin-bottom:12px;"></div>
       <div class="modal-actions">
         <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn-create">Create Workbook</button>
@@ -7852,6 +7854,112 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   /* ── New Workbook Modal ──────────────────────────────────────────────────── */
+  /* ── New Workbook category suggestions ─────────────────────────────────── */
+  const CATEGORY_KEYWORDS = {
+    packaging:      ['bag','bags','pouch','pouches','box','boxes','container','bottle','jar','jars','wrap','tube','tubes','sachet','envelope','mailer','packaging','package','zipper','mylar','poly bag','stand-up','flat pack'],
+    apparel:        ['shirt','tee','t-shirt','hoodie','jacket','pants','dress','hat','cap','sock','socks','clothing','wear','uniform','jersey','sweater','shorts','leggings','polo','vest','gloves','scarf','beanie'],
+    furniture:      ['chair','table','desk','shelf','shelving','cabinet','sofa','bench','wardrobe','drawer','stool','rack','stand','bookcase','ottoman','furniture'],
+    electronics:    ['speaker','headphone','headphones','charger','cable','case','earbuds','led','battery','wireless','bluetooth','electronic','device','adapter','hub','power bank','watch','camera'],
+    promotional:    ['pen','pens','mug','mugs','keychain','lanyard','badge','award','promo','promotional','giveaway','branded','merchandise','swag','corporate gift','logo'],
+    'food-beverage':['food','beverage','drink','snack','coffee','water bottle','lunch box','meal','bento','thermos','flask','cutlery','utensil','edible','food-grade'],
+    toys:           ['toy','toys','game','puzzle','doll','plush','stuffed animal','play','kids','children','baby','infant','educational','building blocks','action figure','fidget'],
+    beauty:         ['cream','serum','lotion','makeup','cosmetic','cosmetics','brush','skincare','haircare','perfume','beauty','lipstick','foundation','mascara','nail','spa','facial','moisturizer'],
+    'home-garden':  ['candle','vase','pillow','cushion','towel','mat','rug','plant','garden','kitchen','home decor','decoration','frame','clock','curtain','coaster','tray','basket','planter'],
+    sports:         ['gym','fitness','yoga','sport','sports','workout','outdoor','camping','hiking','exercise','training','athletic','running','cycling','swim','ball','racket','resistance band'],
+    stationery:     ['notebook','notepad','pencil','planner','journal','calendar','sticky','clipboard','folder','binder','stationery','office','school supply','marker','highlighter','agenda']
+  };
+
+  const CATEGORY_LABELS = {
+    packaging:'Packaging', apparel:'Apparel', furniture:'Furniture',
+    electronics:'Electronics', promotional:'Promotional', 'food-beverage':'Food & Beverage',
+    toys:'Toys & Games', beauty:'Beauty', 'home-garden':'Home & Garden',
+    sports:'Sports & Outdoor', stationery:'Stationery'
+  };
+
+  let _modalSuggestedCat = null;
+  let _modalSuggestedSub = null;
+  let _suggestTimer = null;
+  let _pendingWorkbookCategory = null; // applied after navigation to new workbook
+
+  function debounceSuggestCategories() {
+    clearTimeout(_suggestTimer);
+    _suggestTimer = setTimeout(renderWorkbookSuggestions, 300);
+  }
+
+  function scoreSuggestions() {
+    const name = (document.getElementById('modal-product')?.value || '').toLowerCase();
+    const desc = (document.getElementById('modal-desc')?.value || '').toLowerCase();
+    const text = name + ' ' + desc;
+    if (text.trim().length < 4) return [];
+    const scores = {};
+    Object.entries(CATEGORY_KEYWORDS).forEach(([cat, keywords]) => {
+      let score = 0;
+      keywords.forEach(kw => { if (text.includes(kw)) score += kw.includes(' ') ? 2 : 1; });
+      if (score > 0) scores[cat] = score;
+    });
+    return Object.entries(scores).sort((a, b) => b[1] - a[1]).map(([cat]) => cat);
+  }
+
+  function suggestSubs(cats) {
+    const name = (document.getElementById('modal-product')?.value || '').toLowerCase();
+    const desc = (document.getElementById('modal-desc')?.value || '').toLowerCase();
+    const text = name + ' ' + desc;
+    const seen = new Set();
+    const result = [];
+    cats.slice(0, 2).forEach(cat => {
+      (SUBCATEGORIES[cat] || []).forEach(sub => {
+        const key = sub.toLowerCase();
+        const firstWord = key.split(/[\s(]/)[0];
+        if (!seen.has(sub) && (text.includes(firstWord) || text.includes(key))) {
+          seen.add(sub);
+          result.push(sub);
+        }
+      });
+    });
+    return result.slice(0, 4);
+  }
+
+  function renderWorkbookSuggestions() {
+    const area = document.getElementById('modal-suggest-area');
+    if (!area) return;
+    const cats = scoreSuggestions();
+    if (cats.length === 0) { area.innerHTML = ''; return; }
+    const subs = suggestSubs(cats);
+    const chip = (label, selected, onclick) =>
+      `<button type="button" onclick="${onclick}"
+        style="padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; font-family:inherit;
+        ${selected
+          ? 'background:var(--accent); color:#fff; border:1px solid var(--accent);'
+          : 'background:var(--surface2); color:var(--text); border:1px solid var(--border);'}">${label}</button>`;
+    let html = `<div style="padding:10px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm);">
+      <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:6px;">✦ Suggested Category</div>
+      <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:${subs.length ? '10px' : '0'};">`;
+    cats.slice(0, 3).forEach(cat => {
+      html += chip(CATEGORY_LABELS[cat] || cat, _modalSuggestedCat === cat, `selectModalCat('${cat}')`);
+    });
+    html += `</div>`;
+    if (subs.length) {
+      html += `<div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:6px;">Material Type</div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px;">`;
+      subs.forEach(sub => {
+        html += chip(sub, _modalSuggestedSub === sub, `selectModalSub('${sub.replace(/'/g,"\\'")}')`)
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+    area.innerHTML = html;
+  }
+
+  function selectModalCat(cat) {
+    _modalSuggestedCat = _modalSuggestedCat === cat ? null : cat;
+    renderWorkbookSuggestions();
+  }
+
+  function selectModalSub(sub) {
+    _modalSuggestedSub = _modalSuggestedSub === sub ? null : sub;
+    renderWorkbookSuggestions();
+  }
+
   function openNewWorkbookModal() {
     document.getElementById('new-workbook-form').reset();
 
@@ -7882,6 +7990,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       dropdownField.style.display = '';
       displayField.style.display  = 'none';
     }
+
+    // Reset suggestions
+    _modalSuggestedCat = null;
+    _modalSuggestedSub = null;
+    document.getElementById('modal-suggest-area').innerHTML = '';
 
     document.getElementById('modal-overlay').classList.add('open');
     setTimeout(() => document.getElementById('modal-product').focus(), 50);
@@ -7933,6 +8046,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     clientData[client] = items;
     dbWorkbookMap[`${client}|${newId}`] = newId;
     saveToLocalStorage();
+
+    // Store any suggested category to apply after navigation
+    if (_modalSuggestedCat || _modalSuggestedSub) {
+      _pendingWorkbookCategory = { cat: _modalSuggestedCat, sub: _modalSuggestedSub };
+    }
 
     closeModal();
 
@@ -8910,12 +9028,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       renderArtGallery();
       _clientLogo = null;
       renderClientLogo();
-      document.getElementById('product-category').value = '';
-      document.getElementById('product-category-2').value = '';
-      document.getElementById('cat2-wrap').classList.remove('has-value');
-      document.getElementById('product-subcategory').innerHTML = '<option value="">Select category first...</option>';
-      document.getElementById('product-subcategory-2').innerHTML = '<option value="">None</option>';
-      document.getElementById('mat2-wrap').classList.remove('has-value');
+      // Apply any category suggested during creation
+      if (_pendingWorkbookCategory) {
+        const pend = _pendingWorkbookCategory;
+        _pendingWorkbookCategory = null;
+        if (pend.cat) {
+          document.getElementById('product-category').value = pend.cat;
+          updateSubcategories();
+          if (pend.sub) {
+            // Set after updateSubcategories populates the options
+            setTimeout(() => {
+              const subSel = document.getElementById('product-subcategory');
+              if (subSel) {
+                subSel.value = pend.sub;
+                if (!subSel.value) { // option not found, add it
+                  const opt = document.createElement('option');
+                  opt.value = pend.sub; opt.textContent = pend.sub;
+                  subSel.appendChild(opt);
+                  subSel.value = pend.sub;
+                }
+              }
+            }, 50);
+          }
+        } else {
+          document.getElementById('product-category').value = '';
+          document.getElementById('product-category-2').value = '';
+          document.getElementById('cat2-wrap').classList.remove('has-value');
+          document.getElementById('product-subcategory').innerHTML = '<option value="">Select category first...</option>';
+          document.getElementById('product-subcategory-2').innerHTML = '<option value="">None</option>';
+          document.getElementById('mat2-wrap').classList.remove('has-value');
+        }
+      } else {
+        document.getElementById('product-category').value = '';
+        document.getElementById('product-category-2').value = '';
+        document.getElementById('cat2-wrap').classList.remove('has-value');
+        document.getElementById('product-subcategory').innerHTML = '<option value="">Select category first...</option>';
+        document.getElementById('product-subcategory-2').innerHTML = '<option value="">None</option>';
+        document.getElementById('mat2-wrap').classList.remove('has-value');
+      }
       addTierRow(100); addWbTierRow(100);
       addTierRow(250); addWbTierRow(250);
       addTierRow(500); addWbTierRow(500);
