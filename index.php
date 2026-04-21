@@ -4949,19 +4949,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label>Product Name <span class="required">*</span></label>
         <input type="text" id="modal-product" placeholder="e.g. Custom Tote Bag" required />
       </div>
-      <div class="modal-field">
+      <div class="modal-field" id="modal-client-field">
         <label>Client <span class="required">*</span></label>
-        <div class="select-wrap"><select id="modal-client" required>
+        <div class="select-wrap"><select id="modal-client">
           <option value="">Select a client…</option>
-          <option>BAM</option>
-          <option>Bloom</option>
-          <option>Candy Pan</option>
-          <option>Fresh Her</option>
-          <option>Kids United</option>
-          <option>Nut Garden</option>
-          <option>Salt</option>
-          <option>Tweedle Dee</option>
         </select></div>
+      </div>
+      <div class="modal-field" id="modal-client-display" style="display:none;">
+        <label>Client</label>
+        <div style="font-size:14px; font-weight:600; color:var(--text); padding:6px 0;" id="modal-client-label"></div>
       </div>
       <div class="modal-field">
         <label>Description <span class="required">*</span></label>
@@ -7858,6 +7854,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   /* ── New Workbook Modal ──────────────────────────────────────────────────── */
   function openNewWorkbookModal() {
     document.getElementById('new-workbook-form').reset();
+
+    const sel = document.getElementById('modal-client');
+    const dropdownField = document.getElementById('modal-client-field');
+    const displayField  = document.getElementById('modal-client-display');
+    const displayLabel  = document.getElementById('modal-client-label');
+
+    // Populate dropdown from live client list
+    sel.innerHTML = '<option value="">Select a client…</option>';
+    Object.keys(clientData).sort().forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+
+    if (currentClient) {
+      // Already on a client — pre-fill and hide the dropdown
+      sel.value = currentClient;
+      sel.required = false;
+      dropdownField.style.display = 'none';
+      displayField.style.display  = '';
+      displayLabel.textContent    = currentClient;
+    } else {
+      // No client context — show the dropdown
+      sel.required = true;
+      dropdownField.style.display = '';
+      displayField.style.display  = 'none';
+    }
+
     document.getElementById('modal-overlay').classList.add('open');
     setTimeout(() => document.getElementById('modal-product').focus(), 50);
   }
