@@ -3721,6 +3721,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </div>
 
+  <!-- ── Card: Tiered Pricing (Workbook tab) ── -->
+  <div class="section-card">
+    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+      <span class="section-title">Tiered Pricing</span>
+      <span class="section-chevron">›</span>
+    </div>
+    <div class="section-body">
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+        Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
+      </p>
+      <table class="tier-table" id="wb-tier-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
+            <th><span class="label-full">Unit Price (RMB)</span><span class="label-short">RMB</span></th>
+            <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
+            <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="wb-tier-body">
+        </tbody>
+      </table>
+      <button class="btn btn-add" style="margin-top:10px;" onclick="addWbTierRow()">+ Add Pricing Tier</button>
+    </div>
+  </div>
+
   <!-- ── Card: Additional Fees ── -->
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
@@ -3957,33 +3985,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </div>
 
-  <!-- ── Card: Tiered Pricing (Workbook tab) ── -->
-  <div class="section-card">
-    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-      <span class="section-title">Tiered Pricing</span>
-      <span class="section-chevron">›</span>
-    </div>
-    <div class="section-body">
-      <p style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">
-        Karen fills in the Unit Price for each quantity tier. Total is calculated automatically.
-      </p>
-      <table class="tier-table" id="wb-tier-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th><span class="label-full">Quantity</span><span class="label-short">Qty</span></th>
-            <th><span class="label-full">Unit Price (RMB)</span><span class="label-short">RMB</span></th>
-            <th class="tier-col-usd"><span class="label-full">Unit Price (USD)</span><span class="label-short">Unit (USD)</span></th>
-            <th><span class="label-full">Total Price (USD)</span><span class="label-short">Total (USD)</span></th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="wb-tier-body">
-        </tbody>
-      </table>
-      <button class="btn btn-add" style="margin-top:10px;" onclick="addWbTierRow()">+ Add Pricing Tier</button>
-    </div>
-  </div>
   </div><!-- /#wb-tab-workbook -->
 
   <!-- ── Tab: Shipping ── -->
@@ -6106,7 +6107,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const handleAttr = isFirstRow ? '' : `draggable="true" onmousedown="this.closest('tr').draggable=true" onmouseup="this.closest('tr').draggable=false" ondragstart="event.dataTransfer.setData('text/plain','${id}'); this.closest('tr').style.opacity='0.4'" ondragend="this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false"`;
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="text-align:center; padding:14px 8px 4px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
+      <td style="text-align:center; padding:24px 8px 4px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
       <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals()" style="${inputStyle}" /></td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
