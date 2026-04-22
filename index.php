@@ -3646,17 +3646,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="subsection-title" style="margin-top:0;">Quote Details</div>
       <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Add line items for each product/component in this quote.</p>
       <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
-      <table class="tier-table" id="rfq-table" style="min-width:700px; border-collapse:collapse;">
+      <table class="tier-table" id="rfq-table" style="min-width:860px; border-collapse:collapse;">
         <colgroup>
           <col style="width:40px;">
           <col style="width:50px;">
-          <col style="width:8%;">
-          <col style="width:16%;">
-          <col style="width:10%;">
-          <col style="width:16%;">
+          <col style="width:13%;">
           <col style="width:14%;">
-          <col style="width:16%;">
-          <col style="width:12%;">
+          <col style="width:8%;">
+          <col style="width:15%;">
+          <col style="width:13%;">
+          <col style="width:14%;">
+          <col style="width:11%;">
           <col style="width:36px;">
         </colgroup>
         <thead>
@@ -6106,7 +6106,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
       <td style="text-align:center; padding:4px 8px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
-      <td><input type="text" placeholder="SKU" value="${sku}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
+      <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals()" style="${inputStyle}" /></td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <button type="button" onclick="addRfqVariantRow(${id})" style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:11px; font-weight:600; padding:3px 0 0 2px; line-height:1; display:inline-flex; align-items:center; gap:3px; margin-top:4px; font-family:inherit; letter-spacing:0.02em;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
