@@ -6233,6 +6233,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _rfqVarCount++;
     const vid = _rfqVarCount;
     const tbody = document.getElementById('rfq-body');
+    // Inherit parent's RMB price if none supplied
+    if (!priceRmb) {
+      const parentRow = document.getElementById(`rfq-${parentId}`);
+      if (parentRow) {
+        const parentInputs = parentRow.querySelectorAll('input:not([type="checkbox"])');
+        priceRmb = parentInputs[3]?.value || '';
+      }
+    }
     const usdVal = priceRmb ? (parseFloat(priceRmb) / USD_TO_RMB).toFixed(2) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
     const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:12px; box-sizing:border-box; background:var(--surface2); color:var(--text); font-family:inherit;';
