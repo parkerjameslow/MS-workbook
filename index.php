@@ -6309,8 +6309,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         });
       });
       items.push({
-        item: inputs[0]?.value || '',
-        sku: inputs[1]?.value || '',
+        sku: inputs[0]?.value || '',   // SKU is col 3 → inputs[0]
+        item: inputs[1]?.value || '',  // Item is col 4 → inputs[1]
         qty: inputs[2]?.value || '',
         priceRmb: inputs[3]?.value || '',
         leadTime: inputs[4]?.value || '',
