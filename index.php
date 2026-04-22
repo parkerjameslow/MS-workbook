@@ -1040,7 +1040,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       outline: 1px solid rgba(107,147,255,0.25);
       outline-offset: -1px;
     }
-    .rfq-variant-row > td:nth-child(4) { border-left: 3px solid var(--accent); padding-left: 18px; }
+    .rfq-variant-row > td:nth-child(4) { padding-left: 18px; }
     .rfq-variant-row { background: rgba(232,117,26,0.03); }
 
     /* Samples dashboard status select */
@@ -6107,14 +6107,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
       <td style="text-align:center; padding:4px 8px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
       <td><input type="text" placeholder="SKU" value="${sku}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
-      <td><input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" /></td>
+      <td>
+        <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
+        <button type="button" onclick="addRfqVariantRow(${id})" style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:11px; font-weight:600; padding:3px 0 0 2px; line-height:1; display:inline-flex; align-items:center; gap:3px; margin-top:4px; font-family:inherit; letter-spacing:0.02em;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
+          <span style="font-size:13px; line-height:1;">+</span> Add Variant
+        </button>
+      </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td style="white-space:nowrap;">
-        <button type="button" onclick="addRfqVariantRow(${id})" title="Add size/colour variant" style="background:none; border:none; cursor:pointer; color:var(--accent); font-size:18px; font-weight:700; padding:0 4px; line-height:1;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">⊕</button>
         ${isFirstRow ? '' : '<span class="remove-tier" onclick="removeRfqRow(' + id + ')" title="Remove">&times;</span>'}
       </td>
     `;
