@@ -6265,12 +6265,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const existingVars = [...document.querySelectorAll(`[data-rfq-parent="${parentId}"]`)];
     const anchor = existingVars.length ? existingVars[existingVars.length - 1] : document.getElementById(`rfq-${parentId}`);
     anchor.after(tr);
+    syncParentQtyFromVariants(parentId);
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
   }
 
+  function syncParentQtyFromVariants(parentId) {
+    const variantRows = document.querySelectorAll(`[data-rfq-parent="${parentId}"]`);
+    const parentRow = document.getElementById(`rfq-${parentId}`);
+    if (!parentRow) return;
+    const parentInputs = parentRow.querySelectorAll('input:not([type="checkbox"])');
+    const qtyInput = parentInputs[2];
+    if (!qtyInput) return;
+    if (variantRows.length > 0) {
+      let sum = 0;
+      variantRows.forEach(vr => {
+        const vi = vr.querySelectorAll('input');
+        sum += parseFloat(vi[1]?.value) || 0;
+      });
+      qtyInput.value = sum || '';
+      qtyInput.readOnly = true;
+      qtyInput.style.opacity = '0.6';
+      qtyInput.style.cursor = 'default';
+      qtyInput.title = 'Auto-summed from variants';
+    } else {
+      qtyInput.readOnly = false;
+      qtyInput.style.opacity = '';
+      qtyInput.style.cursor = '';
+      qtyInput.title = '';
+    }
+    recalcRfqRow(parentId);
+  }
+
   function removeRfqVariantRow(vid) {
-    document.getElementById(`rfq-var-${vid}`)?.remove();
+    const row = document.getElementById(`rfq-var-${vid}`);
+    const parentId = row ? parseInt(row.dataset.rfqParent) : null;
+    row?.remove();
+    if (parentId) syncParentQtyFromVariants(parentId);
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
   }
@@ -6287,6 +6318,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalEl = document.getElementById(`rfq-var-total-${vid}`);
     if (usdEl) usdEl.textContent = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const parentId = parseInt(row.dataset.rfqParent);
+    if (parentId) syncParentQtyFromVariants(parentId);
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
   }
