@@ -1004,6 +1004,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     #rfq-table td {
       padding: 14px 12px;
+      vertical-align: top;
     }
 
     #rfq-table input {
