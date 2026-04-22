@@ -1041,8 +1041,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       outline: 1px solid rgba(107,147,255,0.25);
       outline-offset: -1px;
     }
-    .rfq-variant-row > td:nth-child(4) { padding-left: 18px; }
     .rfq-variant-row { background: rgba(232,117,26,0.03); }
+    #rfq-table .rfq-variant-row td { padding: 8px 8px; vertical-align: middle; }
 
     /* Samples dashboard status select */
     .sample-status-sel option {
@@ -6252,12 +6252,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td></td>
       <td></td>
       <td></td>
-      <td style="padding:4px 8px;"><input type="text" placeholder="e.g. Small / Red…" value="${variant}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
-      <td style="padding:4px 6px;"><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
-      <td style="padding:4px 6px;"><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle} padding-left:28px;" /></div></td>
+      <td><input type="text" placeholder="e.g. Small / Red…" value="${variant}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
+      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
+      <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-var-usd-${vid}" style="color:var(--text); font-size:12px; text-align:right; font-weight:600;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
       <td class="total-cell" id="rfq-var-total-${vid}" style="text-align:right; font-size:12px;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
-      <td style="padding:4px 6px;"><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
+      <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td style="text-align:center;"><span class="remove-tier" onclick="removeRfqVariantRow(${vid})" title="Remove variant">&times;</span></td>
     `;
     // Insert after parent row and all its existing variants
