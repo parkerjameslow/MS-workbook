@@ -6106,7 +6106,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const handleAttr = isFirstRow ? '' : `draggable="true" onmousedown="this.closest('tr').draggable=true" onmouseup="this.closest('tr').draggable=false" ondragstart="event.dataTransfer.setData('text/plain','${id}'); this.closest('tr').style.opacity='0.4'" ondragend="this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false"`;
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="text-align:center; padding:4px 8px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
+      <td style="text-align:center; padding:14px 8px 4px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
       <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals()" style="${inputStyle}" /></td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
