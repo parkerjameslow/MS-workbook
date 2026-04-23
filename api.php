@@ -1241,7 +1241,7 @@ switch ($action) {
 
     case 'check_portal_status':
         // Returns { token => status } for all known tokens passed in
-        $rawTokens = (array)($_POST['tokens'] ?? []);
+        $rawTokens = (array)($input['tokens'] ?? []);
         $tokens    = array_values(array_filter(array_map('strval', $rawTokens)));
         if (empty($tokens)) { echo json_encode([]); break; }
         $placeholders = implode(',', array_fill(0, count($tokens), '?'));
