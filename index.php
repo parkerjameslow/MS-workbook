@@ -3587,6 +3587,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
   <div class="header-actions">
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
+    <span id="fx-rate-display" title="Live USD→CNY exchange rate" style="font-size:11px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:3px 8px; white-space:nowrap; letter-spacing:0.02em;">¥— / $1</span>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-btn" onclick="toggleUserDropdown()" title="Account">
         <span style="font-size:16px;">👤</span>
@@ -6348,26 +6349,58 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // swatch is just a helper; text field is the source of truth
   }
 
-  /* ── RMB to USD Conversion (live rate) ─────────────────────────────────── */
-  let USD_TO_RMB = 7.24; // fallback rate
+  /* ── RMB ↔ USD Live Exchange Rate ──────────────────────────────────────── */
+  let USD_TO_RMB = 7.24; // fallback — replaced immediately by cache or live fetch
+  const RATE_TTL = 30 * 60 * 1000; // 30 minutes in ms
 
-  // Fetch live rate from ExchangeRate-API on page load
-  (async function fetchLiveRate() {
+  function applyNewRate(rate, source) {
+    USD_TO_RMB = rate;
+    // Recalc all open RFQ rows
+    document.querySelectorAll('#rfq-body tr[id^="rfq-"]').forEach(tr => {
+      const rowId = parseInt(tr.id.replace('rfq-', ''));
+      if (!isNaN(rowId)) recalcRfqRow(rowId);
+    });
+    document.querySelectorAll('[id^="rfq-variant-"]').forEach(tr => {
+      const rowId = parseInt(tr.id.replace('rfq-variant-', ''));
+      if (!isNaN(rowId)) recalcRfqVariantRow(rowId);
+    });
+    // Update rate indicator in header
+    const el = document.getElementById('fx-rate-display');
+    if (el) {
+      const now = new Date();
+      const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      el.textContent = `¥${rate.toFixed(4)} / $1`;
+      el.title = `USD → CNY rate: ${rate.toFixed(4)} (${source}, updated ${time})`;
+    }
+  }
+
+  async function fetchLiveRate() {
+    // Check localStorage cache first
+    try {
+      const cached = JSON.parse(localStorage.getItem('fx_usd_cny') || 'null');
+      if (cached && cached.rate && (Date.now() - cached.ts) < RATE_TTL) {
+        applyNewRate(cached.rate, 'cached');
+        return; // still fresh — no API call needed
+      }
+    } catch(e) {}
+
+    // Cache stale or missing — fetch fresh
     try {
       const res = await fetch('https://open.er-api.com/v6/latest/USD');
       const data = await res.json();
       if (data.result === 'success' && data.rates && data.rates.CNY) {
-        USD_TO_RMB = data.rates.CNY;
-        console.log('Live USD→CNY rate:', USD_TO_RMB);
-        // Re-run RFQ conversions if a workbook is already loaded
-        document.querySelectorAll('#rfq-body tr').forEach((row, i) => {
-          recalcRfqRow(i + 1);
-        });
+        const rate = data.rates.CNY;
+        localStorage.setItem('fx_usd_cny', JSON.stringify({ rate, ts: Date.now() }));
+        applyNewRate(rate, 'live');
       }
-    } catch (e) {
-      console.warn('Could not fetch live rate, using fallback:', USD_TO_RMB);
+    } catch(e) {
+      console.warn('Exchange rate fetch failed, using fallback:', USD_TO_RMB);
     }
-  })();
+  }
+
+  // Initial fetch + refresh every 30 minutes
+  fetchLiveRate();
+  setInterval(fetchLiveRate, RATE_TTL);
 
   function convertRmbToUsd() {
     const rmb = parseFloat(document.getElementById('quote-unit-rmb').value);
