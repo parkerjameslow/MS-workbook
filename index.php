@@ -9490,7 +9490,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const hasRfqData = data.rfqItems && Array.isArray(data.rfqItems) && data.rfqItems.length > 0
         && data.rfqItems.some(i => i.item || i.sku || i.qty || i.priceRmb || i.leadTime);
       if (hasRfqData) {
-        data.rfqItems.forEach(item => addRfqRow(item.item, item.sku || '', item.qty, item.priceRmb, item.leadTime, item.sample || false, item.variants || []));
+        data.rfqItems.forEach(item => addRfqRow(item.item, item.sku || generateSku(item.item), item.qty, item.priceRmb, item.leadTime, item.sample || false, item.variants || []));
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
         addRfqRow('', data.qty, data.unitPriceRmb, data.leadTime);
