@@ -3555,6 +3555,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .order-wb-check-product { font-size: 13px; font-weight: 600; }
     .order-wb-check-status  { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
   </style>
+
+  <!-- ── Viewport Scale ─────────────────────────────────────────────────────
+       Scales the entire desktop layout proportionally as the viewport
+       narrows, instead of immediately jumping to the mobile hamburger.
+       Scaling stops when the effective body font would reach 8 px, at which
+       point the viewport is ≤ 768 px and the existing mobile CSS takes over.
+
+       Math:  DESIGN_W = 768 / (8/14) = 1344 px
+              At 1344 px → scale 1.0  (full desktop, no zoom)
+              At  768 px → scale 0.571  (14 px × 0.571 ≈ 8 px — hand off to mobile)
+  ──────────────────────────────────────────────────────────────────────── -->
+  <script>
+  (function () {
+    var DESIGN_W  = 1344;      // logical px width the layout is designed for
+    var MOBILE_BP = 768;       // below this: mobile hamburger CSS takes over
+    var MIN_SCALE = 8 / 14;    // ≈ 0.571 — stop scaling here (8 px body font)
+
+    function applyViewportScale() {
+      var vw = window.innerWidth;
+      if (vw > MOBILE_BP && vw < DESIGN_W) {
+        var scale = Math.max(MIN_SCALE, vw / DESIGN_W);
+        document.documentElement.style.zoom = scale;
+      } else {
+        document.documentElement.style.zoom = '';
+      }
+    }
+
+    applyViewportScale();
+    window.addEventListener('resize', applyViewportScale, { passive: true });
+  })();
+  </script>
 </head>
 <body data-theme="light">
 
