@@ -3337,8 +3337,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: 0 0 0 1px rgba(232,117,26,0.18);
     }
 
-    /* Make nav-flat-link badges always visible (not only when section is collapsed) */
-    .nav-flat-link .nav-badge { display: inline-flex; align-items: center; }
+    /* Make nav-flat-link badges visible when they have content */
+    .nav-flat-link .nav-badge:not(:empty) { display: inline-flex; align-items: center; }
     /* Orange attention variant */
     .nav-badge.attention { background: #E8751A; animation: badge-pulse 2s ease-in-out infinite; }
     @keyframes badge-pulse {
@@ -11707,32 +11707,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // ── Portal change-request polling ────────────────────────────────────
   async function checkPortalChanges() {
-    // Build a map of orderId → portalToken for all orders that have one
-    const tokenMap = {};
-    Object.keys(orderData).forEach(id => {
-      if (orderData[id].portalToken) tokenMap[id] = orderData[id].portalToken;
-    });
-    if (Object.keys(tokenMap).length === 0) return;
-
     try {
-      const statusMap = await apiCall('check_portal_status', { tokens: Object.values(tokenMap) });
+      // Fetch every portal token currently in changes_requested state
+      const pending = await apiCall('get_pending_changes');
+      if (!Array.isArray(pending)) return;
+
+      // Build lookup sets keyed by "clientName|orderName"
+      const flaggedKeys  = new Set(pending.map(p => `${p.client_name}|${p.order_name}`));
+      const tokenByKey   = {};
+      pending.forEach(p => { tokenByKey[`${p.client_name}|${p.order_name}`] = p.token; });
+
       let changed = false;
-      Object.entries(tokenMap).forEach(([orderId, token]) => {
-        const status = statusMap[token];
-        if (status === 'changes_requested' && !orderData[orderId].changeRequested) {
-          orderData[orderId].changeRequested = true;
+      Object.keys(orderData).forEach(id => {
+        const o   = orderData[id];
+        const key = `${o.clientName}|${o.name}`;
+        const shouldFlag = flaggedKeys.has(key);
+
+        if (shouldFlag && !o.changeRequested) {
+          o.changeRequested = true;
+          if (!o.portalToken) o.portalToken = tokenByKey[key]; // backfill token for future use
           changed = true;
-        } else if (status === 'approved' && orderData[orderId].changeRequested) {
-          orderData[orderId].changeRequested = false;
+        } else if (!shouldFlag && o.changeRequested) {
+          // No longer in the pending list → was approved / resolved
+          o.changeRequested = false;
           changed = true;
         }
       });
+
       if (changed) {
         saveOrders();
         renderOrdersContent();
         rebuildOrdersNav();
       }
-    } catch(e) { /* silent — don't disrupt the UI on poll failure */ }
+    } catch(e) { /* silent — don't disrupt UI on poll failure */ }
   }
 
   // ── Create Order modal ───────────────────────────────────────────────

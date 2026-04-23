@@ -1252,6 +1252,22 @@ switch ($action) {
         echo json_encode($statusMap);
         break;
 
+    case 'get_pending_changes':
+        // Returns all portal_tokens with status=changes_requested,
+        // with enough info to match against local orders (no token required up front)
+        $stmt = $pdo->query("SELECT token, client_name, order_snapshot FROM portal_tokens WHERE status = 'changes_requested'");
+        $pending = [];
+        while ($row = $stmt->fetch()) {
+            $snap = json_decode($row['order_snapshot'], true) ?: [];
+            $pending[] = [
+                'token'       => $row['token'],
+                'client_name' => $row['client_name'],
+                'order_name'  => $snap['order']['name'] ?? '',
+            ];
+        }
+        echo json_encode($pending);
+        break;
+
     default:
         echo json_encode(['error' => 'Unknown action', 'available' => [
             'get_clients', 'add_client', 'delete_client',
