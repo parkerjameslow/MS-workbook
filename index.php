@@ -3322,6 +3322,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .order-status-in_production { background: rgba(251,175,52,0.12); color: #f59e0b; }
     .order-status-complete    { background: rgba(52,211,153,0.12);  color: #34d399; }
 
+    /* Change-request badge on order cards */
+    .oc-change-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #fff7ed; border: 1px solid #fed7aa;
+      color: #E8751A; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 2px 8px; border-radius: 20px; margin-top: 5px;
+      white-space: nowrap;
+    }
+    /* Highlight the whole card when it has an open change request */
+    .order-card.has-change-request {
+      border-color: rgba(232,117,26,0.45);
+      box-shadow: 0 0 0 1px rgba(232,117,26,0.18);
+    }
+
+    /* Make nav-flat-link badges always visible (not only when section is collapsed) */
+    .nav-flat-link .nav-badge { display: inline-flex; align-items: center; }
+    /* Orange attention variant */
+    .nav-badge.attention { background: #E8751A; animation: badge-pulse 2s ease-in-out infinite; }
+    @keyframes badge-pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: 0.7; }
+    }
+
     .order-filter-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
     .order-filter-btn {
       font-size: 12px; font-weight: 600; padding: 5px 14px;
@@ -3331,6 +3354,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .order-filter-btn:hover { border-color: var(--accent); color: var(--accent); }
     .order-filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .order-filter-btn.attention-btn:hover, .order-filter-btn.attention-btn.active {
+      background: #E8751A; border-color: #E8751A; color: #fff;
+    }
 
     .order-total-value { font-size: 13px; font-weight: 700; color: var(--text); }
     .order-client-tag  { font-size: 11px; color: var(--text-muted); }
@@ -7982,10 +8008,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         `Hi ${contactName || clientEmail || 'Client'},\n\nYour quote for ${product} is ready for review. ` +
         (rfqItems.length ? `(${rfqItems.length} line item${rfqItems.length !== 1 ? 's' : ''} included)` : '');
 
+      const wbDbId  = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+      const quoteAppUrl = `${window.location.origin}/#/client/${encodeURIComponent(currentClient)}/workbook/${wbDbId}`;
+
       _notifyPayload = {
         type: 'quote_ready', client_email: clientEmail, contact_name: contactName,
         client_name: currentClient, rate: USD_TO_RMB,
-        details: { product, rfqItems }
+        details: { product, rfqItems, app_url: quoteAppUrl }
       };
 
       const pn = document.getElementById('notify-portal-notice');
@@ -8028,12 +8057,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         (itemCount > 0 ? ` · ${itemCount} line item${itemCount !== 1 ? 's' : ''}` : '') +
         (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})} USD` : '') + '.';
 
+      const orderAppUrl = `${window.location.origin}/#/order/${_currentOrderId}`;
+
       _notifyPayload = {
         type: notifType, client_email: clientEmail, contact_name: contactName,
         client_name: o.clientName, rate: USD_TO_RMB,
         details: {
           order_name: o.name, po_number: o.poNumber || '',
-          entries: entriesWithDetail
+          entries: entriesWithDetail,
+          app_url: orderAppUrl
         }
       };
 
@@ -8078,6 +8110,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try {
       const res = await apiCall('send_notification', _notifyPayload);
       if (res.success) {
+        // Store portal token so we can poll for change requests later
+        if (res.portal_token && _notifyPayload?.type === 'order_confirmed' && _currentOrderId) {
+          orderData[_currentOrderId].portalToken = res.portal_token;
+          orderData[_currentOrderId].changeRequested = false;
+          saveOrders();
+        }
         closeNotifyModal();
         const s = document.getElementById('save-status');
         if (s) { s.textContent = '✓ Notification sent'; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 4000); }
@@ -10790,6 +10828,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     restoreNavSectionStates();
     router();
 
+    // Check for portal change requests on load, then every 60 s
+    checkPortalChanges();
+    setInterval(checkPortalChanges, 60_000);
+
     // Then try loading from database (will override if successful)
     // If the user typed something before the DB responded, capture it so we don't lose it
     const preDbClient = currentClient;
@@ -11653,8 +11695,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const badge = document.getElementById('badge-orders');
     if (!badge) return;
     const ids = Object.keys(orderData);
-    const activeCount = ids.filter(id => orderData[id].status !== 'complete').length;
-    badge.textContent = activeCount || '';
+    const needsAttention = ids.filter(id => orderData[id].changeRequested).length;
+    if (needsAttention > 0) {
+      badge.textContent = needsAttention;
+      badge.classList.add('attention');
+    } else {
+      badge.textContent = '';
+      badge.classList.remove('attention');
+    }
+  }
+
+  // ── Portal change-request polling ────────────────────────────────────
+  async function checkPortalChanges() {
+    // Build a map of orderId → portalToken for all orders that have one
+    const tokenMap = {};
+    Object.keys(orderData).forEach(id => {
+      if (orderData[id].portalToken) tokenMap[id] = orderData[id].portalToken;
+    });
+    if (Object.keys(tokenMap).length === 0) return;
+
+    try {
+      const statusMap = await apiCall('check_portal_status', { tokens: Object.values(tokenMap) });
+      let changed = false;
+      Object.entries(tokenMap).forEach(([orderId, token]) => {
+        const status = statusMap[token];
+        if (status === 'changes_requested' && !orderData[orderId].changeRequested) {
+          orderData[orderId].changeRequested = true;
+          changed = true;
+        } else if (status === 'approved' && orderData[orderId].changeRequested) {
+          orderData[orderId].changeRequested = false;
+          changed = true;
+        }
+      });
+      if (changed) {
+        saveOrders();
+        renderOrdersContent();
+        rebuildOrdersNav();
+      }
+    } catch(e) { /* silent — don't disrupt the UI on poll failure */ }
   }
 
   // ── Create Order modal ───────────────────────────────────────────────
@@ -11913,20 +11991,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     const STATUS_ORDER = ['draft', 'confirmed', 'in_production', 'complete'];
-    const filterLabels = { all: 'All', draft: 'Draft', confirmed: 'Confirmed', in_production: 'In Production', complete: 'Complete' };
+    const filterLabels = { all: 'All', attention: '⚑ Needs Attention', draft: 'Draft', confirmed: 'Confirmed', in_production: 'In Production', complete: 'Complete' };
 
-    const counts = { all: ids.length };
+    const counts = { all: ids.length, attention: ids.filter(id => orderData[id].changeRequested).length };
     ids.forEach(id => {
       const st = orderData[id].status;
       counts[st] = (counts[st] || 0) + 1;
     });
 
     const filterBar = `<div class="order-filter-bar">
-      ${['all','draft','confirmed','in_production','complete'].map(s =>
-        `<button class="order-filter-btn${_orderFilter === s ? ' active' : ''}" onclick="filterOrders('${s}', this)">
+      ${['all','attention','draft','confirmed','in_production','complete'].map(s => {
+        const isAttention = s === 'attention';
+        return `<button class="order-filter-btn${isAttention ? ' attention-btn' : ''}${_orderFilter === s ? ' active' : ''}" onclick="filterOrders('${s}', this)">
           ${filterLabels[s]}${counts[s] ? ` <span style="opacity:0.7">(${counts[s]})</span>` : ''}
-        </button>`
-      ).join('')}
+        </button>`;
+      }).join('')}
     </div>`;
 
     function buildOrderCard(id) {
@@ -11967,12 +12046,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const statusLabel = o.status.replace('_', ' ');
       const usdStr = tot.totalUsd > 0 ? `$${tot.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
       const rmbStr = tot.totalRmb > 0 ? `¥${tot.totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+      const changeBadge = o.changeRequested
+        ? `<span class="oc-change-badge"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Change Requested</span>`
+        : '';
 
-      return `<div class="order-card" onclick="location.hash='#/order/${id}'">
+      return `<div class="order-card${o.changeRequested ? ' has-change-request' : ''}" onclick="location.hash='#/order/${id}'">
         <div class="oc-left">
           <span class="oc-client">${o.clientName}</span>
           <span class="oc-title">${o.name}</span>
           <span class="oc-date">${o.dateCreated}</span>
+          ${changeBadge}
         </div>
         <div class="oc-wb-list">
           <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
@@ -11988,11 +12071,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>`;
     }
 
-    const filtered = ids.filter(id => _orderFilter === 'all' || orderData[id].status === _orderFilter);
+    const filtered = ids.filter(id => {
+      if (_orderFilter === 'all')       return true;
+      if (_orderFilter === 'attention') return !!orderData[id].changeRequested;
+      return orderData[id].status === _orderFilter;
+    });
     const active   = filtered.filter(id => orderData[id].status !== 'complete');
     const complete = filtered.filter(id => orderData[id].status === 'complete');
 
-    active.sort((a, b) => STATUS_ORDER.indexOf(orderData[a].status) - STATUS_ORDER.indexOf(orderData[b].status));
+    active.sort((a, b) => {
+      // Change-requested orders always float to the top
+      const aCR = orderData[a].changeRequested ? 0 : 1;
+      const bCR = orderData[b].changeRequested ? 0 : 1;
+      if (aCR !== bCR) return aCR - bCR;
+      return STATUS_ORDER.indexOf(orderData[a].status) - STATUS_ORDER.indexOf(orderData[b].status);
+    });
 
     let html = filterBar;
 

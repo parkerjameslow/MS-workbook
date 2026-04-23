@@ -1234,8 +1234,22 @@ switch ($action) {
         $results['internal'] = ms_smtp_send($internal, '[Internal] ' . $subject, $internal_html);
         $ok = (!$clientEmail || ($results['client']['ok'] ?? false)) && ($results['internal']['ok'] ?? false);
         $resp = ['success' => $ok, 'results' => $results];
-        if ($portalUrl) $resp['portal_url'] = $portalUrl;
+        if ($portalUrl)    $resp['portal_url']   = $portalUrl;
+        if (isset($portalToken)) $resp['portal_token'] = $portalToken;
         echo json_encode($resp);
+        break;
+
+    case 'check_portal_status':
+        // Returns { token => status } for all known tokens passed in
+        $rawTokens = (array)($_POST['tokens'] ?? []);
+        $tokens    = array_values(array_filter(array_map('strval', $rawTokens)));
+        if (empty($tokens)) { echo json_encode([]); break; }
+        $placeholders = implode(',', array_fill(0, count($tokens), '?'));
+        $stmt = $pdo->prepare("SELECT token, status FROM portal_tokens WHERE token IN ($placeholders)");
+        $stmt->execute($tokens);
+        $statusMap = [];
+        while ($row = $stmt->fetch()) { $statusMap[$row['token']] = $row['status']; }
+        echo json_encode($statusMap);
         break;
 
     default:
