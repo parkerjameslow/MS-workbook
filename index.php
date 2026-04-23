@@ -6754,9 +6754,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals()" style="${inputStyle}" /></td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" onblur="(function(itemEl){const skuEl=itemEl.closest('tr').querySelectorAll('input')[1];if(!skuEl.value.trim()&&itemEl.value.trim()){skuEl.value=generateSku(itemEl.value.trim());skuEl.title=skuEl.value;}})(this)" style="${inputStyle}" />
-        <button type="button" onclick="addRfqVariantRow(${id})" style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:11px; font-weight:600; padding:3px 0 0 2px; line-height:1; display:inline-flex; align-items:center; gap:3px; margin-top:4px; font-family:inherit; letter-spacing:0.02em;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
-          <span style="font-size:13px; line-height:1;">+</span> Add Variant
-        </button>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
@@ -6769,6 +6766,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     `;
     tbody.appendChild(tr);
     variants.forEach(v => addRfqVariantRow(id, v.variant, v.qty, v.priceRmb, v.leadTime));
+    _updateVarAddRow(id);   // place trailing button below last variant (or parent if none)
     recalcRfqTotals();
     if (_wbLocked) {
       tr.querySelectorAll('input, select, textarea, button, span.remove-tier').forEach(el => {
@@ -6782,6 +6780,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const row = document.getElementById(`rfq-${id}`);
     if (row) row.remove();
     document.querySelectorAll(`[data-rfq-parent="${id}"]`).forEach(vr => vr.remove());
+    document.querySelector(`[data-rfq-add-for="${id}"]`)?.remove();
     renumberRfqRows();
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
@@ -7029,14 +7028,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!_filling) autoSaveWorkbook();
   }
 
-  // Keep a small "+ Add Variant" row just below the last variant for this parent
-  // so the user doesn't have to scroll back up to the parent row to add more.
+  // Keep a "+ Add Variant" row just below the last variant (or the parent row when
+  // no variants exist yet). The button on the parent row has been removed — this is
+  // now the only way to add variants, and it always stays at the bottom.
   function _updateVarAddRow(parentId) {
     // Remove existing trailing add-row for this parent
     document.querySelector(`[data-rfq-add-for="${parentId}"]`)?.remove();
 
     const varRows = document.querySelectorAll(`[data-rfq-parent="${parentId}"]`);
-    if (varRows.length === 0) return;   // No variants — parent row button is enough
+    // Anchor: after last variant, or directly after the parent row if none exist yet
+    const anchor = varRows.length > 0
+      ? varRows[varRows.length - 1]
+      : document.getElementById(`rfq-${parentId}`);
+    if (!anchor) return;
 
     const tr = document.createElement('tr');
     tr.setAttribute('data-rfq-add-for', String(parentId));
@@ -12270,7 +12274,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _presenceInterval = setInterval(() => {
       _sendPresenceHeartbeat();
       _pollPresence();
-    }, 5000);
+    }, 2000);  // 2 s — near real-time cursor tracking like Google Sheets
   }
 
   function stopPresenceHeartbeat(silent = false) {
@@ -12312,8 +12316,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function _clearPresenceIndicators() {
     document.querySelectorAll('[data-presence]').forEach(el => {
-      el.style.outline    = '';
-      el.style.boxShadow  = '';
+      el.style.outline = '';
       delete el.dataset.presence;
     });
     document.querySelectorAll('.presence-name-tag').forEach(el => el.remove());
@@ -12331,8 +12334,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span style="display:inline-flex;align-items:center;gap:5px;
                      background:${u.color}22;border:1px solid ${u.color}88;
                      border-radius:20px;padding:3px 10px 3px 7px;
-                     font-size:11px;font-weight:700;color:${u.color};
-                     white-space:nowrap;">
+                     font-size:11px;font-weight:700;color:${u.color};white-space:nowrap;">
           <span style="width:7px;height:7px;border-radius:50%;background:${u.color};
                        display:inline-block;
                        animation:presence-pulse 2s ease-in-out infinite;"></span>
@@ -12340,33 +12342,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </span>`).join('');
     }
 
-    // ── Cell highlights ──────────────────────────────────────────────────
+    // ── Cell highlights (Google Sheets style) ───────────────────────────
     users.forEach(u => {
       if (!u.focused_field) return;
-      const sep    = u.focused_field.lastIndexOf(':');
+      const sep   = u.focused_field.lastIndexOf(':');
       if (sep < 0) return;
-      const rowId  = u.focused_field.slice(0, sep);
-      const idx    = parseInt(u.focused_field.slice(sep + 1), 10);
-      const row    = document.getElementById(rowId);
+      const rowId = u.focused_field.slice(0, sep);
+      const idx   = parseInt(u.focused_field.slice(sep + 1), 10);
+      const row   = document.getElementById(rowId);
       if (!row) return;
-      const input  = row.querySelectorAll('input')[idx];
+      const input = row.querySelectorAll('input')[idx];
       if (!input) return;
 
-      // Colored outline on the focused input
-      input.style.outline   = `2px solid ${u.color}`;
-      input.style.outlineOffset = '0px';
-      input.dataset.presence = '1';
+      // Thick colored border matching the user's color
+      input.style.outline      = `3px solid ${u.color}`;
+      input.style.outlineOffset = '-1px';
+      input.dataset.presence   = '1';
 
-      // Floating name tag above the input
+      // Name tag: fixed to viewport so it's never clipped by overflow:hidden
+      // (same technique Google Sheets uses for collaborator cursors)
+      const rect = input.getBoundingClientRect();
+      if (rect.width === 0) return;   // input not in view yet
       const tag = document.createElement('div');
-      tag.className        = 'presence-name-tag';
-      tag.textContent      = u.display_name;
-      tag.style.background = u.color;
-      const wrap = input.parentElement;
-      if (wrap) {
-        if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
-        wrap.appendChild(tag);
-      }
+      tag.className   = 'presence-name-tag';
+      tag.textContent = u.display_name;
+      tag.style.cssText = `
+        background:${u.color};
+        position:fixed;
+        top:${Math.max(4, rect.top - 24)}px;
+        left:${rect.left}px;
+        z-index:9999;
+        pointer-events:none;
+      `;
+      document.body.appendChild(tag);
     });
   }
 
