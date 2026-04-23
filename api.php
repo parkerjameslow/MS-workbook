@@ -107,6 +107,110 @@ $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
 
+// ── Email helpers ─────────────────────────────────────────────────────────────
+function ms_smtp_send(array $to, string $subject, string $html): array {
+    $host  = 'smtp.gmail.com';
+    $port  = 587;
+    $user  = 'parker@marketsculpt.com';
+    $pass  = 'gcsgalchcnfnheth';
+    $fname = 'Market Sculpt';
+
+    $fp = @fsockopen('tcp://' . $host, $port, $errno, $errstr, 15);
+    if (!$fp) return ['ok' => false, 'error' => "Connect failed: $errstr"];
+    stream_set_timeout($fp, 15);
+    fgets($fp, 512);
+
+    fwrite($fp, "EHLO marketsculpt.com\r\n");
+    do { $l = fgets($fp, 512); } while (strlen($l) >= 4 && $l[3] !== ' ');
+
+    fwrite($fp, "STARTTLS\r\n"); fgets($fp, 512);
+    stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+
+    fwrite($fp, "EHLO marketsculpt.com\r\n");
+    do { $l = fgets($fp, 512); } while (strlen($l) >= 4 && $l[3] !== ' ');
+
+    fwrite($fp, "AUTH LOGIN\r\n"); fgets($fp, 512);
+    fwrite($fp, base64_encode($user) . "\r\n"); fgets($fp, 512);
+    fwrite($fp, base64_encode($pass) . "\r\n");
+    $auth = fgets($fp, 512);
+    if (strpos($auth, '235') === false) {
+        fwrite($fp, "QUIT\r\n"); fclose($fp);
+        return ['ok' => false, 'error' => "Auth failed: $auth"];
+    }
+
+    fwrite($fp, "MAIL FROM:<{$user}>\r\n"); fgets($fp, 512);
+    foreach ($to as $addr) { fwrite($fp, "RCPT TO:<{$addr}>\r\n"); fgets($fp, 512); }
+    fwrite($fp, "DATA\r\n"); fgets($fp, 512);
+
+    $bnd  = md5(uniqid('ms', true));
+    $plain = wordwrap(strip_tags(preg_replace('/<[^>]+>/', ' ', $html)), 76, "\r\n");
+    $msg  = "From: {$fname} <{$user}>\r\nTo: " . implode(', ', $to) . "\r\n"
+          . "Subject: {$subject}\r\nMIME-Version: 1.0\r\n"
+          . "Content-Type: multipart/alternative; boundary=\"{$bnd}\"\r\n"
+          . "X-Mailer: MarketSculptWorkbook/1.0\r\n\r\n"
+          . "--{$bnd}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n{$plain}\r\n"
+          . "--{$bnd}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{$html}\r\n"
+          . "--{$bnd}--\r\n";
+
+    fwrite($fp, $msg . ".\r\n");
+    $sent = fgets($fp, 512);
+    fwrite($fp, "QUIT\r\n"); fclose($fp);
+    return strpos($sent, '250') !== false ? ['ok' => true] : ['ok' => false, 'error' => "Send failed: $sent"];
+}
+
+function ms_email_wrap(string $title, string $preheader, string $body): string {
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . htmlspecialchars($title) . '</title></head>'
+    . '<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;">'
+    . '<span style="display:none;max-height:0;overflow:hidden;">' . htmlspecialchars($preheader) . '</span>'
+    . '<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0f2f5;padding:40px 16px;"><tr><td align="center">'
+    . '<table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">'
+    . '<tr><td style="background:#181b26;border-radius:12px 12px 0 0;padding:24px 36px;">'
+    . '<span style="font-size:20px;font-weight:800;color:#E8751A;border-left:3px solid #E8751A;padding-left:12px;letter-spacing:-0.3px;">Market Sculpt</span>'
+    . '</td></tr>'
+    . '<tr><td style="background:#E8751A;height:3px;line-height:3px;font-size:3px;">&nbsp;</td></tr>'
+    . '<tr><td style="background:#ffffff;padding:40px 36px;">' . $body . '</td></tr>'
+    . '<tr><td style="background:#f8f9fb;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:20px 36px;text-align:center;">'
+    . '<p style="margin:0;font-size:12px;color:#9ba3c0;line-height:1.8;">Market Sculpt LLC &nbsp;·&nbsp; <a href="https://marketsculpt.com" style="color:#E8751A;text-decoration:none;">marketsculpt.com</a><br>'
+    . 'Questions? Reply to this email or reach us at <a href="mailto:parker@marketsculpt.com" style="color:#E8751A;text-decoration:none;">parker@marketsculpt.com</a></p>'
+    . '</td></tr></table></td></tr></table></body></html>';
+}
+
+function ms_detail_table(array $rows): string {
+    $html = '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin:20px 0;">';
+    foreach ($rows as $i => [$label, $value]) {
+        $bg = $i % 2 === 0 ? '#f8f9fb' : '#ffffff';
+        $html .= "<tr style='background:{$bg};'>"
+              . "<td style='padding:10px 16px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#9ba3c0;width:38%;'>{$label}</td>"
+              . "<td style='padding:10px 16px;font-size:14px;color:#1a1d2e;'>{$value}</td></tr>";
+    }
+    return $html . '</table>';
+}
+
+function ms_rfq_table(array $items, float $rate): string {
+    $rows = '';
+    foreach ($items as $item) {
+        if (!($item['item'] ?? '') && !($item['qty'] ?? '') && !($item['priceRmb'] ?? '')) continue;
+        $qty   = isset($item['qty'])      && $item['qty']      > 0 ? number_format((float)$item['qty'])    : '—';
+        $rmb   = isset($item['priceRmb']) && $item['priceRmb'] > 0 ? (float)$item['priceRmb']              : 0;
+        $usd   = $rmb > 0 ? '$' . number_format($rmb / $rate, 2) : '—';
+        $tot   = ($rmb > 0 && isset($item['qty']) && $item['qty'] > 0)
+               ? '$' . number_format(($rmb / $rate) * (float)$item['qty'], 2) : '—';
+        $rows .= "<tr style='border-top:1px solid #f0f2f5;'>"
+              . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;'>" . htmlspecialchars($item['item'] ?? '—') . "</td>"
+              . "<td style='padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;'>{$qty}</td>"
+              . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;'>{$usd}</td>"
+              . "<td style='padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;'>{$tot}</td></tr>";
+    }
+    $thead = '<thead><tr style="background:#f8f9fb;">'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:left;">Item</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:center;">Qty</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Unit (USD)</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Total</th>'
+           . '</tr></thead>';
+    return '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin:20px 0;">'
+         . $thead . '<tbody>' . $rows . '</tbody></table>';
+}
+
 switch ($action) {
 
     // ─── CLIENTS ───────────────────────────────────────
@@ -773,6 +877,86 @@ switch ($action) {
         }
         $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$input['id']]);
         echo json_encode(['success' => true]);
+        break;
+
+    case 'send_notification':
+        $type        = $input['type']         ?? '';
+        $clientEmail = $input['client_email'] ?? '';
+        $contactName = $input['contact_name'] ?? '';
+        $clientName  = $input['client_name']  ?? '';
+        $details     = $input['details']      ?? [];
+        $rate        = (float)($input['rate'] ?? 7.24);
+        $internal    = ['jackson@marketsculpt.com', 'parker@marketsculpt.com'];
+
+        $client_html = $internal_html = $subject = '';
+
+        if ($type === 'quote_ready') {
+            $product  = $details['product'] ?? 'your product';
+            $subject  = "Your Quote is Ready — {$product}";
+            $greeting = $contactName ? "Hi {$contactName}," : "Hi there,";
+            $rfq_tbl  = !empty($details['rfqItems']) ? ms_rfq_table($details['rfqItems'], $rate) : '';
+
+            $c_body = "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>Your Quote is Ready</h1>"
+                    . "<p style='margin:0 0 28px;font-size:15px;color:#6b7280;'>We've prepared pricing for your review.</p>"
+                    . "<p style='margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;'>{$greeting}</p>"
+                    . "<p style='margin:0 0 4px;font-size:15px;color:#374151;line-height:1.7;'>Your quote for <strong>" . htmlspecialchars($product) . "</strong> is ready. Please find the details below:</p>"
+                    . $rfq_tbl
+                    . "<p style='margin:16px 0;font-size:15px;color:#374151;line-height:1.7;'>Please review and don't hesitate to reach out with any questions or adjustments.</p>"
+                    . "<p style='margin:0;font-size:15px;color:#374151;'>Thanks,<br><strong>Market Sculpt Team</strong></p>";
+
+            $i_body = "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>Quote Sent — " . htmlspecialchars($product) . "</h1>"
+                    . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>Internal notification</p>"
+                    . ms_detail_table([['Client', htmlspecialchars($clientName)], ['Contact', htmlspecialchars($contactName)], ['Product', htmlspecialchars($product)], ['Sent To', htmlspecialchars($clientEmail)]])
+                    . $rfq_tbl;
+
+            $client_html   = ms_email_wrap($subject, "Your quote for {$product} is ready to review.", $c_body);
+            $internal_html = ms_email_wrap("[Internal] " . $subject, "Quote sent to {$clientName}", $i_body);
+
+        } elseif (in_array($type, ['order_confirmed', 'order_in_production', 'order_complete'])) {
+            $order_name = $details['order_name'] ?? 'Your Order';
+            $po         = $details['po_number']  ?? '';
+            $total_usd  = $details['total_usd']  ?? '';
+            $greeting   = $contactName ? "Hi {$contactName}," : "Hi there,";
+
+            $meta = [
+                'order_confirmed'     => ['Order Confirmed',     'Your order has been confirmed.',          '#27ae60', 'We\'re excited to let you know your order is confirmed and moving forward. We\'ll keep you updated every step of the way.'],
+                'order_in_production' => ['Order In Production', 'Your order is now in production.',        '#E8751A', 'Great news — your order is now in production! We\'ll notify you as soon as it\'s complete.'],
+                'order_complete'      => ['Order Complete',      'Your order is complete and ready.',       '#6b93ff', 'Your order is complete! Please reach out if you have any questions about delivery or next steps.'],
+            ][$type];
+            [$title, $subtitle, $color, $msg] = $meta;
+            $subject = "{$title} — {$order_name}";
+
+            $detail_rows = [['Order', htmlspecialchars($order_name)]];
+            if ($po)         $detail_rows[] = ['PO Number',    htmlspecialchars($po)];
+            if ($total_usd)  $detail_rows[] = ['Order Total',  '$' . htmlspecialchars($total_usd)];
+
+            $badge = "<div style='margin-bottom:20px;'><span style='background:{$color};color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:5px 14px;border-radius:20px;'>{$title}</span></div>";
+
+            $c_body = $badge
+                    . "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>" . htmlspecialchars($order_name) . "</h1>"
+                    . "<p style='margin:0 0 28px;font-size:15px;color:#6b7280;'>{$subtitle}</p>"
+                    . "<p style='margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;'>{$greeting}</p>"
+                    . "<p style='margin:0 0 24px;font-size:15px;color:#374151;line-height:1.7;'>{$msg}</p>"
+                    . ms_detail_table($detail_rows)
+                    . "<p style='margin:20px 0 0;font-size:15px;color:#374151;'>Thank you for your business!<br><strong>Market Sculpt Team</strong></p>";
+
+            $i_body = $badge
+                    . "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>" . htmlspecialchars($order_name) . "</h1>"
+                    . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>Internal — client has been notified.</p>"
+                    . ms_detail_table([['Client', htmlspecialchars($clientName)], ['Contact', htmlspecialchars($contactName)], ['Sent To', htmlspecialchars($clientEmail)], ...$detail_rows]);
+
+            $client_html   = ms_email_wrap($subject, $subtitle, $c_body);
+            $internal_html = ms_email_wrap("[Internal] " . $subject, "Sent to {$clientName}", $i_body);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Unknown notification type']);
+            break;
+        }
+
+        $results = [];
+        if ($clientEmail) $results['client'] = ms_smtp_send([$clientEmail], $subject, $client_html);
+        $results['internal'] = ms_smtp_send($internal, '[Internal] ' . $subject, $internal_html);
+        $ok = (!$clientEmail || ($results['client']['ok'] ?? false)) && ($results['internal']['ok'] ?? false);
+        echo json_encode(['success' => $ok, 'results' => $results]);
         break;
 
     default:

@@ -3719,6 +3719,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
     <div class="status-actions" style="display:flex; gap:6px; align-items:center;">
+      <button id="btn-notify-quote" onclick="openNotifyModal('quote_ready')"
+        style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
+        title="Send quote notification to client">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Notify Client
+      </button>
       <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
       <button class="btn-advance" id="btn-advance" onclick="advanceStatus()">
         Mark as Entered →
@@ -5064,6 +5070,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             oninput="onOrderDepositPctChange()" />
         </div>
         <div id="order-detail-date-tag" style="font-size:12px; color:var(--text-muted); padding:0 4px;"></div>
+        <button id="btn-notify-order" onclick="openNotifyModal('order_status')"
+          class="btn btn-ghost" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; border-color:var(--accent); color:var(--accent);"
+          title="Send status notification to client">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Notify Client
+        </button>
         <button class="btn btn-ghost" onclick="exportOrderCsv(_currentOrderId)" title="Export this order to CSV" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export CSV
@@ -5183,6 +5195,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <!-- ── Create Order Modal ─────────────────────────────────────────────── -->
+<!-- ── Notification Modal ──────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-notify" onclick="if(event.target===this)closeNotifyModal()" style="z-index:1100;">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-title" id="notify-modal-title">Send Notification</div>
+
+    <!-- Recipients -->
+    <div style="margin-bottom:18px;">
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">Recipients</div>
+      <div id="notify-recipients" style="display:flex; flex-direction:column; gap:6px;"></div>
+    </div>
+
+    <!-- Preview -->
+    <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:20px;">
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">Email Preview</div>
+      <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;" id="notify-preview-subject"></div>
+      <div style="font-size:12px; color:var(--text-muted); line-height:1.5;" id="notify-preview-body"></div>
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button class="btn btn-ghost" onclick="closeNotifyModal()">Cancel</button>
+      <button class="btn btn-primary" id="btn-notify-send" onclick="sendNotification()" style="display:inline-flex; align-items:center; gap:6px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Send Notification
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-new-order" onclick="if(event.target===this)closeNewOrderModal()" style="z-index:1000;">
   <div class="modal" style="max-width:560px;">
     <div class="modal-title">Create Order</div>
@@ -7896,21 +7936,135 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     const advanceBtn = document.getElementById('btn-advance');
-
     const backBtn = document.getElementById('btn-back-step');
     backBtn.disabled = currentIdx < 0;
 
     if (currentIdx < flowSteps.length - 1) {
-      const nextLabel = flowLabels[currentIdx + 1];
-      advanceBtn.textContent = nextLabel;
+      advanceBtn.textContent = flowLabels[currentIdx + 1];
       advanceBtn.disabled = false;
     } else {
       advanceBtn.textContent = 'Completed';
       advanceBtn.disabled = true;
     }
 
+    // Show "Notify Client" button when Quote to Client step is active
+    const notifyBtn = document.getElementById('btn-notify-quote');
+    if (notifyBtn) {
+      const show = !!flow.quoteClient;
+      notifyBtn.style.display = show ? 'inline-flex' : 'none';
+    }
+
     // Lock Product Overview tab once Quote Submitted (index 1) or beyond
     lockWorkbookTab(currentIdx >= 1);
+  }
+
+  /* ── Notification system ─────────────────────────────────────────────────── */
+  let _notifyPayload = null; // stores the data ready to send
+
+  function openNotifyModal(triggerType) {
+    _notifyPayload = null;
+
+    if (triggerType === 'quote_ready') {
+      const detail    = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
+      const clientDet = clientDetails[currentClient] || {};
+      const clientEmail = clientDet.email || '';
+      const contactName = clientDet.primary_contact || '';
+      const product   = detail.product || document.getElementById('product-name')?.value || 'Product';
+      const rfqItems  = (detail.rfqItems || collectRfqItems()).filter(i => i.item || i.qty || i.priceRmb);
+
+      document.getElementById('notify-modal-title').textContent = 'Notify Client — Quote Ready';
+      document.getElementById('notify-preview-subject').textContent = `Your Quote is Ready — ${product}`;
+      document.getElementById('notify-preview-body').textContent =
+        `Hi ${contactName || clientEmail || 'Client'},\n\nYour quote for ${product} is ready for review. ` +
+        (rfqItems.length ? `(${rfqItems.length} line item${rfqItems.length !== 1 ? 's' : ''} included)` : '');
+
+      _notifyPayload = {
+        type: 'quote_ready', client_email: clientEmail, contact_name: contactName,
+        client_name: currentClient, rate: USD_TO_RMB,
+        details: { product, rfqItems }
+      };
+
+      _renderNotifyRecipients(clientEmail, contactName);
+    }
+
+    else if (triggerType === 'order_status') {
+      const o = orderData[_currentOrderId];
+      if (!o) return;
+      const clientDet   = clientDetails[o.clientName] || {};
+      const clientEmail = clientDet.email || '';
+      const contactName = clientDet.primary_contact || '';
+      const statusMap   = { draft:'order_confirmed', confirmed:'order_confirmed', in_production:'order_in_production', complete:'order_complete' };
+      const notifType   = statusMap[o.status] || 'order_confirmed';
+      const labelMap    = { order_confirmed:'Order Confirmed', order_in_production:'Order In Production', order_complete:'Order Complete' };
+      const label       = labelMap[notifType];
+      const tot         = orderTotals(o);
+
+      document.getElementById('notify-modal-title').textContent = `Notify Client — ${label}`;
+      document.getElementById('notify-preview-subject').textContent = `${label} — ${o.name}`;
+      document.getElementById('notify-preview-body').textContent =
+        `Hi ${contactName || clientEmail || 'Client'},\n\nUpdate on ${o.name}` +
+        (o.poNumber ? ` (PO: ${o.poNumber})` : '') +
+        (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})}` : '') + '.';
+
+      _notifyPayload = {
+        type: notifType, client_email: clientEmail, contact_name: contactName,
+        client_name: o.clientName, rate: USD_TO_RMB,
+        details: {
+          order_name: o.name, po_number: o.poNumber || '',
+          total_usd: tot.totalUsd > 0 ? tot.totalUsd.toFixed(2) : ''
+        }
+      };
+
+      _renderNotifyRecipients(clientEmail, contactName);
+    }
+
+    document.getElementById('modal-notify').classList.add('open');
+  }
+
+  function _renderNotifyRecipients(clientEmail, contactName) {
+    const wrap = document.getElementById('notify-recipients');
+    const rows = [];
+    if (clientEmail) {
+      rows.push(`<div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+        <span style="background:var(--accent-glow);border:1px solid var(--accent);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--accent);">Client</span>
+        <span>${contactName ? `${contactName} &lt;${clientEmail}&gt;` : clientEmail}</span>
+      </div>`);
+    } else {
+      rows.push(`<div style="font-size:13px;color:#fb7185;">⚠️ No client email on file — internal only.</div>`);
+    }
+    rows.push(`<div style="display:flex;align-items:center;gap:8px;font-size:13px;">
+      <span style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--text-muted);">Internal</span>
+      <span style="color:var(--text-muted);">jackson@marketsculpt.com, parker@marketsculpt.com</span>
+    </div>`);
+    wrap.innerHTML = rows.join('');
+  }
+
+  function closeNotifyModal() {
+    document.getElementById('modal-notify').classList.remove('open');
+    _notifyPayload = null;
+  }
+
+  async function sendNotification() {
+    if (!_notifyPayload) return;
+    const btn = document.getElementById('btn-notify-send');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      const res = await apiCall('send_notification', _notifyPayload);
+      if (res.success) {
+        closeNotifyModal();
+        // Brief toast
+        const s = document.getElementById('save-status');
+        if (s) { s.textContent = '✓ Notification sent'; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 3000); }
+      } else {
+        const err = res.results?.internal?.error || res.results?.client?.error || 'Unknown error';
+        alert(`Failed to send: ${err}\n\nCheck that the Gmail App Password is correct.`);
+      }
+    } catch(e) {
+      alert('Send failed: ' + e.message);
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Send Notification';
   }
 
   function lockWorkbookTab(locked) {
