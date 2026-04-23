@@ -9475,6 +9475,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const name = nameSpan ? nameSpan.textContent.trim() : a.textContent.trim();
       a.classList.toggle('active', name === clientName);
     });
+
+    // If the active client lives inside a collapsed section, expand it so it's visible
+    ['nav-section-clients', 'nav-section-starred'].forEach(sectionId => {
+      const section = document.getElementById(sectionId);
+      if (!section || !section.classList.contains('collapsed')) return;
+      const body = section.querySelector('.nav-section-body');
+      if (body && body.querySelector('.nav-item.active')) {
+        section.classList.remove('collapsed');
+        // Persist the expanded state
+        const saved = JSON.parse(localStorage.getItem('ms_nav_collapsed') || '{}');
+        saved[sectionId] = false;
+        localStorage.setItem('ms_nav_collapsed', JSON.stringify(saved));
+      }
+    });
   }
 
   /* ── Action Menu ──────────────────────────────────────────────────────────── */
