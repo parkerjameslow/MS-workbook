@@ -3361,6 +3361,57 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .order-total-value { font-size: 13px; font-weight: 700; color: var(--text); }
     .order-client-tag  { font-size: 11px; color: var(--text-muted); }
 
+    /* Change request card in order detail */
+    .cr-card {
+      background: #fff;
+      border: 1px solid rgba(232,117,26,0.45);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      overflow: hidden;
+      box-shadow: 0 0 0 3px rgba(232,117,26,0.08);
+    }
+    .cr-card-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 20px;
+      background: rgba(232,117,26,0.07);
+      border-bottom: 1px solid rgba(232,117,26,0.18);
+    }
+    .cr-card-head-icon {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: rgba(232,117,26,0.15); color: #E8751A;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .cr-card-title { font-size: 14px; font-weight: 800; color: #E8751A; }
+    .cr-card-meta  { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+    .cr-card-body  { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+    .cr-comment {
+      padding: 12px 16px;
+      background: rgba(232,117,26,0.05); border-left: 3px solid #E8751A;
+      border-radius: 4px;
+    }
+    .cr-comment-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #E8751A; margin-bottom: 5px; }
+    .cr-comment-text  { font-size: 13px; color: var(--text); line-height: 1.6; }
+    .cr-items-label   { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 2px; }
+    .cr-item {
+      padding: 12px 16px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-left: 3px solid #E8751A; border-radius: 6px;
+    }
+    .cr-item-header { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .cr-item-product { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+    .cr-item-name    { font-size: 13px; font-weight: 700; color: var(--text); }
+    .cr-item-note    { font-size: 13px; color: var(--text-muted); line-height: 1.55; }
+    .cr-resolve-btn  {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 4px; padding: 7px 16px;
+      background: #f0fdf4; border: 1px solid #86efac;
+      border-radius: 6px; color: #16a34a;
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      font-family: inherit; transition: background 0.12s;
+      align-self: flex-start;
+    }
+    .cr-resolve-btn:hover { background: #dcfce7; }
+
     /* Order detail */
     .order-detail-header { margin-bottom: 24px; }
     .order-detail-client-name {
@@ -5107,6 +5158,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           Export CSV
         </button>
         <button class="btn-danger" onclick="deleteOrder(_currentOrderId)">Delete</button>
+      </div>
+    </div>
+
+    <!-- Change Request Banner (shown only when client has requested changes) -->
+    <div id="order-cr-card" class="cr-card" style="display:none;">
+      <div class="cr-card-head">
+        <div class="cr-card-head-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        </div>
+        <span class="cr-card-title">Client Change Request</span>
+        <span class="cr-card-meta" id="cr-meta"></span>
+      </div>
+      <div class="cr-card-body" id="cr-body">
+        <div style="color:var(--text-muted); font-size:13px;">Loading…</div>
       </div>
     </div>
 
@@ -12132,6 +12197,81 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderOrderSheet();
     renderOrderDepositTracking();
     showView('view-order-detail');
+
+    // Show or hide the change-request panel
+    const crCard = document.getElementById('order-cr-card');
+    if (crCard) {
+      if (o.changeRequested) {
+        crCard.style.display = '';
+        loadChangeRequestDetails(_currentOrderId);
+      } else {
+        crCard.style.display = 'none';
+      }
+    }
+  }
+
+  async function loadChangeRequestDetails(orderId) {
+    const o = orderData[orderId];
+    if (!o) return;
+    const body = document.getElementById('cr-body');
+    const meta = document.getElementById('cr-meta');
+    if (!body) return;
+    body.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Loading…</div>';
+
+    const params = o.portalToken
+      ? { token: o.portalToken }
+      : { client_name: o.clientName, order_name: o.name };
+
+    const res = await apiCall('get_change_request', params);
+    if (!res.success) {
+      body.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Could not load change request details.</div>';
+      return;
+    }
+
+    // Header meta: client email + date
+    if (meta) {
+      const dateStr = res.submitted_at
+        ? new Date(res.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+      meta.textContent = [res.client_email, dateStr].filter(Boolean).join(' · ');
+    }
+
+    let html = '';
+
+    // Overall client comment
+    if (res.client_comment && res.client_comment.trim()) {
+      html += `<div class="cr-comment">
+        <div class="cr-comment-label">Client Comment</div>
+        <div class="cr-comment-text">${res.client_comment.trim().replace(/\n/g, '<br>')}</div>
+      </div>`;
+    }
+
+    // Flagged line items
+    const changes = res.line_changes || [];
+    const items   = res.items        || [];
+    if (changes.length > 0) {
+      html += `<div class="cr-items-label">${changes.length} Item${changes.length !== 1 ? 's' : ''} Flagged</div>`;
+      html += changes.map(ch => {
+        const itm      = items[ch.idx] || {};
+        const itemName = itm.item    || `Item #${ch.idx + 1}`;
+        const product  = itm.product || '';
+        const qty      = itm.qty     ? `Qty: ${Number(itm.qty).toLocaleString('en-US')}` : '';
+        return `<div class="cr-item">
+          <div class="cr-item-header">
+            ${product ? `<span class="cr-item-product">${product}</span><span style="color:var(--border)">·</span>` : ''}
+            <span class="cr-item-name">${itemName}</span>
+            ${qty ? `<span style="font-size:11px;color:var(--text-muted);margin-left:auto;">${qty}</span>` : ''}
+          </div>
+          <div class="cr-item-note">${ch.note ? ch.note.replace(/\n/g, '<br>') : '<em style="opacity:0.6">No note provided</em>'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    if (!html) {
+      html = '<div style="color:var(--text-muted);font-size:13px;font-style:italic;">No details available.</div>';
+    }
+
+    body.innerHTML = html;
   }
 
   function renderOrderSheet() {

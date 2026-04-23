@@ -1268,6 +1268,42 @@ switch ($action) {
         echo json_encode($pending);
         break;
 
+    case 'get_change_request':
+        // Returns the full change request detail for an order.
+        // Accepts: { token } OR { client_name, order_name }
+        $tokenIn     = $input['token']       ?? null;
+        $clNameIn    = $input['client_name']  ?? null;
+        $orderNameIn = $input['order_name']   ?? null;
+        $crRow       = null;
+
+        if ($tokenIn) {
+            $s = $pdo->prepare("SELECT * FROM portal_tokens WHERE token = ? AND status = 'changes_requested'");
+            $s->execute([$tokenIn]);
+            $crRow = $s->fetch();
+        } elseif ($clNameIn) {
+            // Fetch all changes_requested for this client, match by order name in snapshot
+            $s = $pdo->prepare("SELECT * FROM portal_tokens WHERE client_name = ? AND status = 'changes_requested' ORDER BY created_at DESC");
+            $s->execute([$clNameIn]);
+            while ($candidate = $s->fetch()) {
+                $snap      = json_decode($candidate['order_snapshot'], true) ?: [];
+                $snapName  = $snap['order']['name'] ?? '';
+                if (!$orderNameIn || $snapName === $orderNameIn) { $crRow = $candidate; break; }
+            }
+        }
+
+        if (!$crRow) { echo json_encode(['success' => false, 'error' => 'No active change request found']); break; }
+        $crSnap = json_decode($crRow['order_snapshot'], true) ?: [];
+        echo json_encode([
+            'success'        => true,
+            'line_changes'   => json_decode($crRow['line_changes'] ?? '[]', true) ?: [],
+            'client_comment' => $crRow['client_comment'] ?? '',
+            'client_name'    => $crRow['client_name'],
+            'client_email'   => $crRow['client_email'],
+            'items'          => $crSnap['items'] ?? [],
+            'submitted_at'   => $crRow['created_at'],
+        ]);
+        break;
+
     default:
         echo json_encode(['error' => 'Unknown action', 'available' => [
             'get_clients', 'add_client', 'delete_client',
