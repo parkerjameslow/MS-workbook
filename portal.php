@@ -409,16 +409,20 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
     $metaCard = '<div class="card">'
               . '<div class="card-head">'
               . "<h1 class='page-title'>" . htmlspecialchars($orderName) . "</h1>"
-              . "<p class='page-sub'>Please review the order details below. You can approve the order or request changes to specific items before approving.</p>"
+              . "<p class='page-sub'>Review each line item below. Items are <span style='color:#16a34a;font-weight:700;'>✓ approved</span> by default — use \"Request Change\" to flag anything that needs adjustment.</p>"
               . '</div>'
               . '<div class="card-body"><div class="detail-grid">' . $detailCells . '</div></div>'
               . '</div>';
 
+    // SVG icons reused per row
+    $iconCheck = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>';
+    $iconFlag  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>';
+
     // ── Items table ──────────────────────────────────────────────────────────
-    $tableRows  = '';
+    $tableRows   = '';
     $prevProduct = null;
-    $rowIndex   = 0;
-    $grandTotal = 0;
+    $grandTotal  = 0;
+    $itemIndices = []; // track valid indices for JS
 
     foreach ($items as $idx => $itm) {
         $product  = $itm['product'] ?? '';
@@ -428,6 +432,7 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
         $priceRmb = (float)($itm['priceRmb'] ?? 0);
 
         if (!$itemName && !$qty && !$priceRmb) continue;
+        $itemIndices[] = $idx;
 
         $unitUsd = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
         $totUsd  = ($priceRmb > 0 && $qty > 0 && $rate > 0) ? ($priceRmb / $rate) * $qty : 0;
@@ -437,15 +442,18 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
 
         // Product group header
         if ($product !== $prevProduct && $product !== '') {
-            $tableRows .= '<tr class="product-hdr"><td colspan="6">'
+            $tableRows .= '<tr class="product-hdr"><td colspan="7">'
                         . '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:6px;opacity:0.5;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>'
                         . htmlspecialchars($product)
                         . '</td></tr>';
             $prevProduct = $product;
         }
 
-        // Item row
+        // Item row — status indicator is first column
         $tableRows .= "<tr id='item-row-{$idx}'>
+            <td class='c' style='width:40px;padding-left:14px;padding-right:4px;'>
+                <div id='status-{$idx}' class='row-status ok' title='Approved'>{$iconCheck}</div>
+            </td>
             <td>{$itemName}</td>
             <td class='muted hide-mobile'>{$sku}</td>
             <td class='r'>{$qtyFmt}</td>
@@ -456,32 +464,35 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
             </td>
         </tr>
         <tr class='change-expand' id='expand-{$idx}'>
-            <td colspan='6'>
-                <div style='display:flex;gap:8px;align-items:flex-start;'>
+            <td colspan='7'>
+                <div style='display:flex;gap:8px;align-items:flex-start;padding-left:4px;'>
                     <svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='#E8751A' stroke-width='2' style='flex-shrink:0;margin-top:10px;'><path d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/></svg>
                     <textarea name='change_{$idx}' id='change-{$idx}' class='change-textarea'
                         placeholder='Describe the change needed (e.g., &quot;Change qty to 300&quot; or &quot;Need different color variant&quot;)...'
-                        oninput='checkChanges()'></textarea>
+                        oninput='onChangeInput({$idx})'></textarea>
                 </div>
             </td>
         </tr>";
-        $rowIndex++;
     }
 
     // Grand total row
     if ($grandTotal > 0) {
         $tableRows .= '<tr class="total-row">'
+                    . '<td></td>'
                     . '<td colspan="4" style="text-align:right;font-size:13px;color:#6b7280;font-weight:600;">Estimated Order Total</td>'
                     . '<td class="r" style="font-size:15px;">$' . number_format($grandTotal, 2) . ' <span style="font-size:11px;font-weight:400;color:#9ba3c0;">USD</span></td>'
                     . '<td></td>'
                     . '</tr>';
     }
 
+    $indicesJson = json_encode($itemIndices);
+
     $form = '<form method="POST" action="?t=' . urlencode($token) . '" id="portal-form" onsubmit="onSubmit(event)">'
           . '<input type="hidden" name="action" id="action-input" value="approve">'
           . '<div style="overflow-x:auto;">'
-          . '<table class="tbl" style="min-width:580px;">'
+          . '<table class="tbl" style="min-width:600px;">'
           . '<thead><tr>'
+          . '<th class="c" style="width:40px;">Status</th>'
           . '<th>Item</th>'
           . '<th class="hide-mobile">SKU</th>'
           . '<th class="r">Qty</th>'
@@ -497,7 +508,7 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
           . '<textarea name="comment" class="comment-area" placeholder="Any additional notes, questions, or context for the Market Sculpt team..."></textarea>'
           . '</div>'
           . '<div class="action-bar">'
-          . '<div class="action-hint" id="action-hint">Select "Request Change" on any item to flag it, then submit.</div>'
+          . '<div class="action-hint" id="action-hint">All items are approved. Add changes above or submit.</div>'
           . '<button type="submit" class="approve" id="main-action-btn">'
           . '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>'
           . 'Approve Order'
@@ -505,52 +516,120 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
           . '</div>'
           . '</form>';
 
+    $approveAllBtn = '<button type="button" onclick="approveAll()" id="approve-all-btn" '
+                   . 'style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;color:#16a34a;font-size:13px;font-weight:700;padding:7px 14px;cursor:pointer;font-family:inherit;transition:all 0.15s;">'
+                   . '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>'
+                   . 'Approve All'
+                   . '</button>';
+
     $itemsCard = '<div class="card">'
                . '<div class="card-head card-head-flex">'
                . '<span style="font-size:15px;font-weight:700;color:#1a1d2e;">Order Items</span>'
+               . '<div style="display:flex;align-items:center;gap:14px;">'
+               . $approveAllBtn
                . ($grandTotal > 0 ? "<span style='font-size:16px;font-weight:800;color:#1a1d2e;'>\$" . number_format($grandTotal, 2) . " <span style='font-size:12px;font-weight:500;color:#9ba3c0;'>USD</span></span>" : '')
+               . '</div>'
                . '</div>'
                . '<div class="card-body-flush">' . $form . '</div>'
                . '</div>';
 
     $js = '<script>
+var _indices = ' . $indicesJson . ';
+
+// Status icon SVGs
+var SVG_CHECK = \'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>\';
+var SVG_FLAG  = \'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>\';
+
+function setStatus(idx, state) {
+    var el = document.getElementById("status-" + idx);
+    if (!el) return;
+    el.className = "row-status " + state;
+    el.innerHTML = state === "ok" ? SVG_CHECK : SVG_FLAG;
+    el.title     = state === "ok" ? "Approved" : "Change Requested";
+}
+
 function toggleChange(idx) {
     var row  = document.getElementById("expand-" + idx);
     var btn  = document.getElementById("toggle-" + idx);
     var inp  = document.getElementById("change-" + idx);
     var open = row.style.display === "table-row";
     row.style.display = open ? "none" : "table-row";
-    if (open && inp) { inp.value = ""; }
+    if (open && inp) { inp.value = ""; setStatus(idx, "ok"); }
+    else { setStatus(idx, "flagged"); }
     btn.textContent = open ? "Request Change" : "✕ Cancel";
     btn.classList.toggle("is-open", !open);
     checkChanges();
 }
+
+function onChangeInput(idx) {
+    var inp = document.getElementById("change-" + idx);
+    setStatus(idx, inp && inp.value.trim() ? "flagged" : "ok");
+    checkChanges();
+}
+
+function approveAll() {
+    // Close all open change rows, clear inputs, reset status icons
+    _indices.forEach(function(idx) {
+        var row = document.getElementById("expand-" + idx);
+        var btn = document.getElementById("toggle-" + idx);
+        var inp = document.getElementById("change-" + idx);
+        if (row) row.style.display = "none";
+        if (inp) inp.value = "";
+        if (btn) { btn.textContent = "Request Change"; btn.classList.remove("is-open"); }
+        setStatus(idx, "ok");
+    });
+    // Set action and submit
+    document.getElementById("action-input").value = "approve";
+    var mainBtn = document.getElementById("main-action-btn");
+    mainBtn.innerHTML = \'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Approve Order\';
+    mainBtn.className = "approve";
+    document.getElementById("portal-form").submit();
+}
+
 function checkChanges() {
-    var hasChanges = false;
-    document.querySelectorAll(".change-textarea").forEach(function(t) {
-        if (t.value.trim()) hasChanges = true;
+    var flaggedCount = 0;
+    _indices.forEach(function(idx) {
+        var inp = document.getElementById("change-" + idx);
+        var row = document.getElementById("expand-" + idx);
+        if (row && row.style.display === "table-row" && inp && inp.value.trim()) flaggedCount++;
     });
     var btn  = document.getElementById("main-action-btn");
     var act  = document.getElementById("action-input");
     var hint = document.getElementById("action-hint");
-    if (hasChanges) {
+    var aab  = document.getElementById("approve-all-btn");
+    if (flaggedCount > 0) {
         btn.innerHTML = \'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>Send Change Request\';
         btn.className = "changes";
         act.value     = "request_changes";
-        if (hint) hint.innerHTML = \'Change requests will be sent to the Market Sculpt team.\';
+        if (hint) hint.textContent = flaggedCount + " item" + (flaggedCount > 1 ? "s" : "") + " flagged for changes.";
+        if (aab)  aab.style.display = "inline-flex";
     } else {
         btn.innerHTML = \'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Approve Order\';
         btn.className = "approve";
         act.value     = "approve";
-        if (hint) hint.innerHTML = \'Select "Request Change" on any item to flag it, then submit.\';
+        if (hint) hint.textContent = "All items are approved. Add changes above or submit.";
+        if (aab)  aab.style.display = "none";
     }
 }
+
 function onSubmit(e) {
     var btn = document.getElementById("main-action-btn");
     btn.disabled = true;
     btn.style.opacity = "0.65";
 }
-</script>';
+
+// Hide "Approve All" initially (no changes yet)
+document.addEventListener("DOMContentLoaded", function() {
+    var aab = document.getElementById("approve-all-btn");
+    if (aab) aab.style.display = "none";
+});
+</script>'
+    // CSS for status indicators (injected inline)
+    . '<style>
+.row-status { width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto;transition:background 0.18s,color 0.18s; }
+.row-status.ok      { background:#dcfce7; color:#16a34a; }
+.row-status.flagged { background:#fff7ed; color:#E8751A; }
+</style>';
 
     return $metaCard . $itemsCard . $js;
 }
