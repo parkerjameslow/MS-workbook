@@ -8079,13 +8079,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const res = await apiCall('send_notification', _notifyPayload);
       if (res.success) {
         closeNotifyModal();
-        // Show portal URL if one was generated
-        if (res.portal_url) {
-          _showPortalUrl(res.portal_url);
-        } else {
-          const s = document.getElementById('save-status');
-          if (s) { s.textContent = '✓ Notification sent'; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 4000); }
-        }
+        const s = document.getElementById('save-status');
+        if (s) { s.textContent = '✓ Notification sent'; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 4000); }
       } else {
         const err = res.results?.internal?.error || res.results?.client?.error || 'Unknown error';
         alert(`Failed to send: ${err}\n\nCheck that the Gmail App Password is correct.`);
