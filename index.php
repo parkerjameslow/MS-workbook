@@ -3524,7 +3524,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <!-- Orders -->
     <!-- Permanent SKU -->
     <a id="nav-inventory-link" href="#/inventory" onclick="event.preventDefault(); location.hash='#/inventory'" class="nav-flat-link">
-      <span>Permanent SKU</span>
+      <span>Inventory</span>
       <span class="nav-badge" id="badge-inventory"></span>
     </a>
 
@@ -5006,7 +5006,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <main class="container">
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
-        <span class="section-title" style="margin-right:auto;">Permanent SKU</span>
+        <span class="section-title" style="margin-right:auto;">Inventory</span>
         <input type="text" id="inventory-search" placeholder="Search SKU or product…"
           oninput="filterInventory(this.value)"
           style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 12px; font-size:13px; color:var(--text); font-family:inherit; outline:none; width:220px;" />
@@ -9708,6 +9708,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _filling = false;
       // Re-apply lock after all dynamic rows (RFQ, tiers) have been added
       if (_wbLocked) lockWorkbookTab(true);
+      // Update promote button to show "X SKUs in Inventory" if already promoted
+      updatePromoteButton();
     }, 200);
   }
 
@@ -10329,7 +10331,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const invNav = document.getElementById('nav-inventory-link');
     if (invNav) invNav.classList.add('active');
-    document.getElementById('header-title').textContent = 'Permanent SKU';
+    document.getElementById('header-title').textContent = 'Inventory';
     renderInventoryTable(inventoryData);
     showView('view-inventory');
   }
@@ -10415,6 +10417,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
+  function updatePromoteButton() {
+    const btn = document.getElementById('btn-promote-sku');
+    if (!btn) return;
+    const wbDbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    const wbSkus = inventoryData.filter(r => String(r.workbook_id) === String(wbDbId));
+    if (wbSkus.length > 0) {
+      const n = wbSkus.length;
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span style="color:var(--success);">✓ ${n} SKU${n !== 1 ? 's' : ''} in Inventory</span>`;
+      btn.onclick = () => { location.hash = '#/inventory'; };
+      btn.title = 'View in Inventory';
+      btn.onmouseover = () => { btn.style.borderColor = 'var(--success)'; btn.style.color = 'var(--success)'; };
+      btn.onmouseout  = () => { btn.style.borderColor = 'var(--border)'; btn.style.color = 'var(--text-muted)'; };
+    } else {
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>Promote to Permanent SKU`;
+      btn.onclick = () => promoteWorkbookToInventory();
+      btn.title = 'Promote all RFQ SKUs from this workbook to permanent SKUs';
+      btn.onmouseover = () => { btn.style.borderColor = 'var(--accent)'; btn.style.color = 'var(--accent)'; };
+      btn.onmouseout  = () => { btn.style.borderColor = 'var(--border)'; btn.style.color = 'var(--text-muted)'; };
+    }
+  }
+
   async function promoteWorkbookToInventory() {
     const rfqItems = collectRfqItems();
     const toPromote = [];
@@ -10435,16 +10458,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const res = await apiCall('promote_to_sku', { items: toPromote });
     if (res.success) {
       await loadInventory();
-      const msg = res.inserted > 0
-        ? `✓ ${res.inserted} SKU${res.inserted > 1 ? 's' : ''} promoted to inventory${res.skipped > 0 ? ` (${res.skipped} already existed)` : ''}.`
-        : `All ${res.skipped} SKU${res.skipped > 1 ? 's' : ''} already in inventory.`;
-      // Show brief toast
-      const btn = document.getElementById('btn-promote-sku');
-      if (btn) {
-        const orig = btn.innerHTML;
-        btn.innerHTML = `<span style="color:var(--success);">${msg}</span>`;
-        setTimeout(() => { btn.innerHTML = orig; }, 3000);
-      }
+      updatePromoteButton();
     }
   }
 
