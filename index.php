@@ -3576,7 +3576,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div id="dash-empty" style="display:none; text-align:center; padding:60px 24px;">
           <p style="color:var(--text-muted); font-size:16px; margin:0 0 16px;">No workbooks yet for this client.</p>
-          <button class="btn-create" onclick="openNewWorkbookModal()" style="font-size:14px;">+ New Workbook</button>
+          <button class="btn-create" onclick="openNewWorkbookModal()" style="font-size:14px;">+ Add Workbook</button>
         </div>
       </div>
     </div>
@@ -5128,11 +5128,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;">
         <div class="modal-field" style="margin-bottom:0;">
           <label>Billing Address</label>
-          <textarea id="modal-client-billing" placeholder="Street, City, State ZIP" rows="3"></textarea>
+          <textarea id="modal-client-billing" placeholder="Street, City, State ZIP" rows="3"
+            oninput="if(document.getElementById('modal-ship-same').checked){ document.getElementById('modal-client-shipping').value = this.value; }"></textarea>
         </div>
         <div class="modal-field" style="margin-bottom:0;">
-          <label>Shipping Address</label>
-          <textarea id="modal-client-shipping" placeholder="Same as billing or different" rows="3"></textarea>
+          <label style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            Shipping Address
+            <span style="display:flex; align-items:center; gap:5px; font-size:11px; font-weight:500; text-transform:none; letter-spacing:0; color:var(--text-muted);">
+              <input type="checkbox" id="modal-ship-same" style="width:13px; height:13px; accent-color:var(--accent); cursor:pointer; margin:0;"
+                onchange="
+                  const ta = document.getElementById('modal-client-shipping');
+                  if(this.checked){ ta.value = document.getElementById('modal-client-billing').value; ta.disabled = true; ta.style.opacity='0.5'; }
+                  else { ta.disabled = false; ta.style.opacity=''; }
+                " />
+              Same as billing
+            </span>
+          </label>
+          <textarea id="modal-client-shipping" placeholder="Street, City, State ZIP" rows="3"></textarea>
         </div>
       </div>
       <div class="modal-actions">
@@ -8355,6 +8367,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   /* ── Add Client Modal ───────────────────────────────────────────────────── */
   function openAddClientModal() {
     document.getElementById('add-client-form').reset();
+    // Reset shipping textarea state in case checkbox was left checked
+    const shipTa = document.getElementById('modal-client-shipping');
+    if (shipTa) { shipTa.disabled = false; shipTa.style.opacity = ''; }
     document.getElementById('client-modal-overlay').classList.add('open');
     setTimeout(() => document.getElementById('modal-client-name').focus(), 50);
   }
@@ -8370,7 +8385,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const email   = document.getElementById('modal-client-email').value.trim();
     const phone   = document.getElementById('modal-client-phone').value.trim();
     const billing = document.getElementById('modal-client-billing').value.trim();
-    const shipping= document.getElementById('modal-client-shipping').value.trim();
+    const sameChk = document.getElementById('modal-ship-same');
+    const shipping= sameChk && sameChk.checked ? billing : document.getElementById('modal-client-shipping').value.trim();
     if (!name) return;
 
     // Check if client already exists
@@ -8379,20 +8395,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
-    // Save to DB
-    const result = await apiCall('add_client', { name: name });
-    if (result.success) {
-      dbClientMap[name] = result.id;
-      const detail = { id: result.id, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' };
-      clientDetails[name] = detail;
-      // Save the detail fields immediately if any were provided
-      if (contact || email || phone || billing || shipping) {
-        await apiCall('save_client_detail', { id: result.id, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' });
-      }
-    }
-
-    // Add to client data
+    // ── Populate local state immediately so the UI renders right away ──
     clientData[name] = [];
+    clientDetails[name] = { id: null, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' };
 
     // Add to sidebar nav (in alphabetical order)
     const nav = document.querySelector('.sidebar-nav');
@@ -8401,13 +8406,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     newLink.className = 'nav-item';
     newLink.href = `#/client/${encodeURIComponent(name)}`;
     newLink.textContent = name;
-
     const insertBefore = links.find(a => a.textContent.trim().localeCompare(name) > 0);
-    if (insertBefore) {
-      nav.insertBefore(newLink, insertBefore);
-    } else {
-      nav.appendChild(newLink);
-    }
+    if (insertBefore) nav.insertBefore(newLink, insertBefore);
+    else nav.appendChild(newLink);
 
     // Add to workbook modal client dropdown
     const select = document.getElementById('modal-client');
@@ -8415,17 +8416,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     newOption.textContent = name;
     const options = Array.from(select.options).slice(1);
     const insertBeforeOpt = options.find(o => o.textContent.localeCompare(name) > 0);
-    if (insertBeforeOpt) {
-      select.insertBefore(newOption, insertBeforeOpt);
-    } else {
-      select.appendChild(newOption);
+    if (insertBeforeOpt) select.insertBefore(newOption, insertBeforeOpt);
+    else select.appendChild(newOption);
+
+    // ── Close modal and navigate immediately — user sees the page now ──
+    closeClientModal();
+    location.hash = `#/client/${encodeURIComponent(name)}`;
+
+    // ── Save to DB in the background ──
+    const result = await apiCall('add_client', { name });
+    if (result.success) {
+      dbClientMap[name] = result.id;
+      clientDetails[name].id = result.id;
+      if (contact || email || phone || billing || shipping) {
+        await apiCall('save_client_detail', { id: result.id, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' });
+      }
     }
 
     saveToLocalStorage();
-    closeClientModal();
-
-    // Navigate to the new client dashboard
-    location.hash = `#/client/${encodeURIComponent(name)}`;
   }
 
   /* ── Delete Workbook Modal ─────────────────────────────────────────────── */
