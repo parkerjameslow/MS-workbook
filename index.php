@@ -6614,6 +6614,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let rfqCount = 0;
   let _rfqVarCount = 0;
   let _wbLocked = false;
+  let _draggingVarId = null; // tracks which variant row is being dragged
 
   function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = []) {
     rfqCount++;
@@ -6707,38 +6708,99 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function recalcRfqTotals() {
-    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent])');
-    let totalQty = 0, totalUsd = 0, totalRmb = 0, totalUsdUnit = 0, maxLead = 0;
-    rows.forEach(row => {
-      const inputs = row.querySelectorAll('input:not([type="checkbox"])');
-      const qty = parseFloat(inputs[2]?.value) || 0;
-      const rmb = parseFloat(inputs[3]?.value) || 0;
-      const lead = inputs[4]?.value || '';
-      totalQty += qty;
-      totalRmb += rmb;
-      totalUsdUnit += rmb / USD_TO_RMB;
-      if (qty && rmb) totalUsd += qty * (rmb / USD_TO_RMB);
+    const fmt = (n, dec = 2) => n.toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
+
+    // ── 1. Collect per-item data ──────────────────────────────────────────
+    const parentRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent])');
+    let grandQty = 0, grandUsd = 0, grandRmb = 0, grandUsdUnit = 0, maxLead = 0;
+    const itemSummaries = [];
+
+    parentRows.forEach(row => {
+      const id      = parseInt(row.id.replace('rfq-', ''));
+      const inputs  = row.querySelectorAll('input:not([type="checkbox"])');
+      const name    = inputs[1]?.value?.trim() || '';
+      const qty     = parseFloat(inputs[2]?.value) || 0;
+      const rmb     = parseFloat(inputs[3]?.value) || 0;
+      const lead    = inputs[4]?.value || '';
+      const usd     = rmb / USD_TO_RMB;
+      const total   = qty * usd;
       const leadNum = parseInt(lead);
+
+      // Variant rows belonging to this parent
+      const varRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
+      let varRmbSum = 0, varUsdUnitSum = 0, varUsdTotal = 0;
+      varRows.forEach(vr => {
+        const vi   = vr.querySelectorAll('input');
+        const vQty = parseFloat(vi[1]?.value) || 0;
+        const vRmb = parseFloat(vi[2]?.value) || 0;
+        varRmbSum     += vRmb;
+        varUsdUnitSum += vRmb / USD_TO_RMB;
+        if (vQty && vRmb) varUsdTotal += vQty * (vRmb / USD_TO_RMB);
+      });
+
+      grandQty     += qty;
+      grandRmb     += rmb + varRmbSum;
+      grandUsdUnit += usd + varUsdUnitSum;
+      if (qty && rmb) grandUsd += total;
+      grandUsd += varUsdTotal;
       if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
+
+      if (name || qty || rmb) {
+        itemSummaries.push({ id, name, qty, rmb, usd, total, lead, varCount: varRows.length });
+      }
     });
-    // Also sum variant rows into totals
-    document.querySelectorAll('#rfq-body tr[data-rfq-parent]').forEach(row => {
-      const inputs = row.querySelectorAll('input');
-      const qty = parseFloat(inputs[1]?.value) || 0;
-      const rmb = parseFloat(inputs[2]?.value) || 0;
-      totalRmb += rmb;
-      totalUsdUnit += rmb / USD_TO_RMB;
-      if (qty && rmb) totalUsd += qty * (rmb / USD_TO_RMB);
-    });
-    // Total qty comes only from the first (fixed) row
-    const firstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent])');
-    const firstQty = firstRow ? parseFloat(firstRow.querySelectorAll('input:not([type="checkbox"])')[2]?.value) || 0 : 0;
-    document.getElementById('rfq-total-qty').textContent = firstQty ? firstQty.toLocaleString('en-US') : '—';
-    document.getElementById('rfq-total-rmb').textContent = totalRmb ? '¥ ' + totalRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    document.getElementById('rfq-total-usd-sum').textContent = totalUsdUnit ? '$' + totalUsdUnit.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    document.getElementById('rfq-total-usd').textContent = totalUsd ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    document.getElementById('rfq-max-lead').textContent = maxLead ? maxLead + ' days' : '—';
-    applyRfqRmbToTiers(totalRmb);
+
+    // ── 2. Inject per-item subtotal rows (only when useful) ──────────────
+    document.querySelectorAll('.rfq-item-subtotal').forEach(r => r.remove());
+
+    const totalsRow = document.getElementById('rfq-totals');
+    const showBreakdown = itemSummaries.length > 1
+                       || (itemSummaries.length === 1 && itemSummaries[0].varCount > 0);
+
+    if (showBreakdown && totalsRow) {
+      itemSummaries.forEach(item => {
+        const varBadge = item.varCount > 0
+          ? `<span style="font-size:10px;color:var(--text-muted);margin-left:5px;font-weight:400;">(${item.varCount} variant${item.varCount !== 1 ? 's' : ''})</span>`
+          : '';
+        const tr = document.createElement('tr');
+        tr.className = 'rfq-item-subtotal';
+        tr.style.borderTop = '1px solid var(--border)';
+        tr.innerHTML = `
+          <td></td><td></td><td></td>
+          <td style="font-size:12px;color:var(--text-muted);padding:7px 8px 7px 26px;font-weight:500;">
+            ${item.name || ('Item ' + item.id)}${varBadge}
+          </td>
+          <td style="font-size:12px;color:var(--text);font-weight:700;padding:7px 8px 7px 26px;">
+            ${item.qty ? item.qty.toLocaleString('en-US') : '—'}
+          </td>
+          <td style="font-size:12px;color:var(--text-muted);padding:7px 8px 7px 26px;">
+            ${item.rmb ? '¥' + fmt(item.rmb) : '—'}
+          </td>
+          <td style="font-size:12px;color:var(--text-muted);text-align:right;padding:7px 12px 7px 8px;">
+            ${item.rmb ? '$' + fmt(item.usd) : '—'}
+          </td>
+          <td style="font-size:12px;color:var(--text);font-weight:700;text-align:right;padding:7px 12px 7px 8px;">
+            ${item.total ? '$' + fmt(item.total) : '—'}
+          </td>
+          <td style="font-size:12px;color:var(--text-muted);padding:7px 8px 7px 26px;">
+            ${item.lead ? item.lead + ' days' : '—'}
+          </td>
+          <td></td>`;
+        totalsRow.before(tr);
+      });
+    }
+
+    // ── 3. Grand total row label + values ────────────────────────────────
+    const totalsLabel = totalsRow?.querySelector('td:nth-child(4)');
+    if (totalsLabel) totalsLabel.textContent = showBreakdown ? 'GRAND TOTAL' : 'TOTALS';
+
+    document.getElementById('rfq-total-qty').textContent     = grandQty     ? grandQty.toLocaleString('en-US') : '—';
+    document.getElementById('rfq-total-rmb').textContent     = grandRmb     ? '¥ ' + fmt(grandRmb)             : '—';
+    document.getElementById('rfq-total-usd-sum').textContent = grandUsdUnit ? '$'  + fmt(grandUsdUnit)         : '—';
+    document.getElementById('rfq-total-usd').textContent     = grandUsd     ? '$'  + fmt(grandUsd)             : '—';
+    document.getElementById('rfq-max-lead').textContent      = maxLead      ? maxLead + ' days'                : '—';
+
+    applyRfqRmbToTiers(grandRmb);
   }
 
   function applyRfqRmbToTiers(totalRmb) {
@@ -6783,8 +6845,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.id = `rfq-var-${vid}`;
     tr.classList.add('rfq-variant-row');
     tr.setAttribute('data-rfq-parent', parentId);
+    // Accept drops from other variants in the same parent
+    tr.ondragover  = function(e) { if (_draggingVarId !== null) { e.preventDefault(); tr.style.borderTop = '2px solid var(--accent)'; } };
+    tr.ondragleave = function()  { tr.style.borderTop = ''; };
+    tr.ondrop      = function(e) { e.preventDefault(); tr.style.borderTop = ''; rfqDropVariant(vid); };
     tr.innerHTML = `
-      <td></td>
+      <td title="Drag to reorder" style="cursor:grab; color:var(--text-muted); text-align:center; padding:0 6px; user-select:none; font-size:12px;"
+          onmousedown="this.closest('tr').draggable=true"
+          onmouseup="this.closest('tr').draggable=false"
+          ondragstart="_draggingVarId=${vid}; this.closest('tr').style.opacity='0.4'"
+          ondragend="_draggingVarId=null; this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false">☰</td>
       <td></td>
       <td></td>
       <td><input type="text" placeholder="e.g. Small / Red…" value="${variant}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
@@ -6837,6 +6907,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     row?.remove();
     if (parentId) syncParentQtyFromVariants(parentId);
     recalcRfqTotals();
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  function rfqDropVariant(targetVid) {
+    const srcVid = _draggingVarId;
+    _draggingVarId = null;
+    if (!srcVid || srcVid === targetVid) return;
+    const srcRow = document.getElementById(`rfq-var-${srcVid}`);
+    const tgtRow = document.getElementById(`rfq-var-${targetVid}`);
+    if (!srcRow || !tgtRow) return;
+    // Only allow reorder within the same parent line item
+    if (srcRow.dataset.rfqParent !== tgtRow.dataset.rfqParent) return;
+    tgtRow.before(srcRow);
     if (!_filling) autoSaveWorkbook();
   }
 
