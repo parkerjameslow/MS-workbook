@@ -6409,7 +6409,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td style="text-align:center; padding:24px 8px 4px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
       <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals()" style="${inputStyle}" /></td>
       <td>
-        <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
+        <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" onblur="(function(itemEl){const skuEl=itemEl.closest('tr').querySelectorAll('input')[1];if(!skuEl.value.trim()&&itemEl.value.trim()){skuEl.value=generateSku(itemEl.value.trim());skuEl.title=skuEl.value;}})(this)" style="${inputStyle}" />
         <button type="button" onclick="addRfqVariantRow(${id})" style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:11px; font-weight:600; padding:3px 0 0 2px; line-height:1; display:inline-flex; align-items:center; gap:3px; margin-top:4px; font-family:inherit; letter-spacing:0.02em;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">
           <span style="font-size:13px; line-height:1;">+</span> Add Variant
         </button>
