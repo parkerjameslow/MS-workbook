@@ -1408,6 +1408,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--accent);
     }
 
+    .col-order { width: 120px; white-space: nowrap; }
+
     .wb-order-pill {
       display: inline-flex;
       align-items: center;
@@ -3588,6 +3590,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th class="sortable" onclick="sortClientTable('product')">Product <span class="sort-arrow"></span></th>
               <th class="col-date-created sortable" onclick="sortClientTable('date')">Date Created <span class="sort-arrow"></span></th>
               <th class="col-date-submitted sortable" onclick="sortClientTable('dateSubmitted')">Date Submitted <span class="sort-arrow"></span></th>
+              <th class="col-order">Order</th>
               <th class="col-flow">Fulfilment (Flow)</th>
               <th class="col-mobile-status sortable" onclick="sortClientTable('status')">Status <span class="sort-arrow"></span></th>
               <th></th>
@@ -9244,26 +9247,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const stepName = getCurrentStepName(item.flow);
       const stepClass = complete ? 'complete' : 'in-progress';
 
-      // Order membership pill
+      // Order column
       const orderInfo = wbOrderMap[parseInt(item.id)];
-      const orderPill = orderInfo
+      const orderCell = orderInfo
         ? `<span class="wb-order-pill ${orderInfo.orderStatus === 'complete' ? 'wb-order-pill--closed' : ''}"
               onclick="event.stopPropagation(); location.hash='#/orders'"
-              title="Part of ${orderInfo.orderName}">
-              📦 ${orderInfo.orderName}
-           </span>`
-        : '';
+              title="View order">${orderInfo.orderName}</span>`
+        : '<span style="color:var(--text-muted);">—</span>';
 
       return `
       <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
-        <td class="product-name">
-          <div style="display:flex; flex-direction:column; gap:4px;">
-            <span>${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</span>
-            ${orderPill}
-          </div>
-        </td>
+        <td class="product-name">${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
+        <td class="col-order">${orderCell}</td>
         <td class="col-flow">
           <div class="flow-group">
             ${flowSteps.map((s, i) => `
