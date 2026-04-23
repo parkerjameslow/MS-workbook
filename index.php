@@ -4986,6 +4986,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
         <span class="section-title" style="margin-right:auto;">Orders</span>
+        <button class="btn btn-ghost" onclick="exportAllOrdersCsv()" title="Export all orders to CSV" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export All
+        </button>
         <button class="btn btn-primary" onclick="openNewOrderModal()">+ Create Order</button>
       </div>
       <div class="section-body">
@@ -5060,6 +5064,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             oninput="onOrderDepositPctChange()" />
         </div>
         <div id="order-detail-date-tag" style="font-size:12px; color:var(--text-muted); padding:0 4px;"></div>
+        <button class="btn btn-ghost" onclick="exportOrderCsv(_currentOrderId)" title="Export this order to CSV" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV
+        </button>
         <button class="btn-danger" onclick="deleteOrder(_currentOrderId)">Delete</button>
       </div>
     </div>
@@ -11595,6 +11603,66 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── List view ────────────────────────────────────────────────────────
+  /* ── CSV Export ─────────────────────────────────────────────────────────── */
+  function downloadCsv(filename, headers, rows) {
+    const esc = v => {
+      const s = (v == null ? '' : String(v));
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const csv = [headers, ...rows].map(r => r.map(esc).join(',')).join('\r\n');
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' })),
+      download: filename
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  function buildOrderRows(o) {
+    const rate = USD_TO_RMB || 7.24;
+    const f2 = v => v > 0 ? parseFloat(v).toFixed(2) : '';
+    const rows = [];
+    const statusLabel = { draft:'Draft', confirmed:'Confirmed', in_production:'In Production', complete:'Complete' };
+    (o.entries || []).forEach(entry => {
+      const detail   = workbookDetail[`${entry.clientName}|${entry.workbookId}`] || {};
+      const product  = detail.product || `Workbook #${entry.workbookId}`;
+      const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
+      const base = [o.name || `Order #${o.id}`, o.dateCreated || '', o.clientName || '', o.poNumber || '', statusLabel[o.status] || o.status, product];
+      if (!rfqItems.length) {
+        rows.push([...base, '', '', '', '', '', '', '']);
+      } else {
+        rfqItems.forEach(item => {
+          const rmb   = parseFloat(item.priceRmb) || 0;
+          const qty   = parseFloat(item.qty)      || 0;
+          const usd   = rmb / rate;
+          rows.push([...base, item.item || '', item.sku || '', qty || '', f2(rmb), f2(usd), f2(rmb * qty), f2((rmb * qty) / rate)]);
+        });
+      }
+    });
+    return rows;
+  }
+
+  function exportOrderCsv(orderId) {
+    const o = orderData[orderId != null ? orderId : _currentOrderId];
+    if (!o) return;
+    const headers = ['Order','Date','Client','PO #','Status','Product','Item','SKU','Qty','Unit Price (RMB)','Unit Price (USD)','Total (RMB)','Total (USD)'];
+    const rows = buildOrderRows(o);
+    // Totals row
+    const totalUsd = rows.reduce((s, r) => s + (parseFloat(r[12]) || 0), 0);
+    const totalRmb = rows.reduce((s, r) => s + (parseFloat(r[11]) || 0), 0);
+    rows.push(['','','','','','','','','TOTAL','','',totalRmb.toFixed(2), totalUsd.toFixed(2)]);
+    downloadCsv(`${(o.name || 'Order').replace(/[^a-z0-9]/gi,'-')}.csv`, headers, rows);
+  }
+
+  function exportAllOrdersCsv() {
+    const orders = Object.values(orderData);
+    if (!orders.length) { alert('No orders to export.'); return; }
+    const headers = ['Order','Date','Client','PO #','Status','Product','Item','SKU','Qty','Unit Price (RMB)','Unit Price (USD)','Total (RMB)','Total (USD)'];
+    const rows = orders.flatMap(o => buildOrderRows(o));
+    const today = new Date().toISOString().slice(0,10);
+    downloadCsv(`All-Orders-${today}.csv`, headers, rows);
+  }
+
   function renderOrdersList() {
     document.getElementById('header-title').textContent = 'Orders';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
