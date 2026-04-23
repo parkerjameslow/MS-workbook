@@ -3758,13 +3758,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
     <div class="fx-calc" title="Currency calculator — type in either field">
       <span class="fx-calc-sym">¥</span>
-      <input class="fx-calc-input" id="hdr-calc-rmb" type="number" step="0.01" min="0"
-             placeholder="RMB" autocomplete="off" inputmode="decimal"
+      <input class="fx-calc-input" id="hdr-calc-rmb" type="text" inputmode="decimal"
+             placeholder="RMB" autocomplete="off"
              oninput="hdrCalcRmbToUsd()" />
       <div class="fx-calc-divider"></div>
       <span class="fx-calc-sym">$</span>
-      <input class="fx-calc-input" id="hdr-calc-usd" type="number" step="0.01" min="0"
-             placeholder="USD" autocomplete="off" inputmode="decimal"
+      <input class="fx-calc-input" id="hdr-calc-usd" type="text" inputmode="decimal"
+             placeholder="USD" autocomplete="off"
              oninput="hdrCalcUsdToRmb()" />
     </div>
     <span id="fx-rate-display" title="Live CNY→USD exchange rate" style="font-size:11px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:3px 8px; white-space:nowrap; letter-spacing:0.02em;">1 ¥ = $—</span>
@@ -6622,15 +6622,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Header currency calculator ───────────────────────────────────────────
+  const _fmtCalc = n => n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const _parseCalc = s => parseFloat(String(s).replace(/,/g, '')) || 0;
+
   function hdrCalcRmbToUsd() {
-    const rmb = parseFloat(document.getElementById('hdr-calc-rmb').value);
+    const rmb = _parseCalc(document.getElementById('hdr-calc-rmb').value);
     const usdEl = document.getElementById('hdr-calc-usd');
-    usdEl.value = (rmb > 0) ? (rmb / USD_TO_RMB).toFixed(4) : '';
+    usdEl.value = rmb > 0 ? _fmtCalc(rmb / USD_TO_RMB) : '';
   }
   function hdrCalcUsdToRmb() {
-    const usd = parseFloat(document.getElementById('hdr-calc-usd').value);
+    const usd = _parseCalc(document.getElementById('hdr-calc-usd').value);
     const rmbEl = document.getElementById('hdr-calc-rmb');
-    rmbEl.value = (usd > 0) ? (usd * USD_TO_RMB).toFixed(4) : '';
+    rmbEl.value = usd > 0 ? _fmtCalc(usd * USD_TO_RMB) : '';
   }
 
   async function fetchLiveRate() {
