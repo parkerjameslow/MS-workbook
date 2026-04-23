@@ -181,10 +181,50 @@ function portalNotify(array $order, array $items, float $rate, string $clName, s
         $subject = "✓ Order Approved — {$orderName}";
         $badge   = "<div style='margin-bottom:20px;'><span style='background:#27ae60;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:5px 14px;border-radius:20px;'>Approved</span></div>";
 
+        // Build approved order table (all items green)
+        $approvedRows = '';
+        $prevProd     = null;
+        foreach ($items as $itm) {
+            $product  = $itm['product'] ?? '';
+            $itemName = $itm['item']    ?? '';
+            $sku      = $itm['sku']     ?? '';
+            $qty      = (float)($itm['qty']      ?? 0);
+            $priceRmb = (float)($itm['priceRmb'] ?? 0);
+            if (!$itemName && !$qty && !$priceRmb) continue;
+            $unitUsd = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
+            $totUsd  = ($priceRmb > 0 && $qty > 0 && $rate > 0) ? '$' . number_format(($priceRmb / $rate) * $qty, 2) : '—';
+            $qtyFmt  = $qty > 0 ? number_format($qty) : '—';
+            if ($product !== $prevProd && $product !== '') {
+                $approvedRows .= '<tr style="background:#f8f9fb;"><td colspan="6" style="padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;border-top:1px solid #e5e7eb;">'
+                               . htmlspecialchars($product) . '</td></tr>';
+                $prevProd = $product;
+            }
+            $approvedRows .= '<tr style="border-top:1px solid #f5f6f8;">'
+                           . "<td style='padding:10px 10px;text-align:center;width:32px;'><span style='display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#dcfce7;color:#16a34a;'><svg width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg></span></td>"
+                           . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;'>" . htmlspecialchars($itemName) . "</td>"
+                           . "<td style='padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;'>" . htmlspecialchars($sku) . "</td>"
+                           . "<td style='padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;'>" . $qtyFmt . "</td>"
+                           . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;'>" . $unitUsd . "</td>"
+                           . "<td style='padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;'>" . $totUsd . "</td>"
+                           . '</tr>';
+        }
+        $approvedThead = '<thead><tr style="background:#f8f9fb;">'
+                       . '<th style="padding:10px 10px;width:32px;"></th>'
+                       . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:left;">Item</th>'
+                       . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:left;">SKU</th>'
+                       . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:center;">Qty</th>'
+                       . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:right;">Unit (USD)</th>'
+                       . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:right;">Total</th>'
+                       . '</tr></thead>';
+        $approvedTable = '<h3 style="margin:24px 0 10px;font-size:15px;font-weight:700;color:#1a1d2e;">Approved Order Items</h3>'
+                       . '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">'
+                       . $approvedThead . '<tbody>' . $approvedRows . '</tbody></table>';
+
         $body = $badge
               . "<h1 style='margin:0 0 8px;font-size:24px;font-weight:800;color:#1a1d2e;'>Order Approved by Client</h1>"
-              . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>" . htmlspecialchars($clName) . " has reviewed and approved their order.</p>"
+              . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>" . htmlspecialchars($clName) . " has reviewed and approved all items.</p>"
               . internalDetailTable($clName, $clEmail, $orderName, $po, '')
+              . $approvedTable
               . ($comment
                     ? "<div style='margin:20px 0;padding:16px;background:#f0fdf4;border-left:4px solid #27ae60;border-radius:4px;'>"
                     . "<p style='margin:0 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;'>Client Comment</p>"
@@ -195,31 +235,98 @@ function portalNotify(array $order, array $items, float $rate, string $clName, s
         $subject = "⚠ Change Request — {$orderName}";
         $badge   = "<div style='margin-bottom:20px;'><span style='background:#E8751A;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:5px 14px;border-radius:20px;'>Changes Requested</span></div>";
 
-        $changesHtml = '';
-        if (!empty($changes)) {
-            $changesHtml .= "<h3 style='margin:24px 0 12px;font-size:15px;font-weight:700;color:#1a1d2e;'>Requested Changes</h3>"
-                         . '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">'
-                         . '<thead><tr style="background:#f8f9fb;">'
-                         . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:left;">Product / Item</th>'
-                         . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:left;">SKU</th>'
-                         . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:left;">Requested Change</th>'
-                         . '</tr></thead><tbody>';
-            foreach ($changes as $i => $c) {
-                $bg    = $i % 2 === 0 ? '#ffffff' : '#f8f9fb';
-                $label = $c['product'] ? htmlspecialchars($c['product']) . ' &rsaquo; ' . htmlspecialchars($c['item']) : htmlspecialchars($c['item']);
-                $changesHtml .= "<tr style='background:{$bg};border-top:1px solid #f0f2f5;'>"
-                             . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;'>{$label}</td>"
-                             . "<td style='padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;'>" . htmlspecialchars($c['sku'] ?? '') . "</td>"
-                             . "<td style='padding:10px 12px;font-size:14px;color:#374151;'>" . nl2br(htmlspecialchars($c['note'])) . "</td></tr>";
-            }
-            $changesHtml .= '</tbody></table>';
+        // Build a lookup: item index → change note
+        $changeByIdx = [];
+        foreach ($changes as $c) {
+            $changeByIdx[(int)$c['idx']] = $c['note'];
         }
+        $flaggedCount  = count($changes);
+        $approvedCount = count($items) - $flaggedCount;
+
+        // Full order table — all items, approved ✓ or flagged ⚑ inline
+        $fullTableRows = '';
+        $prevProduct   = null;
+        foreach ($items as $idx => $itm) {
+            $product  = $itm['product'] ?? '';
+            $itemName = $itm['item']    ?? '';
+            $sku      = $itm['sku']     ?? '';
+            $qty      = (float)($itm['qty']      ?? 0);
+            $priceRmb = (float)($itm['priceRmb'] ?? 0);
+            if (!$itemName && !$qty && !$priceRmb) continue;
+
+            $isFlagged = isset($changeByIdx[$idx]);
+            $rowBg     = $isFlagged ? '#fffbf5' : '#ffffff';
+
+            $unitUsd = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
+            $totUsd  = ($priceRmb > 0 && $qty > 0 && $rate > 0) ? '$' . number_format(($priceRmb / $rate) * $qty, 2) : '—';
+            $qtyFmt  = $qty > 0 ? number_format($qty) : '—';
+
+            // Product group header
+            if ($product !== $prevProduct && $product !== '') {
+                $fullTableRows .= '<tr style="background:#f8f9fb;"><td colspan="6" style="padding:7px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;border-top:1px solid #e5e7eb;">'
+                                . htmlspecialchars($product) . '</td></tr>';
+                $prevProduct = $product;
+            }
+
+            // Status cell
+            if ($isFlagged) {
+                $statusCell = "<td style='padding:10px 10px;text-align:center;width:32px;'>"
+                            . "<span style='display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#fff7ed;color:#E8751A;'>"
+                            . "<svg width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z'/><line x1='4' y1='22' x2='4' y2='15'/></svg>"
+                            . "</span></td>";
+            } else {
+                $statusCell = "<td style='padding:10px 10px;text-align:center;width:32px;'>"
+                            . "<span style='display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#dcfce7;color:#16a34a;'>"
+                            . "<svg width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg>"
+                            . "</span></td>";
+            }
+
+            $fullTableRows .= "<tr style='background:{$rowBg};border-top:1px solid #f5f6f8;'>"
+                           . $statusCell
+                           . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;'>" . htmlspecialchars($itemName) . "</td>"
+                           . "<td style='padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;'>" . htmlspecialchars($sku) . "</td>"
+                           . "<td style='padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;'>" . $qtyFmt . "</td>"
+                           . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;'>" . $unitUsd . "</td>"
+                           . "<td style='padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;'>" . $totUsd . "</td>"
+                           . "</tr>";
+
+            // Change note row (only for flagged items)
+            if ($isFlagged) {
+                $fullTableRows .= "<tr style='background:#fff7ed;border-top:1px solid #fde5cc;'>"
+                               . "<td style='padding:0 10px 10px;'></td>"
+                               . "<td colspan='5' style='padding:4px 12px 10px;'>"
+                               . "<div style='display:flex;gap:6px;align-items:flex-start;'>"
+                               . "<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='#E8751A' stroke-width='2' style='flex-shrink:0;margin-top:2px;'><path d='M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'/></svg>"
+                               . "<span style='font-size:13px;color:#374151;line-height:1.5;'>" . nl2br(htmlspecialchars($changeByIdx[$idx])) . "</span>"
+                               . "</div></td></tr>";
+            }
+        }
+
+        $summaryLine = "<p style='margin:0 0 6px;font-size:13px;color:#6b7280;'>"
+                     . "<span style='color:#16a34a;font-weight:700;'>{$approvedCount} item" . ($approvedCount !== 1 ? 's' : '') . " approved</span>"
+                     . " &nbsp;·&nbsp; "
+                     . "<span style='color:#E8751A;font-weight:700;'>{$flaggedCount} item" . ($flaggedCount !== 1 ? 's' : '') . " need" . ($flaggedCount === 1 ? 's' : '') . " changes</span>"
+                     . "</p>";
+
+        $thead = '<thead><tr style="background:#f8f9fb;">'
+               . '<th style="padding:10px 10px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:center;width:32px;"></th>'
+               . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:left;">Item</th>'
+               . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:left;">SKU</th>'
+               . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:center;">Qty</th>'
+               . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:right;">Unit (USD)</th>'
+               . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;text-align:right;">Total</th>'
+               . '</tr></thead>';
+
+        $fullOrderTable = '<h3 style="margin:24px 0 8px;font-size:15px;font-weight:700;color:#1a1d2e;">Full Order Summary</h3>'
+                        . $summaryLine
+                        . '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin:12px 0 0;">'
+                        . $thead . '<tbody>' . $fullTableRows . '</tbody></table>';
 
         $body = $badge
               . "<h1 style='margin:0 0 8px;font-size:24px;font-weight:800;color:#1a1d2e;'>Change Request Received</h1>"
               . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>" . htmlspecialchars($clName) . " has requested changes to their order. Please review and resend an updated order link.</p>"
               . internalDetailTable($clName, $clEmail, $orderName, $po, '')
-              . $changesHtml
+              . $fullOrderTable
               . ($comment
                     ? "<div style='margin:20px 0;padding:16px;background:#fff7ed;border-left:4px solid #E8751A;border-radius:4px;'>"
                     . "<p style='margin:0 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;'>Additional Comments</p>"
