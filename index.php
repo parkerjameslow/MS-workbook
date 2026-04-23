@@ -244,7 +244,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .nav-item .nav-star-btn.starred { display: inline-flex; color: #f5a623; opacity: 1; }
     .nav-star-btn:hover { opacity: 1 !important; }
 
-    /* Delete button (shown when active) */
+    /* Delete button (shown on hover or when active) */
     .nav-item .client-delete-btn {
       display: none;
       background: none;
@@ -258,7 +258,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       line-height: 1;
       flex-shrink: 0;
     }
-    .nav-item.active .client-delete-btn { display: inline-flex; }
+    .nav-item.active .client-delete-btn,
+    .nav-item:hover .client-delete-btn { display: inline-flex; }
     .nav-item .client-delete-btn:hover { color: #e53e3e; background: rgba(229,62,62,0.1); }
 
     /* When both star and delete are shown on active starred item */
@@ -8903,39 +8904,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // ── Populate local state immediately so the UI renders right away ──
     clientData[name] = [];
     clientDetails[name] = { id: null, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' };
-
-    // Add to sidebar nav (in alphabetical order)
-    const nav = document.querySelector('.sidebar-nav');
-    const links = Array.from(nav.querySelectorAll('.nav-item'));
-    const newLink = document.createElement('a');
-    newLink.className = 'nav-item';
-    newLink.href = `#/client/${encodeURIComponent(name)}`;
-    newLink.textContent = name;
-    const insertBefore = links.find(a => a.textContent.trim().localeCompare(name) > 0);
-    if (insertBefore) nav.insertBefore(newLink, insertBefore);
-    else nav.appendChild(newLink);
-
-    // Add to workbook modal client dropdown
-    const select = document.getElementById('modal-client');
-    const newOption = document.createElement('option');
-    newOption.textContent = name;
-    const options = Array.from(select.options).slice(1);
-    const insertBeforeOpt = options.find(o => o.textContent.localeCompare(name) > 0);
-    if (insertBeforeOpt) select.insertBefore(newOption, insertBeforeOpt);
-    else select.appendChild(newOption);
+    rebuildSidebar(); // handles nav items (with avatar/star/delete) + modal dropdown
 
     // ── Close modal and navigate immediately — user sees the page now ──
     closeClientModal();
     location.hash = `#/client/${encodeURIComponent(name)}`;
 
-    // ── Save to DB in the background ──
+    // ── Save to DB and show toast ──
     const result = await apiCall('add_client', { name });
+    const s = document.getElementById('save-status');
     if (result.success) {
       dbClientMap[name] = result.id;
       clientDetails[name].id = result.id;
       if (contact || email || phone || billing || shipping) {
         await apiCall('save_client_detail', { id: result.id, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' });
       }
+      if (s) { s.textContent = `✓ Client "${name}" created`; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 3500); }
+    } else {
+      if (s) { s.textContent = `⚠ Failed to save client to database`; s.style.color = 'var(--danger)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 4000); }
     }
 
     saveToLocalStorage();
