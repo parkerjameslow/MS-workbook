@@ -5104,12 +5104,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
 <!-- ── Add Client Modal ───────────────────────────────────────────────── -->
 <div class="modal-overlay" id="client-modal-overlay" onclick="if(event.target===this)closeClientModal()">
-  <div class="modal">
+  <div class="modal" style="width:560px;">
     <div class="modal-title">Add Client</div>
     <form id="add-client-form" onsubmit="createClient(event)">
       <div class="modal-field">
         <label>Client Name <span class="required">*</span></label>
         <input type="text" id="modal-client-name" placeholder="e.g. Acme Corp" required />
+      </div>
+      <div class="modal-field">
+        <label>Primary Contact</label>
+        <input type="text" id="modal-client-contact" placeholder="e.g. Jane Smith" />
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Email Address</label>
+          <input type="email" id="modal-client-email" placeholder="contact@company.com" />
+        </div>
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Phone</label>
+          <input type="tel" id="modal-client-phone" placeholder="+1 (555) 000-0000" />
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;">
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Billing Address</label>
+          <textarea id="modal-client-billing" placeholder="Street, City, State ZIP" rows="3"></textarea>
+        </div>
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Shipping Address</label>
+          <textarea id="modal-client-shipping" placeholder="Same as billing or different" rows="3"></textarea>
+        </div>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn-cancel" onclick="closeClientModal()">Cancel</button>
@@ -8341,7 +8365,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   async function createClient(e) {
     e.preventDefault();
-    const name = document.getElementById('modal-client-name').value.trim();
+    const name    = document.getElementById('modal-client-name').value.trim();
+    const contact = document.getElementById('modal-client-contact').value.trim();
+    const email   = document.getElementById('modal-client-email').value.trim();
+    const phone   = document.getElementById('modal-client-phone').value.trim();
+    const billing = document.getElementById('modal-client-billing').value.trim();
+    const shipping= document.getElementById('modal-client-shipping').value.trim();
     if (!name) return;
 
     // Check if client already exists
@@ -8354,7 +8383,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const result = await apiCall('add_client', { name: name });
     if (result.success) {
       dbClientMap[name] = result.id;
-      clientDetails[name] = { id: result.id, email: '', phone: '', primary_contact: '', billing_address: '', shipping_address: '', notes: '' };
+      const detail = { id: result.id, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' };
+      clientDetails[name] = detail;
+      // Save the detail fields immediately if any were provided
+      if (contact || email || phone || billing || shipping) {
+        await apiCall('save_client_detail', { id: result.id, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' });
+      }
     }
 
     // Add to client data
