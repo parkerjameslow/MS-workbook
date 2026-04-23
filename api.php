@@ -1030,6 +1030,8 @@ switch ($action) {
                 ];
             }
 
+            $appUrl = $details['app_url'] ?? '';
+
             // Generate portal token for quote review
             if (!empty($quoteItems)) {
                 $portalToken   = bin2hex(random_bytes(32));
@@ -1040,6 +1042,7 @@ switch ($action) {
                         'dateCreated' => date('Y-m-d'),
                         'clientName'  => $clientName,
                         'type'        => 'quote',
+                        'appUrl'      => $appUrl,
                     ],
                     'items' => $quoteItems,
                     'rate'  => $rate,
@@ -1087,10 +1090,17 @@ switch ($action) {
             ];
             if ($portalUrl) $i_detail[] = ['Portal Link', '<a href="' . htmlspecialchars($portalUrl) . '" style="color:#E8751A;">' . htmlspecialchars($portalUrl) . '</a>'];
 
+            $appBtn_quote = $appUrl
+                ? "<div style='margin:24px 0 0;'><a href='" . htmlspecialchars($appUrl) . "' style='display:inline-flex;align-items:center;gap:8px;background:#181b26;color:#f0f1f5;font-size:13px;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:8px;border:1px solid #3a3f5c;'>"
+                . "<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='#E8751A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/><polyline points='7 10 12 15 17 10'/><line x1='12' y1='15' x2='12' y2='3'/></svg>"
+                . "Open Workbook in App &rarr;</a></div>"
+                : '';
+
             $i_body = "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>Quote Sent — " . htmlspecialchars($product) . "</h1>"
                     . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>Internal notification</p>"
                     . ms_detail_table($i_detail)
-                    . $rfq_tbl_internal;
+                    . $rfq_tbl_internal
+                    . $appBtn_quote;
 
             $client_html   = ms_email_wrap($subject, "Your quote for {$product} is ready to review.", $c_body);
             $internal_html = ms_email_wrap("[Internal] " . $subject, "Quote sent to {$clientName}", $i_body);
@@ -1126,6 +1136,7 @@ switch ($action) {
             }
 
             // Generate portal token for order_confirmed
+            $appUrl = $details['app_url'] ?? '';
             if ($type === 'order_confirmed' && !empty($orderItems)) {
                 $portalToken  = bin2hex(random_bytes(32));
                 $orderSnapshot = json_encode([
@@ -1134,6 +1145,7 @@ switch ($action) {
                         'poNumber'    => $po,
                         'dateCreated' => date('Y-m-d'),
                         'clientName'  => $clientName,
+                        'appUrl'      => $appUrl,
                     ],
                     'items' => $orderItems,
                     'rate'  => $rate,
@@ -1197,11 +1209,18 @@ switch ($action) {
             if ($po) $i_detail[] = ['PO Number', htmlspecialchars($po)];
             if ($portalUrl) $i_detail[] = ['Portal Link', '<a href="' . htmlspecialchars($portalUrl) . '" style="color:#E8751A;">' . htmlspecialchars($portalUrl) . '</a>'];
 
+            $appBtn_order = $appUrl
+                ? "<div style='margin:24px 0 0;'><a href='" . htmlspecialchars($appUrl) . "' style='display:inline-flex;align-items:center;gap:8px;background:#181b26;color:#f0f1f5;font-size:13px;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:8px;border:1px solid #3a3f5c;'>"
+                . "<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='#E8751A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/><polyline points='7 10 12 15 17 10'/><line x1='12' y1='15' x2='12' y2='3'/></svg>"
+                . "Open Order in App &rarr;</a></div>"
+                : '';
+
             $i_body = $badge
                     . "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>" . htmlspecialchars($order_name) . "</h1>"
                     . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>Internal — client has been notified.</p>"
                     . ms_detail_table($i_detail)
-                    . $order_tbl_internal;
+                    . $order_tbl_internal
+                    . $appBtn_order;
 
             $client_html   = ms_email_wrap($subject, $subtitle, $c_body);
             $internal_html = ms_email_wrap("[Internal] " . $subject, "Sent to {$clientName}", $i_body);

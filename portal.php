@@ -178,6 +178,7 @@ function portalNotify(array $order, array $items, float $rate, string $clName, s
     $internal  = ['jackson@marketsculpt.com', 'parker@marketsculpt.com'];
     $orderName = $order['name'] ?? 'Order';
     $po        = $order['poNumber'] ?? $order['po_number'] ?? '';
+    $appUrl    = $order['appUrl']   ?? $order['app_url']   ?? '';
 
     if ($status === 'approved') {
         $subject = "✓ Order Approved — {$orderName}";
@@ -334,6 +335,14 @@ function portalNotify(array $order, array $items, float $rate, string $clName, s
                     . "<p style='margin:0 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;color:#9ba3c0;'>Additional Comments</p>"
                     . "<p style='margin:0;font-size:14px;color:#374151;'>" . nl2br(htmlspecialchars($comment)) . "</p></div>"
                     : '');
+    }
+
+    // App deep link button — internal email only
+    if ($appUrl) {
+        $body .= "<div style='margin:24px 0 0;'>"
+               . "<a href='" . htmlspecialchars($appUrl) . "' style='display:inline-flex;align-items:center;gap:8px;background:#181b26;color:#f0f1f5;font-size:13px;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:8px;border:1px solid #3a3f5c;'>"
+               . "<svg width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='#E8751A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/><polyline points='7 10 12 15 17 10'/><line x1='12' y1='15' x2='12' y2='3'/></svg>"
+               . "Open Order in App &rarr;</a></div>";
     }
 
     $html = portalEmailWrap($subject, $subject, $body);
