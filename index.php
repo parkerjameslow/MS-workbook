@@ -9260,7 +9260,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       return `
       <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
-        <td class="product-name">${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</td>
+        <td class="product-name">${item.product}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
         <td class="col-order">${orderCell}</td>
