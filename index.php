@@ -3475,6 +3475,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .ship-order-card:last-child { margin-bottom: 0; }
     .ship-order-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+    .ship-order-card.has-change-request { border-color: rgba(232,117,26,0.5); box-shadow: 0 0 0 1px rgba(232,117,26,0.18); }
+    /* Change-request banner inside an order card within shipment detail */
+    .soc-cr-banner {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px; background: rgba(232,117,26,0.07);
+      border-top: 1px solid rgba(232,117,26,0.2);
+      font-size: 12px; font-weight: 600; color: #E8751A;
+    }
+    .soc-cr-banner a {
+      margin-left: auto; color: #E8751A; font-weight: 700;
+      text-decoration: none; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 3px;
+    }
+    .soc-cr-banner a:hover { text-decoration: underline; }
+    /* Orange border on shipment list card when any order has a change request */
+    .shipment-card.has-change-request { border-color: rgba(232,117,26,0.5); box-shadow: 0 0 0 1px rgba(232,117,26,0.15); }
     .ship-order-card-header {
       display: flex; align-items: center; justify-content: space-between;
       padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
@@ -3665,7 +3681,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
   <div class="header-actions">
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
-    <span id="fx-rate-display" title="Live USD→CNY exchange rate" style="font-size:11px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:3px 8px; white-space:nowrap; letter-spacing:0.02em;">¥— / $1</span>
+    <span id="fx-rate-display" title="Live CNY→USD exchange rate" style="font-size:11px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:3px 8px; white-space:nowrap; letter-spacing:0.02em;">1 ¥ = $—</span>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-btn" onclick="toggleUserDropdown()" title="Account">
         <span style="font-size:16px;">👤</span>
@@ -6508,34 +6524,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const rowId = parseInt(tr.id.replace('rfq-variant-', ''));
       if (!isNaN(rowId)) recalcRfqVariantRow(rowId);
     });
-    // Update rate indicator in header
+    // Update rate indicator in header  (shows: 1 ¥ = $X.XXXX)
     const el = document.getElementById('fx-rate-display');
     if (el) {
       const now = new Date();
       const time = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      el.textContent = `¥${rate.toFixed(4)} / $1`;
-      el.title = `USD → CNY rate: ${rate.toFixed(4)} (${source}, updated ${time})`;
+      const cnyToUsd = (1 / rate).toFixed(4);
+      el.textContent = `1 ¥ = $${cnyToUsd}`;
+      el.title = `CNY → USD rate: $${cnyToUsd} per Yuan (source: ${source}, updated ${time})`;
     }
   }
 
   async function fetchLiveRate() {
-    // Check localStorage cache first
+    // Check localStorage cache first (30-min TTL)
     try {
       const cached = JSON.parse(localStorage.getItem('fx_usd_cny') || 'null');
       if (cached && cached.rate && (Date.now() - cached.ts) < RATE_TTL) {
         applyNewRate(cached.rate, 'cached');
-        return; // still fresh — no API call needed
+        return;
       }
     } catch(e) {}
 
-    // Cache stale or missing — fetch fresh
+    // Cache stale or missing — call PHP proxy (tries XE.com, falls back to open.er-api.com)
+    try {
+      const data = await apiCall('get_fx_rate');
+      if (data && data.rate) {
+        localStorage.setItem('fx_usd_cny', JSON.stringify({ rate: data.rate, ts: Date.now() }));
+        applyNewRate(data.rate, data.source || 'live');
+        return;
+      }
+    } catch(e) {}
+
+    // Last-resort: fetch open.er-api.com directly from browser
     try {
       const res = await fetch('https://open.er-api.com/v6/latest/USD');
       const data = await res.json();
       if (data.result === 'success' && data.rates && data.rates.CNY) {
         const rate = data.rates.CNY;
         localStorage.setItem('fx_usd_cny', JSON.stringify({ rate, ts: Date.now() }));
-        applyNewRate(rate, 'live');
+        applyNewRate(rate, 'open.er-api');
       }
     } catch(e) {
       console.warn('Exchange rate fetch failed, using fallback:', USD_TO_RMB);
@@ -11218,19 +11245,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const etaLabel = isDelivered ? 'Delivered' : 'ETA';
       const entries = s.entries || [];
       const orderEntries = entries.filter(e => e.orderId);
+      const shipHasChangeRequest = orderEntries.some(e => orderData[e.orderId]?.changeRequested);
       const wbPills = orderEntries.length === 0
         ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No orders added</span>`
         : orderEntries.map(e => {
             const order = orderData[e.orderId];
             if (!order) return '';
             const href = `#/order/${e.orderId}`;
-            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${order.clientName} – ${order.name}<span class="sc-wb-pill-arrow">→</span></span>`;
+            const crTag = order.changeRequested
+              ? `<span style="background:#fff7ed;border:1px solid #fed7aa;color:#E8751A;font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:10px;margin-left:4px;vertical-align:middle;">⚑ Hold</span>`
+              : '';
+            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${order.clientName} – ${order.name}${crTag}<span class="sc-wb-pill-arrow">→</span></span>`;
           }).join('');
       const wbCount = orderEntries.length;
       const overStyle = 'color:#ef4444 !important; font-weight:700;';
       const cbmOver = cbmPct > 100; const kgOver = kgPct > 100; const palOver = palletPct > 100;
 
-      return `<div class="shipment-card" onclick="location.hash='#/shipment/${id}'">
+      return `<div class="shipment-card${shipHasChangeRequest ? ' has-change-request' : ''}" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
           <span class="sc-title">${s.name}</span>
           <span class="sc-eta">${etaLabel} ${eta}</span>
@@ -11356,7 +11387,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return `<span class="soc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/shipment/${_currentShipmentId}'; _wbBackLabel='Back to Shipment'; location.hash='${href}'">${prod} →</span>`;
       }).join('');
 
-      return `<div class="ship-order-card" onclick="location.hash='${orderHref}'">
+      const crBanner = order.changeRequested
+        ? `<div class="soc-cr-banner">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            <span>Change request pending — <strong>hold this order</strong></span>
+            <a href="#/order/${entry.orderId}" onclick="event.stopPropagation(); location.hash='#/order/${entry.orderId}'">View Request →</a>
+           </div>`
+        : '';
+
+      return `<div class="ship-order-card${order.changeRequested ? ' has-change-request' : ''}" onclick="location.hash='${orderHref}'">
         <div class="ship-order-card-header">
           <div>
             <div class="soc-client">${order.clientName}</div>
@@ -11383,6 +11422,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="soc-stat"><span class="soc-stat-val">${weightStr}</span><span class="soc-stat-lbl">Weight</span></div>
           </div>
         </div>
+        ${crBanner}
       </div>`;
     }).join('');
   }

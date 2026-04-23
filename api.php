@@ -1304,6 +1304,56 @@ switch ($action) {
         ]);
         break;
 
+    case 'get_fx_rate':
+        // Returns USD→CNY mid-market rate.
+        // Tries XE.com first (parses __NEXT_DATA__ for CNY→USD, then inverts),
+        // falls back to open.er-api.com.
+        $fxRate   = null;
+        $fxSource = '';
+
+        // ① XE.com via curl
+        if (function_exists('curl_init')) {
+            $ch = curl_init('https://www.xe.com/currencyconverter/convert/?Amount=1&From=CNY&To=USD');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_TIMEOUT        => 6,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_HTTPHEADER     => [
+                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36',
+                    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language: en-US,en;q=0.5',
+                ],
+            ]);
+            $xeHtml = curl_exec($ch);
+            curl_close($ch);
+
+            if ($xeHtml) {
+                // XE embeds rates in __NEXT_DATA__ JSON — look for "mid":0.1381
+                if (preg_match('/"mid"\s*:\s*([\d.]+)/', $xeHtml, $xeMatch)) {
+                    $cnyToUsd = floatval($xeMatch[1]);
+                    // Sanity check: 1 CNY should be between $0.05 and $1.00 USD
+                    if ($cnyToUsd > 0.05 && $cnyToUsd < 1.0) {
+                        $fxRate   = round(1.0 / $cnyToUsd, 6); // store as USD→CNY
+                        $fxSource = 'xe';
+                    }
+                }
+            }
+        }
+
+        // ② Fallback: open.er-api.com (free, reliable, mid-market)
+        if (!$fxRate) {
+            $erJson = @file_get_contents('https://open.er-api.com/v6/latest/USD');
+            $erData = json_decode($erJson, true);
+            if (!empty($erData['rates']['CNY'])) {
+                $fxRate   = floatval($erData['rates']['CNY']);
+                $fxSource = 'open.er-api';
+            }
+        }
+
+        echo json_encode(['rate' => $fxRate, 'source' => $fxSource]);
+        break;
+
     default:
         echo json_encode(['error' => 'Unknown action', 'available' => [
             'get_clients', 'add_client', 'delete_client',
