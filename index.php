@@ -6777,10 +6777,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function recalcRfqTotals() {
     const fmt = (n, dec = 2) => n.toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
 
-    // ── 1. Collect per-item data ──────────────────────────────────────────
+    // ── 1. Collect per-item / per-variant data ────────────────────────────
+    // itemSummaries is a flat list: one entry per variant (when variants exist),
+    // or one entry per parent row (when no variants). This drives both the
+    // breakdown rows and the grand totals — no double-counting.
     const parentRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent])');
     let grandQty = 0, grandUsd = 0, grandRmb = 0, grandUsdUnit = 0, maxLead = 0;
-    const itemSummaries = [];
+    const itemSummaries = [];  // { label, qty, rmb, usd, total, lead, isVariant }
 
     parentRows.forEach(row => {
       const id      = parseInt(row.id.replace('rfq-', ''));
@@ -6789,31 +6792,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const qty     = parseFloat(inputs[2]?.value) || 0;
       const rmb     = parseFloat(inputs[3]?.value) || 0;
       const lead    = inputs[4]?.value || '';
-      const usd     = rmb / USD_TO_RMB;
-      const total   = qty * usd;
       const leadNum = parseInt(lead);
 
-      // Variant rows belonging to this parent
       const varRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
-      let varRmbSum = 0, varUsdUnitSum = 0, varUsdTotal = 0;
-      varRows.forEach(vr => {
-        const vi   = vr.querySelectorAll('input');
-        const vQty = parseFloat(vi[1]?.value) || 0;
-        const vRmb = parseFloat(vi[2]?.value) || 0;
-        varRmbSum     += vRmb;
-        varUsdUnitSum += vRmb / USD_TO_RMB;
-        if (vQty && vRmb) varUsdTotal += vQty * (vRmb / USD_TO_RMB);
-      });
 
-      grandQty     += qty;
-      grandRmb     += rmb + varRmbSum;
-      grandUsdUnit += usd + varUsdUnitSum;
-      if (qty && rmb) grandUsd += total;
-      grandUsd += varUsdTotal;
-      if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
+      if (varRows.length > 0) {
+        // ── Has variants: one summary row per variant ─────────────────────
+        // Parent lead time still contributes to max (may differ from variants)
+        if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
 
-      if (name || qty || rmb) {
-        itemSummaries.push({ id, name, qty, rmb, usd, total, lead, varCount: varRows.length });
+        varRows.forEach(vr => {
+          const vi       = vr.querySelectorAll('input');
+          const vName    = vi[0]?.value?.trim() || '';
+          const vQty     = parseFloat(vi[1]?.value) || 0;
+          const vRmb     = parseFloat(vi[2]?.value) || 0;
+          const vLead    = vi[3]?.value || '';
+          const vUsd     = vRmb / USD_TO_RMB;
+          const vTotal   = vQty * vUsd;
+          const vLeadNum = parseInt(vLead);
+
+          grandQty     += vQty;
+          grandRmb     += vRmb;
+          grandUsdUnit += vUsd;
+          grandUsd     += vTotal;
+          if (!isNaN(vLeadNum) && vLeadNum > maxLead) maxLead = vLeadNum;
+
+          if (vName || vQty || vRmb) {
+            const label = name
+              ? `${name}<span style="color:var(--text-muted);font-weight:400;"> — ${vName || 'Variant'}</span>`
+              : (vName || 'Variant');
+            itemSummaries.push({ label, qty: vQty, rmb: vRmb, usd: vUsd, total: vTotal, lead: vLead, isVariant: true });
+          }
+        });
+
+      } else {
+        // ── No variants: one summary row for the parent ───────────────────
+        const usd   = rmb / USD_TO_RMB;
+        const total = qty * usd;
+
+        grandQty     += qty;
+        grandRmb     += rmb;
+        grandUsdUnit += usd;
+        if (qty && rmb) grandUsd += total;
+        if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
+
+        if (name || qty || rmb) {
+          itemSummaries.push({ label: name || ('Item ' + id), qty, rmb, usd, total, lead, isVariant: false });
+        }
       }
     });
 
@@ -6822,20 +6847,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const totalsRow = document.getElementById('rfq-totals');
     const showBreakdown = itemSummaries.length > 1
-                       || (itemSummaries.length === 1 && itemSummaries[0].varCount > 0);
+                       || (itemSummaries.length === 1 && itemSummaries[0].isVariant);
 
     if (showBreakdown && totalsRow) {
       itemSummaries.forEach(item => {
-        const varBadge = item.varCount > 0
-          ? `<span style="font-size:10px;color:var(--text-muted);margin-left:5px;font-weight:400;">(${item.varCount} variant${item.varCount !== 1 ? 's' : ''})</span>`
-          : '';
         const tr = document.createElement('tr');
         tr.className = 'rfq-item-subtotal';
         tr.style.borderTop = '1px solid var(--border)';
         tr.innerHTML = `
           <td></td><td></td><td></td>
-          <td style="font-size:12px;color:var(--text-muted);padding:7px 8px 7px 26px;font-weight:500;">
-            ${item.name || ('Item ' + item.id)}${varBadge}
+          <td style="font-size:12px;color:var(--text);padding:7px 8px 7px 26px;font-weight:500;">
+            ${item.label}
           </td>
           <td style="font-size:12px;color:var(--text);font-weight:700;padding:7px 8px 7px 26px;">
             ${item.qty ? item.qty.toLocaleString('en-US') : '—'}
