@@ -9490,7 +9490,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const hasRfqData = data.rfqItems && Array.isArray(data.rfqItems) && data.rfqItems.length > 0
         && data.rfqItems.some(i => i.item || i.sku || i.qty || i.priceRmb || i.leadTime);
       if (hasRfqData) {
-        data.rfqItems.forEach(item => addRfqRow(item.item, item.sku || generateSku(item.item), item.qty, item.priceRmb, item.leadTime, item.sample || false, item.variants || []));
+        data.rfqItems.forEach((rfqItem, idx) => {
+          // First row: replace empty or old "Main Item" placeholder with the actual product name
+          let itemName = rfqItem.item;
+          if (idx === 0 && (!itemName || itemName === 'Main Item')) itemName = data.product || '';
+          addRfqRow(itemName, rfqItem.sku || generateSku(itemName), rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || []);
+        });
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
         addRfqRow('', data.qty, data.unitPriceRmb, data.leadTime);
