@@ -90,6 +90,19 @@ try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN notes TEXT DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
 
+// Auto-create inventory table if not exists
+$pdo->exec("CREATE TABLE IF NOT EXISTS inventory (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sku VARCHAR(255) NOT NULL,
+    product_name VARCHAR(255) NOT NULL DEFAULT '',
+    variant_name VARCHAR(255) DEFAULT NULL,
+    client_name VARCHAR(255) DEFAULT NULL,
+    workbook_id INT DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    promoted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_sku (sku)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
@@ -724,6 +737,44 @@ switch ($action) {
         echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
         break;
 
+    case 'get_inventory':
+        $stmt = $pdo->query("SELECT * FROM inventory ORDER BY promoted_at DESC");
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+        break;
+
+    case 'promote_to_sku':
+        // input: array of items [{sku, product_name, variant_name, client_name, workbook_id}]
+        if (empty($input['items']) || !is_array($input['items'])) {
+            echo json_encode(['success' => false, 'error' => 'Items array required']);
+            break;
+        }
+        $inserted = 0;
+        $skipped = 0;
+        $stmt = $pdo->prepare("INSERT IGNORE INTO inventory (sku, product_name, variant_name, client_name, workbook_id) VALUES (?, ?, ?, ?, ?)");
+        foreach ($input['items'] as $item) {
+            if (empty($item['sku'])) continue;
+            $stmt->execute([
+                trim($item['sku']),
+                trim($item['product_name'] ?? ''),
+                isset($item['variant_name']) && $item['variant_name'] !== '' ? trim($item['variant_name']) : null,
+                $item['client_name'] ?? null,
+                $item['workbook_id'] ?? null
+            ]);
+            if ($stmt->rowCount() > 0) $inserted++;
+            else $skipped++;
+        }
+        echo json_encode(['success' => true, 'inserted' => $inserted, 'skipped' => $skipped]);
+        break;
+
+    case 'remove_sku':
+        if (empty($input['id'])) {
+            echo json_encode(['success' => false, 'error' => 'ID required']);
+            break;
+        }
+        $pdo->prepare("DELETE FROM inventory WHERE id = ?")->execute([$input['id']]);
+        echo json_encode(['success' => true]);
+        break;
+
     default:
         echo json_encode(['error' => 'Unknown action', 'available' => [
             'get_clients', 'add_client', 'delete_client',
@@ -735,6 +786,7 @@ switch ($action) {
             'permanent_delete_workbook', 'permanent_delete_client',
             'upload_image', 'delete_image', 'upload_video',
             'get_users', 'add_user', 'delete_user', 'change_password',
-            'duplicate_workbook'
+            'duplicate_workbook',
+            'get_inventory', 'promote_to_sku', 'remove_sku'
         ]]);
 }

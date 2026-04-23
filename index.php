@@ -823,6 +823,78 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .cdc-fin-stat-value.accent { color: #6b93ff; }
     .cdc-fin-stat-value.success { color: var(--success); }
 
+    /* ── Inventory Table ─────────────────────────────────────────────── */
+    .inv-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      table-layout: fixed;
+    }
+    .inv-table th {
+      text-align: left;
+      padding: 11px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .inv-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .inv-table tbody tr:hover { background: var(--surface2); }
+    .inv-table th:nth-child(1) { width: 34%; } /* Product */
+    .inv-table th:nth-child(2) { width: 18%; } /* SKU */
+    .inv-table th:nth-child(3) { width: 16%; } /* Client */
+    .inv-table th:nth-child(4) { width: 18%; } /* Source workbook */
+    .inv-table th:nth-child(5) { width: 10%; } /* Date */
+    .inv-table th:nth-child(6) { width: 44px; } /* Remove */
+    .inv-product-name { font-weight: 600; color: var(--text); }
+    .inv-variant-chip {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 7px;
+      border-radius: 8px;
+      background: var(--surface2);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      margin-top: 3px;
+    }
+    .inv-sku {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: var(--text);
+      background: var(--surface2);
+      padding: 3px 7px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      display: inline-block;
+    }
+    .inv-source-link {
+      color: var(--primary);
+      cursor: pointer;
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .inv-source-link:hover { text-decoration: underline; }
+    .inv-remove-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px 6px;
+      border-radius: 5px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .inv-remove-btn:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+
     .sidebar-archive-btn {
       background: transparent;
       border: 1px solid var(--border);
@@ -3467,6 +3539,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="nav-badge" id="badge-shipments"></span>
     </a>
 
+    <!-- Inventory -->
+    <a id="nav-inventory-link" href="#/inventory" onclick="event.preventDefault(); location.hash='#/inventory'" class="nav-flat-link">
+      <span>Inventory</span>
+      <span class="nav-badge" id="badge-inventory"></span>
+    </a>
+
     <!-- Billings -->
     <div class="nav-section collapsed" id="nav-section-billings">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-billings')">
@@ -3627,7 +3705,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
         <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
       </div>
-      <div></div>
+      <div style="justify-self:end;">
+        <button onclick="promoteWorkbookToInventory()" id="btn-promote-sku"
+          style="background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:6px; white-space:nowrap; transition:border-color 0.15s, color 0.15s;"
+          onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
+          onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-muted)';"
+          title="Promote all RFQ SKUs from this workbook to permanent inventory">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          Promote to Inventory
+        </button>
+      </div>
     </div>
   </div>
 
@@ -4911,6 +4998,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </main>
 </div><!-- /#view-orders -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: INVENTORY
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-inventory" class="view">
+  <main class="container">
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Inventory</span>
+        <input type="text" id="inventory-search" placeholder="Search SKU or product…"
+          oninput="filterInventory(this.value)"
+          style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 12px; font-size:13px; color:var(--text); font-family:inherit; outline:none; width:220px;" />
+      </div>
+      <div class="section-body" style="padding:0;">
+        <div id="inventory-list-content">
+          <div style="text-align:center; padding:60px 24px; color:var(--text-muted);">
+            <div style="font-size:32px; margin-bottom:12px;">📦</div>
+            <div style="font-size:16px; font-weight:600; margin-bottom:6px;">No SKUs promoted yet</div>
+            <div style="font-size:13px;">Open a workbook and use "Promote to Inventory" to add permanent SKUs here.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div><!-- /#view-inventory -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: ORDER DETAIL
@@ -9837,6 +9949,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/inventory
+    if (hash === '#/inventory') {
+      renderInventoryView();
+      return;
+    }
+
     // Match: #/order/{id}
     const orderMatch = hash.match(/^#\/order\/(\d+)$/);
     if (orderMatch) {
@@ -10195,11 +10313,147 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   });
 
   // Load data: try DB first, then LocalStorage, then use hardcoded fallback
+  // ── INVENTORY ───────────────────────────────────────────────────────────
+  let inventoryData = []; // [{id, sku, product_name, variant_name, client_name, workbook_id, promoted_at}]
+
+  async function loadInventory() {
+    const res = await apiCall('get_inventory');
+    if (res.success) {
+      inventoryData = res.data || [];
+      const badge = document.getElementById('badge-inventory');
+      if (badge) badge.textContent = inventoryData.length || '';
+    }
+  }
+
+  function renderInventoryView() {
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const invNav = document.getElementById('nav-inventory-link');
+    if (invNav) invNav.classList.add('active');
+    document.getElementById('header-title').textContent = 'Inventory';
+    renderInventoryTable(inventoryData);
+    showView('view-inventory');
+  }
+
+  function renderInventoryTable(rows) {
+    const wrap = document.getElementById('inventory-list-content');
+    if (!wrap) return;
+    if (!rows.length) {
+      wrap.innerHTML = `
+        <div style="text-align:center; padding:60px 24px; color:var(--text-muted);">
+          <div style="font-size:32px; margin-bottom:12px;">📦</div>
+          <div style="font-size:16px; font-weight:600; margin-bottom:6px;">No SKUs promoted yet</div>
+          <div style="font-size:13px;">Open a workbook and use "Promote to Inventory" to add permanent SKUs here.</div>
+        </div>`;
+      return;
+    }
+    const fmtDate = ts => {
+      if (!ts) return '—';
+      const d = new Date(ts);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+    };
+    wrap.innerHTML = `
+      <table class="inv-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>SKU</th>
+            <th>Client</th>
+            <th>Source Workbook</th>
+            <th>Added</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => {
+            // Find the workbook name for this entry
+            let wbName = '—';
+            let wbHref = '';
+            if (r.workbook_id && r.client_name) {
+              const items = clientData[r.client_name] || [];
+              const wb = items.find(i => i.id == r.workbook_id);
+              if (wb) {
+                wbName = wb.product;
+                wbHref = `#/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`;
+              }
+            }
+            return `<tr>
+              <td>
+                <div class="inv-product-name">${r.product_name || '—'}</div>
+                ${r.variant_name ? `<div><span class="inv-variant-chip">${r.variant_name}</span></div>` : ''}
+              </td>
+              <td><span class="inv-sku">${r.sku}</span></td>
+              <td style="color:var(--text-muted); font-size:12px;">${r.client_name || '—'}</td>
+              <td>${wbHref ? `<a class="inv-source-link" onclick="location.hash='${wbHref}'">${wbName}</a>` : `<span style="color:var(--text-muted); font-size:12px;">${wbName}</span>`}</td>
+              <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
+              <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function filterInventory(query) {
+    const q = query.toLowerCase().trim();
+    if (!q) { renderInventoryTable(inventoryData); return; }
+    renderInventoryTable(inventoryData.filter(r =>
+      r.sku.toLowerCase().includes(q) ||
+      (r.product_name || '').toLowerCase().includes(q) ||
+      (r.variant_name || '').toLowerCase().includes(q) ||
+      (r.client_name || '').toLowerCase().includes(q)
+    ));
+  }
+
+  async function removeInventorySku(id) {
+    if (!confirm('Remove this SKU from inventory?')) return;
+    const res = await apiCall('remove_sku', { id });
+    if (res.success) {
+      inventoryData = inventoryData.filter(r => r.id !== id);
+      const badge = document.getElementById('badge-inventory');
+      if (badge) badge.textContent = inventoryData.length || '';
+      const q = document.getElementById('inventory-search')?.value || '';
+      filterInventory(q);
+    }
+  }
+
+  async function promoteWorkbookToInventory() {
+    const rfqItems = collectRfqItems();
+    const toPromote = [];
+    rfqItems.forEach(item => {
+      if (!item.sku) return;
+      toPromote.push({
+        sku: item.sku,
+        product_name: item.item || item.sku,
+        variant_name: null,
+        client_name: currentClient,
+        workbook_id: dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId
+      });
+    });
+    if (!toPromote.length) {
+      alert('No SKUs found on this workbook\'s RFQ items. Add SKUs to line items first.');
+      return;
+    }
+    const res = await apiCall('promote_to_sku', { items: toPromote });
+    if (res.success) {
+      await loadInventory();
+      const msg = res.inserted > 0
+        ? `✓ ${res.inserted} SKU${res.inserted > 1 ? 's' : ''} promoted to inventory${res.skipped > 0 ? ` (${res.skipped} already existed)` : ''}.`
+        : `All ${res.skipped} SKU${res.skipped > 1 ? 's' : ''} already in inventory.`;
+      // Show brief toast
+      const btn = document.getElementById('btn-promote-sku');
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = `<span style="color:var(--success);">${msg}</span>`;
+        setTimeout(() => { btn.innerHTML = orig; }, 3000);
+      }
+    }
+  }
+
   (async function init() {
     // Try loading from LocalStorage immediately for fast render
     loadFromLocalStorage();
     loadShipments();
     loadOrders();
+    loadInventory();
     rebuildSidebar();
     rebuildShipmentsNav();
     rebuildOrdersNav();
