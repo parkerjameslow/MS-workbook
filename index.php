@@ -1408,6 +1408,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--accent);
     }
 
+    .wb-order-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(107,147,255,0.15);
+      color: #6b93ff;
+      border: 1px solid rgba(107,147,255,0.3);
+      cursor: pointer;
+      width: fit-content;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .wb-order-pill:hover { background: rgba(107,147,255,0.25); }
+    .wb-order-pill--closed {
+      background: rgba(52,211,153,0.12);
+      color: var(--success);
+      border-color: rgba(52,211,153,0.25);
+    }
+    .wb-order-pill--closed:hover { background: rgba(52,211,153,0.22); }
+
     .dash-table .product-name {
       font-weight: 600;
       color: var(--product-name-color, var(--text));
@@ -9179,7 +9203,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       emptyState.style.display = 'none';
     }
 
-    // Sort client table
+    // ── Flow-progress score (higher = further along) ─────────────────────
+    const flowScore = flow => flowSteps.filter(s => flow[s]).length;
+
+    // ── Build workbookId → order lookup for this client ──────────────────
+    // Maps workbookId (number) → { orderId, orderName, orderStatus }
+    const wbOrderMap = {};
+    Object.values(orderData || {}).forEach(order => {
+      (order.entries || []).forEach(e => {
+        if (e.clientName === clientName) {
+          wbOrderMap[parseInt(e.workbookId)] = {
+            orderId:     order.id,
+            orderName:   order.name || `Order #${order.id}`,
+            orderStatus: order.status
+          };
+        }
+      });
+    });
+
+    // ── Sort ──────────────────────────────────────────────────────────────
     const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
     const parseDate = d => {
       if (!d) return new Date(0);
@@ -9191,16 +9233,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (_clientSortField === 'product') return dir * a.product.localeCompare(b.product);
       if (_clientSortField === 'dateSubmitted') return dir * (parseDate(a.dateSubmitted) - parseDate(b.dateSubmitted));
       if (_clientSortField === 'status') return dir * (getCurrentStepName(a.flow) || '').localeCompare(getCurrentStepName(b.flow) || '');
-      return dir * (parseDate(a.dateCreated) - parseDate(b.dateCreated));
+      // Default: furthest-along first, then newest date as tiebreaker
+      const scoreDiff = flowScore(b.flow) - flowScore(a.flow);
+      if (scoreDiff !== 0) return scoreDiff;
+      return parseDate(b.dateCreated) - parseDate(a.dateCreated);
     });
 
     tbody.innerHTML = items.map(item => {
       const complete = isFlowComplete(item.flow);
       const stepName = getCurrentStepName(item.flow);
       const stepClass = complete ? 'complete' : 'in-progress';
+
+      // Order membership pill
+      const orderInfo = wbOrderMap[parseInt(item.id)];
+      const orderPill = orderInfo
+        ? `<span class="wb-order-pill ${orderInfo.orderStatus === 'complete' ? 'wb-order-pill--closed' : ''}"
+              onclick="event.stopPropagation(); location.hash='#/orders'"
+              title="Part of ${orderInfo.orderName}">
+              📦 ${orderInfo.orderName}
+           </span>`
+        : '';
+
       return `
       <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
-        <td class="product-name">${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</td>
+        <td class="product-name">
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <span>${item.product} ${complete ? '<span class="status-badge complete">Complete</span>' : ''}</span>
+            ${orderPill}
+          </div>
+        </td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
         <td class="col-flow">
