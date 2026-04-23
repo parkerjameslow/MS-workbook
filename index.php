@@ -3522,6 +3522,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
 
     <!-- Orders -->
+    <!-- Permanent SKU -->
+    <a id="nav-inventory-link" href="#/inventory" onclick="event.preventDefault(); location.hash='#/inventory'" class="nav-flat-link">
+      <span>Permanent SKU</span>
+      <span class="nav-badge" id="badge-inventory"></span>
+    </a>
+
     <a id="nav-orders-link" href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" class="nav-flat-link">
       <span>Orders</span>
       <span class="nav-badge" id="badge-orders"></span>
@@ -3537,12 +3543,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <a id="nav-shipments-link" href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" class="nav-flat-link">
       <span>Shipments</span>
       <span class="nav-badge" id="badge-shipments"></span>
-    </a>
-
-    <!-- Inventory -->
-    <a id="nav-inventory-link" href="#/inventory" onclick="event.preventDefault(); location.hash='#/inventory'" class="nav-flat-link">
-      <span>Inventory</span>
-      <span class="nav-badge" id="badge-inventory"></span>
     </a>
 
     <!-- Billings -->
@@ -3710,9 +3710,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           style="background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:6px; white-space:nowrap; transition:border-color 0.15s, color 0.15s;"
           onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
           onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-muted)';"
-          title="Promote all RFQ SKUs from this workbook to permanent inventory">
+          title="Promote all RFQ SKUs from this workbook to permanent SKUs">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          Promote to Inventory
+          Promote to Permanent SKU
         </button>
       </div>
     </div>
@@ -5006,7 +5006,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <main class="container">
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
-        <span class="section-title" style="margin-right:auto;">Inventory</span>
+        <span class="section-title" style="margin-right:auto;">Permanent SKU</span>
         <input type="text" id="inventory-search" placeholder="Search SKU or product…"
           oninput="filterInventory(this.value)"
           style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 12px; font-size:13px; color:var(--text); font-family:inherit; outline:none; width:220px;" />
@@ -5016,7 +5016,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div style="text-align:center; padding:60px 24px; color:var(--text-muted);">
             <div style="font-size:32px; margin-bottom:12px;">📦</div>
             <div style="font-size:16px; font-weight:600; margin-bottom:6px;">No SKUs promoted yet</div>
-            <div style="font-size:13px;">Open a workbook and use "Promote to Inventory" to add permanent SKUs here.</div>
+            <div style="font-size:13px;">Open a workbook and use "Promote to Permanent SKU" to add SKUs here.</div>
           </div>
         </div>
       </div>
@@ -10329,7 +10329,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const invNav = document.getElementById('nav-inventory-link');
     if (invNav) invNav.classList.add('active');
-    document.getElementById('header-title').textContent = 'Inventory';
+    document.getElementById('header-title').textContent = 'Permanent SKU';
     renderInventoryTable(inventoryData);
     showView('view-inventory');
   }
@@ -10342,7 +10342,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="text-align:center; padding:60px 24px; color:var(--text-muted);">
           <div style="font-size:32px; margin-bottom:12px;">📦</div>
           <div style="font-size:16px; font-weight:600; margin-bottom:6px;">No SKUs promoted yet</div>
-          <div style="font-size:13px;">Open a workbook and use "Promote to Inventory" to add permanent SKUs here.</div>
+          <div style="font-size:13px;">Open a workbook and use "Promote to Permanent SKU" to add SKUs here.</div>
         </div>`;
       return;
     }
