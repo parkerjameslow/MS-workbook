@@ -6845,16 +6845,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.id = `rfq-var-${vid}`;
     tr.classList.add('rfq-variant-row');
     tr.setAttribute('data-rfq-parent', parentId);
-    // Accept drops from other variants in the same parent
+    // Drag events must live on the <tr> itself because draggable is set on <tr>
+    // (dragstart fires on the draggable element, not on child <td>s)
     tr.ondragover  = function(e) { if (_draggingVarId !== null) { e.preventDefault(); tr.style.borderTop = '2px solid var(--accent)'; } };
     tr.ondragleave = function()  { tr.style.borderTop = ''; };
     tr.ondrop      = function(e) { e.preventDefault(); tr.style.borderTop = ''; rfqDropVariant(vid); };
+    tr.ondragstart = function()  { _draggingVarId = vid; tr.style.opacity = '0.4'; };
+    tr.ondragend   = function()  { _draggingVarId = null; tr.style.opacity = '1'; tr.draggable = false; };
     tr.innerHTML = `
       <td title="Drag to reorder" style="cursor:grab; color:var(--text-muted); text-align:center; padding:0 6px; user-select:none; font-size:12px;"
           onmousedown="this.closest('tr').draggable=true"
-          onmouseup="this.closest('tr').draggable=false"
-          ondragstart="_draggingVarId=${vid}; this.closest('tr').style.opacity='0.4'"
-          ondragend="_draggingVarId=null; this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false">☰</td>
+          onmouseup="this.closest('tr').draggable=false">☰</td>
       <td></td>
       <td></td>
       <td><input type="text" placeholder="e.g. Small / Red…" value="${variant}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
