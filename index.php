@@ -3705,16 +3705,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
         <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
       </div>
-      <div style="justify-self:end;">
-        <button onclick="promoteWorkbookToInventory()" id="btn-promote-sku"
-          style="background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:6px; white-space:nowrap; transition:border-color 0.15s, color 0.15s;"
-          onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
-          onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-muted)';"
-          title="Promote all RFQ SKUs from this workbook to permanent SKUs">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          Promote to Permanent SKU
-        </button>
-      </div>
+      <div style="justify-self:end;"></div>
     </div>
   </div>
 
@@ -3743,6 +3734,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Product Overview</span>
+      <button onclick="event.stopPropagation(); promoteWorkbookToInventory();" id="btn-promote-sku"
+        style="background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); font-size:12px; font-weight:600; padding:5px 10px; cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:5px; white-space:nowrap; transition:border-color 0.15s, color 0.15s; margin-left:auto; margin-right:10px;"
+        onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
+        onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-muted)';"
+        title="Promote all RFQ SKUs from this workbook to permanent SKUs">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Promote to Permanent SKU
+      </button>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -10317,6 +10316,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Load data: try DB first, then LocalStorage, then use hardcoded fallback
   // ── INVENTORY ───────────────────────────────────────────────────────────
   let inventoryData = []; // [{id, sku, product_name, variant_name, client_name, workbook_id, promoted_at}]
+  let _invSort = { col: null, dir: 1 }; // current inventory sort state
 
   async function loadInventory() {
     const res = await apiCall('get_inventory');
@@ -10332,6 +10332,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const invNav = document.getElementById('nav-inventory-link');
     if (invNav) invNav.classList.add('active');
     document.getElementById('header-title').textContent = 'Inventory';
+    _invSort = { col: null, dir: 1 };
+    const searchEl = document.getElementById('inventory-search');
+    if (searchEl) searchEl.value = '';
     renderInventoryTable(inventoryData);
     showView('view-inventory');
   }
@@ -10344,7 +10347,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="text-align:center; padding:60px 24px; color:var(--text-muted);">
           <div style="font-size:32px; margin-bottom:12px;">📦</div>
           <div style="font-size:16px; font-weight:600; margin-bottom:6px;">No SKUs promoted yet</div>
-          <div style="font-size:13px;">Open a workbook and use "Promote to Permanent SKU" to add SKUs here.</div>
+          <div style="font-size:13px;">Open a workbook and promote RFQ line items to add SKUs here.</div>
         </div>`;
       return;
     }
@@ -10353,52 +10356,79 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const d = new Date(ts);
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
     };
+    // Pre-compute workbook names so we can sort on them
+    const enriched = rows.map(r => {
+      let wbName = '';
+      let wbHref = '';
+      if (r.workbook_id && r.client_name) {
+        const items = clientData[r.client_name] || [];
+        const wb = items.find(i => i.id == r.workbook_id);
+        if (wb) { wbName = wb.product; wbHref = `#/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`; }
+      }
+      return { ...r, _wbName: wbName, _wbHref: wbHref };
+    });
+    // Apply sort
+    if (_invSort.col) {
+      enriched.sort((a, b) => {
+        let va, vb;
+        if (_invSort.col === 'product')  { va = (a.product_name || '').toLowerCase(); vb = (b.product_name || '').toLowerCase(); }
+        else if (_invSort.col === 'sku') { va = (a.sku || '').toLowerCase(); vb = (b.sku || '').toLowerCase(); }
+        else if (_invSort.col === 'client') { va = (a.client_name || '').toLowerCase(); vb = (b.client_name || '').toLowerCase(); }
+        else if (_invSort.col === 'workbook') { va = (a._wbName || '').toLowerCase(); vb = (b._wbName || '').toLowerCase(); }
+        else if (_invSort.col === 'added') { va = a.promoted_at || ''; vb = b.promoted_at || ''; }
+        else { return 0; }
+        return va < vb ? -_invSort.dir : va > vb ? _invSort.dir : 0;
+      });
+    }
+    // Sort icon helper
+    const sortIco = col => {
+      const active = _invSort.col === col;
+      const up = active && _invSort.dir === 1;
+      const color = active ? 'var(--accent)' : 'var(--text-muted)';
+      return `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+        <polyline points="${up ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}"/>
+      </svg>`;
+    };
+    const thStyle = `style="cursor:pointer; user-select:none; white-space:nowrap;"`;
     wrap.innerHTML = `
       <table class="inv-table">
         <thead>
           <tr>
-            <th>Product</th>
-            <th>SKU</th>
-            <th>Client</th>
-            <th>Source Workbook</th>
-            <th>Added</th>
+            <th onclick="sortInventory('product')" ${thStyle}><span style="display:inline-flex;align-items:center;gap:4px;">Product ${sortIco('product')}</span></th>
+            <th onclick="sortInventory('sku')" ${thStyle}><span style="display:inline-flex;align-items:center;gap:4px;">SKU ${sortIco('sku')}</span></th>
+            <th onclick="sortInventory('client')" ${thStyle}><span style="display:inline-flex;align-items:center;gap:4px;">Client ${sortIco('client')}</span></th>
+            <th onclick="sortInventory('workbook')" ${thStyle}><span style="display:inline-flex;align-items:center;gap:4px;">Source Workbook ${sortIco('workbook')}</span></th>
+            <th onclick="sortInventory('added')" ${thStyle}><span style="display:inline-flex;align-items:center;gap:4px;">Added ${sortIco('added')}</span></th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          ${rows.map(r => {
-            // Find the workbook name for this entry
-            let wbName = '—';
-            let wbHref = '';
-            if (r.workbook_id && r.client_name) {
-              const items = clientData[r.client_name] || [];
-              const wb = items.find(i => i.id == r.workbook_id);
-              if (wb) {
-                wbName = wb.product;
-                wbHref = `#/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`;
-              }
-            }
-            return `<tr>
-              <td>
-                <div class="inv-product-name">${r.product_name || '—'}</div>
-                ${r.variant_name ? `<div><span class="inv-variant-chip">${r.variant_name}</span></div>` : ''}
-              </td>
-              <td><span class="inv-sku">${r.sku}</span></td>
-              <td style="color:var(--text-muted); font-size:12px;">${r.client_name || '—'}</td>
-              <td>${wbHref ? `<a class="inv-source-link" onclick="location.hash='${wbHref}'">${wbName}</a>` : `<span style="color:var(--text-muted); font-size:12px;">${wbName}</span>`}</td>
-              <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
-              <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
-            </tr>`;
-          }).join('')}
+          ${enriched.map(r => `<tr>
+            <td>
+              <div class="inv-product-name">${r.product_name || '—'}</div>
+              ${r.variant_name ? `<div><span class="inv-variant-chip">${r.variant_name}</span></div>` : ''}
+            </td>
+            <td><span class="inv-sku">${r.sku}</span></td>
+            <td style="color:var(--text-muted); font-size:12px;">${r.client_name || '—'}</td>
+            <td>${r._wbHref ? `<a class="inv-source-link" onclick="location.hash='${r._wbHref}'">${r._wbName}</a>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
+            <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
+            <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
+          </tr>`).join('')}
         </tbody>
       </table>`;
+  }
+
+  function sortInventory(col) {
+    if (_invSort.col === col) { _invSort.dir *= -1; } else { _invSort.col = col; _invSort.dir = 1; }
+    const q = document.getElementById('inventory-search')?.value || '';
+    filterInventory(q);
   }
 
   function filterInventory(query) {
     const q = query.toLowerCase().trim();
     if (!q) { renderInventoryTable(inventoryData); return; }
     renderInventoryTable(inventoryData.filter(r =>
-      r.sku.toLowerCase().includes(q) ||
+      (r.sku || '').toLowerCase().includes(q) ||
       (r.product_name || '').toLowerCase().includes(q) ||
       (r.variant_name || '').toLowerCase().includes(q) ||
       (r.client_name || '').toLowerCase().includes(q)
