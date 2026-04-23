@@ -6622,16 +6622,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Header currency calculator ───────────────────────────────────────────
-  const _fmtCalc = n => n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const _fmtCalc  = n => n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const _parseCalc = s => parseFloat(String(s).replace(/,/g, '')) || 0;
 
+  // Format the active input with commas as the user types, preserving cursor position.
+  function _hdrLiveFormat(el) {
+    const cursor = el.selectionStart;
+    const old    = el.value;
+    const raw    = old.replace(/,/g, '');
+    if (!raw || raw === '.') return;
+    const dot = raw.indexOf('.');
+    let fmt;
+    if (dot === -1) {
+      const n = parseInt(raw, 10);
+      if (isNaN(n)) return;
+      fmt = n.toLocaleString('en-US');
+    } else {
+      const n = parseInt(raw.slice(0, dot) || '0', 10);
+      if (isNaN(n)) return;
+      fmt = n.toLocaleString('en-US') + '.' + raw.slice(dot + 1);
+    }
+    el.value = fmt;
+    const newCursor = Math.max(0, cursor + (fmt.length - old.length));
+    el.setSelectionRange(newCursor, newCursor);
+  }
+
   function hdrCalcRmbToUsd() {
-    const rmb = _parseCalc(document.getElementById('hdr-calc-rmb').value);
+    const rmbEl = document.getElementById('hdr-calc-rmb');
+    _hdrLiveFormat(rmbEl);
+    const rmb   = _parseCalc(rmbEl.value);
     const usdEl = document.getElementById('hdr-calc-usd');
     usdEl.value = rmb > 0 ? _fmtCalc(rmb / USD_TO_RMB) : '';
   }
   function hdrCalcUsdToRmb() {
-    const usd = _parseCalc(document.getElementById('hdr-calc-usd').value);
+    const usdEl = document.getElementById('hdr-calc-usd');
+    _hdrLiveFormat(usdEl);
+    const usd   = _parseCalc(usdEl.value);
     const rmbEl = document.getElementById('hdr-calc-rmb');
     rmbEl.value = usd > 0 ? _fmtCalc(usd * USD_TO_RMB) : '';
   }
