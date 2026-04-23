@@ -1354,14 +1354,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     .dash-table th {
       text-align: left;
-      padding: 14px 16px;
+      padding: 14px 8px;
       font-size: 13px;
       font-weight: 600;
       color: var(--text-muted);
       border-bottom: 1px solid var(--border);
     }
+    .dash-table th:first-child { padding-left: 16px; }
 
-    .dash-table th:nth-child(1) { width: 22%; }   /* Product */
+    .dash-table th:nth-child(1) { width: 20%; }   /* Product */
     .dash-table th:nth-child(2) { width: 100px; } /* Date Created */
     .dash-table th:nth-child(3) { width: 100px; } /* Date Submitted */
     .dash-table th:nth-child(4) { width: 110px; } /* Order */
@@ -1369,7 +1370,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .dash-table th:nth-child(7) { width: 54px; }  /* Actions */
 
     .dash-table td {
-      padding: 18px 16px;
+      padding: 18px 8px;
       border-bottom: 1px solid var(--border);
       vertical-align: middle;
     }
@@ -1438,6 +1439,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .dash-table .product-name {
       font-weight: 600;
       color: var(--product-name-color, var(--text));
+      padding-left: 16px !important;
     }
 
     .dash-table .desc-cell {
