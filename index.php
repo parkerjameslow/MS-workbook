@@ -7019,13 +7019,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td style="text-align:center;"><span class="remove-tier" onclick="removeRfqVariantRow(${vid})" title="Remove variant">&times;</span></td>
     `;
-    // Insert after parent row and all its existing variants
+    // Insert after parent row and all its existing variants (but before any trailing add-row)
     const existingVars = [...document.querySelectorAll(`[data-rfq-parent="${parentId}"]`)];
     const anchor = existingVars.length ? existingVars[existingVars.length - 1] : document.getElementById(`rfq-${parentId}`);
     anchor.after(tr);
+    _updateVarAddRow(parentId);   // move/create the trailing "+ Add Variant" row
     syncParentQtyFromVariants(parentId);
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
+  }
+
+  // Keep a small "+ Add Variant" row just below the last variant for this parent
+  // so the user doesn't have to scroll back up to the parent row to add more.
+  function _updateVarAddRow(parentId) {
+    // Remove existing trailing add-row for this parent
+    document.querySelector(`[data-rfq-add-for="${parentId}"]`)?.remove();
+
+    const varRows = document.querySelectorAll(`[data-rfq-parent="${parentId}"]`);
+    if (varRows.length === 0) return;   // No variants — parent row button is enough
+
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-rfq-add-for', String(parentId));
+    tr.className = 'rfq-var-add-row';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.innerHTML = '<span style="font-size:13px;line-height:1;">+</span> Add Variant';
+    btn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:11px;font-weight:600;padding:0;line-height:1;display:inline-flex;align-items:center;gap:3px;font-family:inherit;letter-spacing:0.02em;';
+    btn.onmouseover = () => btn.style.color = 'var(--accent)';
+    btn.onmouseout  = () => btn.style.color = 'var(--text-muted)';
+    btn.onclick     = () => addRfqVariantRow(parentId);
+    if (typeof _wbLocked !== 'undefined' && _wbLocked) {
+      btn.disabled = true;
+      btn.style.opacity = '0.4';
+      btn.style.cursor  = 'default';
+    }
+    const td = document.createElement('td');
+    td.colSpan = 10;
+    td.style.cssText = 'padding:2px 0 8px 60px;border-bottom:none;';
+    td.appendChild(btn);
+    tr.appendChild(td);
+
+    // Insert after the last variant row
+    varRows[varRows.length - 1].after(tr);
   }
 
   function syncParentQtyFromVariants(parentId) {
@@ -7059,7 +7094,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const row = document.getElementById(`rfq-var-${vid}`);
     const parentId = row ? parseInt(row.dataset.rfqParent) : null;
     row?.remove();
-    if (parentId) syncParentQtyFromVariants(parentId);
+    if (parentId) {
+      _updateVarAddRow(parentId);   // reposition or remove the trailing add-row
+      syncParentQtyFromVariants(parentId);
+    }
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
   }
