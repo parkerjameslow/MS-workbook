@@ -6385,7 +6385,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
     const isFirstRow = tbody.querySelectorAll('tr:not([data-rfq-parent])').length === 0;
-    const defaultItem = isFirstRow && !item ? 'Main Item' : item;
+    const defaultItem = item;
     const tr = document.createElement('tr');
     tr.id = `rfq-${id}`;
     tr.ondragover = function(e) { e.preventDefault(); tr.style.borderTop='2px solid var(--accent)'; };
@@ -9488,7 +9488,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       document.getElementById('rfq-body').innerHTML = '';
       rfqCount = 0;
       const hasRfqData = data.rfqItems && Array.isArray(data.rfqItems) && data.rfqItems.length > 0
-        && data.rfqItems.some(i => i.item || i.qty || i.priceRmb || i.leadTime);
+        && data.rfqItems.some(i => i.item || i.sku || i.qty || i.priceRmb || i.leadTime);
       if (hasRfqData) {
         data.rfqItems.forEach(item => addRfqRow(item.item, item.sku || '', item.qty, item.priceRmb, item.leadTime, item.sample || false, item.variants || []));
       } else if (data.qty || data.unitPriceRmb) {
@@ -9496,7 +9496,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         addRfqRow('', data.qty, data.unitPriceRmb, data.leadTime);
         addRfqRow(); addRfqRow();
       } else {
-        addRfqRow(); addRfqRow(); addRfqRow();
+        // No RFQ data yet — seed first row with product name + auto-generated SKU
+        const _pn = data.product || '';
+        addRfqRow(_pn, generateSku(_pn)); addRfqRow(); addRfqRow();
       }
       // Ensure at least 3 rows
       while (document.querySelectorAll('#rfq-body tr').length < 3) {
@@ -9692,6 +9694,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       addTierRow(500); addWbTierRow(500);
       _selectedTierId = null;
       populateTierDropdown();
+      // Seed RFQ with product name + auto-SKU (new workbook has no saved detail)
+      document.getElementById('rfq-body').innerHTML = '';
+      rfqCount = 0;
+      const _newProd = item ? (item.product || '') : '';
+      addRfqRow(_newProd, generateSku(_newProd)); addRfqRow(); addRfqRow();
+      recalcRfqTotals();
     }
 
     // Trigger filled state on all inputs
@@ -10447,6 +10455,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const q = document.getElementById('inventory-search')?.value || '';
       filterInventory(q);
     }
+  }
+
+  // Generate a short generic SKU from a product name.
+  // Single word  → first 6 chars upper  ("Tank" → "TANK", "Hoodie" → "HOODIE")
+  // Multi-word   → initials upper        ("Custom Tote Bag" → "CTB", "Half Tee" → "HT")
+  function generateSku(productName) {
+    if (!productName) return '';
+    const words = productName.replace(/[^a-zA-Z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return '';
+    if (words.length === 1) return words[0].substring(0, 6).toUpperCase();
+    return words.map(w => w[0].toUpperCase()).join('');
   }
 
   function updatePromoteButton() {
