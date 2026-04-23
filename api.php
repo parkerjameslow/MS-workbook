@@ -71,6 +71,24 @@ try {
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN deleted_by VARCHAR(255) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN email VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN phone VARCHAR(100) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN primary_contact VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN billing_address TEXT DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN shipping_address TEXT DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN notes TEXT DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -115,6 +133,29 @@ switch ($action) {
         // Soft-delete all its workbooks
         $stmt = $pdo->prepare("UPDATE workbooks SET deleted_at = NOW(), deleted_by = ? WHERE client_id = ? AND deleted_at IS NULL");
         $stmt->execute([$deletedBy, $input['id']]);
+        echo json_encode(['success' => true]);
+        break;
+
+    case 'save_client_detail':
+        if (empty($input['id'])) {
+            echo json_encode(['success' => false, 'error' => 'Client ID required']);
+            break;
+        }
+        $allowed = ['email', 'phone', 'primary_contact', 'billing_address', 'shipping_address', 'notes'];
+        $fields = [];
+        $params = [];
+        foreach ($allowed as $col) {
+            if (array_key_exists($col, $input)) {
+                $fields[] = "$col = ?";
+                $params[] = $input[$col];
+            }
+        }
+        if (empty($fields)) {
+            echo json_encode(['success' => false, 'error' => 'No fields to update']);
+            break;
+        }
+        $params[] = $input['id'];
+        $pdo->prepare("UPDATE clients SET " . implode(', ', $fields) . " WHERE id = ?")->execute($params);
         echo json_encode(['success' => true]);
         break;
 

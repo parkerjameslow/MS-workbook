@@ -704,6 +704,125 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .currency-rmb::before { content: '¥'; }
     .currency-usd::before { content: '$'; }
 
+    /* ── Client Detail Card ─────────────────────────────── */
+    .client-detail-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 28px 24px;
+      display: flex;
+      gap: 28px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+    .cdc-avatar {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 22px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      letter-spacing: -0.5px;
+    }
+    .cdc-left {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+    .cdc-name {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.1;
+      margin-bottom: 2px;
+    }
+    .cdc-fields {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px 24px;
+    }
+    @media (max-width: 900px) {
+      .cdc-fields { grid-template-columns: repeat(2, 1fr); }
+      .client-detail-card { flex-wrap: wrap; }
+      .cdc-financial { width: 100%; }
+    }
+    @media (max-width: 600px) {
+      .cdc-fields { grid-template-columns: 1fr; }
+    }
+    .cdc-field { display: flex; flex-direction: column; gap: 3px; }
+    .cdc-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+    }
+    .cdc-value {
+      font-size: 13px;
+      color: var(--text);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-family: inherit;
+      width: 100%;
+      box-sizing: border-box;
+      resize: none;
+      outline: none;
+      transition: border-color 0.15s;
+      line-height: 1.4;
+    }
+    .cdc-value:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,117,26,0.15); }
+    .cdc-value::placeholder { color: var(--text-muted); opacity: 0.6; }
+    .cdc-financial {
+      background: linear-gradient(135deg, rgba(107,147,255,0.12) 0%, rgba(107,147,255,0.06) 100%);
+      border: 1px solid rgba(107,147,255,0.25);
+      border-radius: 12px;
+      padding: 20px 22px;
+      min-width: 200px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .cdc-fin-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6b93ff;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .cdc-fin-stat {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 10px;
+    }
+    .cdc-fin-stat:last-child { margin-bottom: 0; }
+    .cdc-fin-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .cdc-fin-stat-value {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .cdc-fin-stat-value.accent { color: #6b93ff; }
+    .cdc-fin-stat-value.success { color: var(--success); }
+
     .sidebar-archive-btn {
       background: transparent;
       border: 1px solid var(--border);
@@ -3435,6 +3554,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 ═══════════════════════════════════════════════════════════════════════ -->
 <div id="view-dashboard" class="view">
   <main class="container">
+    <div id="client-detail-card-wrap"></div>
     <div class="section-card">
       <div class="section-body" style="padding:0;">
         <div class="table-scroll-wrapper">
@@ -7188,6 +7308,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Maps local client names to DB ids, and local "client|wbId" to DB workbook ids
   let dbClientMap = {};
   let dbWorkbookMap = {};
+  // Stores per-client detail fields (email, phone, etc.)
+  let clientDetails = {};
 
   async function loadFromDatabase() {
     const result = await apiCall('get_all_data');
@@ -7205,6 +7327,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     result.clients.forEach(c => {
       dbClientMap[c.name] = c.id;
       if (!clientData[c.name]) clientData[c.name] = [];
+      clientDetails[c.name] = {
+        id: c.id,
+        email: c.email || '',
+        phone: c.phone || '',
+        primary_contact: c.primary_contact || '',
+        billing_address: c.billing_address || '',
+        shipping_address: c.shipping_address || '',
+        notes: c.notes || ''
+      };
     });
 
     if (!hasWorkbooks) return false; // Let seedDatabase handle it
@@ -8223,6 +8354,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const result = await apiCall('add_client', { name: name });
     if (result.success) {
       dbClientMap[name] = result.id;
+      clientDetails[name] = { id: result.id, email: '', phone: '', primary_contact: '', billing_address: '', shipping_address: '', notes: '' };
     }
 
     // Add to client data
@@ -8858,6 +8990,95 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return 'Not Started';
   }
 
+  function onClientDetailChange(el, encodedName, key) {
+    const clientName = decodeURIComponent(encodedName);
+    if (!clientDetails[clientName]) clientDetails[clientName] = {};
+    clientDetails[clientName][key] = el.value;
+    saveClientDetail(clientName);
+  }
+
+  let _clientDetailSaveTimer = null;
+  function saveClientDetail(clientName) {
+    clearTimeout(_clientDetailSaveTimer);
+    _clientDetailSaveTimer = setTimeout(async () => {
+      const d = clientDetails[clientName];
+      if (!d || !d.id) return;
+      await apiCall('save_client_detail', {
+        id: d.id,
+        email: d.email,
+        phone: d.phone,
+        primary_contact: d.primary_contact,
+        billing_address: d.billing_address,
+        shipping_address: d.shipping_address,
+        notes: d.notes
+      });
+    }, 800);
+  }
+
+  function renderClientDetailCard(clientName) {
+    const wrap = document.getElementById('client-detail-card-wrap');
+    if (!wrap) return;
+    const d = clientDetails[clientName] || {};
+    const items = clientData[clientName] || [];
+    const total = items.length;
+    const completed = items.filter(i => isFlowComplete(i.flow)).length;
+    const open = total - completed;
+
+    // Initials from client name
+    const initials = clientName.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
+    const enc = encodeURIComponent(clientName);
+    const field = (key, label, placeholder, isTextarea = false) => {
+      const val = (d[key] || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+      const handler = `onClientDetailChange(this,'${enc}','${key}')`;
+      if (isTextarea) {
+        return `<div class="cdc-field">
+          <div class="cdc-label">${label}</div>
+          <textarea class="cdc-value" rows="2" placeholder="${placeholder}" oninput="${handler}">${val}</textarea>
+        </div>`;
+      }
+      return `<div class="cdc-field">
+        <div class="cdc-label">${label}</div>
+        <input class="cdc-value" type="text" value="${val}" placeholder="${placeholder}" oninput="${handler}" />
+      </div>`;
+    };
+
+    wrap.innerHTML = `
+      <div class="client-detail-card">
+        <div class="cdc-avatar">${initials}</div>
+        <div class="cdc-left">
+          <div class="cdc-name">${clientName}</div>
+          <div class="cdc-fields">
+            ${field('email',           'Email',            'client@example.com')}
+            ${field('phone',           'Phone',            '+1 (555) 000-0000')}
+            ${field('primary_contact', 'Primary Contact',  'Contact name')}
+            ${field('billing_address', 'Billing Address',  'Street, City, State ZIP', true)}
+            ${field('shipping_address','Shipping Address', 'Same as billing or different', true)}
+            ${field('notes',           'Notes',            'Internal notes…', true)}
+          </div>
+        </div>
+        <div class="cdc-financial">
+          <div class="cdc-fin-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Client Summary
+          </div>
+          <div class="cdc-fin-stat">
+            <span class="cdc-fin-stat-label">Total Workbooks</span>
+            <span class="cdc-fin-stat-value">${total}</span>
+          </div>
+          <div class="cdc-fin-stat">
+            <span class="cdc-fin-stat-label">Open / Active</span>
+            <span class="cdc-fin-stat-value accent">${open}</span>
+          </div>
+          <div class="cdc-fin-stat">
+            <span class="cdc-fin-stat-label">Completed</span>
+            <span class="cdc-fin-stat-value success">${completed}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderDashboard(clientName) {
     const items = [...(clientData[clientName] || [])];
     const tbody = document.getElementById('dash-tbody');
@@ -8913,6 +9134,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     document.getElementById('header-title').textContent = clientName + ' — Workbooks';
     updateSidebarActive(clientName);
+    renderClientDetailCard(clientName);
     showView('view-dashboard');
     addRecentNav({ type: 'client', label: clientName, href: `#/client/${encodeURIComponent(clientName)}` });
   }
