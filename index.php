@@ -10826,6 +10826,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let shipmentData = {};
   let _nextShipmentId = 1;
   let _currentShipmentId = null;
+
+  // ── Remote-change polling state ────────────────────────────────────────
+  let _lastOrdersJson    = '';   // raw DB string from last successful poll
+  let _lastShipmentsJson = '';   // same for shipments
+  let _pollActive        = false; // guard against overlapping polls
   let _wbPickerSelected = new Set();
   let _shipFilter = 'all';
   const CONTAINER_SPECS = {
@@ -11045,7 +11050,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Check for portal change requests on load, then every 60 s
     checkPortalChanges();
-    setInterval(checkPortalChanges, 60_000);
+    setInterval(checkPortalChanges,    60_000);
+    setInterval(pollForRemoteChanges,  60_000); // picks up partner changes across all data
 
     // Then try loading from database (will override if successful)
     // If the user typed something before the DB responded, capture it so we don't lose it
@@ -11140,12 +11146,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function saveShipments() {
     try { localStorage.setItem('ms_shipmentData', JSON.stringify(shipmentData)); } catch(e) {}
     try { localStorage.setItem('ms_nextShipmentId', String(_nextShipmentId)); } catch(e) {}
-    // Persist to DB so all users see the latest shipments
     if (Object.keys(shipmentData).length > 0 || _nextShipmentId > 1) {
-      apiCall('save_app_state', {
-        key: 'ms_shipments',
-        value: JSON.stringify({ data: shipmentData, nextId: _nextShipmentId })
-      }).catch(() => {});
+      const payload = JSON.stringify({ data: shipmentData, nextId: _nextShipmentId });
+      _lastShipmentsJson = payload; // prevent our own save from triggering a poll re-render
+      apiCall('save_app_state', { key: 'ms_shipments', value: payload }).catch(() => {});
     }
   }
 
@@ -11908,12 +11912,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function saveOrders() {
     try { localStorage.setItem('ms_orderData', JSON.stringify(orderData)); } catch(e) {}
     try { localStorage.setItem('ms_nextOrderId', String(_nextOrderId)); } catch(e) {}
-    // Persist to DB so all users see the latest orders and change-request flags
     if (Object.keys(orderData).length > 0 || _nextOrderId > 1) {
-      apiCall('save_app_state', {
-        key: 'ms_orders',
-        value: JSON.stringify({ data: orderData, nextId: _nextOrderId })
-      }).catch(() => {});
+      const payload = JSON.stringify({ data: orderData, nextId: _nextOrderId });
+      _lastOrdersJson = payload; // prevent our own save from triggering a poll re-render
+      apiCall('save_app_state', { key: 'ms_orders', value: payload }).catch(() => {});
     }
   }
 
@@ -11932,6 +11934,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const res = await apiCall('get_app_state', { key: 'ms_orders' });
       if (!res.success) return false;
       if (res.value) {
+        _lastOrdersJson = res.value; // seed poll cache so first poll doesn't false-trigger
         const stored = JSON.parse(res.value);
         if (stored && stored.data && Object.keys(stored.data).length > 0) {
           orderData    = stored.data;
@@ -11943,10 +11946,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       // DB empty — push local data up so other users can see it
       if (Object.keys(orderData).length > 0) {
-        await apiCall('save_app_state', {
-          key:   'ms_orders',
-          value: JSON.stringify({ data: orderData, nextId: _nextOrderId })
-        });
+        const payload = JSON.stringify({ data: orderData, nextId: _nextOrderId });
+        _lastOrdersJson = payload;
+        await apiCall('save_app_state', { key: 'ms_orders', value: payload });
       }
     } catch(e) { console.warn('syncOrdersFromDB:', e); }
     return false;
@@ -11957,6 +11959,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const res = await apiCall('get_app_state', { key: 'ms_shipments' });
       if (!res.success) return false;
       if (res.value) {
+        _lastShipmentsJson = res.value; // seed poll cache
         const stored = JSON.parse(res.value);
         if (stored && stored.data && Object.keys(stored.data).length > 0) {
           shipmentData    = stored.data;
@@ -11968,16 +11971,80 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       // DB empty — push local data up
       if (Object.keys(shipmentData).length > 0) {
-        await apiCall('save_app_state', {
-          key:   'ms_shipments',
-          value: JSON.stringify({ data: shipmentData, nextId: _nextShipmentId })
-        });
+        const payload = JSON.stringify({ data: shipmentData, nextId: _nextShipmentId });
+        _lastShipmentsJson = payload;
+        await apiCall('save_app_state', { key: 'ms_shipments', value: payload });
       }
     } catch(e) { console.warn('syncShipmentsFromDB:', e); }
     return false;
   }
 
   // ── Totals helper ────────────────────────────────────────────────────
+  // ── Background poll — picks up changes made on another device/browser ──
+  async function pollForRemoteChanges() {
+    if (_pollActive) return; // don't overlap with a slow previous poll
+    _pollActive = true;
+    try {
+      const h = location.hash;
+      const onWorkbookEditor = h.startsWith('#/client/') && h.includes('/workbook/');
+      const onOrdersView     = h.startsWith('#/order');
+      const onShipmentsView  = h.startsWith('#/shipment');
+
+      // ── 1. Orders & shipments — lightweight raw-string comparison ──────
+      const [ordRes, shipRes] = await Promise.all([
+        apiCall('get_app_state', { key: 'ms_orders' }),
+        apiCall('get_app_state', { key: 'ms_shipments' }),
+      ]);
+
+      let ordChanged = false, shipChanged = false;
+
+      if (ordRes.success && ordRes.value && ordRes.value !== _lastOrdersJson) {
+        _lastOrdersJson = ordRes.value;
+        const s = JSON.parse(ordRes.value);
+        if (s?.data) {
+          orderData    = s.data;
+          _nextOrderId = s.nextId || _nextOrderId;
+          try { localStorage.setItem('ms_orderData',   JSON.stringify(orderData)); } catch(e) {}
+          try { localStorage.setItem('ms_nextOrderId', String(_nextOrderId));       } catch(e) {}
+          rebuildOrdersNav();
+          ordChanged = true;
+        }
+      }
+
+      if (shipRes.success && shipRes.value && shipRes.value !== _lastShipmentsJson) {
+        _lastShipmentsJson = shipRes.value;
+        const s = JSON.parse(shipRes.value);
+        if (s?.data) {
+          shipmentData    = s.data;
+          _nextShipmentId = s.nextId || _nextShipmentId;
+          try { localStorage.setItem('ms_shipmentData',   JSON.stringify(shipmentData)); } catch(e) {}
+          try { localStorage.setItem('ms_nextShipmentId', String(_nextShipmentId));       } catch(e) {}
+          rebuildShipmentsNav();
+          shipChanged = true;
+        }
+      }
+
+      // Re-render only the relevant view if it's currently open
+      if (ordChanged && onOrdersView)     router();
+      if (shipChanged && onShipmentsView) router();
+
+      // ── 2. Workbooks & clients — heavier call, skip if actively editing ─
+      if (!_isDirty) {
+        const preClient = currentClient;
+        const preWbId   = currentWorkbookId;
+        const dbLoaded  = await loadFromDatabase();
+        if (dbLoaded) {
+          rebuildSidebar();
+          // Avoid re-rendering the workbook editor mid-session (would reset the form)
+          if (!onWorkbookEditor) {
+            router();
+          }
+        }
+      }
+    } catch(e) { /* silent — network blip shouldn't surface as an error */ }
+    finally { _pollActive = false; }
+  }
+
   function orderTotals(order) {
     let totalUsd = 0, totalRmb = 0;
     (order.entries || []).forEach(e => {
