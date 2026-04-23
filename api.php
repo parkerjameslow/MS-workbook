@@ -118,6 +118,13 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS inventory (
     UNIQUE KEY uq_sku (sku)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// Key-value store for shared app state (orders, shipments, etc.)
+$pdo->exec("CREATE TABLE IF NOT EXISTS app_state (
+    key_name VARCHAR(100) NOT NULL PRIMARY KEY,
+    value_json LONGTEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
@@ -1302,6 +1309,28 @@ switch ($action) {
             'items'          => $crSnap['items'] ?? [],
             'submitted_at'   => $crRow['created_at'],
         ]);
+        break;
+
+    case 'get_app_state':
+        // Retrieve a shared key-value entry (e.g. orders, shipments)
+        $stateKey = $input['key'] ?? '';
+        if (!$stateKey) { echo json_encode(['success' => false, 'error' => 'key required']); break; }
+        $stmtGAS = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ?");
+        $stmtGAS->execute([$stateKey]);
+        $rowGAS = $stmtGAS->fetch();
+        echo json_encode(['success' => true, 'value' => $rowGAS ? $rowGAS['value_json'] : null]);
+        break;
+
+    case 'save_app_state':
+        // Upsert a shared key-value entry
+        $stateKey = $input['key']   ?? '';
+        $stateVal = $input['value'] ?? null;
+        if (!$stateKey) { echo json_encode(['success' => false, 'error' => 'key required']); break; }
+        $pdo->prepare(
+            "INSERT INTO app_state (key_name, value_json) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = NOW()"
+        )->execute([$stateKey, $stateVal]);
+        echo json_encode(['success' => true]);
         break;
 
     case 'get_fx_rate':

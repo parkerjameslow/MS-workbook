@@ -10982,6 +10982,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       seedDatabase();
     }
 
+    // Sync orders and shipments from DB (multi-user shared state)
+    const [ordersFromDB, shipmentsFromDB] = await Promise.all([
+      syncOrdersFromDB(),
+      syncShipmentsFromDB(),
+    ]);
+    if (ordersFromDB || shipmentsFromDB) {
+      rebuildOrdersNav();
+      rebuildShipmentsNav();
+      // If the current view is an order or shipment, re-render it with fresh data
+      const h = location.hash;
+      if (h.startsWith('#/order') || h.startsWith('#/shipment') || h.startsWith('#/orders') || h.startsWith('#/shipments')) {
+        router();
+      }
+    }
+
     // Allow autosave now — just after _filling clears (200ms in fillWorkbook + small buffer)
     setTimeout(() => { _appReady = true; }, 210);
 
@@ -11041,6 +11056,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function saveShipments() {
     try { localStorage.setItem('ms_shipmentData', JSON.stringify(shipmentData)); } catch(e) {}
     try { localStorage.setItem('ms_nextShipmentId', String(_nextShipmentId)); } catch(e) {}
+    // Persist to DB so all users see the latest shipments
+    if (Object.keys(shipmentData).length > 0 || _nextShipmentId > 1) {
+      apiCall('save_app_state', {
+        key: 'ms_shipments',
+        value: JSON.stringify({ data: shipmentData, nextId: _nextShipmentId })
+      }).catch(() => {});
+    }
   }
 
   function loadShipments() {
@@ -11802,6 +11824,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function saveOrders() {
     try { localStorage.setItem('ms_orderData', JSON.stringify(orderData)); } catch(e) {}
     try { localStorage.setItem('ms_nextOrderId', String(_nextOrderId)); } catch(e) {}
+    // Persist to DB so all users see the latest orders and change-request flags
+    if (Object.keys(orderData).length > 0 || _nextOrderId > 1) {
+      apiCall('save_app_state', {
+        key: 'ms_orders',
+        value: JSON.stringify({ data: orderData, nextId: _nextOrderId })
+      }).catch(() => {});
+    }
   }
 
   function loadOrders() {
@@ -11811,6 +11840,57 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (d) { orderData = JSON.parse(d); }
       if (n) { _nextOrderId = Math.max(parseInt(n) || 1, ...Object.keys(orderData).map(Number).map(x => x + 1), 1); }
     } catch(e) { orderData = {}; _nextOrderId = 1; }
+  }
+
+  // ── Sync orders/shipments from DB (overwrites local if DB has data) ──
+  async function syncOrdersFromDB() {
+    try {
+      const res = await apiCall('get_app_state', { key: 'ms_orders' });
+      if (!res.success) return false;
+      if (res.value) {
+        const stored = JSON.parse(res.value);
+        if (stored && stored.data && Object.keys(stored.data).length > 0) {
+          orderData    = stored.data;
+          _nextOrderId = stored.nextId || Math.max(1, ...Object.keys(stored.data).map(Number).map(x => x + 1));
+          try { localStorage.setItem('ms_orderData',   JSON.stringify(orderData)); } catch(e) {}
+          try { localStorage.setItem('ms_nextOrderId', String(_nextOrderId));       } catch(e) {}
+          return true;
+        }
+      }
+      // DB empty — push local data up so other users can see it
+      if (Object.keys(orderData).length > 0) {
+        await apiCall('save_app_state', {
+          key:   'ms_orders',
+          value: JSON.stringify({ data: orderData, nextId: _nextOrderId })
+        });
+      }
+    } catch(e) { console.warn('syncOrdersFromDB:', e); }
+    return false;
+  }
+
+  async function syncShipmentsFromDB() {
+    try {
+      const res = await apiCall('get_app_state', { key: 'ms_shipments' });
+      if (!res.success) return false;
+      if (res.value) {
+        const stored = JSON.parse(res.value);
+        if (stored && stored.data && Object.keys(stored.data).length > 0) {
+          shipmentData    = stored.data;
+          _nextShipmentId = stored.nextId || Math.max(1, ...Object.keys(stored.data).map(Number).map(x => x + 1));
+          try { localStorage.setItem('ms_shipmentData',   JSON.stringify(shipmentData)); } catch(e) {}
+          try { localStorage.setItem('ms_nextShipmentId', String(_nextShipmentId));       } catch(e) {}
+          return true;
+        }
+      }
+      // DB empty — push local data up
+      if (Object.keys(shipmentData).length > 0) {
+        await apiCall('save_app_state', {
+          key:   'ms_shipments',
+          value: JSON.stringify({ data: shipmentData, nextId: _nextShipmentId })
+        });
+      }
+    } catch(e) { console.warn('syncShipmentsFromDB:', e); }
+    return false;
   }
 
   // ── Totals helper ────────────────────────────────────────────────────
