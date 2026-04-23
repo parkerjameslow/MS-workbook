@@ -3389,6 +3389,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     @keyframes badge-pulse {
       0%, 100% { opacity: 1; } 50% { opacity: 0.7; }
     }
+    @keyframes presence-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+    .presence-name-tag {
+      position: absolute; top: -22px; left: 0;
+      font-size: 10px; font-weight: 700; color: #fff;
+      padding: 2px 6px; border-radius: 4px;
+      white-space: nowrap; pointer-events: none; z-index: 1000;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    }
 
     .order-filter-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
     .order-filter-btn {
@@ -4066,6 +4077,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="section-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">RFQ</span>
+      <div id="rfq-presence-bar" onclick="event.stopPropagation()" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:12px;"></div>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -10072,6 +10084,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     currentClient = clientName;
     currentWorkbookId = workbookId;
 
+    // Start presence heartbeat for this workbook (stops any previous one first)
+    startPresenceHeartbeat(parseInt(workbookId, 10));
+
     // Back button context
     const backBtn = document.getElementById('btn-back');
     if (backBtn) {
@@ -10373,6 +10388,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Delay clearing _filling to let queued input events (from calcFreight etc.) fire while still blocked
     setTimeout(() => {
       _filling = false;
+      // Wire up presence focus tracking now that the RFQ table is populated
+      _initPresenceFocusTracking();
       // Re-apply lock after all dynamic rows (RFQ, tiers) have been added
       if (_wbLocked) lockWorkbookTab(true);
       // Update promote button to show "X SKUs in Inventory" if already promoted
@@ -10589,6 +10606,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       fillWorkbook(wbMatch[1], wbMatch[2]);
       return;
     }
+
+    // Leaving the workbook editor — clear presence immediately
+    stopPresenceHeartbeat();
 
     // Save current workbook before leaving its view
     saveCurrentWorkbookIfOpen();
@@ -12185,6 +12205,171 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } catch(e) { /* silent — network blip shouldn't surface as an error */ }
     finally { _pollActive = false; }
   }
+
+  // ── Real-time presence ────────────────────────────────────────────────────
+  // Each user gets a random color per session, stored so it stays consistent
+  // while the tab is open but varies across users/devices.
+  const _PRESENCE_COLORS = [
+    '#e74c3c','#3498db','#2ecc71','#f39c12',
+    '#9b59b6','#1abc9c','#e67e22','#e91e63','#16a085','#8e44ad'
+  ];
+  let _myPresenceColor = sessionStorage.getItem('ms_presence_color');
+  if (!_myPresenceColor) {
+    _myPresenceColor = _PRESENCE_COLORS[Math.floor(Math.random() * _PRESENCE_COLORS.length)];
+    sessionStorage.setItem('ms_presence_color', _myPresenceColor);
+  }
+
+  let _presenceWorkbookId = null;
+  let _presenceInterval   = null;
+  let _myFocusedField     = '';
+
+  function startPresenceHeartbeat(workbookId) {
+    // Stop any previous heartbeat (switching workbooks)
+    stopPresenceHeartbeat(/* silent */ true);
+    _presenceWorkbookId = workbookId;
+    _sendPresenceHeartbeat();
+    _pollPresence();
+    _presenceInterval = setInterval(() => {
+      _sendPresenceHeartbeat();
+      _pollPresence();
+    }, 5000);
+  }
+
+  function stopPresenceHeartbeat(silent = false) {
+    if (_presenceInterval) { clearInterval(_presenceInterval); _presenceInterval = null; }
+    if (_presenceWorkbookId) {
+      if (!silent) {
+        // Best-effort instant clear via beacon so we vanish immediately
+        try {
+          navigator.sendBeacon(
+            'api.php?action=clear_presence',
+            new Blob([JSON.stringify({action:'clear_presence'})], {type:'application/json'})
+          );
+        } catch(e) {}
+      }
+      _presenceWorkbookId = null;
+      _myFocusedField     = '';
+      _clearPresenceIndicators();
+    }
+  }
+
+  async function _sendPresenceHeartbeat() {
+    if (!_presenceWorkbookId) return;
+    try {
+      await apiCall('update_presence', {
+        workbook_id:   _presenceWorkbookId,
+        focused_field: _myFocusedField,
+        color:         _myPresenceColor
+      });
+    } catch(e) {}
+  }
+
+  async function _pollPresence() {
+    if (!_presenceWorkbookId) return;
+    try {
+      const res = await apiCall('get_presence', { workbook_id: _presenceWorkbookId });
+      if (res?.success) _renderPresence(res.users || []);
+    } catch(e) {}
+  }
+
+  function _clearPresenceIndicators() {
+    document.querySelectorAll('[data-presence]').forEach(el => {
+      el.style.outline    = '';
+      el.style.boxShadow  = '';
+      delete el.dataset.presence;
+    });
+    document.querySelectorAll('.presence-name-tag').forEach(el => el.remove());
+    const bar = document.getElementById('rfq-presence-bar');
+    if (bar) bar.innerHTML = '';
+  }
+
+  function _renderPresence(users) {
+    _clearPresenceIndicators();
+
+    // ── Presence bar: avatar chips in the RFQ section header ────────────
+    const bar = document.getElementById('rfq-presence-bar');
+    if (bar && users.length > 0) {
+      bar.innerHTML = users.map(u => `
+        <span style="display:inline-flex;align-items:center;gap:5px;
+                     background:${u.color}22;border:1px solid ${u.color}88;
+                     border-radius:20px;padding:3px 10px 3px 7px;
+                     font-size:11px;font-weight:700;color:${u.color};
+                     white-space:nowrap;">
+          <span style="width:7px;height:7px;border-radius:50%;background:${u.color};
+                       display:inline-block;
+                       animation:presence-pulse 2s ease-in-out infinite;"></span>
+          ${u.display_name}
+        </span>`).join('');
+    }
+
+    // ── Cell highlights ──────────────────────────────────────────────────
+    users.forEach(u => {
+      if (!u.focused_field) return;
+      const sep    = u.focused_field.lastIndexOf(':');
+      if (sep < 0) return;
+      const rowId  = u.focused_field.slice(0, sep);
+      const idx    = parseInt(u.focused_field.slice(sep + 1), 10);
+      const row    = document.getElementById(rowId);
+      if (!row) return;
+      const input  = row.querySelectorAll('input')[idx];
+      if (!input) return;
+
+      // Colored outline on the focused input
+      input.style.outline   = `2px solid ${u.color}`;
+      input.style.outlineOffset = '0px';
+      input.dataset.presence = '1';
+
+      // Floating name tag above the input
+      const tag = document.createElement('div');
+      tag.className        = 'presence-name-tag';
+      tag.textContent      = u.display_name;
+      tag.style.background = u.color;
+      const wrap = input.parentElement;
+      if (wrap) {
+        if (getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
+        wrap.appendChild(tag);
+      }
+    });
+  }
+
+  // Attach focus/blur listeners to the RFQ table (event delegation, idempotent)
+  function _initPresenceFocusTracking() {
+    const rfqBody = document.getElementById('rfq-body');
+    if (!rfqBody || rfqBody._presenceReady) return;
+    rfqBody._presenceReady = true;
+
+    rfqBody.addEventListener('focusin', e => {
+      if (e.target.tagName !== 'INPUT') return;
+      const row = e.target.closest('tr[id]');
+      if (!row) return;
+      const inputs = [...row.querySelectorAll('input')];
+      const idx    = inputs.indexOf(e.target);
+      if (idx < 0) return;
+      _myFocusedField = `${row.id}:${idx}`;
+      _sendPresenceHeartbeat();   // push field update immediately
+    });
+
+    rfqBody.addEventListener('focusout', () => {
+      setTimeout(() => {
+        if (!rfqBody.contains(document.activeElement)) {
+          _myFocusedField = '';
+          _sendPresenceHeartbeat();
+        }
+      }, 120);
+    });
+  }
+
+  // Clear presence immediately when the tab is closed / navigated away from
+  window.addEventListener('beforeunload', () => {
+    if (_presenceWorkbookId) {
+      try {
+        navigator.sendBeacon(
+          'api.php?action=clear_presence',
+          new Blob([JSON.stringify({action:'clear_presence'})], {type:'application/json'})
+        );
+      } catch(e) {}
+    }
+  });
 
   function orderTotals(order) {
     let totalUsd = 0, totalRmb = 0;

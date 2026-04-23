@@ -125,6 +125,16 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS app_state (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// Real-time presence: one row per logged-in user, updated every 5 s
+$pdo->exec("CREATE TABLE IF NOT EXISTS presence (
+    user_id INT NOT NULL PRIMARY KEY,
+    display_name VARCHAR(100) NOT NULL DEFAULT '',
+    workbook_id INT NOT NULL DEFAULT 0,
+    focused_field VARCHAR(255) NOT NULL DEFAULT '',
+    color CHAR(7) NOT NULL DEFAULT '#888888',
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
@@ -1381,6 +1391,45 @@ switch ($action) {
         }
 
         echo json_encode(['rate' => $fxRate, 'source' => $fxSource]);
+        break;
+
+    // ─── PRESENCE ──────────────────────────────────────────
+    // Heartbeat: upsert caller's row; called every 5 s from the client.
+    case 'update_presence':
+        $uid   = $sessionUser['id'];
+        $name  = $sessionUser['display_name'] ?: $sessionUser['username'];
+        $wbId  = intval($input['workbook_id']   ?? 0);
+        $field = substr($input['focused_field'] ?? '', 0, 255);
+        $color = preg_match('/^#[0-9a-fA-F]{6}$/', $input['color'] ?? '')
+               ? $input['color'] : '#888888';
+        $pdo->prepare(
+            "INSERT INTO presence (user_id, display_name, workbook_id, focused_field, color)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               display_name=VALUES(display_name), workbook_id=VALUES(workbook_id),
+               focused_field=VALUES(focused_field), color=VALUES(color), last_seen=NOW()"
+        )->execute([$uid, $name, $wbId, $field, $color]);
+        echo json_encode(['success' => true]);
+        break;
+
+    // Poll: return other active users on the same workbook (seen in last 15 s).
+    case 'get_presence':
+        $uid  = $sessionUser['id'];
+        $wbId = intval($input['workbook_id'] ?? 0);
+        $stmt = $pdo->prepare(
+            "SELECT display_name, focused_field, color FROM presence
+             WHERE workbook_id = ? AND user_id != ?
+               AND last_seen > NOW() - INTERVAL 15 SECOND"
+        );
+        $stmt->execute([$wbId, $uid]);
+        echo json_encode(['success' => true, 'users' => $stmt->fetchAll()]);
+        break;
+
+    // Clear: remove the caller's row immediately (on tab close / navigate away).
+    case 'clear_presence':
+        $uid = $sessionUser['id'];
+        $pdo->prepare("DELETE FROM presence WHERE user_id = ?")->execute([$uid]);
+        echo json_encode(['success' => true]);
         break;
 
     default:
