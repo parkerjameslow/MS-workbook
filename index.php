@@ -2670,6 +2670,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       .freight-calc { grid-template-columns: 1fr; }
     }
 
+    /* ── Header currency calculator ─────────────────────────────────────── */
+    .fx-calc {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0 10px;
+      height: 30px;
+      flex-shrink: 0;
+    }
+    .fx-calc-sym {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .fx-calc-input {
+      width: 76px;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      font-family: inherit;
+      text-align: right;
+      -moz-appearance: textfield;
+      padding: 0;
+    }
+    .fx-calc-input::placeholder { color: var(--text-muted); opacity: 0.5; font-weight: 400; }
+    .fx-calc-input::-webkit-outer-spin-button,
+    .fx-calc-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .fx-calc-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      flex-shrink: 0;
+      margin: 0 3px;
+    }
+    @media (max-width: 768px) { .fx-calc { display: none; } }
+
     /* ── Print ───────────────────────────────────────────────────────────── */
     @media print {
       .sidebar { display: none !important; }
@@ -3712,6 +3756,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
   <div class="header-actions">
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
+    <div class="fx-calc" title="Currency calculator — type in either field">
+      <span class="fx-calc-sym">¥</span>
+      <input class="fx-calc-input" id="hdr-calc-rmb" type="number" step="0.01" min="0"
+             placeholder="RMB" autocomplete="off" inputmode="decimal"
+             oninput="hdrCalcRmbToUsd()" />
+      <div class="fx-calc-divider"></div>
+      <span class="fx-calc-sym">$</span>
+      <input class="fx-calc-input" id="hdr-calc-usd" type="number" step="0.01" min="0"
+             placeholder="USD" autocomplete="off" inputmode="decimal"
+             oninput="hdrCalcUsdToRmb()" />
+    </div>
     <span id="fx-rate-display" title="Live CNY→USD exchange rate" style="font-size:11px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:3px 8px; white-space:nowrap; letter-spacing:0.02em;">1 ¥ = $—</span>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-btn" onclick="toggleUserDropdown()" title="Account">
@@ -6564,6 +6619,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       el.textContent = `1 ¥ = $${cnyToUsd}`;
       el.title = `CNY → USD rate: $${cnyToUsd} per Yuan (source: ${source}, updated ${time})`;
     }
+  }
+
+  // ── Header currency calculator ───────────────────────────────────────────
+  function hdrCalcRmbToUsd() {
+    const rmb = parseFloat(document.getElementById('hdr-calc-rmb').value);
+    const usdEl = document.getElementById('hdr-calc-usd');
+    usdEl.value = (rmb > 0) ? (rmb / USD_TO_RMB).toFixed(2) : '';
+  }
+  function hdrCalcUsdToRmb() {
+    const usd = parseFloat(document.getElementById('hdr-calc-usd').value);
+    const rmbEl = document.getElementById('hdr-calc-rmb');
+    rmbEl.value = (usd > 0) ? (usd * USD_TO_RMB).toFixed(2) : '';
   }
 
   async function fetchLiveRate() {
