@@ -90,6 +90,21 @@ try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN notes TEXT DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
 
+// Auto-create portal_tokens table
+$pdo->exec("CREATE TABLE IF NOT EXISTS portal_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    token CHAR(64) NOT NULL,
+    order_snapshot LONGTEXT NOT NULL,
+    client_name VARCHAR(255) DEFAULT '',
+    client_email VARCHAR(255) DEFAULT '',
+    status ENUM('active','approved','changes_requested') NOT NULL DEFAULT 'active',
+    client_comment TEXT DEFAULT NULL,
+    line_changes LONGTEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NULL,
+    UNIQUE KEY uq_token (token)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // Auto-create inventory table if not exists
 $pdo->exec("CREATE TABLE IF NOT EXISTS inventory (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -206,6 +221,111 @@ function ms_rfq_table(array $items, float $rate): string {
            . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:center;">Qty</th>'
            . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Unit (USD)</th>'
            . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Total</th>'
+           . '</tr></thead>';
+    return '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin:20px 0;">'
+         . $thead . '<tbody>' . $rows . '</tbody></table>';
+}
+
+// Full order table for client email (Product grouping, USD only)
+function ms_order_table_client(array $items, float $rate): string {
+    $rows = '';
+    $prevProduct = null;
+    $grandTotal  = 0;
+    foreach ($items as $itm) {
+        $product  = $itm['product'] ?? '';
+        $itemName = $itm['item']    ?? '';
+        $sku      = $itm['sku']     ?? '';
+        $qty      = (float)($itm['qty']      ?? 0);
+        $priceRmb = (float)($itm['priceRmb'] ?? 0);
+        if (!$itemName && !$qty && !$priceRmb) continue;
+        if ($product !== $prevProduct && $product !== '') {
+            $rows .= '<tr style="background:#f8f9fb;"><td colspan="5" style="padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">'
+                   . htmlspecialchars($product) . '</td></tr>';
+            $prevProduct = $product;
+        }
+        $unitUsd = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
+        $totUsd  = ($priceRmb > 0 && $qty > 0 && $rate > 0) ? ($priceRmb / $rate) * $qty : 0;
+        $totFmt  = $totUsd > 0 ? '$' . number_format($totUsd, 2) : '—';
+        $qtyFmt  = $qty > 0 ? number_format($qty) : '—';
+        $grandTotal += $totUsd;
+        $rows .= '<tr style="border-top:1px solid #f0f2f5;">'
+               . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;">' . htmlspecialchars($itemName) . '</td>'
+               . '<td style="padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;">' . htmlspecialchars($sku) . '</td>'
+               . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;">' . $qtyFmt . '</td>'
+               . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;">' . $unitUsd . '</td>'
+               . '<td style="padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;">' . $totFmt . '</td>'
+               . '</tr>';
+    }
+    if ($grandTotal > 0) {
+        $rows .= '<tr style="background:#f8f9fb;border-top:2px solid #e5e7eb;">'
+               . '<td colspan="4" style="padding:10px 12px;font-size:13px;color:#6b7280;font-weight:600;text-align:right;">Estimated Total</td>'
+               . '<td style="padding:10px 12px;font-size:15px;font-weight:800;color:#1a1d2e;text-align:right;">$' . number_format($grandTotal, 2) . ' <span style="font-size:11px;font-weight:400;color:#9ba3c0;">USD</span></td>'
+               . '</tr>';
+    }
+    $thead = '<thead><tr style="background:#f8f9fb;">'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:left;">Item</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:left;">SKU</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:center;">Qty</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Unit (USD)</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Total</th>'
+           . '</tr></thead>';
+    return '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin:20px 0;">'
+         . $thead . '<tbody>' . $rows . '</tbody></table>';
+}
+
+// Full order table for internal email (Product grouping, USD + RMB columns)
+function ms_order_table_internal(array $items, float $rate): string {
+    $rows = '';
+    $prevProduct = null;
+    $grandUsd    = 0;
+    $grandRmb    = 0;
+    foreach ($items as $itm) {
+        $product  = $itm['product'] ?? '';
+        $itemName = $itm['item']    ?? '';
+        $sku      = $itm['sku']     ?? '';
+        $qty      = (float)($itm['qty']      ?? 0);
+        $priceRmb = (float)($itm['priceRmb'] ?? 0);
+        $leadTime = (string)($itm['leadTime'] ?? '');
+        if (!$itemName && !$qty && !$priceRmb) continue;
+        if ($product !== $prevProduct && $product !== '') {
+            $rows .= '<tr style="background:#f8f9fb;"><td colspan="7" style="padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">'
+                   . htmlspecialchars($product) . '</td></tr>';
+            $prevProduct = $product;
+        }
+        $unitUsd  = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
+        $unitRmb  = $priceRmb > 0 ? '¥' . number_format($priceRmb, 2) : '—';
+        $totUsd   = ($priceRmb > 0 && $qty > 0 && $rate > 0) ? ($priceRmb / $rate) * $qty : 0;
+        $totRmb   = ($priceRmb > 0 && $qty > 0) ? $priceRmb * $qty : 0;
+        $totUsdFmt = $totUsd > 0 ? '$' . number_format($totUsd, 2) : '—';
+        $qtyFmt   = $qty > 0 ? number_format($qty) : '—';
+        $leadFmt  = $leadTime ? htmlspecialchars($leadTime) . 'd' : '—';
+        $grandUsd += $totUsd;
+        $grandRmb += $totRmb;
+        $rows .= '<tr style="border-top:1px solid #f0f2f5;">'
+               . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;">' . htmlspecialchars($itemName) . '</td>'
+               . '<td style="padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;">' . htmlspecialchars($sku) . '</td>'
+               . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;">' . $qtyFmt . '</td>'
+               . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;">' . $unitUsd . '</td>'
+               . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:right;">' . $unitRmb . '</td>'
+               . '<td style="padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;">' . $totUsdFmt . '</td>'
+               . '<td style="padding:10px 12px;font-size:13px;color:#6b7280;text-align:center;">' . $leadFmt . '</td>'
+               . '</tr>';
+    }
+    if ($grandUsd > 0) {
+        $rows .= '<tr style="background:#f8f9fb;border-top:2px solid #e5e7eb;">'
+               . '<td colspan="5" style="padding:10px 12px;font-size:13px;color:#6b7280;font-weight:600;text-align:right;">Total</td>'
+               . '<td style="padding:10px 12px;font-size:15px;font-weight:800;color:#1a1d2e;text-align:right;">$' . number_format($grandUsd, 2) . ' USD</td>'
+               . '<td style="padding:10px 12px;font-size:13px;color:#6b7280;text-align:right;">¥' . number_format($grandRmb, 2) . '</td>'
+               . '</tr>';
+    }
+    $thead = '<thead><tr style="background:#f8f9fb;">'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:left;">Item</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:left;">SKU</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:center;">Qty</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Unit (USD)</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Unit (RMB)</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:right;">Total (USD)</th>'
+           . '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;text-align:center;">Lead</th>'
            . '</tr></thead>';
     return '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin:20px 0;">'
          . $thead . '<tbody>' . $rows . '</tbody></table>';
@@ -889,6 +1009,7 @@ switch ($action) {
         $internal    = ['jackson@marketsculpt.com', 'parker@marketsculpt.com'];
 
         $client_html = $internal_html = $subject = '';
+        $portalUrl   = null;
 
         if ($type === 'quote_ready') {
             $product  = $details['product'] ?? 'your product';
@@ -915,22 +1036,85 @@ switch ($action) {
         } elseif (in_array($type, ['order_confirmed', 'order_in_production', 'order_complete'])) {
             $order_name = $details['order_name'] ?? 'Your Order';
             $po         = $details['po_number']  ?? '';
-            $total_usd  = $details['total_usd']  ?? '';
             $greeting   = $contactName ? "Hi {$contactName}," : "Hi there,";
 
             $meta = [
-                'order_confirmed'     => ['Order Confirmed',     'Your order has been confirmed.',          '#27ae60', 'We\'re excited to let you know your order is confirmed and moving forward. We\'ll keep you updated every step of the way.'],
-                'order_in_production' => ['Order In Production', 'Your order is now in production.',        '#E8751A', 'Great news — your order is now in production! We\'ll notify you as soon as it\'s complete.'],
-                'order_complete'      => ['Order Complete',      'Your order is complete and ready.',       '#6b93ff', 'Your order is complete! Please reach out if you have any questions about delivery or next steps.'],
+                'order_confirmed'     => ['Order Confirmed',     'Your order has been confirmed and is ready for your review.',  '#27ae60'],
+                'order_in_production' => ['Order In Production', 'Your order is now in production.',                             '#E8751A'],
+                'order_complete'      => ['Order Complete',      'Your order is complete and ready.',                            '#6b93ff'],
             ][$type];
-            [$title, $subtitle, $color, $msg] = $meta;
+            [$title, $subtitle, $color] = $meta;
             $subject = "{$title} — {$order_name}";
 
-            $detail_rows = [['Order', htmlspecialchars($order_name)]];
-            if ($po)         $detail_rows[] = ['PO Number',    htmlspecialchars($po)];
-            if ($total_usd)  $detail_rows[] = ['Order Total',  '$' . htmlspecialchars($total_usd)];
+            // Build flat items list from entries
+            $orderItems = [];
+            foreach (($details['entries'] ?? []) as $entry) {
+                $prod = $entry['product'] ?? '';
+                foreach (($entry['rfqItems'] ?? []) as $rfqItem) {
+                    if (!($rfqItem['item'] ?? '') && !($rfqItem['qty'] ?? 0) && !($rfqItem['priceRmb'] ?? 0)) continue;
+                    $orderItems[] = [
+                        'product'   => $prod,
+                        'item'      => $rfqItem['item']     ?? '',
+                        'sku'       => $rfqItem['sku']      ?? '',
+                        'qty'       => (float)($rfqItem['qty']      ?? 0),
+                        'priceRmb'  => (float)($rfqItem['priceRmb'] ?? 0),
+                        'leadTime'  => (string)($rfqItem['leadTime'] ?? ''),
+                    ];
+                }
+            }
+
+            // Generate portal token for order_confirmed
+            if ($type === 'order_confirmed' && !empty($orderItems)) {
+                $portalToken  = bin2hex(random_bytes(32));
+                $orderSnapshot = json_encode([
+                    'order' => [
+                        'name'        => $order_name,
+                        'poNumber'    => $po,
+                        'dateCreated' => date('Y-m-d'),
+                        'clientName'  => $clientName,
+                    ],
+                    'items' => $orderItems,
+                    'rate'  => $rate,
+                ]);
+                try {
+                    $pdo->prepare("INSERT INTO portal_tokens (token, order_snapshot, client_name, client_email) VALUES (?, ?, ?, ?)")
+                        ->execute([$portalToken, $orderSnapshot, $clientName, $clientEmail]);
+                    $scheme    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                    $host      = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
+                    $portalUrl = "{$scheme}://{$host}/portal.php?t={$portalToken}";
+                } catch (PDOException $e) {
+                    $portalUrl = null;
+                }
+            }
+
+            // Client order table
+            $order_tbl_client = !empty($orderItems) ? ms_order_table_client($orderItems, $rate) : '';
+
+            // Internal order table (with RMB + lead time)
+            $order_tbl_internal = !empty($orderItems) ? ms_order_table_internal($orderItems, $rate) : '';
 
             $badge = "<div style='margin-bottom:20px;'><span style='background:{$color};color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:5px 14px;border-radius:20px;'>{$title}</span></div>";
+
+            $detail_rows = [['Order', htmlspecialchars($order_name)]];
+            if ($po) $detail_rows[] = ['PO Number', htmlspecialchars($po)];
+
+            // Portal CTA button for client email
+            $portal_btn = '';
+            if ($portalUrl && $type === 'order_confirmed') {
+                $portal_btn = "<div style='text-align:center;margin:32px 0;'>"
+                            . "<a href='" . htmlspecialchars($portalUrl) . "' style='display:inline-block;background:#E8751A;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;letter-spacing:0.01em;'>"
+                            . "View &amp; Approve Your Order &rarr;"
+                            . "</a>"
+                            . "<p style='margin:12px 0 0;font-size:12px;color:#9ba3c0;'>This link expires once you approve or request changes.</p>"
+                            . "</div>";
+            }
+
+            $msg_map = [
+                'order_confirmed'     => "We're pleased to let you know your order is confirmed. Please review the details below and approve or request any changes.",
+                'order_in_production' => "Great news — your order is now in production. We'll keep you updated as it progresses.",
+                'order_complete'      => "Your order is complete! Please reach out if you have any questions about delivery or next steps.",
+            ];
+            $msg = $msg_map[$type] ?? '';
 
             $c_body = $badge
                     . "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>" . htmlspecialchars($order_name) . "</h1>"
@@ -938,12 +1122,24 @@ switch ($action) {
                     . "<p style='margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;'>{$greeting}</p>"
                     . "<p style='margin:0 0 24px;font-size:15px;color:#374151;line-height:1.7;'>{$msg}</p>"
                     . ms_detail_table($detail_rows)
-                    . "<p style='margin:20px 0 0;font-size:15px;color:#374151;'>Thank you for your business!<br><strong>Market Sculpt Team</strong></p>";
+                    . $order_tbl_client
+                    . $portal_btn
+                    . "<p style='margin:24px 0 0;font-size:15px;color:#374151;'>Thank you for your business!<br><strong>Market Sculpt Team</strong></p>";
+
+            $i_detail = [
+                ['Client',     htmlspecialchars($clientName)],
+                ['Contact',    htmlspecialchars($contactName)],
+                ['Sent To',    htmlspecialchars($clientEmail)],
+                ['Order',      htmlspecialchars($order_name)],
+            ];
+            if ($po) $i_detail[] = ['PO Number', htmlspecialchars($po)];
+            if ($portalUrl) $i_detail[] = ['Portal Link', '<a href="' . htmlspecialchars($portalUrl) . '" style="color:#E8751A;">' . htmlspecialchars($portalUrl) . '</a>'];
 
             $i_body = $badge
                     . "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>" . htmlspecialchars($order_name) . "</h1>"
                     . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>Internal — client has been notified.</p>"
-                    . ms_detail_table([['Client', htmlspecialchars($clientName)], ['Contact', htmlspecialchars($contactName)], ['Sent To', htmlspecialchars($clientEmail)], ...$detail_rows]);
+                    . ms_detail_table($i_detail)
+                    . $order_tbl_internal;
 
             $client_html   = ms_email_wrap($subject, $subtitle, $c_body);
             $internal_html = ms_email_wrap("[Internal] " . $subject, "Sent to {$clientName}", $i_body);
@@ -956,7 +1152,9 @@ switch ($action) {
         if ($clientEmail) $results['client'] = ms_smtp_send([$clientEmail], $subject, $client_html);
         $results['internal'] = ms_smtp_send($internal, '[Internal] ' . $subject, $internal_html);
         $ok = (!$clientEmail || ($results['client']['ok'] ?? false)) && ($results['internal']['ok'] ?? false);
-        echo json_encode(['success' => $ok, 'results' => $results]);
+        $resp = ['success' => $ok, 'results' => $results];
+        if ($portalUrl) $resp['portal_url'] = $portalUrl;
+        echo json_encode($resp);
         break;
 
     default:

@@ -5207,10 +5207,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
 
     <!-- Preview -->
-    <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:20px;">
+    <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:16px;">
       <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">Email Preview</div>
       <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;" id="notify-preview-subject"></div>
       <div style="font-size:12px; color:var(--text-muted); line-height:1.5;" id="notify-preview-body"></div>
+    </div>
+    <!-- Portal notice (shown for order_confirmed only) -->
+    <div id="notify-portal-notice" style="display:none; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:12px; color:var(--accent); line-height:1.6;">
+      <strong>Portal link will be generated.</strong> The client email will include a secure link to review and approve this order. You'll receive the link after sending.
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -7984,6 +7988,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         details: { product, rfqItems }
       };
 
+      const pn = document.getElementById('notify-portal-notice');
+      if (pn) pn.style.display = 'none';
+
       _renderNotifyRecipients(clientEmail, contactName);
     }
 
@@ -7999,21 +8006,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const label       = labelMap[notifType];
       const tot         = orderTotals(o);
 
+      // Build full entries with rfqItems for detailed emails and portal
+      const entriesWithDetail = (o.entries || []).map(e => {
+        const key    = `${e.clientName}|${e.workbookId}`;
+        const detail = workbookDetail[key] || {};
+        const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
+        return {
+          clientName: e.clientName,
+          workbookId: e.workbookId,
+          product:    detail.product || `Workbook #${e.workbookId}`,
+          rfqItems
+        };
+      });
+
       document.getElementById('notify-modal-title').textContent = `Notify Client — ${label}`;
       document.getElementById('notify-preview-subject').textContent = `${label} — ${o.name}`;
+      const itemCount = entriesWithDetail.reduce((acc, e) => acc + e.rfqItems.length, 0);
       document.getElementById('notify-preview-body').textContent =
         `Hi ${contactName || clientEmail || 'Client'},\n\nUpdate on ${o.name}` +
         (o.poNumber ? ` (PO: ${o.poNumber})` : '') +
-        (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})}` : '') + '.';
+        (itemCount > 0 ? ` · ${itemCount} line item${itemCount !== 1 ? 's' : ''}` : '') +
+        (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})} USD` : '') + '.';
 
       _notifyPayload = {
         type: notifType, client_email: clientEmail, contact_name: contactName,
         client_name: o.clientName, rate: USD_TO_RMB,
         details: {
           order_name: o.name, po_number: o.poNumber || '',
-          total_usd: tot.totalUsd > 0 ? tot.totalUsd.toFixed(2) : ''
+          entries: entriesWithDetail
         }
       };
+
+      // Show portal notice for order_confirmed
+      const pn2 = document.getElementById('notify-portal-notice');
+      if (pn2) pn2.style.display = (notifType === 'order_confirmed') ? 'block' : 'none';
 
       _renderNotifyRecipients(clientEmail, contactName);
     }
@@ -8053,9 +8079,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const res = await apiCall('send_notification', _notifyPayload);
       if (res.success) {
         closeNotifyModal();
-        // Brief toast
-        const s = document.getElementById('save-status');
-        if (s) { s.textContent = '✓ Notification sent'; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 3000); }
+        // Show portal URL if one was generated
+        if (res.portal_url) {
+          _showPortalUrl(res.portal_url);
+        } else {
+          const s = document.getElementById('save-status');
+          if (s) { s.textContent = '✓ Notification sent'; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 4000); }
+        }
       } else {
         const err = res.results?.internal?.error || res.results?.client?.error || 'Unknown error';
         alert(`Failed to send: ${err}\n\nCheck that the Gmail App Password is correct.`);
@@ -8065,6 +8095,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     btn.disabled = false;
     btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Send Notification';
+  }
+
+  function _showPortalUrl(url) {
+    // Show a modal with the portal link so it can be copied/shared
+    const existing = document.getElementById('portal-url-modal');
+    if (existing) existing.remove();
+    const m = document.createElement('div');
+    m.id = 'portal-url-modal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px;';
+    m.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:rgba(39,174,96,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <div style="font-size:16px;font-weight:800;color:var(--text);">Notification Sent</div>
+        </div>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 20px;line-height:1.6;">The client email has been sent. A unique approval portal link has been created — share it with your client or use it as a reference.</p>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px;">Client Portal Link</div>
+        <div style="display:flex;gap:8px;align-items:stretch;">
+          <input id="portal-url-input" type="text" value="${url}" readonly
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;font-family:ui-monospace,monospace;color:var(--text);outline:none;min-width:0;" />
+          <button onclick="(function(){const el=document.getElementById('portal-url-input');el.select();document.execCommand('copy');const b=document.getElementById('copy-portal-btn');b.textContent='Copied!';b.style.background='var(--success)';setTimeout(()=>{b.textContent='Copy';b.style.background='var(--accent)';},2000);})()"
+            id="copy-portal-btn"
+            style="background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:0 16px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;">
+            Copy
+          </button>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:20px;">
+          <button onclick="document.getElementById('portal-url-modal').remove()"
+            style="background:none;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-size:13px;font-weight:600;padding:8px 18px;cursor:pointer;font-family:inherit;">
+            Done
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    // Auto-select the URL
+    setTimeout(() => { const el = document.getElementById('portal-url-input'); if (el) el.select(); }, 50);
   }
 
   function lockWorkbookTab(locked) {
