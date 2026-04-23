@@ -1361,11 +1361,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-bottom: 1px solid var(--border);
     }
 
-    .dash-table th:nth-child(1) { width: 20%; }
-    .dash-table th:nth-child(2) { width: 10%; }
-    .dash-table th:nth-child(3) { width: 10%; }
-    .dash-table th:nth-child(4) { width: auto; }
-    .dash-table th:nth-child(6) { width: 60px; }
+    .dash-table th:nth-child(1) { width: 22%; }   /* Product */
+    .dash-table th:nth-child(2) { width: 100px; } /* Date Created */
+    .dash-table th:nth-child(3) { width: 100px; } /* Date Submitted */
+    .dash-table th:nth-child(4) { width: 110px; } /* Order */
+    .dash-table th:nth-child(5) { width: auto; }  /* Fulfilment (Flow) — takes remaining space */
+    .dash-table th:nth-child(7) { width: 54px; }  /* Actions */
 
     .dash-table td {
       padding: 18px 16px;
@@ -1408,7 +1409,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--accent);
     }
 
-    .col-order { width: 120px; white-space: nowrap; }
+    .col-order { white-space: nowrap; }
 
     .wb-order-pill {
       display: inline-flex;
