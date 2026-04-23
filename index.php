@@ -8921,7 +8921,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       if (s) { s.textContent = `✓ Client "${name}" created`; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 3500); }
     } else {
-      if (s) { s.textContent = `⚠ Failed to save client to database`; s.style.color = 'var(--danger)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 4000); }
+      const errMsg = result.error || 'Unknown error';
+      if (s) { s.textContent = `⚠ ${errMsg}`; s.style.color = 'var(--danger)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 5000); }
+      // If the client already exists in the DB (e.g. from a previous attempt),
+      // try to recover by reloading from DB so it shows up properly
+      if (errMsg.toLowerCase().includes('already exists')) {
+        await loadFromDatabase();
+        rebuildSidebar();
+        updateSidebarActive(name);
+      }
     }
 
     saveToLocalStorage();
