@@ -2690,7 +2690,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       line-height: 1;
     }
     .fx-calc-input {
-      width: 76px;
+      width: 90px;
       background: transparent;
       border: none;
       outline: none;
@@ -6625,12 +6625,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function hdrCalcRmbToUsd() {
     const rmb = parseFloat(document.getElementById('hdr-calc-rmb').value);
     const usdEl = document.getElementById('hdr-calc-usd');
-    usdEl.value = (rmb > 0) ? (rmb / USD_TO_RMB).toFixed(2) : '';
+    usdEl.value = (rmb > 0) ? (rmb / USD_TO_RMB).toFixed(4) : '';
   }
   function hdrCalcUsdToRmb() {
     const usd = parseFloat(document.getElementById('hdr-calc-usd').value);
     const rmbEl = document.getElementById('hdr-calc-rmb');
-    rmbEl.value = (usd > 0) ? (usd * USD_TO_RMB).toFixed(2) : '';
+    rmbEl.value = (usd > 0) ? (usd * USD_TO_RMB).toFixed(4) : '';
   }
 
   async function fetchLiveRate() {
