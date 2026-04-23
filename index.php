@@ -9058,20 +9058,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const completed = items.filter(i => isFlowComplete(i.flow)).length;
     const open = total - completed;
 
-    // Financial totals — sum quoteClQty × quoteClUnitPrice (+shipping) per workbook
-    let openUsd = 0, closedUsd = 0;
-    items.forEach(item => {
-      const detail = workbookDetail[`${clientName}|${item.id}`] || {};
-      const qty = parseFloat(detail.quoteClQty) || 0;
-      const price = parseFloat(detail.quoteClUnitPrice) || 0;
-      const shipping = parseFloat(detail.quoteClShipping) || 0;
-      const orderTotal = qty * price + shipping;
-      if (isFlowComplete(item.flow)) {
-        closedUsd += orderTotal;
+    // ── Financial totals ────────────────────────────────────────────────
+    // Open Orders / Closed Orders: pulled from the Order system.
+    // An order "belongs" to this client if order.clientName matches OR any
+    // entry's clientName matches. Use orderTotals() for the USD value.
+    let openOrdersUsd = 0, closedOrdersUsd = 0;
+    let openOrderCount = 0, closedOrderCount = 0;
+    Object.values(orderData || {}).forEach(order => {
+      const belongsHere = order.clientName === clientName ||
+        (order.entries || []).some(e => e.clientName === clientName);
+      if (!belongsHere) return;
+      const tot = orderTotals(order).totalUsd;
+      if (order.status === 'complete') {
+        closedOrdersUsd += tot;
+        closedOrderCount++;
       } else {
-        openUsd += orderTotal;
+        openOrdersUsd += tot;
+        openOrderCount++;
       }
     });
+
+    // Total Pipeline: ALL open (flow not complete) workbooks for this client
+    // that have pricing filled in. Uses the selected tier (Total Delivered Cost
+    // proxy = tier qty × tier unit price in USD). Falls back to client quote
+    // fields if no tier is selected.
+    let pipelineUsd = 0;
+    items.forEach(item => {
+      if (isFlowComplete(item.flow)) return;
+      const detail = workbookDetail[`${clientName}|${item.id}`] || {};
+      const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
+      const tier = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+      if (tier && parseFloat(tier.price) && parseFloat(tier.qty)) {
+        pipelineUsd += (parseFloat(tier.price) / USD_TO_RMB) * parseFloat(tier.qty);
+      } else {
+        // Fall back to client quote fields
+        const qty = parseFloat(detail.quoteClQty) || 0;
+        const price = parseFloat(detail.quoteClUnitPrice) || 0;
+        const ship = parseFloat(detail.quoteClShipping) || 0;
+        if (qty && price) pipelineUsd += qty * price + ship;
+      }
+    });
+    pipelineUsd = Math.round(pipelineUsd * 100) / 100;
+
     const fmtUsd = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     // Initials from client name
@@ -9113,16 +9141,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             Financial Summary
           </div>
           <div class="cdc-fin-stat">
-            <span class="cdc-fin-stat-label">Open Orders <span style="font-weight:400; opacity:0.7;">(${open})</span></span>
-            <span class="cdc-fin-stat-value accent">${fmtUsd(openUsd)}</span>
+            <span class="cdc-fin-stat-label">Open Orders <span style="font-weight:400; opacity:0.7;">(${openOrderCount})</span></span>
+            <span class="cdc-fin-stat-value accent">${fmtUsd(openOrdersUsd)}</span>
           </div>
           <div class="cdc-fin-stat">
-            <span class="cdc-fin-stat-label">Closed Orders <span style="font-weight:400; opacity:0.7;">(${completed})</span></span>
-            <span class="cdc-fin-stat-value success">${fmtUsd(closedUsd)}</span>
+            <span class="cdc-fin-stat-label">Closed Orders <span style="font-weight:400; opacity:0.7;">(${closedOrderCount})</span></span>
+            <span class="cdc-fin-stat-value success">${fmtUsd(closedOrdersUsd)}</span>
           </div>
           <div class="cdc-fin-stat" style="margin-top:6px; padding-top:10px; border-top:1px solid rgba(107,147,255,0.2);">
             <span class="cdc-fin-stat-label">Total Pipeline</span>
-            <span class="cdc-fin-stat-value" style="font-size:18px;">${fmtUsd(openUsd + closedUsd)}</span>
+            <span class="cdc-fin-stat-value" style="font-size:18px;">${fmtUsd(pipelineUsd)}</span>
           </div>
         </div>
       </div>
