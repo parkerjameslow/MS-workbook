@@ -9024,6 +9024,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const completed = items.filter(i => isFlowComplete(i.flow)).length;
     const open = total - completed;
 
+    // Financial totals — sum quoteClQty × quoteClUnitPrice (+shipping) per workbook
+    let openUsd = 0, closedUsd = 0;
+    items.forEach(item => {
+      const detail = workbookDetail[`${clientName}|${item.id}`] || {};
+      const qty = parseFloat(detail.quoteClQty) || 0;
+      const price = parseFloat(detail.quoteClUnitPrice) || 0;
+      const shipping = parseFloat(detail.quoteClShipping) || 0;
+      const orderTotal = qty * price + shipping;
+      if (isFlowComplete(item.flow)) {
+        closedUsd += orderTotal;
+      } else {
+        openUsd += orderTotal;
+      }
+    });
+    const fmtUsd = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     // Initials from client name
     const initials = clientName.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
@@ -9059,20 +9075,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div class="cdc-financial">
           <div class="cdc-fin-title">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            Client Summary
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            Financial Summary
           </div>
           <div class="cdc-fin-stat">
-            <span class="cdc-fin-stat-label">Total Workbooks</span>
-            <span class="cdc-fin-stat-value">${total}</span>
+            <span class="cdc-fin-stat-label">Open Orders <span style="font-weight:400; opacity:0.7;">(${open})</span></span>
+            <span class="cdc-fin-stat-value accent">${fmtUsd(openUsd)}</span>
           </div>
           <div class="cdc-fin-stat">
-            <span class="cdc-fin-stat-label">Open / Active</span>
-            <span class="cdc-fin-stat-value accent">${open}</span>
+            <span class="cdc-fin-stat-label">Closed Orders <span style="font-weight:400; opacity:0.7;">(${completed})</span></span>
+            <span class="cdc-fin-stat-value success">${fmtUsd(closedUsd)}</span>
           </div>
-          <div class="cdc-fin-stat">
-            <span class="cdc-fin-stat-label">Completed</span>
-            <span class="cdc-fin-stat-value success">${completed}</span>
+          <div class="cdc-fin-stat" style="margin-top:6px; padding-top:10px; border-top:1px solid rgba(107,147,255,0.2);">
+            <span class="cdc-fin-stat-label">Total Pipeline</span>
+            <span class="cdc-fin-stat-value" style="font-size:18px;">${fmtUsd(openUsd + closedUsd)}</span>
           </div>
         </div>
       </div>
