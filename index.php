@@ -6793,16 +6793,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const inputs  = row.querySelectorAll('input:not([type="checkbox"])');
       const name    = inputs[1]?.value?.trim() || '';
       const qty     = parseFloat(inputs[2]?.value) || 0;
-      const rmb     = parseFloat(inputs[3]?.value) || 0;
+      const rmb     = parseFloat(inputs[3]?.value) || 0;  // the "original" price
       const lead    = inputs[4]?.value || '';
       const leadNum = parseInt(lead);
 
       const varRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
 
       if (varRows.length > 0) {
-        // ── Has variants: one summary row per variant ─────────────────────
-        // Parent lead time still contributes to max (may differ from variants)
+        // ── Has variants: group same-price variants under parent label;
+        //    only break out variants whose RMB differs from the parent. ────
         if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
+
+        const EPSILON = 0.005;  // treat prices within ½ cent as equal
+        let sameQty = 0;
+        const diffVariants = [];
 
         varRows.forEach(vr => {
           const vi       = vr.querySelectorAll('input');
@@ -6810,22 +6814,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const vQty     = parseFloat(vi[1]?.value) || 0;
           const vRmb     = parseFloat(vi[2]?.value) || 0;
           const vLead    = vi[3]?.value || '';
-          const vUsd     = vRmb / USD_TO_RMB;
-          const vTotal   = vQty * vUsd;
           const vLeadNum = parseInt(vLead);
+          if (!isNaN(vLeadNum) && vLeadNum > maxLead) maxLead = vLeadNum;
 
+          if (Math.abs(vRmb - rmb) < EPSILON) {
+            // Same price as original → merge into the parent group
+            sameQty += vQty;
+          } else {
+            // Different price → own breakdown line
+            diffVariants.push({ vName, vQty, vRmb, vLead });
+          }
+        });
+
+        // Combined same-price group (shown under the original item name)
+        if (sameQty > 0) {
+          const usd   = rmb / USD_TO_RMB;
+          const total = sameQty * usd;
+          grandQty     += sameQty;
+          grandRmb     += rmb;
+          grandUsdUnit += usd;
+          grandUsd     += total;
+          itemSummaries.push({ label: name || ('Item ' + id), qty: sameQty, rmb, usd, total, lead, isVariant: false });
+        }
+
+        // Individually-priced variants
+        diffVariants.forEach(({ vName, vQty, vRmb, vLead }) => {
+          const vUsd   = vRmb / USD_TO_RMB;
+          const vTotal = vQty * vUsd;
           grandQty     += vQty;
           grandRmb     += vRmb;
           grandUsdUnit += vUsd;
           grandUsd     += vTotal;
-          if (!isNaN(vLeadNum) && vLeadNum > maxLead) maxLead = vLeadNum;
-
-          if (vName || vQty || vRmb) {
-            const label = name
-              ? `${name}<span style="color:var(--text-muted);font-weight:400;"> — ${vName || 'Variant'}</span>`
-              : (vName || 'Variant');
-            itemSummaries.push({ label, qty: vQty, rmb: vRmb, usd: vUsd, total: vTotal, lead: vLead, isVariant: true });
-          }
+          const label = name
+            ? `${name}<span style="color:var(--text-muted);font-weight:400;"> — ${vName || 'Variant'}</span>`
+            : (vName || 'Variant');
+          itemSummaries.push({ label, qty: vQty, rmb: vRmb, usd: vUsd, total: vTotal, lead: vLead, isVariant: true });
         });
 
       } else {
@@ -6850,7 +6873,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const totalsRow = document.getElementById('rfq-totals');
     const showBreakdown = itemSummaries.length > 1
-                       || (itemSummaries.length === 1 && itemSummaries[0].isVariant);
+                       || itemSummaries.some(s => s.isVariant);
 
     if (showBreakdown && totalsRow) {
       itemSummaries.forEach(item => {
