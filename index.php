@@ -5212,9 +5212,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;" id="notify-preview-subject"></div>
       <div style="font-size:12px; color:var(--text-muted); line-height:1.5;" id="notify-preview-body"></div>
     </div>
-    <!-- Portal notice (shown for order_confirmed only) -->
+    <!-- Portal notice (shown for quote_ready and order_confirmed) -->
     <div id="notify-portal-notice" style="display:none; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:12px; color:var(--accent); line-height:1.6;">
-      <strong>Portal link will be generated.</strong> The client email will include a secure link to review and approve this order. You'll receive the link after sending.
+      <strong>Portal link will be generated.</strong> The client email will include a secure link where they can review, approve, or request changes. You'll receive the link after sending.
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -7989,7 +7989,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       };
 
       const pn = document.getElementById('notify-portal-notice');
-      if (pn) pn.style.display = 'none';
+      if (pn) pn.style.display = rfqItems.length > 0 ? 'block' : 'none';
 
       _renderNotifyRecipients(clientEmail, contactName);
     }

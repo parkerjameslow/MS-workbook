@@ -1015,20 +1015,82 @@ switch ($action) {
             $product  = $details['product'] ?? 'your product';
             $subject  = "Your Quote is Ready — {$product}";
             $greeting = $contactName ? "Hi {$contactName}," : "Hi there,";
-            $rfq_tbl  = !empty($details['rfqItems']) ? ms_rfq_table($details['rfqItems'], $rate) : '';
+
+            // Build flat items list from rfqItems
+            $quoteItems = [];
+            foreach (($details['rfqItems'] ?? []) as $rfqItem) {
+                if (!($rfqItem['item'] ?? '') && !($rfqItem['qty'] ?? 0) && !($rfqItem['priceRmb'] ?? 0)) continue;
+                $quoteItems[] = [
+                    'product'  => $product,
+                    'item'     => $rfqItem['item']     ?? '',
+                    'sku'      => $rfqItem['sku']       ?? '',
+                    'qty'      => (float)($rfqItem['qty']      ?? 0),
+                    'priceRmb' => (float)($rfqItem['priceRmb'] ?? 0),
+                    'leadTime' => (string)($rfqItem['leadTime'] ?? ''),
+                ];
+            }
+
+            // Generate portal token for quote review
+            if (!empty($quoteItems)) {
+                $portalToken   = bin2hex(random_bytes(32));
+                $quoteSnapshot = json_encode([
+                    'order' => [
+                        'name'        => "Quote — {$product}",
+                        'poNumber'    => '',
+                        'dateCreated' => date('Y-m-d'),
+                        'clientName'  => $clientName,
+                        'type'        => 'quote',
+                    ],
+                    'items' => $quoteItems,
+                    'rate'  => $rate,
+                ]);
+                try {
+                    $pdo->prepare("INSERT INTO portal_tokens (token, order_snapshot, client_name, client_email) VALUES (?, ?, ?, ?)")
+                        ->execute([$portalToken, $quoteSnapshot, $clientName, $clientEmail]);
+                    $scheme    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                    $host      = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
+                    $portalUrl = "{$scheme}://{$host}/portal.php?t={$portalToken}";
+                } catch (PDOException $e) {
+                    $portalUrl = null;
+                }
+            }
+
+            // Email tables
+            $rfq_tbl_client   = !empty($quoteItems) ? ms_order_table_client($quoteItems, $rate)   : '';
+            $rfq_tbl_internal = !empty($quoteItems) ? ms_order_table_internal($quoteItems, $rate)  : '';
+
+            // Portal CTA button
+            $portal_btn = '';
+            if ($portalUrl) {
+                $portal_btn = "<div style='text-align:center;margin:32px 0;'>"
+                            . "<a href='" . htmlspecialchars($portalUrl) . "' style='display:inline-block;background:#E8751A;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;letter-spacing:0.01em;'>"
+                            . "Review &amp; Approve Your Quote &rarr;"
+                            . "</a>"
+                            . "<p style='margin:12px 0 0;font-size:12px;color:#9ba3c0;'>This link expires once you approve or request changes.</p>"
+                            . "</div>";
+            }
 
             $c_body = "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>Your Quote is Ready</h1>"
                     . "<p style='margin:0 0 28px;font-size:15px;color:#6b7280;'>We've prepared pricing for your review.</p>"
                     . "<p style='margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;'>{$greeting}</p>"
                     . "<p style='margin:0 0 4px;font-size:15px;color:#374151;line-height:1.7;'>Your quote for <strong>" . htmlspecialchars($product) . "</strong> is ready. Please find the details below:</p>"
-                    . $rfq_tbl
+                    . $rfq_tbl_client
+                    . $portal_btn
                     . "<p style='margin:16px 0;font-size:15px;color:#374151;line-height:1.7;'>Please review and don't hesitate to reach out with any questions or adjustments.</p>"
                     . "<p style='margin:0;font-size:15px;color:#374151;'>Thanks,<br><strong>Market Sculpt Team</strong></p>";
 
+            $i_detail = [
+                ['Client',    htmlspecialchars($clientName)],
+                ['Contact',   htmlspecialchars($contactName)],
+                ['Product',   htmlspecialchars($product)],
+                ['Sent To',   htmlspecialchars($clientEmail)],
+            ];
+            if ($portalUrl) $i_detail[] = ['Portal Link', '<a href="' . htmlspecialchars($portalUrl) . '" style="color:#E8751A;">' . htmlspecialchars($portalUrl) . '</a>'];
+
             $i_body = "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>Quote Sent — " . htmlspecialchars($product) . "</h1>"
                     . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>Internal notification</p>"
-                    . ms_detail_table([['Client', htmlspecialchars($clientName)], ['Contact', htmlspecialchars($contactName)], ['Product', htmlspecialchars($product)], ['Sent To', htmlspecialchars($clientEmail)]])
-                    . $rfq_tbl;
+                    . ms_detail_table($i_detail)
+                    . $rfq_tbl_internal;
 
             $client_html   = ms_email_wrap($subject, "Your quote for {$product} is ready to review.", $c_body);
             $internal_html = ms_email_wrap("[Internal] " . $subject, "Quote sent to {$clientName}", $i_body);

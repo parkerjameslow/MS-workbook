@@ -46,21 +46,23 @@ if (!$row) {
     exit;
 }
 
-$snap    = json_decode($row['order_snapshot'], true) ?: [];
-$order   = $snap['order']  ?? [];
-$items   = $snap['items']  ?? [];
-$rate    = (float)($snap['rate'] ?? 7.24);
-$clName  = $row['client_name'];
-$clEmail = $row['client_email'];
+$snap      = json_decode($row['order_snapshot'], true) ?: [];
+$order     = $snap['order']  ?? [];
+$items     = $snap['items']  ?? [];
+$rate      = (float)($snap['rate'] ?? 7.24);
+$clName    = $row['client_name'];
+$clEmail   = $row['client_email'];
+$isQuote   = ($order['type'] ?? '') === 'quote';   // quote vs order
+$noun      = $isQuote ? 'Quote' : 'Order';          // used throughout page copy
 
 // Already resolved?
 if ($row['status'] !== 'active') {
     $approved = $row['status'] === 'approved';
     $msg = $approved
-        ? 'This order has already been approved. Thank you for your confirmation!'
-        : 'Your change request has been received. The Market Sculpt team will review and follow up shortly.';
-    portalPage($approved ? 'Order Approved' : 'Changes Requested',
-               doneContent($approved ? 'approved' : 'changes_requested', $msg, $order['name'] ?? 'Your Order'));
+        ? "This {$noun} has already been approved. Thank you for your confirmation!"
+        : "Your change request has been received. The Market Sculpt team will review and follow up shortly.";
+    portalPage($approved ? "{$noun} Approved" : 'Changes Requested',
+               doneContent($approved ? 'approved' : 'changes_requested', $msg, $order['name'] ?? "Your {$noun}"));
     exit;
 }
 
@@ -106,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Render portal ───────────────────────────────────────────────────────────
-portalPage($order['name'] ?? 'Order Review', mainContent($order, $items, $rate, $clName, $token));
+portalPage($order['name'] ?? "{$noun} Review", mainContent($order, $items, $rate, $clName, $token, $noun));
 exit;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -486,8 +488,8 @@ function doneContent(string $status, string $msg, string $orderName): string {
          . '</div>';
 }
 
-function mainContent(array $order, array $items, float $rate, string $clName, string $token): string {
-    $orderName = $order['name'] ?? 'Your Order';
+function mainContent(array $order, array $items, float $rate, string $clName, string $token, string $noun = 'Order'): string {
+    $orderName = $order['name'] ?? "Your {$noun}";
     $po        = $order['poNumber'] ?? $order['po_number'] ?? '';
     $date      = $order['dateCreated'] ?? $order['date'] ?? '';
 
@@ -516,7 +518,7 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
     $metaCard = '<div class="card">'
               . '<div class="card-head">'
               . "<h1 class='page-title'>" . htmlspecialchars($orderName) . "</h1>"
-              . "<p class='page-sub'>Review each line item below. Items are <span style='color:#16a34a;font-weight:700;'>✓ approved</span> by default — use \"Request Change\" to flag anything that needs adjustment.</p>"
+              . "<p class='page-sub'>Review each line item below. Items are <span style='color:#16a34a;font-weight:700;'>✓ approved</span> by default — use \"Request Change\" to flag anything that needs adjustment before approving your {$noun}.</p>"
               . '</div>'
               . '<div class="card-body"><div class="detail-grid">' . $detailCells . '</div></div>'
               . '</div>';
@@ -618,7 +620,7 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
           . '<div class="action-hint" id="action-hint">All items are approved. Add changes above or submit.</div>'
           . '<button type="submit" class="approve" id="main-action-btn">'
           . '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>'
-          . 'Approve Order'
+          . "Approve {$noun}"
           . '</button>'
           . '</div>'
           . '</form>';
@@ -631,7 +633,7 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
 
     $itemsCard = '<div class="card">'
                . '<div class="card-head card-head-flex">'
-               . '<span style="font-size:15px;font-weight:700;color:#1a1d2e;">Order Items</span>'
+               . "<span style='font-size:15px;font-weight:700;color:#1a1d2e;'>{$noun} Items</span>"
                . '<div style="display:flex;align-items:center;gap:14px;">'
                . $approveAllBtn
                . ($grandTotal > 0 ? "<span style='font-size:16px;font-weight:800;color:#1a1d2e;'>\$" . number_format($grandTotal, 2) . " <span style='font-size:12px;font-weight:500;color:#9ba3c0;'>USD</span></span>" : '')
@@ -688,7 +690,7 @@ function approveAll() {
     // Set action and submit
     document.getElementById("action-input").value = "approve";
     var mainBtn = document.getElementById("main-action-btn");
-    mainBtn.innerHTML = \'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Approve Order\';
+    mainBtn.innerHTML = \'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Approve ' . $noun . '\';
     mainBtn.className = "approve";
     document.getElementById("portal-form").submit();
 }
@@ -711,7 +713,7 @@ function checkChanges() {
         if (hint) hint.textContent = flaggedCount + " item" + (flaggedCount > 1 ? "s" : "") + " flagged for changes.";
         if (aab)  aab.style.display = "inline-flex";
     } else {
-        btn.innerHTML = \'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Approve Order\';
+        btn.innerHTML = \'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Approve ' . $noun . '\';
         btn.className = "approve";
         act.value     = "approve";
         if (hint) hint.textContent = "All items are approved. Add changes above or submit.";
