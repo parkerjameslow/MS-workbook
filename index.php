@@ -7063,8 +7063,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     td.appendChild(btn);
     tr.appendChild(td);
 
-    // Insert after the last variant row
-    varRows[varRows.length - 1].after(tr);
+    // Insert after anchor (last variant, or parent row when no variants exist)
+    anchor.after(tr);
   }
 
   function syncParentQtyFromVariants(parentId) {
