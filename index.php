@@ -11517,8 +11517,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // ── Nav ──────────────────────────────────────────────────────────────
   function rebuildShipmentsNav() {
-    const list = document.getElementById('shipments-nav-list');
-    if (!list) return;
     const ids = Object.keys(shipmentData);
     // Actionable = any linked order has a change request
     const shipActionable = ids.filter(id => {
@@ -11526,6 +11524,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return entries.some(e => e.orderId && orderData[e.orderId]?.changeRequested);
     }).length;
     _applyNavBadge(document.getElementById('badge-shipments'), shipActionable, ids.length);
+    // Shipments list (if a sub-nav list element exists — may not, since Shipments is now a flat link)
+    const list = document.getElementById('shipments-nav-list');
+    if (!list) return;
     list.innerHTML = ids.map(id => {
       const s = shipmentData[id];
       const statusDot = `<span class="nav-shipment-dot ${s.status}"></span>`;
