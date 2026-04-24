@@ -867,14 +867,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       margin-top: 3px;
     }
     .inv-sku {
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
       color: var(--text);
-      background: var(--surface2);
-      padding: 3px 7px;
-      border-radius: 5px;
-      border: 1px solid var(--border);
-      display: inline-block;
+      font-weight: 600;
     }
     .inv-source-link {
       color: var(--primary);
