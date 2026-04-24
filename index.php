@@ -11141,6 +11141,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     showView('view-inventory');
   }
 
+  // Deterministic color per client name → each client gets its own hue chip.
+  // Same name always produces the same color across renders.
+  function _clientChipStyle(name) {
+    if (!name) return '';
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = ((hash << 5) - hash) + name.charCodeAt(i);
+      hash |= 0;
+    }
+    const hue = Math.abs(hash) % 360;
+    return `background:hsl(${hue},72%,93%);color:hsl(${hue},55%,32%);border-color:hsl(${hue},60%,72%);`;
+  }
+
   function renderInventoryTable(rows) {
     const wrap = document.getElementById('inventory-list-content');
     if (!wrap) return;
@@ -11211,7 +11224,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               ${r.variant_name ? `<div><span class="inv-variant-chip">${r.variant_name}</span></div>` : ''}
             </td>
             <td><span class="inv-sku">${r.sku}</span></td>
-            <td>${r.client_name ? `<span class="inv-client-chip">${r.client_name}</span>` : `<span style="color:var(--text-muted); font-size:12px;">—</span>`}</td>
+            <td>${r.client_name ? `<span class="inv-client-chip" style="${_clientChipStyle(r.client_name)}">${r.client_name}</span>` : `<span style="color:var(--text-muted); font-size:12px;">—</span>`}</td>
             <td>${r._wbHref ? `<span class="inv-wb-pill" onclick="location.hash='${r._wbHref}'">${r._wbName}<span class="inv-wb-pill-arrow">→</span></span>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
             <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
             <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
