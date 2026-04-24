@@ -870,6 +870,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text);
       font-weight: 600;
     }
+    /* Legacy — kept for non-clickable fallback */
     .inv-source-link {
       color: var(--primary);
       cursor: pointer;
@@ -877,6 +878,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       text-decoration: none;
     }
     .inv-source-link:hover { text-decoration: underline; }
+    /* Clickable workbook pill in inventory table */
+    .inv-wb-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 500;
+      padding: 4px 10px; border-radius: 20px;
+      border: 1px solid rgba(107,147,255,0.35);
+      background: rgba(107,147,255,0.1);
+      color: var(--accent); cursor: pointer;
+      transition: border-color 0.12s, background 0.12s;
+      max-width: 100%;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .inv-wb-pill:hover { border-color: var(--accent); background: rgba(107,147,255,0.18); }
+    .inv-wb-pill-arrow { font-size: 11px; opacity: 0.75; flex-shrink: 0; }
+    /* Client chip — distinct color, not clickable */
+    .inv-client-chip {
+      display: inline-flex; align-items: center;
+      font-size: 12px; font-weight: 600;
+      padding: 3px 10px; border-radius: 12px;
+      background: rgba(139,92,246,0.12);
+      color: #7c3aed;
+      border: 1px solid rgba(139,92,246,0.3);
+    }
     .inv-remove-btn {
       background: none;
       border: none;
@@ -11187,8 +11211,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               ${r.variant_name ? `<div><span class="inv-variant-chip">${r.variant_name}</span></div>` : ''}
             </td>
             <td><span class="inv-sku">${r.sku}</span></td>
-            <td style="color:var(--text-muted); font-size:12px;">${r.client_name || '—'}</td>
-            <td>${r._wbHref ? `<a class="inv-source-link" onclick="location.hash='${r._wbHref}'">${r._wbName}</a>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
+            <td>${r.client_name ? `<span class="inv-client-chip">${r.client_name}</span>` : `<span style="color:var(--text-muted); font-size:12px;">—</span>`}</td>
+            <td>${r._wbHref ? `<span class="inv-wb-pill" onclick="location.hash='${r._wbHref}'">${r._wbName}<span class="inv-wb-pill-arrow">→</span></span>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
             <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
             <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
           </tr>`).join('')}
