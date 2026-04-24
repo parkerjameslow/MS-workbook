@@ -10918,7 +10918,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     tbody.innerHTML = all.map(r => {
       const wbHref = `#/client/${encodeURIComponent(r.clientName)}/workbook/${r.workbookId}`;
-      const rmb = r.totalRmb > 0 ? `¥${r.totalRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      const rmb = r.totalRmb > 0 ? `¥${Math.round(r.totalRmb).toLocaleString('en-US')}` : '—';
       const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
       return `
         <tr>
