@@ -3382,8 +3382,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: 0 0 0 1px rgba(232,117,26,0.18);
     }
 
-    /* Make nav-flat-link badges visible when they have content */
-    .nav-flat-link .nav-badge:not(:empty) { display: inline-flex; align-items: center; gap: 4px; background: transparent !important; padding: 0; margin-left: 6px; }
+    /* Make nav-flat-link badges visible when they have content, right-aligned */
+    .nav-flat-link .nav-badge:not(:empty) { display: inline-flex; align-items: center; gap: 4px; background: transparent !important; padding: 0; margin-left: auto; }
     /* Individual pills inside the badge container (supports orange + blue side-by-side) */
     .nav-badge-pill {
       display: inline-flex; align-items: center;
