@@ -8122,9 +8122,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Stores per-client detail fields (email, phone, etc.)
   let clientDetails = {};
 
+  // Tri-state return: true = DB loaded with workbooks, 'empty' = DB reachable but empty,
+  // false = API call failed (network/server). Only 'empty' should trigger seeding.
   async function loadFromDatabase() {
     const result = await apiCall('get_all_data');
-    if (!result.success) return false;
+    if (!result.success) return false; // API failure — DO NOT seed, data may still exist
 
     // Only clear local data if DB has workbooks, otherwise keep hardcoded sample data
     const hasWorkbooks = result.workbooks && result.workbooks.length > 0;
@@ -8149,7 +8151,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       };
     });
 
-    if (!hasWorkbooks) return false; // Let seedDatabase handle it
+    if (!hasWorkbooks) return 'empty'; // DB reachable but no workbooks — safe to seed
 
     // Rebuild workbook data
     result.workbooks.forEach(wb => {
@@ -8177,6 +8179,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       dbWorkbookMap[`${wb.client_name}|${wb.id}`] = wb.id;
     });
+
+    // Once we've confirmed the DB has workbooks, lock out seedDatabase permanently
+    // on this device. This prevents duplication if a future get_all_data call
+    // transiently returns an empty workbook list.
+    try { localStorage.setItem('ms_db_seeded', '1'); } catch(e) {}
 
     // Rebuild sidebar
     rebuildSidebar();
@@ -9305,10 +9312,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const clientId = dbClientMap[client];
     let newId;
     if (clientId) {
+      // allow_duplicate:true — user explicitly created this from the UI.
+      // The server-side dedup guard is intended to block seed-retry loops,
+      // not legitimate user creations (e.g. "Box v1", "Box v2" at the same name).
       const result = await apiCall('add_workbook', {
         client_id: clientId,
         product_name: product,
-        description: desc
+        description: desc,
+        allow_duplicate: true
       });
       if (result.success) {
         newId = parseInt(result.id);
@@ -11612,7 +11623,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const preDbClient = currentClient;
     const preDbWbId = currentWorkbookId;
     const dbLoaded = await loadFromDatabase();
-    if (dbLoaded) {
+    if (dbLoaded === true) {
       console.log('Data loaded from database');
       // Only preserve pre-DB form state if the user actually made edits before DB responded
       if (_isDirty && preDbClient && preDbWbId) {
@@ -11621,10 +11632,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       rebuildRfqNav();  // workbookDetail (incl. sentToRfq flags) now populated from DB
       router(); // Re-render with DB data (or user's edits if they were faster)
+    } else if (dbLoaded === 'empty') {
+      // DB reachable and confirmed empty — safe to seed, but only once per device.
+      // The ms_db_seeded flag gets set inside loadFromDatabase the first time
+      // workbooks are successfully loaded from the DB, so we only seed on a truly
+      // fresh device/browser.
+      const alreadySeeded = (() => { try { return localStorage.getItem('ms_db_seeded') === '1'; } catch(e) { return false; } })();
+      if (!alreadySeeded) {
+        console.log('DB empty on fresh device — seeding with local sample data');
+        seedDatabase();
+      } else {
+        console.log('DB reports empty but device has seeded before — skipping seed (safety guard)');
+      }
     } else {
-      console.log('Using local/fallback data');
-      // Seed the DB with sample data if empty
-      seedDatabase();
+      // dbLoaded === false (API failure) — keep using local data; NEVER seed here.
+      console.log('API unreachable, using local/fallback data (skipping seed)');
     }
 
     // Sync orders and shipments from DB (multi-user shared state)
@@ -11648,47 +11670,79 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Restore saved username into sidebar input
   })();
 
+  // In-memory guard so multiple concurrent callers can't both enter this function.
+  let _seedingInFlight = false;
   async function seedDatabase() {
-    // Check if DB already has workbooks
-    const wbResult = await apiCall('get_workbooks');
-    if (wbResult.success && wbResult.data && wbResult.data.length > 0) return; // DB already seeded
-
-    // Get existing clients from DB to build the map
-    const clientResult = await apiCall('get_clients');
-    if (clientResult.success && clientResult.data) {
-      clientResult.data.forEach(c => { dbClientMap[c.name] = c.id; });
+    // Guard 1: prevent concurrent invocations
+    if (_seedingInFlight) {
+      console.warn('[seedDatabase] already in flight — skipping duplicate call');
+      return;
     }
-
-    // Seed any missing clients
-    for (const name of Object.keys(clientData).sort()) {
-      if (!dbClientMap[name]) {
-        const r = await apiCall('add_client', { name });
-        if (r.success) dbClientMap[name] = r.id;
+    // Guard 2: persistent flag — once seeded on this device, never again
+    try {
+      if (localStorage.getItem('ms_db_seeded') === '1') {
+        console.warn('[seedDatabase] ms_db_seeded flag set — aborting to prevent duplicates');
+        return;
       }
-    }
+    } catch(e) {}
 
-    // Seed workbooks
-    for (const [clientName, items] of Object.entries(clientData)) {
-      const clientId = dbClientMap[clientName];
-      if (!clientId) continue;
-      for (const item of items) {
-        const detail = workbookDetail[`${clientName}|${item.id}`] || {};
-        const r = await apiCall('add_workbook', {
-          client_id: clientId,
-          product_name: item.product,
-          description: item.description,
-          detail: detail
-        });
-        if (r.success) {
-          // Update flow
-          const step = flowToStep(item.flow);
-          await apiCall('update_flow', { id: r.id, flow_step: step });
-          dbWorkbookMap[`${clientName}|${r.id}`] = r.id;
+    _seedingInFlight = true;
+    try {
+      // Guard 3: re-check DB before inserting. Require success AND empty — if the
+      // call fails we bail (transient API errors used to trigger re-seeds, which
+      // was the root cause of cross-device workbook duplication).
+      const wbResult = await apiCall('get_workbooks');
+      if (!wbResult.success) {
+        console.warn('[seedDatabase] get_workbooks failed — aborting seed to avoid dupes');
+        return;
+      }
+      if (wbResult.data && wbResult.data.length > 0) {
+        // DB already has workbooks — mark seeded and bail
+        try { localStorage.setItem('ms_db_seeded', '1'); } catch(e) {}
+        return;
+      }
+
+      // Get existing clients from DB to build the map
+      const clientResult = await apiCall('get_clients');
+      if (clientResult.success && clientResult.data) {
+        clientResult.data.forEach(c => { dbClientMap[c.name] = c.id; });
+      }
+
+      // Seed any missing clients
+      for (const name of Object.keys(clientData).sort()) {
+        if (!dbClientMap[name]) {
+          const r = await apiCall('add_client', { name });
+          if (r.success) dbClientMap[name] = r.id;
         }
       }
+
+      // Seed workbooks
+      for (const [clientName, items] of Object.entries(clientData)) {
+        const clientId = dbClientMap[clientName];
+        if (!clientId) continue;
+        for (const item of items) {
+          const detail = workbookDetail[`${clientName}|${item.id}`] || {};
+          const r = await apiCall('add_workbook', {
+            client_id: clientId,
+            product_name: item.product,
+            description: item.description,
+            detail: detail
+          });
+          if (r.success) {
+            // Update flow
+            const step = flowToStep(item.flow);
+            await apiCall('update_flow', { id: r.id, flow_step: step });
+            dbWorkbookMap[`${clientName}|${r.id}`] = r.id;
+          }
+        }
+      }
+      // Lock out future seed attempts on this device
+      try { localStorage.setItem('ms_db_seeded', '1'); } catch(e) {}
+      saveToLocalStorage();
+      console.log('Database seeded with sample data');
+    } finally {
+      _seedingInFlight = false;
     }
-    saveToLocalStorage();
-    console.log('Database seeded with sample data');
   }
 
   /* ══════════════════════════════════════════════════════════════════════
@@ -12654,7 +12708,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const preClient = currentClient;
         const preWbId   = currentWorkbookId;
         const dbLoaded  = await loadFromDatabase();
-        if (dbLoaded) {
+        // Only re-render when we actually got workbooks from the DB (true).
+        // 'empty' = DB reachable but empty → no change to show;
+        // false = API error → keep showing local state.
+        if (dbLoaded === true) {
           rebuildSidebar();
           // Avoid re-rendering the workbook editor mid-session (would reset the form)
           if (!onWorkbookEditor) {

@@ -469,6 +469,26 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Client ID and product name required']);
             break;
         }
+        $productName = trim($input['product_name']);
+        $description = trim($input['description'] ?? '');
+        // Dedup guard: if a non-deleted workbook for this client already exists with
+        // the same product name, return its id instead of inserting a duplicate.
+        // Prevents client-side seed/retry bugs from creating parallel copies.
+        // Explicit opt-out via allow_duplicate=true (for intentional copies via duplicate_workbook).
+        $allowDup = !empty($input['allow_duplicate']);
+        if (!$allowDup) {
+            $dupStmt = $pdo->prepare("
+                SELECT id FROM workbooks
+                WHERE client_id = ? AND product_name = ? AND deleted_at IS NULL
+                LIMIT 1
+            ");
+            $dupStmt->execute([$input['client_id'], $productName]);
+            $existing = $dupStmt->fetch();
+            if ($existing) {
+                echo json_encode(['success' => true, 'id' => $existing['id'], 'deduped' => true]);
+                break;
+            }
+        }
         $stmt = $pdo->prepare("
             INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json)
             VALUES (?, ?, ?, 0, ?)
@@ -476,8 +496,8 @@ switch ($action) {
         $detail = $input['detail'] ?? [];
         $stmt->execute([
             $input['client_id'],
-            trim($input['product_name']),
-            trim($input['description'] ?? ''),
+            $productName,
+            $description,
             json_encode($detail)
         ]);
         echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
@@ -976,6 +996,59 @@ switch ($action) {
         $stmt = $pdo->prepare("INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json) VALUES (?, ?, ?, 0, ?)");
         $stmt->execute([$targetClientId, $newName, $src['description'], json_encode($detail)]);
         echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
+        break;
+
+    case 'dedup_workbooks':
+        // Admin-only one-shot cleanup for accidental duplicates created by the
+        // seed-retry bug. Groups non-deleted workbooks by (client_id, product_name),
+        // keeps the OLDEST (smallest id) row in each group, soft-deletes the rest.
+        // Pass confirm=true to actually delete; otherwise returns a dry-run preview.
+        if ($sessionUser['role'] !== 'admin') {
+            echo json_encode(['success' => false, 'error' => 'Admin only']);
+            break;
+        }
+        $confirm = !empty($input['confirm']);
+        $dupStmt = $pdo->query("
+            SELECT client_id, product_name, COUNT(*) AS n, MIN(id) AS keep_id,
+                   GROUP_CONCAT(id ORDER BY id) AS ids
+            FROM workbooks
+            WHERE deleted_at IS NULL
+            GROUP BY client_id, product_name
+            HAVING n > 1
+        ");
+        $groups = $dupStmt->fetchAll();
+        $toDelete = [];
+        foreach ($groups as $g) {
+            $ids = explode(',', $g['ids']);
+            foreach ($ids as $id) {
+                if ((int)$id !== (int)$g['keep_id']) $toDelete[] = (int)$id;
+            }
+        }
+        if (!$confirm) {
+            echo json_encode([
+                'success' => true,
+                'dry_run' => true,
+                'groups'  => $groups,
+                'would_delete_count' => count($toDelete),
+                'would_delete_ids'   => $toDelete,
+                'hint' => 'Re-run with {"confirm": true} to apply.',
+            ]);
+            break;
+        }
+        $deleted = 0;
+        if (!empty($toDelete)) {
+            $who = $sessionUser['username'] ?? 'admin-dedup';
+            $placeholders = implode(',', array_fill(0, count($toDelete), '?'));
+            $del = $pdo->prepare("UPDATE workbooks SET deleted_at = NOW(), deleted_by = ? WHERE id IN ($placeholders) AND deleted_at IS NULL");
+            $del->execute(array_merge([$who], $toDelete));
+            $deleted = $del->rowCount();
+        }
+        echo json_encode([
+            'success' => true,
+            'dry_run' => false,
+            'deleted_count' => $deleted,
+            'deleted_ids'   => $toDelete,
+        ]);
         break;
 
     case 'get_inventory':
