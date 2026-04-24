@@ -12401,20 +12401,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       input.dataset.presence   = '1';
 
       // Name tag: fixed to viewport, anchored BELOW the input.
-      // Only render when the cell is fully in the scrollable content area —
-      // never in the header zone (≈ 65 px) or below the viewport.
+      // Measure the real header bottom from the DOM each time — never use a
+      // hardcoded constant, which breaks under zoom / different screen sizes.
       const rect = input.getBoundingClientRect();
-      const HEADER_H = 65;
       if (rect.width === 0) return;                           // not rendered yet
-      if (rect.top < HEADER_H) return;                       // cell in / above header
-      if (rect.bottom > window.innerHeight) return;          // cell below viewport
+
+      const headerEl  = document.querySelector('.app-header');
+      const headerBottom = headerEl ? headerEl.getBoundingClientRect().bottom : 64;
+      const safeTop   = headerBottom + 6;   // 6 px gap so tag never kisses the header
+
+      // Bail if the cell is in / above the header zone OR below the viewport
+      if (rect.top < safeTop) return;
+      if (rect.bottom > window.innerHeight) return;
+
+      // Tag goes below the cell, clamped so it can't exceed the viewport bottom
+      const tagTop = Math.min(rect.bottom + 3, window.innerHeight - 24);
       const tag = document.createElement('div');
       tag.className   = 'presence-name-tag';
       tag.textContent = u.display_name;
       tag.style.cssText = `
         background:${u.color};
         position:fixed;
-        top:${rect.bottom + 3}px;
+        top:${tagTop}px;
         left:${rect.left}px;
         z-index:9999;
         pointer-events:none;
