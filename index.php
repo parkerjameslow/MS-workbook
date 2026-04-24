@@ -11727,7 +11727,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     // ── Completed (archived) — delivered 30+ days ago, grouped by month, collapsed by default ──
-    if (completedIds.length > 0) {
+    // Always rendered, even when empty, so users can see the section exists.
+    let completedBody;
+    if (completedIds.length === 0) {
+      completedBody = `<div style="padding:20px 0;text-align:center;color:var(--text-muted);font-size:13px;font-style:italic;">
+        No shipments archived yet. Delivered shipments move here 30 days after their delivery date.
+      </div>`;
+    } else {
       // Group by "YYYY-MM" of deliveredOn
       const byMonth = {};
       completedIds.forEach(id => {
@@ -11739,7 +11745,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Sort months newest → oldest
       const monthKeys = Object.keys(byMonth).sort().reverse();
       const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-      const monthBlocks = monthKeys.map(k => {
+      completedBody = monthKeys.map(k => {
         const [y, m] = k.split('-');
         const label = `${MONTH_NAMES[parseInt(m,10)-1]} ${y}`;
         // Sort shipments within a month newest → oldest by deliveredOn
@@ -11749,17 +11755,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return `<div class="completed-month-label">${label} <span style="color:var(--text-muted);font-weight:500;">(${sortedIds.length})</span></div>
           <div class="shipment-cards" style="opacity:0.75;margin-bottom:16px;">${sortedIds.map(buildCard).join('')}</div>`;
       }).join('');
-
-      html += `<div class="section-card collapsed" style="margin-top:24px;">
-        <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-          <span class="section-title">Completed <span style="color:var(--text-muted);font-weight:500;margin-left:6px;">(${completedIds.length})</span></span>
-          <span class="section-chevron" style="margin-left:auto;">›</span>
-        </div>
-        <div class="section-body" style="padding:16px 20px;">
-          ${monthBlocks}
-        </div>
-      </div>`;
     }
+
+    html += `<div class="section-card collapsed" style="margin-top:24px;">
+      <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+        <span class="section-title">Completed <span style="color:var(--text-muted);font-weight:500;margin-left:6px;">(${completedIds.length})</span></span>
+        <span class="section-chevron" style="margin-left:auto;">›</span>
+      </div>
+      <div class="section-body" style="padding:16px 20px;">
+        ${completedBody}
+      </div>
+    </div>`;
 
     el.innerHTML = html;
   }
