@@ -3738,6 +3738,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="nav-badge" id="badge-inventory"></span>
     </a>
 
+    <a id="nav-rfq-link" href="#/rfq" onclick="event.preventDefault(); location.hash='#/rfq'" class="nav-flat-link">
+      <span>RFQ</span>
+      <span class="nav-badge" id="badge-rfq"></span>
+    </a>
+
     <a id="nav-orders-link" href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" class="nav-flat-link">
       <span>Orders</span>
       <span class="nav-badge" id="badge-orders"></span>
@@ -3945,6 +3950,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         title="Send quote notification to client">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         Notify Client
+      </button>
+      <button id="btn-send-rfq" onclick="toggleSendToRfq()"
+        style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
+        title="Send this workbook to the RFQ queue for review">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span id="btn-send-rfq-label">RFQ</span>
       </button>
       <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
       <button class="btn-advance" id="btn-advance" onclick="advanceStatus()">
@@ -5079,6 +5090,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   </main>
 </div><!-- /#view-samples -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: RFQ DASHBOARD
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-rfq" class="view">
+  <main class="container">
+
+    <!-- Hero Header -->
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
+      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #10b981)); flex-shrink:0;"></div>
+      <div>
+        <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">RFQ Queue</h1>
+        <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Workbooks submitted for quote review — oldest first</p>
+      </div>
+      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+        <span id="rfq-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 RFQs</span>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div id="rfq-stats-row" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px;"></div>
+
+    <!-- RFQ Table -->
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Submitted RFQs</span>
+      </div>
+      <div class="section-body" style="padding:0;">
+        <div class="table-scroll-wrapper">
+        <table class="dash-table" id="rfq-table">
+          <thead>
+            <tr>
+              <th>CLIENT</th>
+              <th>WORKBOOK</th>
+              <th>SUBMITTED</th>
+              <th style="text-align:right;">LINE ITEMS</th>
+              <th style="text-align:right;">TOTAL QTY</th>
+              <th style="text-align:right;">PRICE (RMB)</th>
+              <th style="text-align:right;">PRICE (USD)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rfq-tbody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+        </div>
+        <div id="rfq-empty" style="display:none; padding:60px 20px; text-align:center;">
+          <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:8px;">No RFQs in the queue</div>
+          <div style="font-size:13px; color:var(--text-muted); max-width:360px; margin:0 auto;">Workbooks appear here when they're set to <strong>Quote Submitted</strong> and sent via the <strong>RFQ</strong> button on the status bar.</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div><!-- /#view-rfq -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: SHIPMENTS LIST
@@ -8430,8 +8497,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       notifyBtn.style.display = show ? 'inline-flex' : 'none';
     }
 
-    // Lock Product Overview tab once Quote Submitted (index 1) or beyond
-    lockWorkbookTab(currentIdx >= 1);
+    // Show "Send to RFQ" button only while status is at Quote Submitted (not advanced to Quote to Client)
+    const sendRfqBtn = document.getElementById('btn-send-rfq');
+    if (sendRfqBtn) {
+      const show = !!flow.quoteSubmitted && !flow.quoteClient;
+      sendRfqBtn.style.display = show ? 'inline-flex' : 'none';
+      if (show) {
+        const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
+        const sent = !!detail.sentToRfq;
+        const label = document.getElementById('btn-send-rfq-label');
+        if (label) label.textContent = sent ? '✓ Sent to RFQ' : 'RFQ';
+        sendRfqBtn.style.background = sent ? 'var(--accent)' : 'none';
+        sendRfqBtn.style.color = sent ? '#fff' : 'var(--accent)';
+      }
+    }
+
+    // Lock Product Overview tab once Quote to Client (index 2) or beyond
+    lockWorkbookTab(currentIdx >= 2);
   }
 
   /* ── Notification system ─────────────────────────────────────────────────── */
@@ -8638,7 +8720,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         banner = document.createElement('div');
         banner.id = 'wb-lock-banner';
         banner.style.cssText = 'background:rgba(251,113,133,0.1); border:1px solid rgba(251,113,133,0.3); color:var(--text-muted); font-size:12px; padding:6px 14px; border-radius:6px; margin-bottom:12px; text-align:center;';
-        banner.textContent = '🔒 Fields are locked after Quote Submitted. Use ← to go back and unlock.';
+        banner.textContent = '🔒 Fields are locked after Quote to Client. Use ← to go back and unlock.';
         tab.insertBefore(banner, tab.firstChild);
       }
     } else {
@@ -8663,6 +8745,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
     saveToLocalStorage();
+    rebuildRfqNav();  // status moved — may enter/leave RFQ queue
   }
 
   function advanceStatus() {
@@ -8683,6 +8766,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
     saveToLocalStorage();
+    rebuildRfqNav();  // status moved — may enter/leave RFQ queue
   }
 
   /* ── Workbook Tabs ────────────────────────────────────────────────────────── */
@@ -10697,6 +10781,178 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderSamplesTable(collectAllSamples());
   }
 
+  /* ── RFQ Queue ───────────────────────────────────────────────────────────── */
+
+  // A workbook belongs in the RFQ queue when:
+  //  - user clicked "RFQ" to send it (sentToRfq flag on detail)
+  //  - status is still at Quote Submitted (not yet advanced to Quote to Client)
+  function collectAllRfqs() {
+    const results = [];
+    for (const [key, detail] of Object.entries(workbookDetail)) {
+      if (!detail || !detail.sentToRfq) continue;
+      const [clientName, workbookId] = key.split('|');
+      // Only include if flow is still at quoteSubmitted (not advanced past)
+      const items = clientData[clientName] || [];
+      const item = items.find(i => String(i.id) === String(workbookId));
+      if (!item || !item.flow) continue;
+      if (!item.flow.quoteSubmitted || item.flow.quoteClient) continue;
+
+      // Aggregate totals across RFQ line items (parents + variants)
+      const rfqItems = (detail.rfqItems || []).concat(
+        (detail.rfqItems || []).flatMap(r => r.variants || [])
+      );
+      let totalQty = 0, totalRmb = 0;
+      rfqItems.forEach(r => {
+        const q = parseFloat(r.qty) || 0;
+        const p = parseFloat(r.priceRmb) || 0;
+        totalQty += q;
+        totalRmb += q * p;
+      });
+      const totalUsd = totalRmb / 7.2;
+
+      results.push({
+        clientName,
+        workbookId,
+        key,
+        product: detail.product || 'Untitled',
+        sentToRfqAt: detail.sentToRfqAt || null,
+        lineItems: (detail.rfqItems || []).length,
+        totalQty,
+        totalRmb,
+        totalUsd,
+      });
+    }
+    // Oldest first
+    results.sort((a, b) => {
+      const at = a.sentToRfqAt ? new Date(a.sentToRfqAt).getTime() : 0;
+      const bt = b.sentToRfqAt ? new Date(b.sentToRfqAt).getTime() : 0;
+      return at - bt;
+    });
+    return results;
+  }
+
+  function rebuildRfqNav() {
+    const all = collectAllRfqs();
+    // No "actionable vs remaining" distinction here — every RFQ is actionable for Karen
+    _applyNavBadge(document.getElementById('badge-rfq'), 0, all.length);
+  }
+
+  function _rfqTimeAgo(iso) {
+    if (!iso) return '—';
+    const then = new Date(iso).getTime();
+    if (isNaN(then)) return '—';
+    const secs = Math.max(0, (Date.now() - then) / 1000);
+    if (secs < 60)     return 'just now';
+    if (secs < 3600)   return `${Math.floor(secs/60)}m ago`;
+    if (secs < 86400)  return `${Math.floor(secs/3600)}h ago`;
+    if (secs < 604800) return `${Math.floor(secs/86400)}d ago`;
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function renderRfqDashboard() {
+    document.getElementById('header-title').textContent = 'RFQ Queue';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const rfqNav = document.getElementById('nav-rfq-link');
+    if (rfqNav) rfqNav.classList.add('active');
+    showView('view-rfq');
+
+    const all = collectAllRfqs();
+
+    const countBadge = document.getElementById('rfq-count-badge');
+    if (countBadge) countBadge.textContent = all.length === 1 ? '1 RFQ' : `${all.length} RFQs`;
+    rebuildRfqNav();
+
+    // Stats
+    const statsRow = document.getElementById('rfq-stats-row');
+    if (statsRow) {
+      const totalLineItems = all.reduce((n, r) => n + r.lineItems, 0);
+      const totalQty       = all.reduce((n, r) => n + r.totalQty, 0);
+      const totalRmb       = all.reduce((n, r) => n + r.totalRmb, 0);
+      const totalUsd       = all.reduce((n, r) => n + r.totalUsd, 0);
+      const statCards = [
+        { label: 'In Queue', value: all.length, color: 'var(--accent)' },
+        { label: 'Line Items', value: totalLineItems, color: '#6b93ff' },
+        { label: 'Total Qty', value: totalQty.toLocaleString('en-US'), color: '#f59e0b' },
+        { label: 'Total (RMB)', value: `¥${Math.round(totalRmb).toLocaleString('en-US')}`, color: '#ef4444' },
+        { label: 'Total (USD)', value: `$${Math.round(totalUsd).toLocaleString('en-US')}`, color: '#10b981' },
+      ];
+      statsRow.innerHTML = statCards.map(c => `
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;">
+          <div style="font-size:20px; font-weight:700; color:${c.color}; line-height:1.1;">${c.value}</div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-top:3px;">${c.label}</div>
+        </div>
+      `).join('');
+    }
+
+    renderRfqTable(all);
+  }
+
+  function renderRfqTable(all) {
+    const tbody   = document.getElementById('rfq-tbody');
+    const emptyEl = document.getElementById('rfq-empty');
+    const tableEl = document.getElementById('rfq-table');
+    if (!tbody) return;
+
+    if (all.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = '';
+      if (tableEl) tableEl.style.display = 'none';
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (tableEl) tableEl.style.display = '';
+
+    tbody.innerHTML = all.map(r => {
+      const wbHref = `#/client/${encodeURIComponent(r.clientName)}/workbook/${r.workbookId}`;
+      const rmb = r.totalRmb > 0 ? `¥${r.totalRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      return `
+        <tr>
+          <td><span class="inv-client-chip" style="${_clientChipStyle(r.clientName)}">${r.clientName}</span></td>
+          <td>
+            <a href="${wbHref}" style="color:var(--accent); text-decoration:none; font-weight:600;" onclick="event.stopPropagation()">
+              ${r.product}
+            </a>
+          </td>
+          <td style="color:var(--text-muted); font-size:12px;" title="${r.sentToRfqAt || ''}">${_rfqTimeAgo(r.sentToRfqAt)}</td>
+          <td style="text-align:right;">${r.lineItems}</td>
+          <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
+          <td style="text-align:right;">${rmb}</td>
+          <td style="text-align:right; color:var(--success);">${usd}</td>
+          <td>
+            <a href="${wbHref}" class="btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="location.hash='${wbHref.substring(1)}'">Open →</a>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Toggle current workbook's sentToRfq state — called from the RFQ button on status bar
+  async function toggleSendToRfq() {
+    if (!currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (!workbookDetail[key]) workbookDetail[key] = {};
+    const detail = workbookDetail[key];
+    const turningOn = !detail.sentToRfq;
+    detail.sentToRfq   = turningOn;
+    detail.sentToRfqAt = turningOn ? new Date().toISOString() : null;
+
+    // Persist to DB (fire-and-forget) + localStorage
+    try {
+      const dbId = dbWorkbookMap[key] || currentWorkbookId;
+      apiCall('save_workbook_detail', { id: dbId, detail, changed_by: getCurrentUser() });
+    } catch(e) { console.error('[RFQ] save failed', e); }
+    saveToLocalStorage();
+
+    // Reflect in nav + button state
+    rebuildRfqNav();
+    const items = clientData[currentClient];
+    const item = items ? items.find(i => i.id === parseInt(currentWorkbookId)) : null;
+    if (item) renderStatusBar(item.flow);
+  }
+
   function router() {
     hideRecentNav();
     resetSidebarSearch();
@@ -10720,6 +10976,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Match: #/samples
     if (hash === '#/samples') {
       renderSamplesDashboard();
+      return;
+    }
+
+    // Match: #/rfq
+    if (hash === '#/rfq') {
+      renderRfqDashboard();
       return;
     }
 
@@ -11315,6 +11577,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rebuildShipmentsNav();
     rebuildOrdersNav();
     rebuildSamplesNav();
+    rebuildRfqNav();
     restoreNavSectionStates();
     // Wrap in try/catch so a crash inside fillWorkbook never prevents loadFromDatabase() from running
     try { router(); } catch(e) { console.error('[MS Router] init render error:', e); }
@@ -11336,6 +11599,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const preKey = `${preDbClient}|${preDbWbId}`;
         workbookDetail[preKey] = collectWorkbookDetail();
       }
+      rebuildRfqNav();  // workbookDetail (incl. sentToRfq flags) now populated from DB
       router(); // Re-render with DB data (or user's edits if they were faster)
     } else {
       console.log('Using local/fallback data');
