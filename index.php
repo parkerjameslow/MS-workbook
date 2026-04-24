@@ -6814,7 +6814,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!_filling) autoSaveWorkbook();
   }
 
-  function recalcRfqTotals() {
+  function recalcRfqTotals() { try { _recalcRfqTotalsInner(); } catch(e) { console.error('[MS recalcRfqTotals]', e); } }
+  function _recalcRfqTotalsInner() {
     const fmt = (n, dec = 2) => n.toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
 
     // ── 1. Collect per-item / per-variant data ────────────────────────────
@@ -6953,7 +6954,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('rfq-max-lead').textContent      = maxLead      ? maxLead + ' days'                : '—';
 
     applyRfqRmbToTiers(grandRmb);
-  }
+  }  // end _recalcRfqTotalsInner
 
   function applyRfqRmbToTiers(totalRmb) {
     const rows = document.querySelectorAll('#wb-tier-body tr');
@@ -8147,14 +8148,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Rebuild modal dropdown
     const select = document.getElementById('modal-client');
-    const firstOpt = select.options[0];
-    select.innerHTML = '';
-    select.appendChild(firstOpt);
-    sorted.forEach(name => {
-      const opt = document.createElement('option');
-      opt.textContent = name;
-      select.appendChild(opt);
-    });
+    if (select) {
+      const firstOpt = select.options[0] ? select.options[0].cloneNode(true) : null;
+      select.innerHTML = '';
+      if (firstOpt) select.appendChild(firstOpt);
+      sorted.forEach(name => {
+        const opt = document.createElement('option');
+        opt.textContent = name;
+        select.appendChild(opt);
+      });
+    }
   }
 
   function filterSidebarSearch(query) {
@@ -10116,6 +10119,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function fillWorkbook(clientName, workbookId) {
+    try { _fillWorkbookInner(clientName, workbookId); }
+    catch(e) {
+      console.error('[MS fillWorkbook]', e);
+      _filling = false;
+      // Show a recoverable error rather than a silent blank screen
+      const t = document.getElementById('header-title');
+      if (t) t.textContent = 'Error loading workbook';
+      showView('view-workbook');
+      const wv = document.getElementById('view-workbook');
+      if (wv && !wv.querySelector('.ms-load-error')) {
+        const d = document.createElement('div');
+        d.className = 'ms-load-error';
+        d.style.cssText = 'padding:48px 32px;text-align:center;';
+        d.innerHTML = `<p style="font-size:16px;font-weight:700;color:var(--danger);">Could not load this workbook</p>
+          <p style="margin-top:8px;color:var(--text-muted);font-size:13px;">An unexpected error occurred. Your data has not been lost.</p>
+          <a href="#" onclick="document.querySelector('.ms-load-error')?.remove();location.hash=''"
+             style="display:inline-block;margin-top:16px;font-size:13px;color:var(--accent);">← Back to All Workbooks</a>`;
+        wv.prepend(d);
+      }
+    }
+  }
+  function _fillWorkbookInner(clientName, workbookId) {
     // Save previous workbook immediately before switching to a different one
     const switching = currentClient && currentWorkbookId &&
                       (currentClient !== clientName || currentWorkbookId !== workbookId);
@@ -10446,7 +10471,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Update promote button to show "X SKUs in Inventory" if already promoted
       updatePromoteButton();
     }, 200);
-  }
+  }  // end _fillWorkbookInner
 
   function syncClientDataName(client, workbookId, detail) {
     const items = clientData[client] || [];
@@ -10770,7 +10795,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return lastStep;
   }
 
-  function renderRecentWorkbooks() {
+  function renderRecentWorkbooks() { try { _renderRecentWorkbooksInner(); } catch(e) { console.error('[MS renderRecentWorkbooks]', e); } }
+  function _renderRecentWorkbooksInner() {
     // Gather all workbooks with their client name
     const all = [];
     for (const [client, items] of Object.entries(clientData)) {
@@ -10844,7 +10870,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         tbody.closest('table').style.display = '';
       }
     }
-  }
+  }  // end _renderRecentWorkbooksInner
 
   window.MS_SESSION = { name: '<?= addslashes($_msUser) ?>', role: '<?= $_msRole ?>', id: <?= $_msUserId ?>, username: '<?= addslashes($_msUsername) ?>' };
   window.addEventListener('hashchange', () => {
@@ -10978,19 +11004,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function doSaveWorkbook() {
     if (!currentClient || !currentWorkbookId) return;
-    const detail = collectWorkbookDetail();
-    const key = `${currentClient}|${currentWorkbookId}`;
-    workbookDetail[key] = detail;
+    try {
+      const detail = collectWorkbookDetail();
+      const key = `${currentClient}|${currentWorkbookId}`;
+      workbookDetail[key] = detail;
 
-    // Save to DB — autosave does NOT create a revision (only nav saves do)
-    const dbId = dbWorkbookMap[key] || currentWorkbookId;
-    showSaveStatus('saving');
-    apiCall('save_workbook_detail', { id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: false })
-      .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
+      // Save to DB — autosave does NOT create a revision (only nav saves do)
+      const dbId = dbWorkbookMap[key] || currentWorkbookId;
+      showSaveStatus('saving');
+      apiCall('save_workbook_detail', { id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: false })
+        .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
 
-    syncClientDataName(currentClient, currentWorkbookId, detail);
+      syncClientDataName(currentClient, currentWorkbookId, detail);
 
-    saveToLocalStorage();
+      saveToLocalStorage();
+    } catch(e) {
+      console.error('[MS doSaveWorkbook]', e);
+      showSaveStatus('error');
+    }
   }
 
   // Listen for changes on workbook form fields
