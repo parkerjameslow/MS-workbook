@@ -3954,7 +3954,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button id="btn-send-rfq" onclick="toggleSendToRfq()"
         style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
         title="Send this workbook to the RFQ queue for review">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
         <span id="btn-send-rfq-label">RFQ</span>
       </button>
       <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
@@ -8464,7 +8464,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _wbBackLabel = null;
 
   function renderStatusBar(flow) {
+    flow = flow || {};  // defensive: never crash on missing flow
     const statusFlow = document.getElementById('status-flow');
+    if (!statusFlow) return;
     statusFlow.innerHTML = flowSteps.map((s, i) => `
       <div class="status-step">
         <div class="status-step-bar ${flow[s] ? 'filled' : ''}"></div>
@@ -10933,11 +10935,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   async function toggleSendToRfq() {
     if (!currentClient || !currentWorkbookId) return;
     const key = `${currentClient}|${currentWorkbookId}`;
-    if (!workbookDetail[key]) workbookDetail[key] = {};
-    const detail = workbookDetail[key];
+
+    // Collect fresh DOM state so we never overwrite the DB record with a stale/partial detail.
+    // collectWorkbookDetail now preserves sentToRfq/sentToRfqAt from the existing entry,
+    // so we set the new flags AFTER collecting.
+    let detail;
+    try { detail = collectWorkbookDetail(); }
+    catch(e) {
+      console.error('[RFQ] collectWorkbookDetail failed, falling back to existing detail', e);
+      detail = Object.assign({}, workbookDetail[key] || {});
+    }
     const turningOn = !detail.sentToRfq;
     detail.sentToRfq   = turningOn;
     detail.sentToRfqAt = turningOn ? new Date().toISOString() : null;
+    workbookDetail[key] = detail;
 
     // Persist to DB (fire-and-forget) + localStorage
     try {
@@ -10947,7 +10958,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveToLocalStorage();
 
     // Reflect in nav + button state
-    rebuildRfqNav();
+    try { rebuildRfqNav(); } catch(e) { console.error('[RFQ] rebuildRfqNav failed', e); }
     const items = clientData[currentClient];
     const item = items ? items.find(i => i.id === parseInt(currentWorkbookId)) : null;
     if (item) renderStatusBar(item.flow);
@@ -11275,6 +11286,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       selectedTierIdx: _selectedTierId,
       // Shipment split
       shipmentSplits: collectShipmentSplits(),
+      // RFQ queue flags (managed via toggleSendToRfq, not DOM-driven — preserve from existing)
+      sentToRfq: !!existing.sentToRfq,
+      sentToRfqAt: existing.sentToRfqAt || null,
     };
     return detail;
   }
