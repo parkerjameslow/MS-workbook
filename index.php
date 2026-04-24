@@ -12359,8 +12359,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       input.style.outlineOffset = '-1px';
       input.dataset.presence   = '1';
 
-      // Name tag: fixed to viewport so it's never clipped by overflow:hidden
-      // (same technique Google Sheets uses for collaborator cursors)
+      // Name tag: fixed to viewport, anchored BELOW the input so it never
+      // drifts up into the header bar.
       const rect = input.getBoundingClientRect();
       if (rect.width === 0) return;   // input not in view yet
       const tag = document.createElement('div');
@@ -12369,7 +12369,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tag.style.cssText = `
         background:${u.color};
         position:fixed;
-        top:${Math.max(4, rect.top - 24)}px;
+        top:${rect.bottom + 3}px;
         left:${rect.left}px;
         z-index:9999;
         pointer-events:none;
