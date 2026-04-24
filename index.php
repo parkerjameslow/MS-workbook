@@ -11857,23 +11857,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return null;
       };
 
-      const labelStyle = 'color:var(--text-muted); font-size:12px; font-weight:500; margin-right:6px;';
-      const costPh     = '<span style="color:var(--text-muted); opacity:.7; font-style:italic;" title="Client Cost lives on the Pricing tab — not wired up yet">—</span>';
+      const costPh = '<span style="color:var(--text-muted); opacity:.7; font-style:italic;" title="Client Cost lives on the Pricing tab — not wired up yet">—</span>';
 
-      // CSS Grid with fully-fixed column widths so every row's cells
-      // align vertically no matter how long or short the content is.
-      // Columns (in order):
-      //   Product 220px · SKU 110px · Workbook 260px (pill ellipsis-trims) ·
-      //   Our Cost 150px · Client Cost 220px · Date 190px.
-      // The trailing 1fr column soaks up any extra container width so the
-      // card fills its parent cleanly without stretching real cells.
+      // Fluid CSS Grid: every column uses minmax(floor, fraction) so the
+      // card ALWAYS fits its parent (no horizontal overflow), but columns
+      // still align vertically across rows. minmax() lets cells shrink
+      // below the fr-share if the container is narrow, and text-ellipsis
+      // picks up the slack.
+      //
+      // All-Clients view (main page): only Product · SKU · Workbook.
+      // Specific-client view: adds Our Cost · Client Cost · Date.
       const gridCols = showCosts
-        ? '220px 110px 260px 150px 220px 190px 1fr'
-        : '220px 110px 260px 190px 1fr';
+        ? 'minmax(110px, 1.4fr) minmax(70px, 0.7fr) minmax(110px, 1.3fr) minmax(90px, 0.9fr) minmax(80px, 0.8fr) minmax(110px, 1fr)'
+        : 'minmax(160px, 2fr)  minmax(100px, 1fr)  minmax(160px, 2fr)';
+
+      // Table-style header row: column titles live once at the top.
+      const colHeaders = showCosts
+        ? ['Product', 'SKU', 'Workbook', 'Our Cost', 'Client Cost', 'Date']
+        : ['Product', 'SKU', 'Workbook'];
+      const headerRowStyle = `display:grid; grid-template-columns:${gridCols}; column-gap:12px; align-items:center; padding:6px 0 8px; border-bottom:1px solid var(--border); margin-bottom:4px;`;
+      const headerCellStyle = 'font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
 
       return `
-        <div class="section-card" style="padding:18px 20px;">
+        <div class="section-card" style="padding:18px 20px; min-width:0;">
           <div class="inv-dash-row-title">Recent activity</div>
+          <div style="${headerRowStyle}">
+            ${colHeaders.map(h => `<div style="${headerCellStyle}">${h}</div>`).join('')}
+          </div>
           ${sorted.map(r => {
             const wbName = r.workbook_id != null ? (workbookNameById[String(r.workbook_id)] || '') : '';
             const wbHref = (wbName && r.client_name && r.workbook_id)
@@ -11881,43 +11891,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               : '';
             const wbCell = wbName
               ? (wbHref
-                  ? `<span class="inv-wb-pill" onclick="location.hash='${wbHref.substring(1)}'" title="${esc(wbName)}"><span class="inv-wb-pill-text">${esc(wbName)}</span><span class="inv-wb-pill-arrow">→</span></span>`
-                  : `<span style="color:var(--text);">${esc(wbName)}</span>`)
+                  ? `<span class="inv-wb-pill" onclick="location.hash='${wbHref.substring(1)}'" title="${esc(wbName)}" style="max-width:100%; min-width:0;"><span class="inv-wb-pill-text">${esc(wbName)}</span><span class="inv-wb-pill-arrow">→</span></span>`
+                  : `<span style="color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(wbName)}</span>`)
               : `<span style="color:var(--text-muted); opacity:.6; font-size:12px;">—</span>`;
 
-            let costCells = '';
+            // Cost + Date cells only when a specific client is selected.
+            let extraCells = '';
             if (showCosts) {
               const oc = ourCostUsdFor(r);
               const ocHtml = (oc != null)
                 ? `<span style="color:var(--success, #16a34a); font-weight:600;">${fmtUsd(oc)}</span>`
                 : `<span style="color:var(--text-muted); opacity:.7;">—</span>`;
-              costCells = `
-                <div style="display:flex; align-items:center; min-width:0;" title="Derived from the matching RFQ line">
-                  <span style="${labelStyle}">Our Cost:</span>${ocHtml}
-                </div>
-                <div style="display:flex; align-items:center; min-width:0;">
-                  <span style="${labelStyle}">Client Cost:</span>${costPh}
-                </div>`;
+              extraCells = `
+                <div style="display:flex; align-items:center; min-width:0; overflow:hidden;" title="Derived from the matching RFQ line">${ocHtml}</div>
+                <div style="display:flex; align-items:center; min-width:0; overflow:hidden;">${costPh}</div>
+                <div style="display:flex; align-items:center; color:var(--text); font-size:12px; overflow:hidden; min-width:0; white-space:nowrap;" title="${esc(r.promoted_at || '')}">${fmtPretty(r.promoted_at)}</div>`;
             }
 
             return `
-              <div class="inv-activity-row" style="display:grid; grid-template-columns:${gridCols}; column-gap:16px; align-items:center;">
-                <div style="display:flex; align-items:center; min-width:0; overflow:hidden;" title="${esc(r.product_name)}">
-                  <span style="${labelStyle}">Product:</span>
-                  <span style="color:var(--text); font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.product_name) || '—'}</span>
+              <div class="inv-activity-row" style="display:grid; grid-template-columns:${gridCols}; column-gap:12px; align-items:center;">
+                <div style="display:flex; align-items:center; min-width:0; overflow:hidden; color:var(--text); font-weight:600;" title="${esc(r.product_name)}">
+                  <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.product_name) || '—'}</span>
                 </div>
                 <div style="display:flex; align-items:center; min-width:0; overflow:hidden;">
-                  <span style="${labelStyle}">SKU:</span>
                   <span class="inv-sku" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.sku) || '—'}</span>
                 </div>
-                <div style="display:flex; align-items:center; min-width:0; overflow:hidden;">
-                  <span style="${labelStyle}">Workbook:</span>${wbCell}
-                </div>
-                ${costCells}
-                <div style="display:flex; align-items:center; color:var(--text); font-size:12px; white-space:nowrap; overflow:hidden;">
-                  <span style="${labelStyle}">Date Created:</span>${fmtPretty(r.promoted_at)}
-                </div>
-                <div></div>
+                <div style="display:flex; align-items:center; min-width:0; overflow:hidden;">${wbCell}</div>
+                ${extraCells}
               </div>`;
           }).join('')}
         </div>`;
