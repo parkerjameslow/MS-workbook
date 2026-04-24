@@ -926,6 +926,135 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .inv-remove-btn:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
 
+    /* ── Inventory Dashboard ─────────────────────────────────────────── */
+    .inv-tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+    .inv-tab-btn:hover { color: var(--text); }
+    .inv-tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .inv-stat-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      min-height: 78px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .inv-stat-card-value { font-size: 22px; font-weight: 700; line-height: 1.1; }
+    .inv-stat-card-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 4px;
+    }
+    .inv-stat-card-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .inv-dash-row-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 12px;
+    }
+    .inv-topclient-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+    }
+    .inv-topclient-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      min-width: 110px;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .inv-topclient-bar-wrap {
+      flex: 1;
+      height: 8px;
+      background: var(--surface2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .inv-topclient-bar {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent), #a855f7);
+      transition: width 0.3s;
+    }
+    .inv-topclient-count {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      min-width: 24px;
+      text-align: right;
+    }
+    .inv-activity-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .inv-activity-row:last-child { border-bottom: none; }
+    .inv-activity-sku {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .inv-activity-meta { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+    .inv-sparkline {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 56px;
+      padding: 4px 0;
+    }
+    .inv-sparkline-bar {
+      flex: 1;
+      background: linear-gradient(to top, var(--accent), color-mix(in srgb, var(--accent) 30%, transparent));
+      border-radius: 3px 3px 0 0;
+      min-height: 2px;
+      position: relative;
+      transition: opacity 0.15s;
+    }
+    .inv-sparkline-bar:hover { opacity: 0.75; }
+    .inv-sparkline-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
     .sidebar-archive-btn {
       background: transparent;
       border: 1px solid var(--border);
@@ -5316,23 +5445,66 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 ═══════════════════════════════════════════════════════════════════════ -->
 <div id="view-inventory" class="view">
   <main class="container">
-    <div class="section-card">
-      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
-        <span class="section-title" style="margin-right:auto;">Inventory</span>
-        <input type="text" id="inventory-search" placeholder="Search SKU or product…"
-          oninput="filterInventory(this.value)"
-          style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 12px; font-size:13px; color:var(--text); font-family:inherit; outline:none; width:220px;" />
+
+    <!-- Hero Header -->
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
+      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #f59e0b)); flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+          <line x1="12" y1="22.08" x2="12" y2="12"/>
+        </svg>
       </div>
-      <div class="section-body" style="padding:0;">
-        <div id="inventory-list-content">
-          <div style="text-align:center; padding:60px 24px; color:var(--text-muted);">
-            <div style="font-size:32px; margin-bottom:12px;">📦</div>
-            <div style="font-size:16px; font-weight:600; margin-bottom:6px;">No SKUs promoted yet</div>
-            <div style="font-size:13px;">Open a workbook and use "Promote to Permanent SKU" to add SKUs here.</div>
+      <div>
+        <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">Inventory</h1>
+        <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Permanent SKUs promoted from your workbooks</p>
+      </div>
+      <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
+          Client
+          <select id="inventory-client-filter" onchange="filterInventoryByClient(this.value)"
+            style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 28px 7px 12px; font-size:13px; color:var(--text); font-family:inherit; outline:none; min-width:180px; cursor:pointer; text-transform:none; letter-spacing:normal; font-weight:500;">
+            <option value="all">All Clients</option>
+          </select>
+        </label>
+        <span id="inventory-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 SKUs</span>
+      </div>
+    </div>
+
+    <!-- Tab Switch -->
+    <div style="display:flex; gap:6px; margin-bottom:20px; border-bottom:1px solid var(--border);">
+      <button class="inv-tab-btn active" id="inv-tab-dashboard" onclick="switchInventoryTab('dashboard', this)">Dashboard</button>
+      <button class="inv-tab-btn" id="inv-tab-skus" onclick="switchInventoryTab('skus', this)">All SKUs</button>
+    </div>
+
+    <!-- Dashboard Pane -->
+    <div id="inventory-dashboard-pane">
+      <div id="inventory-dashboard-content">
+        <!-- populated by renderInventoryDashboard() -->
+      </div>
+    </div>
+
+    <!-- All SKUs Pane -->
+    <div id="inventory-skus-pane" style="display:none;">
+      <div class="section-card">
+        <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+          <span class="section-title" style="margin-right:auto;">All SKUs</span>
+          <input type="text" id="inventory-search" placeholder="Search SKU or product…"
+            oninput="filterInventory(this.value)"
+            style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 12px; font-size:13px; color:var(--text); font-family:inherit; outline:none; width:220px;" />
+        </div>
+        <div class="section-body" style="padding:0;">
+          <div id="inventory-list-content">
+            <div style="text-align:center; padding:60px 24px; color:var(--text-muted);">
+              <div style="font-size:32px; margin-bottom:12px;">📦</div>
+              <div style="font-size:16px; font-weight:600; margin-bottom:6px;">No SKUs promoted yet</div>
+              <div style="font-size:13px;">Open a workbook and use "Promote to Permanent SKU" to add SKUs here.</div>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
   </main>
 </div><!-- /#view-inventory -->
 
@@ -11422,6 +11594,71 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
+  // Dashboard-view state — remembered across navigations within the session
+  let _invClientFilter = 'all';   // 'all' or client name
+  let _invTab = 'dashboard';      // 'dashboard' | 'skus'
+
+  function _invFilteredRows() {
+    if (_invClientFilter === 'all') return inventoryData.slice();
+    return inventoryData.filter(r => (r.client_name || '') === _invClientFilter);
+  }
+
+  function populateInventoryClientFilter() {
+    const sel = document.getElementById('inventory-client-filter');
+    if (!sel) return;
+    // Unique client names present in inventory, sorted
+    const clientsWithSkus = Array.from(new Set(inventoryData.map(r => r.client_name).filter(Boolean))).sort();
+    const current = _invClientFilter;
+    sel.innerHTML = `<option value="all">All Clients${inventoryData.length ? ' (' + inventoryData.length + ')' : ''}</option>` +
+      clientsWithSkus.map(n => {
+        const count = inventoryData.filter(r => r.client_name === n).length;
+        return `<option value="${n.replace(/"/g,'&quot;')}"${n === current ? ' selected' : ''}>${n} (${count})</option>`;
+      }).join('');
+    // If the current filter is no longer present (client removed), fall back to 'all'
+    if (current !== 'all' && !clientsWithSkus.includes(current)) {
+      _invClientFilter = 'all';
+      sel.value = 'all';
+    }
+  }
+
+  function filterInventoryByClient(value) {
+    _invClientFilter = value || 'all';
+    // Re-render the active pane only — the other will catch up when switched to
+    if (_invTab === 'dashboard') {
+      renderInventoryDashboard();
+    } else {
+      const q = document.getElementById('inventory-search')?.value || '';
+      filterInventory(q); // respects search within the client filter
+    }
+    // Update the count badge — always reflects the current client filter
+    _updateInventoryCountBadge();
+  }
+
+  function _updateInventoryCountBadge() {
+    const badge = document.getElementById('inventory-count-badge');
+    if (!badge) return;
+    const rows = _invFilteredRows();
+    badge.textContent = rows.length === 1 ? '1 SKU' : `${rows.length.toLocaleString('en-US')} SKUs`;
+  }
+
+  function switchInventoryTab(tab, btn) {
+    _invTab = tab;
+    document.querySelectorAll('.inv-tab-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const dashPane = document.getElementById('inventory-dashboard-pane');
+    const skusPane = document.getElementById('inventory-skus-pane');
+    if (tab === 'dashboard') {
+      if (dashPane) dashPane.style.display = '';
+      if (skusPane) skusPane.style.display = 'none';
+      renderInventoryDashboard();
+    } else {
+      if (dashPane) dashPane.style.display = 'none';
+      if (skusPane) skusPane.style.display = '';
+      const q = document.getElementById('inventory-search')?.value || '';
+      filterInventory(q);
+    }
+  }
+
   function renderInventoryView() {
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const invNav = document.getElementById('nav-inventory-link');
@@ -11430,8 +11667,217 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _invSort = { col: null, dir: 1 };
     const searchEl = document.getElementById('inventory-search');
     if (searchEl) searchEl.value = '';
-    renderInventoryTable(inventoryData);
+
+    // Rebuild client filter dropdown from current data
+    populateInventoryClientFilter();
+    _updateInventoryCountBadge();
+
+    // Default to dashboard tab on entry (per design: no raw SKU list up front)
+    const dashBtn = document.getElementById('inv-tab-dashboard');
+    const skusBtn = document.getElementById('inv-tab-skus');
+    document.querySelectorAll('.inv-tab-btn').forEach(b => b.classList.remove('active'));
+    if (_invTab === 'skus' && skusBtn) {
+      skusBtn.classList.add('active');
+      switchInventoryTab('skus', skusBtn);
+    } else {
+      if (dashBtn) dashBtn.classList.add('active');
+      _invTab = 'dashboard';
+      const dashPane = document.getElementById('inventory-dashboard-pane');
+      const skusPane = document.getElementById('inventory-skus-pane');
+      if (dashPane) dashPane.style.display = '';
+      if (skusPane) skusPane.style.display = 'none';
+      renderInventoryDashboard();
+    }
     showView('view-inventory');
+  }
+
+  // Build the dashboard: stat cards + top clients + recent activity + sparkline
+  function renderInventoryDashboard() {
+    const host = document.getElementById('inventory-dashboard-content');
+    if (!host) return;
+
+    const rows = _invFilteredRows();
+    const scope = _invClientFilter === 'all' ? 'all clients' : _invClientFilter;
+
+    // Empty state
+    if (!rows.length) {
+      host.innerHTML = `
+        <div class="section-card" style="padding:60px 24px; text-align:center; color:var(--text-muted);">
+          <div style="font-size:40px; margin-bottom:14px;">📦</div>
+          <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:6px;">
+            ${_invClientFilter === 'all' ? 'No SKUs promoted yet' : `No SKUs for ${_invClientFilter}`}
+          </div>
+          <div style="font-size:13px; max-width:360px; margin:0 auto;">
+            Open a workbook, click <strong>Promote to Permanent SKU</strong> on RFQ line items, and they'll show up here.
+          </div>
+        </div>`;
+      return;
+    }
+
+    // ── Core metrics ──
+    const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+    const weekAgo  = now - 7  * DAY;
+    const monthAgo = now - 30 * DAY;
+
+    const promotedAtMs = r => { const t = r.promoted_at ? Date.parse(r.promoted_at) : NaN; return isNaN(t) ? 0 : t; };
+
+    const addedThisWeek  = rows.filter(r => promotedAtMs(r) >= weekAgo).length;
+    const addedThisMonth = rows.filter(r => promotedAtMs(r) >= monthAgo).length;
+    const uniqueClients  = new Set(rows.map(r => r.client_name).filter(Boolean)).size;
+    const uniqueWorkbooks = new Set(rows.map(r => r.workbook_id).filter(Boolean)).size;
+    const withVariants   = rows.filter(r => r.variant_name && String(r.variant_name).trim()).length;
+    const latestTs       = rows.reduce((m, r) => Math.max(m, promotedAtMs(r)), 0);
+    const latestLabel    = latestTs ? _relativeTime(latestTs, now) : '—';
+
+    // Coverage: % of SKUs that have a source workbook id attached
+    const withSource = rows.filter(r => r.workbook_id).length;
+    const coveragePct = rows.length ? Math.round((withSource / rows.length) * 100) : 0;
+
+    // ── Top clients by SKU count (skip when filtered to single client) ──
+    const topClientsHtml = (() => {
+      if (_invClientFilter !== 'all') return ''; // no sense showing a one-bar chart
+      const counts = {};
+      rows.forEach(r => {
+        const c = r.client_name || '—';
+        counts[c] = (counts[c] || 0) + 1;
+      });
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      if (!sorted.length) return '';
+      const max = sorted[0][1];
+      return `
+        <div class="section-card" style="padding:18px 20px;">
+          <div class="inv-dash-row-title">Top clients by SKU count</div>
+          ${sorted.map(([name, n]) => `
+            <div class="inv-topclient-row">
+              <div class="inv-topclient-name" title="${name}">${name}</div>
+              <div class="inv-topclient-bar-wrap">
+                <div class="inv-topclient-bar" style="width:${(n / max) * 100}%;"></div>
+              </div>
+              <div class="inv-topclient-count">${n}</div>
+            </div>
+          `).join('')}
+        </div>`;
+    })();
+
+    // ── Recent activity (last 5 SKUs added, newest first) ──
+    const recentHtml = (() => {
+      const sorted = rows.slice().sort((a, b) => promotedAtMs(b) - promotedAtMs(a)).slice(0, 5);
+      return `
+        <div class="section-card" style="padding:18px 20px;">
+          <div class="inv-dash-row-title">Recent activity</div>
+          ${sorted.map(r => `
+            <div class="inv-activity-row">
+              <div class="inv-activity-sku" title="${(r.product_name || '').replace(/"/g,'&quot;')}">
+                <span class="inv-sku">${r.sku || '—'}</span>
+                <span style="color:var(--text-muted); font-weight:500; margin-left:8px;">${r.product_name || ''}</span>
+              </div>
+              <span class="inv-activity-meta">${promotedAtMs(r) ? _relativeTime(promotedAtMs(r), now) : '—'}</span>
+            </div>
+          `).join('')}
+        </div>`;
+    })();
+
+    // ── Sparkline: SKUs added per week over the last 12 weeks ──
+    const sparkHtml = (() => {
+      const weeks = 12;
+      const buckets = new Array(weeks).fill(0);
+      const weekStart = now - weeks * 7 * DAY;
+      rows.forEach(r => {
+        const t = promotedAtMs(r);
+        if (!t || t < weekStart) return;
+        const idx = Math.min(weeks - 1, Math.floor((t - weekStart) / (7 * DAY)));
+        buckets[idx]++;
+      });
+      const max = Math.max(1, ...buckets);
+      const startLabel = new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const endLabel   = new Date(now).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      return `
+        <div class="section-card" style="padding:18px 20px;">
+          <div class="inv-dash-row-title">SKUs added per week · last 12 weeks</div>
+          <div class="inv-sparkline">
+            ${buckets.map((n, i) => {
+              const h = (n / max) * 100;
+              const weekOf = new Date(weekStart + i * 7 * DAY).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              return `<div class="inv-sparkline-bar" style="height:${Math.max(2, h)}%;" title="Week of ${weekOf}: ${n} SKU${n !== 1 ? 's' : ''}"></div>`;
+            }).join('')}
+          </div>
+          <div class="inv-sparkline-labels">
+            <span>${startLabel}</span>
+            <span>${endLabel}</span>
+          </div>
+        </div>`;
+    })();
+
+    // ── Assemble ──
+    // Scope note at top when filtered to a client
+    const scopeNote = _invClientFilter !== 'all'
+      ? `<div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Showing <strong style="color:var(--text);">${_invClientFilter}</strong> only · <a href="#" onclick="event.preventDefault(); document.getElementById('inventory-client-filter').value='all'; filterInventoryByClient('all');" style="color:var(--accent); text-decoration:none;">Clear filter</a></div>`
+      : '';
+
+    host.innerHTML = `
+      ${scopeNote}
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:16px;">
+        <div class="inv-stat-card">
+          <div class="inv-stat-card-value" style="color:var(--accent);">${rows.length.toLocaleString('en-US')}</div>
+          <div class="inv-stat-card-label">Total SKUs</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-card-value" style="color:#a855f7;">${uniqueClients}</div>
+          <div class="inv-stat-card-label">${_invClientFilter === 'all' ? 'Clients' : 'Client'}</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-card-value" style="color:#6b93ff;">${uniqueWorkbooks}</div>
+          <div class="inv-stat-card-label">Source Workbooks</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-card-value" style="color:#f59e0b;">${withVariants}</div>
+          <div class="inv-stat-card-label">With Variants</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-card-value" style="color:#10b981;">${addedThisWeek}</div>
+          <div class="inv-stat-card-label">Added This Week</div>
+          <div class="inv-stat-card-sub">Last 7 days</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-card-value" style="color:#06b6d4;">${addedThisMonth}</div>
+          <div class="inv-stat-card-label">Added This Month</div>
+          <div class="inv-stat-card-sub">Last 30 days</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-card-value" style="color:var(--text); font-size:16px;">${latestLabel}</div>
+          <div class="inv-stat-card-label">Latest Addition</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-card-value" style="color:${coveragePct >= 80 ? '#10b981' : coveragePct >= 50 ? '#f59e0b' : '#ef4444'};">${coveragePct}%</div>
+          <div class="inv-stat-card-label">Source Coverage</div>
+          <div class="inv-stat-card-sub">${withSource}/${rows.length} linked</div>
+        </div>
+      </div>
+
+      ${topClientsHtml || recentHtml
+        ? `<div style="display:grid; grid-template-columns:${topClientsHtml ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr'}; gap:12px; margin-bottom:12px;">
+            ${topClientsHtml}
+            ${recentHtml}
+          </div>`
+        : ''}
+
+      ${sparkHtml}
+    `;
+  }
+
+  // Small helper — human-readable relative time (e.g. "2 days ago", "just now")
+  function _relativeTime(ts, now) {
+    const diff = now - ts;
+    const SEC = 1000, MIN = 60 * SEC, HR = 60 * MIN, DAY = 24 * HR;
+    if (diff < 30 * SEC)  return 'just now';
+    if (diff < HR)        { const m = Math.floor(diff / MIN); return `${m} min${m !== 1 ? 's' : ''} ago`; }
+    if (diff < DAY)       { const h = Math.floor(diff / HR);  return `${h} hour${h !== 1 ? 's' : ''} ago`; }
+    if (diff < 7 * DAY)   { const d = Math.floor(diff / DAY); return `${d} day${d !== 1 ? 's' : ''} ago`; }
+    if (diff < 30 * DAY)  { const w = Math.floor(diff / (7 * DAY)); return `${w} week${w !== 1 ? 's' : ''} ago`; }
+    if (diff < 365 * DAY) { const mo = Math.floor(diff / (30 * DAY)); return `${mo} month${mo !== 1 ? 's' : ''} ago`; }
+    const y = Math.floor(diff / (365 * DAY));
+    return `${y} year${y !== 1 ? 's' : ''} ago`;
   }
 
   // Deterministic color per client name → each client gets its own hue chip.
@@ -11533,9 +11979,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function filterInventory(query) {
-    const q = query.toLowerCase().trim();
-    if (!q) { renderInventoryTable(inventoryData); return; }
-    renderInventoryTable(inventoryData.filter(r =>
+    const q = (query || '').toLowerCase().trim();
+    // Respect the client filter first, then text search within it.
+    const base = _invFilteredRows();
+    if (!q) { renderInventoryTable(base); return; }
+    renderInventoryTable(base.filter(r =>
       (r.sku || '').toLowerCase().includes(q) ||
       (r.product_name || '').toLowerCase().includes(q) ||
       (r.variant_name || '').toLowerCase().includes(q) ||
@@ -11548,8 +11996,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const res = await apiCall('remove_sku', { id });
     if (res.success) {
       inventoryData = inventoryData.filter(r => r.id !== id);
-      const q = document.getElementById('inventory-search')?.value || '';
-      filterInventory(q);
+      // Re-populate dropdown (a client may have dropped to zero SKUs) and refresh current view
+      populateInventoryClientFilter();
+      _updateInventoryCountBadge();
+      if (_invTab === 'dashboard') {
+        renderInventoryDashboard();
+      } else {
+        const q = document.getElementById('inventory-search')?.value || '';
+        filterInventory(q);
+      }
     }
   }
 
