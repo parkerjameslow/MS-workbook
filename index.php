@@ -186,7 +186,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-radius: 10px; padding: 2px 6px;
       margin-left: 6px; flex-shrink: 0;
     }
-    .nav-section.collapsed .nav-badge { display: inline-flex; align-items: center; }
+    .nav-section.collapsed .nav-badge:not(:empty) { display: inline-flex; align-items: center; }
 
     /* Coming-soon placeholder items */
     .nav-placeholder {
@@ -11095,8 +11095,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const res = await apiCall('get_inventory');
     if (res.success) {
       inventoryData = res.data || [];
-      const badge = document.getElementById('badge-inventory');
-      if (badge) badge.textContent = inventoryData.length || '';
+      // Inventory badge intentionally not shown
     }
   }
 
@@ -11213,8 +11212,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const res = await apiCall('remove_sku', { id });
     if (res.success) {
       inventoryData = inventoryData.filter(r => r.id !== id);
-      const badge = document.getElementById('badge-inventory');
-      if (badge) badge.textContent = inventoryData.length || '';
       const q = document.getElementById('inventory-search')?.value || '';
       filterInventory(q);
     }
@@ -11515,12 +11512,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const list = document.getElementById('shipments-nav-list');
     if (!list) return;
     const ids = Object.keys(shipmentData);
-    // Actionable = planning only (needs to be booked — booked/in_transit/delivered are in-progress or done)
-    _applyNavBadge(
-      document.getElementById('badge-shipments'),
-      ids.filter(id => shipmentData[id].status === 'planning').length,
-      ids.length
-    );
+    // Actionable = any linked order has a change request
+    const shipActionable = ids.filter(id => {
+      const entries = shipmentData[id].entries || [];
+      return entries.some(e => e.orderId && orderData[e.orderId]?.changeRequested);
+    }).length;
+    _applyNavBadge(document.getElementById('badge-shipments'), shipActionable, ids.length);
     list.innerHTML = ids.map(id => {
       const s = shipmentData[id];
       const statusDot = `<span class="nav-shipment-dot ${s.status}"></span>`;
@@ -11532,12 +11529,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function rebuildSamplesNav() {
     const all = collectAllSamples();
-    // Actionable = pending (needs to be requested) or received (arrived, needs approval)
-    _applyNavBadge(
-      document.getElementById('badge-samples'),
-      all.filter(s => s.status === 'pending' || s.status === 'received').length,
-      all.length
-    );
+    // Actionable = any order linked to the same workbook has a change request
+    const sampleActionable = all.filter(s => {
+      return Object.values(orderData).some(o =>
+        o.changeRequested &&
+        (o.entries || []).some(e =>
+          e.clientName === s.clientName && String(e.workbookId) === String(s.workbookId)
+        )
+      );
+    }).length;
+    _applyNavBadge(document.getElementById('badge-samples'), sampleActionable, all.length);
   }
 
   // ── Create ────────────────────────────────────────────────────────────
