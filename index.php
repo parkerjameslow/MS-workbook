@@ -11759,7 +11759,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     html += `<div class="section-card collapsed" style="margin-top:24px;">
       <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-        <span class="section-title">Completed <span style="color:var(--text-muted);font-weight:500;margin-left:6px;">(${completedIds.length})</span></span>
+        <span class="section-title">Archived <span style="color:var(--text-muted);font-weight:500;margin-left:6px;">(${completedIds.length})</span></span>
         <span class="section-chevron" style="margin-left:auto;">›</span>
       </div>
       <div class="section-body" style="padding:16px 20px;">
