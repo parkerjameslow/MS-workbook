@@ -896,13 +896,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .inv-wb-pill-arrow { font-size: 11px; opacity: 0.75; flex-shrink: 0; }
     /* RFQ Queue table — scoped column widths (override global .dash-table nth-child rules) */
     #rfq-table { table-layout: fixed; }
-    #rfq-table th:nth-child(1), #rfq-table td:nth-child(1) { width: 14%; }   /* Client */
-    #rfq-table th:nth-child(2), #rfq-table td:nth-child(2) { width: 32%; }   /* Workbook */
-    #rfq-table th:nth-child(3), #rfq-table td:nth-child(3) { width: 11%; }   /* Submitted */
-    #rfq-table th:nth-child(4), #rfq-table td:nth-child(4) { width: 9%;  }   /* Lines */
-    #rfq-table th:nth-child(5), #rfq-table td:nth-child(5) { width: 10%; }   /* Qty */
-    #rfq-table th:nth-child(6), #rfq-table td:nth-child(6) { width: 12%; }   /* RMB */
-    #rfq-table th:nth-child(7), #rfq-table td:nth-child(7) { width: 12%; }   /* USD */
+    #rfq-table th:nth-child(1), #rfq-table td:nth-child(1) { width: 12%; }   /* Client */
+    #rfq-table th:nth-child(2), #rfq-table td:nth-child(2) { width: 22%; }   /* Workbook */
+    #rfq-table th:nth-child(3), #rfq-table td:nth-child(3) { width: 12%; }   /* Submitted */
+    #rfq-table th:nth-child(4), #rfq-table td:nth-child(4) { width: 10%; }   /* Lines */
+    #rfq-table th:nth-child(5), #rfq-table td:nth-child(5) { width: 12%; }   /* Qty */
+    #rfq-table th:nth-child(6), #rfq-table td:nth-child(6) { width: 16%; }   /* RMB */
+    #rfq-table th:nth-child(7), #rfq-table td:nth-child(7) { width: 16%; }   /* USD */
+    #rfq-table th, #rfq-table td { padding-left: 12px; padding-right: 12px; }
     /* Client chip — distinct color, not clickable */
     .inv-client-chip {
       display: inline-flex; align-items: center;
