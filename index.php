@@ -6783,7 +6783,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td style="text-align:center; padding:24px 8px 4px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
       <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals()" style="${inputStyle}" /></td>
       <td>
-        <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" onblur="(function(itemEl){const skuEl=itemEl.closest('tr').querySelectorAll('input')[1];if(!skuEl.value.trim()&&itemEl.value.trim()){skuEl.value=generateSku(itemEl.value.trim());skuEl.title=skuEl.value;}})(this)" style="${inputStyle}" />
+        <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
@@ -10269,16 +10269,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           // First row: replace empty or old "Main Item" placeholder with the actual product name
           let itemName = rfqItem.item;
           if (idx === 0 && (!itemName || itemName === 'Main Item')) itemName = data.product || '';
-          addRfqRow(itemName, rfqItem.sku || generateSku(itemName), rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || []);
+          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || []);
         });
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
         addRfqRow('', data.qty, data.unitPriceRmb, data.leadTime);
         addRfqRow(); addRfqRow();
       } else {
-        // No RFQ data yet — seed first row with product name + auto-generated SKU
+        // No RFQ data yet — seed first row with product name; SKU entered manually
         const _pn = data.product || '';
-        addRfqRow(_pn, generateSku(_pn)); addRfqRow(); addRfqRow();
+        addRfqRow(_pn, ''); addRfqRow(); addRfqRow();
       }
       // Ensure at least 3 rows
       while (document.querySelectorAll('#rfq-body tr').length < 3) {
@@ -10474,11 +10474,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       addTierRow(500); addWbTierRow(500);
       _selectedTierId = null;
       populateTierDropdown();
-      // Seed RFQ with product name + auto-SKU (new workbook has no saved detail)
+      // Seed RFQ with product name only; SKU is entered manually
       document.getElementById('rfq-body').innerHTML = '';
       rfqCount = 0;
       const _newProd = item ? (item.product || '') : '';
-      addRfqRow(_newProd, generateSku(_newProd)); addRfqRow(); addRfqRow();
+      addRfqRow(_newProd, ''); addRfqRow(); addRfqRow();
       recalcRfqTotals();
     }
 
@@ -11258,17 +11258,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const q = document.getElementById('inventory-search')?.value || '';
       filterInventory(q);
     }
-  }
-
-  // Generate a short generic SKU from a product name.
-  // Single word  → first 6 chars upper  ("Tank" → "TANK", "Hoodie" → "HOODIE")
-  // Multi-word   → initials upper        ("Custom Tote Bag" → "CTB", "Half Tee" → "HT")
-  function generateSku(productName) {
-    if (!productName) return '';
-    const words = productName.replace(/[^a-zA-Z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
-    if (!words.length) return '';
-    if (words.length === 1) return words[0].substring(0, 6).toUpperCase();
-    return words.map(w => w[0].toUpperCase()).join('');
   }
 
   function updatePromoteButton() {
