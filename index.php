@@ -11249,7 +11249,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rebuildOrdersNav();
     rebuildSamplesNav();
     restoreNavSectionStates();
-    router();
+    // Wrap in try/catch so a crash inside fillWorkbook never prevents loadFromDatabase() from running
+    try { router(); } catch(e) { console.error('[MS Router] init render error:', e); }
 
     // Check for portal change requests on load, then every 60 s
     checkPortalChanges();
@@ -12359,10 +12360,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       input.style.outlineOffset = '-1px';
       input.dataset.presence   = '1';
 
-      // Name tag: fixed to viewport, anchored BELOW the input so it never
-      // drifts up into the header bar.
+      // Name tag: fixed to viewport, anchored BELOW the input.
+      // Only render when the cell is fully in the scrollable content area —
+      // never in the header zone (≈ 65 px) or below the viewport.
       const rect = input.getBoundingClientRect();
-      if (rect.width === 0) return;   // input not in view yet
+      const HEADER_H = 65;
+      if (rect.width === 0) return;                           // not rendered yet
+      if (rect.top < HEADER_H) return;                       // cell in / above header
+      if (rect.bottom > window.innerHeight) return;          // cell below viewport
       const tag = document.createElement('div');
       tag.className   = 'presence-name-tag';
       tag.textContent = u.display_name;
