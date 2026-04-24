@@ -5448,13 +5448,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     <!-- Hero Header -->
     <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
-      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #f59e0b)); flex-shrink:0; display:flex; align-items:center; justify-content:center;">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-          <line x1="12" y1="22.08" x2="12" y2="12"/>
-        </svg>
-      </div>
       <div>
         <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">Inventory</h1>
         <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Permanent SKUs promoted from your workbooks</p>
@@ -5462,10 +5455,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
         <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
           Client
-          <select id="inventory-client-filter" onchange="filterInventoryByClient(this.value)"
-            style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:7px 28px 7px 12px; font-size:13px; color:var(--text); font-family:inherit; outline:none; min-width:180px; cursor:pointer; text-transform:none; letter-spacing:normal; font-weight:500;">
-            <option value="all">All Clients</option>
-          </select>
+          <span class="ship-select-wrap" style="min-width:200px;">
+            <select id="inventory-client-filter" onchange="filterInventoryByClient(this.value)"
+              style="width:100%; height:34px; padding:0 34px 0 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none; text-transform:none; letter-spacing:normal; font-weight:500;">
+              <option value="all">All Clients</option>
+            </select>
+          </span>
         </label>
         <span id="inventory-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 SKUs</span>
       </div>

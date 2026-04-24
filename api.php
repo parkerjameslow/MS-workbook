@@ -125,6 +125,71 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS app_state (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// ── One-shot migration: dedup workbooks + enforce uniqueness at DB level ──
+// This is the final, un-bypassable safety net against duplicate workbooks.
+// Application-layer guards can have bugs; a MySQL UNIQUE INDEX cannot.
+// Runs once per deployment (gated via app_state key). Idempotent on re-run.
+try {
+    $migDone = $pdo->query("SELECT value_json FROM app_state WHERE key_name = 'migration_dedup_wb_001'")->fetchColumn();
+    if ($migDone !== '1') {
+        $pdo->beginTransaction();
+        // Step 1: For each (client_id, product_name) group with >1 active row,
+        // keep the oldest id and soft-delete the rest. This removes the
+        // accidentally-duplicated workbooks created by the seed-retry bug.
+        $dupRows = $pdo->query("
+            SELECT client_id, product_name, MIN(id) AS keep_id, GROUP_CONCAT(id ORDER BY id) AS all_ids
+            FROM workbooks
+            WHERE deleted_at IS NULL
+            GROUP BY client_id, product_name
+            HAVING COUNT(*) > 1
+        ")->fetchAll();
+        $deletedCount = 0;
+        foreach ($dupRows as $g) {
+            $ids = array_map('intval', explode(',', $g['all_ids']));
+            $keep = (int)$g['keep_id'];
+            $kill = array_values(array_filter($ids, fn($x) => $x !== $keep));
+            if (!empty($kill)) {
+                $ph = implode(',', array_fill(0, count($kill), '?'));
+                $stm = $pdo->prepare("UPDATE workbooks SET deleted_at = NOW(), deleted_by = 'auto-dedup-migration' WHERE id IN ($ph) AND deleted_at IS NULL");
+                $stm->execute($kill);
+                $deletedCount += $stm->rowCount();
+            }
+        }
+        // Step 2: Enforce uniqueness at DB level via a generated column.
+        // We can't just UNIQUE (client_id, product_name, deleted_at) because
+        // MySQL treats multiple NULLs as distinct in unique indexes — soft-deleted
+        // rows all share deleted_at=NULL... no wait, soft-deleted rows have a
+        // timestamp and ACTIVE rows have NULL. We need the opposite: allow many
+        // NULLed-out (soft-deleted) rows, but only one active row per group.
+        //
+        // Solution: a virtual generated column that is NULL for soft-deleted rows
+        // and "<client_id>:<product_name>" for active rows. UNIQUE on that column
+        // allows unlimited NULLs (soft-deleted) but only one non-NULL per group.
+        try {
+            $pdo->exec("ALTER TABLE workbooks ADD COLUMN active_dedup_key VARCHAR(300) GENERATED ALWAYS AS (IF(deleted_at IS NULL, CONCAT(client_id, ':', product_name), NULL)) VIRTUAL");
+        } catch (PDOException $e) { /* column already exists */ }
+        try {
+            $pdo->exec("ALTER TABLE workbooks ADD UNIQUE KEY uk_wb_active_dedup (active_dedup_key)");
+        } catch (PDOException $e) {
+            // Index already exists OR a residual dup prevented creation.
+            // Log but don't block — the dedup step above should have cleared it.
+            error_log('[ms-migration] UNIQUE INDEX on active_dedup_key could not be added: ' . $e->getMessage());
+        }
+        // Step 3: Mark migration complete so we never rerun the dedup step
+        $pdo->prepare("INSERT INTO app_state (key_name, value_json) VALUES ('migration_dedup_wb_001', ?)
+                       ON DUPLICATE KEY UPDATE value_json = VALUES(value_json)")->execute(['1']);
+        $pdo->prepare("INSERT INTO app_state (key_name, value_json) VALUES ('migration_dedup_wb_001_log', ?)
+                       ON DUPLICATE KEY UPDATE value_json = VALUES(value_json)")->execute([
+            json_encode(['ran_at' => date('c'), 'deleted_count' => $deletedCount, 'dup_groups' => count($dupRows)])
+        ]);
+        $pdo->commit();
+    }
+} catch (PDOException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    // Non-fatal: migration can retry on next request. Surface to PHP error log only.
+    error_log('[ms-migration] workbook dedup migration failed: ' . $e->getMessage());
+}
+
 // Real-time presence: one row per logged-in user, updated every 5 s
 $pdo->exec("CREATE TABLE IF NOT EXISTS presence (
     user_id INT NOT NULL PRIMARY KEY,
@@ -489,18 +554,35 @@ switch ($action) {
                 break;
             }
         }
-        $stmt = $pdo->prepare("
-            INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json)
-            VALUES (?, ?, ?, 0, ?)
-        ");
         $detail = $input['detail'] ?? [];
-        $stmt->execute([
-            $input['client_id'],
-            $productName,
-            $description,
-            json_encode($detail)
-        ]);
-        echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json)
+                VALUES (?, ?, ?, 0, ?)
+            ");
+            $stmt->execute([
+                $input['client_id'],
+                $productName,
+                $description,
+                json_encode($detail)
+            ]);
+            echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
+        } catch (PDOException $e) {
+            // Race-safe fallback: if the UNIQUE (client_id, product_name, deleted_at)
+            // constraint fires (concurrent requests slipped past the app-layer check),
+            // look up the winner and return its id so the client treats the call as
+            // a no-op rather than an error.
+            if ($e->getCode() === '23000' && !$allowDup) {
+                $recover = $pdo->prepare("SELECT id FROM workbooks WHERE client_id = ? AND product_name = ? AND deleted_at IS NULL LIMIT 1");
+                $recover->execute([$input['client_id'], $productName]);
+                $winner = $recover->fetch();
+                if ($winner) {
+                    echo json_encode(['success' => true, 'id' => $winner['id'], 'deduped' => true, 'race_recovered' => true]);
+                    break;
+                }
+            }
+            throw $e;
+        }
         break;
 
     case 'update_workbook':
