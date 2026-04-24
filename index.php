@@ -11814,31 +11814,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     })();
 
     // ── Recent activity (last 5 SKUs added, newest first) ──
+    // Format: SKU: <code> · Workbook: [pill] · Date Created: <Month Dayth>
+    // The workbook pill only shows when a specific client is filtered.
     const recentHtml = (() => {
       const sorted = rows.slice().sort((a, b) => promotedAtMs(b) - promotedAtMs(a)).slice(0, 5);
-      const showWb = _invClientFilter !== 'all'; // show source workbook when a client is selected
+      const showWb = _invClientFilter !== 'all';
       const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      // "April 22nd" style date
+      const ordinalSuffix = d => { const n = d % 100; if (n >= 11 && n <= 13) return 'th'; switch (d % 10) { case 1: return 'st'; case 2: return 'nd'; case 3: return 'rd'; default: return 'th'; } };
+      const fmtPretty = ts => {
+        if (!ts) return '—';
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return '—';
+        return `${d.toLocaleString('en-US', { month: 'long' })} ${d.getDate()}${ordinalSuffix(d.getDate())}`;
+      };
+      const labelStyle = 'color:var(--text-muted); font-size:12px; font-weight:500; margin-right:4px;';
+      const sepStyle   = 'color:var(--text-muted); opacity:.5; font-size:12px;';
       return `
         <div class="section-card" style="padding:18px 20px;">
           <div class="inv-dash-row-title">Recent activity</div>
           ${sorted.map(r => {
             const wbName = r.workbook_id != null ? (workbookNameById[String(r.workbook_id)] || '') : '';
-            const wbBadge = (showWb && wbName)
-              ? `<div style="color:var(--text-muted); font-size:11px; margin-top:3px; display:flex; align-items:center; gap:4px;">
-                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; opacity:.75;"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                   <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(wbName)}</span>
-                 </div>`
-              : (showWb && r.workbook_id)
-                ? `<div style="color:var(--text-muted); font-size:11px; margin-top:3px; opacity:.7;">Workbook #${esc(r.workbook_id)}</div>`
-                : '';
+            const wbHref = (showWb && wbName && r.client_name)
+              ? `#/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`
+              : '';
+            const wbSeg = (showWb && wbName)
+              ? `<span style="${sepStyle}">·</span>
+                 <span style="display:inline-flex; align-items:center; min-width:0;">
+                   <span style="${labelStyle}">Workbook:</span>
+                   ${wbHref
+                      ? `<span class="inv-wb-pill" onclick="location.hash='${wbHref.substring(1)}'" title="${esc(wbName)}"><span class="inv-wb-pill-text">${esc(wbName)}</span><span class="inv-wb-pill-arrow">→</span></span>`
+                      : `<span style="color:var(--text);">${esc(wbName)}</span>`}
+                 </span>`
+              : '';
             return `
-              <div class="inv-activity-row">
-                <div class="inv-activity-sku" title="${esc(r.product_name)}">
+              <div class="inv-activity-row" style="flex-wrap:wrap; row-gap:4px;">
+                <span style="display:inline-flex; align-items:center;">
+                  <span style="${labelStyle}">SKU:</span>
                   <span class="inv-sku">${esc(r.sku) || '—'}</span>
-                  <span style="color:var(--text-muted); font-weight:500; margin-left:8px;">${esc(r.product_name)}</span>
-                  ${wbBadge}
-                </div>
-                <span class="inv-activity-meta">${promotedAtMs(r) ? _relativeTime(promotedAtMs(r), now) : '—'}</span>
+                </span>
+                ${wbSeg}
+                <span style="${sepStyle}">·</span>
+                <span style="display:inline-flex; align-items:center; color:var(--text); font-size:12px; margin-left:auto;">
+                  <span style="${labelStyle}">Date Created:</span>
+                  ${fmtPretty(r.promoted_at)}
+                </span>
               </div>`;
           }).join('')}
         </div>`;
