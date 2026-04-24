@@ -10914,9 +10914,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <tr>
           <td><span class="inv-client-chip" style="${_clientChipStyle(r.clientName)}">${r.clientName}</span></td>
           <td>
-            <a href="${wbHref}" style="color:var(--accent); text-decoration:none; font-weight:600;" onclick="event.stopPropagation()">
-              ${r.product}
-            </a>
+            <span class="inv-wb-pill" onclick="location.hash='${wbHref.substring(1)}'">${r.product}<span class="inv-wb-pill-arrow">→</span></span>
           </td>
           <td style="color:var(--text-muted); font-size:12px;" title="${r.sentToRfqAt || ''}">${_rfqTimeAgo(r.sentToRfqAt)}</td>
           <td style="text-align:right;">${r.lineItems}</td>
