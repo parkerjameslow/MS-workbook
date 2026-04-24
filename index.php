@@ -3945,14 +3945,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
     <div class="fx-calc" title="Currency calculator — type in either field">
       <span class="fx-calc-sym">¥</span>
-      <input class="fx-calc-input" id="hdr-calc-rmb" type="text" inputmode="decimal"
-             placeholder="RMB" autocomplete="off"
-             oninput="hdrCalcRmbToUsd()" />
+      <!-- name is randomized / data-*-ignore attrs added so browser autofill &
+           password managers (1Password, LastPass, Dashlane, Bitwarden) leave
+           this field alone — otherwise "Parker" etc. gets dropped in here. -->
+      <input class="fx-calc-input" id="hdr-calc-rmb"
+             type="text" inputmode="decimal" pattern="[0-9.,]*"
+             placeholder="RMB"
+             name="ms-fx-calc-rmb-nofill" autocomplete="off"
+             data-lpignore="true" data-1p-ignore data-bwignore="true" data-form-type="other"
+             oninput="hdrCalcRmbToUsd()" onpaste="setTimeout(() => hdrCalcRmbToUsd(), 0)" />
       <div class="fx-calc-divider"></div>
       <span class="fx-calc-sym">$</span>
-      <input class="fx-calc-input" id="hdr-calc-usd" type="text" inputmode="decimal"
-             placeholder="USD" autocomplete="off"
-             oninput="hdrCalcUsdToRmb()" />
+      <input class="fx-calc-input" id="hdr-calc-usd"
+             type="text" inputmode="decimal" pattern="[0-9.,]*"
+             placeholder="USD"
+             name="ms-fx-calc-usd-nofill" autocomplete="off"
+             data-lpignore="true" data-1p-ignore data-bwignore="true" data-form-type="other"
+             oninput="hdrCalcUsdToRmb()" onpaste="setTimeout(() => hdrCalcUsdToRmb(), 0)" />
     </div>
     <span id="fx-rate-display" title="Live CNY→USD exchange rate" style="font-size:11px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:3px 8px; white-space:nowrap; letter-spacing:0.02em;">1 ¥ = $—</span>
     <div class="user-menu" id="user-menu">
@@ -6912,8 +6921,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const _fmtCalc  = n => n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   const _parseCalc = s => parseFloat(String(s).replace(/,/g, '')) || 0;
 
+  // Permanently block letters / anything non-numeric from the calc inputs.
+  // Covers browser autofill (e.g. "Parker" getting dropped into the field),
+  // paste of mixed text, and accidental keystrokes. Keeps digits, a single
+  // dot, and commas (commas are re-emitted by the live formatter).
+  function _hdrSanitize(el) {
+    const before = el.value;
+    // Strip everything that isn't a digit, dot, or comma
+    let cleaned = before.replace(/[^0-9.,]/g, '');
+    // Collapse multiple dots down to the first one (keeps "1.2.3" from sticking)
+    const firstDot = cleaned.indexOf('.');
+    if (firstDot !== -1) {
+      cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+    }
+    if (cleaned !== before) {
+      // Preserve caret position relative to the number of characters removed
+      const cursor = el.selectionStart ?? cleaned.length;
+      const removed = before.length - cleaned.length;
+      el.value = cleaned;
+      const newCursor = Math.max(0, cursor - removed);
+      try { el.setSelectionRange(newCursor, newCursor); } catch (e) { /* input may not support selection */ }
+    }
+  }
+
   // Format the active input with commas as the user types, preserving cursor position.
   function _hdrLiveFormat(el) {
+    _hdrSanitize(el); // scrub letters FIRST (defeats autofill + paste)
     const cursor = el.selectionStart;
     const old    = el.value;
     const raw    = old.replace(/,/g, '');
@@ -6986,6 +7019,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Initial fetch + refresh every 30 minutes
   fetchLiveRate();
   setInterval(fetchLiveRate, RATE_TTL);
+
+  // Guard against autofill that fires BEFORE any user interaction — Chrome
+  // sometimes silently fills the calc with the logged-in user's name. We run
+  // a delayed scrub after first paint so any ghost-fill gets wiped.
+  function _scrubFxCalc() {
+    ['hdr-calc-rmb', 'hdr-calc-usd'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.value) _hdrSanitize(el);
+    });
+  }
+  // Multiple scrub passes catch early/late autofill races (Chrome Autofill,
+  // 1Password/LastPass extensions). Cheap to do; no visible cost.
+  setTimeout(_scrubFxCalc, 50);
+  setTimeout(_scrubFxCalc, 500);
+  setTimeout(_scrubFxCalc, 2000);
 
   function convertRmbToUsd() {
     const rmb = parseFloat(document.getElementById('quote-unit-rmb').value);
@@ -11711,8 +11759,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Core metrics ──
     const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
 
     const promotedAtMs = r => { const t = r.promoted_at ? Date.parse(r.promoted_at) : NaN; return isNaN(t) ? 0 : t; };
+
+    // Resolve workbook_id -> product name across all clients (used when a
+    // specific client is selected so recent activity can show the source wb).
+    const workbookNameById = {};
+    try {
+      if (typeof clientData === 'object' && clientData) {
+        Object.values(clientData).forEach(list => {
+          if (!Array.isArray(list)) return;
+          list.forEach(wb => {
+            if (wb && wb.id != null) workbookNameById[String(wb.id)] = wb.product || '';
+          });
+        });
+      }
+    } catch (e) { /* clientData may not be ready on first paint */ }
 
     const uniqueClients  = new Set(rows.map(r => r.client_name).filter(Boolean)).size;
     const uniqueWorkbooks = new Set(rows.map(r => r.workbook_id).filter(Boolean)).size;
@@ -11753,18 +11816,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // ── Recent activity (last 5 SKUs added, newest first) ──
     const recentHtml = (() => {
       const sorted = rows.slice().sort((a, b) => promotedAtMs(b) - promotedAtMs(a)).slice(0, 5);
+      const showWb = _invClientFilter !== 'all'; // show source workbook when a client is selected
+      const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
       return `
         <div class="section-card" style="padding:18px 20px;">
           <div class="inv-dash-row-title">Recent activity</div>
-          ${sorted.map(r => `
-            <div class="inv-activity-row">
-              <div class="inv-activity-sku" title="${(r.product_name || '').replace(/"/g,'&quot;')}">
-                <span class="inv-sku">${r.sku || '—'}</span>
-                <span style="color:var(--text-muted); font-weight:500; margin-left:8px;">${r.product_name || ''}</span>
-              </div>
-              <span class="inv-activity-meta">${promotedAtMs(r) ? _relativeTime(promotedAtMs(r), now) : '—'}</span>
-            </div>
-          `).join('')}
+          ${sorted.map(r => {
+            const wbName = r.workbook_id != null ? (workbookNameById[String(r.workbook_id)] || '') : '';
+            const wbBadge = (showWb && wbName)
+              ? `<div style="color:var(--text-muted); font-size:11px; margin-top:3px; display:flex; align-items:center; gap:4px;">
+                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; opacity:.75;"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                   <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(wbName)}</span>
+                 </div>`
+              : (showWb && r.workbook_id)
+                ? `<div style="color:var(--text-muted); font-size:11px; margin-top:3px; opacity:.7;">Workbook #${esc(r.workbook_id)}</div>`
+                : '';
+            return `
+              <div class="inv-activity-row">
+                <div class="inv-activity-sku" title="${esc(r.product_name)}">
+                  <span class="inv-sku">${esc(r.sku) || '—'}</span>
+                  <span style="color:var(--text-muted); font-weight:500; margin-left:8px;">${esc(r.product_name)}</span>
+                  ${wbBadge}
+                </div>
+                <span class="inv-activity-meta">${promotedAtMs(r) ? _relativeTime(promotedAtMs(r), now) : '—'}</span>
+              </div>`;
+          }).join('')}
         </div>`;
     })();
 
