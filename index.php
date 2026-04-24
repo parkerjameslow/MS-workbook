@@ -7045,23 +7045,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tr = document.createElement('tr');
     tr.setAttribute('data-rfq-add-for', String(parentId));
     tr.className = 'rfq-var-add-row';
+    // 3 empty leading cells (drag handle, sample checkbox, SKU) — matches "+ Add Line Item" layout
+    for (let i = 0; i < 3; i++) {
+      const e = document.createElement('td');
+      e.style.cssText = 'padding:0;border-bottom:none;';
+      tr.appendChild(e);
+    }
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.innerHTML = '<span style="font-size:13px;line-height:1;">+</span> Add Variant';
-    btn.style.cssText = 'background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:11px;font-weight:600;padding:0;line-height:1;display:inline-flex;align-items:center;gap:3px;font-family:inherit;letter-spacing:0.02em;';
-    btn.onmouseover = () => btn.style.color = 'var(--accent)';
-    btn.onmouseout  = () => btn.style.color = 'var(--text-muted)';
-    btn.onclick     = () => addRfqVariantRow(parentId);
+    btn.textContent = '+ Add Variant';
+    btn.className = 'btn btn-add';
+    btn.style.cssText = 'width:100%;margin:4px 0;';
+    btn.onclick = () => addRfqVariantRow(parentId);
     if (typeof _wbLocked !== 'undefined' && _wbLocked) {
       btn.disabled = true;
       btn.style.opacity = '0.4';
       btn.style.cursor  = 'default';
     }
     const td = document.createElement('td');
-    td.colSpan = 10;
-    td.style.cssText = 'padding:2px 0 8px 60px;border-bottom:none;';
+    td.style.cssText = 'padding:4px 12px;border-bottom:none;';
     td.appendChild(btn);
     tr.appendChild(td);
+    // Remaining 6 columns
+    const rest = document.createElement('td');
+    rest.colSpan = 6;
+    rest.style.cssText = 'padding:0;border-bottom:none;';
+    tr.appendChild(rest);
 
     // Insert after anchor (last variant, or parent row when no variants exist)
     anchor.after(tr);
