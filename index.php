@@ -10649,7 +10649,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       detail.rfqItems.forEach((item, idx) => {
         if (!item.sample) return;
         const status = (detail.sampleStatuses && detail.sampleStatuses[idx]) || 'pending';
-        const usdPrice = item.priceRmb ? (parseFloat(item.priceRmb) / 7.2).toFixed(2) : '';
+        const usdPrice = item.priceRmb ? (parseFloat(item.priceRmb) / USD_TO_RMB).toFixed(2) : '';
         results.push({
           clientName,
           workbookId,
@@ -10810,7 +10810,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         totalQty += q;
         totalRmb += q * p;
       });
-      const totalUsd = totalRmb / 7.2;
+      const totalUsd = totalRmb / USD_TO_RMB;
 
       results.push({
         clientName,
