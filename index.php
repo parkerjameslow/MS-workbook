@@ -6728,7 +6728,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
-    const isFirstRow = tbody.querySelectorAll('tr:not([data-rfq-parent])').length === 0;
+    const isFirstRow = tbody.querySelectorAll('tr:not([data-rfq-parent]):not([data-rfq-add-for])').length === 0;
     const defaultItem = item;
     const tr = document.createElement('tr');
     tr.id = `rfq-${id}`;
@@ -6787,7 +6787,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renumberRfqRows() {
-    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent])');
+    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
     rows.forEach((row, i) => {
       const td = row.querySelector('td');
       if (i === 0) {
@@ -6821,7 +6821,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // itemSummaries is a flat list: one entry per variant (when variants exist),
     // or one entry per parent row (when no variants). This drives both the
     // breakdown rows and the grand totals — no double-counting.
-    const parentRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent])');
+    const parentRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
     let grandQty = 0, grandUsd = 0, grandRmb = 0, grandUsdUnit = 0, maxLead = 0;
     const itemSummaries = [];  // { label, qty, rmb, usd, total, lead, isVariant }
 
@@ -6962,7 +6962,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
     rows.forEach(row => { row.dataset.price = price; });
     // Sync qty from first RFQ row into first tier row
-    const rfqFirstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent]):first-child');
+    const rfqFirstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):first-child');
     const rfqInputs = rfqFirstRow ? rfqFirstRow.querySelectorAll('input:not([type="checkbox"])') : [];
     const rfqQty = rfqInputs[2]?.value;
     const firstTierQtyInput = rows[0].querySelector('input[type="number"]');
@@ -7147,7 +7147,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function collectRfqItems() {
-    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent])');
+    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
     const items = [];
     rows.forEach(row => {
       const id = parseInt(row.id.replace('rfq-', ''));
