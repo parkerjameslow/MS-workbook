@@ -3122,6 +3122,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
       color: var(--text-muted); padding: 14px 0 4px;
     }
+    .completed-month-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--text-muted); padding: 8px 0 6px;
+    }
     .ship-filter-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
     .ship-filter-btn {
       font-size: 12px; font-weight: 600; padding: 5px 14px;
@@ -11599,12 +11603,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderShipmentsContent();
   }
 
+  // Completed = delivered for 30+ days. Missing deliveredOn = treated as recent.
+  function _isArchiveCompleted(s) {
+    if (!s || s.status !== 'delivered' || !s.deliveredOn) return false;
+    const delivered = new Date(s.deliveredOn);
+    if (isNaN(delivered.getTime())) return false;
+    const days = (Date.now() - delivered.getTime()) / 86400000;
+    return days >= 30;
+  }
+
   function renderShipmentsContent() {
     const el = document.getElementById('shipment-list-content');
     if (!el) return;
 
-    const ids = Object.keys(shipmentData);
-    if (ids.length === 0) {
+    const allIds = Object.keys(shipmentData);
+    if (allIds.length === 0) {
       el.innerHTML = `<div class="shipment-list-empty">
         <div class="shipment-list-empty-icon">🚢</div>
         <div class="shipment-list-empty-title">No shipments yet</div>
@@ -11613,10 +11626,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Split completed (delivered 30+ days) from the main list
+    const completedIds = allIds.filter(id => _isArchiveCompleted(shipmentData[id]));
+    const ids          = allIds.filter(id => !_isArchiveCompleted(shipmentData[id]));
+
     const STATUS_ORDER = ['planning', 'booked', 'in_transit', 'delivered'];
     const filterLabels = { all: 'All', planning: 'Planning', booked: 'Booked', in_transit: 'In Transit', delivered: 'Delivered' };
 
-    // Counts per status for badges on filter buttons
+    // Counts per status for badges on filter buttons (main list only — completed is separate)
     const counts = { all: ids.length };
     ids.forEach(id => {
       const st = shipmentData[id].status;
@@ -11707,6 +11724,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     if (active.length === 0 && delivered.length === 0) {
       html += `<div style="padding:30px 0; text-align:center; color:var(--text-muted); font-size:13px;">No shipments match this filter.</div>`;
+    }
+
+    // ── Completed (archived) — delivered 30+ days ago, grouped by month, collapsed by default ──
+    if (completedIds.length > 0) {
+      // Group by "YYYY-MM" of deliveredOn
+      const byMonth = {};
+      completedIds.forEach(id => {
+        const s = shipmentData[id];
+        const d = new Date(s.deliveredOn);
+        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        (byMonth[key] = byMonth[key] || []).push(id);
+      });
+      // Sort months newest → oldest
+      const monthKeys = Object.keys(byMonth).sort().reverse();
+      const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const monthBlocks = monthKeys.map(k => {
+        const [y, m] = k.split('-');
+        const label = `${MONTH_NAMES[parseInt(m,10)-1]} ${y}`;
+        // Sort shipments within a month newest → oldest by deliveredOn
+        const sortedIds = byMonth[k].slice().sort((a, b) =>
+          new Date(shipmentData[b].deliveredOn) - new Date(shipmentData[a].deliveredOn)
+        );
+        return `<div class="completed-month-label">${label} <span style="color:var(--text-muted);font-weight:500;">(${sortedIds.length})</span></div>
+          <div class="shipment-cards" style="opacity:0.75;margin-bottom:16px;">${sortedIds.map(buildCard).join('')}</div>`;
+      }).join('');
+
+      html += `<div class="section-card collapsed" style="margin-top:24px;">
+        <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
+          <span class="section-title">Completed <span style="color:var(--text-muted);font-weight:500;margin-left:6px;">(${completedIds.length})</span></span>
+          <span class="section-chevron" style="margin-left:auto;">›</span>
+        </div>
+        <div class="section-body" style="padding:16px 20px;">
+          ${monthBlocks}
+        </div>
+      </div>`;
     }
 
     el.innerHTML = html;
