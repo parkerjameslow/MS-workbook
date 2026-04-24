@@ -888,10 +888,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--accent); cursor: pointer;
       transition: border-color 0.12s, background 0.12s;
       max-width: 100%;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .inv-wb-pill:hover { border-color: var(--accent); background: rgba(107,147,255,0.18); }
+    .inv-wb-pill-text {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+    }
     .inv-wb-pill-arrow { font-size: 11px; opacity: 0.75; flex-shrink: 0; }
+    /* RFQ Queue table — scoped column widths (override global .dash-table nth-child rules) */
+    #rfq-table { table-layout: fixed; }
+    #rfq-table th:nth-child(1), #rfq-table td:nth-child(1) { width: 14%; }   /* Client */
+    #rfq-table th:nth-child(2), #rfq-table td:nth-child(2) { width: 32%; }   /* Workbook */
+    #rfq-table th:nth-child(3), #rfq-table td:nth-child(3) { width: 11%; }   /* Submitted */
+    #rfq-table th:nth-child(4), #rfq-table td:nth-child(4) { width: 9%;  }   /* Lines */
+    #rfq-table th:nth-child(5), #rfq-table td:nth-child(5) { width: 10%; }   /* Qty */
+    #rfq-table th:nth-child(6), #rfq-table td:nth-child(6) { width: 12%; }   /* RMB */
+    #rfq-table th:nth-child(7), #rfq-table td:nth-child(7) { width: 12%; }   /* USD */
     /* Client chip — distinct color, not clickable */
     .inv-client-chip {
       display: inline-flex; align-items: center;
@@ -5119,17 +5130,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div class="section-body" style="padding:0;">
         <div class="table-scroll-wrapper">
-        <table class="dash-table" id="rfq-table">
+        <table class="dash-table" id="rfq-table" style="width:100%;">
           <thead>
             <tr>
               <th>CLIENT</th>
               <th>WORKBOOK</th>
               <th>SUBMITTED</th>
-              <th style="text-align:right;">LINE ITEMS</th>
-              <th style="text-align:right;">TOTAL QTY</th>
-              <th style="text-align:right;">PRICE (RMB)</th>
-              <th style="text-align:right;">PRICE (USD)</th>
-              <th></th>
+              <th style="text-align:right;">LINES</th>
+              <th style="text-align:right;">QTY</th>
+              <th style="text-align:right;">RMB</th>
+              <th style="text-align:right;">USD</th>
             </tr>
           </thead>
           <tbody id="rfq-tbody">
@@ -10914,16 +10924,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <tr>
           <td><span class="inv-client-chip" style="${_clientChipStyle(r.clientName)}">${r.clientName}</span></td>
           <td>
-            <span class="inv-wb-pill" onclick="location.hash='${wbHref.substring(1)}'">${r.product}<span class="inv-wb-pill-arrow">→</span></span>
+            <span class="inv-wb-pill" onclick="location.hash='${wbHref.substring(1)}'" title="${r.product}"><span class="inv-wb-pill-text">${r.product}</span><span class="inv-wb-pill-arrow">→</span></span>
           </td>
           <td style="color:var(--text-muted); font-size:12px;" title="${r.sentToRfqAt || ''}">${_rfqTimeAgo(r.sentToRfqAt)}</td>
           <td style="text-align:right;">${r.lineItems}</td>
           <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
-          <td style="text-align:right;">${rmb}</td>
-          <td style="text-align:right; color:var(--success);">${usd}</td>
-          <td>
-            <a href="${wbHref}" class="btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="location.hash='${wbHref.substring(1)}'">Open →</a>
-          </td>
+          <td style="text-align:right; white-space:nowrap;">${rmb}</td>
+          <td style="text-align:right; white-space:nowrap; color:var(--success);">${usd}</td>
         </tr>
       `;
     }).join('');
@@ -11499,7 +11506,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </td>
             <td><span class="inv-sku">${r.sku}</span></td>
             <td>${r.client_name ? `<span class="inv-client-chip" style="${_clientChipStyle(r.client_name)}">${r.client_name}</span>` : `<span style="color:var(--text-muted); font-size:12px;">—</span>`}</td>
-            <td>${r._wbHref ? `<span class="inv-wb-pill" onclick="location.hash='${r._wbHref}'">${r._wbName}<span class="inv-wb-pill-arrow">→</span></span>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
+            <td>${r._wbHref ? `<span class="inv-wb-pill" onclick="location.hash='${r._wbHref}'" title="${r._wbName}"><span class="inv-wb-pill-text">${r._wbName}</span><span class="inv-wb-pill-arrow">→</span></span>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
             <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
             <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
           </tr>`).join('')}
