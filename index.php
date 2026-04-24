@@ -10889,7 +10889,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         { label: 'Line Items', value: totalLineItems, color: '#6b93ff' },
         { label: 'Total Qty', value: totalQty.toLocaleString('en-US'), color: '#f59e0b' },
         { label: 'Total (RMB)', value: `¥${Math.round(totalRmb).toLocaleString('en-US')}`, color: '#ef4444' },
-        { label: 'Total (USD)', value: `$${Math.round(totalUsd).toLocaleString('en-US')}`, color: '#10b981' },
+        { label: 'Total (USD)', value: `$${totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`, color: '#10b981' },
       ];
       statsRow.innerHTML = statCards.map(c => `
         <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;">
