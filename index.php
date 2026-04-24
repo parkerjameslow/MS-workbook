@@ -11711,14 +11711,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Core metrics ──
     const now = Date.now();
-    const DAY = 24 * 60 * 60 * 1000;
-    const weekAgo  = now - 7  * DAY;
-    const monthAgo = now - 30 * DAY;
 
     const promotedAtMs = r => { const t = r.promoted_at ? Date.parse(r.promoted_at) : NaN; return isNaN(t) ? 0 : t; };
 
-    const addedThisWeek  = rows.filter(r => promotedAtMs(r) >= weekAgo).length;
-    const addedThisMonth = rows.filter(r => promotedAtMs(r) >= monthAgo).length;
     const uniqueClients  = new Set(rows.map(r => r.client_name).filter(Boolean)).size;
     const uniqueWorkbooks = new Set(rows.map(r => r.workbook_id).filter(Boolean)).size;
     const withVariants   = rows.filter(r => r.variant_name && String(r.variant_name).trim()).length;
@@ -11828,16 +11823,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="inv-stat-card">
           <div class="inv-stat-card-value" style="color:#f59e0b;">${withVariants}</div>
           <div class="inv-stat-card-label">With Variants</div>
-        </div>
-        <div class="inv-stat-card">
-          <div class="inv-stat-card-value" style="color:#10b981;">${addedThisWeek}</div>
-          <div class="inv-stat-card-label">Added This Week</div>
-          <div class="inv-stat-card-sub">Last 7 days</div>
-        </div>
-        <div class="inv-stat-card">
-          <div class="inv-stat-card-value" style="color:#06b6d4;">${addedThisMonth}</div>
-          <div class="inv-stat-card-label">Added This Month</div>
-          <div class="inv-stat-card-sub">Last 30 days</div>
         </div>
         <div class="inv-stat-card">
           <div class="inv-stat-card-value" style="color:var(--text); font-size:16px;">${latestLabel}</div>
