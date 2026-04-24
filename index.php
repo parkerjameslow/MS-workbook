@@ -3383,8 +3383,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     /* Make nav-flat-link badges visible when they have content */
-    .nav-flat-link .nav-badge:not(:empty) { display: inline-flex; align-items: center; }
-    /* Orange attention variant */
+    .nav-flat-link .nav-badge:not(:empty) { display: inline-flex; align-items: center; gap: 4px; background: transparent !important; padding: 0; margin-left: 6px; }
+    /* Individual pills inside the badge container (supports orange + blue side-by-side) */
+    .nav-badge-pill {
+      display: inline-flex; align-items: center;
+      font-size: 10px; font-weight: 700; line-height: 1;
+      background: var(--accent); color: #fff;
+      border-radius: 10px; padding: 2px 6px;
+    }
+    .nav-badge-pill.attention { background: #E8751A; animation: badge-pulse 2s ease-in-out infinite; }
+    /* Orange attention variant (legacy single-badge) */
     .nav-badge.attention { background: #E8751A; animation: badge-pulse 2s ease-in-out infinite; }
     @keyframes badge-pulse {
       0%, 100% { opacity: 1; } 50% { opacity: 0.7; }
@@ -12502,16 +12510,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // total = 0 → badge hidden
   function _applyNavBadge(badge, actionable, total) {
     if (!badge) return;
-    if (actionable > 0) {
-      badge.textContent = actionable;
-      badge.classList.add('attention');
-    } else if (total > 0) {
-      badge.textContent = total;
-      badge.classList.remove('attention');
-    } else {
-      badge.textContent = '';
-      badge.classList.remove('attention');
-    }
+    // Clear prior content + attention class (leftover from single-badge era)
+    badge.classList.remove('attention');
+    const remaining = Math.max(0, (total || 0) - (actionable || 0));
+    const parts = [];
+    if (actionable > 0) parts.push(`<span class="nav-badge-pill attention">${actionable}</span>`);
+    if (remaining > 0)  parts.push(`<span class="nav-badge-pill">${remaining}</span>`);
+    badge.innerHTML = parts.join('');
   }
 
   // ── Nav ──────────────────────────────────────────────────────────────
@@ -12558,6 +12563,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         saveOrders();
         renderOrdersContent();
         rebuildOrdersNav();
+        // Shipment & sample badges depend on linked orders' changeRequested state
+        rebuildShipmentsNav();
+        rebuildSamplesNav();
       }
     } catch(e) { /* silent — don't disrupt UI on poll failure */ }
   }
