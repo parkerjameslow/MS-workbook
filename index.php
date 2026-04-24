@@ -8130,15 +8130,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       starredSection.style.display = '';
       starredNames.forEach(name => starredList.appendChild(makeClientNavItem(name)));
     }
+    // Starred/Clients do not show badges — badges are reserved for actionable items only
     const starredBadge = document.getElementById('badge-starred');
-    if (starredBadge) starredBadge.textContent = starredNames.length || '';
+    if (starredBadge) { starredBadge.textContent = ''; starredBadge.classList.remove('attention'); }
 
     // ── Full client list ──
     const clientList = document.getElementById('client-list');
     clientList.innerHTML = '';
     sorted.forEach(name => clientList.appendChild(makeClientNavItem(name)));
     const clientBadge = document.getElementById('badge-clients');
-    if (clientBadge) clientBadge.textContent = sorted.length || '';
+    if (clientBadge) { clientBadge.textContent = ''; clientBadge.classList.remove('attention'); }
 
     // ── Samples nav ──
     rebuildSamplesNav();
@@ -10565,9 +10566,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const countBadge = document.getElementById('samples-count-badge');
     if (countBadge) countBadge.textContent = allSamples.length === 1 ? '1 sample' : `${allSamples.length} samples`;
 
-    // Update samples badge in nav
-    const navBadge = document.getElementById('badge-samples');
-    if (navBadge) navBadge.textContent = allSamples.length > 0 ? allSamples.length : '';
+    // Update samples badge in nav (delegate to canonical function for consistent logic)
+    rebuildSamplesNav();
 
     // Stats row
     const statsRow = document.getElementById('samples-stats-row');
@@ -10658,8 +10658,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Update count badge
     const countBadge = document.getElementById('samples-count-badge');
     if (countBadge) countBadge.textContent = freshSamples.length === 1 ? '1 sample' : `${freshSamples.length} samples`;
-    const navBadge = document.getElementById('badge-samples');
-    if (navBadge) navBadge.textContent = freshSamples.length > 0 ? freshSamples.length : '';
   }
 
   function filterSamples(filter, btn) {
@@ -11515,10 +11513,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── Nav ──────────────────────────────────────────────────────────────
   function rebuildShipmentsNav() {
     const list = document.getElementById('shipments-nav-list');
-    const badge = document.getElementById('badge-shipments');
     if (!list) return;
     const ids = Object.keys(shipmentData);
-    if (badge) badge.textContent = ids.length || '';
+    // Actionable = planning only (needs to be booked — booked/in_transit/delivered are in-progress or done)
+    _applyNavBadge(
+      document.getElementById('badge-shipments'),
+      ids.filter(id => shipmentData[id].status === 'planning').length,
+      ids.length
+    );
     list.innerHTML = ids.map(id => {
       const s = shipmentData[id];
       const statusDot = `<span class="nav-shipment-dot ${s.status}"></span>`;
@@ -11529,10 +11531,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function rebuildSamplesNav() {
-    const badge = document.getElementById('badge-samples');
-    if (!badge) return;
-    const count = collectAllSamples().length;
-    badge.textContent = count || '';
+    const all = collectAllSamples();
+    // Actionable = pending (needs to be requested) or received (arrived, needs approval)
+    _applyNavBadge(
+      document.getElementById('badge-samples'),
+      all.filter(s => s.status === 'pending' || s.status === 'received').length,
+      all.length
+    );
   }
 
   // ── Create ────────────────────────────────────────────────────────────
@@ -12490,19 +12495,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return { totalUsd: Math.round(totalUsd * 100) / 100, totalRmb: Math.round(totalRmb * 100) / 100 };
   }
 
-  // ── Nav ──────────────────────────────────────────────────────────────
-  function rebuildOrdersNav() {
-    const badge = document.getElementById('badge-orders');
+  // ── Nav badge helper ─────────────────────────────────────────────────
+  // actionable > 0 → orange pulsing badge with actionable count
+  // actionable = 0, total > 0 → blue badge with total count
+  // total = 0 → badge hidden
+  function _applyNavBadge(badge, actionable, total) {
     if (!badge) return;
-    const ids = Object.keys(orderData);
-    const needsAttention = ids.filter(id => orderData[id].changeRequested).length;
-    if (needsAttention > 0) {
-      badge.textContent = needsAttention;
+    if (actionable > 0) {
+      badge.textContent = actionable;
       badge.classList.add('attention');
+    } else if (total > 0) {
+      badge.textContent = total;
+      badge.classList.remove('attention');
     } else {
       badge.textContent = '';
       badge.classList.remove('attention');
     }
+  }
+
+  // ── Nav ──────────────────────────────────────────────────────────────
+  function rebuildOrdersNav() {
+    const ids = Object.keys(orderData);
+    // Actionable = client has requested changes on an order
+    _applyNavBadge(
+      document.getElementById('badge-orders'),
+      ids.filter(id => orderData[id].changeRequested).length,
+      ids.length
+    );
   }
 
   // ── Portal change-request polling ────────────────────────────────────
