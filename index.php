@@ -11814,13 +11814,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     })();
 
     // ── Recent activity (last 5 SKUs added, newest first) ──
-    // Format: SKU: <code> · Workbook: [pill] · Date Created: <Month Dayth>
-    // The workbook pill only shows when a specific client is filtered.
+    // Format: SKU · Workbook (pill) · Our Cost · Client Cost · Date Created
+    // Workbook pill + costs only show when a specific client is filtered.
     const recentHtml = (() => {
       const sorted = rows.slice().sort((a, b) => promotedAtMs(b) - promotedAtMs(a)).slice(0, 5);
       const showWb = _invClientFilter !== 'all';
       const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-      // "April 22nd" style date
+
+      // "April 22nd" style date with ordinal suffix
       const ordinalSuffix = d => { const n = d % 100; if (n >= 11 && n <= 13) return 'th'; switch (d % 10) { case 1: return 'st'; case 2: return 'nd'; case 3: return 'rd'; default: return 'th'; } };
       const fmtPretty = ts => {
         if (!ts) return '—';
@@ -11828,8 +11829,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (isNaN(d.getTime())) return '—';
         return `${d.toLocaleString('en-US', { month: 'long' })} ${d.getDate()}${ordinalSuffix(d.getDate())}`;
       };
+      const fmtUsd = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // Pull "Our Cost (USD)" from the matching RFQ line on that workbook.
+      // Looks up the line item (or variant) with the same SKU, then converts
+      // its RMB price using the live USD_TO_RMB rate.
+      const ourCostUsdFor = (row) => {
+        if (!row || !row.workbook_id || !row.client_name || !row.sku) return null;
+        const key = `${row.client_name}|${row.workbook_id}`;
+        const det = (typeof workbookDetail === 'object' && workbookDetail) ? workbookDetail[key] : null;
+        if (!det || !Array.isArray(det.rfqItems)) return null;
+        // Match on SKU in parent rows first, then variant rows
+        for (const it of det.rfqItems) {
+          if (it && String(it.sku || '').trim() === String(row.sku).trim()) {
+            const rmb = parseFloat(String(it.priceRmb || '').replace(/,/g, ''));
+            if (rmb > 0 && USD_TO_RMB > 0) return rmb / USD_TO_RMB;
+            return null;
+          }
+          if (Array.isArray(it && it.variants)) {
+            for (const v of it.variants) {
+              if (v && String(v.sku || '').trim() === String(row.sku).trim()) {
+                const rmb = parseFloat(String(v.priceRmb || '').replace(/,/g, ''));
+                if (rmb > 0 && USD_TO_RMB > 0) return rmb / USD_TO_RMB;
+                return null;
+              }
+            }
+          }
+        }
+        return null;
+      };
+
       const labelStyle = 'color:var(--text-muted); font-size:12px; font-weight:500; margin-right:4px;';
       const sepStyle   = 'color:var(--text-muted); opacity:.5; font-size:12px;';
+      const costPh     = '<span style="color:var(--text-muted); opacity:.7; font-style:italic;" title="Client Cost lives on the Pricing tab — not wired up yet">— set on Pricing tab</span>';
+
       return `
         <div class="section-card" style="padding:18px 20px;">
           <div class="inv-dash-row-title">Recent activity</div>
@@ -11847,6 +11880,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                       : `<span style="color:var(--text);">${esc(wbName)}</span>`}
                  </span>`
               : '';
+            // Cost segments only when a specific client is selected — otherwise
+            // the row would get too wide across "All Clients".
+            let costSeg = '';
+            if (showWb) {
+              const oc = ourCostUsdFor(r);
+              const ocHtml = (oc != null)
+                ? `<span style="color:var(--success, #16a34a); font-weight:600;">${fmtUsd(oc)}</span>`
+                : `<span style="color:var(--text-muted); opacity:.7;">—</span>`;
+              costSeg = `
+                <span style="${sepStyle}">·</span>
+                <span style="display:inline-flex; align-items:center;" title="Derived from the matching RFQ line">
+                  <span style="${labelStyle}">Our Cost:</span>
+                  ${ocHtml}
+                </span>
+                <span style="${sepStyle}">·</span>
+                <span style="display:inline-flex; align-items:center;">
+                  <span style="${labelStyle}">Client Cost:</span>
+                  ${costPh}
+                </span>`;
+            }
             return `
               <div class="inv-activity-row" style="flex-wrap:wrap; row-gap:4px;">
                 <span style="display:inline-flex; align-items:center;">
@@ -11854,6 +11907,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   <span class="inv-sku">${esc(r.sku) || '—'}</span>
                 </span>
                 ${wbSeg}
+                ${costSeg}
                 <span style="${sepStyle}">·</span>
                 <span style="display:inline-flex; align-items:center; color:var(--text); font-size:12px; margin-left:auto;">
                   <span style="${labelStyle}">Date Created:</span>
