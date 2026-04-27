@@ -12224,6 +12224,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function filterCommissionsByEmployee(v) { _commEmployeeFilter = v; renderCommissionsDashboard(); }
   function filterCommissionsByRole(v)     { _commRoleFilter     = v; renderCommissionsDashboard(); }
 
+  // Which employees have their per-client / per-workbook breakdown expanded
+  // on the scoreboard. Survives re-renders triggered by filter changes.
+  const _commExpandedEmployees = new Set();
+  function toggleEmployeeExpand(name) {
+    if (_commExpandedEmployees.has(name)) _commExpandedEmployees.delete(name);
+    else _commExpandedEmployees.add(name);
+    renderCommissionsDashboard();
+  }
+
   async function renderCommissionsView() {
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const navLink = document.getElementById('nav-commissions-link');
@@ -12313,34 +12322,134 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
     const employees = Object.entries(empMap).sort((a, b) => b[1].total - a[1].total);
 
+    // Role pill (used by the recent-activity table AND the expanded breakdown).
+    // Hoisted above empHtml so the breakdown can call it.
+    const rolePill = role => {
+      const isAm = role === 'account_manager';
+      const label = isAm ? 'AM' : 'Sales';
+      const bg = isAm ? 'rgba(107,147,255,0.12)' : 'rgba(232,117,26,0.12)';
+      const fg = isAm ? '#6b93ff' : 'var(--accent)';
+      const bd = isAm ? 'rgba(107,147,255,0.35)' : 'rgba(232,117,26,0.35)';
+      return `<span style="background:${bg}; color:${fg}; border:1px solid ${bd}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; white-space:nowrap;">${label}</span>`;
+    };
+
+    // Per-employee breakdown (rendered when the card is expanded). Groups
+    // this employee's commission rows by client, then lists each workbook
+    // with its rate, the client total it ran against, and the resulting
+    // commission. Sorts clients by total descending so the biggest earner
+    // floats to the top.
+    const fmtRate = frac => {
+      const pct = (parseFloat(frac) || 0) * 100;
+      return (pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(2)) + '%';
+    };
+    const buildEmployeeBreakdown = (empName) => {
+      const myRows = rows.filter(r => r.employee === empName);
+      if (!myRows.length) {
+        return `<div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border); font-size:12px; color:var(--text-muted);">No commissions match the current filters.</div>`;
+      }
+      const byClient = {};
+      myRows.forEach(r => {
+        const c = r.client_name || '—';
+        if (!byClient[c]) byClient[c] = [];
+        byClient[c].push(r);
+      });
+      const clientNames = Object.keys(byClient).sort((a, b) => {
+        const sa = byClient[a].reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+        const sb = byClient[b].reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+        return sb - sa;
+      });
+      const clientBlocks = clientNames.map(c => {
+        const cRows = byClient[c];
+        const cSubtotal = cRows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+        const clientHash = `/client/${encodeURIComponent(c)}`;
+        const clientChipClick = `event.stopPropagation(); location.hash='${clientHash}'`;
+        const wbRows = cRows.map(r => {
+          const wbHash = `/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`;
+          const wbClick = `event.stopPropagation(); location.hash='${wbHash}'`;
+          const product = esc(r.product_name) || '—';
+          const isEst = +r.is_estimate === 1;
+          // Compact 4-column row: workbook pill | role pill + rate | client total | commission $
+          return `
+            <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:var(--surface);">
+              <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="max-width:100%; min-width:0;">
+                <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
+              </span>
+              <span style="display:inline-flex; align-items:center; gap:6px;">
+                ${rolePill(r.role)}
+                <span style="font-size:11px; color:var(--text-muted); font-weight:600; font-variant-numeric:tabular-nums;">${fmtRate(r.commission_rate)}</span>
+              </span>
+              <span style="font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="Client total this commission was rated against">
+                ${fmtUsd0(r.client_total_usd)}
+              </span>
+              <span style="font-size:13px; color:var(--success, #16a34a); font-weight:600; font-variant-numeric:tabular-nums; text-align:right; min-width:74px; white-space:nowrap;">
+                ${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate — Client Cost not yet wired">est</span>' : ''}
+              </span>
+            </div>`;
+        }).join('');
+        return `
+          <div style="margin-bottom:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:10px;">
+              <span class="inv-client-chip" onclick="${clientChipClick}" style="${_clientChipStyle(c)} cursor:pointer; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(c)} — open client">${esc(c)}</span>
+              <span style="font-size:11px; color:var(--text-muted); font-weight:600; white-space:nowrap;">
+                ${cRows.length} workbook${cRows.length !== 1 ? 's' : ''} · subtotal
+                <span style="color:var(--text); font-weight:700;">${fmtUsd(cSubtotal)}</span>
+              </span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              ${wbRows}
+            </div>
+          </div>
+        `;
+      }).join('');
+      return `
+        <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border);">
+          ${clientBlocks}
+        </div>
+      `;
+    };
+
     const empHtml = employees.length ? `
       <div class="section-card" style="padding:18px 20px; margin-bottom:18px;">
         <div class="inv-dash-row-title">Per-employee scoreboard</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Click a card to see which clients and workbooks are paying out.</div>
         <div style="display:grid; grid-template-columns:repeat(${Math.min(employees.length, 2)}, minmax(0, 1fr)); gap:14px; margin-top:10px;">
-          ${employees.map(([name, t]) => `
-            <div style="border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--surface2); min-width:0;">
-              <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                <div style="width:36px; height:36px; border-radius:50%; background:var(--accent-glow); color:var(--accent); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;">
-                  ${esc((name || '?').split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase())}
+          ${employees.map(([name, t]) => {
+            const expanded   = _commExpandedEmployees.has(name);
+            const toggleAttr = `onclick='toggleEmployeeExpand(${JSON.stringify(name)})'`;
+            // Chevron rotates 90° when the card is open. Pure CSS transform.
+            const chevron = `
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                   style="color:var(--text-muted); transition:transform 0.2s; transform:rotate(${expanded ? 90 : 0}deg);">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>`;
+            return `
+              <div style="border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--surface2); min-width:0; ${expanded ? 'box-shadow: 0 0 0 1px var(--accent-glow) inset;' : ''}">
+                <div ${toggleAttr} style="display:flex; align-items:center; gap:10px; margin-bottom:10px; cursor:pointer; user-select:none;" title="Click to ${expanded ? 'collapse' : 'expand'} breakdown">
+                  <div style="width:36px; height:36px; border-radius:50%; background:var(--accent-glow); color:var(--accent); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;">
+                    ${esc((name || '?').split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase())}
+                  </div>
+                  <div style="min-width:0;">
+                    <div style="font-weight:600; color:var(--text); font-size:14px;">${esc(name)}</div>
+                    <div style="font-size:11px; color:var(--text-muted);">${t.count} row${t.count !== 1 ? 's' : ''}</div>
+                  </div>
+                  <div style="margin-left:auto; font-size:20px; font-weight:700; color:var(--text);">${fmtUsd(t.total)}</div>
+                  ${chevron}
                 </div>
-                <div>
-                  <div style="font-weight:600; color:var(--text); font-size:14px;">${esc(name)}</div>
-                  <div style="font-size:11px; color:var(--text-muted);">${t.count} row${t.count !== 1 ? 's' : ''}</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                  <div style="padding:8px 10px; border-radius:8px; background:rgba(107,147,255,0.1); border:1px solid rgba(107,147,255,0.2);">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Account Mgr</div>
+                    <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.am)}</div>
+                  </div>
+                  <div style="padding:8px 10px; border-radius:8px; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.2);">
+                    <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Salesperson</div>
+                    <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.sp)}</div>
+                  </div>
                 </div>
-                <div style="margin-left:auto; font-size:20px; font-weight:700; color:var(--text);">${fmtUsd(t.total)}</div>
+                ${expanded ? buildEmployeeBreakdown(name) : ''}
               </div>
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                <div style="padding:8px 10px; border-radius:8px; background:rgba(107,147,255,0.1); border:1px solid rgba(107,147,255,0.2);">
-                  <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Account Mgr</div>
-                  <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.am)}</div>
-                </div>
-                <div style="padding:8px 10px; border-radius:8px; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.2);">
-                  <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Salesperson</div>
-                  <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.sp)}</div>
-                </div>
-              </div>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
       </div>
     ` : '';
@@ -12379,15 +12488,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const headerRowStyle = `display:grid; grid-template-columns:${gridCols}; column-gap:12px; align-items:center; padding:6px 0 8px; border-bottom:1px solid var(--border); margin-bottom:4px;`;
     const headerCellStyle = 'font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
     const cellStyle = 'display:flex; align-items:center; min-width:0; overflow:hidden; color:var(--text); font-size:13px;';
-
-    const rolePill = role => {
-      const isAm = role === 'account_manager';
-      const label = isAm ? 'AM' : 'Sales';
-      const bg = isAm ? 'rgba(107,147,255,0.12)' : 'rgba(232,117,26,0.12)';
-      const fg = isAm ? '#6b93ff' : 'var(--accent)';
-      const bd = isAm ? 'rgba(107,147,255,0.35)' : 'rgba(232,117,26,0.35)';
-      return `<span style="background:${bg}; color:${fg}; border:1px solid ${bd}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; white-space:nowrap;">${label}</span>`;
-    };
+    // rolePill is declared above (alongside the per-employee breakdown
+    // builder) so both the breakdown and this recent-activity table can
+    // reuse the same pill rendering.
 
     const recentHtml = `
       <div class="section-card" style="padding:18px 20px; min-width:0;">
