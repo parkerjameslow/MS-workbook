@@ -7018,7 +7018,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Header currency calculator ───────────────────────────────────────────
-  const _fmtCalc  = n => n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  // Up to 4 decimals so small RMB→USD conversions stay precise (¥1 = $0.1462,
+  // not $0.15). Big round numbers like $1 = ¥7.24 still render cleanly because
+  // we let the trailing zeros drop (min 2, max 4).
+  const _fmtCalc  = n => n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 4});
   const _parseCalc = s => parseFloat(String(s).replace(/,/g, '')) || 0;
 
   // Permanently block letters / anything non-numeric from the calc inputs.
