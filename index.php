@@ -12233,6 +12233,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderCommissionsDashboard();
   }
 
+  // Selected year for the "Earnings over time" card. null = pick the most
+  // recent year with data (clamped at render time once we know what years
+  // actually have rows under the current filters).
+  let _commTimeYear = null;
+  function setCommTimeYear(y) {
+    _commTimeYear = parseInt(y, 10) || null;
+    renderCommissionsDashboard();
+  }
+
   async function renderCommissionsView() {
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const navLink = document.getElementById('nav-commissions-link');
@@ -12454,6 +12463,159 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     ` : '';
 
+    // ── Earnings over time ──────────────────────────────────────────────
+    // Bucket commissions by month and year using created_at (when the row
+    // was recorded — that's when we *earned* it, regardless of when payout
+    // hit). Selected year drives a 12-bar chart; all years show as totals
+    // strip below so you can see the multi-year picture at a glance.
+    const monthBuckets = {}; // 'YYYY-MM' -> { total, pending, paid }
+    const yearBuckets  = {}; // YYYY      -> { total, pending, paid }
+    rows.forEach(r => {
+      const ts = r.created_at;
+      if (!ts) return;
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return;
+      const yyyy = d.getFullYear();
+      const mm   = String(d.getMonth() + 1).padStart(2, '0');
+      const key  = `${yyyy}-${mm}`;
+      const amt  = parseFloat(r.commission_amount) || 0;
+      if (!monthBuckets[key])  monthBuckets[key]  = { total: 0, pending: 0, paid: 0 };
+      if (!yearBuckets[yyyy])  yearBuckets[yyyy]  = { total: 0, pending: 0, paid: 0 };
+      monthBuckets[key].total += amt;
+      yearBuckets[yyyy].total += amt;
+      if (r.status === 'paid') {
+        monthBuckets[key].paid += amt;
+        yearBuckets[yyyy].paid += amt;
+      } else {
+        monthBuckets[key].pending += amt;
+        yearBuckets[yyyy].pending += amt;
+      }
+    });
+
+    const yearsAvailable = Object.keys(yearBuckets).map(Number).sort((a, b) => b - a);
+    // Clamp the selected year to one that actually has data under the
+    // current filters. If nothing matches, fall back to current calendar
+    // year so the chart still renders an empty 12-month skeleton.
+    let selectedYear = _commTimeYear;
+    if (!yearsAvailable.includes(selectedYear)) {
+      selectedYear = yearsAvailable[0] || new Date().getFullYear();
+    }
+
+    const monthAbbr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthValues = monthAbbr.map((_, idx) => {
+      const mm = String(idx + 1).padStart(2, '0');
+      return monthBuckets[`${selectedYear}-${mm}`] || { total: 0, pending: 0, paid: 0 };
+    });
+    const maxMonthTotal = Math.max(0.01, ...monthValues.map(m => m.total));
+    const yearTot   = yearBuckets[selectedYear]?.total   || 0;
+    const yearPend  = yearBuckets[selectedYear]?.pending || 0;
+    const yearPaid  = yearBuckets[selectedYear]?.paid    || 0;
+    const monthsWith = monthValues.filter(m => m.total > 0).length;
+    const avgPerMonth = monthsWith > 0 ? yearTot / monthsWith : 0;
+
+    // Year selector — uses the same custom-arrow pattern as the rest of
+    // the app's dropdowns. Always include `selectedYear` in the option
+    // list even if it has no rows, so the dropdown reflects current state.
+    const yearOptionSet = Array.from(new Set([...yearsAvailable, selectedYear])).sort((a, b) => b - a);
+    const yearSelector = `
+      <span class="ship-select-wrap" style="min-width:120px;">
+        <select onchange="setCommTimeYear(this.value)"
+          style="width:100%; height:32px; padding:0 30px 0 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none; font-weight:600;">
+          ${yearOptionSet.map(y => `<option value="${y}"${y === selectedYear ? ' selected' : ''}>${y}</option>`).join('')}
+        </select>
+      </span>
+    `;
+
+    // The chart itself. Each column is a flex-column: $ label on top,
+    // bar at the bottom (anchored via flex-end), month abbr below the
+    // bar. Bars stack pending (orange-ish) above paid (green) so the
+    // ratio is visible per month. min-height ensures a sliver shows
+    // even on tiny months so the column doesn't read as "no data" when
+    // it's actually $5.
+    const chartHtml = `
+      <div style="display:grid; grid-template-columns:repeat(12, 1fr); gap:6px; height:170px; margin-top:12px;">
+        ${monthValues.map((m, idx) => {
+          const heightPct = (m.total / maxMonthTotal) * 100;
+          const paidPctOfBar    = m.total > 0 ? (m.paid    / m.total) * 100 : 0;
+          const pendingPctOfBar = m.total > 0 ? (m.pending / m.total) * 100 : 0;
+          const tooltip = `${monthAbbr[idx]} ${selectedYear}: ${fmtUsd(m.total)}` +
+                          (m.paid > 0    ? ` · paid ${fmtUsd(m.paid)}`       : '') +
+                          (m.pending > 0 ? ` · pending ${fmtUsd(m.pending)}` : '');
+          return `
+            <div style="display:flex; flex-direction:column; align-items:center; min-width:0;">
+              <div style="font-size:9px; color:var(--text-muted); font-variant-numeric:tabular-nums; height:14px; line-height:14px; white-space:nowrap; overflow:hidden;">
+                ${m.total > 0 ? fmtUsd0(m.total) : ''}
+              </div>
+              <div style="flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center; padding:2px 0;">
+                <div style="width:80%; max-width:32px; height:${heightPct}%; ${m.total > 0 ? 'min-height:3px;' : ''} display:flex; flex-direction:column-reverse; border-radius:5px 5px 0 0; overflow:hidden; background:var(--surface);"
+                     title="${esc(tooltip)}">
+                  <div style="height:${paidPctOfBar}%; background:var(--success, #16a34a);"></div>
+                  <div style="height:${pendingPctOfBar}%; background:var(--accent);"></div>
+                </div>
+              </div>
+              <div style="font-size:10px; color:var(--text-muted); margin-top:4px; font-weight:600;">${monthAbbr[idx]}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+
+    // All-year totals strip — clickable chips so you can jump between years.
+    const allYearChips = yearsAvailable.length ? `
+      <div style="margin-top:18px; padding-top:14px; border-top:1px dashed var(--border);">
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">All years</div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+          ${yearsAvailable.map(y => {
+            const isActive = y === selectedYear;
+            const tot = yearBuckets[y].total;
+            return `
+              <button onclick="setCommTimeYear(${y})"
+                style="cursor:pointer; padding:8px 14px; border-radius:10px; font-family:inherit;
+                       background:${isActive ? 'var(--accent-glow)' : 'var(--surface2)'};
+                       border:1px solid ${isActive ? 'color-mix(in srgb, var(--accent) 50%, var(--border))' : 'var(--border)'};
+                       color:${isActive ? 'var(--accent)' : 'var(--text)'};
+                       display:inline-flex; flex-direction:column; align-items:flex-start; gap:2px;
+                       transition:transform 0.1s, box-shadow 0.1s;"
+                onmouseenter="this.style.transform='translateY(-1px)'"
+                onmouseleave="this.style.transform=''">
+                <span style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">${y}</span>
+                <span style="font-size:14px; font-weight:700; font-variant-numeric:tabular-nums;">${fmtUsd0(tot)}</span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    // Pill-style mini summary above the chart so the headline numbers for
+    // the *selected year* are obvious at a glance.
+    const yearSummaryStrip = `
+      <div style="display:flex; flex-wrap:wrap; gap:18px; align-items:center; font-size:12px; color:var(--text-muted); margin-top:6px;">
+        <span><strong style="color:var(--text); font-size:15px; font-weight:700;">${fmtUsd(yearTot)}</strong> total</span>
+        <span>·</span>
+        <span><strong style="color:var(--accent); font-weight:700;">${fmtUsd(yearPend)}</strong> pending</span>
+        <span>·</span>
+        <span><strong style="color:var(--success, #16a34a); font-weight:700;">${fmtUsd(yearPaid)}</strong> paid</span>
+        <span>·</span>
+        <span>${fmtUsd(avgPerMonth)} avg/mo${monthsWith ? ` over ${monthsWith} active month${monthsWith !== 1 ? 's' : ''}` : ''}</span>
+      </div>
+    `;
+
+    const earningsOverTimeHtml = `
+      <div class="section-card" style="padding:18px 20px; margin-bottom:18px;">
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <div style="flex:1; min-width:0;">
+            <div class="inv-dash-row-title">Earnings over time</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Monthly totals — ${selectedYear}</div>
+          </div>
+          ${yearSelector}
+        </div>
+        ${yearSummaryStrip}
+        ${chartHtml}
+        ${allYearChips}
+      </div>
+    `;
+
     // ── Top clients by commission (mirrors Inventory's "top clients by SKU count") ──
     const clientMap = {};
     rows.forEach(r => {
@@ -12521,7 +12683,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     `;
 
-    host.innerHTML = kpiHtml + empHtml + topClientsHtml + recentHtml;
+    host.innerHTML = kpiHtml + empHtml + earningsOverTimeHtml + topClientsHtml + recentHtml;
   }
 
   // Small helper — human-readable relative time (e.g. "2 days ago", "just now")
