@@ -89,6 +89,47 @@ try {
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN notes TEXT DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN account_manager VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN salesperson VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+
+// Auto-create commissions table.
+//   role           = 'account_manager' | 'salesperson'  (which hat earned this row)
+//   employee       = the human's name (e.g. 'Parker Low') — denormalized so a
+//                    later rename on the client doesn't rewrite history
+//   client_total_usd = the dollar amount the client paid for this line, in USD
+//                    (this is what gets multiplied by commission_rate)
+//   commission_rate  = decimal fraction (0.20 = 20%)
+//   commission_amount= client_total_usd * commission_rate, stored so reports
+//                    don't have to recompute and so historical rates stick
+//   status         = 'pending' | 'paid'   (room to mark payouts later)
+//   The UNIQUE KEY makes promote/recompute idempotent — re-promoting the
+//   same workbook for the same employee+role won't create a dup row.
+$pdo->exec("CREATE TABLE IF NOT EXISTS commissions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    client_id INT NOT NULL,
+    client_name VARCHAR(255) DEFAULT NULL,
+    workbook_id INT DEFAULT NULL,
+    sku VARCHAR(255) DEFAULT NULL,
+    product_name VARCHAR(255) DEFAULT NULL,
+    role ENUM('account_manager','salesperson') NOT NULL,
+    employee VARCHAR(255) NOT NULL,
+    client_total_usd DECIMAL(12,2) NOT NULL DEFAULT 0,
+    commission_rate DECIMAL(5,4) NOT NULL DEFAULT 0.2000,
+    commission_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    status ENUM('pending','paid') NOT NULL DEFAULT 'pending',
+    is_estimate TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'true until Client Cost is wired and we use real values',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    paid_at TIMESTAMP NULL,
+    UNIQUE KEY uq_wb_role_emp (workbook_id, role, employee),
+    INDEX idx_client (client_id),
+    INDEX idx_employee (employee),
+    INDEX idx_status (status),
+    INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 // Auto-create portal_tokens table
 $pdo->exec("CREATE TABLE IF NOT EXISTS portal_tokens (
@@ -428,9 +469,23 @@ switch ($action) {
             break;
         }
         try {
-            $stmt = $pdo->prepare("INSERT INTO clients (name) VALUES (?)");
-            $stmt->execute([trim($input['name'])]);
-            echo json_encode(['success' => true, 'id' => $pdo->lastInsertId(), 'name' => trim($input['name'])]);
+            // Account manager + salesperson are optional on create. If absent
+            // they stay NULL and can be set later via save_client_detail.
+            $am  = isset($input['account_manager']) ? trim((string)$input['account_manager']) : '';
+            $sp  = isset($input['salesperson'])     ? trim((string)$input['salesperson'])     : '';
+            $stmt = $pdo->prepare("INSERT INTO clients (name, account_manager, salesperson) VALUES (?, ?, ?)");
+            $stmt->execute([
+                trim($input['name']),
+                $am !== '' ? $am : null,
+                $sp !== '' ? $sp : null,
+            ]);
+            echo json_encode([
+                'success' => true,
+                'id' => $pdo->lastInsertId(),
+                'name' => trim($input['name']),
+                'account_manager' => $am !== '' ? $am : null,
+                'salesperson' => $sp !== '' ? $sp : null,
+            ]);
         } catch (PDOException $e) {
             if ($e->getCode() == 23000) {
                 echo json_encode(['success' => false, 'error' => 'Client already exists']);
@@ -460,7 +515,7 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Client ID required']);
             break;
         }
-        $allowed = ['email', 'phone', 'primary_contact', 'billing_address', 'shipping_address', 'notes'];
+        $allowed = ['email', 'phone', 'primary_contact', 'billing_address', 'shipping_address', 'notes', 'account_manager', 'salesperson'];
         $fields = [];
         $params = [];
         foreach ($allowed as $col) {
@@ -1139,27 +1194,120 @@ switch ($action) {
         break;
 
     case 'promote_to_sku':
-        // input: array of items [{sku, product_name, variant_name, client_name, workbook_id}]
+        // input: array of items [{sku, product_name, variant_name, client_name,
+        //   workbook_id, qty?, unit_price_usd?}]
+        // qty + unit_price_usd are optional; when present we also record
+        // commission rows for whichever roles (account_manager / salesperson)
+        // are set on the client.
         if (empty($input['items']) || !is_array($input['items'])) {
             echo json_encode(['success' => false, 'error' => 'Items array required']);
             break;
         }
         $inserted = 0;
         $skipped = 0;
-        $stmt = $pdo->prepare("INSERT IGNORE INTO inventory (sku, product_name, variant_name, client_name, workbook_id) VALUES (?, ?, ?, ?, ?)");
+        $commissionsRecorded = 0;
+        $invStmt  = $pdo->prepare("INSERT IGNORE INTO inventory (sku, product_name, variant_name, client_name, workbook_id) VALUES (?, ?, ?, ?, ?)");
+        $commStmt = $pdo->prepare("
+            INSERT IGNORE INTO commissions
+              (client_id, client_name, workbook_id, sku, product_name,
+               role, employee, client_total_usd, commission_rate, commission_amount, is_estimate)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        // Cache client lookups so we don't hit the DB once per item.
+        $clientCache = [];
+        $defaultRate = 0.20;
+
         foreach ($input['items'] as $item) {
             if (empty($item['sku'])) continue;
-            $stmt->execute([
+            $invStmt->execute([
                 trim($item['sku']),
                 trim($item['product_name'] ?? ''),
                 isset($item['variant_name']) && $item['variant_name'] !== '' ? trim($item['variant_name']) : null,
                 $item['client_name'] ?? null,
                 $item['workbook_id'] ?? null
             ]);
-            if ($stmt->rowCount() > 0) $inserted++;
+            if ($invStmt->rowCount() > 0) $inserted++;
             else $skipped++;
+
+            // Commission recording. Skip if we can't tie this back to a real
+            // client row, or if there's nothing to commission against yet.
+            $cName = $item['client_name'] ?? null;
+            $wbId  = $item['workbook_id'] ?? null;
+            if (!$cName || !$wbId) continue;
+
+            if (!isset($clientCache[$cName])) {
+                $cs = $pdo->prepare("SELECT id, account_manager, salesperson FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+                $cs->execute([$cName]);
+                $clientCache[$cName] = $cs->fetch() ?: null;
+            }
+            $clientRow = $clientCache[$cName];
+            if (!$clientRow) continue;
+
+            $am = trim((string)($clientRow['account_manager'] ?? ''));
+            $sp = trim((string)($clientRow['salesperson']     ?? ''));
+            if ($am === '' && $sp === '') continue;
+
+            $qty   = isset($item['qty']) ? (float)$item['qty'] : 0;
+            $price = isset($item['unit_price_usd']) ? (float)$item['unit_price_usd'] : 0;
+            $clientTotal = $qty > 0 && $price > 0 ? round($qty * $price, 2) : 0;
+            $isEstimate = 1; // Until Client Cost is wired on Pricing tab, this is Our Cost as a proxy.
+
+            // One commission row per role that's set on the client. The
+            // (workbook_id, role, employee) UNIQUE KEY makes re-promoting the
+            // same workbook a no-op (idempotent).
+            $roles = [];
+            if ($am !== '') $roles[] = ['account_manager', $am];
+            if ($sp !== '') $roles[] = ['salesperson',     $sp];
+            foreach ($roles as [$role, $emp]) {
+                $commAmt = round($clientTotal * $defaultRate, 2);
+                $commStmt->execute([
+                    (int)$clientRow['id'],
+                    $cName,
+                    (int)$wbId,
+                    trim($item['sku']),
+                    trim($item['product_name'] ?? ''),
+                    $role,
+                    $emp,
+                    $clientTotal,
+                    $defaultRate,
+                    $commAmt,
+                    $isEstimate,
+                ]);
+                if ($commStmt->rowCount() > 0) $commissionsRecorded++;
+            }
         }
-        echo json_encode(['success' => true, 'inserted' => $inserted, 'skipped' => $skipped]);
+        echo json_encode([
+            'success' => true,
+            'inserted' => $inserted,
+            'skipped' => $skipped,
+            'commissions_recorded' => $commissionsRecorded,
+        ]);
+        break;
+
+    // ─── COMMISSIONS ───────────────────────────────────
+    // Read all commission rows. Joined back to clients for live AM/SP info
+    // (handy if the role assignment changed since the row was written —
+    // dashboard can show the current owner alongside the historical one).
+    case 'get_commissions':
+        $sql = "SELECT cm.*, c.account_manager AS current_account_manager, c.salesperson AS current_salesperson
+                FROM commissions cm
+                LEFT JOIN clients c ON c.id = cm.client_id
+                ORDER BY cm.created_at DESC";
+        $stmt = $pdo->query($sql);
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+        break;
+
+    // Mark a commission paid / unpaid. Used by the dashboard's payout UI.
+    case 'set_commission_status':
+        $id     = (int)($input['id'] ?? 0);
+        $status = $input['status'] ?? '';
+        if (!$id || !in_array($status, ['pending','paid'], true)) {
+            echo json_encode(['success' => false, 'error' => 'id + valid status required']);
+            break;
+        }
+        $stmt = $pdo->prepare("UPDATE commissions SET status = ?, paid_at = " . ($status === 'paid' ? 'NOW()' : 'NULL') . " WHERE id = ?");
+        $stmt->execute([$status, $id]);
+        echo json_encode(['success' => true]);
         break;
 
     case 'remove_sku':

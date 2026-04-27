@@ -3912,16 +3912,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
-    <!-- Commission -->
-    <div class="nav-section collapsed" id="nav-section-commission">
-      <div class="nav-section-header" onclick="toggleNavSection('nav-section-commission')">
-        <span>Commission</span>
-        <span class="nav-section-chevron">›</span>
-      </div>
-      <div class="nav-section-body">
-        <div class="nav-placeholder">Coming soon…</div>
-      </div>
-    </div>
+    <!-- Commissions -->
+    <a id="nav-commissions-link" href="#/commissions" onclick="event.preventDefault(); location.hash='#/commissions'" class="nav-flat-link">
+      <span>Commissions</span>
+      <span class="nav-badge" id="badge-commissions"></span>
+    </a>
 
   </nav>
 
@@ -5513,6 +5508,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div><!-- /#view-inventory -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: COMMISSIONS
+     Owner-facing reporting dashboard. Mirrors the Inventory dashboard
+     pattern (KPI strip → cards) so visual rhythm stays consistent.
+     ══════════════════════════════════════════════════════════════════════ -->
+<div id="view-commissions" class="view">
+  <main class="container">
+
+    <!-- Hero Header -->
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
+      <div>
+        <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">Commissions</h1>
+        <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Account Manager &amp; Salesperson payouts on promoted workbooks</p>
+      </div>
+      <div style="margin-left:auto; display:flex; gap:10px; align-items:center;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
+          Employee
+          <span class="ship-select-wrap" style="min-width:200px;">
+            <select id="commissions-employee-filter" onchange="filterCommissionsByEmployee(this.value)"
+              style="width:100%; height:34px; padding:0 34px 0 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none; text-transform:none; letter-spacing:normal; font-weight:500;">
+              <option value="all">All Employees</option>
+              <option value="Parker Low">Parker Low</option>
+              <option value="Jackson Hollberg">Jackson Hollberg</option>
+            </select>
+          </span>
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">
+          Role
+          <span class="ship-select-wrap" style="min-width:170px;">
+            <select id="commissions-role-filter" onchange="filterCommissionsByRole(this.value)"
+              style="width:100%; height:34px; padding:0 34px 0 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none; text-transform:none; letter-spacing:normal; font-weight:500;">
+              <option value="all">All Roles</option>
+              <option value="account_manager">Account Manager</option>
+              <option value="salesperson">Salesperson</option>
+            </select>
+          </span>
+        </label>
+        <span id="commissions-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 rows</span>
+      </div>
+    </div>
+
+    <div id="commissions-dashboard-content">
+      <!-- populated by renderCommissionsDashboard() -->
+    </div>
+
+  </main>
+</div><!-- /#view-commissions -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
      VIEW: ORDER DETAIL
 ═══════════════════════════════════════════════════════════════════════ -->
 <div id="view-order-detail" class="view">
@@ -5831,6 +5874,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </span>
           </label>
           <textarea id="modal-client-shipping" placeholder="Street, City, State ZIP" rows="3"></textarea>
+        </div>
+      </div>
+      <!-- Account Manager + Salesperson assignment. Drives commission tracking
+           on the Commissions dashboard once workbooks for this client are
+           promoted/ordered. Either or both can be left as "—" (unassigned). -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;">
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Account Manager</label>
+          <select id="modal-client-am">
+            <option value="">— Unassigned —</option>
+            <option value="Parker Low">Parker Low</option>
+            <option value="Jackson Hollberg">Jackson Hollberg</option>
+          </select>
+        </div>
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Salesperson</label>
+          <select id="modal-client-sp">
+            <option value="">— Unassigned —</option>
+            <option value="Parker Low">Parker Low</option>
+            <option value="Jackson Hollberg">Jackson Hollberg</option>
+          </select>
         </div>
       </div>
       <div class="modal-actions">
@@ -8362,7 +8426,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         primary_contact: c.primary_contact || '',
         billing_address: c.billing_address || '',
         shipping_address: c.shipping_address || '',
-        notes: c.notes || ''
+        notes: c.notes || '',
+        account_manager: c.account_manager || '',
+        salesperson:     c.salesperson     || ''
       };
     });
 
@@ -9596,6 +9662,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const billing = document.getElementById('modal-client-billing').value.trim();
     const sameChk = document.getElementById('modal-ship-same');
     const shipping= sameChk && sameChk.checked ? billing : document.getElementById('modal-client-shipping').value.trim();
+    const am      = (document.getElementById('modal-client-am')?.value || '').trim();
+    const sp      = (document.getElementById('modal-client-sp')?.value || '').trim();
     if (!name) return;
 
     // Check if client already exists
@@ -9606,7 +9674,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Populate local state immediately so the UI renders right away ──
     clientData[name] = [];
-    clientDetails[name] = { id: null, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '' };
+    clientDetails[name] = { id: null, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '', account_manager: am, salesperson: sp };
     rebuildSidebar(); // handles nav items (with avatar/star/delete) + modal dropdown
 
     // ── Close modal and navigate immediately — user sees the page now ──
@@ -9614,7 +9682,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     location.hash = `#/client/${encodeURIComponent(name)}`;
 
     // ── Save to DB and show toast ──
-    const result = await apiCall('add_client', { name });
+    const result = await apiCall('add_client', { name, account_manager: am, salesperson: sp });
     const s = document.getElementById('save-status');
     if (result.success) {
       dbClientMap[name] = result.id;
@@ -10268,7 +10336,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         primary_contact: d.primary_contact,
         billing_address: d.billing_address,
         shipping_address: d.shipping_address,
-        notes: d.notes
+        notes: d.notes,
+        account_manager: d.account_manager || '',
+        salesperson:     d.salesperson     || ''
       });
     }, 800);
   }
@@ -10344,6 +10414,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input class="cdc-value" type="text" value="${val}" placeholder="${placeholder}" oninput="${handler}" />
       </div>`;
     };
+    // Employee dropdown for Account Manager / Salesperson. Drives commission
+    // tracking — when a workbook for this client is promoted, the AM/SP
+    // currently set here gets a commission row written.
+    const empSelect = (key, label) => {
+      const cur = (d[key] || '').trim();
+      const opt = (v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v || '— Unassigned —'}</option>`;
+      const handler = `onClientDetailChange(this,'${enc}','${key}')`;
+      return `<div class="cdc-field">
+        <div class="cdc-label">${label}</div>
+        <select class="cdc-value" onchange="${handler}">
+          ${opt('')}
+          ${opt('Parker Low')}
+          ${opt('Jackson Hollberg')}
+        </select>
+      </div>`;
+    };
 
     wrap.innerHTML = `
       <div class="client-detail-card">
@@ -10354,6 +10440,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${field('email',           'Email',            'client@example.com')}
             ${field('phone',           'Phone',            '+1 (555) 000-0000')}
             ${field('primary_contact', 'Primary Contact',  'Contact name')}
+            ${empSelect('account_manager', 'Account Manager')}
+            ${empSelect('salesperson',     'Salesperson')}
             ${field('billing_address', 'Billing Address',  'Street, City, State ZIP', true)}
             ${field('shipping_address','Shipping Address', 'Same as billing or different', true)}
             ${field('notes',           'Notes',            'Internal notes…', true)}
@@ -11253,6 +11341,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/commissions
+    if (hash === '#/commissions') {
+      renderCommissionsView();
+      return;
+    }
+
     // Match: #/order/{id}
     const orderMatch = hash.match(/^#\/order\/(\d+)$/);
     if (orderMatch) {
@@ -12001,6 +12095,231 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     `;
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // COMMISSIONS DASHBOARD
+  // Owner-facing reporting view. Pulls all rows once via get_commissions and
+  // filters in memory (employee × role). Mirrors Inventory dashboard's card
+  // rhythm so the two views feel consistent.
+  // ══════════════════════════════════════════════════════════════════════
+  let commissionsData = [];          // [{id, role, employee, client_total_usd, commission_amount, status, ...}]
+  let _commEmployeeFilter = 'all';   // 'all' | 'Parker Low' | 'Jackson Hollberg'
+  let _commRoleFilter     = 'all';   // 'all' | 'account_manager' | 'salesperson'
+
+  async function loadCommissions() {
+    try {
+      const res = await apiCall('get_commissions');
+      if (res && res.success) commissionsData = res.data || [];
+    } catch (e) { console.error('[commissions] loadCommissions failed', e); }
+  }
+
+  function _commFilteredRows() {
+    return commissionsData.filter(r => {
+      if (_commEmployeeFilter !== 'all' && r.employee !== _commEmployeeFilter) return false;
+      if (_commRoleFilter     !== 'all' && r.role     !== _commRoleFilter)     return false;
+      return true;
+    });
+  }
+
+  function filterCommissionsByEmployee(v) { _commEmployeeFilter = v; renderCommissionsDashboard(); }
+  function filterCommissionsByRole(v)     { _commRoleFilter     = v; renderCommissionsDashboard(); }
+
+  async function renderCommissionsView() {
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const navLink = document.getElementById('nav-commissions-link');
+    if (navLink) navLink.classList.add('active');
+    document.getElementById('header-title').textContent = 'Commissions';
+    await loadCommissions();
+    renderCommissionsDashboard();
+    showView('view-commissions');
+  }
+
+  function renderCommissionsDashboard() {
+    const host = document.getElementById('commissions-dashboard-content');
+    if (!host) return;
+
+    const rows  = _commFilteredRows();
+    const badge = document.getElementById('commissions-count-badge');
+    if (badge) badge.textContent = `${rows.length} row${rows.length !== 1 ? 's' : ''}`;
+
+    // Empty state — guides the user toward setup
+    if (!rows.length) {
+      host.innerHTML = `
+        <div class="section-card" style="padding:60px 24px; text-align:center; color:var(--text-muted);">
+          <div style="font-size:40px; margin-bottom:14px;">💼</div>
+          <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:6px;">
+            ${commissionsData.length === 0 ? 'No commissions yet' : 'No rows match the current filter'}
+          </div>
+          <div style="font-size:13px; max-width:440px; margin:0 auto;">
+            ${commissionsData.length === 0
+              ? 'Assign an <strong>Account Manager</strong> or <strong>Salesperson</strong> to a client, then promote a workbook with priced RFQ items. Commissions will land here automatically (20% of client total).'
+              : 'Try clearing the Employee or Role filter to see all rows.'}
+          </div>
+        </div>`;
+      return;
+    }
+
+    // ── Formatters ──
+    const fmtUsd  = n => '$' + (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtUsd0 = n => '$' + Math.round(parseFloat(n) || 0).toLocaleString('en-US');
+    const fmtPretty = iso => {
+      if (!iso) return '—';
+      const d = new Date(iso); if (isNaN(d.getTime())) return '—';
+      const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const day = d.getDate();
+      const suf = (n => (n>3 && n<21) ? 'th' : ({1:'st',2:'nd',3:'rd'}[n%10]||'th'))(day);
+      return `${months[d.getMonth()]} ${day}${suf}`;
+    };
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    // ── KPI strip ──
+    const totalEarned = rows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+    const pending     = rows.filter(r => r.status === 'pending').reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+    const paid        = rows.filter(r => r.status === 'paid').reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+    const wbCount     = new Set(rows.map(r => r.workbook_id)).size;
+    const avgPerWb    = wbCount > 0 ? totalEarned / wbCount : 0;
+    const anyEstimate = rows.some(r => +r.is_estimate === 1);
+
+    const statCard = (label, value, subtext, accent) => `
+      <div class="section-card" style="padding:16px 18px; min-width:0;">
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">${label}</div>
+        <div style="font-size:24px; font-weight:700; color:${accent || 'var(--text)'}; margin-top:6px; line-height:1.2;">${value}</div>
+        ${subtext ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${subtext}</div>` : ''}
+      </div>`;
+
+    const kpiHtml = `
+      <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px; margin-bottom:18px;">
+        ${statCard('Total Earned', fmtUsd(totalEarned), `${rows.length} commission row${rows.length !== 1 ? 's' : ''}`)}
+        ${statCard('Pending Payout', fmtUsd(pending), 'Not yet marked paid', 'var(--accent)')}
+        ${statCard('Paid Out', fmtUsd(paid), 'Marked paid', 'var(--success, #16a34a)')}
+        ${statCard('Avg / Workbook', fmtUsd(avgPerWb), `${wbCount} unique workbook${wbCount !== 1 ? 's' : ''}`)}
+      </div>
+      ${anyEstimate ? `
+        <div style="background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:10px; padding:10px 14px; margin-bottom:18px; font-size:12px; color:var(--text-muted);">
+          ⓘ Some commissions are <strong>estimates</strong>: they use Our Cost (RFQ-derived USD) until "Client Cost" is wired up on the Pricing tab.
+        </div>` : ''}
+    `;
+
+    // ── Per-employee scoreboard ──
+    const empMap = {};
+    rows.forEach(r => {
+      const e = r.employee || '—';
+      if (!empMap[e]) empMap[e] = { am: 0, sp: 0, total: 0, count: 0 };
+      const amt = parseFloat(r.commission_amount) || 0;
+      empMap[e].total += amt;
+      empMap[e].count += 1;
+      if (r.role === 'account_manager') empMap[e].am += amt;
+      else if (r.role === 'salesperson') empMap[e].sp += amt;
+    });
+    const employees = Object.entries(empMap).sort((a, b) => b[1].total - a[1].total);
+
+    const empHtml = employees.length ? `
+      <div class="section-card" style="padding:18px 20px; margin-bottom:18px;">
+        <div class="inv-dash-row-title">Per-employee scoreboard</div>
+        <div style="display:grid; grid-template-columns:repeat(${Math.min(employees.length, 2)}, minmax(0, 1fr)); gap:14px; margin-top:10px;">
+          ${employees.map(([name, t]) => `
+            <div style="border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--surface2); min-width:0;">
+              <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                <div style="width:36px; height:36px; border-radius:50%; background:var(--accent-glow); color:var(--accent); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;">
+                  ${esc((name || '?').split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase())}
+                </div>
+                <div>
+                  <div style="font-weight:600; color:var(--text); font-size:14px;">${esc(name)}</div>
+                  <div style="font-size:11px; color:var(--text-muted);">${t.count} row${t.count !== 1 ? 's' : ''}</div>
+                </div>
+                <div style="margin-left:auto; font-size:20px; font-weight:700; color:var(--text);">${fmtUsd(t.total)}</div>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div style="padding:8px 10px; border-radius:8px; background:rgba(107,147,255,0.1); border:1px solid rgba(107,147,255,0.2);">
+                  <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Account Mgr</div>
+                  <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.am)}</div>
+                </div>
+                <div style="padding:8px 10px; border-radius:8px; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.2);">
+                  <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Salesperson</div>
+                  <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.sp)}</div>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    // ── Top clients by commission (mirrors Inventory's "top clients by SKU count") ──
+    const clientMap = {};
+    rows.forEach(r => {
+      const k = r.client_name || '—';
+      if (!clientMap[k]) clientMap[k] = 0;
+      clientMap[k] += parseFloat(r.commission_amount) || 0;
+    });
+    const topClients = Object.entries(clientMap).sort((a,b) => b[1] - a[1]).slice(0, 5);
+    const maxClient = topClients[0] ? topClients[0][1] : 1;
+
+    const topClientsHtml = topClients.length ? `
+      <div class="section-card" style="padding:18px 20px; margin-bottom:18px;">
+        <div class="inv-dash-row-title">Top clients by commission</div>
+        <div style="margin-top:10px;">
+          ${topClients.map(([name, amt]) => {
+            const pct = Math.max(4, (amt / Math.max(maxClient, 0.01)) * 100);
+            return `
+              <div class="inv-topclient-row">
+                <div class="inv-topclient-name" title="${esc(name)}">${esc(name)}</div>
+                <div class="inv-topclient-bar-wrap"><div class="inv-topclient-bar" style="width:${pct}%;"></div></div>
+                <div class="inv-topclient-count">${fmtUsd0(amt)}</div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    // ── Recent commission activity (table-style with header row) ──
+    const recent = rows.slice(0, 8);
+    const gridCols = 'minmax(110px, 1.4fr) minmax(80px, 0.8fr) minmax(110px, 1.3fr) minmax(110px, 1fr) minmax(70px, 0.6fr) minmax(80px, 0.8fr) minmax(100px, 0.9fr)';
+    const colHeaders = ['Product', 'SKU', 'Client', 'Employee', 'Role', 'Amount', 'Date'];
+    const headerRowStyle = `display:grid; grid-template-columns:${gridCols}; column-gap:12px; align-items:center; padding:6px 0 8px; border-bottom:1px solid var(--border); margin-bottom:4px;`;
+    const headerCellStyle = 'font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+    const cellStyle = 'display:flex; align-items:center; min-width:0; overflow:hidden; color:var(--text); font-size:13px;';
+
+    const rolePill = role => {
+      const isAm = role === 'account_manager';
+      const label = isAm ? 'AM' : 'Sales';
+      const bg = isAm ? 'rgba(107,147,255,0.12)' : 'rgba(232,117,26,0.12)';
+      const fg = isAm ? '#6b93ff' : 'var(--accent)';
+      const bd = isAm ? 'rgba(107,147,255,0.35)' : 'rgba(232,117,26,0.35)';
+      return `<span style="background:${bg}; color:${fg}; border:1px solid ${bd}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; white-space:nowrap;">${label}</span>`;
+    };
+
+    const recentHtml = `
+      <div class="section-card" style="padding:18px 20px; min-width:0;">
+        <div class="inv-dash-row-title">Recent commission activity</div>
+        <div style="${headerRowStyle}">
+          ${colHeaders.map(h => `<div style="${headerCellStyle}">${h}</div>`).join('')}
+        </div>
+        ${recent.map(r => {
+          const amt = parseFloat(r.commission_amount) || 0;
+          const wbHref = (r.client_name && r.workbook_id)
+            ? `#/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`
+            : '';
+          // Product cell becomes a clickable workbook pill when we can route to it.
+          const productCell = wbHref
+            ? `<span class="inv-wb-pill" onclick="location.hash='${wbHref.substring(1)}'" title="${esc(r.product_name)}" style="max-width:100%; min-width:0;"><span class="inv-wb-pill-text">${esc(r.product_name) || '—'}</span><span class="inv-wb-pill-arrow">→</span></span>`
+            : `<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(r.product_name)}">${esc(r.product_name) || '—'}</span>`;
+          return `
+            <div class="inv-activity-row" style="display:grid; grid-template-columns:${gridCols}; column-gap:12px; align-items:center;">
+              <div style="${cellStyle}">${productCell}</div>
+              <div style="${cellStyle}"><span class="inv-sku" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.sku) || '—'}</span></div>
+              <div style="${cellStyle}"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.client_name) || '—'}</span></div>
+              <div style="${cellStyle}"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.employee) || '—'}</span></div>
+              <div style="${cellStyle}">${rolePill(r.role)}</div>
+              <div style="${cellStyle}"><span style="color:var(--success, #16a34a); font-weight:600;">${fmtUsd(amt)}</span>${+r.is_estimate === 1 ? '<span style="margin-left:6px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate based on Our Cost — Client Cost not yet wired">est</span>' : ''}</div>
+              <div style="${cellStyle} white-space:nowrap;" title="${esc(r.created_at || '')}">${fmtPretty(r.created_at)}</div>
+            </div>`;
+        }).join('')}
+      </div>
+    `;
+
+    host.innerHTML = kpiHtml + empHtml + topClientsHtml + recentHtml;
+  }
+
   // Small helper — human-readable relative time (e.g. "2 days ago", "just now")
   function _relativeTime(ts, now) {
     const diff = now - ts;
@@ -12169,12 +12488,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const toPromote = [];
     rfqItems.forEach(item => {
       if (!item.sku) return;
+      // qty + unit_price_usd are sent so the server can record commission rows
+      // (20% of qty × unit_price_usd) for the AM / Salesperson on this client.
+      // unit_price_usd is derived from the RFQ row's RMB price using the live
+      // FX rate. Until "Client Cost" is wired on the Pricing tab, this is
+      // Our Cost — commission rows are flagged is_estimate=1 server-side.
+      const qtyNum   = parseFloat(String(item.qty || '').replace(/,/g, '')) || 0;
+      const rmbNum   = parseFloat(String(item.priceRmb || '').replace(/,/g, '')) || 0;
+      const usdNum   = (rmbNum > 0 && USD_TO_RMB > 0) ? +(rmbNum / USD_TO_RMB).toFixed(4) : 0;
       toPromote.push({
         sku: item.sku,
         product_name: item.item || item.sku,
         variant_name: null,
         client_name: currentClient,
-        workbook_id: dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId
+        workbook_id: dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId,
+        qty: qtyNum,
+        unit_price_usd: usdNum,
       });
     });
     if (!toPromote.length) {
@@ -12184,6 +12513,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const res = await apiCall('promote_to_sku', { items: toPromote });
     if (res.success) {
       await loadInventory();
+      // Server may have recorded commission rows for the AM/SP on this
+      // client — refresh in-memory data so the Commissions dashboard is
+      // fresh next time it's opened.
+      loadCommissions();
       updatePromoteButton();
     }
   }
@@ -12194,6 +12527,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     loadShipments();
     loadOrders();
     loadInventory();
+    loadCommissions();
     rebuildSidebar();
     rebuildShipmentsNav();
     rebuildOrdersNav();
