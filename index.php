@@ -10490,23 +10490,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // arrow used by every other dropdown in the app. appearance:none on the
       // <select> kills the native arrow so we don't double-up. The % input
       // sits to the right at a fixed 86px so it never crowds the dropdown.
+      // Pin both inputs to the same explicit height — without it, browsers
+      // give <select> a slightly larger native min-height (even with
+      // appearance:none) than a sibling <input>, so they end up looking
+      // mismatched. 36px is comfy and matches the cdc-value text padding.
       return `<div class="cdc-field">
         <div class="cdc-label">${label}</div>
-        <div style="display:flex; gap:6px; align-items:stretch;">
+        <div style="display:flex; gap:6px; align-items:center;">
           <span class="ship-select-wrap" style="display:block; flex:1; min-width:0;">
             <select class="cdc-value" onchange="${handler}"
-              style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;">
+              style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer; height:36px; line-height:1.2; box-sizing:border-box;">
               ${opt('')}
               ${opt('Parker Low')}
               ${opt('Jackson Hollberg')}
             </select>
           </span>
-          <div style="position:relative; width:86px; flex-shrink:0;"
+          <div style="position:relative; width:86px; flex-shrink:0; height:36px;"
                title="Commission rate for this role on this client. Leave blank to use the default 20%.">
             <input class="cdc-value" type="number" step="0.01" min="0" max="100"
               value="${pctVal}" placeholder="20"
               oninput="${pctHandler}"
-              style="padding-right:22px; text-align:right; font-variant-numeric:tabular-nums;" />
+              style="padding-right:22px; text-align:right; font-variant-numeric:tabular-nums; height:36px; line-height:1.2; box-sizing:border-box;" />
             <span style="position:absolute; right:9px; top:50%; transform:translateY(-50%);
                          font-size:12px; color:var(--text-muted); pointer-events:none;">%</span>
           </div>
