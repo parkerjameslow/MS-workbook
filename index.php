@@ -904,6 +904,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #rfq-table th:nth-child(6), #rfq-table td:nth-child(6) { width: 16%; }   /* RMB */
     #rfq-table th:nth-child(7), #rfq-table td:nth-child(7) { width: 16%; }   /* USD */
     #rfq-table th, #rfq-table td { padding-left: 12px; padding-right: 12px; }
+
+    /* Samples table — scoped column widths so columns size proportionally to
+       the available space (table-layout:fixed + percent widths). The global
+       .dash-table nth-child rules from the workbook dashboard would otherwise
+       win and squash these columns into the wrong shape. */
+    #samples-table { table-layout: fixed; }
+    #samples-table th:nth-child(1), #samples-table td:nth-child(1) { width: 22%; }  /* Item */
+    #samples-table th:nth-child(2), #samples-table td:nth-child(2) { width: 16%; }  /* Client (pill) */
+    #samples-table th:nth-child(3), #samples-table td:nth-child(3) { width: 22%; }  /* Workbook (pill) */
+    #samples-table th:nth-child(4), #samples-table td:nth-child(4) { width: 8%;  }  /* Qty */
+    #samples-table th:nth-child(5), #samples-table td:nth-child(5) { width: 9%;  }  /* RMB */
+    #samples-table th:nth-child(6), #samples-table td:nth-child(6) { width: 9%;  }  /* USD */
+    #samples-table th:nth-child(7), #samples-table td:nth-child(7) { width: 6%;  }  /* Lead */
+    #samples-table th:nth-child(8), #samples-table td:nth-child(8) { width: 8%;  }  /* Status */
+    #samples-table th, #samples-table td { padding-left: 12px; padding-right: 12px; vertical-align: middle; }
+    #samples-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Pill cells need to keep their min-width:0 so flex/inline-flex children
+       can shrink and ellipsis-trim instead of pushing the column wider. */
+    #samples-table .samples-pill-cell { overflow: visible; }
+    /* Reuse inv-client-chip but make it clickable for samples — hover gets a
+       subtle lift so it reads as interactive. */
+    #samples-table .inv-client-chip {
+      cursor: pointer;
+      transition: filter 0.12s, transform 0.12s;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #samples-table .inv-client-chip:hover { filter: brightness(0.96); transform: translateY(-1px); }
     /* Client chip — distinct color, not clickable */
     .inv-client-chip {
       display: inline-flex; align-items: center;
@@ -5211,14 +5241,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <thead>
             <tr>
               <th>ITEM</th>
-              <th class="col-client">CLIENT</th>
+              <th>CLIENT</th>
               <th>WORKBOOK</th>
               <th style="text-align:right;">QTY</th>
-              <th style="text-align:right;">UNIT PRICE (RMB)</th>
-              <th style="text-align:right;">UNIT PRICE (USD)</th>
-              <th>LEAD TIME</th>
+              <th style="text-align:right;">RMB</th>
+              <th style="text-align:right;">USD</th>
+              <th>LEAD</th>
               <th style="text-align:center;">STATUS</th>
-              <th></th>
             </tr>
           </thead>
           <tbody id="samples-tbody">
@@ -5882,19 +5911,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;">
         <div class="modal-field" style="margin-bottom:0;">
           <label>Account Manager</label>
-          <select id="modal-client-am">
-            <option value="">— Unassigned —</option>
-            <option value="Parker Low">Parker Low</option>
-            <option value="Jackson Hollberg">Jackson Hollberg</option>
-          </select>
+          <!-- ship-select-wrap renders the same custom triangle arrow used
+               everywhere else; appearance:none on the select hides the
+               native OS arrow so we don't get a double-arrow. -->
+          <span class="ship-select-wrap" style="display:block; width:100%;">
+            <select id="modal-client-am" style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:32px; cursor:pointer;">
+              <option value="">— Unassigned —</option>
+              <option value="Parker Low">Parker Low</option>
+              <option value="Jackson Hollberg">Jackson Hollberg</option>
+            </select>
+          </span>
         </div>
         <div class="modal-field" style="margin-bottom:0;">
           <label>Salesperson</label>
-          <select id="modal-client-sp">
-            <option value="">— Unassigned —</option>
-            <option value="Parker Low">Parker Low</option>
-            <option value="Jackson Hollberg">Jackson Hollberg</option>
-          </select>
+          <span class="ship-select-wrap" style="display:block; width:100%;">
+            <select id="modal-client-sp" style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:32px; cursor:pointer;">
+              <option value="">— Unassigned —</option>
+              <option value="Parker Low">Parker Low</option>
+              <option value="Jackson Hollberg">Jackson Hollberg</option>
+            </select>
+          </span>
         </div>
       </div>
       <div class="modal-actions">
@@ -10321,6 +10357,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!clientDetails[clientName]) clientDetails[clientName] = {};
     clientDetails[clientName][key] = el.value;
     saveClientDetail(clientName);
+    // AM/SP changes affect commission ownership — kick off a backfill so the
+    // dashboard reflects the new assignment without waiting for the user to
+    // navigate to Commissions. Fire-and-forget; the recompute is idempotent.
+    if (key === 'account_manager' || key === 'salesperson') {
+      apiCall('recompute_commissions').then(() => {
+        // Refresh the in-memory commissions list so the dashboard, if it's
+        // already mounted, picks up new rows on its next render.
+        if (typeof loadCommissions === 'function') loadCommissions();
+      }).catch(() => {});
+    }
   }
 
   let _clientDetailSaveTimer = null;
@@ -10421,13 +10467,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const cur = (d[key] || '').trim();
       const opt = (v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v || '— Unassigned —'}</option>`;
       const handler = `onClientDetailChange(this,'${enc}','${key}')`;
+      // Wrap the select in ship-select-wrap so we get the same custom triangle
+      // arrow used by every other dropdown in the app. appearance:none on the
+      // <select> kills the native arrow so we don't double-up.
       return `<div class="cdc-field">
         <div class="cdc-label">${label}</div>
-        <select class="cdc-value" onchange="${handler}">
-          ${opt('')}
-          ${opt('Parker Low')}
-          ${opt('Jackson Hollberg')}
-        </select>
+        <span class="ship-select-wrap" style="display:block; width:100%;">
+          <select class="cdc-value" onchange="${handler}"
+            style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;">
+            ${opt('')}
+            ${opt('Parker Low')}
+            ${opt('Jackson Hollberg')}
+          </select>
+        </span>
       </div>`;
     };
 
@@ -11049,34 +11101,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (emptyEl) emptyEl.style.display = 'none';
     if (tableEl) tableEl.style.display = '';
 
+    // String-escape HTML inputs so client/product names containing < & " etc.
+    // can't break the markup or open injection holes via the title= attr.
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
     tbody.innerHTML = filtered.map((s, i) => {
       const sc = SAMPLE_STATUS_COLORS[s.status] || SAMPLE_STATUS_COLORS.pending;
-      const statusBadge = `<span style="display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text};">${SAMPLE_STATUS_LABELS[s.status] || s.status}</span>`;
-      const wbHref = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
+      const wbHref     = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
+      const clientHref = `#/client/${encodeURIComponent(s.clientName)}`;
       const rmb = s.priceRmb ? `¥${parseFloat(s.priceRmb).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
       const usd = s.priceUsd ? `$${parseFloat(s.priceUsd).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
-      const lead = s.leadTime ? `${s.leadTime} days` : '—';
+      const lead = s.leadTime ? `${s.leadTime}d` : '—';
+      // Client → deterministic per-name color via _clientChipStyle (same hue
+      // every render). Now clickable so users can drill into the client.
+      const clientPill = `<span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}"
+          onclick="event.stopPropagation(); location.hash='${clientHref.substring(1)}'"
+          title="${esc(s.clientName)}">${esc(s.clientName)}</span>`;
+      // Workbook → existing accent-blue pill with arrow, drills into the workbook.
+      const wbPill = `<span class="inv-wb-pill" onclick="event.stopPropagation(); location.hash='${wbHref.substring(1)}'"
+          title="${esc(s.product)}" style="max-width:100%; min-width:0;"
+          ><span class="inv-wb-pill-text">${esc(s.product)}</span><span class="inv-wb-pill-arrow">→</span></span>`;
       return `
         <tr>
-          <td style="font-weight:600; color:var(--text);">${s.item}</td>
-          <td class="col-client" style="color:var(--text-muted);">${s.clientName}</td>
-          <td>
-            <a href="${wbHref}" style="color:var(--accent); text-decoration:none; font-size:12px;" onclick="event.stopPropagation()">
-              ${s.product}
-            </a>
-          </td>
+          <td style="font-weight:600; color:var(--text);" title="${esc(s.item)}">${esc(s.item)}</td>
+          <td class="samples-pill-cell">${clientPill}</td>
+          <td class="samples-pill-cell">${wbPill}</td>
           <td style="text-align:right; font-weight:600;">${s.qty !== '—' ? parseFloat(s.qty).toLocaleString('en-US') : '—'}</td>
           <td style="text-align:right;">${rmb}</td>
           <td style="text-align:right; color:var(--success);">${usd}</td>
           <td style="color:var(--text-muted);">${lead}</td>
           <td style="text-align:center;">
             <select class="sample-status-sel" onchange="updateSampleStatus('${s.key}', ${s.rowIndex}, this.value)"
-              style="background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center;">
+              style="background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">
               ${SAMPLE_STATUSES.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${SAMPLE_STATUS_LABELS[st]}</option>`).join('')}
             </select>
-          </td>
-          <td>
-            <a href="${wbHref}" class="btn" style="padding:5px 10px; font-size:11px; white-space:nowrap;" onclick="location.hash='${wbHref.substring(1)}'">Open →</a>
           </td>
         </tr>
       `;
@@ -12107,6 +12165,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   async function loadCommissions() {
     try {
+      // Reconcile first — picks up any (client, workbook) pairs that became
+      // commissionable after the original promote/order (e.g. AM/SP got
+      // assigned later, or the workbook's rfqItems totals changed). The
+      // server is idempotent and refreshes pending rows in place; paid rows
+      // stay frozen. Failures here shouldn't block the read of existing rows.
+      try { await apiCall('recompute_commissions'); }
+      catch (e) { console.warn('[commissions] recompute_commissions failed', e); }
+
       const res = await apiCall('get_commissions');
       if (res && res.success) commissionsData = res.data || [];
     } catch (e) { console.error('[commissions] loadCommissions failed', e); }

@@ -454,6 +454,91 @@ function ms_order_table_internal(array $items, float $rate): string {
          . $thead . '<tbody>' . $rows . '</tbody></table>';
 }
 
+// Shared commission writer — used by promote_to_sku AND recompute_commissions
+// so both code paths produce identical row shape and totals.
+//
+// Behavior: UPSERT one row per role (AM and/or SP) the client has set. Paid
+// rows are LEFT ALONE (we don't retroactively rewrite history once payout has
+// happened). Pending/estimate rows get their totals refreshed each call —
+// that's how the backfill corrects rows written before AM/SP was assigned,
+// and how the per-workbook sum corrects the old per-item-undercount bug
+// (UNIQUE KEY on (workbook_id, role, employee) used to make only the first
+// item's amount stick on a multi-item promote).
+//
+// $client must be a row from `clients` with id, name, account_manager, salesperson.
+// $clientTotalUsd is the workbook-wide total in USD that the client pays us.
+function ms_record_commissions_for_workbook(
+    PDO $pdo, array $client, int $workbookId, ?string $sku,
+    ?string $productName, float $clientTotalUsd,
+    int $isEstimate = 1, float $rate = 0.20
+): int {
+    $am = trim((string)($client['account_manager'] ?? ''));
+    $sp = trim((string)($client['salesperson']     ?? ''));
+    if ($am === '' && $sp === '') return 0;
+    if ($clientTotalUsd <= 0)     return 0;
+
+    // ON DUPLICATE KEY UPDATE keeps paid rows frozen via the IF() guard. New
+    // rows insert cleanly; pending/estimate rows pick up the latest total.
+    $sql = "
+        INSERT INTO commissions
+          (client_id, client_name, workbook_id, sku, product_name,
+           role, employee, client_total_usd, commission_rate, commission_amount, is_estimate)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          client_total_usd  = IF(status = 'paid', client_total_usd,  VALUES(client_total_usd)),
+          commission_amount = IF(status = 'paid', commission_amount, VALUES(commission_amount)),
+          is_estimate       = IF(status = 'paid', is_estimate,       VALUES(is_estimate)),
+          sku               = IF(status = 'paid', sku,               COALESCE(VALUES(sku), sku)),
+          product_name      = IF(status = 'paid', product_name,      COALESCE(VALUES(product_name), product_name))
+    ";
+    $stmt = $pdo->prepare($sql);
+
+    $written = 0;
+    $totalRounded = round($clientTotalUsd, 2);
+    $commAmt      = round($clientTotalUsd * $rate, 2);
+    $roles = [];
+    if ($am !== '') $roles[] = ['account_manager', $am];
+    if ($sp !== '') $roles[] = ['salesperson',     $sp];
+    foreach ($roles as [$role, $emp]) {
+        $stmt->execute([
+            (int)$client['id'],
+            $client['name'] ?? null,
+            $workbookId,
+            $sku,
+            $productName,
+            $role,
+            $emp,
+            $totalRounded,
+            $rate,
+            $commAmt,
+            $isEstimate,
+        ]);
+        // rowCount() == 1 on insert, 2 on update via ON DUPLICATE KEY UPDATE,
+        // 0 if nothing changed. Either way, count it as a "touch".
+        if ($stmt->rowCount() > 0) $written++;
+    }
+    return $written;
+}
+
+// Sum a workbook's rfqItems into a single USD total. Mirrors the front-end's
+// USD = priceRmb / 7.24 conversion so totals match what users see on Pricing.
+function ms_workbook_total_usd_from_detail(?string $detailJson, float $usdRmbRate = 7.24): float {
+    if (!$detailJson) return 0;
+    $details = json_decode($detailJson, true);
+    if (!is_array($details)) return 0;
+    $items = $details['rfqItems'] ?? [];
+    if (!is_array($items)) return 0;
+    $total = 0;
+    foreach ($items as $it) {
+        $qty = (float)($it['qty']      ?? 0);
+        $rmb = (float)($it['priceRmb'] ?? 0);
+        if ($qty > 0 && $rmb > 0 && $usdRmbRate > 0) {
+            $total += $qty * ($rmb / $usdRmbRate);
+        }
+    }
+    return $total;
+}
+
 switch ($action) {
 
     // ─── CLIENTS ───────────────────────────────────────
@@ -1196,26 +1281,21 @@ switch ($action) {
     case 'promote_to_sku':
         // input: array of items [{sku, product_name, variant_name, client_name,
         //   workbook_id, qty?, unit_price_usd?}]
-        // qty + unit_price_usd are optional; when present we also record
-        // commission rows for whichever roles (account_manager / salesperson)
-        // are set on the client.
+        // qty + unit_price_usd are optional; when present they get summed per
+        // workbook to seed commission rows for AM/SP. Backfill via
+        // recompute_commissions reconciles totals later if AM/SP changes
+        // or if the workbook's rfqItems get edited.
         if (empty($input['items']) || !is_array($input['items'])) {
             echo json_encode(['success' => false, 'error' => 'Items array required']);
             break;
         }
         $inserted = 0;
         $skipped = 0;
-        $commissionsRecorded = 0;
-        $invStmt  = $pdo->prepare("INSERT IGNORE INTO inventory (sku, product_name, variant_name, client_name, workbook_id) VALUES (?, ?, ?, ?, ?)");
-        $commStmt = $pdo->prepare("
-            INSERT IGNORE INTO commissions
-              (client_id, client_name, workbook_id, sku, product_name,
-               role, employee, client_total_usd, commission_rate, commission_amount, is_estimate)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        // Cache client lookups so we don't hit the DB once per item.
-        $clientCache = [];
-        $defaultRate = 0.20;
+        $invStmt = $pdo->prepare("INSERT IGNORE INTO inventory (sku, product_name, variant_name, client_name, workbook_id) VALUES (?, ?, ?, ?, ?)");
+
+        // Aggregate items per (client_name, workbook_id) so the commission
+        // row reflects the WHOLE workbook, not just the first item we hit.
+        $wbAgg = []; // "$cName|$wbId" => ['client_name', 'workbook_id', 'total_usd', 'first_sku', 'first_product']
 
         foreach ($input['items'] as $item) {
             if (empty($item['sku'])) continue;
@@ -1229,52 +1309,59 @@ switch ($action) {
             if ($invStmt->rowCount() > 0) $inserted++;
             else $skipped++;
 
-            // Commission recording. Skip if we can't tie this back to a real
-            // client row, or if there's nothing to commission against yet.
             $cName = $item['client_name'] ?? null;
             $wbId  = $item['workbook_id'] ?? null;
             if (!$cName || !$wbId) continue;
 
+            $key = $cName . '|' . $wbId;
+            if (!isset($wbAgg[$key])) {
+                $wbAgg[$key] = [
+                    'client_name'   => $cName,
+                    'workbook_id'   => (int)$wbId,
+                    'total_usd'     => 0,
+                    'first_sku'     => trim($item['sku']),
+                    'first_product' => trim($item['product_name'] ?? ''),
+                ];
+            }
+            $qty   = isset($item['qty']) ? (float)$item['qty'] : 0;
+            $price = isset($item['unit_price_usd']) ? (float)$item['unit_price_usd'] : 0;
+            if ($qty > 0 && $price > 0) {
+                $wbAgg[$key]['total_usd'] += $qty * $price;
+            }
+        }
+
+        // Now record commissions one workbook at a time using the helper.
+        // Falls back to rfqItems sum from detail_json if the payload didn't
+        // carry qty/price (e.g. older client builds).
+        $commissionsRecorded = 0;
+        $clientCache = [];
+        foreach ($wbAgg as $agg) {
+            $cName = $agg['client_name'];
             if (!isset($clientCache[$cName])) {
-                $cs = $pdo->prepare("SELECT id, account_manager, salesperson FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
                 $cs->execute([$cName]);
                 $clientCache[$cName] = $cs->fetch() ?: null;
             }
-            $clientRow = $clientCache[$cName];
-            if (!$clientRow) continue;
+            $client = $clientCache[$cName];
+            if (!$client) continue;
 
-            $am = trim((string)($clientRow['account_manager'] ?? ''));
-            $sp = trim((string)($clientRow['salesperson']     ?? ''));
-            if ($am === '' && $sp === '') continue;
-
-            $qty   = isset($item['qty']) ? (float)$item['qty'] : 0;
-            $price = isset($item['unit_price_usd']) ? (float)$item['unit_price_usd'] : 0;
-            $clientTotal = $qty > 0 && $price > 0 ? round($qty * $price, 2) : 0;
-            $isEstimate = 1; // Until Client Cost is wired on Pricing tab, this is Our Cost as a proxy.
-
-            // One commission row per role that's set on the client. The
-            // (workbook_id, role, employee) UNIQUE KEY makes re-promoting the
-            // same workbook a no-op (idempotent).
-            $roles = [];
-            if ($am !== '') $roles[] = ['account_manager', $am];
-            if ($sp !== '') $roles[] = ['salesperson',     $sp];
-            foreach ($roles as [$role, $emp]) {
-                $commAmt = round($clientTotal * $defaultRate, 2);
-                $commStmt->execute([
-                    (int)$clientRow['id'],
-                    $cName,
-                    (int)$wbId,
-                    trim($item['sku']),
-                    trim($item['product_name'] ?? ''),
-                    $role,
-                    $emp,
-                    $clientTotal,
-                    $defaultRate,
-                    $commAmt,
-                    $isEstimate,
-                ]);
-                if ($commStmt->rowCount() > 0) $commissionsRecorded++;
+            $totalUsd = (float)$agg['total_usd'];
+            if ($totalUsd <= 0) {
+                // Fall back to recomputing from the workbook's stored rfqItems.
+                $ws = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ? LIMIT 1");
+                $ws->execute([$agg['workbook_id']]);
+                $detail = $ws->fetchColumn();
+                $totalUsd = ms_workbook_total_usd_from_detail($detail);
             }
+            if ($totalUsd <= 0) continue;
+
+            $commissionsRecorded += ms_record_commissions_for_workbook(
+                $pdo, $client, $agg['workbook_id'],
+                $agg['first_sku'] ?: null,
+                $agg['first_product'] ?: null,
+                $totalUsd,
+                1 // is_estimate (until real Client Cost is wired on Pricing)
+            );
         }
         echo json_encode([
             'success' => true,
@@ -1308,6 +1395,108 @@ switch ($action) {
         $stmt = $pdo->prepare("UPDATE commissions SET status = ?, paid_at = " . ($status === 'paid' ? 'NOW()' : 'NULL') . " WHERE id = ?");
         $stmt->execute([$status, $id]);
         echo json_encode(['success' => true]);
+        break;
+
+    // Backfill / reconcile commissions for every (client, workbook) pair that
+    // is currently in inventory OR on a current order. Idempotent — safe to
+    // call on every dashboard load. Picks up:
+    //   • workbooks that were promoted/ordered before AM/SP was assigned
+    //     (the original commission write skipped them)
+    //   • workbooks whose rfqItems totals changed since the original write
+    //     (UPSERT refreshes pending rows; paid rows stay frozen)
+    case 'recompute_commissions':
+        $pairs = []; // map "$clientName|$wbId" => ['client_name', 'workbook_id']
+
+        // 1. Pairs from inventory (anything ever promoted)
+        $invRows = $pdo->query("
+            SELECT DISTINCT client_name, workbook_id
+            FROM inventory
+            WHERE client_name IS NOT NULL AND workbook_id IS NOT NULL
+        ")->fetchAll();
+        foreach ($invRows as $r) {
+            $key = $r['client_name'] . '|' . $r['workbook_id'];
+            $pairs[$key] = [
+                'client_name' => $r['client_name'],
+                'workbook_id' => (int)$r['workbook_id'],
+            ];
+        }
+
+        // 2. Pairs from active orders. Orders live as JSON under
+        //    app_state['ms_orders'].data[orderId].entries[*].{clientName,workbookId}.
+        $os = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ?");
+        $os->execute(['ms_orders']);
+        $ordersJson = $os->fetchColumn();
+        if ($ordersJson) {
+            $stored    = json_decode($ordersJson, true);
+            $orderData = (is_array($stored) && isset($stored['data']) && is_array($stored['data']))
+                       ? $stored['data'] : [];
+            foreach ($orderData as $order) {
+                if (!is_array($order)) continue;
+                $orderClient = $order['clientName'] ?? '';
+                $entries     = $order['entries']    ?? [];
+                if (!is_array($entries)) continue;
+                foreach ($entries as $e) {
+                    if (!is_array($e)) continue;
+                    $cn = $e['clientName']  ?? $orderClient;
+                    $wb = $e['workbookId']  ?? null;
+                    if (!$cn || !$wb) continue;
+                    $key = $cn . '|' . $wb;
+                    $pairs[$key] = [
+                        'client_name' => $cn,
+                        'workbook_id' => (int)$wb,
+                    ];
+                }
+            }
+        }
+
+        // 3. Walk pairs, write commission rows.
+        $written       = 0;
+        $clientCache   = [];
+        $workbookCache = [];
+
+        foreach ($pairs as $pair) {
+            $cn = $pair['client_name'];
+            $wb = $pair['workbook_id'];
+
+            if (!array_key_exists($cn, $clientCache)) {
+                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+                $cs->execute([$cn]);
+                $clientCache[$cn] = $cs->fetch() ?: null;
+            }
+            $client = $clientCache[$cn];
+            if (!$client) continue;
+
+            // No AM and no SP → no commissions to record. Cheap short-circuit
+            // before we hit the workbooks table.
+            $am = trim((string)($client['account_manager'] ?? ''));
+            $sp = trim((string)($client['salesperson']     ?? ''));
+            if ($am === '' && $sp === '') continue;
+
+            if (!array_key_exists($wb, $workbookCache)) {
+                $ws = $pdo->prepare("SELECT product_name, detail_json FROM workbooks WHERE id = ? LIMIT 1");
+                $ws->execute([$wb]);
+                $workbookCache[$wb] = $ws->fetch() ?: null;
+            }
+            $wbRow = $workbookCache[$wb];
+            if (!$wbRow) continue;
+
+            $totalUsd = ms_workbook_total_usd_from_detail($wbRow['detail_json'] ?? null);
+            if ($totalUsd <= 0) continue;
+
+            $written += ms_record_commissions_for_workbook(
+                $pdo, $client, $wb,
+                null, // no single SKU at workbook level
+                $wbRow['product_name'] ?? null,
+                $totalUsd,
+                1 // is_estimate
+            );
+        }
+
+        echo json_encode([
+            'success'        => true,
+            'pairs_examined' => count($pairs),
+            'rows_written'   => $written,
+        ]);
         break;
 
     case 'remove_sku':
@@ -1747,6 +1936,7 @@ switch ($action) {
             'upload_image', 'delete_image', 'upload_video',
             'get_users', 'add_user', 'delete_user', 'change_password',
             'duplicate_workbook',
-            'get_inventory', 'promote_to_sku', 'remove_sku'
+            'get_inventory', 'promote_to_sku', 'remove_sku',
+            'get_commissions', 'set_commission_status', 'recompute_commissions',
         ]]);
 }
