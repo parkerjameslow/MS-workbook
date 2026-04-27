@@ -8467,7 +8467,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         shipping_address: c.shipping_address || '',
         notes: c.notes || '',
         account_manager: c.account_manager || '',
-        salesperson:     c.salesperson     || ''
+        salesperson:     c.salesperson     || '',
+        // Per-role commission rate overrides. NULL on the server → '' here →
+        // empSelect renders an empty input → server falls back to default 20%.
+        account_manager_pct: (c.account_manager_pct === null || c.account_manager_pct === undefined) ? '' : c.account_manager_pct,
+        salesperson_pct:     (c.salesperson_pct     === null || c.salesperson_pct     === undefined) ? '' : c.salesperson_pct
       };
     });
 
@@ -9713,7 +9717,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Populate local state immediately so the UI renders right away ──
     clientData[name] = [];
-    clientDetails[name] = { id: null, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '', account_manager: am, salesperson: sp };
+    clientDetails[name] = { id: null, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '', account_manager: am, salesperson: sp, account_manager_pct: '', salesperson_pct: '' };
     rebuildSidebar(); // handles nav items (with avatar/star/delete) + modal dropdown
 
     // ── Close modal and navigate immediately — user sees the page now ──
@@ -10360,13 +10364,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!clientDetails[clientName]) clientDetails[clientName] = {};
     clientDetails[clientName][key] = el.value;
     saveClientDetail(clientName);
-    // AM/SP changes affect commission ownership — kick off a backfill so the
-    // dashboard reflects the new assignment without waiting for the user to
-    // navigate to Commissions. Fire-and-forget; the recompute is idempotent.
-    if (key === 'account_manager' || key === 'salesperson') {
+    // AM/SP assignment OR rate change → recompute commissions so the
+    // dashboard reflects the new ownership/rate without a page reload.
+    // Fire-and-forget; recompute is idempotent and UPSERTs pending rows.
+    if (key === 'account_manager'     || key === 'salesperson' ||
+        key === 'account_manager_pct' || key === 'salesperson_pct') {
       apiCall('recompute_commissions').then(() => {
-        // Refresh the in-memory commissions list so the dashboard, if it's
-        // already mounted, picks up new rows on its next render.
         if (typeof loadCommissions === 'function') loadCommissions();
       }).catch(() => {});
     }
@@ -10386,8 +10389,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         billing_address: d.billing_address,
         shipping_address: d.shipping_address,
         notes: d.notes,
-        account_manager: d.account_manager || '',
-        salesperson:     d.salesperson     || ''
+        account_manager:     d.account_manager     || '',
+        salesperson:         d.salesperson         || '',
+        // Per-role rate overrides. Empty string → server stores NULL → helper
+        // falls back to the default 20%. "0" stays a real zero (no commission).
+        account_manager_pct: (d.account_manager_pct === undefined || d.account_manager_pct === null) ? '' : d.account_manager_pct,
+        salesperson_pct:     (d.salesperson_pct     === undefined || d.salesperson_pct     === null) ? '' : d.salesperson_pct
       });
     }, 800);
   }
@@ -10465,24 +10472,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     };
     // Employee dropdown for Account Manager / Salesperson. Drives commission
     // tracking — when a workbook for this client is promoted, the AM/SP
-    // currently set here gets a commission row written.
+    // currently set here gets a commission row written. The neighboring
+    // percent input is the per-client commission rate override (blank = use
+    // the default 20%).
     const empSelect = (key, label) => {
-      const cur = (d[key] || '').trim();
-      const opt = (v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v || '— Unassigned —'}</option>`;
-      const handler = `onClientDetailChange(this,'${enc}','${key}')`;
+      const cur    = (d[key] || '').trim();
+      const pctKey = key + '_pct';
+      // Read raw value first so 0 (explicit "no commission") survives.
+      // Also handle DECIMAL columns which come back as strings like "20.00".
+      const pctRaw = d[pctKey];
+      const pctVal = (pctRaw === null || pctRaw === undefined || pctRaw === '')
+                   ? '' : String(parseFloat(pctRaw));
+      const opt    = (v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v || '— Unassigned —'}</option>`;
+      const handler    = `onClientDetailChange(this,'${enc}','${key}')`;
+      const pctHandler = `onClientDetailChange(this,'${enc}','${pctKey}')`;
       // Wrap the select in ship-select-wrap so we get the same custom triangle
       // arrow used by every other dropdown in the app. appearance:none on the
-      // <select> kills the native arrow so we don't double-up.
+      // <select> kills the native arrow so we don't double-up. The % input
+      // sits to the right at a fixed 86px so it never crowds the dropdown.
       return `<div class="cdc-field">
         <div class="cdc-label">${label}</div>
-        <span class="ship-select-wrap" style="display:block; width:100%;">
-          <select class="cdc-value" onchange="${handler}"
-            style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;">
-            ${opt('')}
-            ${opt('Parker Low')}
-            ${opt('Jackson Hollberg')}
-          </select>
-        </span>
+        <div style="display:flex; gap:6px; align-items:stretch;">
+          <span class="ship-select-wrap" style="display:block; flex:1; min-width:0;">
+            <select class="cdc-value" onchange="${handler}"
+              style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;">
+              ${opt('')}
+              ${opt('Parker Low')}
+              ${opt('Jackson Hollberg')}
+            </select>
+          </span>
+          <div style="position:relative; width:86px; flex-shrink:0;"
+               title="Commission rate for this role on this client. Leave blank to use the default 20%.">
+            <input class="cdc-value" type="number" step="0.01" min="0" max="100"
+              value="${pctVal}" placeholder="20"
+              oninput="${pctHandler}"
+              style="padding-right:22px; text-align:right; font-variant-numeric:tabular-nums;" />
+            <span style="position:absolute; right:9px; top:50%; transform:translateY(-50%);
+                         font-size:12px; color:var(--text-muted); pointer-events:none;">%</span>
+          </div>
+        </div>
       </div>`;
     };
 

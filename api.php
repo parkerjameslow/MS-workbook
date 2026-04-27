@@ -95,6 +95,15 @@ try {
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN salesperson VARCHAR(255) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+// Per-client commission rate overrides (stored as percent — 20.00 means 20%).
+// NULL = use the default rate at compute time. Decimal(5,2) gives us up to
+// 999.99 which is way more than enough headroom.
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN account_manager_pct DECIMAL(5,2) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN salesperson_pct DECIMAL(5,2) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 
 // Auto-create commissions table.
 //   role           = 'account_manager' | 'salesperson'  (which hat earned this row)
@@ -465,20 +474,33 @@ function ms_order_table_internal(array $items, float $rate): string {
 // (UNIQUE KEY on (workbook_id, role, employee) used to make only the first
 // item's amount stick on a multi-item promote).
 //
-// $client must be a row from `clients` with id, name, account_manager, salesperson.
+// $client must be a row from `clients` with id, name, account_manager,
+// salesperson, account_manager_pct, salesperson_pct. The _pct columns are
+// per-client overrides (stored as percent — 20.00 == 20%). When NULL/blank
+// we fall back to $defaultPct.
 // $clientTotalUsd is the workbook-wide total in USD that the client pays us.
 function ms_record_commissions_for_workbook(
     PDO $pdo, array $client, int $workbookId, ?string $sku,
     ?string $productName, float $clientTotalUsd,
-    int $isEstimate = 1, float $rate = 0.20
+    int $isEstimate = 1, float $defaultPct = 20.0
 ): int {
     $am = trim((string)($client['account_manager'] ?? ''));
     $sp = trim((string)($client['salesperson']     ?? ''));
     if ($am === '' && $sp === '') return 0;
     if ($clientTotalUsd <= 0)     return 0;
 
+    // Resolve per-role rate: NULL/'' on the client → default. Stored as
+    // percent → divide by 100 to get the decimal fraction the table holds.
+    $pctToRate = function ($pct) use ($defaultPct) {
+        $usePct = ($pct === null || $pct === '') ? $defaultPct : (float)$pct;
+        return $usePct / 100.0;
+    };
+    $amRate = $pctToRate($client['account_manager_pct'] ?? null);
+    $spRate = $pctToRate($client['salesperson_pct']     ?? null);
+
     // ON DUPLICATE KEY UPDATE keeps paid rows frozen via the IF() guard. New
-    // rows insert cleanly; pending/estimate rows pick up the latest total.
+    // rows insert cleanly; pending/estimate rows pick up the latest total
+    // AND the latest rate (so editing the % field updates existing rows).
     $sql = "
         INSERT INTO commissions
           (client_id, client_name, workbook_id, sku, product_name,
@@ -486,6 +508,7 @@ function ms_record_commissions_for_workbook(
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           client_total_usd  = IF(status = 'paid', client_total_usd,  VALUES(client_total_usd)),
+          commission_rate   = IF(status = 'paid', commission_rate,   VALUES(commission_rate)),
           commission_amount = IF(status = 'paid', commission_amount, VALUES(commission_amount)),
           is_estimate       = IF(status = 'paid', is_estimate,       VALUES(is_estimate)),
           sku               = IF(status = 'paid', sku,               COALESCE(VALUES(sku), sku)),
@@ -495,11 +518,10 @@ function ms_record_commissions_for_workbook(
 
     $written = 0;
     $totalRounded = round($clientTotalUsd, 2);
-    $commAmt      = round($clientTotalUsd * $rate, 2);
     $roles = [];
-    if ($am !== '') $roles[] = ['account_manager', $am];
-    if ($sp !== '') $roles[] = ['salesperson',     $sp];
-    foreach ($roles as [$role, $emp]) {
+    if ($am !== '') $roles[] = ['account_manager', $am, $amRate];
+    if ($sp !== '') $roles[] = ['salesperson',     $sp, $spRate];
+    foreach ($roles as [$role, $emp, $rate]) {
         $stmt->execute([
             (int)$client['id'],
             $client['name'] ?? null,
@@ -510,7 +532,7 @@ function ms_record_commissions_for_workbook(
             $emp,
             $totalRounded,
             $rate,
-            $commAmt,
+            round($clientTotalUsd * $rate, 2),
             $isEstimate,
         ]);
         // rowCount() == 1 on insert, 2 on update via ON DUPLICATE KEY UPDATE,
@@ -600,13 +622,29 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Client ID required']);
             break;
         }
-        $allowed = ['email', 'phone', 'primary_contact', 'billing_address', 'shipping_address', 'notes', 'account_manager', 'salesperson'];
+        $allowed = ['email', 'phone', 'primary_contact', 'billing_address', 'shipping_address', 'notes',
+                    'account_manager', 'salesperson',
+                    'account_manager_pct', 'salesperson_pct'];
+        // Numeric overrides → NULL when blank so the helper falls back to the
+        // default rate. Pre-validate so a stray "abc" can't poison the column.
+        $numericCols = ['account_manager_pct' => true, 'salesperson_pct' => true];
         $fields = [];
         $params = [];
         foreach ($allowed as $col) {
             if (array_key_exists($col, $input)) {
+                $val = $input[$col];
+                if (isset($numericCols[$col])) {
+                    if ($val === '' || $val === null) {
+                        $val = null;
+                    } else if (is_numeric($val)) {
+                        $val = (float)$val;
+                    } else {
+                        // Reject non-numeric — skip this field rather than fail the whole save.
+                        continue;
+                    }
+                }
                 $fields[] = "$col = ?";
-                $params[] = $input[$col];
+                $params[] = $val;
             }
         }
         if (empty($fields)) {
@@ -1338,7 +1376,7 @@ switch ($action) {
         foreach ($wbAgg as $agg) {
             $cName = $agg['client_name'];
             if (!isset($clientCache[$cName])) {
-                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson, account_manager_pct, salesperson_pct FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
                 $cs->execute([$cName]);
                 $clientCache[$cName] = $cs->fetch() ?: null;
             }
@@ -1459,7 +1497,7 @@ switch ($action) {
             $wb = $pair['workbook_id'];
 
             if (!array_key_exists($cn, $clientCache)) {
-                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson, account_manager_pct, salesperson_pct FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
                 $cs->execute([$cn]);
                 $clientCache[$cn] = $cs->fetch() ?: null;
             }
