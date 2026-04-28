@@ -9961,18 +9961,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Sale Per input handler can derive margin % without a full re-render.
   let _landedAvgForMargin = 0;
 
-  // Margin % input handler — re-renders Total Landed Cost (Suggested updates,
-  // Total + Profit re-derive) and triggers autosave so the workbook keeps the override.
+  // Debounced renderPricingTab — coalesces rapid keystrokes in margin /
+  // sale per / ship lead inputs so we don't rebuild the Client Quote table
+  // and re-run recalcRfqTotals on every character. ~80 ms is fast enough to
+  // feel instant but slow enough to skip all but the last render in a burst.
+  let _pricingTabRenderTimer = null;
+  function _schedulePricingTabRender() {
+    if (_pricingTabRenderTimer) clearTimeout(_pricingTabRenderTimer);
+    _pricingTabRenderTimer = setTimeout(() => {
+      _pricingTabRenderTimer = null;
+      if (typeof renderPricingTab === 'function') renderPricingTab();
+    }, 80);
+  }
+
+  // Margin % input handler — schedules a Pricing tab re-render and triggers
+  // (debounced) autosave so the workbook keeps the override.
   function onPricingMarginInput() {
-    if (typeof renderPricingTab === 'function') renderPricingTab();
+    _schedulePricingTabRender();
     if (!_filling) autoSaveWorkbook();
   }
 
-  // Freight lead-time input handler — re-renders Pricing tab so the
-  // Client Quote header (Shipping Lead + Total Lead) updates, and persists
-  // the new value to the workbook.
+  // Freight lead-time input handler — schedules a Pricing tab re-render so
+  // the Client Quote header updates, and persists the new value.
   function onShipLeadInput() {
-    if (typeof renderPricingTab === 'function') renderPricingTab();
+    _schedulePricingTabRender();
     if (!_filling) autoSaveWorkbook();
   }
 
@@ -9989,7 +10001,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // Sale Per input handler — back-solves margin % from (salePer / landedAvg − 1),
-  // updates the margin input, then re-renders + autosaves.
+  // updates the margin input synchronously (so the user sees it immediately),
+  // then schedules a debounced Pricing tab re-render + autosave.
   function onPricingSalePerInput() {
     const saleRaw = (document.getElementById('ps-sale-per')?.value || '').trim();
     const sale    = saleRaw === '' ? NaN : parseFloat(saleRaw);
@@ -10000,7 +10013,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         mInput.value = Math.max(0, newMargin).toFixed(2);
       }
     }
-    if (typeof renderPricingTab === 'function') renderPricingTab();
+    _schedulePricingTabRender();
     if (!_filling) autoSaveWorkbook();
   }
 
