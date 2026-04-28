@@ -9642,40 +9642,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const landedAvg = avgPerUnitUsd + shipPerUnit;
     const landedIsRange = landedMax - landedMin > 0.005;
 
-    // Margin %: workbook override beats client default; default of last resort = 50
-    const wbMarginRaw = (e('ps-margin-pct')?.value || '').trim();
-    let marginPct;
-    if (wbMarginRaw !== '' && !isNaN(parseFloat(wbMarginRaw))) {
-      marginPct = parseFloat(wbMarginRaw);
-    } else {
-      const clientD = (typeof currentClient === 'string' && clientDetails[currentClient]) || {};
-      const cm = clientD.default_margin_pct;
-      marginPct = (cm === '' || cm === null || cm === undefined || isNaN(parseFloat(cm))) ? 50 : parseFloat(cm);
-      // Reflect the inherited value into the input so it's visible (without
-      // marking it as a user override yet — we only persist on explicit edit).
-      const mInput = e('ps-margin-pct');
-      if (mInput && mInput !== document.activeElement) mInput.value = marginPct;
-    }
-    const marginMul = 1 + (marginPct / 100);
+    // Two margins, used for two different things:
+    //   • clientMarginPct → drives the Suggested Price Per row. Locked to the
+    //     client's default so it never moves when the user tweaks the Margin
+    //     input in this card. Lets you compare the workbook's actual price
+    //     against the client's "expected" price at any time.
+    //   • wbMarginPct → drives Sale Per (auto-populated) and ultimately
+    //     Total USD / Order Profit. Defaults to the client default but is
+    //     editable per workbook.
+    const clientD = (typeof currentClient === 'string' && clientDetails[currentClient]) || {};
+    const cmRaw   = clientD.default_margin_pct;
+    const clientMarginPct = (cmRaw === '' || cmRaw === null || cmRaw === undefined || isNaN(parseFloat(cmRaw))) ? 50 : parseFloat(cmRaw);
 
-    // Suggested Price Per (USD): Landed × (1 + margin)
-    const suggestedMin = landedMin * marginMul;
-    const suggestedMax = landedMax * marginMul;
+    const wbMarginRaw = (e('ps-margin-pct')?.value || '').trim();
+    let wbMarginPct;
+    if (wbMarginRaw !== '' && !isNaN(parseFloat(wbMarginRaw))) {
+      wbMarginPct = parseFloat(wbMarginRaw);
+    } else {
+      wbMarginPct = clientMarginPct;
+      // Reflect inherited value into the input so the user sees it.
+      const mInput = e('ps-margin-pct');
+      if (mInput && mInput !== document.activeElement) mInput.value = wbMarginPct;
+    }
+    const wbMarginMul     = 1 + (wbMarginPct / 100);
+    const clientMarginMul = 1 + (clientMarginPct / 100);
+
+    // Suggested Price Per (USD): Landed × (1 + clientDefault) — fixed reference
+    const suggestedMin = landedMin * clientMarginMul;
+    const suggestedMax = landedMax * clientMarginMul;
     const suggestedIsRange = suggestedMax - suggestedMin > 0.005;
 
-    // Sale Per is two-way bound to Margin:
-    //   • Margin changes  → Sale Per auto-updates to weighted-avg suggested
-    //   • Sale Per typed  → margin back-solves (handler below)
-    // Skip the auto-write when the input is being typed in so we don't
-    // clobber the user's keystrokes mid-entry.
-    const suggestedSingle = landedAvg * marginMul;
+    // Sale Per is two-way bound to the workbook's Margin input (NOT the
+    // client default), so changing Margin in the card adjusts Sale Per
+    // without moving Suggested:
+    //   • Margin changes  → Sale Per auto-updates to weighted-avg at wbMargin
+    //   • Sale Per typed  → workbook margin back-solves (handler below)
+    // The activeElement guard keeps mid-typing keystrokes intact.
+    const saleSyncTarget = landedAvg * wbMarginMul;
     const saleInput = e('ps-sale-per');
-    if (saleInput && saleInput !== document.activeElement && suggestedSingle > 0) {
-      const formatted = suggestedSingle.toFixed(2);
+    if (saleInput && saleInput !== document.activeElement && saleSyncTarget > 0) {
+      const formatted = saleSyncTarget.toFixed(2);
       if (saleInput.value !== formatted) {
         saleInput.value = formatted;
-        // Persist the synced value so the next page-load doesn't have to
-        // re-derive it. Suppressed during fillWorkbook to avoid save churn.
         if (!_filling) autoSaveWorkbook();
       }
     }
