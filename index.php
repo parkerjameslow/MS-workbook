@@ -2407,6 +2407,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .pricing-quote-ref-table tbody tr:last-child td { border-bottom: none; }
     .pricing-quote-ref-table .main-row { background: rgba(232,117,26,0.05); }
+    .pricing-quote-ref-table .variant-row td {
+      background: rgba(155,163,192,0.04);
+      color: var(--text-muted);
+    }
+    .pricing-quote-ref-table .variant-row td:nth-child(6) { color: var(--accent); }
     .pricing-no-selection {
       padding: 24px 0;
       color: var(--text-muted);
@@ -2768,7 +2773,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
 
-    /* Comparison table with 5 columns */
+    /* Comparison table with 6 columns (Method | Lead Time | Weight | Rate | Cost ¥ | Cost $) */
     .freight-cmp-table th,
     .freight-cmp-table td {
       text-align: right;
@@ -2778,6 +2783,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .freight-cmp-table td:first-child {
       text-align: left;
     }
+    /* Editable lead-time cell — compact input + "days" suffix in the column */
+    .freight-lead-cell {
+      display: inline-flex; align-items: center; gap: 4px;
+      justify-content: flex-end;
+    }
+    .freight-lead-cell input {
+      width: 56px; height: 26px; padding: 0 6px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 5px; color: var(--text);
+      font-size: 12px; font-family: inherit; text-align: right;
+      outline: none; font-variant-numeric: tabular-nums;
+      transition: border-color 0.15s;
+    }
+    .freight-lead-cell input:focus { border-color: var(--accent); }
+    .freight-lead-suffix { font-size: 11px; color: var(--text-muted); }
 
     /* Collapsible shipping sub-section */
     .freight-subsection-header {
@@ -4821,16 +4841,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>
 
-      <!-- Comparison table — full width -->
+      <!-- Comparison table — full width.
+           Lead Time column is editable per workbook (defaults reflect rough
+           China→US transit times); the highest of these days flows into the
+           Client Quote header as Shipping Lead Time. -->
       <table class="freight-ref-table freight-cmp-table">
         <thead>
-          <tr><th>Method</th><th>Total Weight</th><th>¥ / kg</th><th>Cost (¥)</th><th>Cost ($)</th></tr>
+          <tr><th>Method</th><th>Lead Time</th><th>Total Weight</th><th>¥ / kg</th><th>Cost (¥)</th><th>Cost ($)</th></tr>
         </thead>
         <tbody>
-          <tr><td>Slow Boat</td><td id="freight-wt-slow">—</td><td>12.00</td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
-          <tr><td>Fast Boat</td><td id="freight-wt-fast">—</td><td>14.00</td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
-          <tr><td>Air + UPS</td><td id="freight-wt-airupp">—</td><td>44.00</td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
-          <tr><td>Direct Air</td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
+          <tr><td>Slow Boat</td><td><div class="freight-lead-cell"><input type="number" min="0" id="ship-lead-slow" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-slow">—</td><td>12.00</td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
+          <tr><td>Fast Boat</td><td><div class="freight-lead-cell"><input type="number" min="0" id="ship-lead-fast" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-fast">—</td><td>14.00</td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
+          <tr><td>Air + UPS</td><td><div class="freight-lead-cell"><input type="number" min="0" id="ship-lead-airupp" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-airupp">—</td><td>44.00</td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
+          <tr><td>Direct Air</td><td><div class="freight-lead-cell"><input type="number" min="0" id="ship-lead-directair" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
         </tbody>
       </table>
       <!-- Shipment Split -->
@@ -5093,26 +5116,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </div>
 
-  <!-- ── Card: Quote Reference ── -->
+  <!-- ── Card: Client Quote ── -->
   <div class="section-card collapsed" id="pricing-quote-ref-card">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-      <span class="section-title">Quote Reference</span>
+      <span class="section-title">Client Quote</span>
       <div class="qr-collapsed-summary" id="pricing-quote-ref-summary">
         <div class="qr-sum-item">
-          <span class="qr-sum-label">Unit (RMB)</span>
-          <span class="qr-sum-val" id="qrs-rmb">—</span>
-        </div>
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Unit (USD)</span>
+          <span class="qr-sum-label">Sale Price Range (USD)</span>
           <span class="qr-sum-val" id="qrs-usd">—</span>
         </div>
         <div class="qr-sum-item">
-          <span class="qr-sum-label">Total (USD)</span>
+          <span class="qr-sum-label">Total Order</span>
           <span class="qr-sum-val" id="qrs-total">—</span>
         </div>
         <div class="qr-sum-item">
-          <span class="qr-sum-label">Lead Time</span>
+          <span class="qr-sum-label">Production Lead</span>
           <span class="qr-sum-val" id="qrs-lead">—</span>
+        </div>
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Shipping Lead</span>
+          <span class="qr-sum-val" id="qrs-ship-lead">—</span>
+        </div>
+        <div class="qr-sum-item">
+          <span class="qr-sum-label">Total Lead</span>
+          <span class="qr-sum-val" id="qrs-total-lead">—</span>
         </div>
       </div>
       <div class="qr-expand-toggle">
@@ -9513,7 +9540,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // (covers cases where Pricing tab is opened before any RFQ input fires).
     recalcRfqTotals();
 
-    // Quote Reference — read live from rfq-body
+    // Client Quote — read live from rfq-body. Two row shapes:
+    //   • Parent rows           — inputs are [SKU, Item, Qty, PriceRmb, LeadTime];
+    //                             USD/Total in #rfq-usd-{id} / #rfq-total-{id}
+    //   • Variant rows          — inputs are [Variant, Qty, PriceRmb, LeadTime];
+    //                             USD/Total in #rfq-var-usd-{vid} / #rfq-var-total-{vid}
+    //   • +Add Variant stub rows (data-rfq-add-for) — skipped entirely
     const rfqRows = document.querySelectorAll('#rfq-body tr');
     const refEl = document.getElementById('pricing-quote-ref-body');
     if (refEl) {
@@ -9530,22 +9562,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">Total (USD)</th>
               <th>Lead Time</th>
             </tr></thead><tbody>`;
-        rfqRows.forEach((row, i) => {
+        let displayIdx = 0;
+        rfqRows.forEach((row) => {
+          // Skip "+ Add Variant" placeholders — they aren't real line items.
+          if (row.hasAttribute('data-rfq-add-for')) return;
+
+          const isVariant = row.hasAttribute('data-rfq-parent');
           const inputs = row.querySelectorAll('input:not([type="checkbox"])');
-          const item     = inputs[0]?.value || '—';
-          const qty      = inputs[1]?.value || '';
-          const priceRmb = inputs[2]?.value || '';
-          const leadTime = inputs[3]?.value || '';
-          const rowId    = row.id.replace('rfq-', '');
-          const usd      = document.getElementById(`rfq-usd-${rowId}`)?.textContent   || '—';
-          const total    = document.getElementById(`rfq-total-${rowId}`)?.textContent || '—';
-          const isSample = row.classList.contains('rfq-sample-row');
-          html += `<tr class="${i === 0 ? 'main-row' : ''}">
+
+          let item, qty, priceRmb, leadTime, usd, total;
+          if (isVariant) {
+            const vid = row.id.replace('rfq-var-', '');
+            item     = inputs[0]?.value || 'Variant';
+            qty      = inputs[1]?.value || '';
+            priceRmb = inputs[2]?.value || '';
+            leadTime = inputs[3]?.value || '';
+            usd      = document.getElementById(`rfq-var-usd-${vid}`)?.textContent   || '—';
+            total    = document.getElementById(`rfq-var-total-${vid}`)?.textContent || '—';
+          } else {
+            const rowId = row.id.replace('rfq-', '');
+            // Parent rows have a SKU input at [0]; the user-visible Item is [1].
+            item     = inputs[1]?.value || '—';
+            qty      = inputs[2]?.value || '';
+            priceRmb = inputs[3]?.value || '';
+            leadTime = inputs[4]?.value || '';
+            usd      = document.getElementById(`rfq-usd-${rowId}`)?.textContent   || '—';
+            total    = document.getElementById(`rfq-total-${rowId}`)?.textContent || '—';
+          }
+
+          displayIdx++;
+          const isSample   = row.classList.contains('rfq-sample-row');
+          const rowClass   = isVariant ? 'variant-row' : (displayIdx === 1 ? 'main-row' : '');
+          const itemPad    = isVariant ? 'padding-left:24px;' : '';
+          const itemPrefix = isVariant ? '<span style="color:var(--text-muted); margin-right:6px;">└</span>' : '';
+          html += `<tr class="${rowClass}">
             <td style="color:var(--text-muted); white-space:nowrap;">
-              ${i+1}${isSample ? ' <span style="font-size:10px;color:var(--accent);background:rgba(232,117,26,0.12);padding:1px 6px;border-radius:4px;font-weight:700;">SAMPLE</span>' : ''}
+              ${displayIdx}${isSample ? ' <span style="font-size:10px;color:var(--accent);background:rgba(232,117,26,0.12);padding:1px 6px;border-radius:4px;font-weight:700;">SAMPLE</span>' : ''}
             </td>
-            <td style="font-weight:500;">${item}</td>
-            <td style="text-align:right;">${qty ? parseInt(qty).toLocaleString('en-US') : '—'}</td>
+            <td style="font-weight:${isVariant ? 400 : 500}; ${itemPad}">${itemPrefix}${item}</td>
+            <td style="text-align:right;">${qty && !isNaN(parseInt(qty)) ? parseInt(qty).toLocaleString('en-US') : '—'}</td>
             <td style="text-align:right; color:var(--text-muted);">${priceRmb ? '¥' + parseFloat(priceRmb).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
             <td style="text-align:right;">${usd}</td>
             <td style="text-align:right; font-weight:600; color:var(--accent);">${total}</td>
@@ -9557,15 +9612,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    // Populate collapsed summary from already-computed rfq totals
-    const qrsRmb   = document.getElementById('qrs-rmb');
-    const qrsUsd   = document.getElementById('qrs-usd');
-    const qrsTotal = document.getElementById('qrs-total');
-    const qrsLead  = document.getElementById('qrs-lead');
-    if (qrsRmb)   qrsRmb.textContent   = document.getElementById('rfq-total-rmb')?.textContent     || '—';
-    if (qrsUsd)   qrsUsd.textContent   = document.getElementById('rfq-total-usd-sum')?.textContent || '—';
-    if (qrsTotal) qrsTotal.textContent = document.getElementById('rfq-total-usd')?.textContent     || '—';
-    if (qrsLead)  qrsLead.textContent  = document.getElementById('rfq-max-lead')?.textContent      || '—';
+    // Client Quote header summary is populated AFTER the Total Landed Cost
+    // block below so we can use suggestedMin/Max + landedTotal (and the freight
+    // lead-time inputs) as sources of truth.
 
     // Delivered Cost Summary
     const noSelEl  = document.getElementById('pricing-no-selection-msg');
@@ -9754,6 +9803,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Stash the weighted-avg landed for input handlers (so Sale Per can
     // back-solve margin without re-deriving everything from the table)
     _landedAvgForMargin = landedAvg > 0 ? landedAvg : 0;
+
+    // ── Client Quote header summary ────────────────────────────────────
+    //   Sale Price Range  ← Suggested Price Per (locked to client default)
+    //   Total Order       ← Total Landed Cost (deterministic)
+    //   Production Lead   ← max RFQ lead time (already computed in rfq-max-lead)
+    //   Shipping Lead     ← max of freight Lead Time inputs
+    //   Total Lead        ← Production + Shipping
+    const qrsUsd       = e('qrs-usd');
+    const qrsTotal     = e('qrs-total');
+    const qrsLead      = e('qrs-lead');
+    const qrsShipLead  = e('qrs-ship-lead');
+    const qrsTotalLead = e('qrs-total-lead');
+
+    if (qrsUsd) {
+      qrsUsd.textContent = suggestedMin > 0
+        ? (suggestedIsRange ? '$' + fmt2(suggestedMin) + '–$' + fmt2(suggestedMax) : '$' + fmt2(suggestedMin))
+        : '—';
+    }
+    if (qrsTotal) {
+      qrsTotal.textContent = landedTotal > 0 ? '$' + fmt2(landedTotal) : '—';
+    }
+
+    const prodLeadDays = parseInt(document.getElementById('rfq-max-lead')?.textContent) || 0;
+    if (qrsLead) qrsLead.textContent = prodLeadDays > 0 ? prodLeadDays + ' days' : '—';
+
+    const shipLeadVals = ['ship-lead-slow','ship-lead-fast','ship-lead-airupp','ship-lead-directair']
+      .map(id => parseInt(document.getElementById(id)?.value) || 0);
+    const shipLeadMax = Math.max(0, ...shipLeadVals);
+    if (qrsShipLead) qrsShipLead.textContent = shipLeadMax > 0 ? shipLeadMax + ' days' : '—';
+
+    const totalLead = prodLeadDays + shipLeadMax;
+    if (qrsTotalLead) qrsTotalLead.textContent = totalLead > 0 ? totalLead + ' days' : '—';
   }
 
   // Module-scope: weighted-avg landed (USD) cached by renderPricingTab so the
@@ -9763,6 +9844,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Margin % input handler — re-renders Total Landed Cost (Suggested updates,
   // Total + Profit re-derive) and triggers autosave so the workbook keeps the override.
   function onPricingMarginInput() {
+    if (typeof renderPricingTab === 'function') renderPricingTab();
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  // Freight lead-time input handler — re-renders Pricing tab so the
+  // Client Quote header (Shipping Lead + Total Lead) updates, and persists
+  // the new value to the workbook.
+  function onShipLeadInput() {
     if (typeof renderPricingTab === 'function') renderPricingTab();
     if (!_filling) autoSaveWorkbook();
   }
@@ -11836,6 +11925,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       recalcRfqTotals();
     }
 
+    // Shipping lead times — fall back to typical China→US transit defaults
+    // when the workbook has no saved override. Runs in both data and no-data
+    // branches so switching between workbooks resets stale values from the
+    // previously-loaded workbook.
+    const _setLead = (id, val, def) => {
+      const el = document.getElementById(id);
+      if (el) el.value = (val !== undefined && val !== null && val !== '') ? val : def;
+    };
+    _setLead('ship-lead-slow',      data?.shipLeadSlow,      '35');
+    _setLead('ship-lead-fast',      data?.shipLeadFast,      '25');
+    _setLead('ship-lead-airupp',    data?.shipLeadAirupp,    '10');
+    _setLead('ship-lead-directair', data?.shipLeadDirectair, '5');
+
     // Trigger filled state on all inputs
     document.querySelectorAll('#view-workbook input, #view-workbook textarea').forEach(el => updateFilled(el));
 
@@ -12564,6 +12666,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // pricingSalePer:   blank → no Sale Per entered yet.
       pricingMarginPct: _v('ps-margin-pct'),
       pricingSalePer:   _v('ps-sale-per'),
+      // Per-method shipping lead times (days) — feed Client Quote summary
+      shipLeadSlow:      _v('ship-lead-slow'),
+      shipLeadFast:      _v('ship-lead-fast'),
+      shipLeadAirupp:    _v('ship-lead-airupp'),
+      shipLeadDirectair: _v('ship-lead-directair'),
       // Shipment split
       shipmentSplits: collectShipmentSplits(),
       // RFQ queue flags (managed via toggleSendToRfq, not DOM-driven — preserve from existing)
