@@ -2279,6 +2279,66 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .pricing-grand-total-label { font-size: 13px; font-weight: 600; opacity: 0.88; }
     .pricing-grand-total-value { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+
+    /* Total Landed Cost card — header strip carries title + margin % +
+       landed total. Body rows are the breakdown. */
+    .pricing-landed-card { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+    .pricing-landed-header {
+      background: #E8751A; color: #fff;
+      padding: 16px 22px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    .pricing-landed-title { font-size: 14px; font-weight: 700; letter-spacing: 0.02em; }
+    .pricing-landed-margin-wrap {
+      display: flex; align-items: center; gap: 8px; margin-left: auto; position: relative;
+    }
+    .pricing-landed-margin-wrap label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; opacity: 0.85;
+    }
+    .pricing-landed-margin-input {
+      width: 86px; height: 32px; padding: 0 24px 0 10px;
+      background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 7px; color: #fff;
+      font-size: 14px; font-weight: 700; font-family: inherit;
+      text-align: right; outline: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .pricing-landed-margin-input:focus {
+      background: rgba(255,255,255,0.28); border-color: rgba(255,255,255,0.6);
+    }
+    .pricing-landed-pct-suffix {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      color: rgba(255,255,255,0.85); font-size: 12px; pointer-events: none;
+    }
+    .pricing-landed-total {
+      font-size: 22px; font-weight: 800; letter-spacing: -0.02em;
+      min-width: 120px; text-align: right;
+    }
+    .pricing-landed-body { background: var(--surface); padding: 4px 22px; }
+    .pricing-landed-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 1px solid var(--border); gap: 16px;
+    }
+    .pricing-landed-row:last-child { border-bottom: none; }
+    .pricing-landed-row .label { font-size: 13px; color: var(--text-muted); }
+    .pricing-landed-row .value {
+      font-size: 14px; font-weight: 700; color: var(--text);
+      text-align: right; font-variant-numeric: tabular-nums;
+    }
+    .pricing-landed-row.profit-row .value { color: var(--success); }
+    .pricing-landed-row.profit-row .value.negative { color: var(--danger); }
+    .pricing-landed-sale-input {
+      width: 140px; height: 32px; padding: 0 12px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 7px; color: var(--text);
+      font-size: 14px; font-weight: 700; font-family: inherit;
+      text-align: right; outline: none; font-variant-numeric: tabular-nums;
+      transition: border-color 0.15s;
+    }
+    .pricing-landed-sale-input:focus {
+      border-color: #E8751A; box-shadow: 0 0 0 2px rgba(232,117,26,0.18);
+    }
     .qr-collapsed-summary {
       display: flex;
       gap: 32px;
@@ -4963,10 +5023,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         </div><!-- /.pricing-summary-grid -->
 
-        <!-- Grand Total bar -->
-        <div class="pricing-grand-total-bar">
-          <div class="pricing-grand-total-label">Total Delivered Cost (USD)</div>
-          <div class="pricing-grand-total-value" id="ps-grand-total">—</div>
+        <!-- Total Landed Cost card —
+             qty   = selected pricing tier (Shipping tab)
+             price = per-unit RFQ data from Workbook tab (_lastRfqPriceSummary)
+             margin defaults to client default; can be overridden per workbook
+             without writing back to the client default.
+             Sale Per is manually editable; entering a value back-solves margin %. -->
+        <div class="pricing-landed-card">
+          <div class="pricing-landed-header">
+            <div class="pricing-landed-title">Total Landed Cost (USD)</div>
+            <div class="pricing-landed-margin-wrap">
+              <label for="ps-margin-pct">Margin</label>
+              <input type="number" id="ps-margin-pct" class="pricing-landed-margin-input"
+                     min="0" max="999.99" step="0.01" placeholder="50"
+                     oninput="onPricingMarginInput()" />
+              <span class="pricing-landed-pct-suffix">%</span>
+            </div>
+            <div class="pricing-landed-total" id="ps-landed-total">—</div>
+          </div>
+          <div class="pricing-landed-body">
+            <div class="pricing-landed-row">
+              <span class="label">Landed Per (USD)</span>
+              <span class="value" id="ps-landed-per">—</span>
+            </div>
+            <div class="pricing-landed-row">
+              <span class="label">Suggested Price Per (USD)</span>
+              <span class="value" id="ps-suggested-per">—</span>
+            </div>
+            <div class="pricing-landed-row">
+              <span class="label">Sale Per (USD)</span>
+              <input type="number" id="ps-sale-per" class="pricing-landed-sale-input"
+                     min="0" step="0.01" placeholder="—"
+                     oninput="onPricingSalePerInput()" />
+            </div>
+            <div class="pricing-landed-row">
+              <span class="label">Total USD</span>
+              <span class="value" id="ps-total-usd">—</span>
+            </div>
+            <div class="pricing-landed-row profit-row">
+              <span class="label">Order Profit</span>
+              <span class="value" id="ps-order-profit">—</span>
+            </div>
+          </div>
         </div>
 
       </div><!-- /#pricing-summary-view -->
@@ -9515,9 +9613,120 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-sh-rate'))    e('ps-sh-rate').textContent    = rateRmb > 0 ? `¥${rateRmb} / kg  ($${rateUsd.toFixed(2)}/kg)` : '—';
     if (e('ps-sh-total'))   e('ps-sh-total').textContent   = shippingUsd > 0 ? `${fmtRmb(shippingRmb)}  /  ${fmtUsd(shippingUsd)}` : '—';
 
-    // Grand total
-    const grandTotal = productTotal + shippingUsd;
-    if (e('ps-grand-total')) e('ps-grand-total').textContent = grandTotal > 0 ? '$' + grandTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    // ── Total Landed Cost card ──────────────────────────────────────────
+    // qty   ← selected pricing tier (tierQty, already resolved above)
+    // price ← per-unit RFQ data from Workbook tab (_lastRfqPriceSummary)
+    // Shipping per unit = total shipping ÷ tier qty (avoids over/undercounting
+    // when tier qty differs from grand qty).
+    //
+    // Margin % default chain: workbook override → client default → 50.
+    // Sale Per is manually entered; entering a value back-solves margin so
+    // Suggested + Sale stay in sync.
+
+    // Per-unit USD (single value or [min,max]). Use range only when variants
+    // have variable pricing — otherwise fall back to the tier-row USD.
+    let perUnitMin, perUnitMax, avgPerUnitUsd;
+    if (ps && ps.hasVariants && ps.usdMin > 0) {
+      perUnitMin    = ps.usdMin;
+      perUnitMax    = ps.usdMax;
+      avgPerUnitUsd = (ps.grandQty > 0 && ps.grandUsd > 0) ? ps.grandUsd / ps.grandQty : ps.usdMin;
+    } else {
+      perUnitMin = perUnitMax = avgPerUnitUsd = tierUsd;
+    }
+
+    // Shipping per unit — the cost of moving one unit at the chosen freight mode
+    const shipPerUnit = (tierQty > 0 && shippingUsd > 0) ? shippingUsd / tierQty : 0;
+
+    // Landed Per (USD) — what one unit costs us all-in
+    const landedMin = perUnitMin + shipPerUnit;
+    const landedMax = perUnitMax + shipPerUnit;
+    const landedAvg = avgPerUnitUsd + shipPerUnit;
+    const landedIsRange = landedMax - landedMin > 0.005;
+
+    // Margin %: workbook override beats client default; default of last resort = 50
+    const wbMarginRaw = (e('ps-margin-pct')?.value || '').trim();
+    let marginPct;
+    if (wbMarginRaw !== '' && !isNaN(parseFloat(wbMarginRaw))) {
+      marginPct = parseFloat(wbMarginRaw);
+    } else {
+      const clientD = (typeof currentClient === 'string' && clientDetails[currentClient]) || {};
+      const cm = clientD.default_margin_pct;
+      marginPct = (cm === '' || cm === null || cm === undefined || isNaN(parseFloat(cm))) ? 50 : parseFloat(cm);
+      // Reflect the inherited value into the input so it's visible (without
+      // marking it as a user override yet — we only persist on explicit edit).
+      const mInput = e('ps-margin-pct');
+      if (mInput && mInput !== document.activeElement) mInput.value = marginPct;
+    }
+    const marginMul = 1 + (marginPct / 100);
+
+    // Suggested Price Per (USD): Landed × (1 + margin)
+    const suggestedMin = landedMin * marginMul;
+    const suggestedMax = landedMax * marginMul;
+    const suggestedIsRange = suggestedMax - suggestedMin > 0.005;
+
+    // Sale Per (USD): manual input; Total + Profit only render when set
+    const salePerRaw = (e('ps-sale-per')?.value || '').trim();
+    const salePer    = salePerRaw === '' ? NaN : parseFloat(salePerRaw);
+
+    // Landed Total (deterministic): tier qty × weighted-avg landed
+    const landedTotal = tierQty > 0 ? tierQty * landedAvg : 0;
+
+    // Total USD: Sale Per × tier qty (only when Sale Per is set)
+    const totalUsd = (!isNaN(salePer) && salePer > 0 && tierQty > 0) ? salePer * tierQty : NaN;
+
+    // Order Profit: Sale Total − Landed Total (only when Total USD is real)
+    const orderProfit = !isNaN(totalUsd) ? totalUsd - landedTotal : NaN;
+
+    // ─── Render cells ────────────────────────────────────────────────
+    const fmtRange = (lo, hi, isRange) => isRange
+      ? '$' + fmt2(lo) + '–$' + fmt2(hi)
+      : '$' + fmt2(lo);
+
+    if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(landedMin, landedMax, landedIsRange) : '—';
+    if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(suggestedMin, suggestedMax, suggestedIsRange) : '—';
+    if (e('ps-landed-total'))  e('ps-landed-total').textContent  = landedTotal > 0 ? '$' + fmt2(landedTotal) : '—';
+    if (e('ps-total-usd'))     e('ps-total-usd').textContent     = !isNaN(totalUsd) ? '$' + fmt2(totalUsd) : '—';
+    if (e('ps-order-profit')) {
+      const profitEl = e('ps-order-profit');
+      if (!isNaN(orderProfit)) {
+        profitEl.textContent = (orderProfit < 0 ? '−$' : '$') + fmt2(Math.abs(orderProfit));
+        profitEl.classList.toggle('negative', orderProfit < 0);
+      } else {
+        profitEl.textContent = '—';
+        profitEl.classList.remove('negative');
+      }
+    }
+
+    // Stash the weighted-avg landed for input handlers (so Sale Per can
+    // back-solve margin without re-deriving everything from the table)
+    _landedAvgForMargin = landedAvg > 0 ? landedAvg : 0;
+  }
+
+  // Module-scope: weighted-avg landed (USD) cached by renderPricingTab so the
+  // Sale Per input handler can derive margin % without a full re-render.
+  let _landedAvgForMargin = 0;
+
+  // Margin % input handler — re-renders Total Landed Cost (Suggested updates,
+  // Total + Profit re-derive) and triggers autosave so the workbook keeps the override.
+  function onPricingMarginInput() {
+    if (typeof renderPricingTab === 'function') renderPricingTab();
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  // Sale Per input handler — back-solves margin % from (salePer / landedAvg − 1),
+  // updates the margin input, then re-renders + autosaves.
+  function onPricingSalePerInput() {
+    const saleRaw = (document.getElementById('ps-sale-per')?.value || '').trim();
+    const sale    = saleRaw === '' ? NaN : parseFloat(saleRaw);
+    if (!isNaN(sale) && sale > 0 && _landedAvgForMargin > 0) {
+      const newMargin = (sale / _landedAvgForMargin - 1) * 100;
+      const mInput = document.getElementById('ps-margin-pct');
+      if (mInput && mInput !== document.activeElement) {
+        mInput.value = Math.max(0, newMargin).toFixed(2);
+      }
+    }
+    if (typeof renderPricingTab === 'function') renderPricingTab();
+    if (!_filling) autoSaveWorkbook();
   }
 
   // Render pallet stats into the shipping tab panel
@@ -11458,6 +11667,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       populateTierDropdown();
       _s('freight-mode', data.freightMode);
       _s('freight-hs-code', data.freightHsCode);
+      // Total Landed Cost overrides — empty/missing fields stay blank so the
+      // renderer falls back to the client default (or 50%) for margin, and
+      // leaves Sale Per as a placeholder until the user types one.
+      _s('ps-margin-pct', data.pricingMarginPct);
+      _s('ps-sale-per',   data.pricingSalePer);
       // Quote for Client tab
       _s('quote-date', data.quoteDate);
       _s('quote-valid-until', data.quoteValidUntil);
@@ -12285,6 +12499,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       sampleStatuses: existing.sampleStatuses || {},
       // Selected pricing tier
       selectedTierIdx: _selectedTierId,
+      // Total Landed Cost (Pricing tab) — workbook-level overrides.
+      // pricingMarginPct: blank → inherit client default → 50.
+      // pricingSalePer:   blank → no Sale Per entered yet.
+      pricingMarginPct: _v('ps-margin-pct'),
+      pricingSalePer:   _v('ps-sale-per'),
       // Shipment split
       shipmentSplits: collectShipmentSplits(),
       // RFQ queue flags (managed via toggleSendToRfq, not DOM-driven — preserve from existing)
