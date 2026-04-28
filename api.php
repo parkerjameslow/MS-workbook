@@ -45,10 +45,16 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     display_name VARCHAR(100) NOT NULL DEFAULT '',
+    email VARCHAR(255) DEFAULT NULL,
     role ENUM('admin','user') NOT NULL DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// Email is a later add — existing deployments missed it on initial create,
+// so this idempotent ALTER backfills the column without a real migration.
+try {
+    $pdo->exec("ALTER TABLE users ADD COLUMN email VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 
 // Seed default admin if no users exist
 $userCount = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
@@ -1207,7 +1213,7 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Admin only']);
             break;
         }
-        $stmt = $pdo->query("SELECT id, username, display_name, role, created_at, last_login FROM users ORDER BY created_at ASC");
+        $stmt = $pdo->query("SELECT id, username, display_name, email, role, created_at, last_login FROM users ORDER BY created_at ASC");
         echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
         break;
 
@@ -1221,18 +1227,67 @@ switch ($action) {
             break;
         }
         try {
-            $hash = password_hash($input['password'], PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)");
+            $hash  = password_hash($input['password'], PASSWORD_DEFAULT);
+            // Empty email → store NULL so we don't trip the UNIQUE-style
+            // queries later if we ever index on email. Trim defensively.
+            $email = trim((string)($input['email'] ?? ''));
+            if ($email === '') $email = null;
+            $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, display_name, email, role) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([
                 trim($input['username']),
                 $hash,
                 trim($input['display_name'] ?? $input['username']),
+                $email,
                 $input['role'] === 'admin' ? 'admin' : 'user'
             ]);
             echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
         } catch (PDOException $e) {
             echo json_encode(['success' => false, 'error' => $e->getCode() == 23000 ? 'Username already exists' : $e->getMessage()]);
         }
+        break;
+
+    // Update profile fields on a user — display_name, email, and role.
+    // Admins can target any user; non-admins can only target themselves and
+    // can't change their own role (no privilege escalation here). Password
+    // changes go through the existing change_password action so we keep the
+    // password update path narrow and explicit.
+    case 'update_user':
+        $targetId = (int)($input['id'] ?? 0);
+        if (!$targetId) {
+            echo json_encode(['success' => false, 'error' => 'User id required']);
+            break;
+        }
+        $isAdmin = ($sessionUser['role'] === 'admin');
+        $isSelf  = ($targetId === (int)$sessionUser['id']);
+        if (!$isAdmin && !$isSelf) {
+            echo json_encode(['success' => false, 'error' => 'Not allowed']);
+            break;
+        }
+        $fields = [];
+        $params = [];
+        if (array_key_exists('display_name', $input)) {
+            $fields[] = 'display_name = ?';
+            $params[] = trim((string)$input['display_name']);
+        }
+        if (array_key_exists('email', $input)) {
+            $em = trim((string)$input['email']);
+            $fields[] = 'email = ?';
+            $params[] = ($em === '' ? null : $em);
+        }
+        // Role changes: admin only, and we don't let an admin demote
+        // themselves — that's how a system ends up with zero admins.
+        if (array_key_exists('role', $input) && $isAdmin && !$isSelf) {
+            $fields[] = 'role = ?';
+            $params[] = ($input['role'] === 'admin' ? 'admin' : 'user');
+        }
+        if (!$fields) {
+            echo json_encode(['success' => false, 'error' => 'No changes']);
+            break;
+        }
+        $params[] = $targetId;
+        $sql = "UPDATE users SET " . implode(', ', $fields) . " WHERE id = ?";
+        $pdo->prepare($sql)->execute($params);
+        echo json_encode(['success' => true]);
         break;
 
     case 'delete_user':
@@ -2016,7 +2071,7 @@ switch ($action) {
             'get_archived', 'restore_workbook', 'restore_client',
             'permanent_delete_workbook', 'permanent_delete_client',
             'upload_image', 'delete_image', 'upload_video',
-            'get_users', 'add_user', 'delete_user', 'change_password',
+            'get_users', 'add_user', 'update_user', 'delete_user', 'change_password',
             'duplicate_workbook',
             'get_inventory', 'promote_to_sku', 'remove_sku',
             'get_commissions', 'set_commission_status', 'recompute_commissions',

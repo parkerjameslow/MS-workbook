@@ -5981,14 +5981,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
-<!-- ── Users Modal (admin only) ── -->
+<!-- ── Users Modal (admin only) ──────────────────────────────────────────
+     Two views inside one modal:
+       #users-list-view    — list of all users + Add New User form
+       #users-detail-view  — drill-in for a single user (edit display name,
+                             email, role, change password, delete). The
+                             list row click → showUserDetail(id) swaps which
+                             pane is visible. Back arrow returns to list. -->
 <div class="modal-overlay" id="users-modal-overlay" onclick="if(event.target===this)closeUsersModal()" style="display:none;">
   <div class="modal" style="max-width:520px; max-height:80vh; display:flex; flex-direction:column;">
     <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border);">
-      <h3 style="margin:0; font-size:16px;">User Management</h3>
+      <h3 id="users-modal-title" style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;">
+        <button id="users-back-btn" onclick="showUsersList()" style="display:none; background:none; border:none; color:var(--text-muted); font-size:18px; cursor:pointer; padding:0; line-height:1;" title="Back to user list">←</button>
+        <span id="users-title-text">User Management</span>
+      </h3>
       <button onclick="closeUsersModal()" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;">✕</button>
     </div>
-    <div style="padding:16px 20px; overflow-y:auto; flex:1;">
+
+    <!-- View 1: list of users + Add New User form -->
+    <div id="users-list-view" style="padding:16px 20px; overflow-y:auto; flex:1;">
       <div id="users-list" style="margin-bottom:20px;"></div>
       <div style="border-top:1px solid var(--border); padding-top:16px;">
         <div style="font-size:13px; font-weight:600; margin-bottom:10px;">Add New User</div>
@@ -5996,15 +6007,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <input id="new-user-username" type="text" placeholder="Username" class="field-input" style="font-size:13px;" />
           <input id="new-user-display" type="text" placeholder="Display Name" class="field-input" style="font-size:13px;" />
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+          <input id="new-user-email" type="email" placeholder="Email (optional)" class="field-input" style="font-size:13px;" />
           <input id="new-user-password" type="password" placeholder="Password" class="field-input" style="font-size:13px;" />
-          <select id="new-user-role" class="field-input" style="font-size:13px;">
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
         </div>
-        <button class="btn-create" onclick="addUser()" style="font-size:13px; padding:8px 16px;">+ Add User</button>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+          <span class="ship-select-wrap" style="display:block;">
+            <select id="new-user-role" class="field-input" style="font-size:13px; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:32px; cursor:pointer; width:100%;">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </span>
+          <button class="btn-create" onclick="addUser()" style="font-size:13px; padding:8px 16px;">+ Add User</button>
+        </div>
       </div>
+    </div>
+
+    <!-- View 2: detail/edit a single user. Hidden until a row is clicked. -->
+    <div id="users-detail-view" style="display:none; padding:16px 20px; overflow-y:auto; flex:1;">
+      <!-- All controls populated by renderUserDetail() against _userDetailCurrent -->
+      <div id="users-detail-body"></div>
     </div>
   </div>
 </div>
@@ -10123,48 +10145,213 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return div.innerHTML;
   }
 
+  // ── User Management modal ────────────────────────────────────────────
+  // The modal hosts two views — list and per-user detail. _usersCache is
+  // the last server response so the detail view can render synchronously
+  // after a row click; refreshed every time the list view is shown so
+  // edits made elsewhere don't go stale.
+  let _usersCache = [];
+  let _userDetailCurrent = null; // currently-selected user object in detail view
+
   function openUsersModal() {
     document.getElementById('users-modal-overlay').style.display = 'flex';
-    loadUsers();
+    showUsersList();
   }
   function closeUsersModal() {
     document.getElementById('users-modal-overlay').style.display = 'none';
   }
+
+  // Swap to the list pane. Re-fetches so newly-added/edited rows appear.
+  function showUsersList() {
+    document.getElementById('users-list-view').style.display = '';
+    document.getElementById('users-detail-view').style.display = 'none';
+    document.getElementById('users-back-btn').style.display = 'none';
+    document.getElementById('users-title-text').textContent = 'User Management';
+    _userDetailCurrent = null;
+    loadUsers();
+  }
+
+  // Swap to the detail pane for the user with the given id. Pulls from
+  // _usersCache (populated by loadUsers) so the click → render hop is
+  // instant and we don't blink a Loading… state for data we already have.
+  function showUserDetail(id) {
+    const u = _usersCache.find(x => x.id === id);
+    if (!u) { showUsersList(); return; }
+    _userDetailCurrent = u;
+    document.getElementById('users-list-view').style.display = 'none';
+    document.getElementById('users-detail-view').style.display = '';
+    document.getElementById('users-back-btn').style.display = '';
+    document.getElementById('users-title-text').textContent = u.display_name || u.username;
+    renderUserDetail();
+  }
+
   function loadUsers() {
     const list = document.getElementById('users-list');
     list.innerHTML = '<p style="color:var(--text-muted); font-size:13px;">Loading…</p>';
     apiCall('get_users').then(data => {
       if (!data.success) { list.innerHTML = '<p style="color:var(--danger);">Failed to load users.</p>'; return; }
-      if (!data.data.length) { list.innerHTML = '<p style="color:var(--text-muted);">No users yet.</p>'; return; }
+      _usersCache = data.data || [];
+      if (!_usersCache.length) { list.innerHTML = '<p style="color:var(--text-muted);">No users yet.</p>'; return; }
+      const sessionId = (window.MS_SESSION && window.MS_SESSION.id);
       list.innerHTML = `
         <div style="font-size:13px; font-weight:600; margin-bottom:8px;">Current Users</div>
-        ${data.data.map(u => `
-          <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border);">
-            <span style="flex:1; font-size:13px;">${u.display_name || u.username} <span style="color:var(--text-muted); font-size:11px;">(${u.username})</span></span>
+        ${_usersCache.map(u => `
+          <div onclick="showUserDetail(${u.id})" style="display:flex; align-items:center; gap:8px; padding:10px 8px; border-bottom:1px solid var(--border); cursor:pointer; border-radius:4px;" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
+            <span style="flex:1; font-size:13px;">
+              ${escHtml(u.display_name || u.username)}
+              <span style="color:var(--text-muted); font-size:11px;"> (${escHtml(u.username)})</span>
+              ${u.email ? `<div style="color:var(--text-muted); font-size:11px; margin-top:2px;">${escHtml(u.email)}</div>` : ''}
+            </span>
             <span style="font-size:11px; background:var(--surface2); padding:2px 8px; border-radius:4px; color:${u.role==='admin'?'var(--accent)':'var(--text-muted)'};">${u.role}</span>
-            ${u.id !== (window.MS_SESSION && window.MS_SESSION.id) ? `<button onclick="deleteUser(${u.id})" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px; padding:0 4px;" title="Delete user">×</button>` : '<span style="width:28px;"></span>'}
+            <span style="color:var(--text-muted); font-size:14px;">›</span>
           </div>`).join('')}`;
     });
   }
+
+  // Render the per-user detail pane. Pulls from _userDetailCurrent — set
+  // by showUserDetail so we don't have to refetch on every keystroke
+  // (each input writes back into _userDetailCurrent on blur via Save).
+  function renderUserDetail() {
+    const u = _userDetailCurrent;
+    if (!u) return;
+    const sessionId = (window.MS_SESSION && window.MS_SESSION.id);
+    const isSelf = (u.id === sessionId);
+    const created  = u.created_at ? new Date(u.created_at).toLocaleDateString() : '—';
+    const lastSeen = u.last_login ? new Date(u.last_login).toLocaleString()      : 'Never';
+    const body = document.getElementById('users-detail-body');
+    body.innerHTML = `
+      <!-- Profile fields. Username is read-only after creation; touching
+           it would orphan login attempts. Role is locked when editing
+           your own row so an admin can't accidentally demote themselves. -->
+      <div style="display:grid; grid-template-columns:1fr; gap:12px; margin-bottom:18px;">
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Username</label>
+          <input type="text" value="${escHtml(u.username)}" class="field-input" style="font-size:13px; background:var(--surface2); color:var(--text-muted);" readonly />
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Display Name</label>
+          <input id="udetail-display" type="text" value="${escHtml(u.display_name || '')}" class="field-input" style="font-size:13px;" />
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Email</label>
+          <input id="udetail-email" type="email" value="${escHtml(u.email || '')}" placeholder="user@example.com" class="field-input" style="font-size:13px;" />
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Role${isSelf ? ' <span style="font-weight:400; font-style:italic;">(can&#39;t change your own role)</span>' : ''}</label>
+          <span class="ship-select-wrap" style="display:block;">
+            <select id="udetail-role" class="field-input" style="font-size:13px; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:32px; cursor:pointer; width:100%;" ${isSelf ? 'disabled' : ''}>
+              <option value="user"  ${u.role==='user'  ? 'selected' : ''}>User</option>
+              <option value="admin" ${u.role==='admin' ? 'selected' : ''}>Admin</option>
+            </select>
+          </span>
+        </div>
+      </div>
+
+      <!-- Read-only meta — quick context for who this user actually is. -->
+      <div style="font-size:11px; color:var(--text-muted); margin-bottom:18px; display:flex; gap:16px; flex-wrap:wrap;">
+        <span>Created: ${created}</span>
+        <span>Last login: ${lastSeen}</span>
+      </div>
+
+      <!-- Save button for the profile fields above. Password is its own
+           section below so a typo in display name doesn't reset the
+           password input mid-edit. -->
+      <div style="display:flex; gap:8px; margin-bottom:24px;">
+        <button class="btn-create" onclick="saveUserDetail()" style="font-size:13px; padding:8px 16px;">Save Changes</button>
+        <button class="btn-cancel" onclick="showUsersList()" style="font-size:13px; padding:8px 16px;">Cancel</button>
+      </div>
+
+      <!-- Change password — separate form, separate save. Cleared after
+           a successful update so the new value doesn't linger in the DOM. -->
+      <div style="border-top:1px solid var(--border); padding-top:16px; margin-bottom:24px;">
+        <div style="font-size:13px; font-weight:600; margin-bottom:10px;">Change Password</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+          <input id="udetail-newpw"      type="password" placeholder="New password"     class="field-input" style="font-size:13px;" />
+          <input id="udetail-newpw-conf" type="password" placeholder="Confirm password" class="field-input" style="font-size:13px;" />
+        </div>
+        <button class="btn-create" onclick="saveUserPassword()" style="font-size:13px; padding:8px 16px;">Update Password</button>
+      </div>
+
+      ${isSelf ? '' : `
+        <!-- Delete user — admin-only operation, hidden when viewing own
+             row (the API blocks self-delete anyway, but no point showing
+             the button if it can't fire). -->
+        <div style="border-top:1px solid var(--border); padding-top:16px;">
+          <div style="font-size:13px; font-weight:600; color:var(--danger); margin-bottom:8px;">Danger Zone</div>
+          <button class="btn-danger" onclick="deleteUser(${u.id})" style="font-size:13px; padding:8px 16px;">Delete User</button>
+        </div>
+      `}
+    `;
+  }
+
+  // Persist display_name / email / role for the detail-pane user. Role
+  // change is sent only when not editing self; the API enforces this too
+  // but we mirror the rule client-side so we don't send obvious no-ops.
+  function saveUserDetail() {
+    const u = _userDetailCurrent;
+    if (!u) return;
+    const sessionId = (window.MS_SESSION && window.MS_SESSION.id);
+    const payload = {
+      id: u.id,
+      display_name: document.getElementById('udetail-display').value.trim(),
+      email:        document.getElementById('udetail-email').value.trim(),
+    };
+    if (u.id !== sessionId) {
+      payload.role = document.getElementById('udetail-role').value;
+    }
+    apiCall('update_user', payload).then(r => {
+      if (r.success) {
+        // Mutate the cache entry so the list view reflects the change
+        // when we navigate back without a refetch round-trip.
+        Object.assign(u, payload);
+        showUsersList();
+      } else {
+        alert(r.error || 'Failed to update user.');
+      }
+    });
+  }
+
+  function saveUserPassword() {
+    const u = _userDetailCurrent;
+    if (!u) return;
+    const pw1 = document.getElementById('udetail-newpw').value;
+    const pw2 = document.getElementById('udetail-newpw-conf').value;
+    if (!pw1)            { alert('Enter a new password.'); return; }
+    if (pw1.length < 6)  { alert('Password must be at least 6 characters.'); return; }
+    if (pw1 !== pw2)     { alert('Passwords do not match.'); return; }
+    apiCall('change_password', { user_id: u.id, new_password: pw1 }).then(r => {
+      if (r.success) {
+        document.getElementById('udetail-newpw').value      = '';
+        document.getElementById('udetail-newpw-conf').value = '';
+        alert('Password updated.');
+      } else {
+        alert(r.error || 'Failed to update password.');
+      }
+    });
+  }
+
   function addUser() {
     const username = document.getElementById('new-user-username').value.trim();
     const display  = document.getElementById('new-user-display').value.trim();
+    const email    = document.getElementById('new-user-email').value.trim();
     const password = document.getElementById('new-user-password').value;
     const role     = document.getElementById('new-user-role').value;
     if (!username || !password) { alert('Username and password are required.'); return; }
-    apiCall('add_user', { username, display_name: display || username, password, role }).then(r => {
+    apiCall('add_user', { username, display_name: display || username, email, password, role }).then(r => {
       if (r.success) {
         document.getElementById('new-user-username').value = '';
-        document.getElementById('new-user-display').value = '';
+        document.getElementById('new-user-display').value  = '';
+        document.getElementById('new-user-email').value    = '';
         document.getElementById('new-user-password').value = '';
         loadUsers();
       } else { alert(r.error || 'Failed to add user.'); }
     });
   }
+
   function deleteUser(id) {
     if (!confirm('Delete this user?')) return;
     apiCall('delete_user', { id }).then(r => {
-      if (r.success) loadUsers();
+      if (r.success) showUsersList();
       else alert(r.error || 'Failed to delete user.');
     });
   }
