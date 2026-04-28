@@ -12670,10 +12670,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const empMap = {};
     rows.forEach(r => {
       const e = r.employee || '—';
-      if (!empMap[e]) empMap[e] = { am: 0, sp: 0, op: 0, total: 0, count: 0 };
+      if (!empMap[e]) empMap[e] = { am: 0, sp: 0, op: 0, total: 0, paid: 0, pending: 0, count: 0 };
       const amt = parseFloat(r.commission_amount) || 0;
       empMap[e].total += amt;
       empMap[e].count += 1;
+      // Split each row into paid vs pending so the scoreboard card can
+      // show "X paid / Y pending" without re-walking the rows in render.
+      if (r.status === 'paid') empMap[e].paid    += amt;
+      else                     empMap[e].pending += amt;
       if      (r.role === 'account_manager') empMap[e].am += amt;
       else if (r.role === 'salesperson')     empMap[e].sp += amt;
       else if (r.role === 'operations')      empMap[e].op += amt;
@@ -12808,6 +12812,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                    style="color:var(--text-muted); transition:transform 0.2s; transform:rotate(${expanded ? 90 : 0}deg);">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>`;
+            // Paid % drives the thin progress bar under the header. When
+            // total is 0 the bar stays empty (no divide-by-zero). When
+            // every row on this card is paid the bar is fully green —
+            // matches the Mark-Paid pill color so the visual story is
+            // consistent: green = settled, gray = still owed.
+            const paidPct = t.total > 0 ? Math.min(100, (t.paid / t.total) * 100) : 0;
+            const allPaid = t.total > 0 && t.pending <= 0.005; // float fuzz
             return `
               <div style="border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--surface2); min-width:0; ${expanded ? 'box-shadow: 0 0 0 1px var(--accent-glow) inset;' : ''}">
                 <div ${toggleAttr} style="display:flex; align-items:center; gap:10px; margin-bottom:10px; cursor:pointer; user-select:none;" title="Click to ${expanded ? 'collapse' : 'expand'} breakdown">
@@ -12821,6 +12832,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   <div style="margin-left:auto; font-size:20px; font-weight:700; color:var(--text);">${fmtUsd(t.total)}</div>
                   ${chevron}
                 </div>
+
+                <!-- Paid vs pending strip — one line of labels + a thin
+                     progress bar. Green portion = paid, gray = pending.
+                     Lets the operator glance at a card and see how much
+                     of this person's earnings have actually been paid out
+                     without having to expand the breakdown. -->
+                <div style="margin-bottom:12px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:5px; gap:8px;">
+                    <span style="color:#16a34a; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      Paid ${fmtUsd(t.paid)}
+                    </span>
+                    <span style="color:var(--text-muted); font-weight:600;">Pending ${fmtUsd(t.pending)}</span>
+                  </div>
+                  <div style="height:4px; border-radius:2px; background:var(--border); overflow:hidden;" title="${paidPct.toFixed(0)}% paid">
+                    <div style="height:100%; width:${paidPct}%; background:#16a34a; transition:width 0.25s;"></div>
+                  </div>
+                  ${allPaid ? '<div style="font-size:10px; color:#16a34a; font-weight:700; margin-top:5px; text-transform:uppercase; letter-spacing:0.05em;">All settled</div>' : ''}
+                </div>
+
                 <div style="display:grid; grid-template-columns:repeat(${t.op > 0 ? 3 : 2}, minmax(0, 1fr)); gap:10px;">
                   <div style="padding:8px 10px; border-radius:8px; background:rgba(107,147,255,0.1); border:1px solid rgba(107,147,255,0.2);">
                     <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Account Mgr</div>
