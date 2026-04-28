@@ -2412,6 +2412,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
     .pricing-quote-ref-table .variant-row td:nth-child(6) { color: var(--accent); }
+
+    /* Collapsible parent / variant rows */
+    .pricing-quote-ref-table .cq-parent-row { cursor: pointer; transition: background 0.12s; }
+    .pricing-quote-ref-table .cq-parent-row:hover { background: rgba(232,117,26,0.06); }
+    .pricing-quote-ref-table .cq-parent-row.no-variants { cursor: default; }
+    .pricing-quote-ref-table .cq-parent-row.no-variants:hover { background: transparent; }
+    .pricing-quote-ref-table .cq-chevron {
+      display: inline-block;
+      color: var(--text-muted);
+      font-size: 10px;
+      transition: transform 0.15s;
+    }
+    .pricing-quote-ref-table .cq-parent-row.expanded .cq-chevron { transform: rotate(90deg); }
+    .pricing-quote-ref-table .cq-variant-row.hidden { display: none; }
+    .pricing-quote-ref-table .cq-variant-row td {
+      background: rgba(155,163,192,0.05);
+      font-size: 12px;
+    }
     .pricing-no-selection {
       padding: 24px 0;
       color: var(--text-muted);
@@ -5122,7 +5140,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="section-title">Client Quote</span>
       <div class="qr-collapsed-summary" id="pricing-quote-ref-summary">
         <div class="qr-sum-item">
-          <span class="qr-sum-label">Sale Price Range (USD)</span>
+          <span class="qr-sum-label">Sale Price (USD)</span>
           <span class="qr-sum-val" id="qrs-usd">—</span>
         </div>
         <div class="qr-sum-item">
@@ -9540,73 +9558,166 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // (covers cases where Pricing tab is opened before any RFQ input fires).
     recalcRfqTotals();
 
-    // Client Quote — read live from rfq-body. Two row shapes:
-    //   • Parent rows           — inputs are [SKU, Item, Qty, PriceRmb, LeadTime];
-    //                             USD/Total in #rfq-usd-{id} / #rfq-total-{id}
-    //   • Variant rows          — inputs are [Variant, Qty, PriceRmb, LeadTime];
-    //                             USD/Total in #rfq-var-usd-{vid} / #rfq-var-total-{vid}
-    //   • +Add Variant stub rows (data-rfq-add-for) — skipped entirely
-    const rfqRows = document.querySelectorAll('#rfq-body tr');
+    // ── Pricing context computed upfront ───────────────────────────────
+    // Both the Client Quote table and the Total Landed Cost block below
+    // need shipPerUnit + wbMarginMul + shipLeadMax. Hoisting them here
+    // lets the table render even when no tier is selected (values fall
+    // back to 0 / defaults gracefully).
+    const _ctxTierRow   = _selectedTierId ? document.getElementById(`wb-tier-${_selectedTierId}`) : null;
+    const _ctxTierQty   = parseInt(_ctxTierRow?.querySelectorAll('input')[0]?.value) || 0;
+    const _ctxFreightMode = document.getElementById('freight-mode')?.value || 'slow';
+    const _ctxRateRmb     = freightMethodRates[_ctxFreightMode] || 0;
+    const _ctxWeightText  = document.getElementById('freight-wt-' + _ctxFreightMode)?.textContent || '—';
+    const _ctxChargeKg    = parseFloat(_ctxWeightText) || 0;
+    const _ctxShippingUsd = (_ctxChargeKg > 0 && _ctxRateRmb > 0)
+      ? (_ctxChargeKg * _ctxRateRmb) / FREIGHT_EXCHANGE_RATE
+      : 0;
+    const _ctxShipPerUnit = (_ctxTierQty > 0 && _ctxShippingUsd > 0) ? _ctxShippingUsd / _ctxTierQty : 0;
+
+    const _ctxClientD = (typeof currentClient === 'string' && clientDetails[currentClient]) || {};
+    const _ctxCmRaw   = _ctxClientD.default_margin_pct;
+    const _ctxClientMarginPct = (_ctxCmRaw === '' || _ctxCmRaw === null || _ctxCmRaw === undefined || isNaN(parseFloat(_ctxCmRaw))) ? 50 : parseFloat(_ctxCmRaw);
+    const _ctxWbMarginRaw = (document.getElementById('ps-margin-pct')?.value || '').trim();
+    const _ctxWbMarginPct = (_ctxWbMarginRaw !== '' && !isNaN(parseFloat(_ctxWbMarginRaw))) ? parseFloat(_ctxWbMarginRaw) : _ctxClientMarginPct;
+    const _ctxWbMarginMul = 1 + (_ctxWbMarginPct / 100);
+
+    const _ctxShipLeadVals = ['ship-lead-slow','ship-lead-fast','ship-lead-airupp','ship-lead-directair']
+      .map(id => parseInt(document.getElementById(id)?.value) || 0);
+    const _ctxShipLeadMax = Math.max(0, ..._ctxShipLeadVals);
+
+    // ── Client Quote line items — collapsible by parent SKU ─────────────
+    // Group rfq-body rows by parent. Each group renders as:
+    //   • a clickable parent summary row (totals across its variants)
+    //   • hidden variant rows revealed by toggleClientQuoteParent()
+    // Add-Variant placeholder rows are skipped.
+    const _fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     const refEl = document.getElementById('pricing-quote-ref-body');
     if (refEl) {
-      if (rfqRows.length === 0) {
+      const allRows = [...document.querySelectorAll('#rfq-body tr')];
+      const groups = [];
+      let curGroup = null;
+      allRows.forEach(row => {
+        if (row.hasAttribute('data-rfq-add-for')) return;
+        if (row.hasAttribute('data-rfq-parent')) {
+          if (curGroup) curGroup.variants.push(row);
+        } else {
+          curGroup = { parent: row, variants: [] };
+          groups.push(curGroup);
+        }
+      });
+
+      // Filter empty groups (parent row never filled in)
+      const realGroups = groups.filter(g => {
+        const inputs = g.parent.querySelectorAll('input:not([type="checkbox"])');
+        const hasName = (inputs[1]?.value || '').trim();
+        const hasQty  = (inputs[2]?.value || '').trim();
+        const hasRmb  = (inputs[3]?.value || '').trim();
+        return hasName || hasQty || hasRmb || g.variants.length > 0;
+      });
+
+      if (realGroups.length === 0) {
         refEl.innerHTML = '<span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>';
       } else {
         let html = `<div style="overflow-x:auto;">
           <table class="pricing-quote-ref-table">
             <thead><tr>
-              <th>#</th><th>Item</th>
+              <th></th>
+              <th>Item</th>
               <th style="text-align:right;">Qty</th>
-              <th style="text-align:right;">Unit (RMB)</th>
-              <th style="text-align:right;">Unit (USD)</th>
+              <th style="text-align:right;">Sale Price (USD)</th>
               <th style="text-align:right;">Total (USD)</th>
-              <th>Lead Time</th>
+              <th>Production</th>
+              <th>Shipping</th>
             </tr></thead><tbody>`;
-        let displayIdx = 0;
-        rfqRows.forEach((row) => {
-          // Skip "+ Add Variant" placeholders — they aren't real line items.
-          if (row.hasAttribute('data-rfq-add-for')) return;
 
-          const isVariant = row.hasAttribute('data-rfq-parent');
-          const inputs = row.querySelectorAll('input:not([type="checkbox"])');
+        let groupIdx = 0;
+        realGroups.forEach(group => {
+          groupIdx++;
+          const pInputs = group.parent.querySelectorAll('input:not([type="checkbox"])');
+          const parentId    = group.parent.id.replace('rfq-', '');
+          const parentName  = (pInputs[1]?.value || '').trim() || `Item ${groupIdx}`;
+          const parentLead  = parseInt(pInputs[4]?.value) || 0;
 
-          let item, qty, priceRmb, leadTime, usd, total;
-          if (isVariant) {
-            const vid = row.id.replace('rfq-var-', '');
-            item     = inputs[0]?.value || 'Variant';
-            qty      = inputs[1]?.value || '';
-            priceRmb = inputs[2]?.value || '';
-            leadTime = inputs[3]?.value || '';
-            usd      = document.getElementById(`rfq-var-usd-${vid}`)?.textContent   || '—';
-            total    = document.getElementById(`rfq-var-total-${vid}`)?.textContent || '—';
+          if (group.variants.length === 0) {
+            // Single-line item (no variants) — non-expandable row.
+            const pQty   = parseInt(pInputs[2]?.value) || 0;
+            const pRmb   = parseFloat(pInputs[3]?.value) || 0;
+            const pUsd   = pRmb / USD_TO_RMB;
+            const pLanded = pUsd + _ctxShipPerUnit;
+            const pSale   = pLanded * _ctxWbMarginMul;
+            const pTotal  = pQty * pSale;
+
+            html += `<tr class="cq-parent-row no-variants">
+              <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
+              <td style="font-weight:500;">${parentName}</td>
+              <td style="text-align:right;">${pQty > 0 ? pQty.toLocaleString('en-US') : '—'}</td>
+              <td style="text-align:right;">${pSale > 0 ? '$' + _fmt2(pSale) : '—'}</td>
+              <td style="text-align:right; font-weight:600; color:var(--accent);">${pTotal > 0 ? '$' + _fmt2(pTotal) : '—'}</td>
+              <td style="color:var(--text-muted);">${parentLead > 0 ? parentLead + ' days' : '—'}</td>
+              <td style="color:var(--text-muted);">${_ctxShipLeadMax > 0 ? _ctxShipLeadMax + ' days' : '—'}</td>
+            </tr>`;
           } else {
-            const rowId = row.id.replace('rfq-', '');
-            // Parent rows have a SKU input at [0]; the user-visible Item is [1].
-            item     = inputs[1]?.value || '—';
-            qty      = inputs[2]?.value || '';
-            priceRmb = inputs[3]?.value || '';
-            leadTime = inputs[4]?.value || '';
-            usd      = document.getElementById(`rfq-usd-${rowId}`)?.textContent   || '—';
-            total    = document.getElementById(`rfq-total-${rowId}`)?.textContent || '—';
-          }
+            // Variant group — collapsible
+            let totalQty = 0, totalSale = 0;
+            let saleMin = Infinity, saleMax = -Infinity;
+            let maxLead = parentLead;
+            const variantNames = [];
+            const variantData = [];
 
-          displayIdx++;
-          const isSample   = row.classList.contains('rfq-sample-row');
-          const rowClass   = isVariant ? 'variant-row' : (displayIdx === 1 ? 'main-row' : '');
-          const itemPad    = isVariant ? 'padding-left:24px;' : '';
-          const itemPrefix = isVariant ? '<span style="color:var(--text-muted); margin-right:6px;">└</span>' : '';
-          html += `<tr class="${rowClass}">
-            <td style="color:var(--text-muted); white-space:nowrap;">
-              ${displayIdx}${isSample ? ' <span style="font-size:10px;color:var(--accent);background:rgba(232,117,26,0.12);padding:1px 6px;border-radius:4px;font-weight:700;">SAMPLE</span>' : ''}
-            </td>
-            <td style="font-weight:${isVariant ? 400 : 500}; ${itemPad}">${itemPrefix}${item}</td>
-            <td style="text-align:right;">${qty && !isNaN(parseInt(qty)) ? parseInt(qty).toLocaleString('en-US') : '—'}</td>
-            <td style="text-align:right; color:var(--text-muted);">${priceRmb ? '¥' + parseFloat(priceRmb).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
-            <td style="text-align:right;">${usd}</td>
-            <td style="text-align:right; font-weight:600; color:var(--accent);">${total}</td>
-            <td style="color:var(--text-muted);">${leadTime ? leadTime + ' days' : '—'}</td>
-          </tr>`;
+            group.variants.forEach(vr => {
+              const vi = vr.querySelectorAll('input:not([type="checkbox"])');
+              const vName = (vi[0]?.value || '').trim();
+              const vQty  = parseInt(vi[1]?.value) || 0;
+              const vRmb  = parseFloat(vi[2]?.value) || 0;
+              const vLead = parseInt(vi[3]?.value) || 0;
+              const vUsd  = vRmb / USD_TO_RMB;
+              const vLanded = vUsd + _ctxShipPerUnit;
+              const vSale   = vLanded * _ctxWbMarginMul;
+              const vTotal  = vQty * vSale;
+
+              totalQty += vQty;
+              totalSale += vTotal;
+              if (vSale > 0) {
+                if (vSale < saleMin) saleMin = vSale;
+                if (vSale > saleMax) saleMax = vSale;
+              }
+              if (vLead > maxLead) maxLead = vLead;
+              if (vName) variantNames.push(vName);
+              variantData.push({ name: vName, qty: vQty, sale: vSale, total: vTotal, lead: vLead });
+            });
+
+            const isRange = saleMin !== Infinity && (saleMax - saleMin > 0.005);
+            const saleText = saleMin === Infinity ? '—'
+              : (isRange ? '$' + _fmt2(saleMin) + '–$' + _fmt2(saleMax) : '$' + _fmt2(saleMin));
+            const itemDescParts = [parentName];
+            if (variantNames.length) itemDescParts.push(': ' + variantNames.join(', '));
+            if (totalQty > 0)        itemDescParts.push(' = ' + totalQty.toLocaleString('en-US'));
+            const itemDesc = itemDescParts.join('');
+
+            html += `<tr class="cq-parent-row" data-cq-parent="${parentId}" onclick="toggleClientQuoteParent('${parentId}')">
+              <td style="color:var(--text-muted); width:24px;"><span class="cq-chevron">▶</span></td>
+              <td style="font-weight:500;">${itemDesc}</td>
+              <td style="text-align:right;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
+              <td style="text-align:right;">${saleText}</td>
+              <td style="text-align:right; font-weight:600; color:var(--accent);">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
+              <td style="color:var(--text-muted);">${maxLead > 0 ? maxLead + ' days' : '—'}</td>
+              <td style="color:var(--text-muted);">${_ctxShipLeadMax > 0 ? _ctxShipLeadMax + ' days' : '—'}</td>
+            </tr>`;
+
+            variantData.forEach(v => {
+              html += `<tr class="cq-variant-row hidden" data-cq-variant-of="${parentId}">
+                <td></td>
+                <td style="padding-left:32px; color:var(--text-muted);">└ ${v.name || 'Variant'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${v.qty > 0 ? v.qty.toLocaleString('en-US') : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${v.sale > 0 ? '$' + _fmt2(v.sale) : '—'}</td>
+                <td style="text-align:right; color:var(--accent);">${v.total > 0 ? '$' + _fmt2(v.total) : '—'}</td>
+                <td style="color:var(--text-muted);">${v.lead > 0 ? v.lead + ' days' : '—'}</td>
+                <td></td>
+              </tr>`;
+            });
+          }
         });
+
         html += '</tbody></table></div>';
         refEl.innerHTML = html;
       }
@@ -9854,6 +9965,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onShipLeadInput() {
     if (typeof renderPricingTab === 'function') renderPricingTab();
     if (!_filling) autoSaveWorkbook();
+  }
+
+  // Toggle a Client Quote parent row open/closed, revealing or hiding its
+  // variant rows. Called from the parent row's onclick.
+  function toggleClientQuoteParent(parentId) {
+    const root = document.getElementById('pricing-quote-ref-body');
+    if (!root) return;
+    const parentRow = root.querySelector(`tr[data-cq-parent="${parentId}"]`);
+    if (parentRow) parentRow.classList.toggle('expanded');
+    root.querySelectorAll(`tr[data-cq-variant-of="${parentId}"]`).forEach(r => {
+      r.classList.toggle('hidden');
+    });
   }
 
   // Sale Per input handler — back-solves margin % from (salePer / landedAvg − 1),
