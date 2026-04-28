@@ -4065,6 +4065,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <main class="container">
     <div id="client-detail-card-wrap"></div>
     <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Workbooks</span>
+        <button class="btn-create" onclick="openNewWorkbookModal()" style="font-size:13px; padding:8px 16px;">+ Add Workbook</button>
+      </div>
       <div class="section-body" style="padding:0;">
         <div class="table-scroll-wrapper">
         <table class="dash-table" id="dash-table">
