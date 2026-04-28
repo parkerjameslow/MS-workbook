@@ -1058,6 +1058,101 @@ switch ($action) {
         ]);
         break;
 
+    // ─── DIAGNOSTIC: find missing workbooks ───────────────
+    // Searches workbooks across ALL states (active, soft-deleted, orphaned)
+    // and cross-references against revision history. Read-only.
+    case 'diagnose_workbook':
+        $needle      = trim($_GET['name']   ?? $input['name']   ?? '');
+        $clientNeedle= trim($_GET['client'] ?? $input['client'] ?? '');
+        if ($needle === '' && $clientNeedle === '') {
+            echo json_encode(['success' => false, 'error' => 'Provide ?name= and/or ?client= search term']);
+            break;
+        }
+
+        $result = [
+            'name_query'   => $needle,
+            'client_query' => $clientNeedle,
+            'matched_clients' => [],
+            'workbooks_by_name' => [],
+            'workbooks_for_matched_clients' => [],
+            'orphan_revisions' => [],
+            'recent_workbooks_all_clients' => [],
+        ];
+
+        // 1) Find all clients matching the client search (active + soft-deleted)
+        if ($clientNeedle !== '') {
+            $cq = $pdo->prepare("SELECT id, name, deleted_at, deleted_by, created_at FROM clients WHERE name LIKE ? ORDER BY name ASC");
+            $cq->execute(['%' . $clientNeedle . '%']);
+            $result['matched_clients'] = $cq->fetchAll();
+        }
+
+        // 2) Find workbooks where product_name matches needle, across ALL states.
+        //    Use LEFT JOIN so soft-deleted client rows still surface.
+        if ($needle !== '') {
+            $wq = $pdo->prepare("
+                SELECT w.id, w.client_id, w.product_name, w.flow_step,
+                       w.deleted_at, w.deleted_by, w.created_at, w.updated_at,
+                       CHAR_LENGTH(w.detail_json) AS detail_size,
+                       c.name AS client_name, c.deleted_at AS client_deleted_at
+                FROM workbooks w
+                LEFT JOIN clients c ON w.client_id = c.id
+                WHERE w.product_name LIKE ?
+                   OR REPLACE(LOWER(w.product_name), ' ', '') LIKE ?
+                ORDER BY w.updated_at DESC, w.created_at DESC
+            ");
+            $needleClean = strtolower(str_replace(' ', '', $needle));
+            $wq->execute(['%' . $needle . '%', '%' . $needleClean . '%']);
+            $result['workbooks_by_name'] = $wq->fetchAll();
+        }
+
+        // 3) For each matched client, list ALL their workbooks (active + soft-deleted)
+        if (!empty($result['matched_clients'])) {
+            $clientIds = array_column($result['matched_clients'], 'id');
+            $ph = implode(',', array_fill(0, count($clientIds), '?'));
+            $wq2 = $pdo->prepare("
+                SELECT id, client_id, product_name, flow_step,
+                       deleted_at, deleted_by, created_at, updated_at,
+                       CHAR_LENGTH(detail_json) AS detail_size
+                FROM workbooks
+                WHERE client_id IN ($ph)
+                ORDER BY client_id ASC, updated_at DESC
+            ");
+            $wq2->execute($clientIds);
+            $result['workbooks_for_matched_clients'] = $wq2->fetchAll();
+        }
+
+        // 4) Orphan-revision check: revisions whose workbook_id no longer exists
+        //    in the workbooks table at all (i.e. a permanent_delete_workbook ran
+        //    but didn't cascade — shouldn't happen with current code, but worth checking).
+        if ($needle !== '') {
+            $rq = $pdo->prepare("
+                SELECT r.id, r.workbook_id, r.changed_by, r.created_at,
+                       CHAR_LENGTH(r.detail_json) AS detail_size
+                FROM workbook_revisions r
+                LEFT JOIN workbooks w ON r.workbook_id = w.id
+                WHERE w.id IS NULL
+                ORDER BY r.created_at DESC
+                LIMIT 50
+            ");
+            $rq->execute();
+            $result['orphan_revisions'] = $rq->fetchAll();
+        }
+
+        // 5) Sanity-check: list 20 most-recently-touched workbooks regardless of
+        //    name match, so we can eyeball whether anything else looks off.
+        $recent = $pdo->query("
+            SELECT w.id, w.product_name, w.deleted_at, w.updated_at,
+                   c.name AS client_name
+            FROM workbooks w
+            LEFT JOIN clients c ON w.client_id = c.id
+            ORDER BY w.updated_at DESC
+            LIMIT 20
+        ")->fetchAll();
+        $result['recent_workbooks_all_clients'] = $recent;
+
+        echo json_encode(['success' => true, 'diagnostic' => $result], JSON_PRETTY_PRINT);
+        break;
+
     case 'restore_workbook':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
