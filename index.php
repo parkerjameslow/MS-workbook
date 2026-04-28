@@ -9653,13 +9653,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       sel.appendChild(opt);
     });
 
-    if (currentClient) {
+    // Resolve the client context from the URL, not the `currentClient`
+    // global. `currentClient` only updates when opening a workbook detail —
+    // it stays stale when the user navigates between client dashboards, which
+    // would prefill the modal with the wrong client.
+    const ctxClient = (() => {
+      const m = location.hash.match(/^#\/client\/([^/]+)/);
+      if (m) return decodeURIComponent(m[1]);
+      return currentClient || '';
+    })();
+
+    if (ctxClient && clientData[ctxClient]) {
       // Already on a client — pre-fill and hide the dropdown
-      sel.value = currentClient;
+      sel.value = ctxClient;
       sel.required = false;
       dropdownField.style.display = 'none';
       displayField.style.display  = '';
-      displayLabel.textContent    = currentClient;
+      displayLabel.textContent    = ctxClient;
     } else {
       // No client context — show the dropdown
       sel.required = true;

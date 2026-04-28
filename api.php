@@ -909,42 +909,117 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
             break;
         }
-        $changedBy = $input['changed_by'] ?? '';
-        $createRevision = !empty($input['create_revision']); // only true on nav saves
+        $changedBy      = $input['changed_by'] ?? '';
+        $createRevision = !empty($input['create_revision']); // true on nav saves
+        $confirmShrink  = !empty($input['confirm_shrink']);  // explicit override after a rejection
 
-        // Save current version as a revision BEFORE overwriting (only when explicitly requested)
-        if ($createRevision) {
-            $stmt = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ?");
-            $stmt->execute([$input['id']]);
-            $current = $stmt->fetch();
-            $currentJson = $current['detail_json'] ?? '';
-            $incomingJson = json_encode($input['detail']);
+        // Pull current state up front — every guard below needs it.
+        $stmt = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ?");
+        $stmt->execute([$input['id']]);
+        $current     = $stmt->fetch();
+        $currentJson = $current['detail_json'] ?? '';
+        $currentArr  = json_decode($currentJson ?: '{}', true);
+        if (!is_array($currentArr)) $currentArr = [];
 
-            // Only create a revision if the data actually changed
-            if ($currentJson && $currentJson !== '[]' && $currentJson !== 'null' && $currentJson !== $incomingJson) {
-                // Also skip if last revision already has this exact content (dedup)
-                $lastStmt = $pdo->prepare("SELECT detail_json FROM workbook_revisions WHERE workbook_id = ? ORDER BY created_at DESC LIMIT 1");
-                $lastStmt->execute([$input['id']]);
-                $lastRev = $lastStmt->fetch();
-                if (!$lastRev || $lastRev['detail_json'] !== $currentJson) {
-                    $stmt = $pdo->prepare("INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)");
-                    $stmt->execute([$input['id'], $currentJson, $changedBy]);
-                }
+        $incomingArr  = is_array($input['detail'] ?? null) ? $input['detail'] : [];
+        $incomingJson = json_encode($incomingArr);
+
+        // ── GUARD HELPERS ──────────────────────────────────────────────────
+        // Counts top-level keys whose value is non-empty (non-empty string,
+        // non-zero number, non-empty array/object). Booleans don't count.
+        $countMeaningful = function ($arr) {
+            if (!is_array($arr)) return 0;
+            $n = 0;
+            foreach ($arr as $v) {
+                if ($v === null || $v === '' || $v === false) continue;
+                if (is_array($v) && count($v) === 0) continue;
+                if (is_string($v) && trim($v) === '') continue;
+                $n++;
             }
+            return $n;
+        };
+        $curFields = $countMeaningful($currentArr);
+        $newFields = $countMeaningful($incomingArr);
+
+        // Always-on auto-snapshot: every time a save would change content, we
+        // store the prior state as a revision — regardless of create_revision.
+        // The previous behavior (only on nav saves) is what allowed an
+        // autosave race to overwrite data without leaving a recovery point.
+        $autoSnapshot = function () use ($pdo, $input, $currentJson, $changedBy) {
+            if (!$currentJson || $currentJson === '[]' || $currentJson === 'null') return null;
+            $lastStmt = $pdo->prepare("SELECT id, detail_json FROM workbook_revisions WHERE workbook_id = ? ORDER BY created_at DESC LIMIT 1");
+            $lastStmt->execute([$input['id']]);
+            $lastRev = $lastStmt->fetch();
+            if ($lastRev && $lastRev['detail_json'] === $currentJson) return $lastRev['id'];
+            $ins = $pdo->prepare("INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)");
+            $ins->execute([$input['id'], $currentJson, $changedBy ?: 'auto-snapshot']);
+            return (int)$pdo->lastInsertId();
+        };
+
+        // ── GUARD 1: HARD-FLOOR REFUSAL ───────────────────────────────────
+        // Refuse outright to save an empty/near-empty payload over a workbook
+        // that has substantial data. No override path — this is always wrong.
+        if ($curFields >= 5 && $newFields === 0) {
+            $snapId = $autoSnapshot();
+            echo json_encode([
+                'success' => false,
+                'error'   => 'refused_empty_overwrite',
+                'message' => "Refused to overwrite a populated workbook ($curFields fields) with an empty payload. This usually means the form hasn't finished loading. No changes written.",
+                'pre_save_snapshot_revision_id' => $snapId,
+            ]);
+            break;
         }
 
-        // Now save the new version (also update product_name if provided)
-        $newProductName = !empty($input['detail']['product']) ? trim($input['detail']['product']) : null;
+        // ── GUARD 2: SHRINK PROTECTION ────────────────────────────────────
+        // If the new payload would drop more than half the meaningful fields
+        // OR shrink detail_json by >60 % on a workbook that had real content,
+        // require explicit confirm_shrink. Always snapshot first either way.
+        $bigDropFields = ($curFields >= 6 && $newFields < $curFields / 2);
+        $bigDropBytes  = (strlen($currentJson) > 800
+                          && strlen($incomingJson) < strlen($currentJson) * 0.4);
+        if (($bigDropFields || $bigDropBytes) && !$confirmShrink) {
+            $snapId = $autoSnapshot();
+            echo json_encode([
+                'success' => false,
+                'error'   => 'refused_shrink',
+                'message' => "Refused: this save would reduce the workbook from $curFields populated fields ("
+                           . strlen($currentJson) . " bytes) to $newFields fields ("
+                           . strlen($incomingJson) . " bytes). Resend with confirm_shrink=true to force.",
+                'pre_save_snapshot_revision_id' => $snapId,
+                'cur_fields' => $curFields,
+                'new_fields' => $newFields,
+                'cur_bytes'  => strlen($currentJson),
+                'new_bytes'  => strlen($incomingJson),
+            ]);
+            break;
+        }
+
+        // ── ALWAYS-SNAPSHOT (replaces the old create_revision-only path) ──
+        // Snapshot whenever content actually changed. createRevision still
+        // marks "user-initiated" snapshots, but we no longer rely on it for
+        // protection. Skip if value is identical to current.
+        if ($currentJson && $currentJson !== $incomingJson) {
+            $autoSnapshot();
+        }
+
+        // ── WRITE ─────────────────────────────────────────────────────────
+        $newProductName = !empty($incomingArr['product']) ? trim($incomingArr['product']) : null;
         if ($newProductName) {
             $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, product_name = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([json_encode($input['detail']), $newProductName, $input['id']]);
+            $stmt->execute([$incomingJson, $newProductName, $input['id']]);
         } else {
             $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([json_encode($input['detail']), $input['id']]);
+            $stmt->execute([$incomingJson, $input['id']]);
         }
 
-        // Purge revisions older than 30 days
-        $pdo->exec("DELETE FROM workbook_revisions WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
+        // ── REVISION RETENTION ────────────────────────────────────────────
+        // Old code purged on every save with a 30-day cutoff. That meant a
+        // burst of autosaves could age the only good revision past the
+        // cutoff. Now: 180-day retention, and the purge only runs ~1 % of
+        // the time so it doesn't compete with the save itself.
+        if (mt_rand(1, 100) === 1) {
+            $pdo->exec("DELETE FROM workbook_revisions WHERE created_at < DATE_SUB(NOW(), INTERVAL 180 DAY)");
+        }
 
         echo json_encode(['success' => true]);
         break;
