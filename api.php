@@ -284,6 +284,20 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS presence (
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// Live cell values: every keystroke on a tracked field upserts the latest
+// value here so other users polling the workbook can see it before save.
+// Rows are keyed by (workbook_id, field_path); only one row per cell.
+// updated_at is auto-updated on conflict so polling can use a `since` cursor.
+$pdo->exec("CREATE TABLE IF NOT EXISTS cell_values (
+    workbook_id INT NOT NULL,
+    field_path VARCHAR(255) NOT NULL,
+    value TEXT,
+    updated_by INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (workbook_id, field_path),
+    INDEX idx_wb_updated (workbook_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
@@ -2156,6 +2170,79 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
+    // ─── LIVE CELL VALUES ─────────────────────────────────────
+    // Debounced from the client on every input event. Stores the in-progress
+    // value so other viewers see typing before the workbook is saved.
+    case 'push_cell_value':
+        $uid   = $sessionUser['id'];
+        $wbId  = intval($input['workbook_id'] ?? 0);
+        $field = substr($input['field_path']  ?? '', 0, 255);
+        $value = (string)($input['value'] ?? '');
+        if ($wbId <= 0 || $field === '') {
+            echo json_encode(['success' => false, 'error' => 'workbook_id and field_path required']);
+            break;
+        }
+        // Cap the value to keep payload bounded — anything past 8 KB is almost
+        // certainly a bug, not legitimate cell content.
+        if (strlen($value) > 8192) $value = substr($value, 0, 8192);
+        $pdo->prepare(
+            "INSERT INTO cell_values (workbook_id, field_path, value, updated_by)
+             VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               value=VALUES(value), updated_by=VALUES(updated_by), updated_at=NOW()"
+        )->execute([$wbId, $field, $value, $uid]);
+        // Probabilistic cleanup: ~2 % of writes purge rows older than 5 min,
+        // so the table stays bounded without a cron job. The data here is
+        // ephemeral — once the workbook is saved, detail_json is the source
+        // of truth and these rows are no longer useful.
+        if (mt_rand(1, 50) === 1) {
+            $pdo->exec("DELETE FROM cell_values WHERE updated_at < NOW() - INTERVAL 5 MINUTE");
+        }
+        echo json_encode(['success' => true, 'server_now' => date('Y-m-d H:i:s')]);
+        break;
+
+    // Returns every cell value for this workbook updated after `since`,
+    // excluding rows last touched by the caller (they already have those locally).
+    // `since` is the server-side timestamp returned from the previous poll.
+    case 'pull_cell_values':
+        $uid   = $sessionUser['id'];
+        $wbId  = intval($input['workbook_id'] ?? 0);
+        $since = trim($input['since'] ?? '');
+        if ($wbId <= 0) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id required']);
+            break;
+        }
+        if ($since === '') {
+            // First poll: fetch the last 60 s only — we don't want to apply
+            // ancient pending values that may already be saved into detail_json.
+            $stmt = $pdo->prepare(
+                "SELECT field_path, value, updated_by, updated_at
+                 FROM cell_values
+                 WHERE workbook_id = ?
+                   AND updated_by != ?
+                   AND updated_at > NOW() - INTERVAL 60 SECOND
+                 ORDER BY updated_at ASC"
+            );
+            $stmt->execute([$wbId, $uid]);
+        } else {
+            $stmt = $pdo->prepare(
+                "SELECT field_path, value, updated_by, updated_at
+                 FROM cell_values
+                 WHERE workbook_id = ?
+                   AND updated_by != ?
+                   AND updated_at > ?
+                 ORDER BY updated_at ASC"
+            );
+            $stmt->execute([$wbId, $uid, $since]);
+        }
+        $rows = $stmt->fetchAll();
+        echo json_encode([
+            'success'    => true,
+            'updates'    => $rows,
+            'server_now' => date('Y-m-d H:i:s')
+        ]);
+        break;
+
     default:
         echo json_encode(['error' => 'Unknown action', 'available' => [
             'get_clients', 'add_client', 'delete_client',
@@ -2170,5 +2257,8 @@ switch ($action) {
             'duplicate_workbook',
             'get_inventory', 'promote_to_sku', 'remove_sku',
             'get_commissions', 'set_commission_status', 'recompute_commissions',
+            'update_presence', 'get_presence', 'clear_presence',
+            'push_cell_value', 'pull_cell_values',
+            'diagnose_workbook',
         ]]);
 }

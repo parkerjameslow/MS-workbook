@@ -14606,15 +14606,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _presenceInterval   = null;
   let _myFocusedField     = '';
 
+  // Live cell-value sync state
+  let _cellValuesSince    = '';   // server timestamp cursor for delta polling
+  const _pendingPushes    = new Map(); // fieldPath -> debounce timer id
+
   function startPresenceHeartbeat(workbookId) {
     // Stop any previous heartbeat (switching workbooks)
     stopPresenceHeartbeat(/* silent */ true);
     _presenceWorkbookId = workbookId;
+    _cellValuesSince    = '';   // reset cursor for new workbook
     _sendPresenceHeartbeat();
     _pollPresence();
+    _pollCellValues();
     _presenceInterval = setInterval(() => {
       _sendPresenceHeartbeat();
       _pollPresence();
+      _pollCellValues();
     }, 2000);  // 2 s — near real-time cursor tracking like Google Sheets
   }
 
@@ -14632,6 +14639,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       _presenceWorkbookId = null;
       _myFocusedField     = '';
+      _cellValuesSince    = '';
+      // Cancel any pending cell-value pushes
+      _pendingPushes.forEach(t => clearTimeout(t));
+      _pendingPushes.clear();
       _clearPresenceIndicators();
     }
   }
@@ -14652,6 +14663,82 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try {
       const res = await apiCall('get_presence', { workbook_id: _presenceWorkbookId });
       if (res?.success) _renderPresence(res.users || []);
+    } catch(e) {}
+  }
+
+  // ── Live cell value sync ──────────────────────────────────────────────────
+  // Use raw fetch for the high-frequency sync calls so we don't trigger
+  // apiCall()'s saveToLocalStorage() on every keystroke and poll.
+  async function _liveFetch(action, body) {
+    try {
+      const res = await fetch(`${API_URL}?action=${action}`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body:    JSON.stringify(body)
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch(e) { return null; }
+  }
+
+  // Debounced per-field push: only one timer per fieldPath. Each new keystroke
+  // resets that field's timer; once it fires we send only the latest value.
+  // 250 ms feels live without hammering the DB.
+  function _pushCellValue(fieldPath, value) {
+    if (!_presenceWorkbookId || !fieldPath) return;
+    const existing = _pendingPushes.get(fieldPath);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      _pendingPushes.delete(fieldPath);
+      _liveFetch('push_cell_value', {
+        workbook_id: _presenceWorkbookId,
+        field_path:  fieldPath,
+        value:       value
+      });
+    }, 250);
+    _pendingPushes.set(fieldPath, timer);
+  }
+
+  // Pull every remote cell update since our cursor and apply it — but never
+  // clobber an input that's currently focused locally (that would steal the
+  // user's in-progress typing).
+  async function _pollCellValues() {
+    if (!_presenceWorkbookId) return;
+    try {
+      const res = await _liveFetch('pull_cell_values', {
+        workbook_id: _presenceWorkbookId,
+        since:       _cellValuesSince
+      });
+      if (!res?.success) return;
+      if (res.server_now) _cellValuesSince = res.server_now;
+      const updates = res.updates || [];
+      if (updates.length === 0) return;
+
+      const rfqBody = document.getElementById('rfq-body');
+      if (!rfqBody) return;
+
+      updates.forEach(u => {
+        const sep = u.field_path.lastIndexOf(':');
+        if (sep < 0) return;
+        const rowId = u.field_path.slice(0, sep);
+        const idx   = parseInt(u.field_path.slice(sep + 1), 10);
+        const row   = document.getElementById(rowId);
+        if (!row) return;
+        const inputs = row.querySelectorAll('input');
+        const input  = inputs[idx];
+        if (!input) return;
+        // Don't overwrite the cell the user is currently typing in
+        if (document.activeElement === input) return;
+        // Don't overwrite if value is already in sync (avoid cursor jumps)
+        if (input.value === u.value) return;
+        input.value = u.value;
+        // Briefly flash the cell so the change is visible
+        input.style.transition = 'background-color 0.6s ease';
+        input.style.backgroundColor = 'rgba(232, 117, 26, 0.18)';
+        setTimeout(() => { input.style.backgroundColor = ''; }, 600);
+        // Notify any listeners (e.g. totals recalc) that this input changed
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
     } catch(e) {}
   }
 
@@ -14755,6 +14842,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           _sendPresenceHeartbeat();
         }
       }, 120);
+    });
+
+    // Live cell-value broadcast: every keystroke (debounced inside
+    // _pushCellValue) sends the field's current value to the server so other
+    // connected viewers see it within ~250 ms + their next 2 s poll.
+    //   - Skip synthetic events (isTrusted === false): those come from
+    //     _pollCellValues applying remote updates and would echo back.
+    //   - Skip during workbook fill: programmatic population fires synthetic
+    //     input events that we don't want to broadcast as new edits.
+    rfqBody.addEventListener('input', e => {
+      if (!e.isTrusted) return;
+      if (typeof _filling !== 'undefined' && _filling) return;
+      if (e.target.tagName !== 'INPUT') return;
+      if (e.target.type === 'checkbox') return;
+      const row = e.target.closest('tr[id]');
+      if (!row) return;
+      const inputs = [...row.querySelectorAll('input')];
+      const idx    = inputs.indexOf(e.target);
+      if (idx < 0) return;
+      _pushCellValue(`${row.id}:${idx}`, e.target.value);
     });
   }
 
