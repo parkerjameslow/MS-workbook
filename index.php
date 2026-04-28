@@ -4868,10 +4868,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr><th>Method</th><th>Lead Time</th><th>Total Weight</th><th>¥ / kg</th><th>Cost (¥)</th><th>Cost ($)</th></tr>
         </thead>
         <tbody>
-          <tr><td>Slow Boat</td><td><div class="freight-lead-cell"><input type="number" min="0" id="ship-lead-slow" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-slow">—</td><td>12.00</td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
-          <tr><td>Fast Boat</td><td><div class="freight-lead-cell"><input type="number" min="0" id="ship-lead-fast" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-fast">—</td><td>14.00</td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
-          <tr><td>Air + UPS</td><td><div class="freight-lead-cell"><input type="number" min="0" id="ship-lead-airupp" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-airupp">—</td><td>44.00</td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
-          <tr><td>Direct Air</td><td><div class="freight-lead-cell"><input type="number" min="0" id="ship-lead-directair" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
+          <tr><td>Slow Boat</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-slow" placeholder="30-40" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-slow">—</td><td>12.00</td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
+          <tr><td>Fast Boat</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-fast" placeholder="20-30" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-fast">—</td><td>14.00</td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
+          <tr><td>Air + UPS</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-airupp" placeholder="7-10" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-airupp">—</td><td>44.00</td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
+          <tr><td>Direct Air</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-directair" placeholder="3-5" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
         </tbody>
       </table>
       <!-- Shipment Split -->
@@ -7523,6 +7523,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function recalcRfqTotals() { try { _recalcRfqTotalsInner(); } catch(e) { console.error('[MS recalcRfqTotals]', e); } }
+
+  // Subtotal-row DOM rebuild scheduler — keeps only the latest pending
+  // callback so a burst of recalcRfqTotals calls collapses into one
+  // remove-and-reinsert pass on the next animation frame.
+  let _rfqSubtotalRaf = null;
+  let _rfqSubtotalCb  = null;
+  function _scheduleRfqSubtotalRebuild(cb) {
+    _rfqSubtotalCb = cb;
+    if (_rfqSubtotalRaf) return;
+    _rfqSubtotalRaf = requestAnimationFrame(() => {
+      _rfqSubtotalRaf = null;
+      const fn = _rfqSubtotalCb;
+      _rfqSubtotalCb = null;
+      try { if (fn) fn(); } catch(e) { console.error('[MS rfqSubtotalRebuild]', e); }
+    });
+  }
+
   function _recalcRfqTotalsInner() {
     const fmt = (n, dec = 2) => n.toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
 
@@ -7614,14 +7631,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     });
 
-    // ── 2. Inject per-item subtotal rows (only when useful) ──────────────
-    document.querySelectorAll('.rfq-item-subtotal').forEach(r => r.remove());
-
+    // ── 2. Inject per-item subtotal rows — deferred to next frame ────────
+    // Removing + re-inserting subtotal rows synchronously on every keystroke
+    // triggered layout thrash (50+ ms per stroke with many variants). The
+    // data side of this function (grand totals, _lastRfqPriceSummary,
+    // applyRfqRmbToTiers) still runs synchronously below so downstream
+    // consumers see fresh values immediately. The DOM rebuild coalesces
+    // to one rAF — bursts of typing render only the final state.
     const totalsRow = document.getElementById('rfq-totals');
     const showBreakdown = itemSummaries.length > 1
                        || itemSummaries.some(s => s.isVariant);
 
-    if (showBreakdown && totalsRow) {
+    // ── 3. Grand total row label (sync — single cell update is cheap) ───
+    const totalsLabel = totalsRow?.querySelector('td:nth-child(4)');
+    if (totalsLabel) totalsLabel.textContent = showBreakdown ? 'GRAND TOTAL' : 'TOTALS';
+
+    _scheduleRfqSubtotalRebuild(() => {
+      document.querySelectorAll('.rfq-item-subtotal').forEach(r => r.remove());
+      if (!showBreakdown || !totalsRow) return;
       itemSummaries.forEach(item => {
         const tr = document.createElement('tr');
         tr.className = 'rfq-item-subtotal';
@@ -7649,11 +7676,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td></td>`;
         totalsRow.before(tr);
       });
-    }
-
-    // ── 3. Grand total row label + values ────────────────────────────────
-    const totalsLabel = totalsRow?.querySelector('td:nth-child(4)');
-    if (totalsLabel) totalsLabel.textContent = showBreakdown ? 'GRAND TOTAL' : 'TOTALS';
+    });
 
     // Variant-aware price summary: when variants exist, the unit-price columns
     // display the price-per (single value) or a range (min–max) instead of a sum.
@@ -9585,9 +9608,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _ctxWbMarginPct = (_ctxWbMarginRaw !== '' && !isNaN(parseFloat(_ctxWbMarginRaw))) ? parseFloat(_ctxWbMarginRaw) : _ctxClientMarginPct;
     const _ctxWbMarginMul = 1 + (_ctxWbMarginPct / 100);
 
-    const _ctxShipLeadVals = ['ship-lead-slow','ship-lead-fast','ship-lead-airupp','ship-lead-directair']
-      .map(id => parseInt(document.getElementById(id)?.value) || 0);
-    const _ctxShipLeadMax = Math.max(0, ..._ctxShipLeadVals);
+    // Shipping lead — pulled from the SELECTED freight mode's input only.
+    // Inputs accept either a single value ("10") or a range ("7-10"); both
+    // flow into the Client Quote header and per-row Shipping column.
+    const _ctxShipLeadRaw = (document.getElementById('ship-lead-' + _ctxFreightMode)?.value || '').trim();
+    const _ctxShipLeadRange = _parseLeadRange(_ctxShipLeadRaw);
+    const _ctxShipLeadText  = _formatLeadRange(_ctxShipLeadRange);
 
     // ── Client Quote line items — collapsible by parent SKU ─────────────
     // Group rfq-body rows by parent. Each group renders as:
@@ -9658,7 +9684,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="text-align:right;">${pSale > 0 ? '$' + _fmt2(pSale) : '—'}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${pTotal > 0 ? '$' + _fmt2(pTotal) : '—'}</td>
               <td style="color:var(--text-muted);">${parentLead > 0 ? parentLead + ' days' : '—'}</td>
-              <td style="color:var(--text-muted);">${_ctxShipLeadMax > 0 ? _ctxShipLeadMax + ' days' : '—'}</td>
+              <td style="color:var(--text-muted);">${_ctxShipLeadText}</td>
             </tr>`;
           } else {
             // Variant group — collapsible
@@ -9705,7 +9731,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="text-align:right;">${saleText}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
               <td style="color:var(--text-muted);">${maxLead > 0 ? maxLead + ' days' : '—'}</td>
-              <td style="color:var(--text-muted);">${_ctxShipLeadMax > 0 ? _ctxShipLeadMax + ' days' : '—'}</td>
+              <td style="color:var(--text-muted);">${_ctxShipLeadText}</td>
             </tr>`;
 
             variantData.forEach(v => {
@@ -9948,13 +9974,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const prodLeadDays = parseInt(document.getElementById('rfq-max-lead')?.textContent) || 0;
     if (qrsLead) qrsLead.textContent = prodLeadDays > 0 ? prodLeadDays + ' days' : '—';
 
-    const shipLeadVals = ['ship-lead-slow','ship-lead-fast','ship-lead-airupp','ship-lead-directair']
-      .map(id => parseInt(document.getElementById(id)?.value) || 0);
-    const shipLeadMax = Math.max(0, ...shipLeadVals);
-    if (qrsShipLead) qrsShipLead.textContent = shipLeadMax > 0 ? shipLeadMax + ' days' : '—';
+    // Shipping Lead = SELECTED freight mode's lead time (range or single).
+    // _ctxShipLeadRange/_ctxShipLeadText are computed at the top of this fn.
+    if (qrsShipLead) qrsShipLead.textContent = _ctxShipLeadText;
 
-    const totalLead = prodLeadDays + shipLeadMax;
-    if (qrsTotalLead) qrsTotalLead.textContent = totalLead > 0 ? totalLead + ' days' : '—';
+    // Total Lead = Production + Shipping. When shipping is a range, total
+    // is also a range (production + min … production + max).
+    if (qrsTotalLead) {
+      if (prodLeadDays === 0 && !_ctxShipLeadRange.hasValue) {
+        qrsTotalLead.textContent = '—';
+      } else {
+        const tMin = prodLeadDays + (_ctxShipLeadRange.hasValue ? _ctxShipLeadRange.min : 0);
+        const tMax = prodLeadDays + (_ctxShipLeadRange.hasValue ? _ctxShipLeadRange.max : 0);
+        qrsTotalLead.textContent = (tMin === tMax) ? tMin + ' days' : tMin + '-' + tMax + ' days';
+      }
+    }
+  }
+
+  // Parse a lead-time field — accepts "10" (single) or "7-10" (range).
+  function _parseLeadRange(s) {
+    if (!s) return { min: 0, max: 0, hasValue: false };
+    const m = String(s).trim().match(/^(\d+)\s*[-–—]\s*(\d+)$/);
+    if (m) {
+      const a = parseInt(m[1]), b = parseInt(m[2]);
+      return { min: Math.min(a, b), max: Math.max(a, b), hasValue: a > 0 || b > 0 };
+    }
+    const n = parseInt(String(s).trim());
+    if (!isNaN(n) && n > 0) return { min: n, max: n, hasValue: true };
+    return { min: 0, max: 0, hasValue: false };
+  }
+
+  // Format a parsed lead range for display: "7-10 days" or "10 days" or "—".
+  function _formatLeadRange(r) {
+    if (!r || !r.hasValue) return '—';
+    if (r.min === r.max) return r.min + ' days';
+    return r.min + '-' + r.max + ' days';
   }
 
   // Module-scope: weighted-avg landed (USD) cached by renderPricingTab so the
@@ -12078,10 +12132,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const el = document.getElementById(id);
       if (el) el.value = (val !== undefined && val !== null && val !== '') ? val : def;
     };
-    _setLead('ship-lead-slow',      data?.shipLeadSlow,      '35');
-    _setLead('ship-lead-fast',      data?.shipLeadFast,      '25');
-    _setLead('ship-lead-airupp',    data?.shipLeadAirupp,    '10');
-    _setLead('ship-lead-directair', data?.shipLeadDirectair, '5');
+    _setLead('ship-lead-slow',      data?.shipLeadSlow,      '30-40');
+    _setLead('ship-lead-fast',      data?.shipLeadFast,      '20-30');
+    _setLead('ship-lead-airupp',    data?.shipLeadAirupp,    '7-10');
+    _setLead('ship-lead-directair', data?.shipLeadDirectair, '3-5');
 
     // Trigger filled state on all inputs
     document.querySelectorAll('#view-workbook input, #view-workbook textarea').forEach(el => updateFilled(el));
