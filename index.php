@@ -6010,7 +6010,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
           <input id="new-user-email" type="email" placeholder="Email (optional)" class="field-input" style="font-size:13px;" />
-          <input id="new-user-password" type="password" placeholder="Password" class="field-input" style="font-size:13px;" />
+          <span class="pw-wrap" style="display:block; position:relative;">
+            <input id="new-user-password" type="password" placeholder="Password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
+            <button type="button" onclick="togglePasswordField(this)" aria-label="Show password" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:4px; color:var(--text-muted); display:flex; align-items:center;">
+              <svg class="eye-show" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-hide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </span>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
           <span class="ship-select-wrap" style="display:block;">
@@ -10154,6 +10160,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _usersCache = [];
   let _userDetailCurrent = null; // currently-selected user object in detail view
 
+  // Show/hide toggle for password inputs. Stored bcrypt hashes can't be
+  // reversed so we can't reveal an existing password — this only flips
+  // the input type so the operator can verify what they just typed in
+  // a new-password field. The button is wrapped in a .pw-wrap span and
+  // contains two SVGs (eye + eye-with-slash); we just swap which one is
+  // visible based on the current input.type.
+  function togglePasswordField(btn) {
+    const wrap = btn.closest('.pw-wrap');
+    if (!wrap) return;
+    const input = wrap.querySelector('input');
+    if (!input) return;
+    const wasHidden = (input.type === 'password');
+    input.type = wasHidden ? 'text' : 'password';
+    const showEye = btn.querySelector('.eye-show');
+    const hideEye = btn.querySelector('.eye-hide');
+    if (showEye) showEye.style.display = wasHidden ? 'none' : '';
+    if (hideEye) hideEye.style.display = wasHidden ? '' : 'none';
+    btn.setAttribute('aria-label', wasHidden ? 'Hide password' : 'Show password');
+  }
+
   function openUsersModal() {
     document.getElementById('users-modal-overlay').style.display = 'flex';
     showUsersList();
@@ -10263,12 +10289,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
 
       <!-- Change password — separate form, separate save. Cleared after
-           a successful update so the new value doesn't linger in the DOM. -->
+           a successful update so the new value doesn't linger in the DOM.
+           Each input gets an eyeball toggle (togglePasswordField) so the
+           operator can verify what they typed before clicking Update. -->
       <div style="border-top:1px solid var(--border); padding-top:16px; margin-bottom:24px;">
         <div style="font-size:13px; font-weight:600; margin-bottom:10px;">Change Password</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
-          <input id="udetail-newpw"      type="password" placeholder="New password"     class="field-input" style="font-size:13px;" />
-          <input id="udetail-newpw-conf" type="password" placeholder="Confirm password" class="field-input" style="font-size:13px;" />
+          <span class="pw-wrap" style="display:block; position:relative;">
+            <input id="udetail-newpw" type="password" placeholder="New password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
+            <button type="button" onclick="togglePasswordField(this)" aria-label="Show password" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:4px; color:var(--text-muted); display:flex; align-items:center;">
+              <svg class="eye-show" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-hide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </span>
+          <span class="pw-wrap" style="display:block; position:relative;">
+            <input id="udetail-newpw-conf" type="password" placeholder="Confirm password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
+            <button type="button" onclick="togglePasswordField(this)" aria-label="Show password" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:4px; color:var(--text-muted); display:flex; align-items:center;">
+              <svg class="eye-show" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-hide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </span>
         </div>
         <button class="btn-create" onclick="saveUserPassword()" style="font-size:13px; padding:8px 16px;">Update Password</button>
       </div>
