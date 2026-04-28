@@ -9663,8 +9663,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const suggestedMax = landedMax * marginMul;
     const suggestedIsRange = suggestedMax - suggestedMin > 0.005;
 
-    // Sale Per (USD): manual input; Total + Profit only render when set
-    const salePerRaw = (e('ps-sale-per')?.value || '').trim();
+    // Sale Per is two-way bound to Margin:
+    //   • Margin changes  → Sale Per auto-updates to weighted-avg suggested
+    //   • Sale Per typed  → margin back-solves (handler below)
+    // Skip the auto-write when the input is being typed in so we don't
+    // clobber the user's keystrokes mid-entry.
+    const suggestedSingle = landedAvg * marginMul;
+    const saleInput = e('ps-sale-per');
+    if (saleInput && saleInput !== document.activeElement && suggestedSingle > 0) {
+      const formatted = suggestedSingle.toFixed(2);
+      if (saleInput.value !== formatted) {
+        saleInput.value = formatted;
+        // Persist the synced value so the next page-load doesn't have to
+        // re-derive it. Suppressed during fillWorkbook to avoid save churn.
+        if (!_filling) autoSaveWorkbook();
+      }
+    }
+
+    const salePerRaw = (saleInput?.value || '').trim();
     const salePer    = salePerRaw === '' ? NaN : parseFloat(salePerRaw);
 
     // Landed Total (deterministic): tier qty × weighted-avg landed
