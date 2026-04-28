@@ -732,9 +732,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       position: relative;
     }
     /* Margin badge — shows the client's default profit margin (%). Sits on
-       the bottom-right of the avatar, never overflows the card edge.
-       Uses brand orange (#E8751A) so it stands out against the blue
-       --accent avatar fill rather than blending with it. */
+       the bottom-right of the avatar, never overflows the card edge. */
     .cdc-avatar-margin-badge {
       position: absolute;
       bottom: -4px;
@@ -743,7 +741,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       height: 22px;
       padding: 0 6px;
       border-radius: 11px;
-      background: #E8751A;
+      background: var(--accent);
       color: #fff;
       font-size: 11px;
       font-weight: 800;
@@ -7503,7 +7501,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     _lastRfqPriceSummary = {
       hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange,
-      grandQty, grandRmb, grandUsdUnit, grandUsd
+      grandQty, grandRmb, grandUsdUnit
     };
 
     document.getElementById('rfq-total-qty').textContent = grandQty ? grandQty.toLocaleString('en-US') : '—';
@@ -7541,19 +7539,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function applyRfqRmbToTiers(totalRmb) {
     const rows = document.querySelectorAll('#wb-tier-body tr');
     if (!rows.length) return;
-    // Per-unit RMB price stored on each tier row's dataset.price.
-    //   • No variants    → parent's RMB unit price (which equals totalRmb)
-    //   • Variants exist → weighted average across all variant units
-    //                      = (grandUsd × USD_TO_RMB) / grandQty
-    // This makes Tier 1 (qty == grandQty) compute exactly to the RFQ
-    // Grand Total Total(USD), and keeps every downstream consumer
-    // (Pricing tab Product Cost, Shipping tier-detail bar) correct.
-    const ps = _lastRfqPriceSummary;
-    let perUnitRmb = parseFloat(totalRmb) || 0;
-    if (ps && ps.hasVariants && ps.grandQty > 0 && ps.grandUsd > 0) {
-      perUnitRmb = (ps.grandUsd * USD_TO_RMB) / ps.grandQty;
-    }
-    const price = perUnitRmb > 0 ? perUnitRmb.toFixed(2) : '';
+    const price = totalRmb > 0 ? parseFloat(totalRmb).toFixed(2) : '';
     // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
     rows.forEach(row => { row.dataset.price = price; });
     // Sync qty into first tier row:
@@ -7974,13 +7960,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
     if (totalEl) {
-      // Total stays a single exact value even when unit price shows a range —
-      // the breakdown gives us an exact weighted-average per-unit cost
-      // (grandUsd / grandQty), so qty × that is the deterministic total.
-      // Tier 1 with qty == grandQty lands exactly on grandUsd.
-      if (useRange && !isNaN(qty) && qty > 0 && ps.grandQty > 0 && ps.grandUsd > 0) {
-        const avgUsd = ps.grandUsd / ps.grandQty;
-        totalEl.textContent = '$' + fmt2(qty * avgUsd);
+      if (useRange && !isNaN(qty) && qty > 0) {
+        const tMin = qty * ps.usdMin;
+        const tMax = qty * ps.usdMax;
+        totalEl.textContent = ps.isRange
+          ? '$' + fmt2(tMin) + '–$' + fmt2(tMax)
+          : '$' + fmt2(tMin);
       } else if (!isNaN(qty) && !isNaN(rmb) && rmb > 0) {
         totalEl.textContent = '$' + fmt2(qty * usd);
       } else {
@@ -8049,34 +8034,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const qty = inputs[0]?.value || '';
     const rmb = parseFloat(row.dataset.price);
     const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
+    const totalUsd = qty && !isNaN(usd) ? parseFloat(qty) * usd : NaN;
 
-    // Variant-aware unit price + total — mirrors RFQ Grand Total + tier rows.
-    // Range on the unit price columns when variants vary; total stays a
-    // single exact value via the weighted-avg path (tier qty × grandUsd/grandQty).
-    const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-    const ps   = _lastRfqPriceSummary;
-    const useRange = ps && ps.hasVariants && ps.rmbMin > 0;
-    const qtyNum   = parseFloat(qty);
-
-    let rmbText, usdText, totalText;
-    if (useRange) {
-      rmbText = ps.isRange ? '¥ ' + fmt2(ps.rmbMin) + '–¥ ' + fmt2(ps.rmbMax) : '¥ ' + fmt2(ps.rmbMin);
-      usdText = ps.isRange ? '$' + fmt2(ps.usdMin) + '–$' + fmt2(ps.usdMax) : '$' + fmt2(ps.usdMin);
-    } else {
-      rmbText = (!isNaN(rmb) && rmb > 0) ? '¥ ' + fmt2(rmb) : '—';
-      usdText = !isNaN(usd) ? '$' + fmt2(usd) : '—';
-    }
-    if (useRange && !isNaN(qtyNum) && qtyNum > 0 && ps.grandQty > 0 && ps.grandUsd > 0) {
-      totalText = '$' + fmt2(qtyNum * (ps.grandUsd / ps.grandQty));
-    } else if (!isNaN(qtyNum) && !isNaN(usd)) {
-      totalText = '$' + fmt2(qtyNum * usd);
-    } else {
-      totalText = '—';
-    }
-
-    document.getElementById('sh-td-rmb-full').textContent = rmbText;
-    document.getElementById('sh-td-usd-full').textContent = usdText;
-    document.getElementById('sh-td-total').textContent    = totalText;
+    // Inline details
+    document.getElementById('sh-td-rmb-full').textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('sh-td-usd-full').textContent = !isNaN(usd) ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    document.getElementById('sh-td-total').textContent    = !isNaN(totalUsd) ? '$' + totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     if (detailBar) detailBar.classList.add('visible');
     renderPricingTab();
 
@@ -9469,17 +9432,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tierQty    = parseInt(tierInputs?.[0]?.value) || 0;
     const tierRmb    = parseFloat(tierRow?.dataset.price) || 0;
     const tierUsd    = tierRmb > 0 ? tierRmb / USD_TO_RMB : 0;
-    // When variants have variable pricing, the deterministic Total Product
-    // Cost uses the weighted-average per-unit USD (grandUsd / grandQty), not
-    // tierUsd (which is the sum of variant unit prices). Tier 1 with
-    // qty == grandQty lands exactly on grandUsd.
-    const psSummary = _lastRfqPriceSummary;
-    let productTotal;
-    if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && tierQty > 0) {
-      productTotal = tierQty * (psSummary.grandUsd / psSummary.grandQty);
-    } else {
-      productTotal = tierQty > 0 && tierUsd > 0 ? tierQty * tierUsd : 0;
-    }
+    const productTotal = tierQty > 0 && tierUsd > 0 ? tierQty * tierUsd : 0;
 
     if (e('ps-qty'))          e('ps-qty').textContent          = tierQty > 0 ? tierQty.toLocaleString('en-US') + ' units' : '—';
     if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
