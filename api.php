@@ -1167,6 +1167,157 @@ switch ($action) {
         echo json_encode(['success' => true, 'diagnostic' => $result], JSON_PRETTY_PRINT);
         break;
 
+    // Non-destructive merge: pull the largest-with-data revision and merge it
+    // INTO the current workbook so missing fields get backfilled but any field
+    // the user has touched recently survives. Snapshots current state first so
+    // it can always be rolled back via restore_revision.
+    case 'merge_recover_workbook':
+        $wbId = intval($_GET['workbook_id'] ?? $input['workbook_id'] ?? 0);
+        if ($wbId <= 0) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id required']);
+            break;
+        }
+        $dryRun = !empty($_GET['dry_run']) || !empty($input['dry_run']);
+        $forceRevId = intval($_GET['revision_id'] ?? $input['revision_id'] ?? 0);
+
+        // 1) Load current
+        $cs = $pdo->prepare("SELECT id, product_name, detail_json FROM workbooks WHERE id = ?");
+        $cs->execute([$wbId]);
+        $cur = $cs->fetch();
+        if (!$cur) {
+            echo json_encode(['success' => false, 'error' => 'Workbook not found']);
+            break;
+        }
+        $curDetail = json_decode($cur['detail_json'], true);
+        if (!is_array($curDetail)) $curDetail = [];
+
+        // 2) Pick best revision (or use the forced one)
+        if ($forceRevId > 0) {
+            $rs = $pdo->prepare("SELECT id, detail_json, created_at, changed_by FROM workbook_revisions WHERE id = ? AND workbook_id = ?");
+            $rs->execute([$forceRevId, $wbId]);
+        } else {
+            $rs = $pdo->prepare("
+                SELECT id, detail_json, created_at, changed_by,
+                       CHAR_LENGTH(detail_json) AS sz
+                FROM workbook_revisions
+                WHERE workbook_id = ?
+                ORDER BY sz DESC, created_at DESC
+                LIMIT 1
+            ");
+            $rs->execute([$wbId]);
+        }
+        $rev = $rs->fetch();
+        if (!$rev) {
+            echo json_encode(['success' => false, 'error' => 'No revisions found for this workbook']);
+            break;
+        }
+        $revDetail = json_decode($rev['detail_json'], true);
+        if (!is_array($revDetail)) {
+            echo json_encode(['success' => false, 'error' => 'Chosen revision has no decodable detail_json']);
+            break;
+        }
+
+        // 3) Deep merge: current wins when it has a non-empty value, otherwise
+        //    revision fills the gap. Arrays of objects merge by id when ids
+        //    exist, otherwise the longer array wins outright.
+        $isEmptyVal = function ($v) {
+            if ($v === null) return true;
+            if (is_string($v) && trim($v) === '') return true;
+            if (is_array($v) && count($v) === 0) return true;
+            return false;
+        };
+
+        $merge = null;
+        $merge = function ($current, $revision) use (&$merge, $isEmptyVal) {
+            // Both arrays:
+            if (is_array($current) && is_array($revision)) {
+                // Distinguish associative vs list. PHP doesn't have a perfect check, but
+                // if the revision has string keys treat as object-like.
+                $curIsList = $current === [] || array_keys($current) === range(0, count($current) - 1);
+                $revIsList = $revision === [] || array_keys($revision) === range(0, count($revision) - 1);
+
+                if ($curIsList && $revIsList) {
+                    // Lists. Try id-keyed merge first.
+                    $hasIds = true;
+                    foreach ($current as $r) { if (!is_array($r) || !isset($r['id'])) { $hasIds = false; break; } }
+                    if ($hasIds) {
+                        foreach ($revision as $r) { if (!is_array($r) || !isset($r['id'])) { $hasIds = false; break; } }
+                    }
+                    if ($hasIds) {
+                        $byId = [];
+                        foreach ($revision as $r) $byId[$r['id']] = $r;
+                        foreach ($current  as $r) $byId[$r['id']] = is_array($byId[$r['id']] ?? null)
+                            ? $merge($r, $byId[$r['id']])
+                            : $r;
+                        return array_values($byId);
+                    }
+                    // Otherwise: longer list wins. If equal length, current wins.
+                    return (count($current) >= count($revision)) ? $current : $revision;
+                }
+
+                // Associative-ish merge: take union of keys, current wins where non-empty.
+                $out = $revision; // start from revision so we keep ALL revision keys
+                foreach ($current as $k => $v) {
+                    if (!array_key_exists($k, $out)) {
+                        $out[$k] = $v;
+                    } elseif (is_array($v) && is_array($out[$k])) {
+                        $out[$k] = $merge($v, $out[$k]);
+                    } elseif (!$isEmptyVal($v)) {
+                        $out[$k] = $v;
+                    } // else: current is empty → keep revision value
+                }
+                return $out;
+            }
+            // Scalars / mixed: current wins if non-empty.
+            return $isEmptyVal($current) ? $revision : $current;
+        };
+
+        $merged = $merge($curDetail, $revDetail);
+
+        // 4) Diff summary so the response shows what changed
+        $diff = [
+            'current_size' => strlen($cur['detail_json']),
+            'revision_size'=> strlen($rev['detail_json']),
+            'merged_size'  => strlen(json_encode($merged)),
+            'revision_id'  => $rev['id'],
+            'revision_at'  => $rev['created_at'],
+            'fields_filled' => [],
+        ];
+        foreach (($revDetail ?? []) as $k => $v) {
+            $curEmpty = !array_key_exists($k, $curDetail) || $isEmptyVal($curDetail[$k]);
+            $revHas   = !$isEmptyVal($v);
+            if ($curEmpty && $revHas) {
+                $preview = is_scalar($v) ? (string)$v
+                         : (is_array($v) ? '[' . count($v) . ' items]' : '(complex)');
+                $diff['fields_filled'][] = ['field' => $k, 'value_preview' => substr($preview, 0, 120)];
+            }
+        }
+
+        if ($dryRun) {
+            echo json_encode(['success' => true, 'dry_run' => true, 'diff' => $diff], JSON_PRETTY_PRINT);
+            break;
+        }
+
+        // 5) Snapshot current as a new revision BEFORE writing the merge,
+        //    so a single restore_revision call can undo this.
+        $snap = $pdo->prepare(
+            "INSERT INTO workbook_revisions (workbook_id, detail_json, changed_by) VALUES (?, ?, ?)"
+        );
+        $snap->execute([$wbId, $cur['detail_json'], 'pre-recover-snapshot']);
+        $snapId = (int)$pdo->lastInsertId();
+
+        // 6) Write the merged result
+        $up = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
+        $up->execute([json_encode($merged), $wbId]);
+
+        echo json_encode([
+            'success' => true,
+            'diff' => $diff,
+            'pre_recover_snapshot_revision_id' => $snapId,
+            'rollback_hint' => "POST /api.php?action=restore_revision  body: {workbook_id:$wbId, revision_id:$snapId}"
+        ], JSON_PRETTY_PRINT);
+        break;
+
     // List every revision of one workbook with its byte-size and short summary
     // so we can spot when data got truncated and pick a good restore point.
     case 'diagnose_revisions':
@@ -2300,6 +2451,6 @@ switch ($action) {
             'get_commissions', 'set_commission_status', 'recompute_commissions',
             'update_presence', 'get_presence', 'clear_presence',
             'push_cell_value', 'pull_cell_values',
-            'diagnose_workbook', 'diagnose_revisions',
+            'diagnose_workbook', 'diagnose_revisions', 'merge_recover_workbook',
         ]]);
 }
