@@ -9911,6 +9911,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Landed Total (deterministic): tier qty × weighted-avg landed
     const landedTotal = tierQty > 0 ? tierQty * landedAvg : 0;
 
+    // Cache on the workbook so Total Pipeline (Financial Summary) can read
+    // it without re-running the freight calc. Only writes when we have a
+    // current workbook context.
+    if (currentClient && currentWorkbookId) {
+      const _wbKey = `${currentClient}|${currentWorkbookId}`;
+      if (!workbookDetail[_wbKey]) workbookDetail[_wbKey] = {};
+      workbookDetail[_wbKey].pricingLandedTotal = landedTotal > 0 ? landedTotal : 0;
+    }
+
     // Total USD: Sale Per × tier qty (only when Sale Per is set)
     const totalUsd = (!isNaN(salePer) && salePer > 0 && tierQty > 0) ? salePer * tierQty : NaN;
 
@@ -11523,20 +11532,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     });
 
-    // Total Pipeline: ALL open (flow not complete) workbooks for this client
-    // that have pricing filled in. Uses the selected tier (Total Delivered Cost
-    // proxy = tier qty × tier unit price in USD). Falls back to client quote
-    // fields if no tier is selected.
+    // Total Pipeline: ALL open (flow not complete) workbooks for this client.
+    // Preferred source: the workbook's cached Total Landed Cost from the
+    // Pricing tab (tier qty × weighted-avg landed). Falls back to the legacy
+    // tier-based estimate for workbooks that haven't been opened on the
+    // Pricing tab yet (so they still contribute SOMETHING).
     let pipelineUsd = 0;
     items.forEach(item => {
       if (isFlowComplete(item.flow)) return;
       const detail = workbookDetail[`${clientName}|${item.id}`] || {};
+
+      const cachedLanded = parseFloat(detail.pricingLandedTotal);
+      if (!isNaN(cachedLanded) && cachedLanded > 0) {
+        pipelineUsd += cachedLanded;
+        return;
+      }
+
       const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
       const tier = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
       if (tier && parseFloat(tier.price) && parseFloat(tier.qty)) {
         pipelineUsd += (parseFloat(tier.price) / USD_TO_RMB) * parseFloat(tier.qty);
       } else {
-        // Fall back to client quote fields
         const qty = parseFloat(detail.quoteClQty) || 0;
         const price = parseFloat(detail.quoteClUnitPrice) || 0;
         const ship = parseFloat(detail.quoteClShipping) || 0;
@@ -12865,6 +12881,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // pricingSalePer:   blank → no Sale Per entered yet.
       pricingMarginPct: _v('ps-margin-pct'),
       pricingSalePer:   _v('ps-sale-per'),
+      // Cached Total Landed Cost from the Pricing tab — feeds the Total
+      // Pipeline figure on the client dashboard's Financial Summary so we
+      // don't have to re-run the freight calc per workbook there.
+      // Updated whenever renderPricingTab runs for this workbook.
+      pricingLandedTotal: (existing && typeof existing.pricingLandedTotal === 'number') ? existing.pricingLandedTotal : 0,
       // Per-method shipping lead times (days) — feed Client Quote summary
       shipLeadSlow:      _v('ship-lead-slow'),
       shipLeadFast:      _v('ship-lead-fast'),
