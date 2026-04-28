@@ -6012,9 +6012,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <input id="new-user-email" type="email" placeholder="Email (optional)" class="field-input" style="font-size:13px;" />
           <span class="pw-wrap" style="display:block; position:relative;">
             <input id="new-user-password" type="password" placeholder="Password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
-            <button type="button" onclick="togglePasswordField(this)" aria-label="Show password" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:4px; color:var(--text-muted); display:flex; align-items:center;">
-              <svg class="eye-show" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg class="eye-hide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <button type="button" onclick="togglePasswordField(this)" aria-label="Toggle password visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#9ba3c0; padding:2px; line-height:0; display:flex; align-items:center;">
+              <svg class="eye-show" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="block"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-hide" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             </button>
           </span>
         </div>
@@ -10163,9 +10163,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Show/hide toggle for password inputs. Stored bcrypt hashes can't be
   // reversed so we can't reveal an existing password — this only flips
   // the input type so the operator can verify what they just typed in
-  // a new-password field. The button is wrapped in a .pw-wrap span and
-  // contains two SVGs (eye + eye-with-slash); we just swap which one is
-  // visible based on the current input.type.
+  // a new-password field. Mirrors the login.php toggle exactly so the
+  // eye icons feel identical across pages: same 15px SVGs, same path,
+  // same display attribute swap pattern.
   function togglePasswordField(btn) {
     const wrap = btn.closest('.pw-wrap');
     if (!wrap) return;
@@ -10175,8 +10175,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     input.type = wasHidden ? 'text' : 'password';
     const showEye = btn.querySelector('.eye-show');
     const hideEye = btn.querySelector('.eye-hide');
-    if (showEye) showEye.style.display = wasHidden ? 'none' : '';
-    if (hideEye) hideEye.style.display = wasHidden ? '' : 'none';
+    if (showEye) showEye.style.display = wasHidden ? 'none' : 'block';
+    if (hideEye) hideEye.style.display = wasHidden ? 'block' : 'none';
     btn.setAttribute('aria-label', wasHidden ? 'Hide password' : 'Show password');
   }
 
@@ -10297,16 +10297,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
           <span class="pw-wrap" style="display:block; position:relative;">
             <input id="udetail-newpw" type="password" placeholder="New password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
-            <button type="button" onclick="togglePasswordField(this)" aria-label="Show password" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:4px; color:var(--text-muted); display:flex; align-items:center;">
-              <svg class="eye-show" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg class="eye-hide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <button type="button" onclick="togglePasswordField(this)" aria-label="Toggle password visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#9ba3c0; padding:2px; line-height:0; display:flex; align-items:center;">
+              <svg class="eye-show" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="block"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-hide" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             </button>
           </span>
           <span class="pw-wrap" style="display:block; position:relative;">
             <input id="udetail-newpw-conf" type="password" placeholder="Confirm password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
-            <button type="button" onclick="togglePasswordField(this)" aria-label="Show password" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; padding:4px; color:var(--text-muted); display:flex; align-items:center;">
-              <svg class="eye-show" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              <svg class="eye-hide" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <button type="button" onclick="togglePasswordField(this)" aria-label="Toggle password visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#9ba3c0; padding:2px; line-height:0; display:flex; align-items:center;">
+              <svg class="eye-show" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="block"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="eye-hide" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             </button>
           </span>
         </div>
@@ -12517,6 +12517,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderCommissionsDashboard();
   }
 
+  // Toggle a single commission row between paid and pending. Hits
+  // set_commission_status, then mutates the matching entry in
+  // commissionsData so the UI reflects without a full reload — and so
+  // the year/month buckets in the Earnings-over-time card recompute on
+  // the next render. event.stopPropagation() is the caller's job; this
+  // function only handles the network + state update.
+  async function setCommissionPaid(id, paid) {
+    const status = paid ? 'paid' : 'pending';
+    const r = await apiCall('set_commission_status', { id, status });
+    if (!r.success) { alert(r.error || 'Failed to update commission status.'); return; }
+    const row = commissionsData.find(x => x.id === id);
+    if (row) {
+      row.status  = status;
+      row.paid_at = paid ? new Date().toISOString() : null;
+    }
+    renderCommissionsDashboard();
+  }
+
   // Selected year for the "Earnings over time" card. null = pick the most
   // recent year with data (clamped at render time once we know what years
   // actually have rows under the current filters).
@@ -12714,9 +12732,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const wbClick = `event.stopPropagation(); location.hash='${wbHash}'`;
           const product = esc(r.product_name) || '—';
           const isEst = +r.is_estimate === 1;
-          // Compact 4-column row: workbook pill | role pill + rate | client total | commission $
+          const isPaid = r.status === 'paid';
+          // Paid state styling: green-tinted background, green left-edge
+          // accent, and a "✓ Paid" badge replacing the "Mark paid" button.
+          // Pending rows show the Mark Paid action so the operator can flip
+          // a row right where they're already looking. Clicking the badge
+          // (when paid) reverts to pending — handy for fixing miss-clicks.
+          const rowBg     = isPaid ? 'rgba(22,163,74,0.12)'     : 'var(--surface)';
+          const rowBorder = isPaid ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent';
+          const paidTitle = isPaid && r.paid_at
+            ? `Paid ${new Date(r.paid_at).toLocaleDateString()} — click to mark pending`
+            : 'Click to mark this commission as paid';
+          // Compact 5-column row: workbook | role+rate | client total | commission $ | paid toggle
           return `
-            <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:var(--surface);">
+            <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:${rowBg}; border:${rowBorder}; border-left-width:${isPaid ? '3px' : '1px'};">
               <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="max-width:100%; min-width:0;">
                 <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
               </span>
@@ -12730,6 +12759,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span style="font-size:13px; color:var(--success, #16a34a); font-weight:600; font-variant-numeric:tabular-nums; text-align:right; min-width:74px; white-space:nowrap;">
                 ${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate — Client Cost not yet wired">est</span>' : ''}
               </span>
+              <button type="button"
+                onclick="event.stopPropagation(); setCommissionPaid(${r.id}, ${isPaid ? 'false' : 'true'})"
+                title="${paidTitle}"
+                style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; ${isPaid
+                  ? 'background:#16a34a; color:#fff; border:1px solid #16a34a;'
+                  : 'background:transparent; color:var(--text-muted); border:1px solid var(--border);'}">
+                ${isPaid
+                  ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Paid'
+                  : 'Mark paid'}
+              </button>
             </div>`;
         }).join('');
         return `
