@@ -2328,8 +2328,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .pricing-landed-row.profit-row .value { color: var(--success); }
     .pricing-landed-row.profit-row .value.negative { color: var(--danger); }
+    .pricing-landed-sale-wrap {
+      position: relative; width: 140px;
+    }
+    .pricing-landed-dollar-prefix {
+      position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+      color: var(--text-muted); font-size: 14px; font-weight: 700;
+      pointer-events: none; font-variant-numeric: tabular-nums;
+    }
     .pricing-landed-sale-input {
-      width: 140px; height: 32px; padding: 0 12px;
+      width: 100%; height: 32px;
+      /* Left padding clears the $ prefix; right padding keeps tabular digits
+         off the border. */
+      padding: 0 12px 0 24px;
       background: var(--surface2); border: 1px solid var(--border);
       border-radius: 7px; color: var(--text);
       font-size: 14px; font-weight: 700; font-family: inherit;
@@ -5052,9 +5063,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="pricing-landed-row">
               <span class="label">Sale Per (USD)</span>
-              <input type="number" id="ps-sale-per" class="pricing-landed-sale-input"
-                     min="0" step="0.01" placeholder="—"
-                     oninput="onPricingSalePerInput()" />
+              <div class="pricing-landed-sale-wrap">
+                <span class="pricing-landed-dollar-prefix">$</span>
+                <input type="number" id="ps-sale-per" class="pricing-landed-sale-input"
+                       min="0" step="0.01" placeholder="—"
+                       oninput="onPricingSalePerInput()" />
+              </div>
             </div>
             <div class="pricing-landed-row">
               <span class="label">Total USD</span>
