@@ -2328,6 +2328,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .pricing-landed-row.profit-row .value { color: var(--success); }
     .pricing-landed-row.profit-row .value.negative { color: var(--danger); }
+    .landed-per-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .landed-per-math {
+      font-size: 11px; color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
     .pricing-landed-sale-wrap {
       position: relative; width: 140px;
     }
@@ -5054,7 +5059,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div class="pricing-landed-body">
             <div class="pricing-landed-row">
-              <span class="label">Landed Per (USD)</span>
+              <div class="landed-per-stack">
+                <span class="label">Landed Per (USD)</span>
+                <span class="landed-per-math" id="ps-landed-math"></span>
+              </div>
               <span class="value" id="ps-landed-per">—</span>
             </div>
             <div class="pricing-landed-row">
@@ -9722,6 +9730,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(landedMin, landedMax, landedIsRange) : '—';
     if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(suggestedMin, suggestedMax, suggestedIsRange) : '—';
     if (e('ps-landed-total'))  e('ps-landed-total').textContent  = landedTotal > 0 ? '$' + fmt2(landedTotal) : '—';
+    // Inline math under the Landed Per label: "$prodTotal/qty + $shipTotal/qty"
+    if (e('ps-landed-math')) {
+      const productTotalForLanded = tierQty > 0 ? tierQty * avgPerUnitUsd : 0;
+      const fmtCompact = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const fmtQty     = q => q.toLocaleString('en-US');
+      e('ps-landed-math').textContent = (tierQty > 0 && productTotalForLanded > 0)
+        ? `${fmtCompact(productTotalForLanded)} / ${fmtQty(tierQty)} + ${fmtCompact(shippingUsd)} / ${fmtQty(tierQty)}`
+        : '';
+    }
     if (e('ps-total-usd'))     e('ps-total-usd').textContent     = !isNaN(totalUsd) ? '$' + fmt2(totalUsd) : '—';
     if (e('ps-order-profit')) {
       const profitEl = e('ps-order-profit');
@@ -11480,19 +11497,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     catch(e) {
       console.error('[MS fillWorkbook]', e);
       _filling = false;
-      // Show a recoverable error rather than a silent blank screen
+      // Show a recoverable error rather than a silent blank screen.
+      // Surface the raw error message + first stack frame in the UI so we
+      // can diagnose without making the user dig in DevTools.
       const t = document.getElementById('header-title');
       if (t) t.textContent = 'Error loading workbook';
       showView('view-workbook');
       const wv = document.getElementById('view-workbook');
       if (wv && !wv.querySelector('.ms-load-error')) {
+        const errMsg   = (e && e.message) ? e.message : String(e);
+        const errStack = (e && e.stack)   ? String(e.stack).split('\n').slice(0, 4).join('\n') : '';
+        const escape   = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const d = document.createElement('div');
         d.className = 'ms-load-error';
         d.style.cssText = 'padding:48px 32px;text-align:center;';
         d.innerHTML = `<p style="font-size:16px;font-weight:700;color:var(--danger);">Could not load this workbook</p>
           <p style="margin-top:8px;color:var(--text-muted);font-size:13px;">An unexpected error occurred. Your data has not been lost.</p>
-          <a href="#" onclick="document.querySelector('.ms-load-error')?.remove();location.hash=''"
-             style="display:inline-block;margin-top:16px;font-size:13px;color:var(--accent);">← Back to All Workbooks</a>`;
+          <pre style="display:inline-block;margin-top:14px;padding:10px 14px;background:rgba(251,113,133,0.08);border:1px solid rgba(251,113,133,0.3);border-radius:6px;color:var(--text);font-size:11px;text-align:left;max-width:720px;white-space:pre-wrap;word-break:break-word;">${escape(errMsg)}${errStack ? '\n\n' + escape(errStack) : ''}</pre>
+          <div><a href="#" onclick="document.querySelector('.ms-load-error')?.remove();location.hash=''"
+             style="display:inline-block;margin-top:16px;font-size:13px;color:var(--accent);">← Back to All Workbooks</a></div>`;
         wv.prepend(d);
       }
     }
