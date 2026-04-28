@@ -1167,6 +1167,47 @@ switch ($action) {
         echo json_encode(['success' => true, 'diagnostic' => $result], JSON_PRETTY_PRINT);
         break;
 
+    // List every revision of one workbook with its byte-size and short summary
+    // so we can spot when data got truncated and pick a good restore point.
+    case 'diagnose_revisions':
+        $wbId = intval($_GET['workbook_id'] ?? $input['workbook_id'] ?? 0);
+        if ($wbId <= 0) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id required']);
+            break;
+        }
+        $live = $pdo->prepare("SELECT id, product_name, deleted_at, updated_at, CHAR_LENGTH(detail_json) AS detail_size FROM workbooks WHERE id = ?");
+        $live->execute([$wbId]);
+        $liveRow = $live->fetch();
+
+        $rq = $pdo->prepare("
+            SELECT id, workbook_id, changed_by, created_at,
+                   CHAR_LENGTH(detail_json) AS detail_size,
+                   detail_json
+            FROM workbook_revisions
+            WHERE workbook_id = ?
+            ORDER BY created_at DESC
+            LIMIT 100
+        ");
+        $rq->execute([$wbId]);
+        $revs = $rq->fetchAll();
+
+        // Trim detail_json to a short summary so the response stays small.
+        foreach ($revs as &$r) {
+            $d = json_decode($r['detail_json'], true);
+            $r['has_tiers']   = (is_array($d) && !empty($d['tiers']))   ? count($d['tiers'])   : 0;
+            $r['has_rfq']     = (is_array($d) && !empty($d['rfq']))     ? count($d['rfq'])     : 0;
+            $r['has_orders']  = (is_array($d) && !empty($d['orders']))  ? count($d['orders'])  : 0;
+            $r['has_product'] = (is_array($d) && !empty($d['product'])) ? (string)$d['product'] : '';
+            unset($r['detail_json']);
+        }
+
+        echo json_encode([
+            'success'   => true,
+            'workbook'  => $liveRow,
+            'revisions' => $revs
+        ], JSON_PRETTY_PRINT);
+        break;
+
     case 'restore_workbook':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
@@ -2259,6 +2300,6 @@ switch ($action) {
             'get_commissions', 'set_commission_status', 'recompute_commissions',
             'update_presence', 'get_presence', 'clear_presence',
             'push_cell_value', 'pull_cell_values',
-            'diagnose_workbook',
+            'diagnose_workbook', 'diagnose_revisions',
         ]]);
 }
