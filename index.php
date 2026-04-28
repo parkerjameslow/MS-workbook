@@ -7657,7 +7657,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Sync qty into first tier row:
     //   • Variants present → use grand total qty (sum of all variants)
     //   • Insert-only mode → use first RFQ row's qty (legacy behavior)
-    const ps = _lastRfqPriceSummary;
     let rfqQty = '';
     if (ps && ps.hasVariants && ps.grandQty > 0) {
       rfqQty = String(ps.grandQty);
