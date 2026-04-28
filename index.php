@@ -4890,6 +4890,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="pricing-cost-row-label">Unit Price (USD)</span>
               <span class="pricing-cost-row-value" id="ps-unit-usd">—</span>
             </div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Price Per (RMB)</span>
+              <span class="pricing-cost-row-value" id="ps-price-per-rmb">—</span>
+            </div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Price Per (USD)</span>
+              <span class="pricing-cost-row-value" id="ps-price-per-usd">—</span>
+            </div>
             <div class="pricing-cost-subtotal">
               <div class="pricing-cost-row">
                 <span class="pricing-cost-row-label">Total Product Cost</span>
@@ -7420,11 +7428,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalsLabel = totalsRow?.querySelector('td:nth-child(4)');
     if (totalsLabel) totalsLabel.textContent = showBreakdown ? 'GRAND TOTAL' : 'TOTALS';
 
-    document.getElementById('rfq-total-qty').textContent     = grandQty     ? grandQty.toLocaleString('en-US') : '—';
-    document.getElementById('rfq-total-rmb').textContent     = grandRmb     ? '¥ ' + fmt(grandRmb)             : '—';
-    document.getElementById('rfq-total-usd-sum').textContent = grandUsdUnit ? '$'  + fmt(grandUsdUnit)         : '—';
-    document.getElementById('rfq-total-usd').textContent     = grandUsd     ? '$'  + fmt(grandUsd)             : '—';
-    document.getElementById('rfq-max-lead').textContent      = maxLead      ? maxLead + ' days'                : '—';
+    // Variant-aware price summary: when variants exist, the unit-price columns
+    // display the price-per (single value) or a range (min–max) instead of a sum.
+    // Only consider entries with an actual price for the min/max calculation.
+    const hasVariants = !!document.querySelector('#rfq-body tr[data-rfq-parent]');
+    const PRICE_EPS   = 0.005;
+    const pricedItems = itemSummaries.filter(s => s.rmb > 0);
+    let rmbMin = 0, rmbMax = 0, usdMin = 0, usdMax = 0, isRange = false;
+    if (pricedItems.length > 0) {
+      rmbMin = Math.min(...pricedItems.map(s => s.rmb));
+      rmbMax = Math.max(...pricedItems.map(s => s.rmb));
+      usdMin = rmbMin / USD_TO_RMB;
+      usdMax = rmbMax / USD_TO_RMB;
+      isRange = hasVariants && (rmbMax - rmbMin > PRICE_EPS);
+    }
+
+    _lastRfqPriceSummary = {
+      hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange,
+      grandQty, grandRmb, grandUsdUnit
+    };
+
+    document.getElementById('rfq-total-qty').textContent = grandQty ? grandQty.toLocaleString('en-US') : '—';
+
+    // Unit Price (RMB): variant mode → single price or range; else → sum (legacy "insert" behavior)
+    const rmbCell = document.getElementById('rfq-total-rmb');
+    if (rmbCell) {
+      if (hasVariants && pricedItems.length > 0) {
+        rmbCell.textContent = isRange
+          ? '¥ ' + fmt(rmbMin) + '–¥ ' + fmt(rmbMax)
+          : '¥ ' + fmt(rmbMin);
+      } else {
+        rmbCell.textContent = grandRmb ? '¥ ' + fmt(grandRmb) : '—';
+      }
+    }
+
+    // Unit Price (USD): mirrors RMB column logic
+    const usdCell = document.getElementById('rfq-total-usd-sum');
+    if (usdCell) {
+      if (hasVariants && pricedItems.length > 0) {
+        usdCell.textContent = isRange
+          ? '$' + fmt(usdMin) + '–$' + fmt(usdMax)
+          : '$' + fmt(usdMin);
+      } else {
+        usdCell.textContent = grandUsdUnit ? '$' + fmt(grandUsdUnit) : '—';
+      }
+    }
+
+    document.getElementById('rfq-total-usd').textContent = grandUsd ? '$' + fmt(grandUsd) : '—';
+    document.getElementById('rfq-max-lead').textContent  = maxLead  ? maxLead + ' days'   : '—';
 
     applyRfqRmbToTiers(grandRmb);
   }  // end _recalcRfqTotalsInner
@@ -7767,6 +7818,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let wbTierCount = 0;
   let _syncing = false;
   let _selectedTierId = 1;
+
+  // ── RFQ price summary stash (consumed by Pricing tab + Tiered Pricing) ──
+  // Computed inside _recalcRfqTotalsInner; null until first run.
+  // Shape: { hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange, grandQty, grandRmb, grandUsdUnit }
+  let _lastRfqPriceSummary = null;
 
   function addWbTierRow(qty = '', unitPrice = '') {
     wbTierCount++;
@@ -9205,6 +9261,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Pricing Tab Summary Renderer ──────────────────────────────────────── */
   function renderPricingTab() {
+    // Refresh RFQ totals + price summary so this render sees current values
+    // (covers cases where Pricing tab is opened before any RFQ input fires).
+    recalcRfqTotals();
+
     // Quote Reference — read live from rfq-body
     const rfqRows = document.querySelectorAll('#rfq-body tr');
     const refEl = document.getElementById('pricing-quote-ref-body');
@@ -9286,6 +9346,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-unit-rmb'))     e('ps-unit-rmb').textContent     = fmtRmb(tierRmb);
     if (e('ps-unit-usd'))     e('ps-unit-usd').textContent     = tierUsd > 0 ? '$' + tierUsd.toFixed(4) : '—';
     if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
+
+    // Price Per (RMB / USD): mirrors RFQ Grand Total column logic — single value
+    // when variants share a price, range when they differ. Falls back to the
+    // tier's unit price when no priced variants exist (insert-only mode).
+    const fmt2 = v => v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const ps   = _lastRfqPriceSummary;
+    let ppRmbText = '—', ppUsdText = '—';
+    if (ps && ps.hasVariants && ps.rmbMin > 0) {
+      ppRmbText = ps.isRange ? '¥' + fmt2(ps.rmbMin) + '–¥' + fmt2(ps.rmbMax) : '¥' + fmt2(ps.rmbMin);
+      ppUsdText = ps.isRange ? '$' + fmt2(ps.usdMin) + '–$' + fmt2(ps.usdMax) : '$' + fmt2(ps.usdMin);
+    } else if (tierRmb > 0) {
+      ppRmbText = '¥' + fmt2(tierRmb);
+      ppUsdText = '$' + fmt2(tierUsd);
+    }
+    if (e('ps-price-per-rmb')) e('ps-price-per-rmb').textContent = ppRmbText;
+    if (e('ps-price-per-usd')) e('ps-price-per-usd').textContent = ppUsdText;
 
     // Shipping data from freight results
     const mode = document.getElementById('freight-mode')?.value || 'slow';
