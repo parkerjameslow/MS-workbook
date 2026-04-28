@@ -5570,6 +5570,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <option value="all">All Roles</option>
               <option value="account_manager">Account Manager</option>
               <option value="salesperson">Salesperson</option>
+              <option value="operations">Operations</option>
             </select>
           </span>
         </label>
@@ -5905,10 +5906,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <textarea id="modal-client-shipping" placeholder="Street, City, State ZIP" rows="3"></textarea>
         </div>
       </div>
-      <!-- Account Manager + Salesperson assignment. Drives commission tracking
-           on the Commissions dashboard once workbooks for this client are
-           promoted/ordered. Either or both can be left as "—" (unassigned). -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;">
+      <!-- Account Manager + Salesperson + Operations assignment. Drives
+           commission tracking on the Commissions dashboard once workbooks
+           for this client are promoted/ordered. All three can be left as
+           "— Unassigned —". Operations is the third commission slot —
+           Karen lives there for now; rate defaults to 5%. AM/SP defaults
+           are 0% (set the % manually on the client detail page after
+           creating). -->
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-top:16px;">
         <div class="modal-field" style="margin-bottom:0;">
           <label>Account Manager</label>
           <!-- ship-select-wrap renders the same custom triangle arrow used
@@ -5929,6 +5934,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <option value="">— Unassigned —</option>
               <option value="Parker Low">Parker Low</option>
               <option value="Jackson Hollberg">Jackson Hollberg</option>
+            </select>
+          </span>
+        </div>
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Operations</label>
+          <span class="ship-select-wrap" style="display:block; width:100%;">
+            <select id="modal-client-op" style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:32px; cursor:pointer;">
+              <option value="">— Unassigned —</option>
+              <option value="Karen">Karen</option>
             </select>
           </span>
         </div>
@@ -8463,15 +8477,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         email: c.email || '',
         phone: c.phone || '',
         primary_contact: c.primary_contact || '',
+        // Optional secondary POC — null/blank when not set, just like the
+        // primary fields. Always defined locally so input handlers don't
+        // have to existence-check before writing.
+        email2:           c.email2           || '',
+        phone2:           c.phone2           || '',
+        primary_contact2: c.primary_contact2 || '',
         billing_address: c.billing_address || '',
         shipping_address: c.shipping_address || '',
         notes: c.notes || '',
-        account_manager: c.account_manager || '',
-        salesperson:     c.salesperson     || '',
+        account_manager:   c.account_manager   || '',
+        salesperson:       c.salesperson       || '',
+        operations_person: c.operations_person || '',
         // Per-role commission rate overrides. NULL on the server → '' here →
-        // empSelect renders an empty input → server falls back to default 20%.
+        // empSelect renders an empty input → server falls back to the role's
+        // default rate (AM/SP → 0%, Operations → 5%).
         account_manager_pct: (c.account_manager_pct === null || c.account_manager_pct === undefined) ? '' : c.account_manager_pct,
-        salesperson_pct:     (c.salesperson_pct     === null || c.salesperson_pct     === undefined) ? '' : c.salesperson_pct
+        salesperson_pct:     (c.salesperson_pct     === null || c.salesperson_pct     === undefined) ? '' : c.salesperson_pct,
+        operations_pct:      (c.operations_pct      === null || c.operations_pct      === undefined) ? '' : c.operations_pct
       };
     });
 
@@ -9717,7 +9740,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Populate local state immediately so the UI renders right away ──
     clientData[name] = [];
-    clientDetails[name] = { id: null, email, phone, primary_contact: contact, billing_address: billing, shipping_address: shipping, notes: '', account_manager: am, salesperson: sp, account_manager_pct: '', salesperson_pct: '' };
+    clientDetails[name] = { id: null, email, phone, primary_contact: contact, email2: '', phone2: '', primary_contact2: '', billing_address: billing, shipping_address: shipping, notes: '', account_manager: am, salesperson: sp, operations_person: '', account_manager_pct: '', salesperson_pct: '', operations_pct: '' };
     rebuildSidebar(); // handles nav items (with avatar/star/delete) + modal dropdown
 
     // ── Close modal and navigate immediately — user sees the page now ──
@@ -10364,11 +10387,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!clientDetails[clientName]) clientDetails[clientName] = {};
     clientDetails[clientName][key] = el.value;
     saveClientDetail(clientName);
-    // AM/SP assignment OR rate change → recompute commissions so the
-    // dashboard reflects the new ownership/rate without a page reload.
-    // Fire-and-forget; recompute is idempotent and UPSERTs pending rows.
-    if (key === 'account_manager'     || key === 'salesperson' ||
-        key === 'account_manager_pct' || key === 'salesperson_pct') {
+    // AM/SP/Operations assignment OR rate change → recompute commissions
+    // so the dashboard reflects the new ownership/rate without a page
+    // reload. Fire-and-forget; recompute is idempotent and UPSERTs
+    // pending rows.
+    if (key === 'account_manager'     || key === 'salesperson'     || key === 'operations_person' ||
+        key === 'account_manager_pct' || key === 'salesperson_pct' || key === 'operations_pct') {
       apiCall('recompute_commissions').then(() => {
         if (typeof loadCommissions === 'function') loadCommissions();
       }).catch(() => {});
@@ -10386,15 +10410,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         email: d.email,
         phone: d.phone,
         primary_contact: d.primary_contact,
+        email2:           d.email2           || '',
+        phone2:           d.phone2           || '',
+        primary_contact2: d.primary_contact2 || '',
         billing_address: d.billing_address,
         shipping_address: d.shipping_address,
         notes: d.notes,
         account_manager:     d.account_manager     || '',
         salesperson:         d.salesperson         || '',
-        // Per-role rate overrides. Empty string → server stores NULL → helper
-        // falls back to the default 20%. "0" stays a real zero (no commission).
+        operations_person:   d.operations_person   || '',
+        // Per-role rate overrides. Empty string → server stores NULL →
+        // helper falls back to the role's default (AM/SP → 0%,
+        // Operations → 5%). "0" stays a real zero (no commission).
         account_manager_pct: (d.account_manager_pct === undefined || d.account_manager_pct === null) ? '' : d.account_manager_pct,
-        salesperson_pct:     (d.salesperson_pct     === undefined || d.salesperson_pct     === null) ? '' : d.salesperson_pct
+        salesperson_pct:     (d.salesperson_pct     === undefined || d.salesperson_pct     === null) ? '' : d.salesperson_pct,
+        operations_pct:      (d.operations_pct      === undefined || d.operations_pct      === null) ? '' : d.operations_pct
       });
     }, 800);
   }
@@ -10470,20 +10500,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input class="cdc-value" type="text" value="${val}" placeholder="${placeholder}" oninput="${handler}" />
       </div>`;
     };
-    // Employee dropdown for Account Manager / Salesperson. Drives commission
-    // tracking — when a workbook for this client is promoted, the AM/SP
-    // currently set here gets a commission row written. The neighboring
-    // percent input is the per-client commission rate override (blank = use
-    // the default 20%).
+    // Employee dropdown for AM / Salesperson / Operations. Drives commission
+    // tracking — when a workbook for this client is promoted, whoever is
+    // assigned here gets a commission row written. The neighboring percent
+    // input is the per-client commission rate override (blank = use the
+    // role's default rate, indicated by the placeholder).
+    //
+    // `key` selects the role:
+    //   'account_manager'   — AM dropdown (Parker / Jackson), default 0%
+    //   'salesperson'       — SP dropdown (Parker / Jackson), default 0%
+    //   'operations_person' — Operations dropdown (Karen),    default 5%
     const empSelect = (key, label) => {
       const cur    = (d[key] || '').trim();
-      const pctKey = key + '_pct';
+      // Older sibling fields use `<role>_pct`; the operations field is
+      // stored on `operations_person` so we strip the `_person` suffix
+      // before tacking on `_pct` (otherwise we'd save into a phantom
+      // `operations_person_pct` column).
+      const pctKey = (key === 'operations_person' ? 'operations' : key) + '_pct';
       // Read raw value first so 0 (explicit "no commission") survives.
       // Also handle DECIMAL columns which come back as strings like "20.00".
       const pctRaw = d[pctKey];
       const pctVal = (pctRaw === null || pctRaw === undefined || pctRaw === '')
                    ? '' : String(parseFloat(pctRaw));
-      const opt    = (v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v || '— Unassigned —'}</option>`;
+      // Per-role configuration: the people you can pick + the default rate
+      // shown as placeholder when the override is blank. Karen lives alone
+      // in the Operations slot for now; the array makes it trivial to
+      // grow that list later without changing this helper.
+      let people, defaultPct, defaultLabel;
+      if (key === 'operations_person') {
+        people       = ['Karen'];
+        defaultPct   = '5';
+        defaultLabel = '5%';
+      } else {
+        people       = ['Parker Low', 'Jackson Hollberg'];
+        defaultPct   = '0';
+        defaultLabel = '0% (set manually)';
+      }
+      const opt        = (v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v || '— Unassigned —'}</option>`;
       const handler    = `onClientDetailChange(this,'${enc}','${key}')`;
       const pctHandler = `onClientDetailChange(this,'${enc}','${pctKey}')`;
       // Wrap the select in ship-select-wrap so we get the same custom triangle
@@ -10501,14 +10554,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <select class="cdc-value" onchange="${handler}"
               style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer; height:36px; line-height:1.2; box-sizing:border-box;">
               ${opt('')}
-              ${opt('Parker Low')}
-              ${opt('Jackson Hollberg')}
+              ${people.map(opt).join('')}
             </select>
           </span>
           <div style="position:relative; width:86px; flex-shrink:0; height:36px;"
-               title="Commission rate for this role on this client. Leave blank to use the default 20%.">
+               title="Commission rate for this role on this client. Leave blank to use the role default (${defaultLabel}).">
             <input class="cdc-value" type="number" step="0.01" min="0" max="100"
-              value="${pctVal}" placeholder="20"
+              value="${pctVal}" placeholder="${defaultPct}"
               oninput="${pctHandler}"
               style="padding-right:22px; text-align:right; font-variant-numeric:tabular-nums; height:36px; line-height:1.2; box-sizing:border-box;" />
             <span style="position:absolute; right:9px; top:50%; transform:translateY(-50%);
@@ -10524,11 +10576,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="cdc-left">
           <div class="cdc-name">${clientName}</div>
           <div class="cdc-fields">
-            ${field('email',           'Email',            'client@example.com')}
-            ${field('phone',           'Phone',            '+1 (555) 000-0000')}
-            ${field('primary_contact', 'Primary Contact',  'Contact name')}
-            ${empSelect('account_manager', 'Account Manager')}
-            ${empSelect('salesperson',     'Salesperson')}
+            ${field('email',            'Email',            'client@example.com')}
+            ${field('phone',            'Phone',            '+1 (555) 000-0000')}
+            ${field('primary_contact',  'Primary Contact',  'Contact name')}
+            ${field('email2',           'Email 2',          'second@example.com')}
+            ${field('phone2',           'Phone 2',          '+1 (555) 000-0000')}
+            ${field('primary_contact2', 'Contact 2',        'Second contact name')}
+            ${empSelect('account_manager',   'Account Manager')}
+            ${empSelect('salesperson',       'Salesperson')}
+            ${empSelect('operations_person', 'Operations')}
             ${field('billing_address', 'Billing Address',  'Street, City, State ZIP', true)}
             ${field('shipping_address','Shipping Address', 'Same as billing or different', true)}
             ${field('notes',           'Notes',            'Internal notes…', true)}
@@ -12242,6 +12298,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderCommissionsDashboard();
   }
 
+  // Optional focus on a single employee in the Earnings-over-time card —
+  // clicking a legend chip filters the chart and dims the per-individual
+  // rows. Click again (or "Clear focus") to restore the team view.
+  let _commTimeFocusEmp = null;
+  function setCommTimeFocusEmp(name) {
+    if (!name || _commTimeFocusEmp === name) {
+      _commTimeFocusEmp = null;
+    } else {
+      _commTimeFocusEmp = name;
+    }
+    renderCommissionsDashboard();
+  }
+
+  // Deterministic per-employee swatch using the same HSL hash trick as
+  // _clientChipStyle, but tuned for solid bar fills (saturated mid-tone)
+  // rather than translucent chips. Same name → same color across renders.
+  function _employeeSwatch(name) {
+    const safe = (name || '—').toString();
+    let hash = 0;
+    for (let i = 0; i < safe.length; i++) {
+      hash = ((hash << 5) - hash) + safe.charCodeAt(i);
+      hash |= 0;
+    }
+    const hue = Math.abs(hash) % 360;
+    return {
+      fill: `hsl(${hue}, 62%, 52%)`,
+      tint: `hsl(${hue}, 62%, 92%)`,
+      ink:  `hsl(${hue}, 55%, 28%)`,
+    };
+  }
+
   async function renderCommissionsView() {
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const navLink = document.getElementById('nav-commissions-link');
@@ -12322,24 +12409,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const empMap = {};
     rows.forEach(r => {
       const e = r.employee || '—';
-      if (!empMap[e]) empMap[e] = { am: 0, sp: 0, total: 0, count: 0 };
+      if (!empMap[e]) empMap[e] = { am: 0, sp: 0, op: 0, total: 0, count: 0 };
       const amt = parseFloat(r.commission_amount) || 0;
       empMap[e].total += amt;
       empMap[e].count += 1;
-      if (r.role === 'account_manager') empMap[e].am += amt;
-      else if (r.role === 'salesperson') empMap[e].sp += amt;
+      if      (r.role === 'account_manager') empMap[e].am += amt;
+      else if (r.role === 'salesperson')     empMap[e].sp += amt;
+      else if (r.role === 'operations')      empMap[e].op += amt;
     });
     const employees = Object.entries(empMap).sort((a, b) => b[1].total - a[1].total);
 
-    // Role pill (used by the recent-activity table AND the expanded breakdown).
-    // Hoisted above empHtml so the breakdown can call it.
+    // Role pill (used by the recent-activity table AND the expanded
+    // breakdown). Hoisted above empHtml so the breakdown can call it.
+    // Each role gets a distinct color so the eye can sort the rows fast:
+    //   AM       — blue
+    //   Sales    — orange (the brand accent)
+    //   Ops      — green-teal (visually separated from the other two so
+    //              Karen's slice on a stacked bar pops without colliding)
     const rolePill = role => {
-      const isAm = role === 'account_manager';
-      const label = isAm ? 'AM' : 'Sales';
-      const bg = isAm ? 'rgba(107,147,255,0.12)' : 'rgba(232,117,26,0.12)';
-      const fg = isAm ? '#6b93ff' : 'var(--accent)';
-      const bd = isAm ? 'rgba(107,147,255,0.35)' : 'rgba(232,117,26,0.35)';
-      return `<span style="background:${bg}; color:${fg}; border:1px solid ${bd}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; white-space:nowrap;">${label}</span>`;
+      const styles = {
+        account_manager: { label: 'AM',    bg: 'rgba(107,147,255,0.12)', fg: '#6b93ff',           bd: 'rgba(107,147,255,0.35)' },
+        salesperson:     { label: 'Sales', bg: 'rgba(232,117,26,0.12)',  fg: 'var(--accent)',     bd: 'rgba(232,117,26,0.35)'  },
+        operations:      { label: 'Ops',   bg: 'rgba(22,163,74,0.12)',   fg: '#16a34a',           bd: 'rgba(22,163,74,0.35)'   },
+      };
+      const s = styles[role] || { label: role || '—', bg: 'var(--surface2)', fg: 'var(--text-muted)', bd: 'var(--border)' };
+      return `<span style="background:${s.bg}; color:${s.fg}; border:1px solid ${s.bd}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; white-space:nowrap;">${s.label}</span>`;
     };
 
     // Per-employee breakdown (rendered when the card is expanded). Groups
@@ -12445,7 +12539,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   <div style="margin-left:auto; font-size:20px; font-weight:700; color:var(--text);">${fmtUsd(t.total)}</div>
                   ${chevron}
                 </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div style="display:grid; grid-template-columns:repeat(${t.op > 0 ? 3 : 2}, minmax(0, 1fr)); gap:10px;">
                   <div style="padding:8px 10px; border-radius:8px; background:rgba(107,147,255,0.1); border:1px solid rgba(107,147,255,0.2);">
                     <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Account Mgr</div>
                     <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.am)}</div>
@@ -12454,6 +12548,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                     <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Salesperson</div>
                     <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.sp)}</div>
                   </div>
+                  ${t.op > 0 ? `
+                    <div style="padding:8px 10px; border-radius:8px; background:rgba(22,163,74,0.1); border:1px solid rgba(22,163,74,0.25);">
+                      <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Operations</div>
+                      <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.op)}</div>
+                    </div>
+                  ` : ''}
                 </div>
                 ${expanded ? buildEmployeeBreakdown(name) : ''}
               </div>
@@ -12464,12 +12564,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     ` : '';
 
     // ── Earnings over time ──────────────────────────────────────────────
-    // Bucket commissions by month and year using created_at (when the row
-    // was recorded — that's when we *earned* it, regardless of when payout
-    // hit). Selected year drives a 12-bar chart; all years show as totals
-    // strip below so you can see the multi-year picture at a glance.
-    const monthBuckets = {}; // 'YYYY-MM' -> { total, pending, paid }
-    const yearBuckets  = {}; // YYYY      -> { total, pending, paid }
+    // Bucket commissions by month, year, AND employee so the chart can
+    // show per-individual stacks and the "Per individual" section below
+    // can render a mini 12-month chart per person. Status (paid vs
+    // pending) is also tracked so the year-summary strip and tooltips
+    // can still surface the payout split.
+    const monthBuckets    = {}; // 'YYYY-MM' -> { total, pending, paid }
+    const yearBuckets     = {}; // YYYY      -> { total, pending, paid }
+    const monthEmpBuckets = {}; // 'YYYY-MM' -> { [employee]: amount }
+    const yearEmpBuckets  = {}; // YYYY      -> { [employee]: { total, paid, pending } }
+    const allEmployees    = new Set();
     rows.forEach(r => {
       const ts = r.created_at;
       if (!ts) return;
@@ -12479,16 +12583,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const mm   = String(d.getMonth() + 1).padStart(2, '0');
       const key  = `${yyyy}-${mm}`;
       const amt  = parseFloat(r.commission_amount) || 0;
-      if (!monthBuckets[key])  monthBuckets[key]  = { total: 0, pending: 0, paid: 0 };
-      if (!yearBuckets[yyyy])  yearBuckets[yyyy]  = { total: 0, pending: 0, paid: 0 };
+      const emp  = (r.employee || '—').trim() || '—';
+      allEmployees.add(emp);
+      if (!monthBuckets[key])      monthBuckets[key]      = { total: 0, pending: 0, paid: 0 };
+      if (!yearBuckets[yyyy])      yearBuckets[yyyy]      = { total: 0, pending: 0, paid: 0 };
+      if (!monthEmpBuckets[key])   monthEmpBuckets[key]   = {};
+      if (!yearEmpBuckets[yyyy])   yearEmpBuckets[yyyy]   = {};
+      if (!monthEmpBuckets[key][emp])  monthEmpBuckets[key][emp]  = 0;
+      if (!yearEmpBuckets[yyyy][emp])  yearEmpBuckets[yyyy][emp]  = { total: 0, paid: 0, pending: 0 };
       monthBuckets[key].total += amt;
       yearBuckets[yyyy].total += amt;
+      monthEmpBuckets[key][emp] += amt;
+      yearEmpBuckets[yyyy][emp].total += amt;
       if (r.status === 'paid') {
         monthBuckets[key].paid += amt;
         yearBuckets[yyyy].paid += amt;
+        yearEmpBuckets[yyyy][emp].paid += amt;
       } else {
         monthBuckets[key].pending += amt;
         yearBuckets[yyyy].pending += amt;
+        yearEmpBuckets[yyyy][emp].pending += amt;
       }
     });
 
@@ -12513,6 +12627,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const monthsWith = monthValues.filter(m => m.total > 0).length;
     const avgPerMonth = monthsWith > 0 ? yearTot / monthsWith : 0;
 
+    // Order employees by their selected-year contribution (largest first)
+    // so colors and rows below tell a consistent story. Anyone with zero
+    // in the selected year still appears in the legend if they had rows
+    // in *any* year — that way a low-volume month doesn't make a person
+    // visually disappear from the team view.
+    const empOrderForYear = Array.from(allEmployees).sort((a, b) => {
+      const ay = (yearEmpBuckets[selectedYear]?.[a]?.total) || 0;
+      const by = (yearEmpBuckets[selectedYear]?.[b]?.total) || 0;
+      if (by !== ay) return by - ay;
+      return a.localeCompare(b);
+    });
+
     // Year selector — uses the same custom-arrow pattern as the rest of
     // the app's dropdowns. Always include `selectedYear` in the option
     // list even if it has no rows, so the dropdown reflects current state.
@@ -12526,31 +12652,91 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </span>
     `;
 
-    // The chart itself. Each column is a flex-column: $ label on top,
-    // bar at the bottom (anchored via flex-end), month abbr below the
-    // bar. Bars stack pending (orange-ish) above paid (green) so the
-    // ratio is visible per month. min-height ensures a sliver shows
-    // even on tiny months so the column doesn't read as "no data" when
-    // it's actually $5.
+    // Per-employee color legend, ordered like the stack (top -> bottom of
+    // each bar matches left -> right of legend). Click a chip to focus
+    // just that person — drives `_commTimeFocusEmp`.
+    const empLegendHtml = empOrderForYear.length ? `
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+        ${empOrderForYear.map(emp => {
+          const isFocused = _commTimeFocusEmp === emp;
+          const isDimmed  = _commTimeFocusEmp && !isFocused;
+          const sw = _employeeSwatch(emp);
+          return `
+            <button onclick="setCommTimeFocusEmp(${JSON.stringify(emp)})"
+              title="${esc(emp)} — click to focus${isFocused ? ' (click again to clear)' : ''}"
+              style="cursor:pointer; display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-family:inherit; font-size:12px; font-weight:600;
+                     background:${isFocused ? sw.fill : 'var(--surface2)'};
+                     color:${isFocused ? '#fff' : 'var(--text)'};
+                     border:1px solid ${isFocused ? sw.fill : 'var(--border)'};
+                     opacity:${isDimmed ? 0.45 : 1};
+                     transition:opacity 0.1s, transform 0.1s;"
+              onmouseenter="this.style.transform='translateY(-1px)'"
+              onmouseleave="this.style.transform=''">
+              <span style="width:10px; height:10px; border-radius:3px; background:${sw.fill};"></span>
+              <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px;">${esc(emp)}</span>
+            </button>
+          `;
+        }).join('')}
+        ${_commTimeFocusEmp ? `
+          <button onclick="setCommTimeFocusEmp(null)"
+            style="cursor:pointer; padding:4px 10px; border-radius:999px; font-family:inherit; font-size:12px; font-weight:600;
+                   background:transparent; color:var(--text-muted); border:1px dashed var(--border);">
+            Clear focus
+          </button>` : ''}
+      </div>
+    ` : '';
+
+    // The main chart. Each column is a flex-column: $ label on top, bar
+    // at the bottom (anchored via flex-end), month abbr below. Each bar
+    // is now stacked by employee — segments ordered to match the legend
+    // (top of stack = first in legend) so the eye can follow names left
+    // to right, top to bottom. min-height keeps tiny months visible.
     const chartHtml = `
       <div style="display:grid; grid-template-columns:repeat(12, 1fr); gap:6px; height:170px; margin-top:12px;">
         ${monthValues.map((m, idx) => {
-          const heightPct = (m.total / maxMonthTotal) * 100;
-          const paidPctOfBar    = m.total > 0 ? (m.paid    / m.total) * 100 : 0;
-          const pendingPctOfBar = m.total > 0 ? (m.pending / m.total) * 100 : 0;
+          const mmKey = `${selectedYear}-${String(idx + 1).padStart(2, '0')}`;
+          const empMap = monthEmpBuckets[mmKey] || {};
+          // When a person is focused, only their slice contributes to
+          // the visible bar height — everyone else's segments collapse.
+          const visibleTotal = _commTimeFocusEmp
+            ? (empMap[_commTimeFocusEmp] || 0)
+            : m.total;
+          const heightPct = (visibleTotal / maxMonthTotal) * 100;
+
+          // Build per-employee segments in legend order. flex-direction
+          // column-reverse stacks them upward, so reverse the legend
+          // here so the first legend entry sits at the *top* of the
+          // stack (most-prominent person on top).
+          const segs = empOrderForYear
+            .filter(emp => !_commTimeFocusEmp || emp === _commTimeFocusEmp)
+            .map(emp => {
+              const v = empMap[emp] || 0;
+              if (v <= 0) return '';
+              const pctOfBar = visibleTotal > 0 ? (v / visibleTotal) * 100 : 0;
+              const sw = _employeeSwatch(emp);
+              return `<div style="height:${pctOfBar}%; background:${sw.fill};" title="${esc(emp)}: ${esc(fmtUsd(v))}"></div>`;
+            }).reverse().join('');
+
+          // Build a textual tooltip listing every employee with money in
+          // this month, plus the paid/pending split.
+          const empLines = Object.entries(empMap)
+            .filter(([, v]) => v > 0)
+            .sort((a, b) => b[1] - a[1])
+            .map(([emp, v]) => `${emp}: ${fmtUsd(v)}`).join(' · ');
           const tooltip = `${monthAbbr[idx]} ${selectedYear}: ${fmtUsd(m.total)}` +
+                          (empLines ? ` — ${empLines}` : '') +
                           (m.paid > 0    ? ` · paid ${fmtUsd(m.paid)}`       : '') +
                           (m.pending > 0 ? ` · pending ${fmtUsd(m.pending)}` : '');
+          const labelTotal = _commTimeFocusEmp ? visibleTotal : m.total;
           return `
             <div style="display:flex; flex-direction:column; align-items:center; min-width:0;">
               <div style="font-size:9px; color:var(--text-muted); font-variant-numeric:tabular-nums; height:14px; line-height:14px; white-space:nowrap; overflow:hidden;">
-                ${m.total > 0 ? fmtUsd0(m.total) : ''}
+                ${labelTotal > 0 ? fmtUsd0(labelTotal) : ''}
               </div>
               <div style="flex:1; width:100%; display:flex; align-items:flex-end; justify-content:center; padding:2px 0;">
-                <div style="width:80%; max-width:32px; height:${heightPct}%; ${m.total > 0 ? 'min-height:3px;' : ''} display:flex; flex-direction:column-reverse; border-radius:5px 5px 0 0; overflow:hidden; background:var(--surface);"
+                <div style="width:80%; max-width:32px; height:${heightPct}%; ${visibleTotal > 0 ? 'min-height:3px;' : ''} display:flex; flex-direction:column-reverse; border-radius:5px 5px 0 0; overflow:hidden; background:var(--surface);"
                      title="${esc(tooltip)}">
-                  <div style="height:${paidPctOfBar}%; background:var(--success, #16a34a);"></div>
-                  <div style="height:${pendingPctOfBar}%; background:var(--accent);"></div>
+                  ${segs}
                 </div>
               </div>
               <div style="font-size:10px; color:var(--text-muted); margin-top:4px; font-weight:600;">${monthAbbr[idx]}</div>
@@ -12560,26 +12746,101 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     `;
 
-    // All-year totals strip — clickable chips so you can jump between years.
+    // Per-individual section: one row per employee with a 12-month mini
+    // bar chart (their own scale), year total, and paid/pending split.
+    // Each person uses the *same* color as in the main stack so the eye
+    // can track them between the two views without a second mental hop.
+    const perIndividualHtml = empOrderForYear.length ? `
+      <div style="margin-top:20px; padding-top:14px; border-top:1px dashed var(--border);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+          <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">Per individual — ${selectedYear}</div>
+          <div style="font-size:11px; color:var(--text-muted);">Each row scaled to that person's biggest month</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${empOrderForYear.map(emp => {
+            const sw = _employeeSwatch(emp);
+            const empMonths = monthAbbr.map((_, idx) => {
+              const mmKey = `${selectedYear}-${String(idx + 1).padStart(2, '0')}`;
+              return (monthEmpBuckets[mmKey]?.[emp]) || 0;
+            });
+            const empMax = Math.max(0.01, ...empMonths);
+            const empYearStats = yearEmpBuckets[selectedYear]?.[emp] || { total: 0, paid: 0, pending: 0 };
+            const isFocused = _commTimeFocusEmp === emp;
+            const isDimmed  = _commTimeFocusEmp && !isFocused;
+            return `
+              <div style="display:grid; grid-template-columns:minmax(140px, 180px) 1fr minmax(150px, 180px); gap:14px; align-items:center;
+                          padding:8px 10px; border-radius:10px; background:var(--surface2); border:1px solid var(--border);
+                          opacity:${isDimmed ? 0.5 : 1}; transition:opacity 0.1s;">
+                <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                  <span style="width:10px; height:10px; border-radius:3px; background:${sw.fill}; flex-shrink:0;"></span>
+                  <span style="font-weight:600; color:var(--text); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(emp)}">${esc(emp)}</span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(12, 1fr); gap:3px; height:38px;">
+                  ${empMonths.map((v, idx) => {
+                    const h = (v / empMax) * 100;
+                    const tip = v > 0 ? `${monthAbbr[idx]} ${selectedYear}: ${fmtUsd(v)}` : `${monthAbbr[idx]} ${selectedYear}: —`;
+                    return `
+                      <div style="display:flex; flex-direction:column; align-items:center; justify-content:flex-end; min-width:0;" title="${esc(tip)}">
+                        <div style="width:100%; height:${h}%; ${v > 0 ? 'min-height:2px;' : ''} background:${v > 0 ? sw.fill : 'transparent'}; border-radius:3px 3px 0 0;"></div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-variant-numeric:tabular-nums;">
+                  <span style="font-size:14px; font-weight:700; color:var(--text);">${fmtUsd(empYearStats.total)}</span>
+                  <span style="font-size:10px; color:var(--text-muted);">
+                    ${empYearStats.paid > 0    ? `<span style="color:var(--success, #16a34a); font-weight:600;">${fmtUsd0(empYearStats.paid)}</span> paid`       : ''}
+                    ${empYearStats.paid > 0 && empYearStats.pending > 0 ? ' · ' : ''}
+                    ${empYearStats.pending > 0 ? `<span style="color:var(--accent); font-weight:600;">${fmtUsd0(empYearStats.pending)}</span> pending` : ''}
+                    ${empYearStats.total === 0 ? 'No earnings this year' : ''}
+                  </span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    // All-year totals strip — clickable chips so you can jump between
+    // years. Each chip now lists per-employee splits underneath the
+    // year total, so you can see who carried which year at a glance.
     const allYearChips = yearsAvailable.length ? `
       <div style="margin-top:18px; padding-top:14px; border-top:1px dashed var(--border);">
         <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">All years</div>
-        <div style="display:flex; flex-wrap:wrap; gap:8px;">
+        <div style="display:flex; flex-wrap:wrap; gap:10px;">
           ${yearsAvailable.map(y => {
             const isActive = y === selectedYear;
             const tot = yearBuckets[y].total;
+            const empSplits = Object.entries(yearEmpBuckets[y] || {})
+              .filter(([, v]) => v.total > 0)
+              .sort((a, b) => b[1].total - a[1].total);
             return `
               <button onclick="setCommTimeYear(${y})"
-                style="cursor:pointer; padding:8px 14px; border-radius:10px; font-family:inherit;
+                style="cursor:pointer; padding:10px 14px; border-radius:10px; font-family:inherit; text-align:left; min-width:160px;
                        background:${isActive ? 'var(--accent-glow)' : 'var(--surface2)'};
                        border:1px solid ${isActive ? 'color-mix(in srgb, var(--accent) 50%, var(--border))' : 'var(--border)'};
                        color:${isActive ? 'var(--accent)' : 'var(--text)'};
-                       display:inline-flex; flex-direction:column; align-items:flex-start; gap:2px;
+                       display:inline-flex; flex-direction:column; align-items:flex-start; gap:6px;
                        transition:transform 0.1s, box-shadow 0.1s;"
                 onmouseenter="this.style.transform='translateY(-1px)'"
                 onmouseleave="this.style.transform=''">
                 <span style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">${y}</span>
                 <span style="font-size:14px; font-weight:700; font-variant-numeric:tabular-nums;">${fmtUsd0(tot)}</span>
+                ${empSplits.length ? `
+                  <span style="display:flex; flex-direction:column; gap:2px; width:100%;">
+                    ${empSplits.map(([emp, v]) => {
+                      const sw = _employeeSwatch(emp);
+                      return `
+                        <span style="display:flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted); font-weight:500;">
+                          <span style="width:8px; height:8px; border-radius:2px; background:${sw.fill}; flex-shrink:0;"></span>
+                          <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:90px;" title="${esc(emp)}">${esc(emp)}</span>
+                          <span style="margin-left:auto; font-variant-numeric:tabular-nums; color:var(--text); font-weight:600;">${fmtUsd0(v.total)}</span>
+                        </span>
+                      `;
+                    }).join('')}
+                  </span>
+                ` : ''}
               </button>
             `;
           }).join('')}
@@ -12606,12 +12867,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
           <div style="flex:1; min-width:0;">
             <div class="inv-dash-row-title">Earnings over time</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Monthly totals — ${selectedYear}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Monthly totals — ${selectedYear}${_commTimeFocusEmp ? ` · focused on <strong style="color:var(--text);">${esc(_commTimeFocusEmp)}</strong>` : ''}</div>
           </div>
           ${yearSelector}
         </div>
         ${yearSummaryStrip}
+        ${empLegendHtml}
         ${chartHtml}
+        ${perIndividualHtml}
         ${allYearChips}
       </div>
     `;

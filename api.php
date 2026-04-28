@@ -104,9 +104,31 @@ try {
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN salesperson_pct DECIMAL(5,2) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+// Optional third commission role — currently only Karen sits in this slot
+// but the column accepts any name so we can grow the dropdown later
+// without another migration. Default rate is 5% (resolved at compute time
+// when operations_pct is NULL/blank), separate from AM/SP whose defaults
+// dropped to 0% per the operator's request.
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN operations_person VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN operations_pct DECIMAL(5,2) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+// Secondary contact info — clients with two POCs (e.g. ops + finance, or
+// owner + assistant) so we don't have to cram everything into Notes.
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN email2 VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN phone2 VARCHAR(50) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN primary_contact2 VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 
 // Auto-create commissions table.
-//   role           = 'account_manager' | 'salesperson'  (which hat earned this row)
+//   role           = 'account_manager' | 'salesperson' | 'operations'  (which hat earned this row)
 //   employee       = the human's name (e.g. 'Parker Low') — denormalized so a
 //                    later rename on the client doesn't rewrite history
 //   client_total_usd = the dollar amount the client paid for this line, in USD
@@ -124,7 +146,7 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS commissions (
     workbook_id INT DEFAULT NULL,
     sku VARCHAR(255) DEFAULT NULL,
     product_name VARCHAR(255) DEFAULT NULL,
-    role ENUM('account_manager','salesperson') NOT NULL,
+    role ENUM('account_manager','salesperson','operations') NOT NULL,
     employee VARCHAR(255) NOT NULL,
     client_total_usd DECIMAL(12,2) NOT NULL DEFAULT 0,
     commission_rate DECIMAL(5,4) NOT NULL DEFAULT 0.2000,
@@ -139,6 +161,12 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS commissions (
     INDEX idx_status (status),
     INDEX idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// Existing deployments created the commissions table before 'operations'
+// existed in the ENUM; CREATE TABLE IF NOT EXISTS won't widen it. This
+// MODIFY is a no-op when the ENUM already includes 'operations'.
+try {
+    $pdo->exec("ALTER TABLE commissions MODIFY COLUMN role ENUM('account_manager','salesperson','operations') NOT NULL");
+} catch (PDOException $e) { /* enum already includes operations or table missing */ }
 
 // Auto-create portal_tokens table
 $pdo->exec("CREATE TABLE IF NOT EXISTS portal_tokens (
@@ -475,28 +503,37 @@ function ms_order_table_internal(array $items, float $rate): string {
 // item's amount stick on a multi-item promote).
 //
 // $client must be a row from `clients` with id, name, account_manager,
-// salesperson, account_manager_pct, salesperson_pct. The _pct columns are
-// per-client overrides (stored as percent — 20.00 == 20%). When NULL/blank
-// we fall back to $defaultPct.
+// salesperson, operations_person, account_manager_pct, salesperson_pct,
+// operations_pct. The _pct columns are per-client overrides (stored as
+// percent — 20.00 == 20%). When NULL/blank we fall back to a per-role
+// default: AM/SP default to 0%, operations defaults to 5%. The
+// $defaultPct parameter is kept for backwards compat as the AM/SP
+// fallback (callers were passing 20.0 historically; new defaults are
+// applied via per-role overrides below).
 // $clientTotalUsd is the workbook-wide total in USD that the client pays us.
 function ms_record_commissions_for_workbook(
     PDO $pdo, array $client, int $workbookId, ?string $sku,
     ?string $productName, float $clientTotalUsd,
-    int $isEstimate = 1, float $defaultPct = 20.0
+    int $isEstimate = 1, float $defaultPct = 0.0
 ): int {
-    $am = trim((string)($client['account_manager'] ?? ''));
-    $sp = trim((string)($client['salesperson']     ?? ''));
-    if ($am === '' && $sp === '') return 0;
-    if ($clientTotalUsd <= 0)     return 0;
+    $am = trim((string)($client['account_manager']   ?? ''));
+    $sp = trim((string)($client['salesperson']       ?? ''));
+    $op = trim((string)($client['operations_person'] ?? ''));
+    if ($am === '' && $sp === '' && $op === '') return 0;
+    if ($clientTotalUsd <= 0)                   return 0;
 
-    // Resolve per-role rate: NULL/'' on the client → default. Stored as
-    // percent → divide by 100 to get the decimal fraction the table holds.
-    $pctToRate = function ($pct) use ($defaultPct) {
-        $usePct = ($pct === null || $pct === '') ? $defaultPct : (float)$pct;
+    // Resolve per-role rate: NULL/'' on the client → role default. Stored
+    // as percent → divide by 100 to get the decimal fraction the table
+    // holds. AM/SP default to 0% (caller-supplied $defaultPct, which now
+    // defaults to 0.0); operations defaults to 5% — Karen's standard
+    // cut. Override either by setting the matching _pct column.
+    $resolveRate = function ($pct, $roleDefault) {
+        $usePct = ($pct === null || $pct === '') ? $roleDefault : (float)$pct;
         return $usePct / 100.0;
     };
-    $amRate = $pctToRate($client['account_manager_pct'] ?? null);
-    $spRate = $pctToRate($client['salesperson_pct']     ?? null);
+    $amRate = $resolveRate($client['account_manager_pct'] ?? null, $defaultPct);
+    $spRate = $resolveRate($client['salesperson_pct']     ?? null, $defaultPct);
+    $opRate = $resolveRate($client['operations_pct']      ?? null, 5.0);
 
     // ON DUPLICATE KEY UPDATE keeps paid rows frozen via the IF() guard. New
     // rows insert cleanly; pending/estimate rows pick up the latest total
@@ -521,6 +558,7 @@ function ms_record_commissions_for_workbook(
     $roles = [];
     if ($am !== '') $roles[] = ['account_manager', $am, $amRate];
     if ($sp !== '') $roles[] = ['salesperson',     $sp, $spRate];
+    if ($op !== '') $roles[] = ['operations',      $op, $opRate];
     foreach ($roles as [$role, $emp, $rate]) {
         $stmt->execute([
             (int)$client['id'],
@@ -622,12 +660,14 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Client ID required']);
             break;
         }
-        $allowed = ['email', 'phone', 'primary_contact', 'billing_address', 'shipping_address', 'notes',
-                    'account_manager', 'salesperson',
-                    'account_manager_pct', 'salesperson_pct'];
+        $allowed = ['email', 'phone', 'primary_contact',
+                    'email2', 'phone2', 'primary_contact2',
+                    'billing_address', 'shipping_address', 'notes',
+                    'account_manager', 'salesperson', 'operations_person',
+                    'account_manager_pct', 'salesperson_pct', 'operations_pct'];
         // Numeric overrides → NULL when blank so the helper falls back to the
         // default rate. Pre-validate so a stray "abc" can't poison the column.
-        $numericCols = ['account_manager_pct' => true, 'salesperson_pct' => true];
+        $numericCols = ['account_manager_pct' => true, 'salesperson_pct' => true, 'operations_pct' => true];
         $fields = [];
         $params = [];
         foreach ($allowed as $col) {
@@ -1376,7 +1416,7 @@ switch ($action) {
         foreach ($wbAgg as $agg) {
             $cName = $agg['client_name'];
             if (!isset($clientCache[$cName])) {
-                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson, account_manager_pct, salesperson_pct FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson, operations_person, account_manager_pct, salesperson_pct, operations_pct FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
                 $cs->execute([$cName]);
                 $clientCache[$cName] = $cs->fetch() ?: null;
             }
@@ -1414,7 +1454,10 @@ switch ($action) {
     // (handy if the role assignment changed since the row was written —
     // dashboard can show the current owner alongside the historical one).
     case 'get_commissions':
-        $sql = "SELECT cm.*, c.account_manager AS current_account_manager, c.salesperson AS current_salesperson
+        $sql = "SELECT cm.*,
+                       c.account_manager   AS current_account_manager,
+                       c.salesperson       AS current_salesperson,
+                       c.operations_person AS current_operations_person
                 FROM commissions cm
                 LEFT JOIN clients c ON c.id = cm.client_id
                 ORDER BY cm.created_at DESC";
@@ -1497,18 +1540,19 @@ switch ($action) {
             $wb = $pair['workbook_id'];
 
             if (!array_key_exists($cn, $clientCache)) {
-                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson, account_manager_pct, salesperson_pct FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+                $cs = $pdo->prepare("SELECT id, name, account_manager, salesperson, operations_person, account_manager_pct, salesperson_pct, operations_pct FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
                 $cs->execute([$cn]);
                 $clientCache[$cn] = $cs->fetch() ?: null;
             }
             $client = $clientCache[$cn];
             if (!$client) continue;
 
-            // No AM and no SP → no commissions to record. Cheap short-circuit
-            // before we hit the workbooks table.
-            $am = trim((string)($client['account_manager'] ?? ''));
-            $sp = trim((string)($client['salesperson']     ?? ''));
-            if ($am === '' && $sp === '') continue;
+            // No AM, SP, or Operations → no commissions to record. Cheap
+            // short-circuit before we hit the workbooks table.
+            $am = trim((string)($client['account_manager']   ?? ''));
+            $sp = trim((string)($client['salesperson']       ?? ''));
+            $op = trim((string)($client['operations_person'] ?? ''));
+            if ($am === '' && $sp === '' && $op === '') continue;
 
             if (!array_key_exists($wb, $workbookCache)) {
                 $ws = $pdo->prepare("SELECT product_name, detail_json FROM workbooks WHERE id = ? LIMIT 1");
