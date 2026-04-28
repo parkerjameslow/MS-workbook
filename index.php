@@ -5070,6 +5070,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="pricing-cost-row-label">Rate</span>
               <span class="pricing-cost-row-value" id="ps-sh-rate">—</span>
             </div>
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Shipping Per (USD)</span>
+              <span class="pricing-cost-row-value" id="ps-sh-per">—</span>
+            </div>
             <div class="pricing-cost-subtotal">
               <div class="pricing-cost-row">
                 <span class="pricing-cost-row-label">Total Shipping Cost</span>
@@ -9792,6 +9796,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-sh-method'))  e('ps-sh-method').textContent  = modeNames[mode] || '—';
     if (e('ps-sh-weight'))  e('ps-sh-weight').textContent  = chargeableKg > 0 ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg' : '—';
     if (e('ps-sh-rate'))    e('ps-sh-rate').textContent    = rateRmb > 0 ? `¥${rateRmb} / kg  ($${rateUsd.toFixed(2)}/kg)` : '—';
+    // Shipping per unit (USD) — total shipping ÷ tier qty (the qty we're
+    // quoting on). Mirrors what feeds Landed Per below, but exposed
+    // explicitly so the user can sanity-check the unit-level allocation.
+    const shipPerUsd = (tierQty > 0 && shippingUsd > 0) ? shippingUsd / tierQty : 0;
+    if (e('ps-sh-per'))     e('ps-sh-per').textContent    = shipPerUsd > 0 ? '$' + shipPerUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
     if (e('ps-sh-total'))   e('ps-sh-total').textContent   = shippingUsd > 0 ? `${fmtRmb(shippingRmb)}  /  ${fmtUsd(shippingUsd)}` : '—';
 
     // ── Total Landed Cost card ──────────────────────────────────────────
