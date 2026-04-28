@@ -132,6 +132,11 @@ try {
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN primary_contact2 VARCHAR(255) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+// Per-client default profit margin (%). NULL → JS treats as 50%.
+// Stored as DECIMAL(5,2) so we can support 0.00–999.99% without precision loss.
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN default_margin_pct DECIMAL(5,2) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 
 // Auto-create commissions table.
 //   role           = 'account_manager' | 'salesperson' | 'operations'  (which hat earned this row)
@@ -684,10 +689,11 @@ switch ($action) {
                     'email2', 'phone2', 'primary_contact2',
                     'billing_address', 'shipping_address', 'notes',
                     'account_manager', 'salesperson', 'operations_person',
-                    'account_manager_pct', 'salesperson_pct', 'operations_pct'];
+                    'account_manager_pct', 'salesperson_pct', 'operations_pct',
+                    'default_margin_pct'];
         // Numeric overrides → NULL when blank so the helper falls back to the
         // default rate. Pre-validate so a stray "abc" can't poison the column.
-        $numericCols = ['account_manager_pct' => true, 'salesperson_pct' => true, 'operations_pct' => true];
+        $numericCols = ['account_manager_pct' => true, 'salesperson_pct' => true, 'operations_pct' => true, 'default_margin_pct' => true];
         $fields = [];
         $params = [];
         foreach ($allowed as $col) {

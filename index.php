@@ -729,7 +729,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       justify-content: center;
       flex-shrink: 0;
       letter-spacing: -0.5px;
+      position: relative;
     }
+    /* Margin badge — shows the client's default profit margin (%). Sits on
+       the bottom-right of the avatar, never overflows the card edge. */
+    .cdc-avatar-margin-badge {
+      position: absolute;
+      bottom: -4px;
+      right: -6px;
+      min-width: 24px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 11px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 0 2px var(--surface), 0 2px 6px rgba(0,0,0,0.2);
+      line-height: 1;
+    }
+    /* Cog button in Financial Summary header — opens the margin modal. */
+    .cdc-fin-cog {
+      margin-left: auto;
+      background: none;
+      border: none;
+      padding: 4px;
+      cursor: pointer;
+      color: #6b93ff;
+      opacity: 0.7;
+      transition: opacity 0.15s, transform 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+    }
+    .cdc-fin-cog:hover { opacity: 1; transform: rotate(30deg); background: rgba(107,147,255,0.12); }
     .cdc-left {
       display: flex;
       flex-direction: column;
@@ -5986,6 +6024,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- ── Client Default Margin Modal ─────────────────────────────────────────
+     Lets the user set the default profit margin (%) used for this client.
+     Stored in clients.default_margin_pct (NULL → JS treats as 50%). -->
+<div class="modal-overlay" id="client-margin-modal" onclick="if(event.target===this)closeClientMarginModal()">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">Default Profit Margin</div>
+    <p style="margin:0 0 14px; color:var(--text-muted); font-size:13px; line-height:1.5;">
+      Sets the default profit margin used for <strong id="client-margin-name" style="color:var(--text);"></strong>.
+      Defaults to <strong>50%</strong> until changed. Individual workbooks can still override this on the Pricing tab without affecting this default.
+    </p>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+      <label for="client-margin-input" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); flex-shrink:0;">Margin</label>
+      <div style="position:relative; flex:1;">
+        <input type="number" id="client-margin-input" min="0" max="999.99" step="0.01"
+               style="width:100%; padding:9px 28px 9px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:15px; font-weight:600; font-family:inherit; outline:none; text-align:right;" />
+        <span style="position:absolute; right:11px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:13px; pointer-events:none;">%</span>
+      </div>
+      <button type="button" class="btn btn-ghost" onclick="resetClientMarginToDefault()" title="Reset to default (50%)" style="font-size:12px; padding:6px 12px;">Reset</button>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeClientMarginModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="saveClientMarginModal()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Users Modal (admin only) ──────────────────────────────────────────
      Two views inside one modal:
        #users-list-view    — list of all users + Add New User form
@@ -7869,18 +7933,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rmbValEl = document.getElementById(`wb-tier-rmb-val-${id}`);
     const usdEl = document.getElementById(`wb-tier-usd-${id}`);
     const totalEl = document.getElementById(`wb-tier-total-${id}`);
+
+    // Variant-aware price + total: when variants have variable pricing,
+    // mirror the RFQ Grand Total range (¥min–¥max / $min–$max). Tier-row
+    // total becomes a corresponding range (qty × usdMin – qty × usdMax).
+    const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const ps   = _lastRfqPriceSummary;
+    const useRange = ps && ps.hasVariants && ps.rmbMin > 0;
+
     if (rmbValEl) {
-      rmbValEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + rmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+      if (useRange) {
+        rmbValEl.textContent = ps.isRange
+          ? '¥ ' + fmt2(ps.rmbMin) + '–¥ ' + fmt2(ps.rmbMax)
+          : '¥ ' + fmt2(ps.rmbMin);
+      } else {
+        rmbValEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + fmt2(rmb) : '—';
+      }
     }
-    if (!isNaN(rmb) && rmb > 0) {
-      usdEl.textContent = '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-    } else {
-      usdEl.textContent = '—';
+    if (usdEl) {
+      if (useRange) {
+        usdEl.textContent = ps.isRange
+          ? '$' + fmt2(ps.usdMin) + '–$' + fmt2(ps.usdMax)
+          : '$' + fmt2(ps.usdMin);
+      } else {
+        usdEl.textContent = (!isNaN(rmb) && rmb > 0) ? '$' + fmt2(usd) : '—';
+      }
     }
-    if (!isNaN(qty) && !isNaN(rmb) && rmb > 0) {
-      totalEl.textContent = '$' + (qty * usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    } else {
-      totalEl.textContent = '—';
+    if (totalEl) {
+      if (useRange && !isNaN(qty) && qty > 0) {
+        const tMin = qty * ps.usdMin;
+        const tMax = qty * ps.usdMax;
+        totalEl.textContent = ps.isRange
+          ? '$' + fmt2(tMin) + '–$' + fmt2(tMax)
+          : '$' + fmt2(tMin);
+      } else if (!isNaN(qty) && !isNaN(rmb) && rmb > 0) {
+        totalEl.textContent = '$' + fmt2(qty * usd);
+      } else {
+        totalEl.textContent = '—';
+      }
     }
     if (!_filling && !_syncing) {
       syncTiersToPricing();
@@ -8583,7 +8673,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // default rate (AM/SP → 0%, Operations → 5%).
         account_manager_pct: (c.account_manager_pct === null || c.account_manager_pct === undefined) ? '' : c.account_manager_pct,
         salesperson_pct:     (c.salesperson_pct     === null || c.salesperson_pct     === undefined) ? '' : c.salesperson_pct,
-        operations_pct:      (c.operations_pct      === null || c.operations_pct      === undefined) ? '' : c.operations_pct
+        operations_pct:      (c.operations_pct      === null || c.operations_pct      === undefined) ? '' : c.operations_pct,
+        // Per-client default profit margin (%). NULL → '' here → UI treats as 50%.
+        default_margin_pct:  (c.default_margin_pct  === null || c.default_margin_pct  === undefined) ? '' : c.default_margin_pct
       };
     });
 
@@ -9857,7 +9949,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Populate local state immediately so the UI renders right away ──
     clientData[name] = [];
-    clientDetails[name] = { id: null, email, phone, primary_contact: contact, email2: '', phone2: '', primary_contact2: '', billing_address: billing, shipping_address: shipping, notes: '', account_manager: am, salesperson: sp, operations_person: '', account_manager_pct: '', salesperson_pct: '', operations_pct: '' };
+    clientDetails[name] = { id: null, email, phone, primary_contact: contact, email2: '', phone2: '', primary_contact2: '', billing_address: billing, shipping_address: shipping, notes: '', account_manager: am, salesperson: sp, operations_person: '', account_manager_pct: '', salesperson_pct: '', operations_pct: '', default_margin_pct: '' };
     rebuildSidebar(); // handles nav items (with avatar/star/delete) + modal dropdown
 
     // ── Close modal and navigate immediately — user sees the page now ──
@@ -10698,6 +10790,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return 'Not Started';
   }
 
+  /* ── Client Default Margin Modal ─────────────────────────────────────────
+     Tracks the in-flight client name on a module-scope variable so the Save /
+     Reset / Cancel buttons don't have to round-trip the value through DOM
+     attributes. closeModal() clears it. */
+  let _marginModalClient = null;
+  function openClientMarginModal(encodedName) {
+    const clientName = decodeURIComponent(encodedName);
+    _marginModalClient = clientName;
+    const d = clientDetails[clientName] || {};
+    const cur = d.default_margin_pct;
+    const input = document.getElementById('client-margin-input');
+    const nameEl = document.getElementById('client-margin-name');
+    if (nameEl) nameEl.textContent = clientName;
+    // Show current saved value, or 50% placeholder when blank/unset.
+    if (input) {
+      input.value = (cur === '' || cur === null || cur === undefined) ? '' : cur;
+      input.placeholder = '50';
+    }
+    const overlay = document.getElementById('client-margin-modal');
+    if (overlay) overlay.classList.add('open');
+    setTimeout(() => input?.focus(), 50);
+  }
+  function closeClientMarginModal() {
+    _marginModalClient = null;
+    document.getElementById('client-margin-modal')?.classList.remove('open');
+  }
+  function resetClientMarginToDefault() {
+    const input = document.getElementById('client-margin-input');
+    if (input) { input.value = ''; input.focus(); }
+  }
+  function saveClientMarginModal() {
+    const clientName = _marginModalClient;
+    if (!clientName) return closeClientMarginModal();
+    const input = document.getElementById('client-margin-input');
+    let raw = (input?.value || '').trim();
+    // Empty = reset to default. Otherwise validate the number and clamp to
+    // sensible bounds so a typo can't poison the column.
+    let stored;
+    if (raw === '') {
+      stored = '';
+    } else {
+      const num = parseFloat(raw);
+      if (isNaN(num) || num < 0) {
+        input?.focus();
+        return;
+      }
+      stored = Math.min(num, 999.99).toFixed(2);
+    }
+    if (!clientDetails[clientName]) clientDetails[clientName] = {};
+    clientDetails[clientName].default_margin_pct = stored;
+    saveClientDetail(clientName);
+    // Re-render the card so the avatar badge picks up the new value.
+    if (typeof renderClientDetailCard === 'function') renderClientDetailCard(clientName);
+    closeClientMarginModal();
+  }
+
   function onClientDetailChange(el, encodedName, key) {
     const clientName = decodeURIComponent(encodedName);
     if (!clientDetails[clientName]) clientDetails[clientName] = {};
@@ -10740,7 +10888,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // Operations → 5%). "0" stays a real zero (no commission).
         account_manager_pct: (d.account_manager_pct === undefined || d.account_manager_pct === null) ? '' : d.account_manager_pct,
         salesperson_pct:     (d.salesperson_pct     === undefined || d.salesperson_pct     === null) ? '' : d.salesperson_pct,
-        operations_pct:      (d.operations_pct      === undefined || d.operations_pct      === null) ? '' : d.operations_pct
+        operations_pct:      (d.operations_pct      === undefined || d.operations_pct      === null) ? '' : d.operations_pct,
+        // Per-client default profit margin (%). Empty string → server stores
+        // NULL → UI falls back to 50%. "0" stays a real zero.
+        default_margin_pct:  (d.default_margin_pct  === undefined || d.default_margin_pct  === null) ? '' : d.default_margin_pct
       });
     }, 800);
   }
@@ -10886,9 +11037,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>`;
     };
 
+    // Margin %: NULL/blank = use 50% default, anything else = the saved value.
+    // Badge shows whole-percent integer ("50") to keep the pill compact.
+    const marginRaw = (d.default_margin_pct === '' || d.default_margin_pct === null || d.default_margin_pct === undefined) ? 50 : parseFloat(d.default_margin_pct);
+    const marginPct = isNaN(marginRaw) ? 50 : marginRaw;
+    const marginBadge = Math.round(marginPct);
+
     wrap.innerHTML = `
       <div class="client-detail-card">
-        <div class="cdc-avatar">${initials}</div>
+        <div class="cdc-avatar">
+          ${initials}
+          <span class="cdc-avatar-margin-badge" title="Default profit margin: ${marginPct}%">${marginBadge}</span>
+        </div>
         <div class="cdc-left">
           <div class="cdc-name">${clientName}</div>
           <div class="cdc-fields">
@@ -10910,6 +11070,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="cdc-fin-title">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
             Financial Summary
+            <button type="button" class="cdc-fin-cog" onclick="openClientMarginModal('${enc}')" title="Edit default profit margin">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
           </div>
           <div class="cdc-fin-stat">
             <span class="cdc-fin-stat-label">Open Orders <span style="font-weight:400; opacity:0.7;">(${openOrderCount})</span></span>
