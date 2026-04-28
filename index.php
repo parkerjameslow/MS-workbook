@@ -15169,23 +15169,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── Real-time presence ────────────────────────────────────────────────────
   // Each user gets a random color per session, stored so it stays consistent
   // while the tab is open but varies across users/devices.
-  const _PRESENCE_COLORS = [
+  //
+  // These are declared with `var` (not `let`/`const`) on purpose: the module
+  // init IIFE at the bottom of the file calls router() during its sync
+  // prefix, and on a workbook URL that resolves to fillWorkbook →
+  // startPresenceHeartbeat, which reads these variables. Since the init
+  // IIFE runs BEFORE this declaration line, `let` would put us in the
+  // temporal dead zone and throw \"Cannot access '_presenceInterval' before
+  // initialization\". `var` hoists to undefined, which the falsy guards in
+  // stopPresenceHeartbeat already handle correctly.
+  var _PRESENCE_COLORS = [
     '#e74c3c','#3498db','#2ecc71','#f39c12',
     '#9b59b6','#1abc9c','#e67e22','#e91e63','#16a085','#8e44ad'
   ];
-  let _myPresenceColor = sessionStorage.getItem('ms_presence_color');
+  var _myPresenceColor = sessionStorage.getItem('ms_presence_color');
   if (!_myPresenceColor) {
     _myPresenceColor = _PRESENCE_COLORS[Math.floor(Math.random() * _PRESENCE_COLORS.length)];
     sessionStorage.setItem('ms_presence_color', _myPresenceColor);
   }
 
-  let _presenceWorkbookId = null;
-  let _presenceInterval   = null;
-  let _myFocusedField     = '';
+  var _presenceWorkbookId = null;
+  var _presenceInterval   = null;
+  var _myFocusedField     = '';
 
   // Live cell-value sync state
-  let _cellValuesSince    = '';   // server timestamp cursor for delta polling
-  const _pendingPushes    = new Map(); // fieldPath -> debounce timer id
+  var _cellValuesSince    = '';   // server timestamp cursor for delta polling
+  var _pendingPushes      = new Map(); // fieldPath -> debounce timer id
 
   function startPresenceHeartbeat(workbookId) {
     // Stop any previous heartbeat (switching workbooks)
