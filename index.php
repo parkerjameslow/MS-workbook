@@ -5559,6 +5559,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <option value="all">All Employees</option>
               <option value="Parker Low">Parker Low</option>
               <option value="Jackson Hollberg">Jackson Hollberg</option>
+              <option value="Karen">Karen</option>
             </select>
           </span>
         </label>
@@ -12501,14 +12502,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Deterministic per-employee swatch using the same HSL hash trick as
   // _clientChipStyle, but tuned for solid bar fills (saturated mid-tone)
   // rather than translucent chips. Same name → same color across renders.
+  //
+  // EMPLOYEE_HUE_OVERRIDES pins specific names to fixed hues when the hash
+  // happens to land them too close to another teammate's color. Karen
+  // hashed to ~197 (cyan-blue) which read identical to Jackson on the
+  // stacked bars, so we force her to a clear green here. Add new entries
+  // when a clash shows up — leaving an employee out of the map falls back
+  // to the deterministic hash.
+  const EMPLOYEE_HUE_OVERRIDES = {
+    'Karen': 140, // green
+  };
   function _employeeSwatch(name) {
     const safe = (name || '—').toString();
-    let hash = 0;
-    for (let i = 0; i < safe.length; i++) {
-      hash = ((hash << 5) - hash) + safe.charCodeAt(i);
-      hash |= 0;
+    let hue;
+    if (Object.prototype.hasOwnProperty.call(EMPLOYEE_HUE_OVERRIDES, safe)) {
+      hue = EMPLOYEE_HUE_OVERRIDES[safe];
+    } else {
+      let hash = 0;
+      for (let i = 0; i < safe.length; i++) {
+        hash = ((hash << 5) - hash) + safe.charCodeAt(i);
+        hash |= 0;
+      }
+      hue = Math.abs(hash) % 360;
     }
-    const hue = Math.abs(hash) % 360;
     return {
       fill: `hsl(${hue}, 62%, 52%)`,
       tint: `hsl(${hue}, 62%, 92%)`,
