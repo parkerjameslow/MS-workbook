@@ -7194,12 +7194,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const isOpen = (target === 'inner' || target === 'outer');
 
+    // ── Cardboard-flap geometry (outer viz only) ───────────────────────
+    // RSC-style box opened at the top: four flaps splayed ~30° past
+    // horizontal so they read as "open" without crowding the silhouette.
+    // We compute them up-front so the flap vertices participate in the
+    // fit-to-viewBox bbox below — otherwise the flaps would clip when the
+    // box is large.
+    let flaps = null;
+    if (target === 'outer') {
+      const fDepth = Math.min(L, W) * 0.22;
+      const fAng   = Math.PI / 6;            // 30° past horizontal
+      const fH     = fDepth * Math.sin(fAng); // vertical lift
+      const fO     = fDepth * Math.cos(fAng); // horizontal extension
+      flaps = {
+        // Each quad is [hingeA, hingeB, lifted(hingeB), lifted(hingeA)] —
+        // that's the order needed for a non-self-intersecting polygon
+        // (so the two diagonals don't cross when SVG fills the shape).
+        front: [v.tfl, v.tfr, proj(xR, yT + fH, zF - fO), proj(xL, yT + fH, zF - fO)],
+        back:  [v.tbr, v.tbl, proj(xL, yT + fH, zB + fO), proj(xR, yT + fH, zB + fO)],
+        right: [v.tfr, v.tbr, proj(xR + fO, yT + fH, zB), proj(xR + fO, yT + fH, zF)],
+        left:  [v.tbl, v.tfl, proj(xL - fO, yT + fH, zF), proj(xL - fO, yT + fH, zB)]
+      };
+    }
+
     // Fit-to-viewBox scale + center, with padding for L/W/H labels.
     // Left padding wider for the rotated H label; bottom for L/W brackets.
     const VBW = 220, VBH = 160;
     const PAD_L = 38, PAD_R = 18, PAD_TOP = 8, PAD_BOTTOM = 44;
-    const allX = Object.values(v).map(p => p.x);
-    const allY = Object.values(v).map(p => p.y);
+    const bboxPts = Object.values(v).slice();
+    if (flaps) {
+      // Flap free corners need to fit too — extending the bbox keeps the
+      // scale from clipping the lid flaps off the top/sides.
+      Object.values(flaps).forEach(f => { bboxPts.push(f[2], f[3]); });
+    }
+    const allX = bboxPts.map(p => p.x);
+    const allY = bboxPts.map(p => p.y);
     const minX = Math.min(...allX), maxX = Math.max(...allX);
     const minY = Math.min(...allY), maxY = Math.max(...allY);
     const sX = (VBW - PAD_L - PAD_R) / (maxX - minX || 1);
@@ -7288,7 +7317,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Wireframe outer carton — 12 edges drawn AFTER contents so the
       // outline reads on top. No fills (the box is "transparent"); only
       // the edges define its shape. For inner viz this is orange, for
-      // outer viz it's the green accent.
+      // outer viz it's the green accent. Outer gets a touch more weight
+      // so the cardboard outline reads cleanly against the orange inners.
+      const edgeWidth = (target === 'outer') ? 1.7 : 1.4;
       const edges = [
         ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'], // bottom rect
         ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'], // top rect (open rim)
@@ -7297,8 +7328,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       edges.forEach(([a, b]) => {
         const pa = xform(v[a]);
         const pb = xform(v[b]);
-        html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="1.4" />`;
+        html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="${edgeWidth}" />`;
       });
+
+      // Open cardboard flaps splayed at the top of the OUTER carton —
+      // RSC-style. Painters' order: back/left flaps drawn first so the
+      // visible front/right flaps overlap them correctly. Each flap is
+      // a quad from the two hinge points to the two free (lifted) points.
+      if (flaps) {
+        const drawFlap = (quad, opacity, strokeW) => {
+          const pts = quad.map(xform);
+          html += `<polygon points="${polyStr(pts)}" fill="${c}" fill-opacity="${opacity}" stroke="${c}" stroke-width="${strokeW}" stroke-linejoin="round" />`;
+        };
+        drawFlap(flaps.back,  0.18, 1.2); // mostly hidden behind right flap
+        drawFlap(flaps.left,  0.18, 1.2); // mostly hidden behind front flap
+        drawFlap(flaps.right, 0.32, 1.4); // visible from camera
+        drawFlap(flaps.front, 0.36, 1.4); // most visible — front-facing
+      }
     }
 
     // ── Dimension labels (L, W, H) outside the silhouette ──────────────
