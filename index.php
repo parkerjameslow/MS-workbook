@@ -7132,9 +7132,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Always labels L, W, H along the visible edges.
   function renderBoxViz(target) {
     const cfg = {
-      product: { svg: 'viz-product', l: 'dim-cm-l', w: 'dim-cm-w', h: 'dim-cm-h', accent: '#6b93ff' },
+      product: { svg: 'viz-product', l: 'dim-cm-l',          w: 'dim-cm-w',          h: 'dim-cm-h',          accent: '#6b93ff' },
       inner:   { svg: 'viz-inner',   l: 'carton-inner-l-cm', w: 'carton-inner-w-cm', h: 'carton-inner-h-cm', accent: '#E8751A' },
-      outer:   { svg: 'viz-outer',   l: 'carton-outer-l-cm', w: 'carton-outer-w-cm', h: 'carton-outer-h-cm', accent: '#E8751A' }
+      outer:   { svg: 'viz-outer',   l: 'carton-outer-l-cm', w: 'carton-outer-w-cm', h: 'carton-outer-h-cm', accent: '#4ade80' }
     }[target];
     if (!cfg) return;
     const svg = document.getElementById(cfg.svg);
@@ -7177,7 +7177,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const w = parseInt(document.getElementById('carton-inner-side')?.value);
       const h = parseInt(document.getElementById('carton-inner-stack')?.value);
       if (ipL && ipW && ipH && (d >= 1 || w >= 1 || h >= 1)) {
-        contents = { pL: ipL, pW: ipW, pH: ipH, depth: d || 1, width: w || 1, height: h || 1, color: '#5468a8' };
+        // Products inside inner carton — solid blue (matches Product column accent)
+        contents = { pL: ipL, pW: ipW, pH: ipH, depth: d || 1, width: w || 1, height: h || 1, color: '#6b93ff' };
       }
     } else if (target === 'outer') {
       const ipL = parseFloat(document.getElementById('carton-inner-l-cm')?.value);
@@ -7187,7 +7188,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const w = parseInt(document.getElementById('carton-outer-side')?.value);
       const h = parseInt(document.getElementById('carton-outer-stack')?.value);
       if (ipL && ipW && ipH && (d >= 1 || w >= 1 || h >= 1)) {
-        contents = { pL: ipL, pW: ipW, pH: ipH, depth: d || 1, width: w || 1, height: h || 1, color: '#b85716' };
+        // Inner cartons inside outer — solid orange (matches Inner column accent)
+        contents = { pL: ipL, pW: ipW, pH: ipH, depth: d || 1, width: w || 1, height: h || 1, color: '#E8751A' };
       }
     }
     const isOpen = (target === 'inner' || target === 'outer');
@@ -7220,14 +7222,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       html += `<polygon points="${polyStr(frontF)}" fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
       html += `<polygon points="${polyStr(topF)}"   fill="${c}" fill-opacity="0.78" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
     } else {
-      // Open box: inside walls (back/left/bottom) lightly tinted, contents
-      // in z-order, then front+right opaque walls, then a top rim outline.
-      const back   = [v.bbl, v.bbr, v.tbr, v.tbl].map(xform);
-      const left   = [v.bfl, v.bbl, v.tbl, v.tfl].map(xform);
-      const bottom = [v.bfl, v.bfr, v.bbr, v.bbl].map(xform);
-      html += `<polygon points="${polyStr(bottom)}" fill="${c}" fill-opacity="0.16" stroke="${c}" stroke-width="0.8" stroke-linejoin="round" />`;
-      html += `<polygon points="${polyStr(back)}"   fill="${c}" fill-opacity="0.22" stroke="${c}" stroke-width="0.8" stroke-linejoin="round" />`;
-      html += `<polygon points="${polyStr(left)}"   fill="${c}" fill-opacity="0.18" stroke="${c}" stroke-width="0.8" stroke-linejoin="round" />`;
+      // Open box: outer carton drawn as a TRANSPARENT wireframe (just
+      // edges, no fills) so the contents inside are clearly visible.
+      // Edges are drawn AFTER contents below so the outline reads on top.
 
       if (contents) {
         const { pL, pW, pH, depth, width, height, color: cellC } = contents;
@@ -7281,23 +7278,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
               const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
               const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
-              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.55" stroke="${cellC}" stroke-width="0.6" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.7"  stroke="${cellC}" stroke-width="0.6" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="0.85" stroke="${cellC}" stroke-width="0.6" stroke-linejoin="round" />`;
+              // Solid contents: fully opaque, with shading via color tint
+              // (top brightest, front medium, right darkest) for 3D read.
+              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.78" stroke="${cellC}" stroke-width="0.7" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.92" stroke="${cellC}" stroke-width="0.7" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${cellC}" stroke-width="0.7" stroke-linejoin="round" />`;
             }
           }
         }
       }
 
-      // Outer walls in front of contents
-      const frontF = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
-      const rightF = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
-      html += `<polygon points="${polyStr(frontF)}" fill="${c}" fill-opacity="0.4"  stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
-      html += `<polygon points="${polyStr(rightF)}" fill="${c}" fill-opacity="0.28" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
-
-      // Open top rim — rectangle outline on the box's top edges
-      const rim = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
-      html += `<polygon points="${polyStr(rim)}" fill="none" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
+      // Wireframe outer carton — 12 edges drawn AFTER contents so the
+      // outline reads on top. No fills (the box is "transparent"); only
+      // the edges define its shape. For inner viz this is orange, for
+      // outer viz it's the green accent.
+      const edges = [
+        ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'], // bottom rect
+        ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'], // top rect (open rim)
+        ['bfl','tfl'],['bfr','tfr'],['bbr','tbr'],['bbl','tbl']  // verticals
+      ];
+      edges.forEach(([a, b]) => {
+        const pa = xform(v[a]);
+        const pb = xform(v[b]);
+        html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="1.4" />`;
+      });
     }
 
     // ── Dimension labels (L, W, H) outside the silhouette ──────────────
