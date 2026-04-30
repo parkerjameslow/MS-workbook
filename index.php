@@ -797,7 +797,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     @media (max-width: 600px) {
       .cdc-fields { grid-template-columns: 1fr; }
     }
-    .cdc-field { display: flex; flex-direction: column; gap: 3px; }
+    .cdc-field { display: flex; flex-direction: column; gap: 3px; min-height: 0; }
+    /* Notes: occupies the right column for rows 3+4 of the cdc-fields grid
+       so the textarea stretches the full vertical extent of the address-row
+       block. Falls back gracefully on tablet/mobile (single-column grid)
+       where row spanning is meaningless. */
+    .cdc-field--tall {
+      grid-column: 3;
+      grid-row: span 2;
+    }
+    .cdc-field--tall .cdc-value {
+      flex: 1;
+      min-height: 96px;
+    }
+    @media (max-width: 900px) {
+      .cdc-field--tall { grid-column: auto; grid-row: auto; }
+      .cdc-field--tall .cdc-value { min-height: 72px; }
+    }
     .cdc-label {
       font-size: 10px;
       font-weight: 700;
@@ -7255,6 +7271,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // edges, no fills) so the contents inside are clearly visible.
       // Edges are drawn AFTER contents below so the outline reads on top.
 
+      // Subtle wall tints on the outer carton's visible faces (top, front,
+      // right). Drawn BEFORE contents, so the inner cartons fully obscure
+      // these where they overlap — what remains visible is the cardboard
+      // "frame" around each face that used to read as blank SVG. Inner
+      // viz keeps its pure-wireframe look (no walls drawn).
+      if (target === 'outer') {
+        const wallTop   = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
+        const wallFront = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
+        const wallRight = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
+        html += `<polygon points="${polyStr(wallRight)}" fill="${c}" fill-opacity="0.07" stroke="none" />`;
+        html += `<polygon points="${polyStr(wallFront)}" fill="${c}" fill-opacity="0.09" stroke="none" />`;
+        html += `<polygon points="${polyStr(wallTop)}"   fill="${c}" fill-opacity="0.06" stroke="none" />`;
+      }
+
       if (contents) {
         const { pL, pW, pH, depth, width, height, color: cellC } = contents;
         // Each cell is the REAL child-item size (product or inner carton).
@@ -7278,13 +7308,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const originY = yB + padCm;
         const originZ = zF + padCm;
 
-        // Visual inset — pulls every cell inward by ~2.5% of its smallest
-        // dimension on each side, so adjacent cells (and the cell-to-wall
-        // boundary) read as distinct shapes instead of merging into one
-        // continuous block. Adds about 5% gap between adjacent cells.
-        const insetCm = Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
+        // Visual inset — pulls every cell inward so adjacent cells (and
+        // the cell-to-wall boundary) read as distinct shapes. The outer
+        // viz uses a more aggressive inset because the user needs to see
+        // each individual inner-carton boundary clearly when one outer
+        // packs only a couple of inners (the gap-vs-cell ratio is otherwise
+        // too small to read once everything is scaled into a 220×160 SVG).
+        const insetCm = (target === 'outer')
+          ? Math.max(0.35, Math.min(pL, pW, pH) * 0.06)
+          : Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
 
         // Painters' algorithm: bottom → top, back → front, left → right.
+        // Cell stroke also bumps up for outer viz so the boundary between
+        // stacked inner cartons reads as a hard line, not a thin smudge.
+        const cellStroke = (target === 'outer') ? 1.1 : 0.9;
         for (let hi = 0; hi < height; hi++) {
           for (let wi = width - 1; wi >= 0; wi--) {
             for (let di = 0; di < depth; di++) {
@@ -7306,9 +7343,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               // Solid shaded item: top brightest, front medium, right
               // darkest. Slightly darker stroke so each item's outline
               // reads even when adjacent items are the same color.
-              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.7"  stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.88" stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.7"  stroke="${cellC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.88" stroke="${cellC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${cellC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
             }
           }
         }
@@ -12277,16 +12314,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const initials = clientName.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
     const enc = encodeURIComponent(clientName);
-    const field = (key, label, placeholder, isTextarea = false) => {
+    const field = (key, label, placeholder, isTextarea = false, extraClass = '') => {
       const val = (d[key] || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
       const handler = `onClientDetailChange(this,'${enc}','${key}')`;
+      const cls = `cdc-field${extraClass ? ' ' + extraClass : ''}`;
       if (isTextarea) {
-        return `<div class="cdc-field">
+        return `<div class="${cls}">
           <div class="cdc-label">${label}</div>
           <textarea class="cdc-value" rows="2" placeholder="${placeholder}" oninput="${handler}">${val}</textarea>
         </div>`;
       }
-      return `<div class="cdc-field">
+      return `<div class="${cls}">
         <div class="cdc-label">${label}</div>
         <input class="cdc-value" type="text" value="${val}" placeholder="${placeholder}" oninput="${handler}" />
       </div>`;
@@ -12390,9 +12428,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${field('primary_contact2', 'Contact 2',        'Second contact name')}
             ${empSelect('account_manager',   'Account Manager')}
             ${empSelect('salesperson',       'Salesperson')}
-            ${field('billing_address', 'Billing Address',  'Street, City, State ZIP', true)}
-            ${field('shipping_address','Shipping Address', 'Same as billing or different', true)}
-            ${field('notes',           'Notes',            'Internal notes…', true)}
+            ${field('notes',           'Notes',            'Internal notes…',                true, 'cdc-field--tall')}
+            ${field('shipping_address','Shipping Address', 'Same as billing or different',   true)}
+            ${field('billing_address', 'Billing Address',  'Street, City, State ZIP',        true)}
           </div>
         </div>
         <div class="cdc-financial">
