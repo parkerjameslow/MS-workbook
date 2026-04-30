@@ -4711,7 +4711,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg'); updateOuterWeightHint()" /><span class="specs-unit-tag">kg</span></div>
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs'); updateOuterWeightHint()" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
-              <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
+              <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units per Inner Carton)</span></div>
               <input type="number" min="0" placeholder="auto" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
             </div>
             <!-- Row × Side × Height arrangement + box wall — explicit packing
@@ -4774,12 +4774,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-row-label">Weight</div>
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
+            <!-- Two qty fields side by side: Inner-per-Outer (manual or
+                 auto-derived from arrangement) + Units-per-Outer (read-only,
+                 auto-fills as inner-units × inner-cartons-per-outer). -->
+            <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px;">
+              <div style="flex:1;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons per Outer Carton)</span></div>
+                <input type="number" min="0" placeholder="auto" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              </div>
+              <div style="flex:1;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units per Outer Carton)</span></div>
+                <input type="number" min="0" placeholder="auto" id="carton-outer-units" readonly style="width:100%; background:var(--surface2); color:var(--text-muted); cursor:not-allowed;" title="Auto-calculated: Units per Inner × Inner Cartons per Outer" />
+              </div>
+            </div>
+            <!-- Row × Side × Height arrangement for the OUTER carton, mirroring
+                 the inner controls. When set, drives outer dims directly:
+                   L = inner_L × Row    + 2 × wall
+                   W = inner_W × Side   + 2 × wall
+                   H = inner_H × Height + 2 × wall
+                 and Qty (Inner Cartons per Outer) auto-fills as Row × Side × Height. -->
+            <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px;">
+              <div style="flex:1;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Row</div>
+                <input type="number" min="0" placeholder="e.g. 2" id="carton-outer-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              </div>
+              <div style="flex:1;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Side by Side</div>
+                <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              </div>
+              <div style="flex:1;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Height</div>
+                <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              </div>
+            </div>
             <div class="specs-full-row" style="margin-top:6px;">
-              <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(inner cartons / outer)</span></div>
-              <input type="number" min="0" placeholder="e.g. 4" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              <div class="specs-row-label" style="margin-bottom:5px;">Box Wall</div>
+              <div class="select-wrapper">
+                <select id="carton-outer-wall" oninput="autoCalcCartons()">
+                  <option value="1">Single Wall (≈4mm)</option>
+                  <option value="2" selected>Double Wall (≈7mm)</option>
+                </select>
+              </div>
             </div>
             <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
-            <div class="specs-full-row" id="outer-weight-hint" style="display:none; margin-top:8px; padding:8px 10px; background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius:var(--radius-sm); font-size:11px; color:var(--accent); line-height:1.6;"></div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
           </div>
@@ -7045,9 +7082,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (h) h.style.display = 'none';
     }
 
-    // ── Outer carton: sized to hold outerQty inner cartons ──
-    // outerQty = number of INNER CARTONS per outer carton (not products)
-    if (outerQty >= 1) {
+    // ── Outer carton ──────────────────────────────────────────────────
+    // Mirrors the inner: explicit Row × Side × Height + Box Wall path takes
+    // precedence over the legacy "fit outerQty inner cartons in the
+    // smallest box" packing. Outer wall defaults to double (≈7mm) since
+    // shipping cartons are usually heavier-duty than inners.
+    const oRowQty   = parseInt(document.getElementById('carton-outer-row')?.value);
+    const oSideQty  = parseInt(document.getElementById('carton-outer-side')?.value);
+    const oStackQty = parseInt(document.getElementById('carton-outer-stack')?.value);
+    const oWallSel  = parseInt(document.getElementById('carton-outer-wall')?.value) || 2;
+    const oWallCm   = oWallSel === 2 ? 0.7 : 0.4;
+    const oUseArrangement = (oRowQty >= 1) || (oSideQty >= 1) || (oStackQty >= 1);
+
+    let resolvedOuterCount = outerQty;
+
+    if (oUseArrangement && innerDims) {
+      const r = oRowQty   >= 1 ? oRowQty   : 1;
+      const s = oSideQty  >= 1 ? oSideQty  : 1;
+      const h = oStackQty >= 1 ? oStackQty : 1;
+      const outerL = innerDims.L * r + 2 * oWallCm;
+      const outerW = innerDims.W * s + 2 * oWallCm;
+      const outerH = innerDims.H * h + 2 * oWallCm;
+      setCartonDimFields('carton-outer', outerL, outerW, outerH);
+      // Auto-fill the Qty (Inner Cartons per Outer) field from arrangement
+      resolvedOuterCount = r * s * h;
+      const qtyEl = document.getElementById('carton-outer-count');
+      if (qtyEl && qtyEl !== document.activeElement) qtyEl.value = resolvedOuterCount;
+      setHint('outer-arrange-hint', r, s, h, resolvedOuterCount === 1 ? 'inner' : 'inners');
+      if (!isNaN(productWeightKg) && productWeightKg > 0) {
+        const productsPerOuter = innerQty >= 1 ? innerQty * resolvedOuterCount : resolvedOuterCount;
+        document.getElementById('carton-outer-weight').value = (productWeightKg * productsPerOuter).toFixed(2);
+        convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
+      }
+      const badge = document.getElementById('outer-calc-badge');
+      if (badge) badge.style.display = '';
+    } else if (outerQty >= 1) {
+      // Legacy path — pack outerQty inner cartons into the smallest box
       let outerDims;
       if (innerDims) {
         outerDims = bestCartonDims(innerDims.L, innerDims.W, innerDims.H, outerQty, PADDING);
@@ -7068,26 +7138,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const h = document.getElementById('outer-arrange-hint');
       if (h) h.style.display = 'none';
     }
+
+    // Auto-fill "Qty (Units per Outer Carton)" = inner units × inner cartons per outer
+    const unitsPerOuterEl = document.getElementById('carton-outer-units');
+    if (unitsPerOuterEl) {
+      const u = (innerQty >= 1 && resolvedOuterCount >= 1) ? innerQty * resolvedOuterCount : 0;
+      unitsPerOuterEl.value = u > 0 ? u : '';
+    }
+
     renderPalletViz();
     updateOuterWeightHint();
   }
 
+  // Was the source of the legacy "Est. total outer weight" hint UI; that
+  // banner has been removed in favor of the new arrangement controls.
+  // The function now just keeps carton-outer-weight in sync with
+  // (inner weight × inner cartons per outer) and refreshes freight.
   function updateOuterWeightHint() {
-    const hint = document.getElementById('outer-weight-hint');
-    if (!hint) return;
     const innerKg  = parseFloat(document.getElementById('carton-inner-weight')?.value) || 0;
     const outerQty = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-    if (!innerKg || !outerQty) { hint.style.display = 'none'; return; }
+    if (!innerKg || !outerQty) return;
     const totalKg  = innerKg * outerQty;
-    const totalLbs = totalKg * 2.20462;
-    const fmtLbs = val => {
-      const lbs = Math.floor(val);
-      const oz  = Math.round((val - lbs) * 16);
-      return oz > 0 ? `${lbs} lbs ${oz} oz` : `${lbs} lbs`;
-    };
-    hint.style.display = '';
-    hint.innerHTML = `<strong>Est. total outer weight:</strong><br>${totalKg.toFixed(2)} kg &nbsp;/&nbsp; ${fmtLbs(totalLbs)}<br><span style="opacity:0.75;">${outerQty} inner carton${outerQty > 1 ? 's' : ''} × ${innerKg.toFixed(2)} kg each</span>`;
-    // Always sync outer weight from inner weight × inner cartons per outer
     const outerWtEl = document.getElementById('carton-outer-weight');
     if (outerWtEl) {
       outerWtEl.value = totalKg.toFixed(2);
@@ -12090,6 +12161,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('carton-inner-wall',  data.cartonInnerWall || '1');
       _s('carton-outer-weight', data.cartonOuterWeight);
       _s('carton-outer-count', data.cartonOuterCount);
+      _s('carton-outer-row',   data.cartonOuterRow);
+      _s('carton-outer-side',  data.cartonOuterSide);
+      _s('carton-outer-stack', data.cartonOuterStack);
+      _s('carton-outer-wall',  data.cartonOuterWall || '2');
       _s('pallet-total-cartons', data.palletTotalCartons);
       if (data.cartonUnitWeight) convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg');
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
@@ -12918,6 +12993,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cartonInnerSide:  _v('carton-inner-side'),
       cartonInnerStack: _v('carton-inner-stack'),
       cartonInnerWall:  _v('carton-inner-wall'),
+      // Same controls for the outer carton (drives outer dims from inner
+      // dims × arrangement). cartonOuterUnits is read-only/derived.
+      cartonOuterRow:   _v('carton-outer-row'),
+      cartonOuterSide:  _v('carton-outer-side'),
+      cartonOuterStack: _v('carton-outer-stack'),
+      cartonOuterWall:  _v('carton-outer-wall'),
       cartonOuterWeight: _v('carton-outer-weight'),
       cartonOuterCount: _v('carton-outer-count'),
       palletTotalCartons: _v('pallet-total-cartons'),
