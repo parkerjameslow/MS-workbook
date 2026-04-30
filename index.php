@@ -1526,6 +1526,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-bottom: 1px solid var(--border);
       margin-bottom: 0;
     }
+    .specs-clear-btn {
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 3px 9px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .specs-clear-btn:hover {
+      color: var(--danger);
+      border-color: var(--danger);
+      background: rgba(251,113,133,0.08);
+    }
     .specs-col .field { margin-bottom: 0; }
     .specs-col .field input {
       box-sizing: border-box;
@@ -4641,7 +4660,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         <!-- Column 1: Product Dimensions -->
         <div class="specs-col">
-          <div class="specs-col-title">Product Dimensions</div>
+          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between;">
+            <span>Product Dimensions</span>
+            <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('product')" title="Clear all Product Dimensions">Clear</button>
+          </div>
           <div class="specs-dim-grid">
             <div></div>
             <div class="specs-unit-header">cm</div>
@@ -4686,9 +4708,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         <!-- Column 2: Inner Carton -->
         <div class="specs-col">
-          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between;">
+          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
             <span>Inner Carton</span>
-            <span id="inner-calc-badge" style="display:none; font-size:10px; font-weight:600; color:var(--accent); opacity:0.8;">auto</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="inner-calc-badge" style="display:none; font-size:10px; font-weight:600; color:var(--accent); opacity:0.8;">auto</span>
+              <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('inner')" title="Clear all Inner Carton fields">Clear</button>
+            </div>
           </div>
           <div class="specs-dim-grid">
             <div></div>
@@ -4750,9 +4775,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         <!-- Column 3: Outer Carton -->
         <div class="specs-col">
-          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between;">
+          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
             <span>Outer Carton</span>
-            <span id="outer-calc-badge" style="display:none; font-size:10px; font-weight:600; color:var(--accent); opacity:0.8;">auto</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="outer-calc-badge" style="display:none; font-size:10px; font-weight:600; color:var(--accent); opacity:0.8;">auto</span>
+              <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('outer')" title="Clear all Outer Carton fields">Clear</button>
+            </div>
           </div>
           <div class="specs-dim-grid">
             <div></div>
@@ -4784,11 +4812,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  column is narrow (they stack instead of overflowing). -->
             <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 130px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Inner Cartons per Outer Carton">Inner / Outer</div>
+                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Inner Cartons per Outer Carton">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons)</span></div>
                 <input type="number" min="0" placeholder="auto" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 130px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units per Outer Carton — type a target to back-solve Inner / Outer">Units / Outer</div>
+                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units in the Outer Carton — type a target to back-solve Inner Cartons">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units in Outer)</span></div>
                 <input type="number" min="0" placeholder="auto" id="carton-outer-units" style="width:100%;" oninput="onOuterUnitsInput()" title="Type a target; we'll back-solve inner cartons per outer." />
               </div>
             </div>
@@ -6289,6 +6317,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" onclick="closeClientMarginModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="saveClientMarginModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Clear Section Modal ────────────────────────────────────────────────
+     Confirms before wiping fields in Product Dimensions / Inner Carton /
+     Outer Carton on the Workbook tab. The active section name is set in
+     #clear-section-name when opened. -->
+<div class="modal-overlay" id="clear-section-modal" onclick="if(event.target===this)closeClearSectionModal()">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">Clear <span id="clear-section-name"></span>?</div>
+    <p style="margin:0; color:var(--text); font-size:14px;">This will reset every field in the <strong id="clear-section-name-2" style="color:var(--text);"></strong> column. The action can't be undone from here, but the rest of the workbook is unaffected.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-cancel" onclick="closeClearSectionModal()">Cancel</button>
+      <button type="button" class="btn-danger" onclick="confirmClearSection()">Clear All</button>
     </div>
   </div>
 </div>
@@ -11569,6 +11612,79 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      Reset / Cancel buttons don't have to round-trip the value through DOM
      attributes. closeModal() clears it. */
   let _marginModalClient = null;
+
+  /* ── Clear-section modal (Product Dimensions / Inner Carton / Outer Carton).
+     Tracks which column to wipe; modal Cancel keeps everything untouched. */
+  const _CLEAR_SECTION_FIELDS = {
+    product: {
+      label: 'Product Dimensions',
+      inputs: ['dim-cm-l','dim-in-l','dim-cm-w','dim-in-w','dim-cm-h','dim-in-h',
+               'dim-weight-kg','dim-weight-lbs','dim-packaging']
+    },
+    inner: {
+      label: 'Inner Carton',
+      inputs: ['carton-inner-l-cm','carton-inner-l-in','carton-inner-w-cm','carton-inner-w-in',
+               'carton-inner-h-cm','carton-inner-h-in','carton-inner-weight','carton-inner-weight-lbs',
+               'carton-inner-count','carton-inner-row','carton-inner-side','carton-inner-stack'],
+      // Single-wall by default for inner cartons
+      selects: { 'carton-inner-wall': '1' }
+    },
+    outer: {
+      label: 'Outer Carton',
+      inputs: ['carton-outer-l-cm','carton-outer-l-in','carton-outer-w-cm','carton-outer-w-in',
+               'carton-outer-h-cm','carton-outer-h-in','carton-outer-weight','carton-outer-weight-lbs',
+               'carton-outer-count','carton-outer-units','carton-outer-row','carton-outer-side','carton-outer-stack'],
+      // Double-wall by default for outer/shipping cartons
+      selects: { 'carton-outer-wall': '2' }
+    }
+  };
+  let _clearSectionTarget = null;
+
+  function openClearSectionModal(section) {
+    if (!_CLEAR_SECTION_FIELDS[section]) return;
+    _clearSectionTarget = section;
+    const label = _CLEAR_SECTION_FIELDS[section].label;
+    const n1 = document.getElementById('clear-section-name');
+    const n2 = document.getElementById('clear-section-name-2');
+    if (n1) n1.textContent = label;
+    if (n2) n2.textContent = label;
+    document.getElementById('clear-section-modal')?.classList.add('open');
+  }
+  function closeClearSectionModal() {
+    _clearSectionTarget = null;
+    document.getElementById('clear-section-modal')?.classList.remove('open');
+  }
+  function confirmClearSection() {
+    const target = _clearSectionTarget;
+    const cfg = target && _CLEAR_SECTION_FIELDS[target];
+    if (!cfg) return closeClearSectionModal();
+    cfg.inputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    if (cfg.selects) {
+      Object.entries(cfg.selects).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+      });
+    }
+    // Hide auto badges + arrangement hints that reference the cleared section
+    if (target === 'inner') {
+      const b = document.getElementById('inner-calc-badge'); if (b) b.style.display = 'none';
+      const h = document.getElementById('inner-arrange-hint'); if (h) h.style.display = 'none';
+    } else if (target === 'outer') {
+      const b = document.getElementById('outer-calc-badge'); if (b) b.style.display = 'none';
+      const h = document.getElementById('outer-arrange-hint'); if (h) h.style.display = 'none';
+    }
+    // Re-run downstream calcs so dependent fields (and the pricing tab cache)
+    // settle on the cleared state, then autosave.
+    try { autoCalcCartons(); } catch(e) {}
+    try { updateOuterWeightHint(); } catch(e) {}
+    try { renderPalletViz(); } catch(e) {}
+    if (!_filling) autoSaveWorkbook();
+    closeClearSectionModal();
+  }
+
   function openClientMarginModal(encodedName) {
     const clientName = decodeURIComponent(encodedName);
     _marginModalClient = clientName;
