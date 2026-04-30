@@ -7308,20 +7308,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const originY = yB + padCm;
         const originZ = zF + padCm;
 
-        // Visual inset — pulls every cell inward so adjacent cells (and
-        // the cell-to-wall boundary) read as distinct shapes. The outer
-        // viz uses a more aggressive inset because the user needs to see
-        // each individual inner-carton boundary clearly when one outer
-        // packs only a couple of inners (the gap-vs-cell ratio is otherwise
-        // too small to read once everything is scaled into a 220×160 SVG).
-        const insetCm = (target === 'outer')
-          ? Math.max(0.35, Math.min(pL, pW, pH) * 0.06)
-          : Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
+        // Visual inset — pulls every cell inward by ~2.5% of its smallest
+        // dimension on each side, so adjacent cells (and the cell-to-wall
+        // boundary) read as distinct shapes instead of merging into one
+        // continuous block. Adds about 5% gap between adjacent cells.
+        const insetCm = Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
 
         // Painters' algorithm: bottom → top, back → front, left → right.
-        // Cell stroke also bumps up for outer viz so the boundary between
-        // stacked inner cartons reads as a hard line, not a thin smudge.
-        const cellStroke = (target === 'outer') ? 1.1 : 0.9;
+        // Cell stroke bumps up for outer viz so the boundary between
+        // stacked inner cartons reads as a hard line, not a thin smudge —
+        // we keep the inset small so the cells visibly fill the outer
+        // cavity rather than floating with big gaps to the walls.
+        const cellStroke = (target === 'outer') ? 1.4 : 0.9;
         for (let hi = 0; hi < height; hi++) {
           for (let wi = width - 1; wi >= 0; wi--) {
             for (let di = 0; di < depth; di++) {
