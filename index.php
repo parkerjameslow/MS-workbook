@@ -7267,19 +7267,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       }
     }
-    // Thin wireframe silhouette of the BOX (the cardboard outline) drawn
-    // on top of the cells. Always 12 edges in the box's accent color so
-    // every viz ends with the same visual cue: solid 3D fill inside, a
-    // light wireframe showing what the carton's outline would look like.
-    const outlineEdges = [
-      ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'],
-      ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'],
-      ['bfl','tfl'],['bfr','tfr'],['bbr','tbr'],['bbl','tbl']
-    ];
-    outlineEdges.forEach(([a, b]) => {
-      const pa = xform(v[a]), pb = xform(v[b]);
-      html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="1.4" stroke-opacity="0.9" />`;
-    });
+    // Silhouette-only outline: the 6 box edges that form the convex
+    // hexagon hull in iso projection. Skipping the 6 interior edges
+    // (the "Y" lines through the box) keeps the outline clean and
+    // avoids the goofy back-corner crisscross that drawing all 12
+    // edges produced. Polygon also closes the outline crisply at
+    // each corner.
+    const hullPath = ['tfl','tfr','bfr','bbr','bbl','tbl']
+      .map(k => xform(v[k]))
+      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+      .join(' ') + ' Z';
+    html += `<path d="${hullPath}" fill="none" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" stroke-opacity="0.9" />`;
 
     // ── Dimension labels (L, W, H) outside the silhouette ──────────────
     // Build a horizontal "L" bracket below the box, a slanted "W" bracket
@@ -7332,31 +7330,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // L (length) — bracket along the back-bottom edge bbl→bbr (always on
     // the silhouette — bfl→bfr is an INTERIOR diagonal in this iso
-    // projection so it can't be used). Offset outward (away from the box
-    // centroid) by enough pixels that the bracket bar can't visually
-    // merge with the silhouette outline even on big boxes where the
-    // edge runs steeply.
+    // projection so it can't be used). Label sits further out than the
+    // bracket bar so the bar never crosses the text.
     const lOff = 24;
+    const lLabelGap = 16;  // text baseline this far below the bracket bar
     const lP = outwardPerp(tBbl, tBbr);
     const lA = { x: tBbl.x + lP.x*lOff, y: tBbl.y + lP.y*lOff };
     const lB = { x: tBbr.x + lP.x*lOff, y: tBbr.y + lP.y*lOff };
-    const lMid = { x: (lA.x + lB.x)/2 + lP.x*9, y: (lA.y + lB.y)/2 + lP.y*9 + 3 };
+    const lMid = { x: (lA.x + lB.x)/2 + lP.x*lLabelGap, y: (lA.y + lB.y)/2 + lP.y*lLabelGap + 3 };
     html += drawDim(lA, lB, lMid, `${L.toFixed(1)} cm L`);
 
     // W (depth) — bracket along the right-bottom edge bfr→bbr (always on
     // the silhouette), offset outward via the same centroid rule.
     const wOff = 24;
+    const wLabelGap = 16;
     const wP = outwardPerp(tBfr, tBbr);
     const wA = { x: tBfr.x + wP.x*wOff, y: tBfr.y + wP.y*wOff };
     const wB = { x: tBbr.x + wP.x*wOff, y: tBbr.y + wP.y*wOff };
-    const wMid = { x: (wA.x + wB.x)/2 + wP.x*9, y: (wA.y + wB.y)/2 + wP.y*9 + 3 };
+    const wMid = { x: (wA.x + wB.x)/2 + wP.x*wLabelGap, y: (wA.y + wB.y)/2 + wP.y*wLabelGap + 3 };
     html += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
 
-    // H (height) — bracket vertical, OUTSIDE the silhouette on the left
+    // H (height) — bracket vertical, OUTSIDE the silhouette on the left.
+    // Label sits a bit further left than before so the rotated text
+    // can't bleed back through the bracket bar.
     const hX = sxMin - 16;
     const hA = { x: hX, y: tTbl.y };
     const hB = { x: hX, y: tBbl.y };
-    const hLabelPos = { x: hX - 5, y: (hA.y + hB.y)/2 };
+    const hLabelPos = { x: hX - 10, y: (hA.y + hB.y)/2 };
     html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
 
     svg.innerHTML = html;
