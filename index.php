@@ -7229,45 +7229,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (contents) {
         const { pL, pW, pH, depth, width, height, color: cellC } = contents;
         // Each cell is the REAL child-item size (product or inner carton).
-        // Stride per axis is the cell size + a small spacing equal to the
-        // outer wall thickness on each side (so adjacent cells reflect the
-        // 2×wall gap from the outer formula). For inner viz, products sit
-        // back-to-back (spacing≈0); for outer viz, inners get a 2×wall gap.
-        let stepX, stepY, stepZ, padCm;
-        if (target === 'outer') {
-          // Use the outer wall (single/double) as inter-inner spacing
-          const wSel = parseInt(document.getElementById('carton-outer-wall')?.value) || 2;
-          padCm = (wSel === 2 ? 0.7 : 0.4);
-        } else {
-          const wSel = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
-          padCm = (wSel === 2 ? 0.7 : 0.4);
-        }
-        // For outer: each inner takes (innerDim + 2*wall) space — full footprint.
-        // For inner: products sit back-to-back, single 2*wall padding around.
-        if (target === 'outer') {
-          stepX = pL + 2 * padCm;
-          stepY = pH + 2 * padCm;
-          stepZ = pW + 2 * padCm;
-        } else {
-          stepX = pL;
-          stepY = pH;
-          stepZ = pW;
-        }
-        // Anchor cells to the bottom-front-left corner of the box,
-        // offset by one wall thickness inward.
-        const startX = xL + padCm;
-        const startY = yB + padCm;
-        const startZ = zF + padCm;
+        // Stride per axis matches the box's wall formula:
+        //   • Inner viz   — stride = product dim (back-to-back, +1 wall pad
+        //                   on each end coming from the inner box formula)
+        //   • Outer viz   — stride = inner dim + 2×wall (each inner has its
+        //                   own surrounding wall thickness, matching
+        //                   outer = count × (inner + 2×wall))
+        const wSelOuter = parseInt(document.getElementById('carton-outer-wall')?.value) || 2;
+        const wSelInner = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
+        const padCm = (target === 'outer' ? (wSelOuter === 2 ? 0.7 : 0.4)
+                                          : (wSelInner === 2 ? 0.7 : 0.4));
+        const stepX = (target === 'outer') ? pL + 2 * padCm : pL;
+        const stepY = (target === 'outer') ? pH + 2 * padCm : pH;
+        const stepZ = (target === 'outer') ? pW + 2 * padCm : pW;
+        // First cell anchored at one wall-thickness inset from the
+        // bottom-front-left corner. No additional offset per cell — the
+        // stride already encodes the 2×wall gap for outer viz.
+        const originX = xL + padCm;
+        const originY = yB + padCm;
+        const originZ = zF + padCm;
 
         // Painters' algorithm: bottom → top, back → front, left → right.
         for (let hi = 0; hi < height; hi++) {
           for (let wi = width - 1; wi >= 0; wi--) {
             for (let di = 0; di < depth; di++) {
-              const cxLb = startX + di * stepX + (target === 'outer' ? padCm : 0);
+              const cxLb = originX + di * stepX;
               const cxRb = cxLb + pL;
-              const cyBb = startY + hi * stepY + (target === 'outer' ? padCm : 0);
+              const cyBb = originY + hi * stepY;
               const cyTb = cyBb + pH;
-              const czFb = startZ + wi * stepZ + (target === 'outer' ? padCm : 0);
+              const czFb = originZ + wi * stepZ;
               const czBb = czFb + pW;
               const cv = {
                 bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
@@ -7336,37 +7326,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       `;
     };
 
-    // L (length) — bracket below, horizontal, drawn from below bfl to below bfr
-    const lY = syMax + 12;
-    const lA = { x: tBfl.x, y: lY };
-    const lB = { x: tBfr.x, y: lY };
-    html += `<line x1="${tBfl.x.toFixed(1)}" y1="${tBfl.y.toFixed(1)}" x2="${lA.x.toFixed(1)}" y2="${lA.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
-    html += `<line x1="${tBfr.x.toFixed(1)}" y1="${tBfr.y.toFixed(1)}" x2="${lB.x.toFixed(1)}" y2="${lB.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
-    html += drawDim(lA, lB, { x: (lA.x + lB.x)/2, y: lY + 9 }, `${L.toFixed(1)} cm L`);
+    // L (length) — bracket below, horizontal
+    const lY = syMax + 14;
+    html += drawDim({ x: tBfl.x, y: lY }, { x: tBfr.x, y: lY },
+      { x: (tBfl.x + tBfr.x)/2, y: lY + 10 }, `${L.toFixed(1)} cm L`);
 
-    // W (depth) — bracket below the right-bottom edge, slanted along bfr→bbr
-    // Offset bfr/bbr along the perpendicular so the bracket sits below them.
+    // W (depth) — bracket angled along bfr→bbr, offset outward from box
     const wDx = tBbr.x - tBfr.x, wDy = tBbr.y - tBfr.y;
     const wLen = Math.sqrt(wDx*wDx + wDy*wDy) || 1;
-    // Outward perpendicular (away from box center, generally down-right)
     let wPx = wDy/wLen, wPy = -wDx/wLen;
     if (wPy < 0) { wPx = -wPx; wPy = -wPy; }
-    const wOff = 12;
+    const wOff = 14;
     const wA = { x: tBfr.x + wPx*wOff, y: tBfr.y + wPy*wOff };
     const wB = { x: tBbr.x + wPx*wOff, y: tBbr.y + wPy*wOff };
-    html += `<line x1="${tBfr.x.toFixed(1)}" y1="${tBfr.y.toFixed(1)}" x2="${wA.x.toFixed(1)}" y2="${wA.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
-    html += `<line x1="${tBbr.x.toFixed(1)}" y1="${tBbr.y.toFixed(1)}" x2="${wB.x.toFixed(1)}" y2="${wB.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
-    const wMid = { x: (wA.x + wB.x)/2 + wPx*7, y: (wA.y + wB.y)/2 + wPy*7 + 3 };
+    const wMid = { x: (wA.x + wB.x)/2 + wPx*8, y: (wA.y + wB.y)/2 + wPy*8 + 3 };
     html += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
 
-    // H (height) — bracket left of the silhouette, vertical along tbl→bbl
-    // (the leftmost vertical edge, which is the silhouette's left side).
-    const hX = sxMin - 14;
+    // H (height) — bracket vertical, OUTSIDE the silhouette on the left
+    const hX = sxMin - 16;
     const hA = { x: hX, y: tTbl.y };
     const hB = { x: hX, y: tBbl.y };
-    html += `<line x1="${tTbl.x.toFixed(1)}" y1="${tTbl.y.toFixed(1)}" x2="${hA.x.toFixed(1)}" y2="${hA.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
-    html += `<line x1="${tBbl.x.toFixed(1)}" y1="${tBbl.y.toFixed(1)}" x2="${hB.x.toFixed(1)}" y2="${hB.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
-    const hLabelPos = { x: hX - 4, y: (hA.y + hB.y)/2 };
+    const hLabelPos = { x: hX - 5, y: (hA.y + hB.y)/2 };
     html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
 
     svg.innerHTML = html;
