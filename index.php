@@ -7197,7 +7197,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Fit-to-viewBox scale + center, with padding for L/W/H labels.
     // Left padding wider for the rotated H label; bottom for L/W brackets.
     const VBW = 220, VBH = 160;
-    const PAD_L = 38, PAD_R = 18, PAD_TOP = 8, PAD_BOTTOM = 36;
+    const PAD_L = 38, PAD_R = 18, PAD_TOP = 8, PAD_BOTTOM = 44;
     const allX = Object.values(v).map(p => p.x);
     const allY = Object.values(v).map(p => p.y);
     const minX = Math.min(...allX), maxX = Math.max(...allX);
@@ -7333,28 +7333,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       `;
     };
 
-    // L (length) — bracket angled along the front-bottom edge bfl→bfr,
-    // offset OUTWARD (down-left) so it sits in front of the box.
-    const lDx = tBfr.x - tBfl.x, lDy = tBfr.y - tBfl.y;
-    const lLen = Math.sqrt(lDx*lDx + lDy*lDy) || 1;
-    let lPx = -lDy/lLen, lPy = lDx/lLen;
-    if (lPy < 0) { lPx = -lPx; lPy = -lPy; }
-    const lOff = 14;
-    const lA = { x: tBfl.x + lPx*lOff, y: tBfl.y + lPy*lOff };
-    const lB = { x: tBfr.x + lPx*lOff, y: tBfr.y + lPy*lOff };
-    const lMid = { x: (lA.x + lB.x)/2 + lPx*8, y: (lA.y + lB.y)/2 + lPy*8 + 3 };
+    // Box centroid in screen coords — used to pick the OUTWARD perpendicular
+    // for each dim bracket regardless of box proportions.
+    const cxBox = allXf.reduce((s, p) => s + p.x, 0) / allXf.length;
+    const cyBox = allXf.reduce((s, p) => s + p.y, 0) / allXf.length;
+    // Pick whichever of the two perpendiculars to (a→b) points AWAY from
+    // the centroid. More robust than the old sign-of-y heuristic, which
+    // failed for boxes where the silhouette edge happened to slope the
+    // "wrong" way relative to screen y.
+    const outwardPerp = (a, b) => {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      const px = -dy/len, py = dx/len;
+      const midX = (a.x + b.x)/2, midY = (a.y + b.y)/2;
+      const dot = px*(midX - cxBox) + py*(midY - cyBox);
+      return dot >= 0 ? { x: px, y: py } : { x: -px, y: -py };
+    };
+
+    // L (length) — bracket along the back-bottom edge bbl→bbr (always on
+    // the silhouette — bfl→bfr is an INTERIOR diagonal in this iso
+    // projection so it can't be used). Offset outward (away from the box
+    // centroid) by enough pixels that the bracket bar can't visually
+    // merge with the silhouette outline even on big boxes where the
+    // edge runs steeply.
+    const lOff = 24;
+    const lP = outwardPerp(tBbl, tBbr);
+    const lA = { x: tBbl.x + lP.x*lOff, y: tBbl.y + lP.y*lOff };
+    const lB = { x: tBbr.x + lP.x*lOff, y: tBbr.y + lP.y*lOff };
+    const lMid = { x: (lA.x + lB.x)/2 + lP.x*9, y: (lA.y + lB.y)/2 + lP.y*9 + 3 };
     html += drawDim(lA, lB, lMid, `${L.toFixed(1)} cm L`);
 
-    // W (depth) — bracket angled along the right-bottom edge bfr→bbr,
-    // offset outward (down-right).
-    const wDx = tBbr.x - tBfr.x, wDy = tBbr.y - tBfr.y;
-    const wLen = Math.sqrt(wDx*wDx + wDy*wDy) || 1;
-    let wPx = wDy/wLen, wPy = -wDx/wLen;
-    if (wPy < 0) { wPx = -wPx; wPy = -wPy; }
-    const wOff = 14;
-    const wA = { x: tBfr.x + wPx*wOff, y: tBfr.y + wPy*wOff };
-    const wB = { x: tBbr.x + wPx*wOff, y: tBbr.y + wPy*wOff };
-    const wMid = { x: (wA.x + wB.x)/2 + wPx*8, y: (wA.y + wB.y)/2 + wPy*8 + 3 };
+    // W (depth) — bracket along the right-bottom edge bfr→bbr (always on
+    // the silhouette), offset outward via the same centroid rule.
+    const wOff = 24;
+    const wP = outwardPerp(tBfr, tBbr);
+    const wA = { x: tBfr.x + wP.x*wOff, y: tBfr.y + wP.y*wOff };
+    const wB = { x: tBbr.x + wP.x*wOff, y: tBbr.y + wP.y*wOff };
+    const wMid = { x: (wA.x + wB.x)/2 + wP.x*9, y: (wA.y + wB.y)/2 + wP.y*9 + 3 };
     html += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
 
     // H (height) — bracket vertical, OUTSIDE the silhouette on the left
@@ -8072,7 +8087,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // itemSummaries is a flat list: one entry per variant (when variants exist),
     // or one entry per parent row (when no variants). This drives both the
     // breakdown rows and the grand totals — no double-counting.
-    const parentRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    // Single-scan grouping. Walking #rfq-body once and bucketing rows
+    // into parents vs. variants beats the prior N+1 pattern (one
+    // querySelectorAll per parent looking up its variants), which got
+    // expensive once we added the variant tier work and the function
+    // started running on every RFQ keystroke.
+    const allRfqRows = document.querySelectorAll('#rfq-body tr');
+    const parentRows = [];
+    const variantsByParent = new Map();
+    allRfqRows.forEach(r => {
+      if (r.hasAttribute('data-rfq-add-for')) return;
+      if (r.hasAttribute('data-rfq-parent')) {
+        const pid = r.dataset.rfqParent;
+        let arr = variantsByParent.get(pid);
+        if (!arr) { arr = []; variantsByParent.set(pid, arr); }
+        arr.push(r);
+      } else {
+        parentRows.push(r);
+      }
+    });
     let grandQty = 0, grandUsd = 0, grandRmb = 0, grandUsdUnit = 0, maxLead = 0;
     const itemSummaries = [];  // { label, qty, rmb, usd, total, lead, isVariant }
 
@@ -8085,7 +8118,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const lead    = inputs[4]?.value || '';
       const leadNum = parseInt(lead);
 
-      const varRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
+      const varRows = variantsByParent.get(String(id)) || [];
 
       if (varRows.length > 0) {
         // ── Has variants: group same-price variants under parent label;
@@ -10106,9 +10139,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Pricing Tab Summary Renderer ──────────────────────────────────────── */
   function renderPricingTab() {
-    // Refresh RFQ totals + price summary so this render sees current values
-    // (covers cases where Pricing tab is opened before any RFQ input fires).
-    recalcRfqTotals();
+    // RFQ input handlers + workbook-load already keep _lastRfqPriceSummary
+    // fresh, so we only run the (expensive) recalc here as a defensive
+    // first-time prime. Skipping the redundant call cuts the per-keystroke
+    // cost on Margin / Sale Per / Ship Lead inputs roughly in half.
+    if (!_lastRfqPriceSummary) recalcRfqTotals();
 
     // ── Pricing context computed upfront ───────────────────────────────
     // Both the Client Quote table and the Total Landed Cost block below
@@ -10148,7 +10183,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     const refEl = document.getElementById('pricing-quote-ref-body');
     if (refEl) {
-      const allRows = [...document.querySelectorAll('#rfq-body tr')];
+      const allRows = document.querySelectorAll('#rfq-body tr');
       const groups = [];
       let curGroup = null;
       allRows.forEach(row => {
@@ -10156,14 +10191,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (row.hasAttribute('data-rfq-parent')) {
           if (curGroup) curGroup.variants.push(row);
         } else {
-          curGroup = { parent: row, variants: [] };
+          // Stash parent inputs once so the filter below + the per-group
+          // render loop don't both re-query the same DOM subtree.
+          curGroup = {
+            parent: row,
+            parentInputs: row.querySelectorAll('input:not([type="checkbox"])'),
+            variants: []
+          };
           groups.push(curGroup);
         }
       });
 
       // Filter empty groups (parent row never filled in)
       const realGroups = groups.filter(g => {
-        const inputs = g.parent.querySelectorAll('input:not([type="checkbox"])');
+        const inputs = g.parentInputs;
         const hasName = (inputs[1]?.value || '').trim();
         const hasQty  = (inputs[2]?.value || '').trim();
         const hasRmb  = (inputs[3]?.value || '').trim();
@@ -10188,7 +10229,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         let groupIdx = 0;
         realGroups.forEach(group => {
           groupIdx++;
-          const pInputs = group.parent.querySelectorAll('input:not([type="checkbox"])');
+          const pInputs = group.parentInputs;
           const parentId    = group.parent.id.replace('rfq-', '');
           const parentName  = (pInputs[1]?.value || '').trim() || `Item ${groupIdx}`;
           const parentLead  = parseInt(pInputs[4]?.value) || 0;
@@ -11584,6 +11625,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </select>
           </span>
         </div>
+        <!-- Commission %: applies globally across all clients where this
+             user is assigned to the Operations role. Blank = role default
+             (10%). Replaces the per-client commission input that used to
+             live next to Operations on Client Details. -->
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Commission %</label>
+          <div style="position:relative;">
+            <input id="udetail-commission" type="number" step="0.01" min="0" max="100"
+                   value="${u.commission_pct === null || u.commission_pct === undefined || u.commission_pct === '' ? '' : String(parseFloat(u.commission_pct))}"
+                   placeholder="10"
+                   class="field-input" style="font-size:13px; padding-right:24px; font-variant-numeric:tabular-nums;" />
+            <span style="position:absolute; right:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none;">%</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Default 10% — applies to every client this user is assigned to.</div>
+        </div>
       </div>
 
       <!-- Read-only meta — quick context for who this user actually is. -->
@@ -11648,15 +11704,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       id: u.id,
       display_name: document.getElementById('udetail-display').value.trim(),
       email:        document.getElementById('udetail-email').value.trim(),
+      // Empty string clears the override (server stores NULL → role default).
+      commission_pct: (document.getElementById('udetail-commission')?.value || '').trim()
     };
     if (u.id !== sessionId) {
       payload.role = document.getElementById('udetail-role').value;
     }
+    const commissionChanged = String(u.commission_pct ?? '') !== String(payload.commission_pct);
     apiCall('update_user', payload).then(r => {
       if (r.success) {
         // Mutate the cache entry so the list view reflects the change
         // when we navigate back without a refetch round-trip.
         Object.assign(u, payload);
+        // Rate change → recompute pending commission rows so existing
+        // workbooks pick up the new % (paid rows stay frozen server-side).
+        if (commissionChanged) {
+          apiCall('recompute_commissions').then(() => {
+            if (typeof loadCommissions === 'function') loadCommissions();
+          });
+        }
         showUsersList();
       } else {
         alert(r.error || 'Failed to update user.');
@@ -12218,6 +12284,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const opt        = (v) => `<option value="${v}"${v === cur ? ' selected' : ''}>${v || '— Unassigned —'}</option>`;
       const handler    = `onClientDetailChange(this,'${enc}','${key}')`;
       const pctHandler = `onClientDetailChange(this,'${enc}','${pctKey}')`;
+      // Operations rate is now a per-USER setting (Profile → User Management
+      // → click the user → Commission %). The per-client override input is
+      // hidden for that role; AM/SP still get one.
+      const showPctInput = (key !== 'operations_person');
       // Wrap the select in ship-select-wrap so we get the same custom triangle
       // arrow used by every other dropdown in the app. appearance:none on the
       // <select> kills the native arrow so we don't double-up. The % input
@@ -12236,6 +12306,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               ${people.map(opt).join('')}
             </select>
           </span>
+          ${showPctInput ? `
           <div style="position:relative; width:86px; flex-shrink:0; height:36px;"
                title="Commission rate for this role on this client. Leave blank to use the role default (${defaultLabel}).">
             <input class="cdc-value" type="number" step="0.01" min="0" max="100"
@@ -12245,6 +12316,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span style="position:absolute; right:9px; top:50%; transform:translateY(-50%);
                          font-size:12px; color:var(--text-muted); pointer-events:none;">%</span>
           </div>
+          ` : ''}
         </div>
       </div>`;
     };

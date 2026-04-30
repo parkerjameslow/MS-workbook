@@ -55,6 +55,13 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS users (
 try {
     $pdo->exec("ALTER TABLE users ADD COLUMN email VARCHAR(255) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+// Per-user commission rate (%). NULL → use the role default (currently 10%
+// for operations / Karen). Stored as percent (10.00 = 10%). DECIMAL(5,2)
+// supports 0.00–999.99 for headroom on bonus structures we might layer on
+// later. Edited from User Management → user detail pane (admin only).
+try {
+    $pdo->exec("ALTER TABLE users ADD COLUMN commission_pct DECIMAL(5,2) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 
 // Seed default admin if no users exist
 $userCount = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
@@ -529,12 +536,14 @@ function ms_order_table_internal(array $items, float $rate): string {
 //
 // $client must be a row from `clients` with id, name, account_manager,
 // salesperson, operations_person, account_manager_pct, salesperson_pct,
-// operations_pct. The _pct columns are per-client overrides (stored as
-// percent — 20.00 == 20%). When NULL/blank we fall back to a per-role
-// default: AM/SP default to 0%, operations defaults to 5%. The
-// $defaultPct parameter is kept for backwards compat as the AM/SP
-// fallback (callers were passing 20.0 historically; new defaults are
-// applied via per-role overrides below).
+// operations_pct. The _pct columns are per-client overrides for AM/SP
+// (stored as percent — 20.00 == 20%). When NULL/blank we fall back to
+// the AM/SP default (0%, supplied via $defaultPct).
+//
+// The OPERATIONS rate is now sourced GLOBALLY from the assigned user's
+// users.commission_pct (default 10% when NULL). The per-client
+// operations_pct column is ignored — the Client Details UI no longer
+// exposes it, and the operator manages the rate from User Management.
 // $clientTotalUsd is the workbook-wide total in USD that the client pays us.
 function ms_record_commissions_for_workbook(
     PDO $pdo, array $client, int $workbookId, ?string $sku,
@@ -550,15 +559,34 @@ function ms_record_commissions_for_workbook(
     // Resolve per-role rate: NULL/'' on the client → role default. Stored
     // as percent → divide by 100 to get the decimal fraction the table
     // holds. AM/SP default to 0% (caller-supplied $defaultPct, which now
-    // defaults to 0.0); operations defaults to 5% — Karen's standard
-    // cut. Override either by setting the matching _pct column.
+    // defaults to 0.0); operations is resolved below from the user record.
     $resolveRate = function ($pct, $roleDefault) {
         $usePct = ($pct === null || $pct === '') ? $roleDefault : (float)$pct;
         return $usePct / 100.0;
     };
     $amRate = $resolveRate($client['account_manager_pct'] ?? null, $defaultPct);
     $spRate = $resolveRate($client['salesperson_pct']     ?? null, $defaultPct);
-    $opRate = $resolveRate($client['operations_pct']      ?? null, 5.0);
+
+    // Operations rate: per-user setting from users.commission_pct, falling
+    // back to 10% when the user record is missing or commission_pct is
+    // NULL. Match by display_name (preferred) or username so the operator
+    // can rename Karen later without breaking the join. ms_op_user_rate
+    // is a static cache to avoid one query per workbook in
+    // recompute_commissions, which walks every promoted/active workbook.
+    static $opRateCache = [];
+    if (!array_key_exists($op, $opRateCache)) {
+        if ($op === '') {
+            $opRateCache[$op] = 0.10;
+        } else {
+            $u = $pdo->prepare("SELECT commission_pct FROM users WHERE display_name = ? OR username = ? LIMIT 1");
+            $u->execute([$op, $op]);
+            $row = $u->fetch();
+            $opRateCache[$op] = ($row && $row['commission_pct'] !== null && $row['commission_pct'] !== '')
+                ? ((float)$row['commission_pct'] / 100.0)
+                : 0.10;
+        }
+    }
+    $opRate = $opRateCache[$op];
 
     // ON DUPLICATE KEY UPDATE keeps paid rows frozen via the IF() guard. New
     // rows insert cleanly; pending/estimate rows pick up the latest total
@@ -1595,7 +1623,7 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Admin only']);
             break;
         }
-        $stmt = $pdo->query("SELECT id, username, display_name, email, role, created_at, last_login FROM users ORDER BY created_at ASC");
+        $stmt = $pdo->query("SELECT id, username, display_name, email, role, commission_pct, created_at, last_login FROM users ORDER BY created_at ASC");
         echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
         break;
 
@@ -1661,6 +1689,18 @@ switch ($action) {
         if (array_key_exists('role', $input) && $isAdmin && !$isSelf) {
             $fields[] = 'role = ?';
             $params[] = ($input['role'] === 'admin' ? 'admin' : 'user');
+        }
+        // Commission %: admin-only. Empty string clears the override (user
+        // falls back to the role default at compute time). Negative or
+        // non-numeric input is rejected (treated as no-op).
+        if (array_key_exists('commission_pct', $input) && $isAdmin) {
+            $raw = trim((string)$input['commission_pct']);
+            if ($raw === '') {
+                $fields[] = 'commission_pct = NULL';
+            } elseif (is_numeric($raw) && (float)$raw >= 0) {
+                $fields[] = 'commission_pct = ?';
+                $params[] = (float)$raw;
+            }
         }
         if (!$fields) {
             echo json_encode(['success' => false, 'error' => 'No changes']);
