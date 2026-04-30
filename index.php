@@ -4721,16 +4721,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                    W = product W × Side   + 2 × wall
                    H = product H × Height + 2 × wall
                  and the Qty above auto-fills as Row × Side × Height. -->
-            <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px;">
-              <div style="flex:1;">
+            <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+              <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Row</div>
                 <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
-              <div style="flex:1;">
+              <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Side by Side</div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-inner-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
-              <div style="flex:1;">
+              <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Height</div>
                 <input type="number" min="0" placeholder="e.g. 5" id="carton-inner-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
@@ -4774,35 +4774,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-row-label">Weight</div>
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
-            <!-- Two qty fields side by side: Inner-per-Outer (manual or
-                 auto-derived from arrangement) + Units-per-Outer (read-only,
-                 auto-fills as inner-units × inner-cartons-per-outer). -->
-            <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px;">
-              <div style="flex:1;">
+            <!-- Two qty fields. Both are user-editable:
+                 • Inner-per-Outer  — manual or auto-derived from arrangement.
+                 • Units-per-Outer  — the user can type a target here and we
+                   back-solve inner-per-outer = units / units-per-inner;
+                   typing here also clears the Row/Side/Height arrangement
+                   so the explicit count drives the box.
+                 flex-wrap + min-width keeps both fields readable when the
+                 column is narrow (they stack instead of overflowing). -->
+            <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+              <div style="flex:1 1 140px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons per Outer Carton)</span></div>
                 <input type="number" min="0" placeholder="auto" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
-              <div style="flex:1;">
+              <div style="flex:1 1 140px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units per Outer Carton)</span></div>
-                <input type="number" min="0" placeholder="auto" id="carton-outer-units" readonly style="width:100%; background:var(--surface2); color:var(--text-muted); cursor:not-allowed;" title="Auto-calculated: Units per Inner × Inner Cartons per Outer" />
+                <input type="number" min="0" placeholder="auto" id="carton-outer-units" style="width:100%;" oninput="onOuterUnitsInput()" title="Type a target; we'll back-solve inner cartons per outer." />
               </div>
             </div>
-            <!-- Row × Side × Height arrangement for the OUTER carton, mirroring
-                 the inner controls. When set, drives outer dims directly:
+            <!-- Row × Side × Height arrangement for the OUTER carton.
+                 When set, drives outer dims directly:
                    L = inner_L × Row    + 2 × wall
                    W = inner_W × Side   + 2 × wall
                    H = inner_H × Height + 2 × wall
                  and Qty (Inner Cartons per Outer) auto-fills as Row × Side × Height. -->
-            <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px;">
-              <div style="flex:1;">
+            <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+              <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Row</div>
                 <input type="number" min="0" placeholder="e.g. 2" id="carton-outer-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
-              <div style="flex:1;">
+              <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Side by Side</div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
-              <div style="flex:1;">
+              <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Height</div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
@@ -7010,6 +7015,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     set(prefix + '-h-cm', H); convertDim(prefix + '-h-cm', prefix + '-h-in', 'cm');
   }
 
+  // Back-solve handler for "Qty (Units per Outer Carton)". The user types
+  // a target like 10 — we divide by units-per-inner to get inner cartons
+  // per outer, write that to carton-outer-count, and clear any explicit
+  // Row/Side/Height arrangement so the explicit count is what drives the
+  // outer dims (autoCalcCartons' arrangement path would otherwise override
+  // the back-solved count).
+  function onOuterUnitsInput() {
+    const targetUnits = parseInt(document.getElementById('carton-outer-units')?.value);
+    const innerCount  = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    if (!isNaN(targetUnits) && targetUnits > 0 && innerCount > 0) {
+      // Round up — partial outer cartons aren't a thing, you'd need a
+      // full outer to hold any leftover inners.
+      const outerCount = Math.ceil(targetUnits / innerCount);
+      const outerCountEl = document.getElementById('carton-outer-count');
+      if (outerCountEl) outerCountEl.value = outerCount;
+      // Clear arrangement so the back-solved count becomes authoritative.
+      ['carton-outer-row','carton-outer-side','carton-outer-stack'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el !== document.activeElement) el.value = '';
+      });
+    }
+    autoCalcCartons();
+    updateOuterWeightHint();
+  }
+
   function autoCalcCartons() {
     const pL = parseFloat(document.getElementById('dim-cm-l').value);
     const pW = parseFloat(document.getElementById('dim-cm-w').value);
@@ -7139,9 +7169,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (h) h.style.display = 'none';
     }
 
-    // Auto-fill "Qty (Units per Outer Carton)" = inner units × inner cartons per outer
+    // Auto-fill "Qty (Units per Outer Carton)" = inner units × inner cartons
+    // per outer. Skipped when the user is actively typing in this field
+    // (onOuterUnitsInput handles the back-solve direction in that case).
     const unitsPerOuterEl = document.getElementById('carton-outer-units');
-    if (unitsPerOuterEl) {
+    if (unitsPerOuterEl && unitsPerOuterEl !== document.activeElement) {
       const u = (innerQty >= 1 && resolvedOuterCount >= 1) ? innerQty * resolvedOuterCount : 0;
       unitsPerOuterEl.value = u > 0 ? u : '';
     }
