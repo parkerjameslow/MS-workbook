@@ -7326,12 +7326,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
               const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
               const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
-              // Solid shaded item: top brightest, front medium, right
-              // darkest. Slightly darker stroke so each item's outline
-              // reads even when adjacent items are the same color.
-              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.7"  stroke="${cellC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.88" stroke="${cellC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${cellC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
+              // Pallet-viz shading order: front = darkest (face away from
+              // light), right = medium, top = lightest (sun overhead).
+              // Each face drawn FULLY OPAQUE so adjacent cells can never
+              // bleed through one another — that was the bug behind the
+              // "front not rendering" report. Painters' order: back-most
+              // visible face first (front), then right, then top.
+              const strokeC = cellC;
+              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.78" stroke="${strokeC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.92" stroke="${strokeC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${strokeC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
             }
           }
         }
