@@ -4766,11 +4766,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Side by Side <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Width <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-inner-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Tall <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Height <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
                 <input type="number" min="0" placeholder="e.g. 5" id="carton-inner-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
             </div>
@@ -4849,11 +4849,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <input type="number" min="0" placeholder="e.g. 2" id="carton-outer-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Side by Side <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Width <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Tall <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Height <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
             </div>
@@ -7122,9 +7122,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!_filling) autoSaveWorkbook();
   }
 
-  // 3D box render — isometric SVG of a box. Reads cm dims from the column
-  // (product / inner / outer) and draws three visible faces. Falls back to
-  // a placeholder when dims are missing.
+  // 3D box render — isometric SVG. Camera sits upper-front-right; the
+  // three visible faces are top (lightest), front (medium), right (darkest)
+  // for a clear "shaded box" read. Falls back to a placeholder when dims
+  // are missing.
   function renderBoxViz(target) {
     const cfg = {
       product: { svg: 'viz-product', l: 'dim-cm-l', w: 'dim-cm-w', h: 'dim-cm-h', accent: '#6b93ff' },
@@ -7142,10 +7143,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
-    // Iso projection: x=length, y=height, z=width
+    // Standard iso: x → right, y → up, z → away. Camera looks from
+    // upper-front-right.  Project so back ends up upper-LEFT, front
+    // lower-RIGHT (matches every CAD/SketchUp iso illustration).
     const cos30 = Math.cos(Math.PI / 6);
     const sin30 = 0.5;
-    const proj = (x, y, z) => ({ x: (x - z) * cos30, y: (-y + (x + z) * sin30) });
+    const proj = (x, y, z) => ({
+      x: (x + z) * cos30,           // both x and z move RIGHT (back-right)
+      y: -y + (x - z) * sin30       // -y up; x-z = front of cube goes DOWN-RIGHT, back goes UP-LEFT
+    });
 
     const xL = -L/2, xR = L/2, yB = -H/2, yT = H/2, zF = -W/2, zB = W/2;
     const v = {
@@ -7155,30 +7161,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tbl: proj(xL, yT, zB), tbr: proj(xR, yT, zB)
     };
 
-    // Fit-to-viewBox scale + center
-    const VBW = 140, VBH = 110, PAD = 12;
+    // Fit-to-viewBox scale + center. Reserve bottom 10px for the dim label.
+    const VBW = 140, VBH = 110, PAD_X = 8, PAD_TOP = 6, PAD_BOTTOM = 18;
     const allX = Object.values(v).map(p => p.x);
     const allY = Object.values(v).map(p => p.y);
     const minX = Math.min(...allX), maxX = Math.max(...allX);
     const minY = Math.min(...allY), maxY = Math.max(...allY);
-    const sX = (VBW - 2*PAD) / (maxX - minX || 1);
-    const sY = (VBH - 2*PAD) / (maxY - minY || 1);
+    const sX = (VBW - 2*PAD_X) / (maxX - minX || 1);
+    const sY = (VBH - PAD_TOP - PAD_BOTTOM) / (maxY - minY || 1);
     const s  = Math.min(sX, sY);
     const cx = VBW/2 - ((minX + maxX)/2) * s;
-    const cy = VBH/2 - ((minY + maxY)/2) * s;
+    const cy = (VBH - PAD_BOTTOM + PAD_TOP)/2 - ((minY + maxY)/2) * s;
     const xform = p => ({ x: p.x * s + cx, y: p.y * s + cy });
 
+    // Visible faces from upper-front-right view: top (yT), front (zF), right (xR)
+    const top   = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
     const front = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
     const right = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
-    const top   = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
     const polyStr = pts => pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
 
     const c = cfg.accent;
+    // Solid fills, decreasing brightness for top → front → right, plus a
+    // crisp outline. Reads as a shaded 3D box rather than three overlapping
+    // translucent shapes.
     svg.innerHTML = `
-      <polygon points="${polyStr(front)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="1.2" stroke-linejoin="round" />
-      <polygon points="${polyStr(right)}" fill="${c}" fill-opacity="0.22" stroke="${c}" stroke-width="1.2" stroke-linejoin="round" />
-      <polygon points="${polyStr(top)}"   fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.2" stroke-linejoin="round" />
-      <text x="70" y="${VBH - 4}" text-anchor="middle" fill="#9ba3c0" font-family="inherit" font-size="8">${L.toFixed(1)} × ${W.toFixed(1)} × ${H.toFixed(1)} cm</text>
+      <polygon points="${polyStr(right)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />
+      <polygon points="${polyStr(front)}" fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />
+      <polygon points="${polyStr(top)}"   fill="${c}" fill-opacity="0.78" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />
+      <text x="70" y="${VBH - 4}" text-anchor="middle" fill="#9ba3c0" font-family="inherit" font-size="8.5" font-weight="600">${L.toFixed(1)} × ${W.toFixed(1)} × ${H.toFixed(1)} cm</text>
     `;
   }
 
