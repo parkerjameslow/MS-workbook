@@ -4783,12 +4783,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  flex-wrap + min-width keeps both fields readable when the
                  column is narrow (they stack instead of overflowing). -->
             <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
-              <div style="flex:1 1 140px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons per Outer Carton)</span></div>
+              <div style="flex:1 1 130px; min-width:0;">
+                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Inner Cartons per Outer Carton">Inner / Outer</div>
                 <input type="number" min="0" placeholder="auto" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
-              <div style="flex:1 1 140px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units per Outer Carton)</span></div>
+              <div style="flex:1 1 130px; min-width:0;">
+                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units per Outer Carton — type a target to back-solve Inner / Outer">Units / Outer</div>
                 <input type="number" min="0" placeholder="auto" id="carton-outer-units" style="width:100%;" oninput="onOuterUnitsInput()" title="Type a target; we'll back-solve inner cartons per outer." />
               </div>
             </div>
