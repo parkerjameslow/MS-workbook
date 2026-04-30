@@ -4884,7 +4884,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
+              <div style="display:flex; gap:8px; align-items:flex-start;">
+                <div style="flex:1; min-width:0;">
+                  <div style="font-size:9.5px; color:var(--text-muted); margin-bottom:4px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; text-align:center;">Option A · stack + wireframe</div>
+                  <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
+                </div>
+                <div style="flex:1; min-width:0;">
+                  <div style="font-size:9.5px; color:var(--text-muted); margin-bottom:4px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; text-align:center;">Option B · pallet orientation</div>
+                  <svg id="viz-outer-alt" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
+                </div>
+              </div>
             </div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
@@ -7238,31 +7247,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       html += `<polygon points="${polyStr(frontF)}" fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
       html += `<polygon points="${polyStr(topF)}"   fill="${c}" fill-opacity="0.78" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
     } else if (target === 'outer') {
-      // ── PIVOT: pallet-style stacked solid boxes ────────────────────
-      // No wireframe outer, no flaps. Each inner carton is a solid 3D
-      // box rendered like the pallet viz draws stacked outer cartons:
-      // top face lightened, right face base color, front face darkened,
-      // ALL fully opaque so adjacent cells can never bleed through.
-      // The user gets a clean stack matching the pallet's appearance.
+      // OUTER viz renders into TWO svgs side-by-side so the operator can
+      // pick the layout they prefer. Both share the same scale + dim
+      // brackets — only the cell rendering differs.
+      //
+      //   Option A → viz-outer:    solid stack + thin wireframe outer
+      //                            outline (front face on the right)
+      //   Option B → viz-outer-alt: pallet-camera orientation (front face
+      //                            on the left, like the pallet preview)
+      //
+      // We produce Option A's html below; Option B is built later in a
+      // second pass and dropped into viz-outer-alt at the very end of
+      // this function.
       if (contents) {
         const { pL, pW, pH, depth, width, height, color: cellC } = contents;
-        // Each cell exactly fills its share of the outer cavity. With
-        // depth=1, width=1, height=2 the user sees two stacked solid
-        // orange boxes that together fill the full outer footprint.
         const cellL = (xR - xL) / depth;
         const cellW = (zB - zF) / width;
         const cellH = (yT - yB) / height;
-
-        // Painters' algorithm: bottom → top, back → front, left → right.
+        const topC   = shadeRgb(cellC,  25);
+        const rightC = cellC;
+        const frontC = shadeRgb(cellC, -40);
+        const cellStrokeStyle = `stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round"`;
+        // Painters' algorithm for Option A camera (upper-front-right):
+        // bottom → top (hi 0..h-1), back → front (wi h-1..0), left → right.
         for (let hi = 0; hi < height; hi++) {
           for (let wi = width - 1; wi >= 0; wi--) {
             for (let di = 0; di < depth; di++) {
-              const cxLb = xL + di * cellL;
-              const cxRb = cxLb + cellL;
-              const cyBb = yB + hi * cellH;
-              const cyTb = cyBb + cellH;
-              const czFb = zF + wi * cellW;
-              const czBb = czFb + cellW;
+              const cxLb = xL + di * cellL,  cxRb = cxLb + cellL;
+              const cyBb = yB + hi * cellH,  cyTb = cyBb + cellH;
+              const czFb = zF + wi * cellW,  czBb = czFb + cellW;
               const cv = {
                 bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
                 bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
@@ -7272,16 +7285,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
               const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
               const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
-              const topC   = shadeRgb(cellC,  25);
-              const rightC = cellC;
-              const frontC = shadeRgb(cellC, -40);
-              html += `<polygon points="${polyStr(cFront)}" fill="${frontC}" stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cRight)}" fill="${rightC}" stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cTop)}"   fill="${topC}"   stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cFront)}" fill="${frontC}" ${cellStrokeStyle} />`;
+              html += `<polygon points="${polyStr(cRight)}" fill="${rightC}" ${cellStrokeStyle} />`;
+              html += `<polygon points="${polyStr(cTop)}"   fill="${topC}"   ${cellStrokeStyle} />`;
             }
           }
         }
       }
+      // Option A also gets a thin green wireframe outer outline drawn on
+      // top of the stack so it's clear the inners sit inside a cardboard
+      // outer carton. 12 edges at low opacity.
+      const outerEdges = [
+        ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'],
+        ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'],
+        ['bfl','tfl'],['bfr','tfr'],['bbr','tbr'],['bbl','tbl']
+      ];
+      outerEdges.forEach(([a, b]) => {
+        const pa = xform(v[a]), pb = xform(v[b]);
+        html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="1.4" stroke-opacity="0.85" />`;
+      });
     } else {
       // Inner viz: open transparent wireframe with the products visible
       // inside. Same as before — only the OUTER viz pivoted.
@@ -7411,6 +7433,57 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
 
     svg.innerHTML = html;
+
+    // ── OUTER viz only: render Option B into viz-outer-alt ──────────
+    // Option B uses a pallet-style camera angle so the FRONT face lands
+    // on the lower-left (matching the pallet preview). Same projection
+    // formula, but each cell draws its BACK face as the visible front,
+    // and painters' loops flip on the z axis (low z = far now).
+    if (target === 'outer') {
+      const altSvg = document.getElementById('viz-outer-alt');
+      if (altSvg) {
+        let altHtml = '';
+        if (contents) {
+          const { pL, pW, pH, depth, width, height, color: cellC } = contents;
+          const cellL = (xR - xL) / depth;
+          const cellW = (zB - zF) / width;
+          const cellH = (yT - yB) / height;
+          const topC   = shadeRgb(cellC,  25);
+          const rightC = cellC;
+          const frontC = shadeRgb(cellC, -40);
+          const cellStrokeStyle = `stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round"`;
+          // Painters' for upper-back-right camera: low z first (far),
+          // high z last (near). Other axes match Option A.
+          for (let hi = 0; hi < height; hi++) {
+            for (let wi = 0; wi < width; wi++) {
+              for (let di = 0; di < depth; di++) {
+                const cxLb = xL + di * cellL,  cxRb = cxLb + cellL;
+                const cyBb = yB + hi * cellH,  cyTb = cyBb + cellH;
+                const czFb = zF + wi * cellW,  czBb = czFb + cellW;
+                const cv = {
+                  bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
+                  bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
+                  tfl: proj(cxLb, cyTb, czFb), tfr: proj(cxRb, cyTb, czFb),
+                  tbl: proj(cxLb, cyTb, czBb), tbr: proj(cxRb, cyTb, czBb)
+                };
+                // Cell's BACK face used as "visible front" (camera at +z)
+                const cFrontB = [cv.bbl, cv.bbr, cv.tbr, cv.tbl].map(xform);
+                const cRightB = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
+                const cTopB   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
+                altHtml += `<polygon points="${polyStr(cFrontB)}" fill="${frontC}" ${cellStrokeStyle} />`;
+                altHtml += `<polygon points="${polyStr(cRightB)}" fill="${rightC}" ${cellStrokeStyle} />`;
+                altHtml += `<polygon points="${polyStr(cTopB)}"   fill="${topC}"   ${cellStrokeStyle} />`;
+              }
+            }
+          }
+        }
+        // Re-emit dim labels on Option B so it's also a complete viz.
+        altHtml += drawDim(lA, lB, lMid, `${L.toFixed(1)} cm L`);
+        altHtml += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
+        altHtml += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
+        altSvg.innerHTML = altHtml;
+      }
+    }
   }
 
   // Back-solve handler for "Qty (Units per Outer Carton)". The user types
