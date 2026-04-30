@@ -7249,16 +7249,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const originY = yB + padCm;
         const originZ = zF + padCm;
 
+        // Visual inset — pulls every cell inward by ~2.5% of its smallest
+        // dimension on each side, so adjacent cells (and the cell-to-wall
+        // boundary) read as distinct shapes instead of merging into one
+        // continuous block. Adds about 5% gap between adjacent cells.
+        const insetCm = Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
+
         // Painters' algorithm: bottom → top, back → front, left → right.
         for (let hi = 0; hi < height; hi++) {
           for (let wi = width - 1; wi >= 0; wi--) {
             for (let di = 0; di < depth; di++) {
-              const cxLb = originX + di * stepX;
-              const cxRb = cxLb + pL;
-              const cyBb = originY + hi * stepY;
-              const cyTb = cyBb + pH;
-              const czFb = originZ + wi * stepZ;
-              const czBb = czFb + pW;
+              const cxLb = originX + di * stepX + insetCm;
+              const cxRb = cxLb + pL - 2 * insetCm;
+              const cyBb = originY + hi * stepY + insetCm;
+              const cyTb = cyBb + pH - 2 * insetCm;
+              const czFb = originZ + wi * stepZ + insetCm;
+              const czBb = czFb + pW - 2 * insetCm;
               const cv = {
                 bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
                 bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
@@ -7268,11 +7274,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
               const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
               const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
-              // Solid contents: fully opaque, with shading via color tint
-              // (top brightest, front medium, right darkest) for 3D read.
-              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.78" stroke="${cellC}" stroke-width="0.7" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.92" stroke="${cellC}" stroke-width="0.7" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${cellC}" stroke-width="0.7" stroke-linejoin="round" />`;
+              // Solid shaded item: top brightest, front medium, right
+              // darkest. Slightly darker stroke so each item's outline
+              // reads even when adjacent items are the same color.
+              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.7"  stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.88" stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
             }
           }
         }
@@ -7326,12 +7333,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       `;
     };
 
-    // L (length) — bracket below, horizontal
-    const lY = syMax + 14;
-    html += drawDim({ x: tBfl.x, y: lY }, { x: tBfr.x, y: lY },
-      { x: (tBfl.x + tBfr.x)/2, y: lY + 10 }, `${L.toFixed(1)} cm L`);
+    // L (length) — bracket angled along the front-bottom edge bfl→bfr,
+    // offset OUTWARD (down-left) so it sits in front of the box.
+    const lDx = tBfr.x - tBfl.x, lDy = tBfr.y - tBfl.y;
+    const lLen = Math.sqrt(lDx*lDx + lDy*lDy) || 1;
+    let lPx = -lDy/lLen, lPy = lDx/lLen;
+    if (lPy < 0) { lPx = -lPx; lPy = -lPy; }
+    const lOff = 14;
+    const lA = { x: tBfl.x + lPx*lOff, y: tBfl.y + lPy*lOff };
+    const lB = { x: tBfr.x + lPx*lOff, y: tBfr.y + lPy*lOff };
+    const lMid = { x: (lA.x + lB.x)/2 + lPx*8, y: (lA.y + lB.y)/2 + lPy*8 + 3 };
+    html += drawDim(lA, lB, lMid, `${L.toFixed(1)} cm L`);
 
-    // W (depth) — bracket angled along bfr→bbr, offset outward from box
+    // W (depth) — bracket angled along the right-bottom edge bfr→bbr,
+    // offset outward (down-right).
     const wDx = tBbr.x - tBfr.x, wDy = tBbr.y - tBfr.y;
     const wLen = Math.sqrt(wDx*wDx + wDy*wDy) || 1;
     let wPx = wDy/wLen, wPy = -wDx/wLen;
