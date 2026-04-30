@@ -1540,6 +1540,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cursor: pointer;
       transition: color 0.15s, border-color 0.15s, background 0.15s;
     }
+    .specs-box-viz {
+      width: 100%;
+      height: auto;
+      max-height: 130px;
+      display: block;
+      background: rgba(155,163,192,0.04);
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+    }
     .specs-clear-btn:hover {
       color: var(--danger);
       border-color: var(--danger);
@@ -4669,14 +4678,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">cm</div>
             <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm'); autoCalcCartons()" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in'); autoCalcCartons()" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm'); autoCalcCartons()" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in'); autoCalcCartons()" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm'); autoCalcCartons()" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in'); autoCalcCartons()" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -4703,6 +4712,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 </select>
               </div>
             </div>
+            <!-- 3D preview — rendered from L/W/H. Falls back to a placeholder
+                 message until at least one dimension is filled in. -->
+            <div class="specs-full-row" style="margin-top:14px;">
+              <svg id="viz-product" class="specs-box-viz" viewBox="0 0 140 110" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
           </div>
         </div>
 
@@ -4720,14 +4734,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">cm</div>
             <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-cm" oninput="convertDim('carton-inner-l-cm','carton-inner-l-in','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-in" oninput="convertDim('carton-inner-l-in','carton-inner-l-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-cm" oninput="convertDim('carton-inner-l-cm','carton-inner-l-in','cm'); recalcOuterFromInner(); renderBoxViz('inner')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-l-in" oninput="convertDim('carton-inner-l-in','carton-inner-l-cm','in'); recalcOuterFromInner(); renderBoxViz('inner')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-cm" oninput="convertDim('carton-inner-w-cm','carton-inner-w-in','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-in" oninput="convertDim('carton-inner-w-in','carton-inner-w-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-cm" oninput="convertDim('carton-inner-w-cm','carton-inner-w-in','cm'); recalcOuterFromInner(); renderBoxViz('inner')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-w-in" oninput="convertDim('carton-inner-w-in','carton-inner-w-cm','in'); recalcOuterFromInner(); renderBoxViz('inner')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-cm" oninput="convertDim('carton-inner-h-cm','carton-inner-h-in','cm')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-in" oninput="convertDim('carton-inner-h-in','carton-inner-h-cm','in')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-cm" oninput="convertDim('carton-inner-h-cm','carton-inner-h-in','cm'); recalcOuterFromInner(); renderBoxViz('inner')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-inner-h-in" oninput="convertDim('carton-inner-h-in','carton-inner-h-cm','in'); recalcOuterFromInner(); renderBoxViz('inner')" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -4748,15 +4762,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  and the Qty above auto-fills as Row × Side × Height. -->
             <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Row</div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Depth <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
                 <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Side by Side</div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Side by Side <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-inner-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Height</div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Tall <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
                 <input type="number" min="0" placeholder="e.g. 5" id="carton-inner-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
             </div>
@@ -4770,6 +4784,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               </div>
             </div>
             <div class="specs-full-row" id="inner-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
+            <div class="specs-full-row" style="margin-top:14px;">
+              <svg id="viz-inner" class="specs-box-viz" viewBox="0 0 140 110" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
           </div>
         </div>
 
@@ -4787,14 +4804,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">cm</div>
             <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -4828,15 +4845,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  and Qty (Inner Cartons per Outer) auto-fills as Row × Side × Height. -->
             <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Row</div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Depth <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
                 <input type="number" min="0" placeholder="e.g. 2" id="carton-outer-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Side by Side</div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Side by Side <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Height</div>
+                <div class="specs-row-label" style="margin-bottom:5px;">Tall <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
             </div>
@@ -4850,6 +4867,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               </div>
             </div>
             <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
+            <div class="specs-full-row" style="margin-top:14px;">
+              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 140 110" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
           </div>
@@ -7066,6 +7086,100 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     setAxis('l', L);
     setAxis('w', W);
     setAxis('h', H);
+    // Refresh the 3D preview for whichever box just changed
+    if (typeof renderBoxViz === 'function') {
+      if (prefix === 'carton-inner')      renderBoxViz('inner');
+      else if (prefix === 'carton-outer') renderBoxViz('outer');
+    }
+  }
+
+  // Manual edit on inner cm/in: don't blow away the user's typed inner
+  // dims via autoCalcCartons (which would re-derive from arrangement).
+  // Instead, just propagate the new inner dims FORWARD to the outer
+  // carton if outer arrangement is set.
+  function recalcOuterFromInner() {
+    const innerL = parseFloat(document.getElementById('carton-inner-l-cm')?.value);
+    const innerW = parseFloat(document.getElementById('carton-inner-w-cm')?.value);
+    const innerH = parseFloat(document.getElementById('carton-inner-h-cm')?.value);
+    if (!innerL || !innerW || !innerH) return;
+    const oRowQty   = parseInt(document.getElementById('carton-outer-row')?.value);
+    const oSideQty  = parseInt(document.getElementById('carton-outer-side')?.value);
+    const oStackQty = parseInt(document.getElementById('carton-outer-stack')?.value);
+    const useArr    = (oRowQty >= 1) || (oSideQty >= 1) || (oStackQty >= 1);
+    if (!useArr) {
+      renderBoxViz('outer'); // dims unchanged but inner just changed — re-render
+      return;
+    }
+    const oWallSel = parseInt(document.getElementById('carton-outer-wall')?.value) || 2;
+    const oWallCm  = oWallSel === 2 ? 0.7 : 0.4;
+    const r = oRowQty   >= 1 ? oRowQty   : 1;
+    const s = oSideQty  >= 1 ? oSideQty  : 1;
+    const h = oStackQty >= 1 ? oStackQty : 1;
+    // (count + 1) walls — see autoCalcCartons for the rationale
+    setCartonDimFields('carton-outer', innerL * r + (r + 1) * oWallCm, innerW * s + (s + 1) * oWallCm, innerH * h + (h + 1) * oWallCm);
+    renderBoxViz('outer');
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  // 3D box render — isometric SVG of a box. Reads cm dims from the column
+  // (product / inner / outer) and draws three visible faces. Falls back to
+  // a placeholder when dims are missing.
+  function renderBoxViz(target) {
+    const cfg = {
+      product: { svg: 'viz-product', l: 'dim-cm-l', w: 'dim-cm-w', h: 'dim-cm-h', accent: '#6b93ff' },
+      inner:   { svg: 'viz-inner',   l: 'carton-inner-l-cm', w: 'carton-inner-w-cm', h: 'carton-inner-h-cm', accent: '#E8751A' },
+      outer:   { svg: 'viz-outer',   l: 'carton-outer-l-cm', w: 'carton-outer-w-cm', h: 'carton-outer-h-cm', accent: '#E8751A' }
+    }[target];
+    if (!cfg) return;
+    const svg = document.getElementById(cfg.svg);
+    if (!svg) return;
+    const L = parseFloat(document.getElementById(cfg.l)?.value);
+    const W = parseFloat(document.getElementById(cfg.w)?.value);
+    const H = parseFloat(document.getElementById(cfg.h)?.value);
+    if (!L || !W || !H) {
+      svg.innerHTML = '<text x="70" y="58" text-anchor="middle" fill="#9ba3c0" font-family="inherit" font-size="9" font-style="italic">Enter dimensions</text>';
+      return;
+    }
+
+    // Iso projection: x=length, y=height, z=width
+    const cos30 = Math.cos(Math.PI / 6);
+    const sin30 = 0.5;
+    const proj = (x, y, z) => ({ x: (x - z) * cos30, y: (-y + (x + z) * sin30) });
+
+    const xL = -L/2, xR = L/2, yB = -H/2, yT = H/2, zF = -W/2, zB = W/2;
+    const v = {
+      bfl: proj(xL, yB, zF), bfr: proj(xR, yB, zF),
+      bbl: proj(xL, yB, zB), bbr: proj(xR, yB, zB),
+      tfl: proj(xL, yT, zF), tfr: proj(xR, yT, zF),
+      tbl: proj(xL, yT, zB), tbr: proj(xR, yT, zB)
+    };
+
+    // Fit-to-viewBox scale + center
+    const VBW = 140, VBH = 110, PAD = 12;
+    const allX = Object.values(v).map(p => p.x);
+    const allY = Object.values(v).map(p => p.y);
+    const minX = Math.min(...allX), maxX = Math.max(...allX);
+    const minY = Math.min(...allY), maxY = Math.max(...allY);
+    const sX = (VBW - 2*PAD) / (maxX - minX || 1);
+    const sY = (VBH - 2*PAD) / (maxY - minY || 1);
+    const s  = Math.min(sX, sY);
+    const cx = VBW/2 - ((minX + maxX)/2) * s;
+    const cy = VBH/2 - ((minY + maxY)/2) * s;
+    const xform = p => ({ x: p.x * s + cx, y: p.y * s + cy });
+
+    const front = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
+    const right = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
+    const top   = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
+    const polyStr = pts => pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+
+    const c = cfg.accent;
+    svg.innerHTML = `
+      <polygon points="${polyStr(front)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="1.2" stroke-linejoin="round" />
+      <polygon points="${polyStr(right)}" fill="${c}" fill-opacity="0.22" stroke="${c}" stroke-width="1.2" stroke-linejoin="round" />
+      <polygon points="${polyStr(top)}"   fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.2" stroke-linejoin="round" />
+      <text x="70" y="${VBH - 4}" text-anchor="middle" fill="#9ba3c0" font-family="inherit" font-size="8">${L.toFixed(1)} × ${W.toFixed(1)} × ${H.toFixed(1)} cm</text>
+    `;
   }
 
   // Back-solve handler for "Qty (Units per Outer Carton)". The user types
@@ -7183,9 +7297,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const r = oRowQty   >= 1 ? oRowQty   : 1;
       const s = oSideQty  >= 1 ? oSideQty  : 1;
       const h = oStackQty >= 1 ? oStackQty : 1;
-      const outerL = innerDims.L * r + 2 * oWallCm;
-      const outerW = innerDims.W * s + 2 * oWallCm;
-      const outerH = innerDims.H * h + 2 * oWallCm;
+      // (count + 1) walls per axis: 2 outer walls + (count - 1) shared walls
+      // between adjacent inner cartons. Reducing a Side count by 1 removes
+      // one full wall thickness (0.4 cm single / 0.7 cm double) along that
+      // axis, which matches what's physically saved in shared cardboard.
+      const outerL = innerDims.L * r + (r + 1) * oWallCm;
+      const outerW = innerDims.W * s + (s + 1) * oWallCm;
+      const outerH = innerDims.H * h + (h + 1) * oWallCm;
       setCartonDimFields('carton-outer', outerL, outerW, outerH);
       // Auto-fill the Qty (Inner Cartons per Outer) field from arrangement
       resolvedOuterCount = r * s * h;
@@ -12453,6 +12571,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _setLead('ship-lead-fast',      data?.shipLeadFast,      '20-30');
     _setLead('ship-lead-airupp',    data?.shipLeadAirupp,    '7-10');
     _setLead('ship-lead-directair', data?.shipLeadDirectair, '3-5');
+
+    // Render the 3D box previews from the just-loaded dims
+    if (typeof renderBoxViz === 'function') {
+      renderBoxViz('product');
+      renderBoxViz('inner');
+      renderBoxViz('outer');
+    }
 
     // Trigger filled state on all inputs
     document.querySelectorAll('#view-workbook input, #view-workbook textarea').forEach(el => updateFilled(el));
