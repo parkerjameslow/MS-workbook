@@ -4712,7 +4712,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs'); updateOuterWeightHint()" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(units / carton)</span></div>
-              <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              <input type="number" min="0" placeholder="auto" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+            </div>
+            <!-- Row × Side × Height arrangement + box wall — explicit packing
+                 control for the inner carton. When all three are set, the
+                 inner dims auto-derive directly:
+                   L = product L × Row    + 2 × wall
+                   W = product W × Side   + 2 × wall
+                   H = product H × Height + 2 × wall
+                 and the Qty above auto-fills as Row × Side × Height. -->
+            <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px;">
+              <div style="flex:1;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Row</div>
+                <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              </div>
+              <div style="flex:1;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Side by Side</div>
+                <input type="number" min="0" placeholder="e.g. 1" id="carton-inner-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              </div>
+              <div style="flex:1;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Height</div>
+                <input type="number" min="0" placeholder="e.g. 5" id="carton-inner-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              </div>
+            </div>
+            <div class="specs-full-row" style="margin-top:6px;">
+              <div class="specs-row-label" style="margin-bottom:5px;">Box Wall</div>
+              <div class="select-wrapper">
+                <select id="carton-inner-wall" oninput="autoCalcCartons()">
+                  <option value="1">Single Wall (≈4mm)</option>
+                  <option value="2">Double Wall (≈7mm)</option>
+                </select>
+              </div>
             </div>
             <div class="specs-full-row" id="inner-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
           </div>
@@ -6947,13 +6977,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pL = parseFloat(document.getElementById('dim-cm-l').value);
     const pW = parseFloat(document.getElementById('dim-cm-w').value);
     const pH = parseFloat(document.getElementById('dim-cm-h').value);
-    const innerQty = parseInt(document.getElementById('carton-inner-count').value);  // products per inner carton
     const outerQty = parseInt(document.getElementById('carton-outer-count').value);  // inner cartons per outer carton
-    const PADDING = 2; // 2cm carton wall allowance
+
+    // Row × Side × Height arrangement (explicit-control path). When at
+    // least one of Row/Side/Height is set we drive the inner carton from
+    // these directly instead of guessing via bestCartonDims. Missing axes
+    // default to 1 (single product on that axis). Wall thickness comes
+    // from the single/double-wall dropdown (4mm or 7mm per side).
+    const rowQty   = parseInt(document.getElementById('carton-inner-row')?.value);
+    const sideQty  = parseInt(document.getElementById('carton-inner-side')?.value);
+    const stackQty = parseInt(document.getElementById('carton-inner-stack')?.value);
+    const wallSel  = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
+    const wallCm   = wallSel === 2 ? 0.7 : 0.4;  // single ≈ 4mm, double ≈ 7mm
+    const PADDING = 2; // 2cm fallback for the legacy bestCartonDims path
 
     if (!pL || !pW || !pH) return;
 
     let innerDims = null;
+    let innerQty  = parseInt(document.getElementById('carton-inner-count').value);
 
     const productWeightKg = parseFloat(document.getElementById('dim-weight-kg').value);
 
@@ -6965,8 +7006,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       el.textContent = `${nx} × ${ny}${layerNote}  =  ${nx * ny * nz} ${itemWord}`;
     };
 
-    // ── Inner carton: sized to hold innerQty products ──
-    if (innerQty >= 1) {
+    const useArrangement = (rowQty >= 1) || (sideQty >= 1) || (stackQty >= 1);
+
+    // ── Inner carton: explicit Row × Side × Height path takes precedence ──
+    if (useArrangement) {
+      const r = rowQty   >= 1 ? rowQty   : 1;
+      const s = sideQty  >= 1 ? sideQty  : 1;
+      const h = stackQty >= 1 ? stackQty : 1;
+      const innerL = pL * r + 2 * wallCm;
+      const innerW = pW * s + 2 * wallCm;
+      const innerH = pH * h + 2 * wallCm;
+      innerDims = { L: innerL, W: innerW, H: innerH, nx: r, ny: s, nz: h };
+      setCartonDimFields('carton-inner', innerL, innerW, innerH);
+      // Auto-fill the Qty field from Row × Side × Height
+      innerQty = r * s * h;
+      const qtyEl = document.getElementById('carton-inner-count');
+      if (qtyEl && qtyEl !== document.activeElement) qtyEl.value = innerQty;
+      setHint('inner-arrange-hint', r, s, h, innerQty === 1 ? 'unit' : 'units');
+      if (!isNaN(productWeightKg) && productWeightKg > 0) {
+        document.getElementById('carton-inner-weight').value = (productWeightKg * innerQty).toFixed(2);
+        convertWeight('carton-inner-weight', 'carton-inner-weight-lbs', 'kg');
+      }
+      const badge = document.getElementById('inner-calc-badge');
+      if (badge) badge.style.display = '';
+    } else if (innerQty >= 1) {
+      // ── Legacy path: pack innerQty products into the smallest box ──
       innerDims = bestCartonDims(pL, pW, pH, innerQty, PADDING);
       setCartonDimFields('carton-inner', innerDims.L, innerDims.W, innerDims.H);
       setHint('inner-arrange-hint', innerDims.nx, innerDims.ny, innerDims.nz, innerQty === 1 ? 'unit' : 'units');
@@ -12020,6 +12084,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('carton-unit-weight', data.cartonUnitWeight);
       _s('carton-inner-weight', data.cartonInnerWeight);
       _s('carton-inner-count', data.cartonInnerCount);
+      _s('carton-inner-row',   data.cartonInnerRow);
+      _s('carton-inner-side',  data.cartonInnerSide);
+      _s('carton-inner-stack', data.cartonInnerStack);
+      _s('carton-inner-wall',  data.cartonInnerWall || '1');
       _s('carton-outer-weight', data.cartonOuterWeight);
       _s('carton-outer-count', data.cartonOuterCount);
       _s('pallet-total-cartons', data.palletTotalCartons);
@@ -12844,6 +12912,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cartonUnitWeight: _v('carton-unit-weight'),
       cartonInnerWeight: _v('carton-inner-weight'),
       cartonInnerCount: _v('carton-inner-count'),
+      // Row × Side × Height arrangement + box wall — drive the inner
+      // carton dims when set (Qty above auto-fills as row × side × stack)
+      cartonInnerRow:   _v('carton-inner-row'),
+      cartonInnerSide:  _v('carton-inner-side'),
+      cartonInnerStack: _v('carton-inner-stack'),
+      cartonInnerWall:  _v('carton-inner-wall'),
       cartonOuterWeight: _v('carton-outer-weight'),
       cartonOuterCount: _v('carton-outer-count'),
       palletTotalCartons: _v('pallet-total-cartons'),
