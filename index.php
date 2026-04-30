@@ -4884,16 +4884,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <div class="specs-full-row" style="margin-top:14px;">
-              <div style="display:flex; gap:8px; align-items:flex-start;">
-                <div style="flex:1; min-width:0;">
-                  <div style="font-size:9.5px; color:var(--text-muted); margin-bottom:4px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; text-align:center;">Option A · stack + wireframe</div>
-                  <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
-                </div>
-                <div style="flex:1; min-width:0;">
-                  <div style="font-size:9.5px; color:var(--text-muted); margin-bottom:4px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; text-align:center;">Option B · pallet orientation</div>
-                  <svg id="viz-outer-alt" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
-                </div>
-              </div>
+              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
@@ -7192,32 +7183,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tbl: proj(xL, yT, zB), tbr: proj(xR, yT, zB)
     };
 
-    // Read arrangement + child-item dims for open boxes
-    let contents = null;
-    if (target === 'inner') {
-      const ipL = parseFloat(document.getElementById('dim-cm-l')?.value);
-      const ipW = parseFloat(document.getElementById('dim-cm-w')?.value);
-      const ipH = parseFloat(document.getElementById('dim-cm-h')?.value);
+    // Read arrangement for inner/outer; product renders as one solid cell
+    // sized to the box itself. Each viz now follows the same pattern:
+    // solid Option-B–style 3D box(es) inside, plus a thin wireframe
+    // silhouette overlay so the cardboard outline reads.
+    let contents;
+    if (target === 'product') {
+      contents = { depth: 1, width: 1, height: 1, color: cfg.accent };
+    } else if (target === 'inner') {
       const d = parseInt(document.getElementById('carton-inner-row')?.value);
       const w = parseInt(document.getElementById('carton-inner-side')?.value);
       const h = parseInt(document.getElementById('carton-inner-stack')?.value);
-      if (ipL && ipW && ipH && (d >= 1 || w >= 1 || h >= 1)) {
-        // Products inside inner carton — solid blue (matches Product column accent)
-        contents = { pL: ipL, pW: ipW, pH: ipH, depth: d || 1, width: w || 1, height: h || 1, color: '#6b93ff' };
-      }
+      contents = (d >= 1 || w >= 1 || h >= 1)
+        ? { depth: d || 1, width: w || 1, height: h || 1, color: '#6b93ff' }
+        : null;
     } else if (target === 'outer') {
-      const ipL = parseFloat(document.getElementById('carton-inner-l-cm')?.value);
-      const ipW = parseFloat(document.getElementById('carton-inner-w-cm')?.value);
-      const ipH = parseFloat(document.getElementById('carton-inner-h-cm')?.value);
       const d = parseInt(document.getElementById('carton-outer-row')?.value);
       const w = parseInt(document.getElementById('carton-outer-side')?.value);
       const h = parseInt(document.getElementById('carton-outer-stack')?.value);
-      if (ipL && ipW && ipH && (d >= 1 || w >= 1 || h >= 1)) {
-        // Inner cartons inside outer — solid orange (matches Inner column accent)
-        contents = { pL: ipL, pW: ipW, pH: ipH, depth: d || 1, width: w || 1, height: h || 1, color: '#E8751A' };
-      }
+      contents = (d >= 1 || w >= 1 || h >= 1)
+        ? { depth: d || 1, width: w || 1, height: h || 1, color: '#E8751A' }
+        : null;
     }
-    const isOpen = (target === 'inner' || target === 'outer');
 
     // Fit-to-viewBox scale + center, with padding for L/W/H labels.
     // Left padding wider for the rotated H label; bottom for L/W brackets.
@@ -7238,121 +7225,61 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const c = cfg.accent;
     let html = '';
 
-    if (!isOpen) {
-      // Closed box (product): top + front + right
-      const topF   = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
-      const frontF = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
-      const rightF = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
-      html += `<polygon points="${polyStr(rightF)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
-      html += `<polygon points="${polyStr(frontF)}" fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
-      html += `<polygon points="${polyStr(topF)}"   fill="${c}" fill-opacity="0.78" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
-    } else if (target === 'outer') {
-      // OUTER viz renders into TWO svgs side-by-side so the operator can
-      // pick the layout they prefer. Both share the same scale + dim
-      // brackets — only the cell rendering differs.
-      //
-      //   Option A → viz-outer:    solid stack + thin wireframe outer
-      //                            outline (front face on the right)
-      //   Option B → viz-outer-alt: pallet-camera orientation (front face
-      //                            on the left, like the pallet preview)
-      //
-      // We produce Option A's html below; Option B is built later in a
-      // second pass and dropped into viz-outer-alt at the very end of
-      // this function.
-      if (contents) {
-        const { pL, pW, pH, depth, width, height, color: cellC } = contents;
-        const cellL = (xR - xL) / depth;
-        const cellW = (zB - zF) / width;
-        const cellH = (yT - yB) / height;
-        const topC   = shadeRgb(cellC,  25);
-        const rightC = cellC;
-        const frontC = shadeRgb(cellC, -40);
-        const cellStrokeStyle = `stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round"`;
-        // Painters' algorithm for Option A camera (upper-front-right):
-        // bottom → top (hi 0..h-1), back → front (wi h-1..0), left → right.
-        for (let hi = 0; hi < height; hi++) {
-          for (let wi = width - 1; wi >= 0; wi--) {
-            for (let di = 0; di < depth; di++) {
-              const cxLb = xL + di * cellL,  cxRb = cxLb + cellL;
-              const cyBb = yB + hi * cellH,  cyTb = cyBb + cellH;
-              const czFb = zF + wi * cellW,  czBb = czFb + cellW;
-              const cv = {
-                bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
-                bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
-                tfl: proj(cxLb, cyTb, czFb), tfr: proj(cxRb, cyTb, czFb),
-                tbl: proj(cxLb, cyTb, czBb), tbr: proj(cxRb, cyTb, czBb)
-              };
-              const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
-              const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
-              const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
-              html += `<polygon points="${polyStr(cFront)}" fill="${frontC}" ${cellStrokeStyle} />`;
-              html += `<polygon points="${polyStr(cRight)}" fill="${rightC}" ${cellStrokeStyle} />`;
-              html += `<polygon points="${polyStr(cTop)}"   fill="${topC}"   ${cellStrokeStyle} />`;
-            }
+    // ── Unified Option-B rendering for product / inner / outer ─────────
+    // All three vizes use the pallet-style camera (upper-back-right) so
+    // the visible front face lands on the lower-LEFT of each box, the
+    // right face on the lower-right, and the top face spans the top.
+    // Cells (= the product itself for product viz; products for inner;
+    // inners for outer) fill the box edge-to-edge with pallet shading
+    // (top lighter, right base, front darker — all fully opaque).
+    if (contents) {
+      const { depth, width, height, color: cellC } = contents;
+      const cellL = (xR - xL) / depth;
+      const cellW = (zB - zF) / width;
+      const cellH = (yT - yB) / height;
+      const topC   = shadeRgb(cellC,  25);
+      const rightC = cellC;
+      const frontC = shadeRgb(cellC, -40);
+      const cellStrokeStyle = `stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round"`;
+      // Painters' for upper-back-right camera: bottom→top, low z first
+      // (far→near), low x first (far→near).
+      for (let hi = 0; hi < height; hi++) {
+        for (let wi = 0; wi < width; wi++) {
+          for (let di = 0; di < depth; di++) {
+            const cxLb = xL + di * cellL,  cxRb = cxLb + cellL;
+            const cyBb = yB + hi * cellH,  cyTb = cyBb + cellH;
+            const czFb = zF + wi * cellW,  czBb = czFb + cellW;
+            const cv = {
+              bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
+              bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
+              tfl: proj(cxLb, cyTb, czFb), tfr: proj(cxRb, cyTb, czFb),
+              tbl: proj(cxLb, cyTb, czBb), tbr: proj(cxRb, cyTb, czBb)
+            };
+            // Cell's BACK face (z=zB) reads as the visible front because
+            // the camera looks from the +z side.
+            const cFront = [cv.bbl, cv.bbr, cv.tbr, cv.tbl].map(xform);
+            const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
+            const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
+            html += `<polygon points="${polyStr(cFront)}" fill="${frontC}" ${cellStrokeStyle} />`;
+            html += `<polygon points="${polyStr(cRight)}" fill="${rightC}" ${cellStrokeStyle} />`;
+            html += `<polygon points="${polyStr(cTop)}"   fill="${topC}"   ${cellStrokeStyle} />`;
           }
         }
       }
-      // Option A also gets a thin green wireframe outer outline drawn on
-      // top of the stack so it's clear the inners sit inside a cardboard
-      // outer carton. 12 edges at low opacity.
-      const outerEdges = [
-        ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'],
-        ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'],
-        ['bfl','tfl'],['bfr','tfr'],['bbr','tbr'],['bbl','tbl']
-      ];
-      outerEdges.forEach(([a, b]) => {
-        const pa = xform(v[a]), pb = xform(v[b]);
-        html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="1.4" stroke-opacity="0.85" />`;
-      });
-    } else {
-      // Inner viz: open transparent wireframe with the products visible
-      // inside. Same as before — only the OUTER viz pivoted.
-      if (contents) {
-        const { pL, pW, pH, depth, width, height, color: cellC } = contents;
-        const wSelInner = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
-        const padCm = (wSelInner === 2 ? 0.7 : 0.4);
-        const stepX = pL, stepY = pH, stepZ = pW;
-        const originX = xL + padCm;
-        const originY = yB + padCm;
-        const originZ = zF + padCm;
-        const insetCm = Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
-        for (let hi = 0; hi < height; hi++) {
-          for (let wi = width - 1; wi >= 0; wi--) {
-            for (let di = 0; di < depth; di++) {
-              const cxLb = originX + di * stepX + insetCm;
-              const cxRb = cxLb + pL - 2 * insetCm;
-              const cyBb = originY + hi * stepY + insetCm;
-              const cyTb = cyBb + pH - 2 * insetCm;
-              const czFb = originZ + wi * stepZ + insetCm;
-              const czBb = czFb + pW - 2 * insetCm;
-              const cv = {
-                bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
-                bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
-                tfl: proj(cxLb, cyTb, czFb), tfr: proj(cxRb, cyTb, czFb),
-                tbl: proj(cxLb, cyTb, czBb), tbr: proj(cxRb, cyTb, czBb)
-              };
-              const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
-              const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
-              const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
-              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.7"  stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.88" stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
-            }
-          }
-        }
-      }
-      // Inner carton: thin transparent wireframe outline.
-      const edges = [
-        ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'],
-        ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'],
-        ['bfl','tfl'],['bfr','tfr'],['bbr','tbr'],['bbl','tbl']
-      ];
-      edges.forEach(([a, b]) => {
-        const pa = xform(v[a]);
-        const pb = xform(v[b]);
-        html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="1.4" />`;
-      });
     }
+    // Thin wireframe silhouette of the BOX (the cardboard outline) drawn
+    // on top of the cells. Always 12 edges in the box's accent color so
+    // every viz ends with the same visual cue: solid 3D fill inside, a
+    // light wireframe showing what the carton's outline would look like.
+    const outlineEdges = [
+      ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'],
+      ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'],
+      ['bfl','tfl'],['bfr','tfr'],['bbr','tbr'],['bbl','tbl']
+    ];
+    outlineEdges.forEach(([a, b]) => {
+      const pa = xform(v[a]), pb = xform(v[b]);
+      html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="1.4" stroke-opacity="0.9" />`;
+    });
 
     // ── Dimension labels (L, W, H) outside the silhouette ──────────────
     // Build a horizontal "L" bracket below the box, a slanted "W" bracket
@@ -7433,57 +7360,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
 
     svg.innerHTML = html;
-
-    // ── OUTER viz only: render Option B into viz-outer-alt ──────────
-    // Option B uses a pallet-style camera angle so the FRONT face lands
-    // on the lower-left (matching the pallet preview). Same projection
-    // formula, but each cell draws its BACK face as the visible front,
-    // and painters' loops flip on the z axis (low z = far now).
-    if (target === 'outer') {
-      const altSvg = document.getElementById('viz-outer-alt');
-      if (altSvg) {
-        let altHtml = '';
-        if (contents) {
-          const { pL, pW, pH, depth, width, height, color: cellC } = contents;
-          const cellL = (xR - xL) / depth;
-          const cellW = (zB - zF) / width;
-          const cellH = (yT - yB) / height;
-          const topC   = shadeRgb(cellC,  25);
-          const rightC = cellC;
-          const frontC = shadeRgb(cellC, -40);
-          const cellStrokeStyle = `stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round"`;
-          // Painters' for upper-back-right camera: low z first (far),
-          // high z last (near). Other axes match Option A.
-          for (let hi = 0; hi < height; hi++) {
-            for (let wi = 0; wi < width; wi++) {
-              for (let di = 0; di < depth; di++) {
-                const cxLb = xL + di * cellL,  cxRb = cxLb + cellL;
-                const cyBb = yB + hi * cellH,  cyTb = cyBb + cellH;
-                const czFb = zF + wi * cellW,  czBb = czFb + cellW;
-                const cv = {
-                  bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
-                  bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
-                  tfl: proj(cxLb, cyTb, czFb), tfr: proj(cxRb, cyTb, czFb),
-                  tbl: proj(cxLb, cyTb, czBb), tbr: proj(cxRb, cyTb, czBb)
-                };
-                // Cell's BACK face used as "visible front" (camera at +z)
-                const cFrontB = [cv.bbl, cv.bbr, cv.tbr, cv.tbl].map(xform);
-                const cRightB = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
-                const cTopB   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
-                altHtml += `<polygon points="${polyStr(cFrontB)}" fill="${frontC}" ${cellStrokeStyle} />`;
-                altHtml += `<polygon points="${polyStr(cRightB)}" fill="${rightC}" ${cellStrokeStyle} />`;
-                altHtml += `<polygon points="${polyStr(cTopB)}"   fill="${topC}"   ${cellStrokeStyle} />`;
-              }
-            }
-          }
-        }
-        // Re-emit dim labels on Option B so it's also a complete viz.
-        altHtml += drawDim(lA, lB, lMid, `${L.toFixed(1)} cm L`);
-        altHtml += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
-        altHtml += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
-        altSvg.innerHTML = altHtml;
-      }
-    }
   }
 
   // Back-solve handler for "Qty (Units per Outer Carton)". The user types
