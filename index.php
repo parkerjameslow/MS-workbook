@@ -7210,41 +7210,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const isOpen = (target === 'inner' || target === 'outer');
 
-    // ── Cardboard-flap geometry (outer viz only) ───────────────────────
-    // RSC-style box opened at the top: four flaps splayed ~30° past
-    // horizontal so they read as "open" without crowding the silhouette.
-    // We compute them up-front so the flap vertices participate in the
-    // fit-to-viewBox bbox below — otherwise the flaps would clip when the
-    // box is large.
-    let flaps = null;
-    if (target === 'outer') {
-      const fDepth = Math.min(L, W) * 0.22;
-      const fAng   = Math.PI / 6;            // 30° past horizontal
-      const fH     = fDepth * Math.sin(fAng); // vertical lift
-      const fO     = fDepth * Math.cos(fAng); // horizontal extension
-      flaps = {
-        // Each quad is [hingeA, hingeB, lifted(hingeB), lifted(hingeA)] —
-        // that's the order needed for a non-self-intersecting polygon
-        // (so the two diagonals don't cross when SVG fills the shape).
-        front: [v.tfl, v.tfr, proj(xR, yT + fH, zF - fO), proj(xL, yT + fH, zF - fO)],
-        back:  [v.tbr, v.tbl, proj(xL, yT + fH, zB + fO), proj(xR, yT + fH, zB + fO)],
-        right: [v.tfr, v.tbr, proj(xR + fO, yT + fH, zB), proj(xR + fO, yT + fH, zF)],
-        left:  [v.tbl, v.tfl, proj(xL - fO, yT + fH, zF), proj(xL - fO, yT + fH, zB)]
-      };
-    }
-
     // Fit-to-viewBox scale + center, with padding for L/W/H labels.
     // Left padding wider for the rotated H label; bottom for L/W brackets.
     const VBW = 220, VBH = 160;
     const PAD_L = 38, PAD_R = 18, PAD_TOP = 8, PAD_BOTTOM = 44;
-    const bboxPts = Object.values(v).slice();
-    if (flaps) {
-      // Flap free corners need to fit too — extending the bbox keeps the
-      // scale from clipping the lid flaps off the top/sides.
-      Object.values(flaps).forEach(f => { bboxPts.push(f[2], f[3]); });
-    }
-    const allX = bboxPts.map(p => p.x);
-    const allY = bboxPts.map(p => p.y);
+    const allX = Object.values(v).map(p => p.x);
+    const allY = Object.values(v).map(p => p.y);
     const minX = Math.min(...allX), maxX = Math.max(...allX);
     const minY = Math.min(...allY), maxY = Math.max(...allY);
     const sX = (VBW - PAD_L - PAD_R) / (maxX - minX || 1);
@@ -7266,57 +7237,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       html += `<polygon points="${polyStr(rightF)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
       html += `<polygon points="${polyStr(frontF)}" fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
       html += `<polygon points="${polyStr(topF)}"   fill="${c}" fill-opacity="0.78" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
-    } else {
-      // Open box: outer carton drawn as a TRANSPARENT wireframe (just
-      // edges, no fills) so the contents inside are clearly visible.
-      // Edges are drawn AFTER contents below so the outline reads on top.
-
+    } else if (target === 'outer') {
+      // ── PIVOT: pallet-style stacked solid boxes ────────────────────
+      // No wireframe outer, no flaps. Each inner carton is a solid 3D
+      // box rendered like the pallet viz draws stacked outer cartons:
+      // top face lightened, right face base color, front face darkened,
+      // ALL fully opaque so adjacent cells can never bleed through.
+      // The user gets a clean stack matching the pallet's appearance.
       if (contents) {
         const { pL, pW, pH, depth, width, height, color: cellC } = contents;
-        // OUTER viz uses the pallet-viz strategy: cells fill the outer
-        // cavity edge-to-edge with no inset and no padCm gap to the
-        // walls. Adjacent cells touch — exactly how the pallet viz draws
-        // outer cartons sitting flush on the pallet deck. The cell
-        // stroke draws the visible boundary between stacked layers.
-        //
-        // Inner viz keeps the prior layout (cells sized = product dim,
-        // packed back-to-back, original 2.5% visual inset).
-        const wSelInner = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
-        const padCm = (wSelInner === 2 ? 0.7 : 0.4);
-        const isOuter = (target === 'outer');
-        // Outer mode: divide the outer cavity evenly so N cells span the
-        // full L/W/H. Inner mode: keep the original product-size stride.
-        const cellL = isOuter ? (xR - xL) / depth  : pL;
-        const cellW = isOuter ? (zB - zF) / width  : pW;
-        const cellH = isOuter ? (yT - yB) / height : pH;
-        const stepX = cellL;
-        const stepY = cellH;
-        const stepZ = cellW;
-        // Outermost cells flush with outer walls (no padCm offset for
-        // outer mode — the user explicitly asked for orange right up to
-        // the inside of the cardboard, matching the pallet viz).
-        const originX = isOuter ? xL : (xL + padCm);
-        const originY = isOuter ? yB : (yB + padCm);
-        const originZ = isOuter ? zF : (zF + padCm);
-
-        // Visual inset — outer mode uses 0 (cells touch walls + each
-        // other); inner mode uses 2.5% of the smallest dimension so
-        // products inside read as distinct items.
-        const insetCm = isOuter ? 0 : Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
+        // Each cell exactly fills its share of the outer cavity. With
+        // depth=1, width=1, height=2 the user sees two stacked solid
+        // orange boxes that together fill the full outer footprint.
+        const cellL = (xR - xL) / depth;
+        const cellW = (zB - zF) / width;
+        const cellH = (yT - yB) / height;
 
         // Painters' algorithm: bottom → top, back → front, left → right.
-        // Cell stroke bumps up for outer viz so the boundary between
-        // stacked inner cartons reads as a hard line.
-        const cellStroke = isOuter ? 1.4 : 0.9;
         for (let hi = 0; hi < height; hi++) {
           for (let wi = width - 1; wi >= 0; wi--) {
             for (let di = 0; di < depth; di++) {
-              const cxLb = originX + di * stepX + insetCm;
-              const cxRb = cxLb + cellL - 2 * insetCm;
-              const cyBb = originY + hi * stepY + insetCm;
-              const cyTb = cyBb + cellH - 2 * insetCm;
-              const czFb = originZ + wi * stepZ + insetCm;
-              const czBb = czFb + cellW - 2 * insetCm;
+              const cxLb = xL + di * cellL;
+              const cxRb = cxLb + cellL;
+              const cyBb = yB + hi * cellH;
+              const cyTb = cyBb + cellH;
+              const czFb = zF + wi * cellW;
+              const czBb = czFb + cellW;
               const cv = {
                 bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
                 bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
@@ -7326,52 +7272,64 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
               const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
               const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
-              // Pallet-viz shading order: front = darkest (face away from
-              // light), right = medium, top = lightest (sun overhead).
-              // Each face drawn FULLY OPAQUE so adjacent cells can never
-              // bleed through one another — that was the bug behind the
-              // "front not rendering" report. Painters' order: back-most
-              // visible face first (front), then right, then top.
-              const strokeC = cellC;
-              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.78" stroke="${strokeC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.92" stroke="${strokeC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
-              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${strokeC}" stroke-width="${cellStroke}" stroke-linejoin="round" />`;
+              const topC   = shadeRgb(cellC,  25);
+              const rightC = cellC;
+              const frontC = shadeRgb(cellC, -40);
+              html += `<polygon points="${polyStr(cFront)}" fill="${frontC}" stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cRight)}" fill="${rightC}" stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cTop)}"   fill="${topC}"   stroke="rgba(0,0,0,0.20)" stroke-width="0.9" stroke-linejoin="round" />`;
             }
           }
         }
       }
-
-      // Wireframe outer carton — 12 edges drawn AFTER contents so the
-      // outline reads on top. No fills (the box is "transparent"); only
-      // the edges define its shape. For inner viz this is orange, for
-      // outer viz it's the green accent. Outer gets a touch more weight
-      // so the cardboard outline reads cleanly against the orange inners.
-      const edgeWidth = (target === 'outer') ? 1.7 : 1.4;
+    } else {
+      // Inner viz: open transparent wireframe with the products visible
+      // inside. Same as before — only the OUTER viz pivoted.
+      if (contents) {
+        const { pL, pW, pH, depth, width, height, color: cellC } = contents;
+        const wSelInner = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
+        const padCm = (wSelInner === 2 ? 0.7 : 0.4);
+        const stepX = pL, stepY = pH, stepZ = pW;
+        const originX = xL + padCm;
+        const originY = yB + padCm;
+        const originZ = zF + padCm;
+        const insetCm = Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
+        for (let hi = 0; hi < height; hi++) {
+          for (let wi = width - 1; wi >= 0; wi--) {
+            for (let di = 0; di < depth; di++) {
+              const cxLb = originX + di * stepX + insetCm;
+              const cxRb = cxLb + pL - 2 * insetCm;
+              const cyBb = originY + hi * stepY + insetCm;
+              const cyTb = cyBb + pH - 2 * insetCm;
+              const czFb = originZ + wi * stepZ + insetCm;
+              const czBb = czFb + pW - 2 * insetCm;
+              const cv = {
+                bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
+                bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
+                tfl: proj(cxLb, cyTb, czFb), tfr: proj(cxRb, cyTb, czFb),
+                tbl: proj(cxLb, cyTb, czBb), tbr: proj(cxRb, cyTb, czBb)
+              };
+              const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
+              const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
+              const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
+              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.7"  stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.88" stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="1.0"  stroke="${cellC}" stroke-width="0.9" stroke-linejoin="round" />`;
+            }
+          }
+        }
+      }
+      // Inner carton: thin transparent wireframe outline.
       const edges = [
-        ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'], // bottom rect
-        ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'], // top rect (open rim)
-        ['bfl','tfl'],['bfr','tfr'],['bbr','tbr'],['bbl','tbl']  // verticals
+        ['bfl','bfr'],['bfr','bbr'],['bbr','bbl'],['bbl','bfl'],
+        ['tfl','tfr'],['tfr','tbr'],['tbr','tbl'],['tbl','tfl'],
+        ['bfl','tfl'],['bfr','tfr'],['bbr','tbr'],['bbl','tbl']
       ];
       edges.forEach(([a, b]) => {
         const pa = xform(v[a]);
         const pb = xform(v[b]);
-        html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="${edgeWidth}" />`;
+        html += `<line x1="${pa.x.toFixed(1)}" y1="${pa.y.toFixed(1)}" x2="${pb.x.toFixed(1)}" y2="${pb.y.toFixed(1)}" stroke="${c}" stroke-width="1.4" />`;
       });
-
-      // Open cardboard flaps splayed at the top of the OUTER carton —
-      // RSC-style. Painters' order: back/left flaps drawn first so the
-      // visible front/right flaps overlap them correctly. Each flap is
-      // a quad from the two hinge points to the two free (lifted) points.
-      if (flaps) {
-        const drawFlap = (quad, opacity, strokeW) => {
-          const pts = quad.map(xform);
-          html += `<polygon points="${polyStr(pts)}" fill="${c}" fill-opacity="${opacity}" stroke="${c}" stroke-width="${strokeW}" stroke-linejoin="round" />`;
-        };
-        drawFlap(flaps.back,  0.18, 1.2); // mostly hidden behind right flap
-        drawFlap(flaps.left,  0.18, 1.2); // mostly hidden behind front flap
-        drawFlap(flaps.right, 0.32, 1.4); // visible from camera
-        drawFlap(flaps.front, 0.36, 1.4); // most visible — front-facing
-      }
     }
 
     // ── Dimension labels (L, W, H) outside the silhouette ──────────────
