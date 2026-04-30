@@ -7271,64 +7271,52 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // edges, no fills) so the contents inside are clearly visible.
       // Edges are drawn AFTER contents below so the outline reads on top.
 
-      // Subtle wall tints on the outer carton's visible faces (top, front,
-      // right). Drawn BEFORE contents, so the inner cartons fully obscure
-      // these where they overlap — what remains visible is the cardboard
-      // "frame" around each face that used to read as blank SVG. Inner
-      // viz keeps its pure-wireframe look (no walls drawn).
-      if (target === 'outer') {
-        const wallTop   = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
-        const wallFront = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
-        const wallRight = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
-        html += `<polygon points="${polyStr(wallRight)}" fill="${c}" fill-opacity="0.07" stroke="none" />`;
-        html += `<polygon points="${polyStr(wallFront)}" fill="${c}" fill-opacity="0.09" stroke="none" />`;
-        html += `<polygon points="${polyStr(wallTop)}"   fill="${c}" fill-opacity="0.06" stroke="none" />`;
-      }
-
       if (contents) {
         const { pL, pW, pH, depth, width, height, color: cellC } = contents;
-        // Each cell is the REAL child-item size (product or inner carton).
-        // Stride per axis matches the box's wall formula:
-        //   • Inner viz   — stride = product dim (back-to-back, +1 wall pad
-        //                   on each end coming from the inner box formula)
-        //   • Outer viz   — stride = inner dim + 2×wall (each inner has its
-        //                   own surrounding wall thickness, matching
-        //                   outer = count × (inner + 2×wall))
-        const wSelOuter = parseInt(document.getElementById('carton-outer-wall')?.value) || 2;
+        // OUTER viz uses the pallet-viz strategy: cells fill the outer
+        // cavity edge-to-edge with no inset and no padCm gap to the
+        // walls. Adjacent cells touch — exactly how the pallet viz draws
+        // outer cartons sitting flush on the pallet deck. The cell
+        // stroke draws the visible boundary between stacked layers.
+        //
+        // Inner viz keeps the prior layout (cells sized = product dim,
+        // packed back-to-back, original 2.5% visual inset).
         const wSelInner = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
-        const padCm = (target === 'outer' ? (wSelOuter === 2 ? 0.7 : 0.4)
-                                          : (wSelInner === 2 ? 0.7 : 0.4));
-        const stepX = (target === 'outer') ? pL + 2 * padCm : pL;
-        const stepY = (target === 'outer') ? pH + 2 * padCm : pH;
-        const stepZ = (target === 'outer') ? pW + 2 * padCm : pW;
-        // First cell anchored at one wall-thickness inset from the
-        // bottom-front-left corner. No additional offset per cell — the
-        // stride already encodes the 2×wall gap for outer viz.
-        const originX = xL + padCm;
-        const originY = yB + padCm;
-        const originZ = zF + padCm;
+        const padCm = (wSelInner === 2 ? 0.7 : 0.4);
+        const isOuter = (target === 'outer');
+        // Outer mode: divide the outer cavity evenly so N cells span the
+        // full L/W/H. Inner mode: keep the original product-size stride.
+        const cellL = isOuter ? (xR - xL) / depth  : pL;
+        const cellW = isOuter ? (zB - zF) / width  : pW;
+        const cellH = isOuter ? (yT - yB) / height : pH;
+        const stepX = cellL;
+        const stepY = cellH;
+        const stepZ = cellW;
+        // Outermost cells flush with outer walls (no padCm offset for
+        // outer mode — the user explicitly asked for orange right up to
+        // the inside of the cardboard, matching the pallet viz).
+        const originX = isOuter ? xL : (xL + padCm);
+        const originY = isOuter ? yB : (yB + padCm);
+        const originZ = isOuter ? zF : (zF + padCm);
 
-        // Visual inset — pulls every cell inward by ~2.5% of its smallest
-        // dimension on each side, so adjacent cells (and the cell-to-wall
-        // boundary) read as distinct shapes instead of merging into one
-        // continuous block. Adds about 5% gap between adjacent cells.
-        const insetCm = Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
+        // Visual inset — outer mode uses 0 (cells touch walls + each
+        // other); inner mode uses 2.5% of the smallest dimension so
+        // products inside read as distinct items.
+        const insetCm = isOuter ? 0 : Math.max(0.15, Math.min(pL, pW, pH) * 0.025);
 
         // Painters' algorithm: bottom → top, back → front, left → right.
         // Cell stroke bumps up for outer viz so the boundary between
-        // stacked inner cartons reads as a hard line, not a thin smudge —
-        // we keep the inset small so the cells visibly fill the outer
-        // cavity rather than floating with big gaps to the walls.
-        const cellStroke = (target === 'outer') ? 1.4 : 0.9;
+        // stacked inner cartons reads as a hard line.
+        const cellStroke = isOuter ? 1.4 : 0.9;
         for (let hi = 0; hi < height; hi++) {
           for (let wi = width - 1; wi >= 0; wi--) {
             for (let di = 0; di < depth; di++) {
               const cxLb = originX + di * stepX + insetCm;
-              const cxRb = cxLb + pL - 2 * insetCm;
+              const cxRb = cxLb + cellL - 2 * insetCm;
               const cyBb = originY + hi * stepY + insetCm;
-              const cyTb = cyBb + pH - 2 * insetCm;
+              const cyTb = cyBb + cellH - 2 * insetCm;
               const czFb = originZ + wi * stepZ + insetCm;
-              const czBb = czFb + pW - 2 * insetCm;
+              const czBb = czFb + cellW - 2 * insetCm;
               const cv = {
                 bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
                 bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
