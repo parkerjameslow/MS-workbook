@@ -1543,7 +1543,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .specs-box-viz {
       width: 100%;
       height: auto;
-      max-height: 130px;
+      max-height: 180px;
       display: block;
       background: rgba(155,163,192,0.04);
       border: 1px dashed var(--border);
@@ -4715,7 +4715,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <!-- 3D preview — rendered from L/W/H. Falls back to a placeholder
                  message until at least one dimension is filled in. -->
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-product" class="specs-box-viz" viewBox="0 0 140 110" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-product" class="specs-box-viz" viewBox="0 0 200 150" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
           </div>
         </div>
@@ -4785,7 +4785,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="specs-full-row" id="inner-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-inner" class="specs-box-viz" viewBox="0 0 140 110" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-inner" class="specs-box-viz" viewBox="0 0 200 150" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
           </div>
         </div>
@@ -4868,7 +4868,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 140 110" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 200 150" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
@@ -7122,10 +7122,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!_filling) autoSaveWorkbook();
   }
 
-  // 3D box render — isometric SVG. Camera sits upper-front-right; the
-  // three visible faces are top (lightest), front (medium), right (darkest)
-  // for a clear "shaded box" read. Falls back to a placeholder when dims
-  // are missing.
+  // 3D box render — isometric SVG. Standard upper-front-right camera:
+  // back ends up upper-LEFT, front lower-RIGHT.
+  //   • Product: closed box (3 faces shaded).
+  //   • Inner / Outer: open box — back/left/bottom inside walls drawn
+  //     lightly, contents (products inside inner; inners inside outer)
+  //     drawn as a Depth × Width × Height grid in proper z-order, then
+  //     front + right outer walls drawn last.
+  // Always labels L, W, H along the visible edges.
   function renderBoxViz(target) {
     const cfg = {
       product: { svg: 'viz-product', l: 'dim-cm-l', w: 'dim-cm-w', h: 'dim-cm-h', accent: '#6b93ff' },
@@ -7139,21 +7143,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const W = parseFloat(document.getElementById(cfg.w)?.value);
     const H = parseFloat(document.getElementById(cfg.h)?.value);
     if (!L || !W || !H) {
-      svg.innerHTML = '<text x="70" y="58" text-anchor="middle" fill="#9ba3c0" font-family="inherit" font-size="9" font-style="italic">Enter dimensions</text>';
+      svg.innerHTML = '<text x="100" y="78" text-anchor="middle" fill="#9ba3c0" font-family="inherit" font-size="11" font-style="italic">Enter dimensions</text>';
       return;
     }
 
-    // Standard iso: x → right, y → up, z → away. Camera looks from
-    // upper-front-right.  Project so back ends up upper-LEFT, front
-    // lower-RIGHT (matches every CAD/SketchUp iso illustration).
+    // Standard iso projection (camera upper-front-right): x → right,
+    // y → up, z → away from viewer. Back (high z) lands upper-LEFT,
+    // front (low z) lower-RIGHT.
     const cos30 = Math.cos(Math.PI / 6);
     const sin30 = 0.5;
     const proj = (x, y, z) => ({
-      x: (x + z) * cos30,           // both x and z move RIGHT (back-right)
-      y: -y + (x - z) * sin30       // -y up; x-z = front of cube goes DOWN-RIGHT, back goes UP-LEFT
+      x: (x - z) * cos30,
+      y: (x + z) * sin30 - y
     });
 
-    const xL = -L/2, xR = L/2, yB = -H/2, yT = H/2, zF = -W/2, zB = W/2;
+    const xL = -L/2, xR = L/2;
+    const yB = -H/2, yT = H/2;
+    const zF = -W/2, zB = W/2;
     const v = {
       bfl: proj(xL, yB, zF), bfr: proj(xR, yB, zF),
       bbl: proj(xL, yB, zB), bbr: proj(xR, yB, zB),
@@ -7161,35 +7167,139 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tbl: proj(xL, yT, zB), tbr: proj(xR, yT, zB)
     };
 
-    // Fit-to-viewBox scale + center. Reserve bottom 10px for the dim label.
-    const VBW = 140, VBH = 110, PAD_X = 8, PAD_TOP = 6, PAD_BOTTOM = 18;
+    // Read arrangement + child-item dims for open boxes
+    let contents = null;
+    if (target === 'inner') {
+      const ipL = parseFloat(document.getElementById('dim-cm-l')?.value);
+      const ipW = parseFloat(document.getElementById('dim-cm-w')?.value);
+      const ipH = parseFloat(document.getElementById('dim-cm-h')?.value);
+      const d = parseInt(document.getElementById('carton-inner-row')?.value);
+      const w = parseInt(document.getElementById('carton-inner-side')?.value);
+      const h = parseInt(document.getElementById('carton-inner-stack')?.value);
+      if (ipL && ipW && ipH && (d >= 1 || w >= 1 || h >= 1)) {
+        contents = { pL: ipL, pW: ipW, pH: ipH, depth: d || 1, width: w || 1, height: h || 1, color: '#5468a8' };
+      }
+    } else if (target === 'outer') {
+      const ipL = parseFloat(document.getElementById('carton-inner-l-cm')?.value);
+      const ipW = parseFloat(document.getElementById('carton-inner-w-cm')?.value);
+      const ipH = parseFloat(document.getElementById('carton-inner-h-cm')?.value);
+      const d = parseInt(document.getElementById('carton-outer-row')?.value);
+      const w = parseInt(document.getElementById('carton-outer-side')?.value);
+      const h = parseInt(document.getElementById('carton-outer-stack')?.value);
+      if (ipL && ipW && ipH && (d >= 1 || w >= 1 || h >= 1)) {
+        contents = { pL: ipL, pW: ipW, pH: ipH, depth: d || 1, width: w || 1, height: h || 1, color: '#b85716' };
+      }
+    }
+    const isOpen = (target === 'inner' || target === 'outer');
+
+    // Fit-to-viewBox scale + center, with padding for L/W/H labels
+    const VBW = 200, VBH = 150;
+    const PAD_L = 22, PAD_R = 32, PAD_TOP = 10, PAD_BOTTOM = 26;
     const allX = Object.values(v).map(p => p.x);
     const allY = Object.values(v).map(p => p.y);
     const minX = Math.min(...allX), maxX = Math.max(...allX);
     const minY = Math.min(...allY), maxY = Math.max(...allY);
-    const sX = (VBW - 2*PAD_X) / (maxX - minX || 1);
+    const sX = (VBW - PAD_L - PAD_R) / (maxX - minX || 1);
     const sY = (VBH - PAD_TOP - PAD_BOTTOM) / (maxY - minY || 1);
     const s  = Math.min(sX, sY);
-    const cx = VBW/2 - ((minX + maxX)/2) * s;
-    const cy = (VBH - PAD_BOTTOM + PAD_TOP)/2 - ((minY + maxY)/2) * s;
+    const cx = (PAD_L + (VBW - PAD_R)) / 2 - ((minX + maxX)/2) * s;
+    const cy = (PAD_TOP + (VBH - PAD_BOTTOM)) / 2 - ((minY + maxY)/2) * s;
     const xform = p => ({ x: p.x * s + cx, y: p.y * s + cy });
 
-    // Visible faces from upper-front-right view: top (yT), front (zF), right (xR)
-    const top   = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
-    const front = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
-    const right = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
     const polyStr = pts => pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-
     const c = cfg.accent;
-    // Solid fills, decreasing brightness for top → front → right, plus a
-    // crisp outline. Reads as a shaded 3D box rather than three overlapping
-    // translucent shapes.
-    svg.innerHTML = `
-      <polygon points="${polyStr(right)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />
-      <polygon points="${polyStr(front)}" fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />
-      <polygon points="${polyStr(top)}"   fill="${c}" fill-opacity="0.78" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />
-      <text x="70" y="${VBH - 4}" text-anchor="middle" fill="#9ba3c0" font-family="inherit" font-size="8.5" font-weight="600">${L.toFixed(1)} × ${W.toFixed(1)} × ${H.toFixed(1)} cm</text>
-    `;
+    let html = '';
+
+    if (!isOpen) {
+      // Closed box (product): top + front + right
+      const topF   = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
+      const frontF = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
+      const rightF = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
+      html += `<polygon points="${polyStr(rightF)}" fill="${c}" fill-opacity="0.35" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
+      html += `<polygon points="${polyStr(frontF)}" fill="${c}" fill-opacity="0.55" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
+      html += `<polygon points="${polyStr(topF)}"   fill="${c}" fill-opacity="0.78" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
+    } else {
+      // Open box: inside walls (back/left/bottom) lightly tinted, contents
+      // in z-order, then front+right opaque walls, then a top rim outline.
+      const back   = [v.bbl, v.bbr, v.tbr, v.tbl].map(xform);
+      const left   = [v.bfl, v.bbl, v.tbl, v.tfl].map(xform);
+      const bottom = [v.bfl, v.bfr, v.bbr, v.bbl].map(xform);
+      html += `<polygon points="${polyStr(bottom)}" fill="${c}" fill-opacity="0.16" stroke="${c}" stroke-width="0.8" stroke-linejoin="round" />`;
+      html += `<polygon points="${polyStr(back)}"   fill="${c}" fill-opacity="0.22" stroke="${c}" stroke-width="0.8" stroke-linejoin="round" />`;
+      html += `<polygon points="${polyStr(left)}"   fill="${c}" fill-opacity="0.18" stroke="${c}" stroke-width="0.8" stroke-linejoin="round" />`;
+
+      if (contents) {
+        const { pL, pW, pH, depth, width, height, color: cellC } = contents;
+        // Cells fill (depth × width × height) of items inside the box,
+        // each pL × pW × pH (real product/inner-carton dims). Inset per
+        // cell so adjacent cells read as separate items.
+        const inset = Math.min(pL, pW, pH) * 0.04;
+        // Iso z-order: bottom → top, back (high z = high wi) → front,
+        // left (low x = low di) → right. Painters' algorithm.
+        for (let hi = 0; hi < height; hi++) {
+          for (let wi = width - 1; wi >= 0; wi--) {
+            for (let di = 0; di < depth; di++) {
+              const cxLb = xL + di * (L / depth) + inset;
+              const cxRb = xL + (di + 1) * (L / depth) - inset;
+              const cyBb = yB + hi * (H / height) + inset;
+              const cyTb = yB + (hi + 1) * (H / height) - inset;
+              const czFb = zF + wi * (W / width) + inset;
+              const czBb = zF + (wi + 1) * (W / width) - inset;
+              const cv = {
+                bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
+                bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
+                tfl: proj(cxLb, cyTb, czFb), tfr: proj(cxRb, cyTb, czFb),
+                tbl: proj(cxLb, cyTb, czBb), tbr: proj(cxRb, cyTb, czBb)
+              };
+              const cTop   = [cv.tfl, cv.tfr, cv.tbr, cv.tbl].map(xform);
+              const cFront = [cv.bfl, cv.bfr, cv.tfr, cv.tfl].map(xform);
+              const cRight = [cv.bfr, cv.bbr, cv.tbr, cv.tfr].map(xform);
+              html += `<polygon points="${polyStr(cRight)}" fill="${cellC}" fill-opacity="0.55" stroke="${cellC}" stroke-width="0.6" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cFront)}" fill="${cellC}" fill-opacity="0.7"  stroke="${cellC}" stroke-width="0.6" stroke-linejoin="round" />`;
+              html += `<polygon points="${polyStr(cTop)}"   fill="${cellC}" fill-opacity="0.85" stroke="${cellC}" stroke-width="0.6" stroke-linejoin="round" />`;
+            }
+          }
+        }
+      }
+
+      // Outer walls in front of contents
+      const frontF = [v.bfl, v.bfr, v.tfr, v.tfl].map(xform);
+      const rightF = [v.bfr, v.bbr, v.tbr, v.tfr].map(xform);
+      html += `<polygon points="${polyStr(frontF)}" fill="${c}" fill-opacity="0.4"  stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
+      html += `<polygon points="${polyStr(rightF)}" fill="${c}" fill-opacity="0.28" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
+
+      // Open top rim — rectangle outline on the box's top edges
+      const rim = [v.tfl, v.tfr, v.tbr, v.tbl].map(xform);
+      html += `<polygon points="${polyStr(rim)}" fill="none" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
+    }
+
+    // ── Dimension labels (L, W, H) ─────────────────────────────────────
+    // Use leader lines + bracket caps along each visible edge.
+    const tBfl = xform(v.bfl), tBfr = xform(v.bfr), tBbr = xform(v.bbr), tTfl = xform(v.tfl);
+    const dimLine = (p1, p2, txt, side) => {
+      // Offset perpendicular to the edge. side = 'below' or 'left'.
+      const dx = p2.x - p1.x, dy = p2.y - p1.y;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      let nx, ny, off = 8;
+      if (side === 'below') { nx = -dy/len; ny = dx/len; if (ny < 0) { nx = -nx; ny = -ny; } }
+      else                  { nx = dy/len;  ny = -dx/len; if (nx > 0) { nx = -nx; ny = -ny; } }
+      const a = { x: p1.x + nx*off, y: p1.y + ny*off };
+      const b = { x: p2.x + nx*off, y: p2.y + ny*off };
+      const mid = { x: (a.x + b.x)/2, y: (a.y + b.y)/2 };
+      // Tick marks at endpoints
+      const tk = 3;
+      return `
+        <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${c}" stroke-width="0.8" />
+        <line x1="${(a.x - nx*tk).toFixed(1)}" y1="${(a.y - ny*tk).toFixed(1)}" x2="${(a.x + nx*tk).toFixed(1)}" y2="${(a.y + ny*tk).toFixed(1)}" stroke="${c}" stroke-width="0.8" />
+        <line x1="${(b.x - nx*tk).toFixed(1)}" y1="${(b.y - ny*tk).toFixed(1)}" x2="${(b.x + nx*tk).toFixed(1)}" y2="${(b.y + ny*tk).toFixed(1)}" stroke="${c}" stroke-width="0.8" />
+        <text x="${(mid.x + nx*7).toFixed(1)}" y="${(mid.y + ny*7 + 3).toFixed(1)}" text-anchor="middle" fill="${c}" font-family="inherit" font-size="9" font-weight="700">${txt}</text>
+      `;
+    };
+    html += dimLine(tBfl, tBfr, `${L.toFixed(1)} cm L`, 'below');
+    html += dimLine(tBfr, tBbr, `${W.toFixed(1)} cm W`, 'below');
+    html += dimLine(tBfl, tTfl, `${H.toFixed(1)} cm H`, 'left');
+
+    svg.innerHTML = html;
   }
 
   // Back-solve handler for "Qty (Units per Outer Carton)". The user types
