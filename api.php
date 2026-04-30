@@ -552,9 +552,13 @@ function ms_record_commissions_for_workbook(
 ): int {
     $am = trim((string)($client['account_manager']   ?? ''));
     $sp = trim((string)($client['salesperson']       ?? ''));
-    $op = trim((string)($client['operations_person'] ?? ''));
-    if ($am === '' && $sp === '' && $op === '') return 0;
-    if ($clientTotalUsd <= 0)                   return 0;
+    // Operations is now hardcoded to Karen on every client. The per-client
+    // operations_person column is no longer surfaced in the UI — Karen
+    // always gets her cut, with the rate sourced from her user record
+    // (default 10%). Set operations_person='' on a client only if you
+    // explicitly want to opt that client out (no current UI for that).
+    $op = 'Karen';
+    if ($clientTotalUsd <= 0) return 0;
 
     // Resolve per-role rate: NULL/'' on the client → role default. Stored
     // as percent → divide by 100 to get the decimal fraction the table
@@ -2024,12 +2028,10 @@ switch ($action) {
             $client = $clientCache[$cn];
             if (!$client) continue;
 
-            // No AM, SP, or Operations → no commissions to record. Cheap
-            // short-circuit before we hit the workbooks table.
-            $am = trim((string)($client['account_manager']   ?? ''));
-            $sp = trim((string)($client['salesperson']       ?? ''));
-            $op = trim((string)($client['operations_person'] ?? ''));
-            if ($am === '' && $sp === '' && $op === '') continue;
+            // Karen (operations) is hardcoded onto every client now, so a
+            // commission row is always written. We don't short-circuit on
+            // unassigned AM/SP — those just produce no AM/SP rows for this
+            // client while Karen still gets hers.
 
             if (!array_key_exists($wb, $workbookCache)) {
                 $ws = $pdo->prepare("SELECT product_name, detail_json FROM workbooks WHERE id = ? LIMIT 1");

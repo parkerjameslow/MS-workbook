@@ -12344,7 +12344,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${field('primary_contact2', 'Contact 2',        'Second contact name')}
             ${empSelect('account_manager',   'Account Manager')}
             ${empSelect('salesperson',       'Salesperson')}
-            ${empSelect('operations_person', 'Operations')}
             ${field('billing_address', 'Billing Address',  'Street, City, State ZIP', true)}
             ${field('shipping_address','Shipping Address', 'Same as billing or different', true)}
             ${field('notes',           'Notes',            'Internal notes…', true)}
