@@ -4715,7 +4715,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <!-- 3D preview — rendered from L/W/H. Falls back to a placeholder
                  message until at least one dimension is filled in. -->
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-product" class="specs-box-viz" viewBox="0 0 200 150" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-product" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
           </div>
         </div>
@@ -4785,7 +4785,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="specs-full-row" id="inner-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-inner" class="specs-box-viz" viewBox="0 0 200 150" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-inner" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
           </div>
         </div>
@@ -4868,7 +4868,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 200 150" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
@@ -7115,8 +7115,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const r = oRowQty   >= 1 ? oRowQty   : 1;
     const s = oSideQty  >= 1 ? oSideQty  : 1;
     const h = oStackQty >= 1 ? oStackQty : 1;
-    // (count + 1) walls — see autoCalcCartons for the rationale
-    setCartonDimFields('carton-outer', innerL * r + (r + 1) * oWallCm, innerW * s + (s + 1) * oWallCm, innerH * h + (h + 1) * oWallCm);
+    // count × (inner + 2*wall) — see autoCalcCartons for the rationale
+    setCartonDimFields('carton-outer', r * (innerL + 2 * oWallCm), s * (innerW + 2 * oWallCm), h * (innerH + 2 * oWallCm));
     renderBoxViz('outer');
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (!_filling) autoSaveWorkbook();
@@ -7192,9 +7192,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const isOpen = (target === 'inner' || target === 'outer');
 
-    // Fit-to-viewBox scale + center, with padding for L/W/H labels
-    const VBW = 200, VBH = 150;
-    const PAD_L = 22, PAD_R = 32, PAD_TOP = 10, PAD_BOTTOM = 26;
+    // Fit-to-viewBox scale + center, with padding for L/W/H labels.
+    // Left padding wider for the rotated H label; bottom for L/W brackets.
+    const VBW = 220, VBH = 160;
+    const PAD_L = 38, PAD_R = 18, PAD_TOP = 8, PAD_BOTTOM = 36;
     const allX = Object.values(v).map(p => p.x);
     const allY = Object.values(v).map(p => p.y);
     const minX = Math.min(...allX), maxX = Math.max(...allX);
@@ -7230,21 +7231,47 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       if (contents) {
         const { pL, pW, pH, depth, width, height, color: cellC } = contents;
-        // Cells fill (depth × width × height) of items inside the box,
-        // each pL × pW × pH (real product/inner-carton dims). Inset per
-        // cell so adjacent cells read as separate items.
-        const inset = Math.min(pL, pW, pH) * 0.04;
-        // Iso z-order: bottom → top, back (high z = high wi) → front,
-        // left (low x = low di) → right. Painters' algorithm.
+        // Each cell is the REAL child-item size (product or inner carton).
+        // Stride per axis is the cell size + a small spacing equal to the
+        // outer wall thickness on each side (so adjacent cells reflect the
+        // 2×wall gap from the outer formula). For inner viz, products sit
+        // back-to-back (spacing≈0); for outer viz, inners get a 2×wall gap.
+        let stepX, stepY, stepZ, padCm;
+        if (target === 'outer') {
+          // Use the outer wall (single/double) as inter-inner spacing
+          const wSel = parseInt(document.getElementById('carton-outer-wall')?.value) || 2;
+          padCm = (wSel === 2 ? 0.7 : 0.4);
+        } else {
+          const wSel = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
+          padCm = (wSel === 2 ? 0.7 : 0.4);
+        }
+        // For outer: each inner takes (innerDim + 2*wall) space — full footprint.
+        // For inner: products sit back-to-back, single 2*wall padding around.
+        if (target === 'outer') {
+          stepX = pL + 2 * padCm;
+          stepY = pH + 2 * padCm;
+          stepZ = pW + 2 * padCm;
+        } else {
+          stepX = pL;
+          stepY = pH;
+          stepZ = pW;
+        }
+        // Anchor cells to the bottom-front-left corner of the box,
+        // offset by one wall thickness inward.
+        const startX = xL + padCm;
+        const startY = yB + padCm;
+        const startZ = zF + padCm;
+
+        // Painters' algorithm: bottom → top, back → front, left → right.
         for (let hi = 0; hi < height; hi++) {
           for (let wi = width - 1; wi >= 0; wi--) {
             for (let di = 0; di < depth; di++) {
-              const cxLb = xL + di * (L / depth) + inset;
-              const cxRb = xL + (di + 1) * (L / depth) - inset;
-              const cyBb = yB + hi * (H / height) + inset;
-              const cyTb = yB + (hi + 1) * (H / height) - inset;
-              const czFb = zF + wi * (W / width) + inset;
-              const czBb = zF + (wi + 1) * (W / width) - inset;
+              const cxLb = startX + di * stepX + (target === 'outer' ? padCm : 0);
+              const cxRb = cxLb + pL;
+              const cyBb = startY + hi * stepY + (target === 'outer' ? padCm : 0);
+              const cyTb = cyBb + pH;
+              const czFb = startZ + wi * stepZ + (target === 'outer' ? padCm : 0);
+              const czBb = czFb + pW;
               const cv = {
                 bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
                 bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
@@ -7273,31 +7300,70 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       html += `<polygon points="${polyStr(rim)}" fill="none" stroke="${c}" stroke-width="1.4" stroke-linejoin="round" />`;
     }
 
-    // ── Dimension labels (L, W, H) ─────────────────────────────────────
-    // Use leader lines + bracket caps along each visible edge.
-    const tBfl = xform(v.bfl), tBfr = xform(v.bfr), tBbr = xform(v.bbr), tTfl = xform(v.tfl);
-    const dimLine = (p1, p2, txt, side) => {
-      // Offset perpendicular to the edge. side = 'below' or 'left'.
-      const dx = p2.x - p1.x, dy = p2.y - p1.y;
-      const len = Math.sqrt(dx*dx + dy*dy) || 1;
-      let nx, ny, off = 8;
-      if (side === 'below') { nx = -dy/len; ny = dx/len; if (ny < 0) { nx = -nx; ny = -ny; } }
-      else                  { nx = dy/len;  ny = -dx/len; if (nx > 0) { nx = -nx; ny = -ny; } }
-      const a = { x: p1.x + nx*off, y: p1.y + ny*off };
-      const b = { x: p2.x + nx*off, y: p2.y + ny*off };
-      const mid = { x: (a.x + b.x)/2, y: (a.y + b.y)/2 };
-      // Tick marks at endpoints
-      const tk = 3;
+    // ── Dimension labels (L, W, H) outside the silhouette ──────────────
+    // Build a horizontal "L" bracket below the box, a slanted "W" bracket
+    // angled to follow the right-bottom edge, and a vertical "H" bracket
+    // on the LEFT outside of the box. Endpoints are extended with thin
+    // extension lines so the dim ladder doesn't overlap the geometry.
+    const tBfl = xform(v.bfl), tBfr = xform(v.bfr), tBbr = xform(v.bbr);
+    const tTfl = xform(v.tfl), tTbl = xform(v.tbl), tBbl = xform(v.bbl);
+    const allXf = [tBfl, tBfr, tBbr, tBbl, tTfl, xform(v.tfr), tTbl, xform(v.tbr)];
+    const sxMin = Math.min(...allXf.map(p => p.x));
+    const sxMax = Math.max(...allXf.map(p => p.x));
+    const syMax = Math.max(...allXf.map(p => p.y));
+
+    const TICK = 3;
+    const drawDim = (a, b, labelPos, txt, anchor='middle', rotate=0) => {
+      // Solid line from a to b with end ticks; text near labelPos
+      let textT = '';
+      if (rotate) {
+        textT = `transform="rotate(${rotate} ${labelPos.x.toFixed(1)} ${labelPos.y.toFixed(1)})"`;
+      }
+      const perp = (() => {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len = Math.sqrt(dx*dx + dy*dy) || 1;
+        return { x: -dy/len * TICK, y: dx/len * TICK };
+      })();
       return `
-        <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${c}" stroke-width="0.8" />
-        <line x1="${(a.x - nx*tk).toFixed(1)}" y1="${(a.y - ny*tk).toFixed(1)}" x2="${(a.x + nx*tk).toFixed(1)}" y2="${(a.y + ny*tk).toFixed(1)}" stroke="${c}" stroke-width="0.8" />
-        <line x1="${(b.x - nx*tk).toFixed(1)}" y1="${(b.y - ny*tk).toFixed(1)}" x2="${(b.x + nx*tk).toFixed(1)}" y2="${(b.y + ny*tk).toFixed(1)}" stroke="${c}" stroke-width="0.8" />
-        <text x="${(mid.x + nx*7).toFixed(1)}" y="${(mid.y + ny*7 + 3).toFixed(1)}" text-anchor="middle" fill="${c}" font-family="inherit" font-size="9" font-weight="700">${txt}</text>
+        <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${c}" stroke-width="0.9" />
+        <line x1="${(a.x - perp.x).toFixed(1)}" y1="${(a.y - perp.y).toFixed(1)}" x2="${(a.x + perp.x).toFixed(1)}" y2="${(a.y + perp.y).toFixed(1)}" stroke="${c}" stroke-width="0.9" />
+        <line x1="${(b.x - perp.x).toFixed(1)}" y1="${(b.y - perp.y).toFixed(1)}" x2="${(b.x + perp.x).toFixed(1)}" y2="${(b.y + perp.y).toFixed(1)}" stroke="${c}" stroke-width="0.9" />
+        <text x="${labelPos.x.toFixed(1)}" y="${labelPos.y.toFixed(1)}" text-anchor="${anchor}" fill="${c}" font-family="inherit" font-size="9.5" font-weight="700" ${textT}>${txt}</text>
       `;
     };
-    html += dimLine(tBfl, tBfr, `${L.toFixed(1)} cm L`, 'below');
-    html += dimLine(tBfr, tBbr, `${W.toFixed(1)} cm W`, 'below');
-    html += dimLine(tBfl, tTfl, `${H.toFixed(1)} cm H`, 'left');
+
+    // L (length) — bracket below, horizontal, drawn from below bfl to below bfr
+    const lY = syMax + 12;
+    const lA = { x: tBfl.x, y: lY };
+    const lB = { x: tBfr.x, y: lY };
+    html += `<line x1="${tBfl.x.toFixed(1)}" y1="${tBfl.y.toFixed(1)}" x2="${lA.x.toFixed(1)}" y2="${lA.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
+    html += `<line x1="${tBfr.x.toFixed(1)}" y1="${tBfr.y.toFixed(1)}" x2="${lB.x.toFixed(1)}" y2="${lB.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
+    html += drawDim(lA, lB, { x: (lA.x + lB.x)/2, y: lY + 9 }, `${L.toFixed(1)} cm L`);
+
+    // W (depth) — bracket below the right-bottom edge, slanted along bfr→bbr
+    // Offset bfr/bbr along the perpendicular so the bracket sits below them.
+    const wDx = tBbr.x - tBfr.x, wDy = tBbr.y - tBfr.y;
+    const wLen = Math.sqrt(wDx*wDx + wDy*wDy) || 1;
+    // Outward perpendicular (away from box center, generally down-right)
+    let wPx = wDy/wLen, wPy = -wDx/wLen;
+    if (wPy < 0) { wPx = -wPx; wPy = -wPy; }
+    const wOff = 12;
+    const wA = { x: tBfr.x + wPx*wOff, y: tBfr.y + wPy*wOff };
+    const wB = { x: tBbr.x + wPx*wOff, y: tBbr.y + wPy*wOff };
+    html += `<line x1="${tBfr.x.toFixed(1)}" y1="${tBfr.y.toFixed(1)}" x2="${wA.x.toFixed(1)}" y2="${wA.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
+    html += `<line x1="${tBbr.x.toFixed(1)}" y1="${tBbr.y.toFixed(1)}" x2="${wB.x.toFixed(1)}" y2="${wB.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
+    const wMid = { x: (wA.x + wB.x)/2 + wPx*7, y: (wA.y + wB.y)/2 + wPy*7 + 3 };
+    html += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
+
+    // H (height) — bracket left of the silhouette, vertical along tbl→bbl
+    // (the leftmost vertical edge, which is the silhouette's left side).
+    const hX = sxMin - 14;
+    const hA = { x: hX, y: tTbl.y };
+    const hB = { x: hX, y: tBbl.y };
+    html += `<line x1="${tTbl.x.toFixed(1)}" y1="${tTbl.y.toFixed(1)}" x2="${hA.x.toFixed(1)}" y2="${hA.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
+    html += `<line x1="${tBbl.x.toFixed(1)}" y1="${tBbl.y.toFixed(1)}" x2="${hB.x.toFixed(1)}" y2="${hB.y.toFixed(1)}" stroke="${c}" stroke-width="0.5" stroke-dasharray="2,2" />`;
+    const hLabelPos = { x: hX - 4, y: (hA.y + hB.y)/2 };
+    html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
 
     svg.innerHTML = html;
   }
@@ -7417,13 +7483,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const r = oRowQty   >= 1 ? oRowQty   : 1;
       const s = oSideQty  >= 1 ? oSideQty  : 1;
       const h = oStackQty >= 1 ? oStackQty : 1;
-      // (count + 1) walls per axis: 2 outer walls + (count - 1) shared walls
-      // between adjacent inner cartons. Reducing a Side count by 1 removes
-      // one full wall thickness (0.4 cm single / 0.7 cm double) along that
-      // axis, which matches what's physically saved in shared cardboard.
-      const outerL = innerDims.L * r + (r + 1) * oWallCm;
-      const outerW = innerDims.W * s + (s + 1) * oWallCm;
-      const outerH = innerDims.H * h + (h + 1) * oWallCm;
+      // count × (inner_dim + 2 × wall) — each inner carton occupies its own
+      // footprint plus a wall thickness on every side. Doubling Width takes
+      // outer_W from inner_W + 2*wall to 2 × (inner_W + 2*wall), which is
+      // what the user gets when they account for every wall around every
+      // inner. Adjacent inners share contact surfaces but each contributes
+      // its own wall thickness to the total.
+      const outerL = r * (innerDims.L + 2 * oWallCm);
+      const outerW = s * (innerDims.W + 2 * oWallCm);
+      const outerH = h * (innerDims.H + 2 * oWallCm);
       setCartonDimFields('carton-outer', outerL, outerW, outerH);
       // Auto-fill the Qty (Inner Cartons per Outer) field from arrangement
       resolvedOuterCount = r * s * h;
