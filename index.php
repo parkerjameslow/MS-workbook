@@ -7051,11 +7051,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function setCartonDimFields(prefix, L, W, H) {
-    const r = v => Math.round(v * 100) / 100;
-    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = r(val); };
-    set(prefix + '-l-cm', L); convertDim(prefix + '-l-cm', prefix + '-l-in', 'cm');
-    set(prefix + '-w-cm', W); convertDim(prefix + '-w-cm', prefix + '-w-in', 'cm');
-    set(prefix + '-h-cm', H); convertDim(prefix + '-h-cm', prefix + '-h-in', 'cm');
+    // Round UP to the nearest 0.1 — under-sized boxes don't actually fit
+    // the product, so always round in the safe direction. Set cm and in
+    // independently rather than going through convertDim, which uses
+    // .toFixed(2) and would land us at e.g. 55.6cm / 21.89in instead of
+    // a clean 55.6 / 21.9.
+    const ceilTenth = v => Math.ceil(v * 10) / 10;
+    const setAxis = (axis, cm) => {
+      const cmEl = document.getElementById(prefix + '-' + axis + '-cm');
+      const inEl = document.getElementById(prefix + '-' + axis + '-in');
+      if (cmEl) cmEl.value = ceilTenth(cm).toFixed(1);
+      if (inEl) inEl.value = ceilTenth(cm / 2.54).toFixed(1);
+    };
+    setAxis('l', L);
+    setAxis('w', W);
+    setAxis('h', H);
   }
 
   // Back-solve handler for "Qty (Units per Outer Carton)". The user types
