@@ -7232,11 +7232,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Cells (= the product itself for product viz; products for inner;
     // inners for outer) fill the box edge-to-edge with pallet shading
     // (top lighter, right base, front darker — all fully opaque).
+    //
+    // visualPad shrinks the entire cell stack a hair on every face so
+    // there's a perceptible gap between the orange/blue fill and the
+    // silhouette outline drawn afterwards. Without this, cells touch
+    // the wireframe and the outline disappears under the fill.
     if (contents) {
       const { depth, width, height, color: cellC } = contents;
-      const cellL = (xR - xL) / depth;
-      const cellW = (zB - zF) / width;
-      const cellH = (yT - yB) / height;
+      const visualPad = Math.max(0.25, Math.min(L, W, H) * 0.04);
+      const cellL = ((xR - xL) - 2 * visualPad) / depth;
+      const cellW = ((zB - zF) - 2 * visualPad) / width;
+      const cellH = ((yT - yB) - 2 * visualPad) / height;
       const topC   = shadeRgb(cellC,  25);
       const rightC = cellC;
       const frontC = shadeRgb(cellC, -40);
@@ -7246,9 +7252,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       for (let hi = 0; hi < height; hi++) {
         for (let wi = 0; wi < width; wi++) {
           for (let di = 0; di < depth; di++) {
-            const cxLb = xL + di * cellL,  cxRb = cxLb + cellL;
-            const cyBb = yB + hi * cellH,  cyTb = cyBb + cellH;
-            const czFb = zF + wi * cellW,  czBb = czFb + cellW;
+            const cxLb = xL + visualPad + di * cellL,  cxRb = cxLb + cellL;
+            const cyBb = yB + visualPad + hi * cellH,  cyTb = cyBb + cellH;
+            const czFb = zF + visualPad + wi * cellW,  czBb = czFb + cellW;
             const cv = {
               bfl: proj(cxLb, cyBb, czFb), bfr: proj(cxRb, cyBb, czFb),
               bbl: proj(cxLb, cyBb, czBb), bbr: proj(cxRb, cyBb, czBb),
@@ -7328,35 +7334,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return dot >= 0 ? { x: px, y: py } : { x: -px, y: -py };
     };
 
-    // L (length) — bracket along the back-bottom edge bbl→bbr (always on
-    // the silhouette — bfl→bfr is an INTERIOR diagonal in this iso
-    // projection so it can't be used). Label sits further out than the
-    // bracket bar so the bar never crosses the text.
-    const lOff = 24;
-    const lLabelGap = 16;  // text baseline this far below the bracket bar
+    // Bracket bars tucked CLOSE to the box; labels sit well past the
+    // bars so the bar lines never cross the text. Per the user's
+    // request, we pulled the lines toward the model and let the text
+    // hang out further away.
+
+    // L (length) — bracket along the back-bottom edge bbl→bbr.
+    const lOff = 10;        // bar this far from the box silhouette edge
+    const lLabelGap = 24;   // text baseline this far past the bar
     const lP = outwardPerp(tBbl, tBbr);
     const lA = { x: tBbl.x + lP.x*lOff, y: tBbl.y + lP.y*lOff };
     const lB = { x: tBbr.x + lP.x*lOff, y: tBbr.y + lP.y*lOff };
     const lMid = { x: (lA.x + lB.x)/2 + lP.x*lLabelGap, y: (lA.y + lB.y)/2 + lP.y*lLabelGap + 3 };
     html += drawDim(lA, lB, lMid, `${L.toFixed(1)} cm L`);
 
-    // W (depth) — bracket along the right-bottom edge bfr→bbr (always on
-    // the silhouette), offset outward via the same centroid rule.
-    const wOff = 24;
-    const wLabelGap = 16;
+    // W (depth) — bracket along the right-bottom edge bfr→bbr.
+    const wOff = 10;
+    const wLabelGap = 24;
     const wP = outwardPerp(tBfr, tBbr);
     const wA = { x: tBfr.x + wP.x*wOff, y: tBfr.y + wP.y*wOff };
     const wB = { x: tBbr.x + wP.x*wOff, y: tBbr.y + wP.y*wOff };
     const wMid = { x: (wA.x + wB.x)/2 + wP.x*wLabelGap, y: (wA.y + wB.y)/2 + wP.y*wLabelGap + 3 };
     html += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
 
-    // H (height) — bracket vertical, OUTSIDE the silhouette on the left.
-    // Label sits a bit further left than before so the rotated text
-    // can't bleed back through the bracket bar.
-    const hX = sxMin - 16;
+    // H (height) — bracket vertical, hugging the box's left silhouette.
+    const hX = sxMin - 8;
     const hA = { x: hX, y: tTbl.y };
     const hB = { x: hX, y: tBbl.y };
-    const hLabelPos = { x: hX - 10, y: (hA.y + hB.y)/2 };
+    const hLabelPos = { x: hX - 20, y: (hA.y + hB.y)/2 };
     html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
 
     svg.innerHTML = html;
