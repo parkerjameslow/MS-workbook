@@ -10607,14 +10607,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             });
 
             const isRange = saleMin !== Infinity && (saleMax - saleMin > 0.005);
+            // Sale Price column: when variants share one price, just
+            // show that price. When they differ, show a min–max range
+            // AND prefix it with a "Variable" pill so the operator can
+            // tell at a glance that the breakdown matters.
+            const variablePill = isRange
+              ? `<span style="display:inline-block; vertical-align:middle; margin-right:6px; padding:2px 7px; background:rgba(232,117,26,0.14); color:#E8751A; border:1px solid rgba(232,117,26,0.45); border-radius:10px; font-size:9.5px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; line-height:1;">Variable</span>`
+              : '';
             const saleText = saleMin === Infinity ? '—'
-              : (isRange ? '$' + _fmt2(saleMin) + '–$' + _fmt2(saleMax) : '$' + _fmt2(saleMin));
+              : (isRange ? `${variablePill}$${_fmt2(saleMin)}–$${_fmt2(saleMax)}` : '$' + _fmt2(saleMin));
             const itemDescParts = [parentName];
             if (variantNames.length) itemDescParts.push(': ' + variantNames.join(', '));
             if (totalQty > 0)        itemDescParts.push(' = ' + totalQty.toLocaleString('en-US'));
             const itemDesc = itemDescParts.join('');
 
-            html += `<tr class="cq-parent-row" data-cq-parent="${parentId}" onclick="toggleClientQuoteParent('${parentId}')">
+            // Variable-price groups auto-expand so the per-variant rows
+            // are visible by default (the operator doesn't have to hunt
+            // for the chevron to find out why the range exists). Same-
+            // price groups stay collapsed since there's nothing extra to
+            // surface.
+            const startExpanded = isRange;
+            const parentExpandedClass = startExpanded ? ' expanded' : '';
+            const variantHiddenClass  = startExpanded ? '' : ' hidden';
+
+            html += `<tr class="cq-parent-row${parentExpandedClass}" data-cq-parent="${parentId}" onclick="toggleClientQuoteParent('${parentId}')">
               <td style="color:var(--text-muted); width:24px;"><span class="cq-chevron">▶</span></td>
               <td style="font-weight:500;">${itemDesc}</td>
               <td style="text-align:right;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
@@ -10623,7 +10639,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </tr>`;
 
             variantData.forEach(v => {
-              html += `<tr class="cq-variant-row hidden" data-cq-variant-of="${parentId}">
+              html += `<tr class="cq-variant-row${variantHiddenClass}" data-cq-variant-of="${parentId}">
                 <td></td>
                 <td style="padding-left:32px; color:var(--text-muted);">└ ${v.name || 'Variant'}</td>
                 <td style="text-align:right; color:var(--text-muted);">${v.qty > 0 ? v.qty.toLocaleString('en-US') : '—'}</td>
