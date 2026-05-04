@@ -5335,18 +5335,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="pricing-landed-total" id="ps-landed-total">—</div>
           </div>
           <div class="pricing-landed-body">
-            <div class="pricing-landed-row">
+            <!-- Landed Per row. When the RFQ has variants at different
+                 prices, the chevron + cursor:pointer get added by the
+                 renderer; clicking expands ps-landed-variants below. -->
+            <div class="pricing-landed-row" id="ps-landed-per-row" onclick="togglePsLandedVariants()">
               <div class="landed-per-stack">
-                <span class="label">Landed Per (USD)</span>
+                <span class="label">
+                  <span class="ps-landed-chevron" id="ps-landed-chevron" style="display:none; margin-right:6px; transition:transform 0.15s; display:inline-block; opacity:0.7;">▶</span>
+                  Landed Per (USD)
+                </span>
                 <span class="landed-per-math" id="ps-landed-math"></span>
               </div>
               <span class="value" id="ps-landed-per">—</span>
             </div>
             <!-- Per-variant landed breakdown — populated when variants
-                 carry different RMB prices so each one's individual
-                 landed cost is visible at a glance. Hidden when all
-                 variants share the same price. -->
-            <div id="ps-landed-variants" style="display:none;"></div>
+                 carry different RMB prices. Collapsed by default; the
+                 operator clicks the Landed Per row above to expand. -->
+            <div id="ps-landed-variants" class="ps-landed-variants-box" style="display:none;"></div>
             <div class="pricing-landed-row" id="ps-fees-row" style="display:none;">
               <span class="label">Additional Fees</span>
               <span class="value" id="ps-fees-applied">—</span>
@@ -9219,6 +9224,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // 'die','plate','design'); extra fees by 'extra:<id>'. Persisted as
   // an array on workbookDetail.appliedFees.
   let _appliedFees = new Set();
+  // Sticky expand-state for the Total Landed Cost card's per-variant
+  // breakdown section. Persists across re-renders within a session so
+  // clicking expand once doesn't snap closed on the next renderPricingTab.
+  let _psLandedExpanded = false;
+  function togglePsLandedVariants() {
+    _psLandedExpanded = !_psLandedExpanded;
+    const box = document.getElementById('ps-landed-variants');
+    const chev = document.getElementById('ps-landed-chevron');
+    // Only honor the toggle when the variants box has any rows; renderer
+    // sets data-has-variants when it has populated content.
+    if (!box || box.dataset.hasVariants !== '1') return;
+    box.style.display = _psLandedExpanded ? '' : 'none';
+    if (chev) chev.style.transform = _psLandedExpanded ? 'rotate(90deg)' : '';
+  }
 
   const FEE_TYPE_LABELS = {
     sample: 'Sample Fee(s)', tooling: 'Tooling Fee(s)', die: 'Die Fee(s)',
@@ -10841,11 +10860,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(landedMin, landedMax, landedIsRange) : '—';
 
     // ── Per-variant landed breakdown ─────────────────────────────────
-    // When variants on the RFQ carry distinct RMB prices, list each
-    // distinct-price group with its own landed per unit so the
-    // operator can see exactly what the Landed Per range represents.
-    // Falls back to hidden when there's only one price in play.
+    // When variants on the RFQ carry distinct RMB prices, expose a
+    // collapsible breakdown with one row per distinct-price group so
+    // the operator can see exactly what the Landed Per range
+    // represents. Hidden by default; the operator clicks the Landed
+    // Per row to expand.
     const variantsBox = e('ps-landed-variants');
+    const landedRow   = e('ps-landed-per-row');
+    const landedChev  = e('ps-landed-chevron');
     if (variantsBox) {
       let variantHtml = '';
       if (ps && ps.hasVariants && ps.isRange) {
@@ -10928,7 +10950,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       }
       variantsBox.innerHTML = variantHtml;
-      variantsBox.style.display = variantHtml ? '' : 'none';
+      const hasVariants = !!variantHtml;
+      variantsBox.dataset.hasVariants = hasVariants ? '1' : '0';
+      // Show a chevron + cursor:pointer on the Landed Per row only when
+      // we actually have variants to expand.
+      if (landedChev) landedChev.style.display = hasVariants ? 'inline-block' : 'none';
+      if (landedRow) {
+        landedRow.style.cursor = hasVariants ? 'pointer' : '';
+        landedRow.title = hasVariants ? 'Click to see each variant\'s landed cost' : '';
+      }
+      // Visibility honors the user's last toggle. If there are no
+      // variants, force collapsed.
+      const expanded = hasVariants && _psLandedExpanded;
+      variantsBox.style.display = expanded ? '' : 'none';
+      if (landedChev) landedChev.style.transform = expanded ? 'rotate(90deg)' : '';
     }
 
     if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(suggestedMin, suggestedMax, suggestedIsRange) : '—';
