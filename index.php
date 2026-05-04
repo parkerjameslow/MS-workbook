@@ -10550,8 +10550,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">Qty</th>
               <th style="text-align:right;">Sale Price (USD)</th>
               <th style="text-align:right;">Total (USD)</th>
-              <th>Production</th>
-              <th>Shipping</th>
             </tr></thead><tbody>`;
 
         let groupIdx = 0;
@@ -10577,8 +10575,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="text-align:right;">${pQty > 0 ? pQty.toLocaleString('en-US') : '—'}</td>
               <td style="text-align:right;">${pSale > 0 ? '$' + _fmt2(pSale) : '—'}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${pTotal > 0 ? '$' + _fmt2(pTotal) : '—'}</td>
-              <td style="color:var(--text-muted);">${parentLead > 0 ? parentLead + ' days' : '—'}</td>
-              <td style="color:var(--text-muted);">${_ctxShipLeadText}</td>
             </tr>`;
           } else {
             // Variant group — collapsible
@@ -10624,8 +10620,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="text-align:right;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
               <td style="text-align:right;">${saleText}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
-              <td style="color:var(--text-muted);">${maxLead > 0 ? maxLead + ' days' : '—'}</td>
-              <td style="color:var(--text-muted);">${_ctxShipLeadText}</td>
             </tr>`;
 
             variantData.forEach(v => {
@@ -10635,8 +10629,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <td style="text-align:right; color:var(--text-muted);">${v.qty > 0 ? v.qty.toLocaleString('en-US') : '—'}</td>
                 <td style="text-align:right; color:var(--text-muted);">${v.sale > 0 ? '$' + _fmt2(v.sale) : '—'}</td>
                 <td style="text-align:right; color:var(--accent);">${v.total > 0 ? '$' + _fmt2(v.total) : '—'}</td>
-                <td style="color:var(--text-muted);">${v.lead > 0 ? v.lead + ' days' : '—'}</td>
-                <td></td>
               </tr>`;
             });
           }
@@ -10646,7 +10638,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // line item at the bottom of the Client Quote table so it's
         // explicit on the quote what the client is paying for.
         if (_appliedFeesArr.length > 0) {
-          html += `<tr class="cq-fees-divider-row"><td colspan="7" style="padding:6px 12px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#E8751A; background:rgba(232,117,26,0.06); border-top:2px solid rgba(232,117,26,0.25);">Additional Fees</td></tr>`;
+          html += `<tr class="cq-fees-divider-row"><td colspan="5" style="padding:6px 12px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#E8751A; background:rgba(232,117,26,0.06); border-top:2px solid rgba(232,117,26,0.25);">Additional Fees</td></tr>`;
           _appliedFeesArr.forEach(f => {
             const escFee = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             const desc = f.desc ? `<span style="color:var(--text-muted); font-weight:400;"> — ${escFee(f.desc)}</span>` : '';
@@ -10656,8 +10648,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="text-align:right; color:var(--text-muted);">—</td>
               <td style="text-align:right; color:var(--text-muted);">—</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${f.usd > 0 ? '$' + _fmt2(f.usd) : '—'}</td>
-              <td style="color:var(--text-muted);">—</td>
-              <td style="color:var(--text-muted);">—</td>
             </tr>`;
           });
         }
