@@ -5258,7 +5258,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="pricing-cost-subtotal">
               <div class="pricing-cost-row">
-                <span class="pricing-cost-row-label">Total Product Cost</span>
+                <span class="pricing-cost-row-label">Total Product Cost (RMB)</span>
+                <span class="pricing-cost-row-value" id="ps-product-total-rmb">—</span>
+              </div>
+              <div class="pricing-cost-row">
+                <span class="pricing-cost-row-label">Total Product Cost (USD)</span>
                 <span class="pricing-cost-row-value" id="ps-product-total">—</span>
               </div>
             </div>
@@ -5285,7 +5289,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="pricing-cost-subtotal">
               <div class="pricing-cost-row">
-                <span class="pricing-cost-row-label">Total Shipping Cost</span>
+                <span class="pricing-cost-row-label">Total Shipping Cost (RMB)</span>
+                <span class="pricing-cost-row-value" id="ps-sh-total-rmb">—</span>
+              </div>
+              <div class="pricing-cost-row">
+                <span class="pricing-cost-row-label">Total Shipping Cost (USD)</span>
                 <span class="pricing-cost-row-value" id="ps-sh-total">—</span>
               </div>
             </div>
@@ -5334,6 +5342,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               </div>
               <span class="value" id="ps-landed-per">—</span>
             </div>
+            <!-- Per-variant landed breakdown — populated when variants
+                 carry different RMB prices so each one's individual
+                 landed cost is visible at a glance. Hidden when all
+                 variants share the same price. -->
+            <div id="ps-landed-variants" style="display:none;"></div>
             <div class="pricing-landed-row" id="ps-fees-row" style="display:none;">
               <span class="label">Additional Fees</span>
               <span class="value" id="ps-fees-applied">—</span>
@@ -10674,6 +10687,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     if (e('ps-qty'))          e('ps-qty').textContent          = tierQty > 0 ? tierQty.toLocaleString('en-US') + ' units' : '—';
     if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
+    // Total Product Cost (RMB) — same total in yuan, mirrored from USD
+    // via the standard exchange so the operator sees both sides without
+    // touching the calculator.
+    const productTotalRmb = productTotal * USD_TO_RMB;
+    if (e('ps-product-total-rmb')) e('ps-product-total-rmb').textContent = productTotalRmb > 0 ? fmtRmb(productTotalRmb) : '—';
 
     // Unit Price Per (RMB / USD): mirrors RFQ Grand Total column logic — single
     // value when variants share a price, range when they differ. Falls back to
@@ -10709,7 +10727,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // explicitly so the user can sanity-check the unit-level allocation.
     const shipPerUsd = (tierQty > 0 && shippingUsd > 0) ? shippingUsd / tierQty : 0;
     if (e('ps-sh-per'))     e('ps-sh-per').textContent    = shipPerUsd > 0 ? '$' + shipPerUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-    if (e('ps-sh-total'))   e('ps-sh-total').textContent   = shippingUsd > 0 ? `${fmtRmb(shippingRmb)}  /  ${fmtUsd(shippingUsd)}` : '—';
+    if (e('ps-sh-total-rmb')) e('ps-sh-total-rmb').textContent = shippingRmb > 0 ? fmtRmb(shippingRmb) : '—';
+    if (e('ps-sh-total'))     e('ps-sh-total').textContent     = shippingUsd > 0 ? fmtUsd(shippingUsd) : '—';
 
     // ── Total Landed Cost card ──────────────────────────────────────────
     // qty   ← selected pricing tier (tierQty, already resolved above)
@@ -10820,6 +10839,98 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       : '$' + fmt2(lo);
 
     if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(landedMin, landedMax, landedIsRange) : '—';
+
+    // ── Per-variant landed breakdown ─────────────────────────────────
+    // When variants on the RFQ carry distinct RMB prices, list each
+    // distinct-price group with its own landed per unit so the
+    // operator can see exactly what the Landed Per range represents.
+    // Falls back to hidden when there's only one price in play.
+    const variantsBox = e('ps-landed-variants');
+    if (variantsBox) {
+      let variantHtml = '';
+      if (ps && ps.hasVariants && ps.isRange) {
+        // Walk the RFQ rows directly so we can group variants by their
+        // exact RMB price. Use the parent's name + the variant name as
+        // the row label; same-price variants under one parent merge.
+        const PRICE_EPS = 0.005;
+        const groups = new Map(); // key = rmb (rounded), val = { rmb, names: [], qty }
+        const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+        parents.forEach(row => {
+          const id     = parseInt(row.id.replace('rfq-', ''));
+          const pIns   = row.querySelectorAll('input:not([type="checkbox"])');
+          const pName  = (pIns[1]?.value || '').trim();
+          const pRmb   = parseFloat(pIns[3]?.value) || 0;
+          const pQty   = parseFloat(pIns[2]?.value) || 0;
+          const vRows  = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
+          if (vRows.length === 0) {
+            if (pRmb > 0 && pQty > 0) {
+              const k = pRmb.toFixed(2);
+              const g = groups.get(k) || { rmb: pRmb, names: [], qty: 0 };
+              g.names.push(pName || `Item ${id}`);
+              g.qty += pQty;
+              groups.set(k, g);
+            }
+            return;
+          }
+          // Has variants — split by distinct prices.
+          const samePriceQty = { qty: 0, names: [] };
+          const diffPrice   = []; // { name, rmb, qty }
+          vRows.forEach(vr => {
+            const vIns = vr.querySelectorAll('input');
+            const vName = (vIns[0]?.value || '').trim();
+            const vQty  = parseFloat(vIns[1]?.value) || 0;
+            const vRmb  = parseFloat(vIns[2]?.value) || 0;
+            if (vRmb <= 0 || vQty <= 0) return;
+            if (Math.abs(vRmb - pRmb) < PRICE_EPS) {
+              samePriceQty.qty += vQty;
+              samePriceQty.names.push(vName || 'Variant');
+            } else {
+              diffPrice.push({ name: vName || 'Variant', rmb: vRmb, qty: vQty });
+            }
+          });
+          if (samePriceQty.qty > 0 && pRmb > 0) {
+            const k = pRmb.toFixed(2);
+            const g = groups.get(k) || { rmb: pRmb, names: [], qty: 0 };
+            const lbl = pName ? pName : (samePriceQty.names[0] || 'Variant');
+            g.names.push(lbl);
+            g.qty += samePriceQty.qty;
+            groups.set(k, g);
+          }
+          diffPrice.forEach(d => {
+            const k = d.rmb.toFixed(2);
+            const g = groups.get(k) || { rmb: d.rmb, names: [], qty: 0 };
+            const lbl = pName ? `${pName} — ${d.name}` : d.name;
+            g.names.push(lbl);
+            g.qty += d.qty;
+            groups.set(k, g);
+          });
+        });
+
+        // Sort groups by price ascending so the cheapest lands at the
+        // top — easier to reconcile with the Landed Per "min–max" range.
+        const sorted = [...groups.values()].sort((a, b) => a.rmb - b.rmb);
+        if (sorted.length > 1) {
+          variantHtml = sorted.map(g => {
+            const usdPerUnit  = g.rmb / USD_TO_RMB;
+            const landedUnit  = usdPerUnit + shipPerUnit;
+            const namesText   = g.names.length === 1 ? g.names[0]
+                              : g.names.length <= 3 ? g.names.join(', ')
+                              : g.names.slice(0, 2).join(', ') + ` +${g.names.length - 2} more`;
+            const qtyText     = g.qty.toLocaleString('en-US');
+            return `<div class="pricing-landed-row" style="padding-left:16px; border-left:2px solid rgba(232,117,26,0.35); margin-left:4px;">
+              <div class="landed-per-stack">
+                <span class="label" style="font-size:12px;">${namesText}</span>
+                <span class="landed-per-math">${qtyText} units · ¥${fmt2(g.rmb)}/unit</span>
+              </div>
+              <span class="value" style="font-size:13px;">$${fmt2(landedUnit)}</span>
+            </div>`;
+          }).join('');
+        }
+      }
+      variantsBox.innerHTML = variantHtml;
+      variantsBox.style.display = variantHtml ? '' : 'none';
+    }
+
     if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(suggestedMin, suggestedMax, suggestedIsRange) : '—';
     if (e('ps-landed-total'))  e('ps-landed-total').textContent  = landedTotal > 0 ? '$' + fmt2(landedTotal) : '—';
     // Additional Fees row: only shown when at least one fee is applied.
