@@ -3652,6 +3652,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     /* Add Workbook Modal */
     .modal-wb-picker { max-height: 420px; overflow-y: auto; margin: 0 -6px; }
+    /* Inset variant — for picker lists that sit INSIDE a colored card
+       (e.g. the Orders / Samples sections of the Add to Shipment modal).
+       Cancels the parent's negative margin and adds breathing room on
+       the top + sides so rows don't crash into the card border. */
+    .modal-wb-picker.ship-picker-list-inset {
+      margin: 0;
+      padding: 10px 14px 14px;
+    }
+    .modal-wb-picker.ship-picker-list-inset .wb-picker-item {
+      padding: 10px 12px;
+    }
+    .modal-wb-picker.ship-picker-list-inset .wb-picker-group-label {
+      padding: 8px 4px 6px;
+      margin-top: 4px;
+    }
+    .modal-wb-picker.ship-picker-list-inset .wb-picker-group-label:first-child {
+      padding-top: 2px;
+      margin-top: 0;
+    }
     .wb-picker-item {
       display: flex; align-items: center; gap: 12px;
       padding: 10px 10px; border-radius: var(--radius-sm); cursor: pointer;
@@ -6101,24 +6120,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     <!-- Orders section card — accent-blue themed -->
     <div style="margin-top:12px; border:1.5px solid rgba(107,147,255,0.45); background:rgba(107,147,255,0.06); border-radius:10px; overflow:hidden;">
-      <div style="display:flex; align-items:center; gap:8px; padding:9px 12px; background:rgba(107,147,255,0.18); border-bottom:1.5px solid rgba(107,147,255,0.45); color:#6b93ff;">
+      <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(107,147,255,0.18); border-bottom:1.5px solid rgba(107,147,255,0.45); color:#6b93ff;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
         <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Orders</span>
         <span id="ship-picker-orders-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#6b93ff; opacity:0.8;"></span>
       </div>
-      <div class="modal-wb-picker" id="ship-order-picker-list" style="max-height:200px; border:none; background:transparent;">
+      <div class="modal-wb-picker ship-picker-list-inset" id="ship-order-picker-list" style="max-height:240px;">
         <!-- populated by JS -->
       </div>
     </div>
 
     <!-- Samples section card — orange themed (matches the workbook's sample branding) -->
     <div style="margin-top:14px; border:1.5px solid rgba(232,117,26,0.55); background:rgba(232,117,26,0.07); border-radius:10px; overflow:hidden;">
-      <div style="display:flex; align-items:center; gap:8px; padding:9px 12px; background:rgba(232,117,26,0.20); border-bottom:1.5px solid rgba(232,117,26,0.55); color:#E8751A;">
+      <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(232,117,26,0.20); border-bottom:1.5px solid rgba(232,117,26,0.55); color:#E8751A;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Samples</span>
         <span id="ship-picker-samples-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#E8751A; opacity:0.8;"></span>
       </div>
-      <div class="modal-wb-picker" id="ship-sample-picker-list" style="max-height:200px; border:none; background:transparent;">
+      <div class="modal-wb-picker ship-picker-list-inset" id="ship-sample-picker-list" style="max-height:240px;">
         <!-- populated by JS -->
       </div>
     </div>
