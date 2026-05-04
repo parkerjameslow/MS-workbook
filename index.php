@@ -2021,8 +2021,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .dash-table th:nth-child(2) { width: 100px; } /* Date Created */
     .dash-table th:nth-child(3) { width: 100px; } /* Date Submitted */
     .dash-table th:nth-child(4) { width: 110px; } /* Order */
-    .dash-table th:nth-child(5) { width: auto; }  /* Fulfilment (Flow) — takes remaining space */
     .dash-table th:nth-child(7) { width: 54px; }  /* Actions */
+    /* Fulfilment (Flow) — class-based so it applies to BOTH the home
+       view (col 4) and the client-dashboard view (col 5). Reserves the
+       natural minimum width to fit 7 steps × 56px + 6 gaps × 6px +
+       a 24px right buffer, so the last bubble + label can never bleed
+       under the Actions cell. table-scroll-wrapper around the table
+       gives a horizontal scrollbar when the viewport can't fit it. */
+    .dash-table th.col-flow,
+    .dash-table td.col-flow {
+      min-width: 452px;
+      padding-right: 24px !important;
+    }
 
     .dash-table td {
       padding: 18px 8px;
@@ -2127,9 +2137,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     /* ── Fulfilment Flow Indicators ─────────────────────────────────────── */
+    /* Steps are pinned to a fixed 56px width and labels are allowed to
+       wrap to 2 lines so the long-named ones ("Confirmed Payment",
+       "Office Invoice", etc.) don't push the column wider than its
+       table allocation and bleed under the Actions cell. min-height on
+       the label keeps short-vs-long labels vertically aligned. */
     .flow-group {
       display: flex;
       gap: 6px;
+      flex-wrap: nowrap;
+      justify-content: flex-start;
+      max-width: 100%;
     }
 
     .flow-step {
@@ -2137,6 +2155,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       flex-direction: column;
       align-items: center;
       gap: 4px;
+      width: 56px;
+      flex-shrink: 0;
     }
 
     .flow-bar {
@@ -2153,8 +2173,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .flow-label {
       font-size: 9px;
       color: var(--text-muted);
-      white-space: nowrap;
       text-align: center;
+      line-height: 1.18;
+      width: 100%;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      hyphens: auto;
+      min-height: 22px; /* room for two lines so rows stay aligned */
     }
 
     /* ── Action Icon Button ─────────────────────────────────────────────── */
