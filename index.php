@@ -10650,11 +10650,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           }
         });
 
-        // Applied fee rows — each ticked Additional Fee gets its own
-        // line item at the bottom of the Client Quote table so it's
-        // explicit on the quote what the client is paying for.
-        if (_appliedFeesArr.length > 0) {
-          html += `<tr class="cq-fees-divider-row"><td colspan="5" style="padding:6px 12px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#E8751A; background:rgba(232,117,26,0.06); border-top:2px solid rgba(232,117,26,0.25);">Additional Fees</td></tr>`;
+        // Additional Fees section — ALWAYS present at the bottom of the
+        // Client Quote table so the client sees an explicit "$0.00"
+        // when no fees were charged (rather than wondering whether fees
+        // were silently included). When fees ARE applied, each ticked
+        // fee gets its own indented line item under the divider.
+        html += `<tr class="cq-fees-divider-row"><td colspan="5" style="padding:6px 12px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#E8751A; background:rgba(232,117,26,0.06); border-top:2px solid rgba(232,117,26,0.25);">Additional Fees</td></tr>`;
+        if (_appliedFeesArr.length === 0) {
+          // No fees applied — emit a single zero-value row so the client
+          // can see "$0.00" plainly.
+          html += `<tr class="cq-fee-row cq-fee-zero-row" style="background:rgba(232,117,26,0.04);">
+            <td style="color:var(--text-muted); width:24px; font-weight:700;">—</td>
+            <td style="font-weight:500; color:var(--text-muted);">No additional fees</td>
+            <td style="text-align:right; color:var(--text-muted);">—</td>
+            <td style="text-align:right; color:var(--text-muted);">—</td>
+            <td style="text-align:right; font-weight:600; color:var(--accent);">$0.00</td>
+          </tr>`;
+        } else {
           _appliedFeesArr.forEach(f => {
             const escFee = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             const desc = f.desc ? `<span style="color:var(--text-muted); font-weight:400;"> — ${escFee(f.desc)}</span>` : '';
