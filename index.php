@@ -13895,18 +13895,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         </div>
         <div class="cdc-right-col">
-          <!-- RFQ Request panel — sends a one-time intake link to the
-               client's email on file. Status sub-line + copy/cancel
-               actions are populated async by hydrateIntakeStatus(). -->
+          <!-- Workbook Request button — sends a one-time intake link to
+               the client's email on file. Status sub-line + copy link
+               are populated async by hydrateIntakeStatus(). -->
           <div class="cdc-rfq-card">
-            <div class="cdc-rfq-title">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              Quote Request
-            </div>
-            <p class="cdc-rfq-desc">Email a one-time link so the client can fill out a Product Overview &amp; RFQ themselves. Submissions land flagged <em>Pending Review</em>.</p>
             <button type="button" class="cdc-rfq-btn" id="cdc-rfq-btn" onclick="sendIntakeRequest('${enc}')" title="Email a one-time intake link to ${(d.email || 'the client').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-              Send Quote Request
+              Send Workbook Request
             </button>
             <div class="cdc-rfq-status" id="cdc-rfq-status" style="display:none;"></div>
           </div>
@@ -13978,7 +13973,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       alert('No email on file for this client. Add one in Client Details first.');
       return;
     }
-    if (!confirm(`Send a quote-request link to ${email}?\n\nThe link is one-time use and expires in 30 days.`)) return;
+    if (!confirm(`Send a workbook request link to ${email}?\n\nThe link is one-time use and expires in 30 days.`)) return;
 
     const btn = document.getElementById('cdc-rfq-btn');
     if (btn) {
@@ -13996,14 +13991,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         alert(err);
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Send Quote Request`;
+          btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Send Workbook Request`;
         }
       }
     } catch (e) {
       alert('Could not send intake link. Check your connection and try again.');
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Send Quote Request to Client`;
+        btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Send Workbook Request`;
       }
     }
   }
