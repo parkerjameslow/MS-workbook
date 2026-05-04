@@ -5597,6 +5597,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">USD</th>
               <th>LEAD</th>
               <th style="text-align:center;">STATUS</th>
+              <th style="width:36px;"></th>
             </tr>
           </thead>
           <tbody id="samples-tbody">
@@ -6086,7 +6087,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <!-- ── Add Order to Shipment Modal ────────────────────────────────────── -->
 <div class="modal-overlay" id="modal-add-order-to-shipment" onclick="if(event.target===this)closeAddOrderToShipmentModal()" style="z-index:1000;">
   <div class="modal" style="max-width:560px;">
-    <div class="modal-title">Add Order to Shipment</div>
+    <div class="modal-title">Add to Shipment</div>
     <div class="modal-field" style="margin-bottom:12px;">
       <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Filter by Client</label>
       <div class="ship-select-wrap" style="width:100%;">
@@ -6096,8 +6097,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </select>
       </div>
     </div>
-    <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders…" oninput="filterShipOrderPicker(this.value)" />
-    <div class="modal-wb-picker" id="ship-order-picker-list">
+    <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders &amp; samples…" oninput="filterShipOrderPicker(this.value)" />
+    <div style="font-size:10px; font-weight:700; letter-spacing:0.06em; color:var(--text-muted); text-transform:uppercase; margin:8px 4px 4px;">Orders</div>
+    <div class="modal-wb-picker" id="ship-order-picker-list" style="max-height:200px;">
+      <!-- populated by JS -->
+    </div>
+    <div style="font-size:10px; font-weight:700; letter-spacing:0.06em; color:var(--text-muted); text-transform:uppercase; margin:12px 4px 4px;">Samples</div>
+    <div class="modal-wb-picker" id="ship-sample-picker-list" style="max-height:200px;">
       <!-- populated by JS -->
     </div>
     <div class="modal-actions" style="margin-top:14px;">
@@ -7994,7 +8000,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td style="white-space:nowrap;">
-        ${isFirstRow ? '' : '<span class="remove-tier" onclick="removeRfqRow(' + id + ')" title="Remove">&times;</span>'}
+        <span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove line item">&times;</span>
       </td>
     `;
     tbody.appendChild(tr);
@@ -8015,6 +8021,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.querySelectorAll(`[data-rfq-parent="${id}"]`).forEach(vr => vr.remove());
     document.querySelector(`[data-rfq-add-for="${id}"]`)?.remove();
     renumberRfqRows();
+    // If we just deleted the last RFQ row, drop in a fresh blank row so
+    // the table never bottoms out completely (matches what the user
+    // expects when they "start over"): there's always at least one row
+    // visible to type into.
+    const remaining = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    if (remaining.length === 0) addRfqRow();
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
   }
@@ -13014,6 +13026,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               ${SAMPLE_STATUSES.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${SAMPLE_STATUS_LABELS[st]}</option>`).join('')}
             </select>
           </td>
+          <td style="text-align:center;">
+            <span class="remove-tier" onclick="removeSampleRequest('${s.key}', ${s.rowIndex})" title="Unmark as sample (keeps the RFQ line item, just removes it from this list)" style="font-size:18px; color:var(--text-muted);">&times;</span>
+          </td>
         </tr>
       `;
     }).join('');
@@ -13033,6 +13048,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderSamplesTable(freshSamples);
     rebuildSamplesNav();
     // Update count badge
+    const countBadge = document.getElementById('samples-count-badge');
+    if (countBadge) countBadge.textContent = freshSamples.length === 1 ? '1 sample' : `${freshSamples.length} samples`;
+  }
+
+  // Remove a sample row directly from the Samples dashboard. We keep the
+  // underlying RFQ line item intact (in case the operator just wanted to
+  // un-flag it as a sample without deleting the row from the workbook),
+  // and clear the saved status entry too. Persists to the DB.
+  function removeSampleRequest(key, rowIndex) {
+    const detail = workbookDetail[key];
+    if (!detail || !detail.rfqItems || !detail.rfqItems[rowIndex]) return;
+    if (!confirm('Remove this sample request? The RFQ line item stays in the workbook — only the sample flag clears.')) return;
+    detail.rfqItems[rowIndex].sample = false;
+    if (detail.sampleStatuses) {
+      delete detail.sampleStatuses[rowIndex];
+    }
+    const [, workbookId] = key.split('|');
+    const dbId = dbWorkbookMap[key] || workbookId;
+    apiCall('save_workbook_detail', { id: dbId, detail, changed_by: getCurrentUser() });
+    saveToLocalStorage();
+    // If the workbook is open in the workbook view, sync the checkbox
+    // visually so it updates without a reload.
+    const openKey = (typeof currentClient !== 'undefined' && typeof currentWorkbookId !== 'undefined')
+      ? `${currentClient}|${currentWorkbookId}` : null;
+    if (openKey === key) {
+      const rfqRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+      const targetRow = rfqRows[rowIndex];
+      if (targetRow) {
+        const cb = targetRow.querySelector('.rfq-sample-check');
+        if (cb && cb.checked) { cb.checked = false; toggleRfqSample(cb); }
+      }
+    }
+    const freshSamples = collectAllSamples();
+    renderSamplesTable(freshSamples);
+    rebuildSamplesNav();
     const countBadge = document.getElementById('samples-count-badge');
     if (countBadge) countBadge.textContent = freshSamples.length === 1 ? '1 sample' : `${freshSamples.length} samples`;
   }
@@ -15618,10 +15668,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const countEl = document.getElementById('ship-order-count');
     const entries = s.entries || [];
 
-    const orderEntries = entries.filter(e => e.orderId);
-    if (countEl) countEl.textContent = orderEntries.length > 0 ? `${orderEntries.length} order${orderEntries.length !== 1 ? 's' : ''}` : '';
+    const orderEntries  = entries.filter(e => e.orderId);
+    const sampleEntries = entries.filter(e => e.sampleKey != null && e.sampleRowIndex != null);
+    if (countEl) {
+      const parts = [];
+      if (orderEntries.length)  parts.push(`${orderEntries.length} order${orderEntries.length !== 1 ? 's' : ''}`);
+      if (sampleEntries.length) parts.push(`${sampleEntries.length} sample${sampleEntries.length !== 1 ? 's' : ''}`);
+      countEl.textContent = parts.join(' · ');
+    }
 
-    if (orderEntries.length === 0) {
+    if (orderEntries.length === 0 && sampleEntries.length === 0) {
       if (emptyEl) emptyEl.style.display = '';
       if (listEl)  listEl.innerHTML = '';
       return;
@@ -15630,8 +15686,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    listEl.innerHTML = entries.map((entry, idx) => {
-      if (!entry.orderId) return ''; // skip legacy workbook entries
+    // Build sample cards first (small, distinct from full order cards)
+    // so the operator can see them at a glance underneath the orders.
+    const sampleCardsHtml = entries.map((entry, idx) => {
+      if (entry.sampleKey == null || entry.sampleRowIndex == null) return '';
+      const detail = workbookDetail[entry.sampleKey];
+      if (!detail || !detail.rfqItems || !detail.rfqItems[entry.sampleRowIndex]) {
+        // Sample's underlying RFQ row was deleted — surface a stub so
+        // the operator can clear it from the shipment.
+        return `<div class="ship-order-card" style="border-style:dashed; opacity:0.7;">
+          <div class="ship-order-card-header">
+            <div>
+              <div class="soc-client" style="color:var(--text-muted);">Missing sample</div>
+              <div class="soc-name" style="font-style:italic;">The original RFQ line item is gone.</div>
+            </div>
+            <button class="ship-wb-remove" onclick="event.stopPropagation(); removeOrderFromShipment(${idx})" title="Remove">×</button>
+          </div>
+        </div>`;
+      }
+      const item = detail.rfqItems[entry.sampleRowIndex];
+      const [clientName, workbookId] = entry.sampleKey.split('|');
+      const product = detail.product || workbookId;
+      const wbHref  = `#/client/${encodeURIComponent(clientName)}/workbook/${workbookId}`;
+      const qtyStr  = item.qty ? `${parseInt(item.qty).toLocaleString('en-US')} units` : '';
+      const status  = (detail.sampleStatuses && detail.sampleStatuses[entry.sampleRowIndex]) || 'pending';
+      const sc      = SAMPLE_STATUS_COLORS[status] || SAMPLE_STATUS_COLORS.pending;
+      return `<div class="ship-order-card" onclick="location.hash='${wbHref}'" style="border-left:3px solid ${sc.border};">
+        <div class="ship-order-card-header">
+          <div>
+            <div class="soc-client">${clientName} &nbsp;·&nbsp; <span style="font-weight:600; color:${sc.text}; font-size:11px; text-transform:uppercase; letter-spacing:0.04em;">Sample · ${SAMPLE_STATUS_LABELS[status]}</span></div>
+            <div class="soc-name">${item.item || '(unnamed sample)'} <span style="color:var(--text-muted); font-weight:500;">— from ${product}${qtyStr ? ' · ' + qtyStr : ''}</span></div>
+          </div>
+          <button class="ship-wb-remove" onclick="event.stopPropagation(); removeOrderFromShipment(${idx})" title="Remove">×</button>
+        </div>
+      </div>`;
+    }).filter(Boolean).join('');
+
+    const orderCardsHtml = entries.map((entry, idx) => {
+      if (!entry.orderId) return '';
       const order = orderData[entry.orderId];
       if (!order) return '';
       const stats  = orderShipStats(entry.orderId);
@@ -15693,6 +15785,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ${crBanner}
       </div>`;
     }).join('');
+
+    listEl.innerHTML = orderCardsHtml + sampleCardsHtml;
   }
 
   function deleteShipment(id) {
@@ -15797,8 +15891,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Add Order to Shipment modal ──────────────────────────────────────
+  let _shipSamplePickerSelected = new Set();
+
   function openAddOrderToShipmentModal() {
     _shipOrderPickerSelected = new Set();
+    _shipSamplePickerSelected = new Set();
     // Populate client filter dropdown
     const sel = document.getElementById('ship-order-picker-client');
     sel.innerHTML = '<option value="">All clients</option>';
@@ -15809,16 +15906,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
     document.getElementById('ship-order-picker-search').value = '';
     buildShipOrderPickerList('');
+    buildShipSamplePickerList('');
     document.getElementById('modal-add-order-to-shipment').classList.add('open');
   }
 
   function closeAddOrderToShipmentModal() {
     document.getElementById('modal-add-order-to-shipment').classList.remove('open');
     _shipOrderPickerSelected = new Set();
+    _shipSamplePickerSelected = new Set();
   }
 
   function onShipOrderClientChange() {
-    buildShipOrderPickerList(document.getElementById('ship-order-picker-search').value);
+    const q = document.getElementById('ship-order-picker-search').value;
+    buildShipOrderPickerList(q);
+    buildShipSamplePickerList(q);
   }
 
   function buildShipOrderPickerList(query) {
@@ -15894,6 +15995,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function filterShipOrderPicker(query) {
     buildShipOrderPickerList(query);
+    buildShipSamplePickerList(query);
   }
 
   function toggleShipOrderPickerItem(id) {
@@ -15905,17 +16007,103 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     buildShipOrderPickerList(document.getElementById('ship-order-picker-search').value);
   }
 
+  // ── Sample picker section in the +Add to Shipment modal ───────────
+  // Populates the "Samples" list under the Orders list. Mirrors the
+  // orders picker behavior — same client filter + same search box.
+  // sampleId encoding: `<clientName>|<workbookId>|<rowIndex>`. We store
+  // just enough to round-trip back to the original RFQ line item when
+  // we render the shipment entry later.
+  function buildShipSamplePickerList(query) {
+    const list = document.getElementById('ship-sample-picker-list');
+    if (!list) return;
+    const filterClient = document.getElementById('ship-order-picker-client').value;
+    query = (query || '').toLowerCase();
+
+    const s = shipmentData[_currentShipmentId];
+    const alreadyIn = new Set((s ? s.entries : [])
+      .filter(e => e.sampleKey != null && e.sampleRowIndex != null)
+      .map(e => `${e.sampleKey}|${e.sampleRowIndex}`));
+
+    const allSamples = collectAllSamples();
+    const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
+    const sortedClients = Object.keys(clientData).sort();
+
+    const matched = allSamples.filter(sm => {
+      if (filterClient && sm.clientName !== filterClient) return false;
+      if (!query) return true;
+      const hay = `${sm.item} ${sm.product} ${sm.clientName}`.toLowerCase();
+      return hay.includes(query);
+    });
+
+    if (matched.length === 0) {
+      list.innerHTML = `<div style="text-align:center; padding:18px 12px; color:var(--text-muted); font-size:12px; font-style:italic;">${query ? 'No samples match your search.' : 'No sample requests flagged yet. Tick the Sample box on any RFQ row to add one here.'}</div>`;
+      return;
+    }
+
+    let html = '';
+    let lastClient = null;
+    matched.forEach(sm => {
+      const sampleId = `${sm.key}|${sm.rowIndex}`;
+      const isChecked = _shipSamplePickerSelected.has(sampleId);
+      const inShip    = alreadyIn.has(sampleId);
+      const color     = palette[sortedClients.indexOf(sm.clientName) % palette.length] || palette[0];
+      const initials  = sm.clientName.substring(0, 3).toUpperCase();
+
+      // Group label only when showing all clients
+      if (!filterClient && sm.clientName !== lastClient) {
+        html += `<div class="wb-picker-group-label">${sm.clientName}</div>`;
+        lastClient = sm.clientName;
+      }
+      const qtyStr  = sm.qty && sm.qty !== '—' ? `${parseInt(sm.qty).toLocaleString('en-US')} units` : '';
+      const subline = `${sm.product}${qtyStr ? ' · ' + qtyStr : ''} · ${sm.status}`;
+
+      html += `<div class="wb-picker-item${isChecked ? ' selected' : ''}"
+          style="${inShip ? 'opacity:0.4; pointer-events:none;' : ''}"
+          onclick="toggleShipSamplePickerItem('${sampleId.replace(/'/g, "\\'")}')">
+        <div style="width:40px; height:40px; border-radius:8px; background:${color}22; border:1px solid ${color}44; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:${color}; flex-shrink:0; letter-spacing:0.02em;">
+          ${initials}
+        </div>
+        <div class="wb-picker-info">
+          <div class="wb-picker-product">${sm.item || '(unnamed sample)'}</div>
+          <div class="wb-picker-client">${sm.clientName} &nbsp;·&nbsp; ${subline}${inShip ? ' · Already in shipment' : ''}</div>
+        </div>
+        <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
+          ${isChecked ? '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
+        </div>
+      </div>`;
+    });
+    list.innerHTML = html;
+  }
+
+  function toggleShipSamplePickerItem(sampleId) {
+    if (_shipSamplePickerSelected.has(sampleId)) {
+      _shipSamplePickerSelected.delete(sampleId);
+    } else {
+      _shipSamplePickerSelected.add(sampleId);
+    }
+    buildShipSamplePickerList(document.getElementById('ship-order-picker-search').value);
+  }
+
   function confirmAddOrderToShipment() {
-    if (_shipOrderPickerSelected.size === 0) { alert('Select at least one order.'); return; }
+    if (_shipOrderPickerSelected.size === 0 && _shipSamplePickerSelected.size === 0) {
+      alert('Select at least one order or sample.'); return;
+    }
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
+    s.entries = s.entries || [];
     _shipOrderPickerSelected.forEach(id => {
       const orderId = parseInt(id);
-      const alreadyIn = (s.entries || []).some(e => e.orderId === orderId);
-      if (!alreadyIn) {
-        s.entries = s.entries || [];
-        s.entries.push({ orderId });
-      }
+      const alreadyIn = s.entries.some(e => e.orderId === orderId);
+      if (!alreadyIn) s.entries.push({ orderId });
+    });
+    _shipSamplePickerSelected.forEach(sampleId => {
+      // sampleId = "clientName|workbookId|rowIndex" — split from the right
+      // so client names containing '|' don't break parsing.
+      const lastBar = sampleId.lastIndexOf('|');
+      const sampleKey = sampleId.substring(0, lastBar);
+      const sampleRowIndex = parseInt(sampleId.substring(lastBar + 1));
+      const alreadyIn = s.entries.some(e => e.sampleKey === sampleKey && e.sampleRowIndex === sampleRowIndex);
+      if (!alreadyIn) s.entries.push({ sampleKey, sampleRowIndex });
     });
     saveShipments();
     closeAddOrderToShipmentModal();
