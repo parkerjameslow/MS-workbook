@@ -2466,6 +2466,78 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
     .qr-sum-val { font-size: 13px; font-weight: 700; color: var(--text); }
+    /* Client Quote summary bar — used in BOTH the section header and as
+       a footer at the bottom of the body so the operator never has to
+       scroll back up to see the totals. Bold accent-blue band makes the
+       row pop above the regular section chrome. */
+    .cq-summary-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 18px;
+      background: linear-gradient(135deg, rgba(107,147,255,0.14) 0%, rgba(107,147,255,0.05) 100%);
+      border: 1px solid rgba(107,147,255,0.40);
+      border-radius: 10px;
+      flex-wrap: wrap;
+    }
+    .cq-summary-bar.cq-summary-bar--header {
+      cursor: pointer;
+      transition: filter 0.15s;
+    }
+    .cq-summary-bar.cq-summary-bar--header:hover {
+      filter: brightness(1.05);
+    }
+    .cq-summary-bar.cq-summary-bar--footer {
+      margin-top: 18px;
+    }
+    .cq-summary-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #6b93ff;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cq-summary-title svg { flex-shrink: 0; }
+    .cq-summary-stats {
+      display: flex;
+      gap: 10px;
+      flex: 1;
+      flex-wrap: wrap;
+      align-items: stretch;
+      justify-content: flex-end;
+    }
+    .cq-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 96px;
+      padding: 7px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .cq-stat-label {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .cq-stat-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .cq-stat--total .cq-stat-value { color: var(--accent); }
     .qr-expand-toggle {
       display: flex;
       align-items: center;
@@ -5386,37 +5458,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <!-- ── Card: Client Quote ── -->
   <div class="section-card collapsed" id="pricing-quote-ref-card">
-    <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-      <span class="section-title">Client Quote</span>
-      <div class="qr-collapsed-summary" id="pricing-quote-ref-summary">
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Sale Price (USD)</span>
-          <span class="qr-sum-val" id="qrs-usd">—</span>
+    <!-- Header: full-width accent-blue summary bar that doubles as the
+         section toggle. Same layout is repeated as a footer below the
+         line-item table so the operator can read the totals without
+         scrolling back up on long quotes. -->
+    <div class="section-header section-header-collapsible" style="background:transparent; border-bottom:none; padding:0;" onclick="toggleSection(this.closest('.section-card'))">
+      <div class="cq-summary-bar cq-summary-bar--header" style="width:100%; margin:0;">
+        <span class="cq-summary-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Client Quote
+        </span>
+        <div class="cq-summary-stats">
+          <div class="cq-stat"><span class="cq-stat-label">Sale Price (USD)</span><span class="cq-stat-value" data-qrs="usd" id="qrs-usd">—</span></div>
+          <div class="cq-stat cq-stat--total"><span class="cq-stat-label">Total Order</span><span class="cq-stat-value" data-qrs="total" id="qrs-total">—</span></div>
+          <div class="cq-stat"><span class="cq-stat-label">Production Lead</span><span class="cq-stat-value" data-qrs="lead" id="qrs-lead">—</span></div>
+          <div class="cq-stat"><span class="cq-stat-label">Shipping Lead</span><span class="cq-stat-value" data-qrs="ship-lead" id="qrs-ship-lead">—</span></div>
+          <div class="cq-stat"><span class="cq-stat-label">Total Lead</span><span class="cq-stat-value" data-qrs="total-lead" id="qrs-total-lead">—</span></div>
         </div>
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Total Order</span>
-          <span class="qr-sum-val" id="qrs-total">—</span>
+        <div class="qr-expand-toggle">
+          <span class="qr-expand-label">All Line Items</span>
+          <span class="section-chevron">›</span>
         </div>
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Production Lead</span>
-          <span class="qr-sum-val" id="qrs-lead">—</span>
-        </div>
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Shipping Lead</span>
-          <span class="qr-sum-val" id="qrs-ship-lead">—</span>
-        </div>
-        <div class="qr-sum-item">
-          <span class="qr-sum-label">Total Lead</span>
-          <span class="qr-sum-val" id="qrs-total-lead">—</span>
-        </div>
-      </div>
-      <div class="qr-expand-toggle">
-        <span class="qr-expand-label">All Line Items</span>
-        <span class="section-chevron">›</span>
       </div>
     </div>
-    <div class="section-body" id="pricing-quote-ref-body">
-      <span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>
+    <div class="section-body">
+      <div id="pricing-quote-ref-body">
+        <span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>
+      </div>
+      <!-- Footer: identical summary bar at the bottom of the body. Same
+           data attributes as the header — populated in lockstep by the
+           renderer via querySelectorAll. No expand toggle since it's
+           inside the already-expanded body. -->
+      <div class="cq-summary-bar cq-summary-bar--footer">
+        <span class="cq-summary-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Client Quote
+        </span>
+        <div class="cq-summary-stats">
+          <div class="cq-stat"><span class="cq-stat-label">Sale Price (USD)</span><span class="cq-stat-value" data-qrs="usd">—</span></div>
+          <div class="cq-stat cq-stat--total"><span class="cq-stat-label">Total Order</span><span class="cq-stat-value" data-qrs="total">—</span></div>
+          <div class="cq-stat"><span class="cq-stat-label">Production Lead</span><span class="cq-stat-value" data-qrs="lead">—</span></div>
+          <div class="cq-stat"><span class="cq-stat-label">Shipping Lead</span><span class="cq-stat-value" data-qrs="ship-lead">—</span></div>
+          <div class="cq-stat"><span class="cq-stat-label">Total Lead</span><span class="cq-stat-value" data-qrs="total-lead">—</span></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -11025,45 +11110,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // back-solve margin without re-deriving everything from the table)
     _landedAvgForMargin = landedAvg > 0 ? landedAvg : 0;
 
-    // ── Client Quote header summary ────────────────────────────────────
+    // ── Client Quote summary bar (header AND footer) ───────────────────
     //   Sale Price Range  ← Suggested Price Per (locked to client default)
     //   Total Order       ← Total Landed Cost (deterministic)
     //   Production Lead   ← max RFQ lead time (already computed in rfq-max-lead)
     //   Shipping Lead     ← max of freight Lead Time inputs
     //   Total Lead        ← Production + Shipping
-    const qrsUsd       = e('qrs-usd');
-    const qrsTotal     = e('qrs-total');
-    const qrsLead      = e('qrs-lead');
-    const qrsShipLead  = e('qrs-ship-lead');
-    const qrsTotalLead = e('qrs-total-lead');
+    // querySelectorAll on data-qrs attributes writes to BOTH the header
+    // bar at the top of the section card and the footer bar at the
+    // bottom of the body in a single pass — the same data renders in
+    // both places without the renderer having to know they exist.
+    const setQrs = (key, value) => {
+      document.querySelectorAll(`[data-qrs="${key}"]`).forEach(el => { el.textContent = value; });
+    };
 
-    if (qrsUsd) {
-      qrsUsd.textContent = suggestedMin > 0
-        ? (suggestedIsRange ? '$' + fmt2(suggestedMin) + '–$' + fmt2(suggestedMax) : '$' + fmt2(suggestedMin))
-        : '—';
-    }
-    if (qrsTotal) {
-      qrsTotal.textContent = landedTotal > 0 ? '$' + fmt2(landedTotal) : '—';
-    }
+    setQrs('usd', suggestedMin > 0
+      ? (suggestedIsRange ? '$' + fmt2(suggestedMin) + '–$' + fmt2(suggestedMax) : '$' + fmt2(suggestedMin))
+      : '—');
+    setQrs('total', landedTotal > 0 ? '$' + fmt2(landedTotal) : '—');
 
     const prodLeadDays = parseInt(document.getElementById('rfq-max-lead')?.textContent) || 0;
-    if (qrsLead) qrsLead.textContent = prodLeadDays > 0 ? prodLeadDays + ' days' : '—';
+    setQrs('lead', prodLeadDays > 0 ? prodLeadDays + ' days' : '—');
 
     // Shipping Lead = SELECTED freight mode's lead time (range or single).
     // _ctxShipLeadRange/_ctxShipLeadText are computed at the top of this fn.
-    if (qrsShipLead) qrsShipLead.textContent = _ctxShipLeadText;
+    setQrs('ship-lead', _ctxShipLeadText);
 
     // Total Lead = Production + Shipping. When shipping is a range, total
     // is also a range (production + min … production + max).
-    if (qrsTotalLead) {
-      if (prodLeadDays === 0 && !_ctxShipLeadRange.hasValue) {
-        qrsTotalLead.textContent = '—';
-      } else {
-        const tMin = prodLeadDays + (_ctxShipLeadRange.hasValue ? _ctxShipLeadRange.min : 0);
-        const tMax = prodLeadDays + (_ctxShipLeadRange.hasValue ? _ctxShipLeadRange.max : 0);
-        qrsTotalLead.textContent = (tMin === tMax) ? tMin + ' days' : tMin + '-' + tMax + ' days';
-      }
+    let totalLeadText;
+    if (prodLeadDays === 0 && !_ctxShipLeadRange.hasValue) {
+      totalLeadText = '—';
+    } else {
+      const tMin = prodLeadDays + (_ctxShipLeadRange.hasValue ? _ctxShipLeadRange.min : 0);
+      const tMax = prodLeadDays + (_ctxShipLeadRange.hasValue ? _ctxShipLeadRange.max : 0);
+      totalLeadText = (tMin === tMax) ? tMin + ' days' : tMin + '-' + tMax + ' days';
     }
+    setQrs('total-lead', totalLeadText);
   }
 
   // Parse a lead-time field — accepts "10" (single) or "7-10" (range).
