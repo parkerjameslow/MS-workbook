@@ -2641,6 +2641,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .cq-send-btn:hover { filter: brightness(1.08); }
     .cq-send-btn:active { filter: brightness(0.95); }
     .cq-send-btn svg { flex-shrink: 0; }
+    /* Action button row under the Client Quote title — holds Send to
+       Client + Export CSV + Export PDF. Wraps cleanly on narrow widths. */
+    .cq-action-btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    /* Outline variant of cq-send-btn for the export actions. Same shape
+       and size so the trio reads as a button group, but visually
+       secondary so "Send to Client" remains the obvious primary CTA. */
+    .cq-export-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: transparent;
+      color: #6b93ff;
+      border: 1px solid #6b93ff;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .cq-export-btn:hover { background: rgba(107,147,255,0.12); }
+    .cq-export-btn:active { background: rgba(107,147,255,0.22); }
+    .cq-export-btn svg { flex-shrink: 0; }
     .cq-summary-stats {
       display: flex;
       gap: 10px;
@@ -5604,10 +5634,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="cq-summary-bar cq-summary-bar--header" style="width:100%; margin:0;">
         <div class="cq-summary-title-wrap">
           <span class="cq-summary-title">Client Quote</span>
-          <button type="button" class="cq-send-btn" onclick="event.stopPropagation(); openNotifyModal('quote_ready')" title="Email this quote to the client">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            Send to Client
-          </button>
+          <div class="cq-action-btns">
+            <button type="button" class="cq-send-btn" onclick="event.stopPropagation(); openNotifyModal('quote_ready')" title="Email this quote to the client">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Send to Client
+            </button>
+            <button type="button" class="cq-export-btn" onclick="event.stopPropagation(); exportClientQuoteCSV()" title="Download this quote as a CSV spreadsheet">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              CSV
+            </button>
+            <button type="button" class="cq-export-btn" onclick="event.stopPropagation(); exportClientQuotePDF()" title="Open a print-ready version (use Save as PDF)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+              PDF
+            </button>
+          </div>
         </div>
         <div class="cq-summary-stats">
           <div class="cq-stat"><span class="cq-stat-label">Sale Price (USD)</span><span class="cq-stat-value" data-qrs="usd" id="qrs-usd">—</span></div>
@@ -5633,10 +5673,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="cq-summary-bar cq-summary-bar--footer">
         <div class="cq-summary-title-wrap">
           <span class="cq-summary-title">Client Quote</span>
-          <button type="button" class="cq-send-btn" onclick="openNotifyModal('quote_ready')" title="Email this quote to the client">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            Send to Client
-          </button>
+          <div class="cq-action-btns">
+            <button type="button" class="cq-send-btn" onclick="openNotifyModal('quote_ready')" title="Email this quote to the client">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Send to Client
+            </button>
+            <button type="button" class="cq-export-btn" onclick="exportClientQuoteCSV()" title="Download this quote as a CSV spreadsheet">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              CSV
+            </button>
+            <button type="button" class="cq-export-btn" onclick="exportClientQuotePDF()" title="Open a print-ready version (use Save as PDF)">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+              PDF
+            </button>
+          </div>
         </div>
         <div class="cq-summary-stats">
           <div class="cq-stat"><span class="cq-stat-label">Sale Price (USD)</span><span class="cq-stat-value" data-qrs="usd">—</span></div>
@@ -11816,6 +11866,305 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     root.querySelectorAll(`tr[data-cq-variant-of="${parentId}"]`).forEach(r => {
       r.classList.toggle('hidden');
     });
+  }
+
+  // ── Client Quote export (CSV + PDF) ────────────────────────────────
+  // Walks the rendered Client Quote table + summary bar and returns a
+  // canonical { meta, header, lineItems, fees, summary } payload that
+  // both the CSV and PDF exporters consume. Reading the rendered DOM
+  // (rather than re-deriving from rfq inputs) keeps the export visually
+  // identical to what the operator sees on screen — including range-
+  // priced "Variable" groups, applied fees, and the zero-fee row.
+  function _collectClientQuoteForExport() {
+    const root = document.getElementById('pricing-quote-ref-body');
+    if (!root) return null;
+    const table = root.querySelector('.pricing-quote-ref-table');
+    if (!table) return null;
+
+    const lineItems = []; // { kind: 'parent'|'variant'|'fee'|'feeZero', label, qty, sale, total }
+    const variantParents = {};
+
+    // Parent + variant rows
+    table.querySelectorAll('tbody > tr').forEach(tr => {
+      const parentId = tr.getAttribute('data-cq-parent');
+      const variantOf = tr.getAttribute('data-cq-variant-of');
+      const cells = tr.querySelectorAll('td');
+      if (cells.length < 5) return;
+
+      const cellText = i => (cells[i]?.innerText || '').replace(/\s+/g, ' ').trim();
+
+      if (tr.classList.contains('cq-fees-divider-row')) {
+        return; // skip pure header
+      }
+      if (tr.classList.contains('cq-fee-zero-row')) {
+        lineItems.push({ kind: 'feeZero', label: cellText(1), qty: '', sale: '', total: cellText(4) });
+        return;
+      }
+      if (tr.classList.contains('cq-fee-row')) {
+        lineItems.push({ kind: 'fee', label: cellText(1), qty: '', sale: '', total: cellText(4) });
+        return;
+      }
+      if (tr.classList.contains('cq-parent-row')) {
+        const isExpandable = !tr.classList.contains('no-variants');
+        const item = { kind: 'parent', label: cellText(1), qty: cellText(2), sale: cellText(3), total: cellText(4) };
+        lineItems.push(item);
+        if (isExpandable && parentId) variantParents[parentId] = item;
+        return;
+      }
+      if (tr.classList.contains('cq-variant-row') && variantOf) {
+        lineItems.push({ kind: 'variant', label: cellText(1), qty: cellText(2), sale: cellText(3), total: cellText(4) });
+        return;
+      }
+    });
+
+    // Header summary stats (same data attrs the renderer populates)
+    const stat = key => {
+      const el = document.querySelector(`.cq-summary-bar--header [data-qrs="${key}"]`);
+      return (el?.innerText || '').replace(/\s+/g, ' ').trim();
+    };
+    const summary = {
+      salePrice:     stat('usd'),
+      totalOrder:    stat('total'),
+      productionLead:stat('lead'),
+      shippingLead:  stat('ship-lead'),
+      totalLead:     stat('total-lead'),
+    };
+
+    // Quote meta
+    const today    = new Date();
+    const dateStr  = today.toISOString().slice(0, 10);
+    const meta = {
+      clientName:  (typeof currentClient !== 'undefined' && currentClient) ? currentClient : (document.getElementById('client-name')?.value || ''),
+      productName: (document.getElementById('product-name')?.value || '').trim(),
+      productDesc: (document.getElementById('product-desc')?.value || '').trim(),
+      quoteDate:   (document.getElementById('quote-date')?.value || '').trim() || dateStr,
+      quoteValid:  (document.getElementById('quote-valid-until')?.value || '').trim(),
+      generated:   today.toLocaleString('en-US'),
+    };
+
+    return { meta, lineItems, summary };
+  }
+
+  // CSV escaping: wrap in quotes and double any embedded quotes per
+  // RFC 4180 so values with commas/newlines round-trip cleanly into
+  // Excel/Sheets.
+  function _csvEscape(v) {
+    const s = String(v == null ? '' : v);
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+
+  function exportClientQuoteCSV() {
+    const data = _collectClientQuoteForExport();
+    if (!data || data.lineItems.length === 0) {
+      _msToast('No quote items to export. Add items on the Workbook tab first.', 'error');
+      return;
+    }
+
+    const lines = [];
+    // Meta header (first few rows are key/value, easy to read in Excel)
+    lines.push(_csvEscape('Market Sculpt Client Quote'));
+    lines.push([_csvEscape('Client'),       _csvEscape(data.meta.clientName)].join(','));
+    lines.push([_csvEscape('Product'),      _csvEscape(data.meta.productName)].join(','));
+    if (data.meta.productDesc) lines.push([_csvEscape('Description'), _csvEscape(data.meta.productDesc)].join(','));
+    lines.push([_csvEscape('Quote Date'),   _csvEscape(data.meta.quoteDate)].join(','));
+    if (data.meta.quoteValid)  lines.push([_csvEscape('Valid Until'), _csvEscape(data.meta.quoteValid)].join(','));
+    lines.push([_csvEscape('Generated'),    _csvEscape(data.meta.generated)].join(','));
+    lines.push(''); // blank separator
+
+    // Summary block
+    lines.push(_csvEscape('Summary'));
+    lines.push([_csvEscape('Sale Price (USD)'),    _csvEscape(data.summary.salePrice)].join(','));
+    lines.push([_csvEscape('Total Order'),         _csvEscape(data.summary.totalOrder)].join(','));
+    lines.push([_csvEscape('Production Lead'),     _csvEscape(data.summary.productionLead)].join(','));
+    lines.push([_csvEscape('Shipping Lead'),       _csvEscape(data.summary.shippingLead)].join(','));
+    lines.push([_csvEscape('Total Lead'),          _csvEscape(data.summary.totalLead)].join(','));
+    lines.push('');
+
+    // Line items
+    lines.push(['Type','Item','Quantity','Sale Price (USD)','Total (USD)'].map(_csvEscape).join(','));
+    data.lineItems.forEach(it => {
+      let kindLabel = '';
+      let label = it.label;
+      if (it.kind === 'parent')   kindLabel = 'Item';
+      if (it.kind === 'variant')  { kindLabel = 'Variant'; label = label.replace(/^└\s*/, ''); }
+      if (it.kind === 'fee')      kindLabel = 'Fee';
+      if (it.kind === 'feeZero')  kindLabel = 'Fee';
+      lines.push([
+        _csvEscape(kindLabel),
+        _csvEscape(label),
+        _csvEscape(it.qty),
+        _csvEscape(it.sale),
+        _csvEscape(it.total),
+      ].join(','));
+    });
+
+    // BOM so Excel detects UTF-8 (the ¥ and en-dash characters in some
+    // existing values would otherwise mojibake on Windows Excel).
+    const csv = '﻿' + lines.join('\r\n');
+    const fname = `client-quote_${(data.meta.clientName || 'workbook').replace(/[^a-z0-9]+/gi, '-')}_${data.meta.quoteDate}.csv`.toLowerCase();
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    _msToast('Quote CSV downloaded.', 'success');
+  }
+
+  function exportClientQuotePDF() {
+    const data = _collectClientQuoteForExport();
+    if (!data || data.lineItems.length === 0) {
+      _msToast('No quote items to export. Add items on the Workbook tab first.', 'error');
+      return;
+    }
+
+    // Build line-item rows with light visual grouping that matches the
+    // on-screen layout: parent rows bold, variant rows indented and
+    // muted, fee rows in the accent color with a + prefix.
+    const escHtml = s => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+    const itemRows = data.lineItems.map(it => {
+      const labelEsc = escHtml(it.label);
+      if (it.kind === 'variant') {
+        const inner = labelEsc.replace(/^└\s*/, '');
+        return `<tr class="row-variant"><td></td><td class="lbl indent">└ ${inner}</td><td class="r">${escHtml(it.qty)}</td><td class="r">${escHtml(it.sale)}</td><td class="r">${escHtml(it.total)}</td></tr>`;
+      }
+      if (it.kind === 'fee' || it.kind === 'feeZero') {
+        const sign = it.kind === 'fee' ? '+' : '';
+        return `<tr class="row-fee"><td class="r" style="color:#E8751A;font-weight:700;">${sign}</td><td class="lbl">${labelEsc}</td><td class="r">${escHtml(it.qty)}</td><td class="r">${escHtml(it.sale)}</td><td class="r accent">${escHtml(it.total)}</td></tr>`;
+      }
+      // parent
+      return `<tr class="row-parent"><td></td><td class="lbl"><strong>${labelEsc}</strong></td><td class="r">${escHtml(it.qty)}</td><td class="r">${escHtml(it.sale)}</td><td class="r accent"><strong>${escHtml(it.total)}</strong></td></tr>`;
+    }).join('');
+
+    const validRow = data.meta.quoteValid
+      ? `<div class="meta-row"><span class="meta-label">Valid Until</span><span class="meta-value">${escHtml(data.meta.quoteValid)}</span></div>`
+      : '';
+    const descRow = data.meta.productDesc
+      ? `<p class="desc">${escHtml(data.meta.productDesc)}</p>`
+      : '';
+
+    const html = `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<title>Client Quote — ${escHtml(data.meta.productName || data.meta.clientName)}</title>
+<style>
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1a1d2e; background: #fff; padding: 32px; font-size: 13px; line-height: 1.5; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #E8751A; padding-bottom: 16px; margin-bottom: 22px; }
+  .brand { font-size: 22px; font-weight: 800; color: #E8751A; border-left: 3px solid #E8751A; padding-left: 12px; letter-spacing: -0.3px; }
+  .brand-sub { font-size: 11px; font-weight: 500; color: #6b7280; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 4px; }
+  .meta-block { text-align: right; }
+  .meta-row { font-size: 12px; color: #374151; margin-bottom: 4px; }
+  .meta-label { font-weight: 700; color: #9ba3c0; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; margin-right: 6px; }
+  .meta-value { color: #1a1d2e; }
+  h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; color: #1a1d2e; }
+  .for-client { font-size: 13px; color: #6b7280; margin-bottom: 14px; }
+  .desc { font-size: 12px; color: #6b7280; margin-bottom: 18px; padding: 10px 12px; background: #f8f9fb; border-left: 3px solid #6b93ff; border-radius: 4px; line-height: 1.6; }
+  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 22px 0 26px; }
+  .stat { background: linear-gradient(135deg, rgba(107,147,255,0.10) 0%, rgba(107,147,255,0.04) 100%); border: 1px solid rgba(107,147,255,0.25); border-radius: 8px; padding: 10px 12px; }
+  .stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6b93ff; margin-bottom: 4px; }
+  .stat-value { font-size: 14px; font-weight: 700; color: #1a1d2e; }
+  .stat-total { background: linear-gradient(135deg, rgba(232,117,26,0.14) 0%, rgba(232,117,26,0.05) 100%); border-color: rgba(232,117,26,0.4); }
+  .stat-total .stat-label { color: #E8751A; }
+  table.items { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.items thead th { padding: 10px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ba3c0; background: #f8f9fb; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  table.items thead th.r { text-align: right; }
+  table.items tbody td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+  table.items tbody td.r { text-align: right; }
+  table.items tbody td.accent { color: #E8751A; }
+  table.items tbody tr.row-variant td { color: #6b7280; font-size: 12px; }
+  table.items tbody td.lbl.indent { padding-left: 28px; }
+  table.items tbody tr.row-fee td { background: rgba(232,117,26,0.04); }
+  .total-row { background: #f8f9fb; }
+  .total-row td { padding: 12px; font-weight: 700; font-size: 14px; border-top: 2px solid #E8751A !important; }
+  .total-row td.accent { color: #E8751A; }
+  .footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ba3c0; line-height: 1.7; }
+  .footer a { color: #E8751A; text-decoration: none; }
+  .print-controls { position: fixed; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 100; }
+  .print-controls button { background: #E8751A; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .print-controls button.secondary { background: #fff; color: #6b7280; border: 1px solid #d1d5db; }
+  @media print {
+    body { padding: 0; }
+    .print-controls { display: none !important; }
+    .summary-grid { page-break-inside: avoid; }
+    table.items { page-break-inside: auto; }
+    table.items tr { page-break-inside: avoid; page-break-after: auto; }
+  }
+</style>
+</head><body>
+  <div class="print-controls">
+    <button onclick="window.print()">Print / Save as PDF</button>
+    <button class="secondary" onclick="window.close()">Close</button>
+  </div>
+  <div class="header">
+    <div>
+      <div class="brand">Market Sculpt</div>
+      <div class="brand-sub">Client Quote</div>
+    </div>
+    <div class="meta-block">
+      <div class="meta-row"><span class="meta-label">Quote Date</span><span class="meta-value">${escHtml(data.meta.quoteDate)}</span></div>
+      ${validRow}
+      <div class="meta-row"><span class="meta-label">Generated</span><span class="meta-value">${escHtml(data.meta.generated)}</span></div>
+    </div>
+  </div>
+
+  <h1>${escHtml(data.meta.productName || 'Quote')}</h1>
+  <div class="for-client">Prepared for <strong>${escHtml(data.meta.clientName)}</strong></div>
+  ${descRow}
+
+  <div class="summary-grid">
+    <div class="stat"><div class="stat-label">Sale Price (USD)</div><div class="stat-value">${escHtml(data.summary.salePrice || '—')}</div></div>
+    <div class="stat stat-total"><div class="stat-label">Total Order</div><div class="stat-value">${escHtml(data.summary.totalOrder || '—')}</div></div>
+    <div class="stat"><div class="stat-label">Production Lead</div><div class="stat-value">${escHtml(data.summary.productionLead || '—')}</div></div>
+    <div class="stat"><div class="stat-label">Shipping Lead</div><div class="stat-value">${escHtml(data.summary.shippingLead || '—')}</div></div>
+    <div class="stat"><div class="stat-label">Total Lead</div><div class="stat-value">${escHtml(data.summary.totalLead || '—')}</div></div>
+  </div>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:24px;"></th>
+        <th>Item</th>
+        <th class="r" style="width:90px;">Qty</th>
+        <th class="r" style="width:140px;">Sale Price (USD)</th>
+        <th class="r" style="width:130px;">Total (USD)</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+    <tfoot>
+      <tr class="total-row">
+        <td colspan="4" class="r">Order Total</td>
+        <td class="r accent">${escHtml(data.summary.totalOrder || '—')}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="footer">
+    Market Sculpt LLC &nbsp;·&nbsp; <a href="https://marketsculpt.com">marketsculpt.com</a><br>
+    Questions? <a href="mailto:parker@marketsculpt.com">parker@marketsculpt.com</a>
+  </div>
+
+  <script>
+    // Auto-open the system print dialog so "Save as PDF" is one click
+    // away. User can cancel if they only wanted to read the page.
+    window.addEventListener('load', () => setTimeout(() => window.print(), 350));
+  <\/script>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      _msToast('Pop-up blocked. Allow pop-ups for this site to use PDF export.', 'error');
+      return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
   }
 
   // Sale Per input handler — back-solves margin % from (salePer / landedAvg − 1),
