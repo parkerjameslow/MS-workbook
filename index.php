@@ -2490,6 +2490,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .cq-summary-bar.cq-summary-bar--footer {
       margin-top: 18px;
     }
+    /* Title + "Send to Client" button stack on the left of the bar */
+    .cq-summary-title-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      flex-shrink: 0;
+    }
     .cq-summary-title {
       font-size: 13px;
       font-weight: 800;
@@ -2497,12 +2505,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       letter-spacing: 0.07em;
       text-transform: uppercase;
       white-space: nowrap;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      gap: 8px;
     }
-    .cq-summary-title svg { flex-shrink: 0; }
+    .cq-send-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #6b93ff;
+      color: #fff;
+      border: 1px solid #6b93ff;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: filter 0.15s, background 0.15s;
+    }
+    .cq-send-btn:hover { filter: brightness(1.08); }
+    .cq-send-btn:active { filter: brightness(0.95); }
+    .cq-send-btn svg { flex-shrink: 0; }
     .cq-summary-stats {
       display: flex;
       gap: 10px;
@@ -5464,10 +5486,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          scrolling back up on long quotes. -->
     <div class="section-header section-header-collapsible" style="background:transparent; border-bottom:none; padding:0;" onclick="toggleSection(this.closest('.section-card'))">
       <div class="cq-summary-bar cq-summary-bar--header" style="width:100%; margin:0;">
-        <span class="cq-summary-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          Client Quote
-        </span>
+        <div class="cq-summary-title-wrap">
+          <span class="cq-summary-title">Client Quote</span>
+          <button type="button" class="cq-send-btn" onclick="event.stopPropagation(); openNotifyModal('quote_ready')" title="Email this quote to the client">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Send to Client
+          </button>
+        </div>
         <div class="cq-summary-stats">
           <div class="cq-stat"><span class="cq-stat-label">Sale Price (USD)</span><span class="cq-stat-value" data-qrs="usd" id="qrs-usd">—</span></div>
           <div class="cq-stat cq-stat--total"><span class="cq-stat-label">Total Order</span><span class="cq-stat-value" data-qrs="total" id="qrs-total">—</span></div>
@@ -5490,10 +5515,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            renderer via querySelectorAll. No expand toggle since it's
            inside the already-expanded body. -->
       <div class="cq-summary-bar cq-summary-bar--footer">
-        <span class="cq-summary-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          Client Quote
-        </span>
+        <div class="cq-summary-title-wrap">
+          <span class="cq-summary-title">Client Quote</span>
+          <button type="button" class="cq-send-btn" onclick="openNotifyModal('quote_ready')" title="Email this quote to the client">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Send to Client
+          </button>
+        </div>
         <div class="cq-summary-stats">
           <div class="cq-stat"><span class="cq-stat-label">Sale Price (USD)</span><span class="cq-stat-value" data-qrs="usd">—</span></div>
           <div class="cq-stat cq-stat--total"><span class="cq-stat-label">Total Order</span><span class="cq-stat-value" data-qrs="total">—</span></div>
