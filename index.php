@@ -6098,13 +6098,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
     <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders &amp; samples…" oninput="filterShipOrderPicker(this.value)" />
-    <div style="font-size:10px; font-weight:700; letter-spacing:0.06em; color:var(--text-muted); text-transform:uppercase; margin:8px 4px 4px;">Orders</div>
-    <div class="modal-wb-picker" id="ship-order-picker-list" style="max-height:200px;">
-      <!-- populated by JS -->
+
+    <!-- Orders section card — accent-blue themed -->
+    <div style="margin-top:12px; border:1.5px solid rgba(107,147,255,0.45); background:rgba(107,147,255,0.06); border-radius:10px; overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:8px; padding:9px 12px; background:rgba(107,147,255,0.18); border-bottom:1.5px solid rgba(107,147,255,0.45); color:#6b93ff;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Orders</span>
+        <span id="ship-picker-orders-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#6b93ff; opacity:0.8;"></span>
+      </div>
+      <div class="modal-wb-picker" id="ship-order-picker-list" style="max-height:200px; border:none; background:transparent;">
+        <!-- populated by JS -->
+      </div>
     </div>
-    <div style="font-size:10px; font-weight:700; letter-spacing:0.06em; color:var(--text-muted); text-transform:uppercase; margin:12px 4px 4px;">Samples</div>
-    <div class="modal-wb-picker" id="ship-sample-picker-list" style="max-height:200px;">
-      <!-- populated by JS -->
+
+    <!-- Samples section card — orange themed (matches the workbook's sample branding) -->
+    <div style="margin-top:14px; border:1.5px solid rgba(232,117,26,0.55); background:rgba(232,117,26,0.07); border-radius:10px; overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:8px; padding:9px 12px; background:rgba(232,117,26,0.20); border-bottom:1.5px solid rgba(232,117,26,0.55); color:#E8751A;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Samples</span>
+        <span id="ship-picker-samples-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#E8751A; opacity:0.8;"></span>
+      </div>
+      <div class="modal-wb-picker" id="ship-sample-picker-list" style="max-height:200px; border:none; background:transparent;">
+        <!-- populated by JS -->
+      </div>
     </div>
     <div class="modal-actions" style="margin-top:14px;">
       <button type="button" class="btn btn-ghost" onclick="closeAddOrderToShipmentModal()">Cancel</button>
@@ -15907,6 +15923,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('ship-order-picker-search').value = '';
     buildShipOrderPickerList('');
     buildShipSamplePickerList('');
+    _updateShipPickerCounts();
     document.getElementById('modal-add-order-to-shipment').classList.add('open');
   }
 
@@ -16005,6 +16022,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _shipOrderPickerSelected.add(id);
     }
     buildShipOrderPickerList(document.getElementById('ship-order-picker-search').value);
+    _updateShipPickerCounts();
+  }
+
+  function _updateShipPickerCounts() {
+    const oc = document.getElementById('ship-picker-orders-count');
+    const sc = document.getElementById('ship-picker-samples-count');
+    if (oc) oc.textContent = _shipOrderPickerSelected.size  > 0 ? `${_shipOrderPickerSelected.size} selected`  : '';
+    if (sc) sc.textContent = _shipSamplePickerSelected.size > 0 ? `${_shipSamplePickerSelected.size} selected` : '';
   }
 
   // ── Sample picker section in the +Add to Shipment modal ───────────
@@ -16082,6 +16107,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _shipSamplePickerSelected.add(sampleId);
     }
     buildShipSamplePickerList(document.getElementById('ship-order-picker-search').value);
+    _updateShipPickerCounts();
   }
 
   function confirmAddOrderToShipment() {
