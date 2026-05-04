@@ -1832,6 +1832,174 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text);
     }
 
+    /* ── Reports view ──────────────────────────────────────────────────
+       Two-screen layout: card grid (list) + filter+table (run).
+       Cards are clickable tiles with hover affordance; table is a
+       lightweight sortable variant of .dash-table without fixed
+       column widths (each report defines its own).
+    ─────────────────────────────────────────────────────────────────── */
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .reports-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.05s, box-shadow 0.15s;
+      text-decoration: none;
+      color: inherit;
+    }
+    .reports-card:hover { border-color: var(--accent); box-shadow: 0 2px 12px rgba(232,117,26,0.10); }
+    .reports-card:active { transform: translateY(1px); }
+    .reports-card-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: rgba(232,117,26,0.12);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 4px;
+    }
+    .reports-card-title { font-size: 14px; font-weight: 700; color: var(--text); }
+    .reports-card-desc  { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+    .reports-card-saved-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      margin-top: 6px;
+    }
+    .reports-card-meta { font-size: 11px; color: var(--text-muted); }
+    .reports-card-del {
+      background: none; border: none; padding: 4px 6px;
+      font-size: 14px; line-height: 1; color: var(--text-muted);
+      cursor: pointer; border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .reports-card-del:hover { color: #dc2626; background: rgba(220,38,38,0.08); }
+
+    /* Action buttons on the run screen (Save view / CSV / PDF). */
+    .reports-action-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--accent); color: #fff;
+      border: 1px solid var(--accent);
+      border-radius: 7px;
+      padding: 6px 12px;
+      font-size: 12px; font-weight: 700;
+      cursor: pointer; font-family: inherit;
+      white-space: nowrap;
+      transition: filter 0.15s, background 0.15s;
+    }
+    .reports-action-btn:hover { filter: brightness(1.08); }
+    .reports-action-btn--secondary {
+      background: transparent; color: var(--text);
+      border-color: var(--border);
+    }
+    .reports-action-btn--secondary:hover {
+      border-color: var(--accent); color: var(--accent); filter: none;
+    }
+
+    /* Filter bar — wraps inputs in pill chips. */
+    .reports-filter-bar {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      padding: 12px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+    .reports-filter {
+      display: flex; flex-direction: column; gap: 4px; min-width: 140px;
+    }
+    .reports-filter > label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-muted);
+    }
+    .reports-filter input,
+    .reports-filter select {
+      font-size: 13px; font-family: inherit; color: var(--text);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 7px; padding: 7px 10px; outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      min-width: 0;
+    }
+    .reports-filter input:focus, .reports-filter select:focus {
+      border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,117,26,0.15);
+    }
+    .reports-filter-clear {
+      background: none; border: 1px solid var(--border);
+      border-radius: 7px; padding: 6px 12px; font-size: 12px; font-weight: 600;
+      color: var(--text-muted); cursor: pointer; font-family: inherit;
+      align-self: flex-end;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .reports-filter-clear:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Summary bar — shows row count + per-column totals. */
+    .reports-summary-bar {
+      display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+      padding: 10px 14px;
+      background: linear-gradient(135deg, rgba(232,117,26,0.10) 0%, rgba(232,117,26,0.03) 100%);
+      border: 1px solid rgba(232,117,26,0.25);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .reports-summary-bar .stat {
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .reports-summary-bar .stat-label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--accent);
+    }
+    .reports-summary-bar .stat-value {
+      font-size: 14px; font-weight: 700; color: var(--text);
+    }
+
+    /* Sortable table for run-screen. */
+    .reports-table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .reports-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    .reports-table thead th {
+      text-align: left; padding: 10px 14px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--text-muted);
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .reports-table thead th.r { text-align: right; }
+    .reports-table thead th.c { text-align: center; }
+    .reports-table thead th.sortable { cursor: pointer; user-select: none; }
+    .reports-table thead th.sortable:hover { color: var(--text); }
+    .reports-table thead th.sortable.asc::after  { content: ' ▲'; opacity: 0.7; }
+    .reports-table thead th.sortable.desc::after { content: ' ▼'; opacity: 0.7; }
+    .reports-table tbody td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+    .reports-table tbody td.r { text-align: right; }
+    .reports-table tbody td.c { text-align: center; }
+    .reports-table tbody td.muted { color: var(--text-muted); }
+    .reports-table tbody td.accent { color: var(--accent); font-weight: 600; }
+    .reports-table tbody tr:last-child td { border-bottom: none; }
+    .reports-table tbody tr.row-link { cursor: pointer; }
+    .reports-table tbody tr.row-link:hover td { background: rgba(232,117,26,0.04); }
+
     .dash-table {
       width: 100%;
       border-collapse: collapse;
@@ -4464,6 +4632,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="nav-badge" id="badge-commissions"></span>
     </a>
 
+    <!-- Reports -->
+    <a id="nav-reports-link" href="#/reports" onclick="event.preventDefault(); location.hash='#/reports'" class="nav-flat-link">
+      <span>Reports</span>
+      <span class="nav-badge" id="badge-reports"></span>
+    </a>
+
   </nav>
 
   <div class="sidebar-bottom" style="padding: 8px;">
@@ -6331,6 +6505,76 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   </main>
 </div><!-- /#view-commissions -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: REPORTS
+     Two screens stacked in one container — list view (prebuilt + saved
+     report cards) and run view (filters + table + export). The router
+     toggles which one is visible based on the hash.
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-reports" class="view">
+  <main class="dashboard">
+    <!-- ── List screen ── -->
+    <div id="reports-list-screen">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:18px;">
+        <div>
+          <h1 style="font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px;">Reports</h1>
+          <p style="font-size:14px; color:var(--text-muted); line-height:1.6;">Pick a prebuilt report to filter and export, or pick up where you left off with a saved one.</p>
+        </div>
+      </div>
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); margin:18px 0 10px;">Prebuilt Reports</div>
+      <div id="reports-prebuilt-grid" class="reports-grid"></div>
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); margin:28px 0 10px; display:flex; align-items:center; justify-content:space-between;">
+        <span>Saved Reports</span>
+      </div>
+      <div id="reports-saved-grid" class="reports-grid"></div>
+      <div id="reports-saved-empty" style="display:none; padding:18px 22px; background:var(--surface2); border:1px dashed var(--border); border-radius:10px; color:var(--text-muted); font-size:13px;">
+        You haven't saved any reports yet. Run a prebuilt report, set the filters you want, then click <strong style="color:var(--text);">Save view</strong>.
+      </div>
+    </div>
+
+    <!-- ── Run screen ── -->
+    <div id="reports-run-screen" style="display:none;">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+        <a href="#/reports" onclick="event.preventDefault(); location.hash='#/reports'" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--text-muted); text-decoration:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          All reports
+        </a>
+        <span style="color:var(--text-muted); font-size:12px;">/</span>
+        <span id="reports-run-name" style="font-size:13px; color:var(--text); font-weight:600;"></span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
+        <div style="flex:1; min-width:240px;">
+          <h1 id="reports-run-title" style="font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px;"></h1>
+          <p id="reports-run-desc" style="font-size:13px; color:var(--text-muted); line-height:1.6; max-width:740px;"></p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="reports-action-btn reports-action-btn--secondary" onclick="reportsSaveCurrentView()" title="Save these filters as a named report">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save view
+          </button>
+          <button class="reports-action-btn reports-action-btn--secondary" onclick="reportsExportCSV()" title="Download as CSV spreadsheet">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV
+          </button>
+          <button class="reports-action-btn reports-action-btn--secondary" onclick="reportsExportPDF()" title="Open a print-ready version (use Save as PDF)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+            PDF
+          </button>
+        </div>
+      </div>
+      <div id="reports-filter-bar" class="reports-filter-bar"></div>
+      <div id="reports-summary-bar" class="reports-summary-bar"></div>
+      <div id="reports-table-wrap" class="reports-table-wrap">
+        <table id="reports-table" class="reports-table">
+          <thead><tr id="reports-table-head"></tr></thead>
+          <tbody id="reports-table-body"></tbody>
+        </table>
+        <div id="reports-empty" style="display:none; padding:36px 20px; text-align:center; color:var(--text-muted); font-size:13px;">No rows match your filters.</div>
+      </div>
+    </div>
+  </main>
+</div><!-- /#view-reports -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: ORDER DETAIL
@@ -14091,6 +14335,843 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  // REPORT BUILDER
+  //
+  // Three pieces:
+  //   1. _MS_REPORTS — registry of prebuilt report definitions. Each
+  //      entry knows its filters, columns, and a rows(filters) function
+  //      that pulls fresh data from the in-memory globals (clientData,
+  //      orderData, shipmentData, commissionsData, workbookDetail).
+  //   2. Generic engine (renderReportsList, runReport, _applyReport-
+  //      Filters, _renderReportTable) that turns any registry entry
+  //      into a working filterable + sortable + exportable view.
+  //   3. Saved-views layer (load/save/delete) backed by app_state under
+  //      the key ms_saved_reports, so a saved report follows the user
+  //      across devices.
+  // ════════════════════════════════════════════════════════════════════
+
+  // Active report state — only meaningful while view-reports is showing
+  // the run screen. Reset on every runReport() call so leftover sort
+  // state from a previous report doesn't leak into the new one.
+  let _reportState = null;
+  // Saved-reports cache — list of {id, name, basedOn, filters, savedAt}.
+  // Loaded once on first reports view; mutated locally + persisted to
+  // app_state. dbClientMap-style key is "ms_saved_reports".
+  let _msSavedReports = null;
+  let _msSavedReportsLoaded = false;
+
+  // Helpers ────────────────────────────────────────────────────────────
+  const _RPT_FMT_USD = v => (typeof v === 'number' && !isNaN(v))
+    ? '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+    : '—';
+  const _RPT_FMT_INT = v => (typeof v === 'number' && !isNaN(v))
+    ? v.toLocaleString('en-US')
+    : (v ?? '—');
+  const _RPT_FMT_PCT = v => (typeof v === 'number' && !isNaN(v))
+    ? v.toFixed(1) + '%'
+    : '—';
+  const _RPT_FMT_DATE = v => {
+    if (!v) return '—';
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+      // ISO-ish date: render as short "DD MMM YY"
+      const d = new Date(v);
+      if (isNaN(d.getTime())) return v;
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+    }
+    return String(v);
+  };
+
+  function _rptParseAppDate(s) {
+    // Parses the app's "DD MMM YY" format used in clientData rows.
+    if (!s) return null;
+    const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+    const parts = String(s).trim().split(/\s+/);
+    if (parts.length !== 3) return null;
+    const dd = parseInt(parts[0]); const mo = months[parts[1]]; const yy = parseInt(parts[2]);
+    if (isNaN(dd) || mo == null || isNaN(yy)) return null;
+    return new Date(2000 + yy, mo, dd);
+  }
+
+  function _rptDaysSince(anchor) {
+    if (!anchor) return null;
+    const d = anchor instanceof Date ? anchor : (typeof anchor === 'string' ? new Date(anchor.replace(' ', 'T')) : null);
+    if (!d || isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+  }
+
+  // Compute a workbook's pipeline USD using the same rules as the
+  // Client Details Financial Summary card (cached pricingLandedTotal
+  // first, fall back to the selected tier, fall back to legacy quote
+  // fields). Open-only — closed workbooks contribute 0.
+  function _rptPipelineForWorkbook(clientName, item) {
+    if (typeof isFlowComplete === 'function' && isFlowComplete(item.flow)) return 0;
+    const detail = workbookDetail[`${clientName}|${item.id}`] || {};
+    const cachedLanded = parseFloat(detail.pricingLandedTotal);
+    if (!isNaN(cachedLanded) && cachedLanded > 0) return cachedLanded;
+    const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
+    const tier = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+    if (tier && parseFloat(tier.price) && parseFloat(tier.qty)) {
+      return (parseFloat(tier.price) / USD_TO_RMB) * parseFloat(tier.qty);
+    }
+    const qty   = parseFloat(detail.quoteClQty)       || 0;
+    const price = parseFloat(detail.quoteClUnitPrice) || 0;
+    const ship  = parseFloat(detail.quoteClShipping)  || 0;
+    return qty && price ? qty * price + ship : 0;
+  }
+
+  // ── Report registry ────────────────────────────────────────────────
+  // Each entry:
+  //   id          unique slug
+  //   name        display title
+  //   description short blurb
+  //   icon        inline SVG path string (rendered inside .reports-card-icon)
+  //   filters     [{ id, label, type, options? }]  type: 'select' | 'text' | 'days' | 'date'
+  //   columns     [{ id, label, sortable?, align?, format?, link?(row) }]
+  //               format: 'usd' | 'int' | 'pct' | 'date'
+  //   rows(filters): returns array of plain row objects matching column ids
+  //   summarize?(rows): optional override for the summary bar; default
+  //               picks up any usd column and shows row count + sum
+  const _MS_REPORTS = [
+    {
+      id: 'pipeline_by_client',
+      name: 'Pipeline by Client',
+      description: 'Every open workbook (flow not complete) with its current step and dollar value still in motion.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>',
+      filters: [
+        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'am',     label: 'Account Mgr', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
+        { id: 'sp',     label: 'Salesperson', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
+      ],
+      columns: [
+        { id: 'client',      label: 'Client',  sortable: true,  link: r => `#/client/${encodeURIComponent(r.client)}` },
+        { id: 'product',     label: 'Product', sortable: true,  link: r => `#/client/${encodeURIComponent(r.client)}/workbook/${r._id}` },
+        { id: 'step',        label: 'Step',    sortable: true },
+        { id: 'pipelineUsd', label: 'Pipeline (USD)', sortable: true, align: 'right', format: 'usd' },
+        { id: 'am',          label: 'AM',      sortable: true },
+        { id: 'sp',          label: 'SP',      sortable: true },
+      ],
+      rows(f) {
+        const out = [];
+        for (const [client, items] of Object.entries(clientData)) {
+          if (f.client && client !== f.client) continue;
+          const det = clientDetails[client] || {};
+          const am  = (det.account_manager || '').trim();
+          const sp  = (det.salesperson    || '').trim();
+          if (f.am && am !== f.am) continue;
+          if (f.sp && sp !== f.sp) continue;
+          for (const item of items) {
+            if (typeof isFlowComplete === 'function' && isFlowComplete(item.flow)) continue;
+            const pUsd = _rptPipelineForWorkbook(client, item);
+            const step = (typeof getCurrentStepName === 'function' ? getCurrentStepName(item.flow) : '') || '—';
+            out.push({
+              _id: item.id,
+              client, product: item.product || '—', step,
+              pipelineUsd: Math.round(pUsd * 100) / 100,
+              am: am || '—', sp: sp || '—',
+            });
+          }
+        }
+        return out;
+      },
+    },
+    {
+      id: 'quote_to_order_conversion',
+      name: 'Quote-to-Order Conversion',
+      description: 'How many quotes turn into confirmed orders, by client. Higher conversion = healthier pipeline.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>',
+      filters: [
+        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'am',     label: 'Account Mgr', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
+      ],
+      columns: [
+        { id: 'client',     label: 'Client',  sortable: true, link: r => `#/client/${encodeURIComponent(r.client)}` },
+        { id: 'workbooks',  label: 'Workbooks', sortable: true, align: 'right', format: 'int' },
+        { id: 'quoted',     label: 'Quoted',    sortable: true, align: 'right', format: 'int' },
+        { id: 'ordered',    label: 'Ordered',   sortable: true, align: 'right', format: 'int' },
+        { id: 'conversionPct', label: 'Conversion', sortable: true, align: 'right', format: 'pct' },
+      ],
+      rows(f) {
+        // A workbook counts as "quoted" once flow.quoteClient is true.
+        // It counts as "ordered" once it appears in an order's entries
+        // (regardless of order status — placed-but-not-complete still
+        // counts as a conversion).
+        const orderedWbIds = new Set();
+        Object.values(orderData || {}).forEach(o => {
+          (o.entries || []).forEach(e => { if (e.workbookId != null) orderedWbIds.add(parseInt(e.workbookId)); });
+        });
+        const out = [];
+        for (const [client, items] of Object.entries(clientData)) {
+          if (f.client && client !== f.client) continue;
+          const det = clientDetails[client] || {};
+          if (f.am && (det.account_manager || '') !== f.am) continue;
+          let workbooks = 0, quoted = 0, ordered = 0;
+          for (const item of items) {
+            workbooks++;
+            if (item.flow && item.flow.quoteClient) quoted++;
+            // Match by DB id if available, otherwise local item.id
+            const dbId = dbWorkbookMap[`${client}|${item.id}`] || parseInt(item.id);
+            if (orderedWbIds.has(parseInt(dbId)) || orderedWbIds.has(parseInt(item.id))) ordered++;
+          }
+          if (workbooks === 0) continue;
+          const pct = quoted > 0 ? (ordered / quoted) * 100 : 0;
+          out.push({ client, workbooks, quoted, ordered, conversionPct: Math.round(pct * 10) / 10 });
+        }
+        return out;
+      },
+    },
+    {
+      id: 'open_orders_aging',
+      name: 'Open Orders Aging',
+      description: 'Every order that isn’t marked complete, bucketed by how long it’s been open.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+      filters: [
+        { id: 'status', label: 'Status', type: 'select', optionsFn: () => ['', 'pending', 'in_production', 'shipped'] },
+        { id: 'bucket', label: 'Aging Bucket', type: 'select', optionsFn: () => ['', '0-7 days', '8-30 days', '31-60 days', '60+ days'] },
+      ],
+      columns: [
+        { id: 'name',     label: 'Order',  sortable: true,  link: r => `#/order/${r._id}` },
+        { id: 'client',   label: 'Client', sortable: true,  link: r => `#/client/${encodeURIComponent(r.client)}` },
+        { id: 'status',   label: 'Status', sortable: true },
+        { id: 'daysOpen', label: 'Days Open', sortable: true, align: 'right', format: 'int' },
+        { id: 'bucket',   label: 'Bucket', sortable: true },
+        { id: 'totalUsd', label: 'Total (USD)', sortable: true, align: 'right', format: 'usd' },
+      ],
+      rows(f) {
+        const out = [];
+        Object.values(orderData || {}).forEach(o => {
+          if (o.status === 'complete') return;
+          if (f.status && o.status !== f.status) return;
+          const created = o.dateCreated || o.createdAt || null;
+          const days = _rptDaysSince(_rptParseAppDate(created) || created) ?? 0;
+          let bucket;
+          if (days <= 7)       bucket = '0-7 days';
+          else if (days <= 30) bucket = '8-30 days';
+          else if (days <= 60) bucket = '31-60 days';
+          else                 bucket = '60+ days';
+          if (f.bucket && bucket !== f.bucket) return;
+          const totalUsd = (typeof orderTotals === 'function') ? (orderTotals(o).totalUsd || 0) : 0;
+          out.push({
+            _id: o.id,
+            name: o.name || `Order #${o.id}`,
+            client: o.clientName || ((o.entries || [])[0]?.clientName) || '—',
+            status: (o.status || 'pending'),
+            daysOpen: days,
+            bucket,
+            totalUsd: Math.round(totalUsd * 100) / 100,
+          });
+        });
+        return out;
+      },
+    },
+    {
+      id: 'commissions_owed',
+      name: 'Commissions Owed (by employee)',
+      description: 'Commissions across all roles — filter by employee or status to see what’s pending vs paid.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+      filters: [
+        { id: 'employee', label: 'Employee', type: 'select', optionsFn: () => {
+          const set = new Set();
+          (commissionsData || []).forEach(c => { if (c.employee) set.add(c.employee); });
+          return ['', ...Array.from(set).sort()];
+        }},
+        { id: 'role',     label: 'Role',     type: 'select', optionsFn: () => ['', 'account_manager', 'salesperson', 'operations'] },
+        { id: 'status',   label: 'Status',   type: 'select', optionsFn: () => ['', 'pending', 'paid', 'cancelled'] },
+      ],
+      columns: [
+        { id: 'employee',    label: 'Employee', sortable: true },
+        { id: 'role',        label: 'Role',     sortable: true },
+        { id: 'client_name', label: 'Client',   sortable: true, link: r => r.client_name ? `#/client/${encodeURIComponent(r.client_name)}` : null },
+        { id: 'product_name',label: 'Product',  sortable: true },
+        { id: 'amount_usd',  label: 'Amount (USD)', sortable: true, align: 'right', format: 'usd' },
+        { id: 'status',      label: 'Status',   sortable: true },
+        { id: 'created_at',  label: 'Date',     sortable: true, format: 'date' },
+      ],
+      rows(f) {
+        const data = Array.isArray(commissionsData) ? commissionsData : [];
+        return data.filter(c => {
+          if (f.employee && c.employee !== f.employee) return false;
+          if (f.role     && c.role     !== f.role)     return false;
+          if (f.status   && c.status   !== f.status)   return false;
+          return true;
+        }).map(c => ({
+          employee:    c.employee || '—',
+          role:        c.role || '—',
+          client_name: c.client_name || '',
+          product_name:c.product_name || '—',
+          amount_usd:  parseFloat(c.amount_usd) || 0,
+          status:      c.status || '—',
+          created_at:  c.created_at || '',
+        }));
+      },
+    },
+    {
+      id: 'margin_analysis',
+      name: 'Margin Analysis',
+      description: 'Effective margin per workbook based on Pricing-tab Total Landed Cost vs the Sale Per. Flag thin-margin work.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+      filters: [
+        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'band',   label: 'Margin Band', type: 'select', optionsFn: () => ['', '< 25%', '25–40%', '40–60%', '> 60%'] },
+      ],
+      columns: [
+        { id: 'client',       label: 'Client',  sortable: true,  link: r => `#/client/${encodeURIComponent(r.client)}` },
+        { id: 'product',      label: 'Product', sortable: true,  link: r => `#/client/${encodeURIComponent(r.client)}/workbook/${r._id}` },
+        { id: 'marginPct',    label: 'Margin %',  sortable: true, align: 'right', format: 'pct' },
+        { id: 'landedTotal',  label: 'Landed Cost', sortable: true, align: 'right', format: 'usd' },
+        { id: 'salePer',      label: 'Sale Per',  sortable: true, align: 'right', format: 'usd' },
+        { id: 'band',         label: 'Band',    sortable: true },
+      ],
+      rows(f) {
+        const out = [];
+        for (const [client, items] of Object.entries(clientData)) {
+          if (f.client && client !== f.client) continue;
+          const det = clientDetails[client] || {};
+          const fallbackMargin = parseFloat(det.default_margin_pct);
+          for (const item of items) {
+            const d = workbookDetail[`${client}|${item.id}`] || {};
+            const landed = parseFloat(d.pricingLandedTotal) || 0;
+            const sale   = parseFloat(d.pricingSalePer)     || 0;
+            let pct = parseFloat(d.pricingMarginPct);
+            if (isNaN(pct)) pct = isNaN(fallbackMargin) ? 50 : fallbackMargin;
+            if (landed === 0 && sale === 0 && (isNaN(pct) || pct === 0)) continue;
+            let band;
+            if (pct < 25)       band = '< 25%';
+            else if (pct < 40)  band = '25–40%';
+            else if (pct < 60)  band = '40–60%';
+            else                band = '> 60%';
+            if (f.band && band !== f.band) continue;
+            out.push({
+              _id: item.id,
+              client, product: item.product || '—',
+              marginPct: Math.round(pct * 10) / 10,
+              landedTotal: Math.round(landed * 100) / 100,
+              salePer:     Math.round(sale * 100) / 100,
+              band,
+            });
+          }
+        }
+        return out;
+      },
+    },
+    {
+      id: 'pending_review_inbox',
+      name: 'Pending Review Inbox',
+      description: 'Workbooks the client filled out via the intake link — these need a quick once-over before quoting.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+      filters: [
+        { id: 'client',  label: 'Client',     type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'maxAge',  label: 'Max Age (days)', type: 'days' },
+      ],
+      columns: [
+        { id: 'client',     label: 'Client',  sortable: true,  link: r => `#/client/${encodeURIComponent(r.client)}` },
+        { id: 'product',    label: 'Product', sortable: true,  link: r => `#/client/${encodeURIComponent(r.client)}/workbook/${r._id}` },
+        { id: 'submittedAt',label: 'Submitted', sortable: true, format: 'date' },
+        { id: 'daysOld',    label: 'Days Old',  sortable: true, align: 'right', format: 'int' },
+        { id: 'contact',    label: 'Contact', sortable: true },
+        { id: 'email',      label: 'Email',   sortable: true },
+      ],
+      rows(f) {
+        const out = [];
+        const maxAge = f.maxAge ? parseInt(f.maxAge) : null;
+        for (const [client, items] of Object.entries(clientData)) {
+          if (f.client && client !== f.client) continue;
+          for (const item of items) {
+            const d = workbookDetail[`${client}|${item.id}`] || {};
+            if (!d.submittedByClient) continue;
+            const at   = d.submittedByClientAt || '';
+            const days = at ? _rptDaysSince(at) : null;
+            if (maxAge != null && days != null && days > maxAge) continue;
+            out.push({
+              _id: item.id,
+              client, product: item.product || '—',
+              submittedAt: at,
+              daysOld: days ?? 0,
+              contact: d.submittedByContact || '—',
+              email:   d.submittedByEmail   || '—',
+            });
+          }
+        }
+        return out;
+      },
+    },
+    {
+      id: 'shipment_tracking',
+      name: 'Shipment Tracking',
+      description: 'All known shipments grouped by status, with mode + ETA.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+      filters: [
+        { id: 'status', label: 'Status', type: 'select', optionsFn: () => {
+          const set = new Set();
+          Object.values(shipmentData || {}).forEach(s => { if (s && s.status) set.add(s.status); });
+          return ['', ...Array.from(set).sort()];
+        }},
+        { id: 'mode',   label: 'Mode',   type: 'select', optionsFn: () => {
+          const set = new Set();
+          Object.values(shipmentData || {}).forEach(s => { if (s && s.mode) set.add(s.mode); });
+          return ['', ...Array.from(set).sort()];
+        }},
+      ],
+      columns: [
+        { id: 'name',    label: 'Shipment', sortable: true, link: r => `#/shipment/${r._id}` },
+        { id: 'status',  label: 'Status',   sortable: true },
+        { id: 'mode',    label: 'Mode',     sortable: true },
+        { id: 'eta',     label: 'ETA',      sortable: true, format: 'date' },
+        { id: 'cartons', label: 'Cartons',  sortable: true, align: 'right', format: 'int' },
+        { id: 'totalUsd',label: 'Total (USD)', sortable: true, align: 'right', format: 'usd' },
+      ],
+      rows(f) {
+        const out = [];
+        Object.values(shipmentData || {}).forEach(s => {
+          if (!s) return;
+          if (f.status && s.status !== f.status) return;
+          if (f.mode   && s.mode   !== f.mode)   return;
+          // Derive carton + USD totals from whatever shape the shipment
+          // record has; fall back to 0 silently rather than crashing the
+          // report when a shipment hasn't been fully populated yet.
+          let cartons = 0;
+          let totalUsd = 0;
+          (s.items || s.entries || []).forEach(it => {
+            cartons += parseInt(it.cartons || it.cartonCount || 0) || 0;
+            const v = parseFloat(it.totalUsd || it.value || 0);
+            if (!isNaN(v)) totalUsd += v;
+          });
+          out.push({
+            _id: s.id,
+            name: s.name || `Shipment #${s.id}`,
+            status: s.status || '—',
+            mode:   s.mode   || '—',
+            eta:    s.eta || s.etaDate || '',
+            cartons,
+            totalUsd: Math.round(totalUsd * 100) / 100,
+          });
+        });
+        return out;
+      },
+    },
+  ];
+  // Easy lookup by id
+  const _MS_REPORT_BY_ID = Object.fromEntries(_MS_REPORTS.map(r => [r.id, r]));
+
+  // ── Saved-views persistence (app_state key: ms_saved_reports) ──────
+  async function _ensureSavedReportsLoaded() {
+    if (_msSavedReportsLoaded) return;
+    _msSavedReportsLoaded = true;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_saved_reports' });
+      // get_app_state returns { success, value: <stringified-json|null> }.
+      let v = null;
+      if (r && r.value) { try { v = JSON.parse(r.value); } catch (e) {} }
+      _msSavedReports = Array.isArray(v) ? v : [];
+    } catch (e) {
+      _msSavedReports = [];
+    }
+  }
+  function _persistSavedReports() {
+    try {
+      apiCall('save_app_state', {
+        key: 'ms_saved_reports',
+        value: JSON.stringify(_msSavedReports || [])
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  // ── List screen ────────────────────────────────────────────────────
+  async function renderReportsView() {
+    await _ensureSavedReportsLoaded();
+    document.getElementById('header-title').textContent = 'Reports';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-reports-link');
+    if (link) link.classList.add('active');
+
+    document.getElementById('reports-list-screen').style.display = '';
+    document.getElementById('reports-run-screen').style.display = 'none';
+
+    const grid = document.getElementById('reports-prebuilt-grid');
+    grid.innerHTML = _MS_REPORTS.map(r => `
+      <a class="reports-card" href="#/reports/run/${r.id}" onclick="event.preventDefault(); location.hash='#/reports/run/${r.id}'">
+        <div class="reports-card-icon">${r.icon}</div>
+        <div class="reports-card-title">${_rptEscape(r.name)}</div>
+        <div class="reports-card-desc">${_rptEscape(r.description)}</div>
+      </a>
+    `).join('');
+
+    const savedGrid  = document.getElementById('reports-saved-grid');
+    const savedEmpty = document.getElementById('reports-saved-empty');
+    const saved      = (_msSavedReports || []).slice().sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
+    if (saved.length === 0) {
+      savedGrid.innerHTML = '';
+      savedEmpty.style.display = '';
+    } else {
+      savedEmpty.style.display = 'none';
+      savedGrid.innerHTML = saved.map(s => {
+        const base = _MS_REPORT_BY_ID[s.basedOn];
+        const baseName = base ? base.name : s.basedOn;
+        const when = s.savedAt ? new Date(s.savedAt).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) : '';
+        return `<div class="reports-card" onclick="location.hash='#/reports/saved/${s.id}'">
+          <div class="reports-card-icon">${(base && base.icon) || ''}</div>
+          <div class="reports-card-title">${_rptEscape(s.name)}</div>
+          <div class="reports-card-desc">Based on <strong>${_rptEscape(baseName)}</strong></div>
+          <div class="reports-card-saved-row">
+            <span class="reports-card-meta">Saved ${_rptEscape(when)}</span>
+            <button class="reports-card-del" onclick="event.stopPropagation(); reportsDeleteSaved('${s.id}')" title="Delete this saved view">×</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    showView('view-reports');
+  }
+
+  // ── Run screen ─────────────────────────────────────────────────────
+  function runReport(reportId, source, savedFilters) {
+    const def = _MS_REPORT_BY_ID[reportId];
+    if (!def) {
+      _msToast(`Report "${reportId}" not found.`, 'error');
+      location.hash = '#/reports';
+      return;
+    }
+    document.getElementById('header-title').textContent = `Reports — ${def.name}`;
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-reports-link');
+    if (link) link.classList.add('active');
+
+    _reportState = {
+      def,
+      filters: Object.assign({}, savedFilters || {}),
+      sortField: null,
+      sortDir: 'asc',
+      source: source || (savedFilters ? 'saved' : 'prebuilt'),
+      sourceId: savedFilters ? savedFilters._savedId : null,
+    };
+
+    document.getElementById('reports-list-screen').style.display = 'none';
+    document.getElementById('reports-run-screen').style.display = '';
+    document.getElementById('reports-run-name').textContent  = def.name;
+    document.getElementById('reports-run-title').textContent = def.name;
+    document.getElementById('reports-run-desc').textContent  = def.description;
+
+    _renderReportFilters();
+    _applyReportFilters();
+    showView('view-reports');
+  }
+
+  function _renderReportFilters() {
+    const def  = _reportState.def;
+    const root = document.getElementById('reports-filter-bar');
+    const flts = def.filters || [];
+    if (flts.length === 0) { root.innerHTML = ''; root.style.display = 'none'; return; }
+    root.style.display = '';
+
+    const html = flts.map(f => {
+      const cur = _reportState.filters[f.id] || '';
+      if (f.type === 'select') {
+        const opts = (typeof f.optionsFn === 'function') ? (f.optionsFn() || []) : (f.options || []);
+        return `<div class="reports-filter">
+          <label>${_rptEscape(f.label)}</label>
+          <select onchange="reportsSetFilter('${f.id}', this.value)">
+            ${opts.map(o => {
+              const v = String(o);
+              const lbl = v === '' ? `All ${_rptEscape(f.label).toLowerCase()}s` : _rptEscape(v.replace(/_/g, ' '));
+              return `<option value="${_rptEscape(v)}"${v === cur ? ' selected' : ''}>${lbl}</option>`;
+            }).join('')}
+          </select>
+        </div>`;
+      }
+      if (f.type === 'days') {
+        return `<div class="reports-filter">
+          <label>${_rptEscape(f.label)}</label>
+          <input type="number" min="0" placeholder="any" value="${_rptEscape(cur)}" oninput="reportsSetFilter('${f.id}', this.value)" />
+        </div>`;
+      }
+      // text fallback
+      return `<div class="reports-filter">
+        <label>${_rptEscape(f.label)}</label>
+        <input type="text" placeholder="search…" value="${_rptEscape(cur)}" oninput="reportsSetFilter('${f.id}', this.value)" />
+      </div>`;
+    }).join('');
+
+    root.innerHTML = html + `<button class="reports-filter-clear" onclick="reportsClearFilters()">Clear</button>`;
+  }
+
+  function reportsSetFilter(id, value) {
+    if (!_reportState) return;
+    if (value === '' || value == null) {
+      delete _reportState.filters[id];
+    } else {
+      _reportState.filters[id] = value;
+    }
+    _applyReportFilters();
+  }
+  function reportsClearFilters() {
+    if (!_reportState) return;
+    _reportState.filters = {};
+    _renderReportFilters();
+    _applyReportFilters();
+  }
+
+  function _applyReportFilters() {
+    if (!_reportState) return;
+    const def  = _reportState.def;
+    const fc   = Object.assign({}, _reportState.filters);
+    delete fc._savedId;
+    let rows;
+    try { rows = def.rows(fc) || []; }
+    catch (e) {
+      console.error('[MS report rows]', e);
+      rows = [];
+    }
+
+    // Sort
+    if (_reportState.sortField) {
+      const col = def.columns.find(c => c.id === _reportState.sortField);
+      if (col) {
+        const dir = _reportState.sortDir === 'desc' ? -1 : 1;
+        rows.sort((a, b) => {
+          const av = a[col.id], bv = b[col.id];
+          if (typeof av === 'number' && typeof bv === 'number') return dir * (av - bv);
+          return dir * String(av ?? '').localeCompare(String(bv ?? ''));
+        });
+      }
+    }
+
+    _reportState.rows = rows;
+    _renderReportTable();
+    _renderReportSummary();
+  }
+
+  function _renderReportSummary() {
+    const def  = _reportState.def;
+    const rows = _reportState.rows || [];
+    const bar  = document.getElementById('reports-summary-bar');
+    const stats = [`<div class="stat"><span class="stat-label">Rows</span><span class="stat-value">${rows.length.toLocaleString('en-US')}</span></div>`];
+
+    // Auto-sum any USD/int columns at the bottom for quick context.
+    def.columns.forEach(col => {
+      if (col.format === 'usd' || col.format === 'int') {
+        const total = rows.reduce((s, r) => s + (parseFloat(r[col.id]) || 0), 0);
+        if (total !== 0) {
+          stats.push(`<div class="stat"><span class="stat-label">Σ ${_rptEscape(col.label)}</span><span class="stat-value">${col.format === 'usd' ? _RPT_FMT_USD(total) : _RPT_FMT_INT(Math.round(total))}</span></div>`);
+        }
+      }
+    });
+    bar.innerHTML = stats.join('');
+  }
+
+  function _renderReportTable() {
+    const def  = _reportState.def;
+    const head = document.getElementById('reports-table-head');
+    const body = document.getElementById('reports-table-body');
+    const empty= document.getElementById('reports-empty');
+    const rows = _reportState.rows || [];
+
+    head.innerHTML = def.columns.map(col => {
+      const align = col.align === 'right' ? ' r' : (col.align === 'center' ? ' c' : '');
+      const sort  = col.sortable !== false ? ' sortable' : '';
+      const dir   = (_reportState.sortField === col.id) ? ` ${_reportState.sortDir}` : '';
+      const click = col.sortable !== false ? ` onclick="reportsSort('${col.id}')"` : '';
+      return `<th class="${(align + sort + dir).trim()}"${click}>${_rptEscape(col.label)}</th>`;
+    }).join('');
+
+    if (rows.length === 0) {
+      body.innerHTML = '';
+      empty.style.display = '';
+      return;
+    }
+    empty.style.display = 'none';
+
+    body.innerHTML = rows.map(r => {
+      const tds = def.columns.map(col => {
+        const v = r[col.id];
+        let display;
+        if (col.format === 'usd')      display = _RPT_FMT_USD(parseFloat(v) || 0);
+        else if (col.format === 'int') display = _RPT_FMT_INT(parseInt(v) || 0);
+        else if (col.format === 'pct') display = _RPT_FMT_PCT(parseFloat(v) || 0);
+        else if (col.format === 'date')display = _RPT_FMT_DATE(v);
+        else                           display = (v == null || v === '') ? '—' : _rptEscape(v);
+        const align = col.align === 'right' ? ' r' : (col.align === 'center' ? ' c' : '');
+        const link = (typeof col.link === 'function') ? col.link(r) : null;
+        if (link) {
+          return `<td class="${align.trim()}"><a href="${_rptEscape(link)}" onclick="event.preventDefault(); location.hash='${_rptEscape(link)}'" style="color:inherit; text-decoration:none; border-bottom:1px dashed transparent;" onmouseover="this.style.borderBottomColor='var(--accent)'; this.style.color='var(--accent)';" onmouseout="this.style.borderBottomColor='transparent'; this.style.color='inherit';">${display}</a></td>`;
+        }
+        return `<td class="${align.trim()}">${display}</td>`;
+      }).join('');
+      return `<tr>${tds}</tr>`;
+    }).join('');
+  }
+
+  function reportsSort(field) {
+    if (!_reportState) return;
+    if (_reportState.sortField === field) {
+      _reportState.sortDir = _reportState.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      _reportState.sortField = field;
+      _reportState.sortDir = 'asc';
+    }
+    _applyReportFilters();
+  }
+
+  // ── Save / delete saved views ──────────────────────────────────────
+  function reportsSaveCurrentView() {
+    if (!_reportState) return;
+    const def = _reportState.def;
+    const proposed = `${def.name} — ${new Date().toLocaleDateString('en-US', {month:'short', day:'numeric'})}`;
+    const name = prompt('Save this view as:', proposed);
+    if (!name) return;
+
+    if (!_msSavedReports) _msSavedReports = [];
+    const id = 'sv_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    _msSavedReports.push({
+      id,
+      name: String(name).trim(),
+      basedOn: def.id,
+      filters: Object.assign({}, _reportState.filters),
+      savedAt: new Date().toISOString(),
+    });
+    _persistSavedReports();
+    _msToast('Saved view created.', 'success');
+  }
+
+  function reportsDeleteSaved(savedId) {
+    if (!_msSavedReports) return;
+    const ix = _msSavedReports.findIndex(s => s.id === savedId);
+    if (ix < 0) return;
+    if (!confirm(`Delete saved view "${_msSavedReports[ix].name}"?`)) return;
+    _msSavedReports.splice(ix, 1);
+    _persistSavedReports();
+    renderReportsView();
+  }
+
+  // ── Export (CSV + PDF) — reuses the existing patterns from the
+  // Client Quote exports so the look + filename style stays consistent.
+  function reportsExportCSV() {
+    if (!_reportState || !_reportState.rows || _reportState.rows.length === 0) {
+      _msToast('No rows to export. Adjust filters or run a different report.', 'error');
+      return;
+    }
+    const def  = _reportState.def;
+    const rows = _reportState.rows;
+    const lines = [];
+    lines.push(_csvEscape(`Market Sculpt — ${def.name}`));
+    lines.push([_csvEscape('Generated'), _csvEscape(new Date().toLocaleString('en-US'))].join(','));
+    const fkeys = Object.keys(_reportState.filters || {});
+    if (fkeys.length) {
+      lines.push([_csvEscape('Filters'), _csvEscape(fkeys.map(k => `${k}=${_reportState.filters[k]}`).join(' · '))].join(','));
+    }
+    lines.push('');
+    lines.push(def.columns.map(c => _csvEscape(c.label)).join(','));
+    rows.forEach(r => {
+      lines.push(def.columns.map(c => {
+        const v = r[c.id];
+        if (c.format === 'usd') return _csvEscape((parseFloat(v) || 0).toFixed(2));
+        if (c.format === 'int') return _csvEscape(parseInt(v) || 0);
+        if (c.format === 'pct') return _csvEscape(((parseFloat(v) || 0)).toFixed(1) + '%');
+        if (c.format === 'date')return _csvEscape(_RPT_FMT_DATE(v));
+        return _csvEscape(v == null ? '' : v);
+      }).join(','));
+    });
+
+    const csv = '﻿' + lines.join('\r\n');
+    const fname = `report_${def.id}_${new Date().toISOString().slice(0,10)}.csv`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    _msToast('Report CSV downloaded.', 'success');
+  }
+
+  function reportsExportPDF() {
+    if (!_reportState || !_reportState.rows || _reportState.rows.length === 0) {
+      _msToast('No rows to export.', 'error');
+      return;
+    }
+    const def  = _reportState.def;
+    const rows = _reportState.rows;
+    const esc  = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    const headHtml = def.columns.map(c => {
+      const align = c.align === 'right' ? ' class="r"' : (c.align === 'center' ? ' class="c"' : '');
+      return `<th${align}>${esc(c.label)}</th>`;
+    }).join('');
+    const rowsHtml = rows.map(r => '<tr>' + def.columns.map(c => {
+      const v = r[c.id];
+      let display;
+      if (c.format === 'usd')      display = _RPT_FMT_USD(parseFloat(v) || 0);
+      else if (c.format === 'int') display = _RPT_FMT_INT(parseInt(v) || 0);
+      else if (c.format === 'pct') display = _RPT_FMT_PCT(parseFloat(v) || 0);
+      else if (c.format === 'date')display = _RPT_FMT_DATE(v);
+      else                         display = (v == null || v === '') ? '—' : esc(v);
+      const align = c.align === 'right' ? ' class="r"' : (c.align === 'center' ? ' class="c"' : '');
+      return `<td${align}>${display}</td>`;
+    }).join('') + '</tr>').join('');
+
+    const filtersStr = Object.entries(_reportState.filters || {})
+      .map(([k, v]) => `${esc(k)} = ${esc(v)}`).join(' · ');
+
+    const html = `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><title>${esc(def.name)} — Market Sculpt</title>
+<style>
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1a1d2e; background: #fff; padding: 28px; font-size: 12px; line-height: 1.5; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #E8751A; padding-bottom: 14px; margin-bottom: 18px; }
+  .brand { font-size: 20px; font-weight: 800; color: #E8751A; border-left: 3px solid #E8751A; padding-left: 12px; letter-spacing: -0.3px; }
+  .brand-sub { font-size: 10px; font-weight: 500; color: #6b7280; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 4px; }
+  .meta-block { text-align: right; font-size: 11px; color: #6b7280; }
+  h1 { font-size: 20px; font-weight: 800; margin-bottom: 4px; color: #1a1d2e; }
+  .desc { font-size: 12px; color: #6b7280; margin-bottom: 12px; line-height: 1.5; max-width: 760px; }
+  .filters { font-size: 11px; color: #374151; padding: 8px 12px; background: #f8f9fb; border-left: 3px solid #6b93ff; border-radius: 4px; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead th { padding: 9px 11px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ba3c0; background: #f8f9fb; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  thead th.r { text-align: right; } thead th.c { text-align: center; }
+  tbody td { padding: 8px 11px; border-bottom: 1px solid #f0f2f5; }
+  tbody td.r { text-align: right; } tbody td.c { text-align: center; }
+  .footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ba3c0; }
+  .footer a { color: #E8751A; text-decoration: none; }
+  .print-controls { position: fixed; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 100; }
+  .print-controls button { background: #E8751A; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .print-controls button.secondary { background: #fff; color: #6b7280; border: 1px solid #d1d5db; }
+  @media print {
+    body { padding: 0; }
+    .print-controls { display: none !important; }
+    table { page-break-inside: auto; }
+    tr { page-break-inside: avoid; }
+  }
+</style></head><body>
+  <div class="print-controls">
+    <button onclick="window.print()">Print / Save as PDF</button>
+    <button class="secondary" onclick="window.close()">Close</button>
+  </div>
+  <div class="header">
+    <div>
+      <div class="brand">Market Sculpt</div>
+      <div class="brand-sub">Reports</div>
+    </div>
+    <div class="meta-block">
+      Generated ${esc(new Date().toLocaleString('en-US'))}<br>
+      ${esc(rows.length)} rows
+    </div>
+  </div>
+  <h1>${esc(def.name)}</h1>
+  <p class="desc">${esc(def.description)}</p>
+  ${filtersStr ? `<div class="filters"><strong>Filters:</strong> ${filtersStr}</div>` : ''}
+  <table><thead><tr>${headHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>
+  <div class="footer">Market Sculpt LLC &nbsp;·&nbsp; <a href="https://marketsculpt.com">marketsculpt.com</a></div>
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 350));<\/script>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { _msToast('Pop-up blocked. Allow pop-ups for this site to use PDF export.', 'error'); return; }
+    win.document.open(); win.document.write(html); win.document.close();
+  }
+
+  function _rptEscape(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
   function renderDashboard(clientName) {
     const items = [...(clientData[clientName] || [])];
     const tbody = document.getElementById('dash-tbody');
@@ -15063,6 +16144,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Match: #/commissions
     if (hash === '#/commissions') {
       renderCommissionsView();
+      return;
+    }
+
+    // Match: #/reports — list of prebuilt + saved reports
+    if (hash === '#/reports') {
+      renderReportsView();
+      return;
+    }
+    // Match: #/reports/run/{id} — run a prebuilt report
+    const repRunMatch = hash.match(/^#\/reports\/run\/([a-z0-9_-]+)$/i);
+    if (repRunMatch) {
+      runReport(repRunMatch[1], 'prebuilt');
+      return;
+    }
+    // Match: #/reports/saved/{id} — load a saved view
+    const repSavedMatch = hash.match(/^#\/reports\/saved\/([a-z0-9_-]+)$/i);
+    if (repSavedMatch) {
+      (async () => {
+        await _ensureSavedReportsLoaded();
+        const sv = (_msSavedReports || []).find(s => s.id === repSavedMatch[1]);
+        if (!sv) {
+          _msToast('Saved view not found.', 'error');
+          location.hash = '#/reports';
+          return;
+        }
+        runReport(sv.basedOn, 'saved', Object.assign({}, sv.filters || {}, { _savedId: sv.id }));
+      })();
       return;
     }
 

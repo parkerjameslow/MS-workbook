@@ -579,7 +579,7 @@ function formContent(string $clientName, string $contactName, string $token): st
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             RFQ Line Items
           </div>
-          <p class="page-sub" style="margin-top:6px;">List each variant or quantity tier you&rsquo;d like priced. SKU and lead time are optional.</p>
+          <p class="page-sub" style="margin-top:6px;">List each variant or quantity tier you&rsquo;d like priced. SKU is optional.</p>
         </div>
         <div class="card-body" style="padding:0;">
           <table class="rfq-table" id="rfq-table">
@@ -589,7 +589,6 @@ function formContent(string $clientName, string $contactName, string $token): st
                 <th>Item</th>
                 <th>SKU (optional)</th>
                 <th style="width:110px;">Quantity</th>
-                <th style="width:120px;">Lead Time (days)</th>
                 <th>Variant / Notes</th>
                 <th style="width:32px;"></th>
               </tr>
@@ -600,7 +599,6 @@ function formContent(string $clientName, string $contactName, string $token): st
                 <td data-label="Item"><input type="text" name="items[0][item]" placeholder="e.g. Tote Bag — Black" /></td>
                 <td data-label="SKU"><input type="text" name="items[0][sku]"  placeholder="optional" /></td>
                 <td data-label="Quantity"><input type="text" inputmode="numeric" name="items[0][qty]" placeholder="0" /></td>
-                <td data-label="Lead Time"><input type="text" inputmode="numeric" name="items[0][leadTime]" placeholder="0" /></td>
                 <td data-label="Variant / Notes"><input type="text" name="items[0][variant]" placeholder="size, color, finish…" /></td>
                 <td><span class="rfq-remove" onclick="removeRfqRow(this)" title="Remove">&times;</span></td>
               </tr>
@@ -634,7 +632,6 @@ function formContent(string $clientName, string $contactName, string $token): st
           <td data-label="Item"><input type="text" name="items[${idx}][item]" placeholder="e.g. Tote Bag — Navy" /></td>
           <td data-label="SKU"><input type="text" name="items[${idx}][sku]"  placeholder="optional" /></td>
           <td data-label="Quantity"><input type="text" inputmode="numeric" name="items[${idx}][qty]" placeholder="0" /></td>
-          <td data-label="Lead Time"><input type="text" inputmode="numeric" name="items[${idx}][leadTime]" placeholder="0" /></td>
           <td data-label="Variant / Notes"><input type="text" name="items[${idx}][variant]" placeholder="size, color, finish…" /></td>
           <td><span class="rfq-remove" onclick="removeRfqRow(this)" title="Remove">&times;</span></td>
         `;
