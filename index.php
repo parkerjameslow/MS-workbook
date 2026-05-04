@@ -4606,7 +4606,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="add-text">Image or Video</div>
           </div>
         </div>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop images or videos here, or paste from clipboard (Ctrl/⌘ + V)</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop images or videos here, click the tile to browse, or paste from clipboard (Ctrl/⌘ + V).</div>
         <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImages(event)" style="display:none;" />
       </div>
 
@@ -5649,6 +5649,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="add-text">Add File</div>
           </div>
         </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop art files here, or click the tile to browse.</div>
         <input type="file" id="artInput" accept="image/*" multiple onchange="handleArtFiles(event)" style="display:none;" />
       </div>
     </div>
@@ -6955,6 +6956,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (imageFiles.length) handleImages({ target: { files: imageFiles } });
     if (videoFiles.length) handleVideoFiles(videoFiles);
   });
+
+  // Drag and drop support for the Art Files gallery — images only.
+  // Mirrors the image-gallery wiring so the Art tab has the same
+  // "drop or click to upload" UX without needing to bounce through a
+  // browse dialog.
+  const artGalleryEl = document.getElementById('artGallery');
+  if (artGalleryEl) {
+    artGalleryEl.addEventListener('dragover',  e => { e.preventDefault(); artGalleryEl.style.outline = '2px solid var(--accent)'; });
+    artGalleryEl.addEventListener('dragleave', e => { if (!artGalleryEl.contains(e.relatedTarget)) artGalleryEl.style.outline = ''; });
+    artGalleryEl.addEventListener('drop', e => {
+      e.preventDefault();
+      artGalleryEl.style.outline = '';
+      const imageFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+      if (imageFiles.length) handleArtFiles({ target: { files: imageFiles, value: '' } });
+    });
+  }
 
   // Clipboard paste — upload images when workbook is open
   document.addEventListener('paste', function(e) {
@@ -10195,8 +10212,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Status Bar ──────────────────────────────────────────────────────────── */
   const flowSteps = ['quoteChina', 'quoteSubmitted', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
-  const flowLabels = ['Quote', 'Quote Submitted', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Order'];
-  const flowLabelsShort = ['Quote', 'Submitted', 'Quote', 'Approved', 'Invoice', 'Payment', 'Order'];
+  const flowLabels = ['Quote', 'Quote Submitted', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Ordered'];
+  const flowLabelsShort = ['Quote', 'Submitted', 'Quote', 'Approved', 'Invoice', 'Payment', 'Ordered'];
   let currentClient = '';
   let currentWorkbookId = '';
   let _wbBackHash  = null;  // set before navigating into a workbook from a non-client context
