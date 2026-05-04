@@ -880,13 +880,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .cdc-value::placeholder { color: var(--text-muted); opacity: 0.6; }
     /* Right column on the Client Details card. Houses the new RFQ Request
        button on top + the existing Financial Summary card below it. The
-       column shares the old `.cdc-financial` flex sizing so the responsive
-       behavior (full-width on tablet, side-by-side on desktop) still works. */
+       column is capped at a fixed width so long copy inside the panels
+       can't push it past the previous Financial Summary footprint and
+       overlap the left-column form fields. */
     .cdc-right-col {
       display: flex;
       flex-direction: column;
       gap: 14px;
-      min-width: 240px;
+      width: 280px;
+      min-width: 0;
       flex-shrink: 0;
     }
     @media (max-width: 900px) {
@@ -905,7 +907,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex;
       flex-direction: column;
       gap: 10px;
+      min-width: 0;
+      max-width: 100%;
     }
+    .cdc-rfq-card * { min-width: 0; }
+    .cdc-rfq-card strong { word-break: break-word; overflow-wrap: anywhere; }
     .cdc-rfq-title {
       font-size: 11px;
       font-weight: 700;
@@ -13897,10 +13903,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               Quote Request
             </div>
-            <p class="cdc-rfq-desc">Send a one-time link to <strong>${(d.email || 'the client').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</strong> so they can fill out a Product Overview &amp; RFQ themselves. Submissions land in the workbook list flagged <em>Pending Review</em>.</p>
-            <button type="button" class="cdc-rfq-btn" id="cdc-rfq-btn" onclick="sendIntakeRequest('${enc}')">
+            <p class="cdc-rfq-desc">Email a one-time link so the client can fill out a Product Overview &amp; RFQ themselves. Submissions land flagged <em>Pending Review</em>.</p>
+            <button type="button" class="cdc-rfq-btn" id="cdc-rfq-btn" onclick="sendIntakeRequest('${enc}')" title="Email a one-time intake link to ${(d.email || 'the client').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-              Send Quote Request to Client
+              Send Quote Request
             </button>
             <div class="cdc-rfq-status" id="cdc-rfq-status" style="display:none;"></div>
           </div>
@@ -13990,7 +13996,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         alert(err);
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Send Quote Request to Client`;
+          btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Send Quote Request`;
         }
       }
     } catch (e) {
