@@ -5239,6 +5239,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         </div><!-- /.pricing-summary-grid -->
 
+        <!-- Apply Additional Fees — checkbox list of every fee entered on
+             the Workbook tab. Tick the boxes to add those fees to the
+             Total Landed Cost and as separate line items in the Client
+             Quote table below. -->
+        <div class="pricing-fees-card" id="pricing-fees-card" style="margin:14px 0; border:1px solid var(--border); background:var(--surface2); border-radius:10px; overflow:hidden;">
+          <div style="display:flex; align-items:center; gap:8px; padding:10px 16px; background:rgba(232,117,26,0.10); border-bottom:1px solid var(--border); color:#E8751A;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em;">Additional Fees</span>
+            <span id="pricing-fees-applied-total" style="margin-left:auto; font-size:12px; font-weight:700; color:#E8751A;"></span>
+          </div>
+          <div id="pricing-fees-body" style="padding:8px 14px 12px;">
+            <!-- populated by renderPricingFeesCard() -->
+          </div>
+        </div>
+
         <!-- Total Landed Cost card —
              qty   = selected pricing tier (Shipping tab)
              price = per-unit RFQ data from Workbook tab (_lastRfqPriceSummary)
@@ -5264,6 +5279,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <span class="landed-per-math" id="ps-landed-math"></span>
               </div>
               <span class="value" id="ps-landed-per">—</span>
+            </div>
+            <div class="pricing-landed-row" id="ps-fees-row" style="display:none;">
+              <span class="label">Additional Fees</span>
+              <span class="value" id="ps-fees-applied">—</span>
             </div>
             <div class="pricing-landed-row">
               <span class="label">Suggested Price Per (USD)</span>
@@ -9055,6 +9074,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   /* ── Additional Fees ───────────────────────────────────────────────────── */
   let _extraFeeRows = [];
   let _extraFeeCounter = 0;
+  // Set of fee IDs that the operator has ticked on the Pricing tab to
+  // include in the Total Landed Cost + the Client Quote line items.
+  // Standard fees are keyed by their short name ('sample','tooling',
+  // 'die','plate','design'); extra fees by 'extra:<id>'. Persisted as
+  // an array on workbookDetail.appliedFees.
+  let _appliedFees = new Set();
 
   const FEE_TYPE_LABELS = {
     sample: 'Sample Fee(s)', tooling: 'Tooling Fee(s)', die: 'Die Fee(s)',
@@ -9318,6 +9343,106 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     card.classList.toggle('collapsed');
   }
 
+  // Walk every fee currently entered on the Workbook tab and return them
+  // as a flat list. Each entry has { id, label, desc, usd, rmb }.
+  // - Standard fees (sample/tooling/die/plate/design) are included only
+  //   when the user has typed a USD amount or a description.
+  // - Extra rows pull from _extraFeeRows directly.
+  // The Pricing-tab Additional Fees card and the Client Quote both
+  // consume this list, so any fee that's "real" on the Workbook tab is
+  // available to apply.
+  function collectWorkbookFees() {
+    const get = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+    const txt = (id) => (document.getElementById(id)?.value || '').trim();
+    const std = [
+      { id: 'sample',  label: 'Sample Fee(s)',  rmb: get('fee-sample-rmb'),  usd: get('fee-sample-usd'),  desc: txt('fee-sample-desc')  },
+      { id: 'tooling', label: 'Tooling Fee(s)', rmb: get('fee-tooling-rmb'), usd: get('fee-tooling-usd'), desc: txt('fee-tooling-desc') },
+      { id: 'die',     label: 'Die Fee(s)',     rmb: get('fee-die-rmb'),     usd: get('fee-die-usd'),     desc: txt('fee-die-desc')     },
+      { id: 'plate',   label: 'Plate Fee(s)',   rmb: get('fee-plate-rmb'),   usd: get('fee-plate-usd'),   desc: txt('fee-plate-desc')   },
+      { id: 'design',  label: 'Design Fee(s)',  rmb: 0,                       usd: get('fee-design-usd'),  desc: txt('fee-design-desc')  }
+    ].filter(f => f.usd > 0 || f.rmb > 0 || f.desc !== '');
+    const extras = _extraFeeRows.map(r => ({
+      id: 'extra:' + r.id,
+      label: r.type || 'Custom Fee',
+      desc:  r.desc || '',
+      rmb:   r.rmb || 0,
+      usd:   r.usd || 0,
+    })).filter(f => f.usd > 0 || f.rmb > 0 || f.desc !== '');
+    return std.concat(extras);
+  }
+
+  // Sum of every applied fee's USD amount. Drives both the Total Landed
+  // Cost addition and the Client Quote line items.
+  function appliedFeesTotalUsd() {
+    const fees = collectWorkbookFees();
+    return fees.reduce((s, f) => s + (_appliedFees.has(f.id) ? f.usd : 0), 0);
+  }
+
+  // List of currently-applied fees (filtered + ordered the way they
+  // appear in the picker). Used by the Client Quote renderer.
+  function appliedFeesList() {
+    return collectWorkbookFees().filter(f => _appliedFees.has(f.id));
+  }
+
+  // Build the Apply Additional Fees picker on the Pricing tab. One row
+  // per fee that exists on the Workbook tab, with a checkbox bound to
+  // _appliedFees. Empty state shown when no fees have been entered.
+  function renderPricingFeesCard() {
+    const body = document.getElementById('pricing-fees-body');
+    if (!body) return;
+    const fees = collectWorkbookFees();
+    const totalEl = document.getElementById('pricing-fees-applied-total');
+
+    // Drop any applied-fee IDs that no longer correspond to a real fee
+    // (e.g. user deleted an extra row on the Workbook tab).
+    const validIds = new Set(fees.map(f => f.id));
+    let pruned = false;
+    [..._appliedFees].forEach(id => { if (!validIds.has(id)) { _appliedFees.delete(id); pruned = true; } });
+
+    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+
+    if (fees.length === 0) {
+      body.innerHTML = `<div style="padding:14px 4px; font-size:12px; color:var(--text-muted); font-style:italic;">No fees entered on the Workbook tab. Add Sample / Tooling / Die / Plate / Design or custom fees there to make them available here.</div>`;
+      if (totalEl) totalEl.textContent = '';
+      return;
+    }
+
+    const escHtmlSafe = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const rows = fees.map(f => {
+      const checked = _appliedFees.has(f.id) ? 'checked' : '';
+      const idAttr = escHtmlSafe(f.id);
+      const descLine = f.desc ? `<div style="font-size:11px; color:var(--text-muted); margin-top:1px;">${escHtmlSafe(f.desc)}</div>` : '';
+      const rmbStr = fmtRmb(f.rmb);
+      const usdStr = fmtUsd(f.usd);
+      return `<label style="display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); cursor:pointer;">
+        <input type="checkbox" ${checked} onchange="toggleFeeApplied('${idAttr}', this.checked)"
+               style="width:16px; height:16px; accent-color:#E8751A; cursor:pointer; flex-shrink:0;" />
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13px; font-weight:600; color:var(--text);">${escHtmlSafe(f.label)}</div>
+          ${descLine}
+        </div>
+        <div style="text-align:right; flex-shrink:0;">
+          <div style="font-size:13px; font-weight:700; color:var(--text);">${usdStr}</div>
+          ${rmbStr ? `<div style="font-size:11px; color:var(--text-muted);">${rmbStr}</div>` : ''}
+        </div>
+      </label>`;
+    }).join('');
+
+    body.innerHTML = rows;
+    const tot = appliedFeesTotalUsd();
+    if (totalEl) totalEl.textContent = tot > 0 ? `+ ${fmtUsd(tot)} applied` : '';
+
+    if (pruned && !_filling) autoSaveWorkbook();
+  }
+
+  function toggleFeeApplied(id, isChecked) {
+    if (isChecked) _appliedFees.add(id); else _appliedFees.delete(id);
+    if (typeof _schedulePricingTabRender === 'function') _schedulePricingTabRender();
+    renderPricingFeesCard();
+    if (!_filling) autoSaveWorkbook();
+  }
+
   function calcAdditionalFees() {
     const get    = id => parseFloat(document.getElementById(id)?.value) || 0;
     const sample  = get('fee-sample-usd');
@@ -9376,6 +9501,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       `;
       tbody.appendChild(tr);
     });
+
+    // Re-render the Pricing-tab Apply Additional Fees picker so values
+    // and the empty state stay in sync as the operator types fees on
+    // the Workbook tab. Also re-render the Pricing tab so the applied
+    // fees flow into Total Landed Cost / Client Quote in real time.
+    if (typeof renderPricingFeesCard === 'function') renderPricingFeesCard();
+    if (typeof _schedulePricingTabRender === 'function') _schedulePricingTabRender();
 
     if (!_filling) autoSaveWorkbook();
   }
@@ -10177,6 +10309,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // cost on Margin / Sale Per / Ship Lead inputs roughly in half.
     if (!_lastRfqPriceSummary) recalcRfqTotals();
 
+    // Refresh the Apply Additional Fees picker every render so values /
+    // descriptions stay in sync with the Workbook tab inputs.
+    renderPricingFeesCard();
+    const _appliedFeesArr   = appliedFeesList();
+    const _appliedFeesTotal = appliedFeesTotalUsd();
+
     // ── Pricing context computed upfront ───────────────────────────────
     // Both the Client Quote table and the Total Landed Cost block below
     // need shipPerUnit + wbMarginMul + shipLeadMax. Hoisting them here
@@ -10346,6 +10484,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           }
         });
 
+        // Applied fee rows — each ticked Additional Fee gets its own
+        // line item at the bottom of the Client Quote table so it's
+        // explicit on the quote what the client is paying for.
+        if (_appliedFeesArr.length > 0) {
+          html += `<tr class="cq-fees-divider-row"><td colspan="7" style="padding:6px 12px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#E8751A; background:rgba(232,117,26,0.06); border-top:2px solid rgba(232,117,26,0.25);">Additional Fees</td></tr>`;
+          _appliedFeesArr.forEach(f => {
+            const escFee = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const desc = f.desc ? `<span style="color:var(--text-muted); font-weight:400;"> — ${escFee(f.desc)}</span>` : '';
+            html += `<tr class="cq-fee-row" style="background:rgba(232,117,26,0.04);">
+              <td style="color:#E8751A; width:24px; font-weight:700;">+</td>
+              <td style="font-weight:500;">${escFee(f.label)}${desc}</td>
+              <td style="text-align:right; color:var(--text-muted);">—</td>
+              <td style="text-align:right; color:var(--text-muted);">—</td>
+              <td style="text-align:right; font-weight:600; color:var(--accent);">${f.usd > 0 ? '$' + _fmt2(f.usd) : '—'}</td>
+              <td style="color:var(--text-muted);">—</td>
+              <td style="color:var(--text-muted);">—</td>
+            </tr>`;
+          });
+        }
+
         html += '</tbody></table></div>';
         refEl.innerHTML = html;
       }
@@ -10506,8 +10664,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const salePerRaw = (saleInput?.value || '').trim();
     const salePer    = salePerRaw === '' ? NaN : parseFloat(salePerRaw);
 
-    // Landed Total (deterministic): tier qty × weighted-avg landed
-    const landedTotal = tierQty > 0 ? tierQty * landedAvg : 0;
+    // Landed Total (deterministic): tier qty × weighted-avg landed,
+    // plus any one-time Additional Fees the operator has applied above.
+    const landedTotalBase = tierQty > 0 ? tierQty * landedAvg : 0;
+    const landedTotal     = landedTotalBase + _appliedFeesTotal;
 
     // Cache on the workbook so Total Pipeline (Financial Summary) can read
     // it without re-running the freight calc. Only writes when we have a
@@ -10518,10 +10678,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       workbookDetail[_wbKey].pricingLandedTotal = landedTotal > 0 ? landedTotal : 0;
     }
 
-    // Total USD: Sale Per × tier qty (only when Sale Per is set)
-    const totalUsd = (!isNaN(salePer) && salePer > 0 && tierQty > 0) ? salePer * tierQty : NaN;
+    // Total USD: Sale Per × tier qty + applied fees (fees ride on top of
+    // the per-unit sale price as a one-time add to the order total).
+    const saleProductTotal = (!isNaN(salePer) && salePer > 0 && tierQty > 0) ? salePer * tierQty : NaN;
+    const totalUsd = !isNaN(saleProductTotal) ? saleProductTotal + _appliedFeesTotal : NaN;
 
-    // Order Profit: Sale Total − Landed Total (only when Total USD is real)
+    // Order Profit: Sale Total − Landed Total (only when Total USD is real).
+    // Fees cancel out (they're in both sides), so this equals the product
+    // margin alone.
     const orderProfit = !isNaN(totalUsd) ? totalUsd - landedTotal : NaN;
 
     // ─── Render cells ────────────────────────────────────────────────
@@ -10532,6 +10696,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(landedMin, landedMax, landedIsRange) : '—';
     if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(suggestedMin, suggestedMax, suggestedIsRange) : '—';
     if (e('ps-landed-total'))  e('ps-landed-total').textContent  = landedTotal > 0 ? '$' + fmt2(landedTotal) : '—';
+    // Additional Fees row: only shown when at least one fee is applied.
+    const feesRow = e('ps-fees-row');
+    if (feesRow) {
+      if (_appliedFeesTotal > 0) {
+        feesRow.style.display = '';
+        const feesEl = e('ps-fees-applied');
+        if (feesEl) {
+          const labels = _appliedFeesArr.map(f => f.label.replace(/\s*Fee\(s\)$/i, '')).join(', ');
+          feesEl.innerHTML = `<span style="font-size:11px; color:var(--text-muted); margin-right:8px; font-weight:500;">${labels}</span>+ $${fmt2(_appliedFeesTotal)}`;
+        }
+      } else {
+        feesRow.style.display = 'none';
+      }
+    }
     // Inline math under the Landed Per label: "$prodTotal/qty + $shipTotal/qty"
     if (e('ps-landed-math')) {
       const productTotalForLanded = tierQty > 0 ? tierQty * avgPerUnitUsd : 0;
@@ -12664,6 +12842,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         });
         renderExtraFeeRows();
       }
+      // Restore which fees the operator had ticked on the Pricing tab.
+      _appliedFees = new Set(Array.isArray(data.appliedFees) ? data.appliedFees : []);
       // Shipment splits
       _shipmentSplits = [];
       _splitCounter = 0;
@@ -12848,6 +13028,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const _newProd = item ? (item.product || '') : '';
       addRfqRow(_newProd, ''); addRfqRow(); addRfqRow();
       recalcRfqTotals();
+      // Brand-new workbook: no fees applied yet.
+      _appliedFees = new Set();
     }
 
     // Shipping lead times — fall back to typical China→US transit defaults
@@ -13573,6 +13755,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       feeDesignDesc:  _v('fee-design-desc'),
       feeDesignUsd:   _v('fee-design-usd'),
       extraFeeRows:  _extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd})),
+      // Which fees the operator has ticked on the Pricing tab to apply
+      // to Total Landed Cost + the Client Quote line items.
+      appliedFees:   [..._appliedFees],
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
       productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
