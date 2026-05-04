@@ -10140,10 +10140,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const idx = [];
     const isAdmin = !!(window.MS_SESSION && window.MS_SESSION.role === 'admin');
     const enc = encodeURIComponent;
+    // The data globals are top-level `let` bindings in the same script
+    // scope, so they're NOT on `window` — reference them directly.
+    const _clientData     = (typeof clientData     !== 'undefined') ? clientData     : {};
+    const _clientDetails  = (typeof clientDetails  !== 'undefined') ? clientDetails  : {};
+    const _workbookDetail = (typeof workbookDetail !== 'undefined') ? workbookDetail : {};
+    const _orderData      = (typeof orderData      !== 'undefined') ? orderData      : {};
+    const _shipmentData   = (typeof shipmentData   !== 'undefined') ? shipmentData   : {};
+    const _inventoryData  = (typeof inventoryData  !== 'undefined') ? inventoryData  : [];
+    const _commissionsData= (typeof commissionsData!== 'undefined') ? commissionsData: [];
+    const _usersCacheLocal= (typeof _usersCache    !== 'undefined') ? _usersCache    : [];
 
     // ── Clients
-    Object.keys(window.clientData || {}).forEach(name => {
-      const d = (window.clientDetails && window.clientDetails[name]) || {};
+    Object.keys(_clientData || {}).forEach(name => {
+      const d = _clientDetails[name] || {};
       const fields = [name, d.email, d.phone, d.primary_contact, d.email2, d.phone2, d.primary_contact2, d.notes, d.account_manager, d.salesperson]
         .filter(Boolean).join(' ').toLowerCase();
       idx.push({
@@ -10158,9 +10168,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Workbooks (active + archived). dateCreated is "DD MMM YY"; we
     // approximate recency from the workbook id which auto-increments.
-    Object.entries(window.clientData || {}).forEach(([clientName, items]) => {
+    Object.entries(_clientData || {}).forEach(([clientName, items]) => {
       (items || []).forEach(wb => {
-        const detail = (window.workbookDetail && window.workbookDetail[`${clientName}|${wb.id}`]) || {};
+        const detail = _workbookDetail[`${clientName}|${wb.id}`] || {};
         const rfqText = (detail.rfqItems || []).flatMap(i => {
           const variants = (i.variants || []).map(v => v.variant);
           return [i.item, i.sku, ...variants];
@@ -10181,10 +10191,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
 
     // ── Orders
-    Object.values(window.orderData || {}).forEach(o => {
+    Object.values(_orderData || {}).forEach(o => {
       const orderItems = (o.entries || []).flatMap(e => {
         const k = `${e.clientName}|${e.workbookId}`;
-        const det = (window.workbookDetail && window.workbookDetail[k]) || {};
+        const det = _workbookDetail[k] || {};
         return [det.product, ...((det.rfqItems || []).map(r => r.item))];
       });
       const fields = [o.name, o.clientName, o.status, o.poNumber, ...orderItems]
@@ -10201,7 +10211,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
 
     // ── Shipments
-    Object.values(window.shipmentData || {}).forEach(s => {
+    Object.values(_shipmentData || {}).forEach(s => {
       idx.push({
         type: 'shipment',
         label: s.name || `Shipment #${s.id}`,
@@ -10232,7 +10242,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Inventory (loaded async; may be empty until the operator opens
     // the Inventory view at least once)
-    (window.inventoryData || []).forEach(i => {
+    (_inventoryData || []).forEach(i => {
       const href = (i.client_name && i.workbook_id)
         ? `#/client/${enc(i.client_name)}/workbook/${i.workbook_id}`
         : '#/inventory';
@@ -10249,7 +10259,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Admin-only: commissions and users
     if (isAdmin) {
-      (window.commissionsData || []).forEach(c => {
+      (_commissionsData || []).forEach(c => {
         idx.push({
           type: 'commission',
           label: `${c.employee || 'Unknown'} · ${c.role || ''}`,
@@ -10260,7 +10270,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           searchText: [c.employee, c.role, c.client_name, c.product_name, c.sku, c.status].filter(Boolean).join(' ').toLowerCase()
         });
       });
-      (window._usersCache || []).forEach(u => {
+      (_usersCacheLocal || []).forEach(u => {
         idx.push({
           type: 'user',
           label: u.display_name || u.username,
@@ -10327,7 +10337,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   };
 
   // Top-level entry point: called from the search box's oninput. Handles
-  // both the "empty query → recent nav" and the "non-empty → search
+  // both the "empty query → recent searches" and the "non-empty → search
   // results" cases, plus updates the inline starred/client nav filter.
   function sidebarSearchUpdate(query) {
     const q = (query || '').trim();
@@ -10335,11 +10345,81 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // also narrows down. Cheap and additive.
     if (typeof filterSidebarSearch === 'function') filterSidebarSearch(q);
     if (!q) {
-      showRecentNav();
+      _showRecentSearches();
       return;
     }
     _sidebarSearchHighlight = 0;
     _renderSidebarSearchResults(q);
+  }
+
+  // ── Recent searches (replaces "recent nav" in this dropdown) ─────────
+  // Queries the operator has actually committed (i.e. clicked a result
+  // or hit Enter on a result) get saved to localStorage. Most recent
+  // first, deduped, capped at 10. On focus with an empty input we render
+  // these as a clickable list — click a query to refill the box and
+  // re-run the search.
+  const RECENT_SEARCH_KEY = 'ms_recent_searches';
+  const RECENT_SEARCH_MAX = 10;
+
+  function _getRecentSearches() {
+    try { return JSON.parse(localStorage.getItem(RECENT_SEARCH_KEY) || '[]'); }
+    catch { return []; }
+  }
+  function _addRecentSearch(q) {
+    const trimmed = (q || '').trim();
+    if (!trimmed) return;
+    let list = _getRecentSearches().filter(r => r.toLowerCase() !== trimmed.toLowerCase());
+    list.unshift(trimmed);
+    if (list.length > RECENT_SEARCH_MAX) list = list.slice(0, RECENT_SEARCH_MAX);
+    localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(list));
+  }
+  function _removeRecentSearch(q) {
+    const list = _getRecentSearches().filter(r => r !== q);
+    localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(list));
+    _showRecentSearches();
+  }
+  function _clearRecentSearches() {
+    localStorage.removeItem(RECENT_SEARCH_KEY);
+    _showRecentSearches();
+  }
+  function _showRecentSearches() {
+    const dropdown = document.getElementById('sidebar-recent-dropdown');
+    if (!dropdown) return;
+    const list = _getRecentSearches();
+    _sidebarSearchEntries = []; // recent-search rows are NOT entry rows
+    if (list.length === 0) {
+      dropdown.style.display = 'none';
+      return;
+    }
+    const escQ = q => String(q).replace(/[<&>"']/g, c => ({'<':'&lt;','&':'&amp;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+    let html = `<div style="display:flex; align-items:center; padding:8px 12px 4px; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);">
+      <span style="flex:1;">Recent Searches</span>
+      <a href="#" onmousedown="event.preventDefault(); _clearRecentSearches();" style="color:var(--text-muted); text-decoration:none; font-weight:600; font-size:10px; opacity:0.7;">Clear</a>
+    </div>`;
+    list.forEach(q => {
+      const safe = escQ(q);
+      html += `<a href="#"
+                  onmousedown="event.preventDefault(); _runRecentSearch(this.dataset.q);"
+                  data-q="${safe}"
+                  style="display:flex; align-items:center; gap:8px; padding:7px 12px; font-size:12px; color:var(--text); text-decoration:none; border-radius:6px; margin:1px 4px; cursor:pointer;">
+        <span style="width:18px; flex-shrink:0; text-align:center; font-size:11px; opacity:0.6;">↻</span>
+        <span style="flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">${safe}</span>
+        <span onmousedown="event.stopPropagation(); event.preventDefault(); _removeRecentSearch(this.parentElement.dataset.q);"
+              style="font-size:13px; color:var(--text-muted); padding:0 4px; opacity:0.5; flex-shrink:0;"
+              title="Remove from recent">×</span>
+      </a>`;
+    });
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+    dropdown.style.maxHeight = '60vh';
+    dropdown.style.overflowY = 'auto';
+  }
+  function _runRecentSearch(q) {
+    const el = document.getElementById('sidebar-search');
+    const ph = document.getElementById('sidebar-search-ph');
+    if (el) { el.textContent = q; el.focus(); }
+    if (ph) ph.style.display = 'none';
+    sidebarSearchUpdate(q);
   }
 
   // Stash entries in render order so click + keyboard handlers can map
@@ -10428,6 +10508,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _sidebarSearchClick(rowIdx) {
     const entry = _sidebarSearchEntries[rowIdx];
     if (!entry) return;
+    // Persist the query that led to this click so the operator can
+    // re-run it from the dropdown later.
+    const currentQuery = (document.getElementById('sidebar-search')?.textContent || '').trim();
+    if (currentQuery) _addRecentSearch(currentQuery);
     resetSidebarSearch();
     hideRecentNav();
     if (entry.href === '__open-users-modal__') {
