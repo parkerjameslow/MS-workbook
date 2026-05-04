@@ -2141,15 +2141,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       max-width: 90vw;
       padding: 28px;
     }
-    /* Add-to-Shipment modal — flex column with a viewport-height cap so
-       the title + filter + search + buttons stay visible while the two
-       Orders / Samples cards share the remaining space and scroll
-       internally. Without this, the modal can grow taller than the
-       viewport on shorter screens and clip top/bottom off-canvas. */
+    /* Add-to-Shipment modal — capped at viewport height with internal
+       scrolling so the title and footer never clip off-canvas on short
+       screens. Each Orders / Samples list keeps its own ~240px max so
+       both sections remain visible and scrollable independently. */
     .modal.modal-add-to-shipment {
       max-height: calc(100vh - 32px);
-      display: flex;
-      flex-direction: column;
+      overflow-y: auto;
       padding: 22px 24px;
     }
     .diff-panel { background: var(--surface2); border-radius: 6px; padding: 10px 12px; margin-top: 8px; display: none; }
@@ -6138,8 +6136,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <!-- ── Add Order to Shipment Modal ────────────────────────────────────── -->
 <div class="modal-overlay" id="modal-add-order-to-shipment" onclick="if(event.target===this)closeAddOrderToShipmentModal()" style="z-index:1000;">
   <div class="modal modal-add-to-shipment" style="max-width:560px;">
-    <div class="modal-title" style="flex:0 0 auto; margin-top:0;">Add to Shipment</div>
-    <div class="modal-field" style="margin-bottom:10px; flex:0 0 auto;">
+    <div class="modal-title">Add to Shipment</div>
+    <div class="modal-field" style="margin-bottom:10px;">
       <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Filter by Client</label>
       <div class="ship-select-wrap" style="width:100%;">
         <select id="ship-order-picker-client" onchange="onShipOrderClientChange()"
@@ -6148,41 +6146,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </select>
       </div>
     </div>
-    <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders &amp; samples…" oninput="filterShipOrderPicker(this.value)" style="flex:0 0 auto; margin-bottom:0;" />
+    <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders &amp; samples…" oninput="filterShipOrderPicker(this.value)" />
 
-    <!-- Orders + Samples wrapper — sized to fill remaining modal height
-         and split between the two section cards. Each card has its own
-         scrolling list so the operator can browse one independently of
-         the other even on short screens. -->
-    <div class="ship-picker-sections" style="flex:1 1 auto; display:flex; flex-direction:column; gap:12px; min-height:0; margin-top:12px;">
-
-      <!-- Orders section card — accent-blue themed -->
-      <div class="ship-picker-card" style="flex:1 1 0; min-height:0; border:1.5px solid rgba(107,147,255,0.45); background:rgba(107,147,255,0.06); border-radius:10px; display:flex; flex-direction:column; overflow:hidden;">
-        <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(107,147,255,0.18); border-bottom:1.5px solid rgba(107,147,255,0.45); color:#6b93ff; flex:0 0 auto;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-          <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Orders</span>
-          <span id="ship-picker-orders-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#6b93ff; opacity:0.8;"></span>
-        </div>
-        <div class="modal-wb-picker ship-picker-list-inset" id="ship-order-picker-list" style="flex:1 1 auto; max-height:none; min-height:0;">
-          <!-- populated by JS -->
-        </div>
+    <!-- Orders section card — accent-blue themed -->
+    <div style="margin-top:12px; border:1.5px solid rgba(107,147,255,0.45); background:rgba(107,147,255,0.06); border-radius:10px; overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(107,147,255,0.18); border-bottom:1.5px solid rgba(107,147,255,0.45); color:#6b93ff;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Orders</span>
+        <span id="ship-picker-orders-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#6b93ff; opacity:0.8;"></span>
       </div>
-
-      <!-- Samples section card — orange themed (matches the workbook's sample branding) -->
-      <div class="ship-picker-card" style="flex:1 1 0; min-height:0; border:1.5px solid rgba(232,117,26,0.55); background:rgba(232,117,26,0.07); border-radius:10px; display:flex; flex-direction:column; overflow:hidden;">
-        <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(232,117,26,0.20); border-bottom:1.5px solid rgba(232,117,26,0.55); color:#E8751A; flex:0 0 auto;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Samples</span>
-          <span id="ship-picker-samples-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#E8751A; opacity:0.8;"></span>
-        </div>
-        <div class="modal-wb-picker ship-picker-list-inset" id="ship-sample-picker-list" style="flex:1 1 auto; max-height:none; min-height:0;">
-          <!-- populated by JS -->
-        </div>
+      <div class="modal-wb-picker ship-picker-list-inset" id="ship-order-picker-list" style="max-height:240px;">
+        <!-- populated by JS -->
       </div>
-
     </div>
 
-    <div class="modal-actions" style="margin-top:14px; flex:0 0 auto;">
+    <!-- Samples section card — orange themed (matches the workbook's sample branding) -->
+    <div style="margin-top:14px; border:1.5px solid rgba(232,117,26,0.55); background:rgba(232,117,26,0.07); border-radius:10px; overflow:hidden;">
+      <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(232,117,26,0.20); border-bottom:1.5px solid rgba(232,117,26,0.55); color:#E8751A;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Samples</span>
+        <span id="ship-picker-samples-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#E8751A; opacity:0.8;"></span>
+      </div>
+      <div class="modal-wb-picker ship-picker-list-inset" id="ship-sample-picker-list" style="max-height:240px;">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:14px;">
       <button type="button" class="btn btn-ghost" onclick="closeAddOrderToShipmentModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="confirmAddOrderToShipment()">Add to Shipment</button>
     </div>
