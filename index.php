@@ -2017,22 +2017,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .dash-table th:first-child { padding-left: 16px; }
 
-    .dash-table th:nth-child(1) { width: 20%; }   /* Product */
-    .dash-table th:nth-child(2) { width: 100px; } /* Date Created */
-    .dash-table th:nth-child(3) { width: 100px; } /* Date Submitted */
-    .dash-table th:nth-child(4) { width: 110px; } /* Order */
-    .dash-table th:nth-child(7) { width: 54px; }  /* Actions */
-    /* Fulfilment (Flow) — class-based so it applies to BOTH the home
-       view (col 4) and the client-dashboard view (col 5). Reserves the
-       natural minimum width to fit 7 steps × 56px + 6 gaps × 6px +
-       a 24px right buffer, so the last bubble + label can never bleed
-       under the Actions cell. table-scroll-wrapper around the table
-       gives a horizontal scrollbar when the viewport can't fit it. */
+    /* Column widths — class-based, NOT positional, because the home
+       view and client-dashboard view have different column orders.
+       The home view has 6 columns (Product, Client, DateCreated, Flow,
+       Status, Actions); the client dashboard has 7 (Product, DateCreated,
+       DateSubmitted, Order, Flow, Status, Actions). Positional
+       nth-child rules cross-wired the wrong widths onto the wrong
+       columns (Flow ended up at 110px on home view, which is why the
+       7 bubbles overflowed and the action button rendered inside the
+       flow group).
+       Note: under `table-layout: fixed` the browser ignores min-width
+       on columns — only `width` is honored — so we set explicit widths
+       here. The wrapping .table-scroll-wrapper still gives a horizontal
+       scrollbar if the viewport really can't fit the full table. */
+    .dash-table th:first-child  { width: 20%; }      /* Product */
+    .dash-table th.col-client   { width: 14%; }      /* Client (home view only) */
+    .dash-table th.col-date-created   { width: 100px; }
+    .dash-table th.col-date-submitted { width: 100px; }
+    .dash-table th.col-order    { width: 110px; }
     .dash-table th.col-flow,
     .dash-table td.col-flow {
-      min-width: 452px;
+      width: 452px;       /* 7 steps × 56px + 6 gaps × 6px + 24px right buffer */
+      min-width: 452px;   /* belt + suspenders for non-fixed layout fallbacks */
       padding-right: 24px !important;
     }
+    .dash-table th.col-mobile-status { width: 0; }   /* hidden on desktop */
+    .dash-table th:last-child   { width: 60px; }     /* Actions */
 
     .dash-table td {
       padding: 18px 8px;
