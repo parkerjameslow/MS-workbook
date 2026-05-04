@@ -878,6 +878,101 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .cdc-value:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,117,26,0.15); }
     .cdc-value::placeholder { color: var(--text-muted); opacity: 0.6; }
+    /* Right column on the Client Details card. Houses the new RFQ Request
+       button on top + the existing Financial Summary card below it. The
+       column shares the old `.cdc-financial` flex sizing so the responsive
+       behavior (full-width on tablet, side-by-side on desktop) still works. */
+    .cdc-right-col {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 240px;
+      flex-shrink: 0;
+    }
+    @media (max-width: 900px) {
+      .cdc-right-col { width: 100%; }
+    }
+    /* RFQ Request panel — sits above the Financial Summary. Clicking the
+       primary button generates a one-time intake link and emails it to the
+       client's address on file (handled by api.php → create_intake_token).
+       Status sub-line shows "Pending — sent X days ago" when an active
+       token exists, plus a tiny "Cancel" affordance. */
+    .cdc-rfq-card {
+      background: linear-gradient(135deg, rgba(232,117,26,0.14) 0%, rgba(232,117,26,0.05) 100%);
+      border: 1px solid rgba(232,117,26,0.30);
+      border-radius: 12px;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .cdc-rfq-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .cdc-rfq-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin: 0;
+    }
+    .cdc-rfq-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: background 0.15s, transform 0.05s;
+    }
+    .cdc-rfq-btn:hover { background: #d4661a; }
+    .cdc-rfq-btn:active { transform: translateY(1px); }
+    .cdc-rfq-btn:disabled { opacity: 0.55; cursor: not-allowed; background: var(--accent); }
+    .cdc-rfq-status {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .cdc-rfq-status .status-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+    .cdc-rfq-status .copy-link {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .cdc-rfq-status .copy-link:hover { border-color: var(--accent); color: var(--accent); }
     .cdc-financial {
       background: linear-gradient(135deg, rgba(107,147,255,0.12) 0%, rgba(107,147,255,0.06) 100%);
       border: 1px solid rgba(107,147,255,0.25);
@@ -1821,6 +1916,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-color: rgba(52,211,153,0.25);
     }
     .wb-order-pill--closed:hover { background: rgba(52,211,153,0.22); }
+
+    /* Pending Review badge — surfaced on workbooks created via the
+       client-portal intake form (intake.php). Cyan/blue tint to match
+       the rest of the "this came from the client" visual language. */
+    .pending-review-badge {
+      display: inline-flex;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(107,147,255,0.15);
+      color: #6b93ff;
+      border: 1px solid rgba(107,147,255,0.30);
+      vertical-align: middle;
+      margin-left: 8px;
+      white-space: nowrap;
+    }
+    .row-pending-review { background: rgba(107,147,255,0.04); }
 
     .dash-table .product-name {
       font-weight: 600;
@@ -13423,29 +13539,206 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${field('billing_address', 'Billing Address',  'Street, City, State ZIP',        true)}
           </div>
         </div>
-        <div class="cdc-financial">
-          <div class="cdc-fin-title">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            Financial Summary
-            <button type="button" class="cdc-fin-cog" onclick="openClientMarginModal('${enc}')" title="Edit default profit margin">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <div class="cdc-right-col">
+          <!-- RFQ Request panel — sends a one-time intake link to the
+               client's email on file. Status sub-line + copy/cancel
+               actions are populated async by hydrateIntakeStatus(). -->
+          <div class="cdc-rfq-card">
+            <div class="cdc-rfq-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              Quote Request
+            </div>
+            <p class="cdc-rfq-desc">Send a one-time link to <strong>${(d.email || 'the client').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</strong> so they can fill out a Product Overview &amp; RFQ themselves. Submissions land in the workbook list flagged <em>Pending Review</em>.</p>
+            <button type="button" class="cdc-rfq-btn" id="cdc-rfq-btn" onclick="sendIntakeRequest('${enc}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+              Send Quote Request to Client
             </button>
+            <div class="cdc-rfq-status" id="cdc-rfq-status" style="display:none;"></div>
           </div>
-          <div class="cdc-fin-stat">
-            <span class="cdc-fin-stat-label">Open Orders <span style="font-weight:400; opacity:0.7;">(${openOrderCount})</span></span>
-            <span class="cdc-fin-stat-value accent">${fmtUsd(openOrdersUsd)}</span>
-          </div>
-          <div class="cdc-fin-stat">
-            <span class="cdc-fin-stat-label">Closed Orders <span style="font-weight:400; opacity:0.7;">(${closedOrderCount})</span></span>
-            <span class="cdc-fin-stat-value success">${fmtUsd(closedOrdersUsd)}</span>
-          </div>
-          <div class="cdc-fin-stat" style="margin-top:6px; padding-top:10px; border-top:1px solid rgba(107,147,255,0.2);">
-            <span class="cdc-fin-stat-label">Total Pipeline</span>
-            <span class="cdc-fin-stat-value" style="font-size:18px;">${fmtUsd(pipelineUsd)}</span>
+          <div class="cdc-financial">
+            <div class="cdc-fin-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              Financial Summary
+              <button type="button" class="cdc-fin-cog" onclick="openClientMarginModal('${enc}')" title="Edit default profit margin">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
+            </div>
+            <div class="cdc-fin-stat">
+              <span class="cdc-fin-stat-label">Open Orders <span style="font-weight:400; opacity:0.7;">(${openOrderCount})</span></span>
+              <span class="cdc-fin-stat-value accent">${fmtUsd(openOrdersUsd)}</span>
+            </div>
+            <div class="cdc-fin-stat">
+              <span class="cdc-fin-stat-label">Closed Orders <span style="font-weight:400; opacity:0.7;">(${closedOrderCount})</span></span>
+              <span class="cdc-fin-stat-value success">${fmtUsd(closedOrdersUsd)}</span>
+            </div>
+            <div class="cdc-fin-stat" style="margin-top:6px; padding-top:10px; border-top:1px solid rgba(107,147,255,0.2);">
+              <span class="cdc-fin-stat-label">Total Pipeline</span>
+              <span class="cdc-fin-stat-value" style="font-size:18px;">${fmtUsd(pipelineUsd)}</span>
+            </div>
           </div>
         </div>
       </div>
     `;
+
+    // Async-populate the intake status line ("Pending — sent 3 days ago")
+    // without blocking the initial card render.
+    hydrateIntakeStatus(clientName);
+  }
+
+  // ── Client-portal RFQ intake helpers ─────────────────────────────────
+  // Lightweight toast — used by the intake flow for success messages.
+  // Auto-dismisses after 3.5s. Tucked bottom-right so it doesn't cover
+  // the Client Details card. Idempotent: clobbers any existing toast.
+  function _msToast(msg, kind) {
+    let el = document.getElementById('ms-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'ms-toast';
+      el.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:9999;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,0.25);font-family:inherit;max-width:360px;line-height:1.5;opacity:0;transform:translateY(8px);transition:opacity 0.2s, transform 0.2s;';
+      document.body.appendChild(el);
+    }
+    el.style.background = kind === 'error' ? '#dc2626' : '#16a34a';
+    el.textContent = msg;
+    requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
+    clearTimeout(el._t);
+    el._t = setTimeout(() => {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(8px)';
+    }, 3500);
+  }
+  function showToast(msg, kind) { _msToast(msg, kind); }
+
+  // sendIntakeRequest: button handler — calls the API to mint a token,
+  // email the client, and refresh the status line below the button.
+  async function sendIntakeRequest(encName) {
+    const clientName = decodeURIComponent(encName);
+    const clientId = dbClientMap[clientName];
+    if (!clientId) {
+      alert('Please save the client first before sending an intake request.');
+      return;
+    }
+    const d = clientDetails[clientName] || {};
+    const email = (d.email || '').trim();
+    if (!email) {
+      alert('No email on file for this client. Add one in Client Details first.');
+      return;
+    }
+    if (!confirm(`Send a quote-request link to ${email}?\n\nThe link is one-time use and expires in 30 days.`)) return;
+
+    const btn = document.getElementById('cdc-rfq-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Sending…`;
+    }
+
+    try {
+      const r = await apiCall('create_intake_token', { client_id: clientId });
+      if (r && r.success) {
+        showToast(`Intake link sent to ${email}.`, 'success');
+        hydrateIntakeStatus(clientName);
+      } else {
+        const err = (r && r.error) || 'Could not send intake link.';
+        alert(err);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Send Quote Request to Client`;
+        }
+      }
+    } catch (e) {
+      alert('Could not send intake link. Check your connection and try again.');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Send Quote Request to Client`;
+      }
+    }
+  }
+
+  // hydrateIntakeStatus: looks up the most recent active intake token for
+  // this client and renders a "Pending — sent X days ago" sub-line under
+  // the Send button. No-op when no active token exists.
+  async function hydrateIntakeStatus(clientName) {
+    const clientId = dbClientMap[clientName];
+    const statusEl = document.getElementById('cdc-rfq-status');
+    if (!clientId || !statusEl) return;
+    try {
+      const r = await apiCall('list_intake_tokens', { client_id: clientId });
+      const tokens = (r && r.data) || [];
+      const active = tokens.find(t => t.status === 'active');
+      if (!active) {
+        statusEl.style.display = 'none';
+        statusEl.innerHTML = '';
+        return;
+      }
+      // Compute "X days ago"
+      const sent = new Date(active.created_at.replace(' ', 'T') + 'Z');
+      const now  = new Date();
+      const diffMs = now - sent;
+      const diffMin = Math.floor(diffMs / 60000);
+      const diffHr  = Math.floor(diffMs / 3600000);
+      const diffDay = Math.floor(diffMs / 86400000);
+      let when;
+      if (diffMin < 2)      when = 'just now';
+      else if (diffMin < 60) when = `${diffMin} min ago`;
+      else if (diffHr  < 24) when = `${diffHr} hr ago`;
+      else if (diffDay === 1) when = 'yesterday';
+      else                   when = `${diffDay} days ago`;
+
+      const scheme = location.protocol;
+      const host   = location.host;
+      const url    = `${scheme}//${host}/intake.php?t=${active.token}`;
+      statusEl.style.display = '';
+      statusEl.innerHTML =
+        `<span><span class="status-dot"></span>Pending — sent ${when} to ${active.client_email || ''}</span>` +
+        `<button type="button" class="copy-link" onclick="copyIntakeLink('${active.token}')" title="Copy intake link to clipboard">Copy link</button>`;
+    } catch (e) {
+      statusEl.style.display = 'none';
+    }
+  }
+
+  // clearPendingReview: drops the submittedByClient flag from a workbook's
+  // detail_json so the "Pending Review" badge disappears. Used after the
+  // operator has reviewed/normalized the intake submission.
+  async function clearPendingReview(clientName, workbookId) {
+    const key = `${clientName}|${workbookId}`;
+    const detail = workbookDetail[key] || {};
+    if (!detail.submittedByClient) {
+      _msToast('This workbook is not flagged Pending Review.', 'error');
+      return;
+    }
+    if (!confirm(`Clear the Pending Review flag on "${detail.product || 'this workbook'}"?`)) return;
+    detail.submittedByClient = false;
+    detail.pendingReviewClearedAt = new Date().toISOString();
+    workbookDetail[key] = detail;
+
+    const dbId = dbWorkbookMap[key] || workbookId;
+    try {
+      const r = await apiCall('save_workbook_detail', {
+        id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: false
+      });
+      if (r && r.success) {
+        _msToast('Pending Review cleared.', 'success');
+        saveToLocalStorage();
+        renderDashboard(clientName);
+      } else {
+        _msToast('Could not save. Try again.', 'error');
+      }
+    } catch (e) {
+      _msToast('Could not save. Check your connection.', 'error');
+    }
+  }
+
+  // copyIntakeLink: copies the public intake URL for an active token to
+  // the clipboard so the operator can resend manually if needed.
+  function copyIntakeLink(token) {
+    const url = `${location.protocol}//${location.host}/intake.php?t=${token}`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(
+        () => showToast('Intake link copied to clipboard.', 'success'),
+        () => prompt('Copy this link:', url)
+      );
+    } else {
+      prompt('Copy this link:', url);
+    }
   }
 
   function renderDashboard(clientName) {
@@ -13511,9 +13804,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               title="View order">${orderInfo.orderName}</span>`
         : '<span style="color:var(--text-muted);">—</span>';
 
+      // Pending Review badge — set by the client-portal RFQ intake flow
+      // (intake.php). Stays until the operator clears the flag (the badge
+      // is a visual cue that this workbook came in via the intake form
+      // and hasn't been reviewed yet).
+      const _det = workbookDetail[`${clientName}|${item.id}`] || {};
+      const pendingReview = !!_det.submittedByClient;
+      const pendingBadge = pendingReview
+        ? ` <span class="pending-review-badge" title="Submitted via client intake link — needs review">Pending Review</span>`
+        : '';
+
       return `
-      <tr class="${complete ? 'row-complete' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
-        <td class="product-name">${item.product}</td>
+      <tr class="${complete ? 'row-complete' : ''}${pendingReview ? ' row-pending-review' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
+        <td class="product-name">${item.product}${pendingBadge}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
         <td class="col-order">${orderCell}</td>
@@ -13528,7 +13831,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         </td>
         <td class="col-mobile-status"><span class="mobile-status-badge ${stepClass}">${stepName}</span></td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `}).join('');
 

@@ -201,6 +201,30 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS portal_tokens (
     UNIQUE KEY uq_token (token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// Auto-create intake_tokens table — token-gated client-portal RFQ intake.
+// Operator clicks "Send RFQ Request" on a client → email goes out with a
+// link → client fills Product Overview + RFQ Line Items → submission lands
+// straight into the client's workbook list with a Pending Review flag.
+// One-time use (status flips to 'submitted' on send, or 'expired' after
+// expires_at). 30-day expiry enforced at fetch+submit time.
+$pdo->exec("CREATE TABLE IF NOT EXISTS intake_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    token CHAR(64) NOT NULL,
+    client_id INT NOT NULL,
+    client_name VARCHAR(255) NOT NULL DEFAULT '',
+    client_email VARCHAR(255) NOT NULL DEFAULT '',
+    contact_name VARCHAR(255) NOT NULL DEFAULT '',
+    status ENUM('active','submitted','expired') NOT NULL DEFAULT 'active',
+    submitted_workbook_id INT DEFAULT NULL,
+    created_by INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NULL,
+    submitted_at TIMESTAMP NULL,
+    UNIQUE KEY uq_intake_token (token),
+    INDEX idx_intake_client (client_id),
+    INDEX idx_intake_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 // Auto-create inventory table if not exists
 $pdo->exec("CREATE TABLE IF NOT EXISTS inventory (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -2307,6 +2331,122 @@ switch ($action) {
         if ($portalUrl)    $resp['portal_url']   = $portalUrl;
         if (isset($portalToken)) $resp['portal_token'] = $portalToken;
         echo json_encode($resp);
+        break;
+
+    case 'create_intake_token':
+        // Operator-initiated: create a one-time intake link for a client and
+        // email it to the address on file. The recipient lands on intake.php,
+        // fills the Product Overview + RFQ Line Items, and submits — which
+        // creates a draft workbook with a Pending Review flag (handled in
+        // intake.php). Token expires after 30 days OR on first successful
+        // submission, whichever comes first.
+        $clientId = (int)($input['client_id'] ?? 0);
+        if (!$clientId) {
+            echo json_encode(['success' => false, 'error' => 'Client ID required']);
+            break;
+        }
+        // Pull canonical client info from DB (don't trust whatever the client
+        // sent — emails go to the address on file, not whatever the operator
+        // passes in).
+        $cstmt = $pdo->prepare("SELECT name, email, primary_contact FROM clients WHERE id = ? AND deleted_at IS NULL");
+        $cstmt->execute([$clientId]);
+        $client = $cstmt->fetch();
+        if (!$client) {
+            echo json_encode(['success' => false, 'error' => 'Client not found']);
+            break;
+        }
+        $clientName  = (string)$client['name'];
+        $clientEmail = trim((string)($client['email'] ?? ''));
+        $contactName = trim((string)($client['primary_contact'] ?? ''));
+
+        if ($clientEmail === '') {
+            echo json_encode(['success' => false, 'error' => 'No email on file for this client. Add one in Client Details first.']);
+            break;
+        }
+        if (!filter_var($clientEmail, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['success' => false, 'error' => 'Invalid email on file: ' . $clientEmail]);
+            break;
+        }
+
+        $intakeToken = bin2hex(random_bytes(32));
+        $createdBy   = (int)($sessionUser['id'] ?? 0);
+
+        try {
+            $pdo->prepare("INSERT INTO intake_tokens
+                (token, client_id, client_name, client_email, contact_name, created_by, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY))")
+                ->execute([$intakeToken, $clientId, $clientName, $clientEmail, $contactName, $createdBy ?: null]);
+        } catch (PDOException $e) {
+            echo json_encode(['success' => false, 'error' => 'Could not create intake link: ' . $e->getMessage()]);
+            break;
+        }
+
+        $scheme    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host      = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
+        $intakeUrl = "{$scheme}://{$host}/intake.php?t={$intakeToken}";
+
+        $greeting = $contactName ? "Hi {$contactName}," : "Hi there,";
+        $subject  = "Quote Request — {$clientName}";
+
+        $cta_btn = "<div style='text-align:center;margin:32px 0;'>"
+                 . "<a href='" . htmlspecialchars($intakeUrl) . "' style='display:inline-block;background:#E8751A;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;letter-spacing:0.01em;'>"
+                 . "Start Your Quote Request &rarr;"
+                 . "</a>"
+                 . "<p style='margin:12px 0 0;font-size:12px;color:#9ba3c0;'>This link is one-time use and expires in 30 days.</p>"
+                 . "</div>";
+
+        $c_body = "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>Tell us about your product</h1>"
+                . "<p style='margin:0 0 28px;font-size:15px;color:#6b7280;'>We&rsquo;ll prepare a quote for you.</p>"
+                . "<p style='margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;'>" . htmlspecialchars($greeting) . "</p>"
+                . "<p style='margin:0 0 16px;font-size:15px;color:#374151;line-height:1.7;'>"
+                . "Click the button below to share details on what you&rsquo;d like quoted. You&rsquo;ll be asked to fill in a quick product overview and the items you&rsquo;d like priced. Once you submit, our team will review and follow up with pricing."
+                . "</p>"
+                . $cta_btn
+                . "<p style='margin:24px 0 0;font-size:14px;color:#6b7280;line-height:1.7;'>If the button above doesn&rsquo;t work, copy and paste this link into your browser:<br>"
+                . "<span style='word-break:break-all;color:#374151;'>" . htmlspecialchars($intakeUrl) . "</span></p>"
+                . "<p style='margin:24px 0 0;font-size:15px;color:#374151;'>Thanks,<br><strong>Market Sculpt Team</strong></p>";
+
+        $i_detail = [
+            ['Client',  htmlspecialchars($clientName)],
+            ['Contact', htmlspecialchars($contactName ?: '—')],
+            ['Sent To', htmlspecialchars($clientEmail)],
+            ['Expires', '30 days from now'],
+            ['Intake Link', '<a href="' . htmlspecialchars($intakeUrl) . '" style="color:#E8751A;">' . htmlspecialchars($intakeUrl) . '</a>'],
+        ];
+        $i_body = "<h1 style='margin:0 0 6px;font-size:26px;font-weight:800;color:#1a1d2e;'>Quote Request Sent</h1>"
+                . "<p style='margin:0 0 24px;font-size:15px;color:#6b7280;'>An intake link has been emailed to the client.</p>"
+                . ms_detail_table($i_detail);
+
+        $client_html   = ms_email_wrap($subject, "Tell us about your product so we can prepare a quote.", $c_body);
+        $internal_html = ms_email_wrap("[Internal] " . $subject, "Intake link sent to {$clientName}", $i_body);
+
+        $internal = ['jackson@marketsculpt.com', 'parker@marketsculpt.com'];
+        $clientResult   = ms_smtp_send([$clientEmail], $subject, $client_html);
+        $internalResult = ms_smtp_send($internal, '[Internal] ' . $subject, $internal_html);
+        $ok = ($clientResult['ok'] ?? false) && ($internalResult['ok'] ?? false);
+
+        echo json_encode([
+            'success'    => $ok,
+            'intake_url' => $intakeUrl,
+            'token'      => $intakeToken,
+            'results'    => ['client' => $clientResult, 'internal' => $internalResult],
+        ]);
+        break;
+
+    case 'list_intake_tokens':
+        // Returns active intake tokens for a single client (used by the
+        // Client Details card to show "Pending — sent X days ago" state on
+        // the button after the operator clicks it). Optional client_id filter.
+        $cid = (int)($input['client_id'] ?? 0);
+        if ($cid) {
+            $stmt = $pdo->prepare("SELECT token, client_id, client_email, contact_name, status, created_at, expires_at, submitted_at, submitted_workbook_id
+                                   FROM intake_tokens WHERE client_id = ? ORDER BY created_at DESC LIMIT 50");
+            $stmt->execute([$cid]);
+        } else {
+            $stmt = $pdo->query("SELECT token, client_id, client_name, client_email, contact_name, status, created_at, expires_at, submitted_at, submitted_workbook_id
+                                 FROM intake_tokens ORDER BY created_at DESC LIMIT 200");
+        }
+        echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
         break;
 
     case 'check_portal_status':
