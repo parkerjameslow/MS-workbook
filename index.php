@@ -4229,10 +4229,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div style="position:relative;">
       <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">🔍</span>
       <div id="sidebar-search" contenteditable="true" spellcheck="false"
-        onfocus="document.getElementById('sidebar-search-ph').style.display='none'; this.textContent=''; filterSidebarSearch(''); showRecentNav();"
+        onfocus="document.getElementById('sidebar-search-ph').style.display='none'; this.textContent=''; sidebarSearchUpdate('');"
         onblur="setTimeout(()=>{ if(!this.textContent.trim()){document.getElementById('sidebar-search-ph').style.display=''; this.textContent='';} hideRecentNav(); }, 150)"
-        oninput="hideRecentNav(); filterSidebarSearch(this.textContent)"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();}"
+        oninput="sidebarSearchUpdate(this.textContent)"
+        onkeydown="sidebarSearchKeydown(event)"
         style="width:100%; box-sizing:border-box; padding:6px 8px 6px 28px; font-size:12px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none; cursor:text; min-height:28px; line-height:16px; white-space:nowrap; overflow:hidden;"></div>
       <span id="sidebar-search-ph" style="position:absolute; left:28px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">Search</span>
       <div id="sidebar-recent-dropdown" style="display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.15); z-index:100; overflow:hidden;"></div>
@@ -10112,6 +10112,367 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (el) el.textContent = '';
     if (ph) ph.style.display = '';
     filterSidebarSearch('');
+  }
+
+  /* ── Sidebar Search Engine ────────────────────────────────────────────
+     Drop-in replacement for the old "filter visible nav items" search.
+     When the operator types into #sidebar-search, this runs a fuzzy
+     token-match scan over EVERY entity in memory (clients, workbooks,
+     orders, shipments, samples, inventory, commissions, users) and
+     renders the top 10 hits as a grouped dropdown. Soft-deleted /
+     archived items always render as a separate "Archived" group at the
+     bottom regardless of score.
+
+     Permission rule: non-admin sessions never see commissions or users.
+
+     The dropdown reuses #sidebar-recent-dropdown so the recent-nav
+     dropdown and the search dropdown never overlap or fight for the
+     same screen real estate. */
+
+  // Active highlighted index for keyboard nav. Reset whenever the
+  // dropdown re-renders.
+  let _sidebarSearchHighlight = -1;
+
+  // Build a fresh entry list from current globals every keystroke. The
+  // dataset is small enough (typically a few hundred rows total) that
+  // a full rebuild beats any cache-invalidation logic.
+  function _buildSearchIndex() {
+    const idx = [];
+    const isAdmin = !!(window.MS_SESSION && window.MS_SESSION.role === 'admin');
+    const enc = encodeURIComponent;
+
+    // ── Clients
+    Object.keys(window.clientData || {}).forEach(name => {
+      const d = (window.clientDetails && window.clientDetails[name]) || {};
+      const fields = [name, d.email, d.phone, d.primary_contact, d.email2, d.phone2, d.primary_contact2, d.notes, d.account_manager, d.salesperson]
+        .filter(Boolean).join(' ').toLowerCase();
+      idx.push({
+        type: 'client', label: name,
+        sub: d.primary_contact || d.email || '',
+        href: '#/client/' + enc(name),
+        archived: false, recencyTs: 0,
+        searchText: fields,
+        clientName: name
+      });
+    });
+
+    // ── Workbooks (active + archived). dateCreated is "DD MMM YY"; we
+    // approximate recency from the workbook id which auto-increments.
+    Object.entries(window.clientData || {}).forEach(([clientName, items]) => {
+      (items || []).forEach(wb => {
+        const detail = (window.workbookDetail && window.workbookDetail[`${clientName}|${wb.id}`]) || {};
+        const rfqText = (detail.rfqItems || []).flatMap(i => {
+          const variants = (i.variants || []).map(v => v.variant);
+          return [i.item, i.sku, ...variants];
+        });
+        const fields = [wb.product, detail.product, detail.desc, clientName, detail.materials, detail.pantone, detail.cmyk, ...rfqText]
+          .filter(Boolean).join(' ').toLowerCase();
+        idx.push({
+          type: 'workbook',
+          label: wb.product || detail.product || 'Untitled workbook',
+          sub: clientName,
+          href: `#/client/${enc(clientName)}/workbook/${wb.id}`,
+          archived: !!wb.deleted_at,
+          recencyTs: parseInt(wb.id) || 0,
+          searchText: fields,
+          clientName, workbookId: wb.id
+        });
+      });
+    });
+
+    // ── Orders
+    Object.values(window.orderData || {}).forEach(o => {
+      const orderItems = (o.entries || []).flatMap(e => {
+        const k = `${e.clientName}|${e.workbookId}`;
+        const det = (window.workbookDetail && window.workbookDetail[k]) || {};
+        return [det.product, ...((det.rfqItems || []).map(r => r.item))];
+      });
+      const fields = [o.name, o.clientName, o.status, o.poNumber, ...orderItems]
+        .filter(Boolean).join(' ').toLowerCase();
+      idx.push({
+        type: 'order',
+        label: o.name || `Order #${o.id}`,
+        sub: o.clientName || '',
+        href: `#/order/${o.id}`,
+        archived: !!o.archived || o.status === 'archived',
+        recencyTs: parseInt(o.id) || 0,
+        searchText: fields
+      });
+    });
+
+    // ── Shipments
+    Object.values(window.shipmentData || {}).forEach(s => {
+      idx.push({
+        type: 'shipment',
+        label: s.name || `Shipment #${s.id}`,
+        sub: s.status || '',
+        href: `#/shipment/${s.id}`,
+        archived: !!s.archived,
+        recencyTs: parseInt(s.id) || 0,
+        searchText: [s.name, s.status, s.notes].filter(Boolean).join(' ').toLowerCase()
+      });
+    });
+
+    // ── Samples (RFQ rows flagged as samples)
+    if (typeof collectAllSamples === 'function') {
+      try {
+        collectAllSamples().forEach(sm => {
+          idx.push({
+            type: 'sample',
+            label: sm.item || '(unnamed sample)',
+            sub: `${sm.clientName} · ${sm.product}`,
+            href: `#/client/${enc(sm.clientName)}/workbook/${sm.workbookId}`,
+            archived: false,
+            recencyTs: parseInt(sm.workbookId) || 0,
+            searchText: [sm.item, sm.product, sm.clientName, sm.status].filter(Boolean).join(' ').toLowerCase()
+          });
+        });
+      } catch (e) { /* collectAllSamples failed — skip samples for now */ }
+    }
+
+    // ── Inventory (loaded async; may be empty until the operator opens
+    // the Inventory view at least once)
+    (window.inventoryData || []).forEach(i => {
+      const href = (i.client_name && i.workbook_id)
+        ? `#/client/${enc(i.client_name)}/workbook/${i.workbook_id}`
+        : '#/inventory';
+      idx.push({
+        type: 'inventory',
+        label: i.sku || i.product_name || 'SKU',
+        sub: [i.client_name, i.variant_name].filter(Boolean).join(' · '),
+        href,
+        archived: false,
+        recencyTs: i.promoted_at ? new Date(i.promoted_at).getTime() : 0,
+        searchText: [i.sku, i.product_name, i.variant_name, i.client_name].filter(Boolean).join(' ').toLowerCase()
+      });
+    });
+
+    // ── Admin-only: commissions and users
+    if (isAdmin) {
+      (window.commissionsData || []).forEach(c => {
+        idx.push({
+          type: 'commission',
+          label: `${c.employee || 'Unknown'} · ${c.role || ''}`,
+          sub: `${c.client_name || ''}${c.commission_amount != null ? ' · $' + parseFloat(c.commission_amount).toFixed(2) : ''}`,
+          href: '#/commissions',
+          archived: false,
+          recencyTs: c.created_at ? new Date(c.created_at).getTime() : 0,
+          searchText: [c.employee, c.role, c.client_name, c.product_name, c.sku, c.status].filter(Boolean).join(' ').toLowerCase()
+        });
+      });
+      (window._usersCache || []).forEach(u => {
+        idx.push({
+          type: 'user',
+          label: u.display_name || u.username,
+          sub: u.email || u.username || '',
+          href: '__open-users-modal__',
+          archived: false, recencyTs: 0,
+          searchText: [u.username, u.display_name, u.email].filter(Boolean).join(' ').toLowerCase()
+        });
+      });
+    }
+
+    return idx;
+  }
+
+  // Score a single token against an entry's searchText. Substring with a
+  // word-start boost beats a fuzzy character-skip match.
+  function _searchTokenScore(token, text) {
+    if (!token) return 0;
+    const idxOf = text.indexOf(token);
+    if (idxOf >= 0) {
+      const wordStart = idxOf === 0 || /[\s·\-\/|]/.test(text.charAt(idxOf - 1));
+      return wordStart ? 1.0 : 0.85;
+    }
+    // Fuzzy: every char of the token must appear in text in order.
+    // Score by gap density so contiguous matches outrank scattered ones.
+    let i = 0, j = 0, lastIdx = -1, gapPenalty = 0;
+    while (i < token.length && j < text.length) {
+      if (token.charAt(i) === text.charAt(j)) {
+        if (lastIdx !== -1) gapPenalty += (j - lastIdx - 1);
+        lastIdx = j;
+        i++;
+      }
+      j++;
+    }
+    if (i < token.length) return 0;
+    return Math.max(0.15, 0.55 - (gapPenalty / (text.length || 1)) * 0.4);
+  }
+
+  function _searchEntryScore(query, entry) {
+    const tokens = query.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return 0;
+    let total = 0;
+    for (const tok of tokens) {
+      const s = _searchTokenScore(tok, entry.searchText);
+      if (s === 0) return 0; // strict AND across tokens
+      total += s;
+    }
+    // Small label-prefix bonus so "fre" prefers a client called Fresh
+    // Her over a workbook whose RFQ contains "fresh" deep inside.
+    const labelLower = (entry.label || '').toLowerCase();
+    const labelBonus = (tokens.some(t => labelLower.startsWith(t))) ? 0.4 : 0;
+    return (total / tokens.length) + labelBonus;
+  }
+
+  const _SEARCH_TYPE_ORDER = ['client', 'workbook', 'order', 'shipment', 'sample', 'inventory', 'commission', 'user'];
+  const _SEARCH_TYPE_LABEL = {
+    client: 'Clients', workbook: 'Workbooks', order: 'Orders',
+    shipment: 'Shipments', sample: 'Samples', inventory: 'Inventory',
+    commission: 'Commissions', user: 'Users'
+  };
+  const _SEARCH_TYPE_ICON = {
+    client: '👤', workbook: '📓', order: '🧾', shipment: '📦',
+    sample: '🔖', inventory: '🏷️', commission: '💰', user: '👥'
+  };
+
+  // Top-level entry point: called from the search box's oninput. Handles
+  // both the "empty query → recent nav" and the "non-empty → search
+  // results" cases, plus updates the inline starred/client nav filter.
+  function sidebarSearchUpdate(query) {
+    const q = (query || '').trim();
+    // Keep the legacy inline-filter behavior so the visible sidebar nav
+    // also narrows down. Cheap and additive.
+    if (typeof filterSidebarSearch === 'function') filterSidebarSearch(q);
+    if (!q) {
+      showRecentNav();
+      return;
+    }
+    _sidebarSearchHighlight = 0;
+    _renderSidebarSearchResults(q);
+  }
+
+  // Stash entries in render order so click + keyboard handlers can map
+  // a row index back to its entry without globals.
+  let _sidebarSearchEntries = [];
+
+  function _renderSidebarSearchResults(q) {
+    const dropdown = document.getElementById('sidebar-recent-dropdown');
+    if (!dropdown) return;
+    const lc = q.toLowerCase();
+    const idx = _buildSearchIndex();
+    // Score every entry; keep matches only.
+    const scored = [];
+    for (const entry of idx) {
+      const score = _searchEntryScore(lc, entry);
+      if (score > 0) scored.push({ entry, score });
+    }
+    // Tiebreak by recency desc.
+    scored.sort((a, b) => (b.score - a.score) || (b.entry.recencyTs - a.entry.recencyTs));
+
+    // Split active vs archived. Active uses top 10 by score. Archived
+    // shows up to 10 of its own at the very bottom regardless.
+    const active   = scored.filter(s => !s.entry.archived).slice(0, 10);
+    const archived = scored.filter(s =>  s.entry.archived).slice(0, 10);
+
+    if (active.length === 0 && archived.length === 0) {
+      _sidebarSearchEntries = [];
+      dropdown.innerHTML = `<div style="padding:14px 12px; font-size:12px; color:var(--text-muted); font-style:italic; text-align:center;">No matches for "${q.replace(/[<&>"]/g, c => ({'<':'&lt;','&':'&amp;','>':'&gt;','"':'&quot;'})[c])}"</div>`;
+      dropdown.style.display = 'block';
+      return;
+    }
+
+    // Group active hits by type. Track flattened render order so click
+    // handlers can resolve rowIdx → entry.
+    const byType = new Map();
+    active.forEach(({ entry }) => {
+      if (!byType.has(entry.type)) byType.set(entry.type, []);
+      byType.get(entry.type).push(entry);
+    });
+
+    const flat = [];
+    let html = '';
+    _SEARCH_TYPE_ORDER.forEach(type => {
+      if (!byType.has(type)) return;
+      html += `<div style="padding:8px 12px 4px; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);">${_SEARCH_TYPE_LABEL[type]}</div>`;
+      byType.get(type).forEach(entry => {
+        html += _renderSearchRow(entry, flat.length);
+        flat.push(entry);
+      });
+    });
+
+    if (archived.length > 0) {
+      html += `<div style="padding:10px 12px 4px; margin-top:4px; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); border-top:1px solid var(--border);">Archived</div>`;
+      archived.forEach(({ entry }) => {
+        html += _renderSearchRow(entry, flat.length, /*muted=*/true);
+        flat.push(entry);
+      });
+    }
+
+    _sidebarSearchEntries = flat;
+    dropdown.innerHTML = html;
+    dropdown.style.display = 'block';
+    dropdown.style.maxHeight = '60vh';
+    dropdown.style.overflowY = 'auto';
+    _sidebarSearchHighlightRefresh();
+  }
+
+  function _renderSearchRow(entry, rowIdx, muted) {
+    const labelEsc = String(entry.label || '').replace(/[<&>]/g, c => ({'<':'&lt;','&':'&amp;','>':'&gt;'})[c]);
+    const subEsc   = String(entry.sub   || '').replace(/[<&>]/g, c => ({'<':'&lt;','&':'&amp;','>':'&gt;'})[c]);
+    const icon = _SEARCH_TYPE_ICON[entry.type] || '·';
+    const opacity = muted ? '0.6' : '1';
+    // Use mousedown (not click) so the row fires before the search box's
+    // onblur tears down the dropdown.
+    return `<a href="#" onmousedown="event.preventDefault(); _sidebarSearchClick(${rowIdx});"
+              data-search-row="${rowIdx}"
+              style="display:flex; align-items:center; gap:8px; padding:7px 12px; font-size:12px; color:var(--text); text-decoration:none; border-radius:6px; margin:1px 4px; opacity:${opacity}; cursor:pointer;">
+      <span style="width:18px; flex-shrink:0; text-align:center; font-size:12px;">${icon}</span>
+      <span style="flex:1; min-width:0; overflow:hidden;">
+        <span style="display:block; font-weight:600; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${labelEsc}</span>
+        ${entry.sub ? `<span style="display:block; font-size:10.5px; color:var(--text-muted); white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${subEsc}</span>` : ''}
+      </span>
+    </a>`;
+  }
+
+  function _sidebarSearchClick(rowIdx) {
+    const entry = _sidebarSearchEntries[rowIdx];
+    if (!entry) return;
+    resetSidebarSearch();
+    hideRecentNav();
+    if (entry.href === '__open-users-modal__') {
+      if (typeof openUsersModal === 'function') openUsersModal();
+      return;
+    }
+    if (entry.href) location.hash = entry.href;
+  }
+
+  function _sidebarSearchHighlightRefresh() {
+    const dropdown = document.getElementById('sidebar-recent-dropdown');
+    if (!dropdown) return;
+    dropdown.querySelectorAll('[data-search-row]').forEach(el => {
+      const idx = parseInt(el.dataset.searchRow);
+      if (idx === _sidebarSearchHighlight) {
+        el.style.background = 'var(--accent-glow)';
+        el.scrollIntoView({ block: 'nearest' });
+      } else {
+        el.style.background = '';
+      }
+    });
+  }
+
+  function sidebarSearchKeydown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (_sidebarSearchHighlight >= 0 && _sidebarSearchEntries[_sidebarSearchHighlight]) {
+        _sidebarSearchClick(_sidebarSearchHighlight);
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      hideRecentNav();
+      e.target.blur();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const total = _sidebarSearchEntries.length;
+      if (total === 0) return;
+      e.preventDefault();
+      if (e.key === 'ArrowDown') _sidebarSearchHighlight = (_sidebarSearchHighlight + 1) % total;
+      else _sidebarSearchHighlight = (_sidebarSearchHighlight - 1 + total) % total;
+      _sidebarSearchHighlightRefresh();
+    }
   }
 
   function getClientLogo(clientName) {
