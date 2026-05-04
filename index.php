@@ -83,8 +83,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    /* Width is driven by --sidebar-width so the resize handle can update
+       both the sidebar and the .app-content margin in lockstep. */
+    :root { --sidebar-width: 180px; }
     .sidebar {
-      width: 180px;
+      width: var(--sidebar-width);
       background: var(--surface);
       border-right: 1px solid var(--border);
       display: flex;
@@ -95,6 +98,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       bottom: 0;
       z-index: 200;
       overflow-y: auto;
+    }
+    /* Drag handle pinned to the sidebar's right edge. The hit area is
+       wider than the visible line so the handle is easy to grab; the
+       inner ::before is the thin colored bar that reacts on hover/drag. */
+    .sidebar-resize-handle {
+      position: fixed;
+      top: 0;
+      left: calc(var(--sidebar-width) - 4px);
+      width: 8px;
+      bottom: 0;
+      cursor: col-resize;
+      z-index: 250;
+      user-select: none;
+      touch-action: none;
+    }
+    .sidebar-resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0; left: 50%;
+      width: 1px;
+      background: transparent;
+      transition: background 0.15s, width 0.15s;
+      transform: translateX(-50%);
+    }
+    .sidebar-resize-handle:hover::before,
+    .sidebar-resize-handle.active::before {
+      background: var(--accent);
+      width: 3px;
+    }
+    /* While dragging, suppress text selection across the whole app. */
+    body.sidebar-resizing {
+      cursor: col-resize !important;
+      user-select: none !important;
+    }
+    body.sidebar-resizing * {
+      cursor: col-resize !important;
+      user-select: none !important;
     }
 
     .sidebar-logo {
@@ -279,7 +319,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     .app-content {
-      margin-left: 180px;
+      margin-left: var(--sidebar-width);
       flex: 1;
     }
 
@@ -3190,6 +3230,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
 
       .app-content { margin-left: 0 !important; }
+      /* No drag-to-resize on mobile — the sidebar is a drawer here. */
+      .sidebar-resize-handle { display: none !important; }
 
       /* Contain ALL content within viewport */
       html, body { overflow-x: hidden; max-width: 100vw; }
@@ -4184,6 +4226,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </button>
   </div>
 </aside>
+<div class="sidebar-resize-handle" id="sidebar-resize-handle" title="Drag to resize · double-click to reset"></div>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
 
 <!-- ── App Content ──────────────────────────────────────────────────── -->
@@ -6568,6 +6611,77 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       toggleMobileSidebar();
     }
   });
+
+  /* ── Sidebar drag-to-resize ─────────────────────────────────────────
+     Lets the operator widen the sidebar by dragging the right edge.
+     Width is persisted in localStorage so it sticks across sessions and
+     across reloads of the SPA. Double-click resets to the default. */
+  (function () {
+    const SIDEBAR_MIN_PX = 140;
+    const SIDEBAR_MAX_PX = 420;
+    const DEFAULT_PX     = 180;
+    const STORAGE_KEY    = 'ms_sidebarWidth';
+    const root           = document.documentElement;
+    const handle         = document.getElementById('sidebar-resize-handle');
+    if (!handle) return;
+
+    const applyWidth = (px) => {
+      const clamped = Math.max(SIDEBAR_MIN_PX, Math.min(SIDEBAR_MAX_PX, px));
+      root.style.setProperty('--sidebar-width', clamped + 'px');
+      return clamped;
+    };
+
+    // Restore saved width on first load.
+    const saved = parseInt(localStorage.getItem(STORAGE_KEY), 10);
+    if (!isNaN(saved)) applyWidth(saved);
+
+    let dragging   = false;
+    let startX     = 0;
+    let startWidth = 0;
+    let pointerId  = null;
+
+    const onDown = (clientX, e) => {
+      // Skip resizing on mobile (sidebar is a drawer there).
+      if (window.matchMedia('(max-width: 768px)').matches) return;
+      dragging   = true;
+      startX     = clientX;
+      startWidth = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width')) || DEFAULT_PX;
+      handle.classList.add('active');
+      document.body.classList.add('sidebar-resizing');
+      if (e && e.preventDefault) e.preventDefault();
+    };
+    const onMove = (clientX) => {
+      if (!dragging) return;
+      applyWidth(startWidth + (clientX - startX));
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('active');
+      document.body.classList.remove('sidebar-resizing');
+      const final = parseInt(getComputedStyle(root).getPropertyValue('--sidebar-width'));
+      if (!isNaN(final)) localStorage.setItem(STORAGE_KEY, final);
+    };
+
+    // Pointer Events cover mouse + touch + pen with a single API.
+    handle.addEventListener('pointerdown', (e) => {
+      pointerId = e.pointerId;
+      handle.setPointerCapture(pointerId);
+      onDown(e.clientX, e);
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== pointerId) return;
+      onMove(e.clientX);
+    });
+    handle.addEventListener('pointerup',   (e) => { onUp(); pointerId = null; });
+    handle.addEventListener('pointercancel', () => { onUp(); pointerId = null; });
+
+    // Double-click → reset to default and clear the saved override.
+    handle.addEventListener('dblclick', () => {
+      applyWidth(DEFAULT_PX);
+      localStorage.removeItem(STORAGE_KEY);
+    });
+  })();
 
   function toggleTheme() {
     const body = document.body;
