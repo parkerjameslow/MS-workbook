@@ -1905,6 +1905,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-color: var(--accent); color: var(--accent); filter: none;
     }
 
+    /* Custom Report Builder — source cards (radio-style tiles) and
+       column/filter checkbox rows. Source cards highlight orange when
+       picked so the user can see which one's selected at a glance. */
+    .rb-source-card {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      font-family: inherit;
+      text-align: left;
+    }
+    .rb-source-card:hover { border-color: var(--accent); }
+    .rb-source-card.is-active {
+      border-color: var(--accent);
+      background: rgba(232,117,26,0.08);
+    }
+    .rb-source-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: rgba(232,117,26,0.12);
+      color: var(--accent);
+      margin-bottom: 2px;
+    }
+    .rb-source-name { font-size: 13px; font-weight: 700; color: var(--text); }
+    .rb-source-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+    .rb-check-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text);
+      user-select: none;
+    }
+    .rb-check-row:hover { border-color: var(--accent); }
+    .rb-check-row input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+
     /* Filter bar — wraps inputs in pill chips. */
     .reports-filter-bar {
       display: flex; flex-wrap: wrap; gap: 10px;
@@ -6680,17 +6723,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:18px;">
         <div>
           <h1 style="font-size:24px; font-weight:800; color:var(--text); margin-bottom:4px;">Reports</h1>
-          <p style="font-size:14px; color:var(--text-muted); line-height:1.6;">Pick a prebuilt report to filter and export, or pick up where you left off with a saved one.</p>
+          <p style="font-size:14px; color:var(--text-muted); line-height:1.6;">Pick a prebuilt report to filter and export, or build your own.</p>
         </div>
+        <button class="btn-create" onclick="openReportBuilder()" style="font-size:13px; padding:8px 16px; display:inline-flex; align-items:center; gap:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Custom Report
+        </button>
       </div>
       <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); margin:18px 0 10px;">Prebuilt Reports</div>
       <div id="reports-prebuilt-grid" class="reports-grid"></div>
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); margin:28px 0 10px;">Custom Reports</div>
+      <div id="reports-custom-grid" class="reports-grid"></div>
+      <div id="reports-custom-empty" style="display:none; padding:18px 22px; background:var(--surface2); border:1px dashed var(--border); border-radius:10px; color:var(--text-muted); font-size:13px;">
+        No custom reports yet. Click <strong style="color:var(--text);">+ Custom Report</strong> in the top-right to build one with your own data source, columns, and filters.
+      </div>
       <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); margin:28px 0 10px; display:flex; align-items:center; justify-content:space-between;">
-        <span>Saved Reports</span>
+        <span>Saved Views</span>
       </div>
       <div id="reports-saved-grid" class="reports-grid"></div>
       <div id="reports-saved-empty" style="display:none; padding:18px 22px; background:var(--surface2); border:1px dashed var(--border); border-radius:10px; color:var(--text-muted); font-size:13px;">
-        You haven't saved any reports yet. Run a prebuilt report, set the filters you want, then click <strong style="color:var(--text);">Save view</strong>.
+        You haven't saved any views yet. Run a report, set the filters you want, then click <strong style="color:var(--text);">Save view</strong>.
       </div>
     </div>
 
@@ -6986,6 +7038,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </p>
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:22px;">
       <button class="btn btn-primary" onclick="closeWatchersModal()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Custom Report Builder Modal ────────────────────────────────────────
+     Three sections in one form: pick a data source, pick columns +
+     filters from that source's preset list, name & save. The saved
+     custom report is just { id, name, source, columnIds, filterIds }
+     stored in app_state ms_custom_reports — when the user opens it,
+     a virtual report definition is built on the fly and run through
+     the existing report engine. -->
+<div class="modal-overlay" id="modal-report-builder" onclick="if(event.target===this)closeReportBuilder()" style="z-index:1100;">
+  <div class="modal" style="max-width:720px; max-height:calc(100vh - 32px); overflow-y:auto;">
+    <div class="modal-title" style="display:flex; align-items:center; gap:8px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+      <span id="rb-title-text">Build a Custom Report</span>
+    </div>
+    <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin:0 0 22px;">
+      Pick what data to pull from, then choose which columns and filters you want. You can run it right after, or save it to come back to.
+    </p>
+
+    <!-- Section 1: Data source -->
+    <div style="margin-bottom:22px;">
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">1. Data source</div>
+      <div id="rb-source-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:8px;"></div>
+    </div>
+
+    <!-- Section 2: Columns -->
+    <div id="rb-columns-section" style="display:none; margin-bottom:22px;">
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px; display:flex; align-items:center; justify-content:space-between;">
+        <span>2. Columns to show</span>
+        <button type="button" class="btn-link-style" onclick="rbToggleAllColumns()" style="background:none; border:none; color:var(--accent); font-size:12px; font-weight:600; cursor:pointer; padding:0; font-family:inherit;">Toggle all</button>
+      </div>
+      <div id="rb-columns-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:6px;"></div>
+    </div>
+
+    <!-- Section 3: Filters -->
+    <div id="rb-filters-section" style="display:none; margin-bottom:22px;">
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">3. Filters to enable</div>
+      <p style="font-size:12px; color:var(--text-muted); margin:0 0 8px;">Operators set the actual filter values when running the report; here you're just deciding which filters to expose.</p>
+      <div id="rb-filters-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:6px;"></div>
+    </div>
+
+    <!-- Section 4: Name -->
+    <div id="rb-name-section" style="display:none; margin-bottom:22px;">
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">4. Name your report</div>
+      <input type="text" id="rb-name-input" placeholder="e.g. Karen's Open Orders Watchlist"
+        style="width:100%; padding:10px 12px; font-size:14px; font-family:inherit; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:8px; outline:none; box-sizing:border-box;" />
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-top:24px;">
+      <button id="rb-delete-btn" class="btn btn-ghost" onclick="rbDeleteCurrent()" style="display:none; color:#dc2626;">Delete</button>
+      <div style="display:flex; gap:10px; margin-left:auto;">
+        <button class="btn btn-ghost" onclick="closeReportBuilder()">Cancel</button>
+        <button id="rb-save-btn" class="btn btn-primary" onclick="rbSaveAndRun()" disabled>Save &amp; Run</button>
+      </div>
     </div>
   </div>
 </div>
@@ -15151,9 +15259,524 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } catch (e) {}
   }
 
+  // ════════════════════════════════════════════════════════════════════
+  // CUSTOM REPORT BUILDER
+  //
+  // Custom reports are user-built definitions that pick a data source
+  // (Workbooks / Orders / Shipments / Commissions / Clients / Intake)
+  // and choose which columns + filters to expose. Stored separately
+  // from saved views in app_state under "ms_custom_reports". When run,
+  // a virtual report definition is built on the fly and fed into the
+  // existing report engine.
+  // ════════════════════════════════════════════════════════════════════
+
+  let _msCustomReports = null;
+  let _msCustomReportsLoaded = false;
+  let _rbState = null; // builder modal scratch state
+
+  // Data sources the builder can pick from. Each one's rows() function
+  // returns the FULL universe of rows for that source (with every
+  // available column populated); the engine then trims to the columns
+  // the user picked. Filter handlers are inline so they share the
+  // closure over clientData / orderData / etc.
+  const _MS_CUSTOM_REPORT_SOURCES = {
+    workbooks: {
+      id: 'workbooks',
+      name: 'Workbooks',
+      desc: 'One row per workbook across every client.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+      columns: [
+        { id: 'client',          label: 'Client' },
+        { id: 'product',         label: 'Product' },
+        { id: 'step',            label: 'Current Step' },
+        { id: 'dateCreated',     label: 'Date Created' },
+        { id: 'pipelineUsd',     label: 'Pipeline (USD)',  format: 'usd', align: 'right' },
+        { id: 'landedTotal',     label: 'Landed Cost',     format: 'usd', align: 'right' },
+        { id: 'salePer',         label: 'Sale Per',        format: 'usd', align: 'right' },
+        { id: 'marginPct',       label: 'Margin %',        format: 'pct', align: 'right' },
+        { id: 'tierQty',         label: 'Selected Tier Qty', format: 'int', align: 'right' },
+        { id: 'am',              label: 'Account Manager' },
+        { id: 'sp',              label: 'Salesperson' },
+        { id: 'isPendingReview', label: 'Pending Review' },
+        { id: 'isComplete',      label: 'Complete' },
+        { id: 'hasOrder',        label: 'On an Order' },
+      ],
+      filters: [
+        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'am',     label: 'Account Mgr', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
+        { id: 'sp',     label: 'Salesperson', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
+        { id: 'step',   label: 'Step',        type: 'select', optionsFn: () => ['', ...flowLabels] },
+        { id: 'completion', label: 'Completion', type: 'select', optionsFn: () => ['', 'Open only', 'Complete only'] },
+        { id: 'pendingOnly', label: 'Pending Review', type: 'select', optionsFn: () => ['', 'Yes', 'No'] },
+      ],
+      rows(f) {
+        // Build set of workbook IDs that appear in any order so we can
+        // populate the hasOrder column without a per-row N² scan.
+        const orderWbIds = new Set();
+        Object.values(orderData || {}).forEach(o => {
+          (o.entries || []).forEach(e => { if (e.workbookId != null) orderWbIds.add(parseInt(e.workbookId)); });
+        });
+
+        const out = [];
+        for (const [client, items] of Object.entries(clientData)) {
+          if (f.client && client !== f.client) continue;
+          const det = clientDetails[client] || {};
+          if (f.am && (det.account_manager || '') !== f.am) continue;
+          if (f.sp && (det.salesperson    || '') !== f.sp) continue;
+          for (const item of items) {
+            const complete = (typeof isFlowComplete === 'function') ? isFlowComplete(item.flow) : false;
+            if (f.completion === 'Open only'    && complete) continue;
+            if (f.completion === 'Complete only' && !complete) continue;
+            const stepName = (typeof getCurrentStepName === 'function' ? getCurrentStepName(item.flow) : '') || '—';
+            if (f.step && stepName !== f.step) continue;
+            const d = workbookDetail[`${client}|${item.id}`] || {};
+            const isPending = !!d.submittedByClient;
+            if (f.pendingOnly === 'Yes' && !isPending) continue;
+            if (f.pendingOnly === 'No'  &&  isPending) continue;
+
+            const tiers = Array.isArray(d.tiers) ? d.tiers : [];
+            const tier  = tiers.find(t => t.id == d.selectedTierIdx) || tiers[0];
+            const tierQty = tier ? (parseFloat(tier.qty) || 0) : 0;
+            const dbId = dbWorkbookMap[`${client}|${item.id}`] || parseInt(item.id);
+            out.push({
+              _id: item.id,
+              client, product: item.product || '—', step: stepName,
+              dateCreated: item.dateCreated || '',
+              pipelineUsd: Math.round(_rptPipelineForWorkbook(client, item) * 100) / 100,
+              landedTotal: Math.round((parseFloat(d.pricingLandedTotal) || 0) * 100) / 100,
+              salePer:     Math.round((parseFloat(d.pricingSalePer)     || 0) * 100) / 100,
+              marginPct:   parseFloat(d.pricingMarginPct) || 0,
+              tierQty,
+              am: (det.account_manager || '—'),
+              sp: (det.salesperson    || '—'),
+              isPendingReview: isPending ? 'Yes' : 'No',
+              isComplete:      complete  ? 'Yes' : 'No',
+              hasOrder:        (orderWbIds.has(parseInt(dbId)) || orderWbIds.has(parseInt(item.id))) ? 'Yes' : 'No',
+            });
+          }
+        }
+        return out;
+      },
+    },
+    orders: {
+      id: 'orders',
+      name: 'Orders',
+      desc: 'One row per order with totals + status.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
+      columns: [
+        { id: 'name',     label: 'Order' },
+        { id: 'client',   label: 'Client' },
+        { id: 'status',   label: 'Status' },
+        { id: 'dateCreated', label: 'Date Created' },
+        { id: 'daysOpen', label: 'Days Open',     format: 'int', align: 'right' },
+        { id: 'totalUsd', label: 'Total (USD)',   format: 'usd', align: 'right' },
+        { id: 'entries',  label: 'Workbooks on Order', format: 'int', align: 'right' },
+      ],
+      filters: [
+        { id: 'client', label: 'Client', type: 'select', optionsFn: () => {
+          const set = new Set();
+          Object.values(orderData || {}).forEach(o => {
+            if (o.clientName) set.add(o.clientName);
+            (o.entries || []).forEach(e => { if (e.clientName) set.add(e.clientName); });
+          });
+          return ['', ...Array.from(set).sort()];
+        }},
+        { id: 'status', label: 'Status', type: 'select', optionsFn: () => {
+          const set = new Set();
+          Object.values(orderData || {}).forEach(o => { if (o.status) set.add(o.status); });
+          return ['', ...Array.from(set).sort()];
+        }},
+        { id: 'completion', label: 'Completion', type: 'select', optionsFn: () => ['', 'Open only', 'Complete only'] },
+      ],
+      rows(f) {
+        const out = [];
+        Object.values(orderData || {}).forEach(o => {
+          const cl = o.clientName || ((o.entries || [])[0]?.clientName) || '—';
+          if (f.client && cl !== f.client) return;
+          if (f.status && o.status !== f.status) return;
+          const isComplete = o.status === 'complete';
+          if (f.completion === 'Open only'     &&  isComplete) return;
+          if (f.completion === 'Complete only' && !isComplete) return;
+          const created = o.dateCreated || o.createdAt || '';
+          const days = _rptDaysSince(_rptParseAppDate(created) || created) ?? 0;
+          const total = (typeof orderTotals === 'function') ? (orderTotals(o).totalUsd || 0) : 0;
+          out.push({
+            _id: o.id,
+            name: o.name || `Order #${o.id}`,
+            client: cl,
+            status: o.status || 'pending',
+            dateCreated: created,
+            daysOpen: days,
+            totalUsd: Math.round(total * 100) / 100,
+            entries: (o.entries || []).length,
+          });
+        });
+        return out;
+      },
+    },
+    shipments: {
+      id: 'shipments',
+      name: 'Shipments',
+      desc: 'One row per shipment.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+      columns: [
+        { id: 'name',    label: 'Shipment' },
+        { id: 'status',  label: 'Status' },
+        { id: 'mode',    label: 'Mode' },
+        { id: 'eta',     label: 'ETA' },
+        { id: 'cartons', label: 'Cartons',  format: 'int', align: 'right' },
+        { id: 'totalUsd',label: 'Total (USD)', format: 'usd', align: 'right' },
+      ],
+      filters: [
+        { id: 'status', label: 'Status', type: 'select', optionsFn: () => {
+          const set = new Set();
+          Object.values(shipmentData || {}).forEach(s => { if (s && s.status) set.add(s.status); });
+          return ['', ...Array.from(set).sort()];
+        }},
+        { id: 'mode',   label: 'Mode',   type: 'select', optionsFn: () => {
+          const set = new Set();
+          Object.values(shipmentData || {}).forEach(s => { if (s && s.mode) set.add(s.mode); });
+          return ['', ...Array.from(set).sort()];
+        }},
+      ],
+      rows(f) {
+        const out = [];
+        Object.values(shipmentData || {}).forEach(s => {
+          if (!s) return;
+          if (f.status && s.status !== f.status) return;
+          if (f.mode   && s.mode   !== f.mode)   return;
+          let cartons = 0, totalUsd = 0;
+          (s.items || s.entries || []).forEach(it => {
+            cartons  += parseInt(it.cartons || it.cartonCount || 0) || 0;
+            const v = parseFloat(it.totalUsd || it.value || 0);
+            if (!isNaN(v)) totalUsd += v;
+          });
+          out.push({
+            _id: s.id,
+            name: s.name || `Shipment #${s.id}`,
+            status: s.status || '—',
+            mode:   s.mode   || '—',
+            eta:    s.eta || s.etaDate || '',
+            cartons,
+            totalUsd: Math.round(totalUsd * 100) / 100,
+          });
+        });
+        return out;
+      },
+    },
+    commissions: {
+      id: 'commissions',
+      name: 'Commissions',
+      desc: 'Commission rows from the Commissions module.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+      columns: [
+        { id: 'employee',     label: 'Employee' },
+        { id: 'role',         label: 'Role' },
+        { id: 'client_name',  label: 'Client' },
+        { id: 'product_name', label: 'Product' },
+        { id: 'amount_usd',   label: 'Amount (USD)', format: 'usd', align: 'right' },
+        { id: 'status',       label: 'Status' },
+        { id: 'created_at',   label: 'Created', format: 'date' },
+      ],
+      filters: [
+        { id: 'employee', label: 'Employee', type: 'select', optionsFn: () => {
+          const set = new Set();
+          (commissionsData || []).forEach(c => { if (c.employee) set.add(c.employee); });
+          return ['', ...Array.from(set).sort()];
+        }},
+        { id: 'role',   label: 'Role',   type: 'select', optionsFn: () => ['', 'account_manager', 'salesperson', 'operations'] },
+        { id: 'status', label: 'Status', type: 'select', optionsFn: () => ['', 'pending', 'paid', 'cancelled'] },
+      ],
+      rows(f) {
+        return (Array.isArray(commissionsData) ? commissionsData : []).filter(c => {
+          if (f.employee && c.employee !== f.employee) return false;
+          if (f.role     && c.role     !== f.role)     return false;
+          if (f.status   && c.status   !== f.status)   return false;
+          return true;
+        }).map(c => ({
+          employee:     c.employee || '—',
+          role:         c.role || '—',
+          client_name:  c.client_name || '',
+          product_name: c.product_name || '—',
+          amount_usd:   parseFloat(c.amount_usd) || 0,
+          status:       c.status || '—',
+          created_at:   c.created_at || '',
+        }));
+      },
+    },
+    clients: {
+      id: 'clients',
+      name: 'Clients',
+      desc: 'One row per client with rolled-up totals.',
+      icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+      columns: [
+        { id: 'name',           label: 'Client' },
+        { id: 'email',          label: 'Email' },
+        { id: 'primary_contact',label: 'Primary Contact' },
+        { id: 'am',             label: 'Account Manager' },
+        { id: 'sp',             label: 'Salesperson' },
+        { id: 'totalWorkbooks', label: 'Workbooks',     format: 'int', align: 'right' },
+        { id: 'openWorkbooks',  label: 'Open',          format: 'int', align: 'right' },
+        { id: 'pipelineUsd',    label: 'Pipeline (USD)',format: 'usd', align: 'right' },
+      ],
+      filters: [
+        { id: 'am', label: 'Account Mgr', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
+        { id: 'sp', label: 'Salesperson', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
+        { id: 'hasOpenPipeline', label: 'Has Open Pipeline', type: 'select', optionsFn: () => ['', 'Yes', 'No'] },
+      ],
+      rows(f) {
+        const out = [];
+        for (const [name, items] of Object.entries(clientData)) {
+          const det = clientDetails[name] || {};
+          if (f.am && (det.account_manager || '') !== f.am) continue;
+          if (f.sp && (det.salesperson    || '') !== f.sp) continue;
+          let openCt = 0, pipeline = 0;
+          items.forEach(it => {
+            const complete = (typeof isFlowComplete === 'function') ? isFlowComplete(it.flow) : false;
+            if (!complete) {
+              openCt++;
+              pipeline += _rptPipelineForWorkbook(name, it);
+            }
+          });
+          if (f.hasOpenPipeline === 'Yes' && pipeline === 0) continue;
+          if (f.hasOpenPipeline === 'No'  && pipeline >  0) continue;
+          out.push({
+            name,
+            email:           det.email || '',
+            primary_contact: det.primary_contact || '',
+            am: det.account_manager || '—',
+            sp: det.salesperson    || '—',
+            totalWorkbooks: items.length,
+            openWorkbooks:  openCt,
+            pipelineUsd:    Math.round(pipeline * 100) / 100,
+          });
+        }
+        return out;
+      },
+    },
+  };
+  const _MS_CUSTOM_SOURCE_LIST = Object.values(_MS_CUSTOM_REPORT_SOURCES);
+
+  async function _ensureCustomReportsLoaded() {
+    if (_msCustomReportsLoaded) return;
+    _msCustomReportsLoaded = true;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_custom_reports' });
+      let v = null;
+      if (r && r.value) { try { v = JSON.parse(r.value); } catch (e) {} }
+      _msCustomReports = Array.isArray(v) ? v : [];
+    } catch (e) {
+      _msCustomReports = [];
+    }
+  }
+  function _persistCustomReports() {
+    try {
+      apiCall('save_app_state', {
+        key: 'ms_custom_reports',
+        value: JSON.stringify(_msCustomReports || [])
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  // Build a virtual report definition from a saved custom config so the
+  // existing report-engine renderers can run it unchanged.
+  function _buildVirtualCustomDef(custom) {
+    const src = _MS_CUSTOM_REPORT_SOURCES[custom.source];
+    if (!src) return null;
+    const cIds = (custom.columnIds && custom.columnIds.length) ? custom.columnIds : src.columns.map(c => c.id);
+    const fIds = (custom.filterIds && custom.filterIds.length) ? custom.filterIds : src.filters.map(f => f.id);
+    return {
+      id: 'custom_' + custom.id,
+      name: custom.name,
+      description: `Custom report based on ${src.name}.`,
+      icon: src.icon,
+      columns: src.columns.filter(c => cIds.includes(c.id)).map(c => Object.assign({ sortable: true }, c)),
+      filters: src.filters.filter(f => fIds.includes(f.id)),
+      rows:    src.rows.bind(src),
+    };
+  }
+
+  function runCustomReport(customId) {
+    const custom = (_msCustomReports || []).find(c => c.id === customId);
+    if (!custom) {
+      _msToast('Custom report not found.', 'error');
+      location.hash = '#/reports';
+      return;
+    }
+    const def = _buildVirtualCustomDef(custom);
+    if (!def) {
+      _msToast('Custom report data source unavailable.', 'error');
+      return;
+    }
+    // Stitch the custom def into the lookup so runReport finds it
+    _MS_REPORT_BY_ID[def.id] = def;
+    runReport(def.id, 'custom');
+    _reportState.sourceId = customId; // remember which custom we're running
+  }
+
+  // ── Builder modal handlers ─────────────────────────────────────────
+  async function openReportBuilder(editCustomId) {
+    await _ensureCustomReportsLoaded();
+    _rbState = {
+      editingId: editCustomId || null,
+      source:    null,
+      columnIds: new Set(),
+      filterIds: new Set(),
+      name:      '',
+    };
+    if (editCustomId) {
+      const c = (_msCustomReports || []).find(x => x.id === editCustomId);
+      if (c) {
+        _rbState.source    = c.source;
+        _rbState.columnIds = new Set(c.columnIds || []);
+        _rbState.filterIds = new Set(c.filterIds || []);
+        _rbState.name      = c.name || '';
+      }
+    }
+    document.getElementById('rb-title-text').textContent = editCustomId ? 'Edit Custom Report' : 'Build a Custom Report';
+    document.getElementById('rb-delete-btn').style.display = editCustomId ? '' : 'none';
+    document.getElementById('rb-name-input').value = _rbState.name;
+    _rbRenderSourceGrid();
+    _rbRenderColumnsAndFilters();
+    document.getElementById('modal-report-builder').classList.add('open');
+  }
+  function closeReportBuilder() {
+    document.getElementById('modal-report-builder').classList.remove('open');
+    _rbState = null;
+  }
+
+  function _rbRenderSourceGrid() {
+    const grid = document.getElementById('rb-source-grid');
+    grid.innerHTML = _MS_CUSTOM_SOURCE_LIST.map(src => {
+      const active = _rbState.source === src.id;
+      return `<button type="button" class="rb-source-card${active ? ' is-active' : ''}" onclick="rbPickSource('${src.id}')">
+        <span class="rb-source-icon">${src.icon}</span>
+        <span class="rb-source-name">${_rptEscape(src.name)}</span>
+        <span class="rb-source-desc">${_rptEscape(src.desc)}</span>
+      </button>`;
+    }).join('');
+  }
+
+  function rbPickSource(srcId) {
+    if (!_rbState) return;
+    if (_rbState.source !== srcId) {
+      _rbState.source = srcId;
+      // Default: select all columns + filters when first picking a source
+      const src = _MS_CUSTOM_REPORT_SOURCES[srcId];
+      _rbState.columnIds = new Set(src.columns.map(c => c.id));
+      _rbState.filterIds = new Set(src.filters.map(f => f.id));
+    }
+    _rbRenderSourceGrid();
+    _rbRenderColumnsAndFilters();
+  }
+
+  function _rbRenderColumnsAndFilters() {
+    const colSection = document.getElementById('rb-columns-section');
+    const fltSection = document.getElementById('rb-filters-section');
+    const nameSection= document.getElementById('rb-name-section');
+    const saveBtn    = document.getElementById('rb-save-btn');
+    if (!_rbState || !_rbState.source) {
+      colSection.style.display = 'none';
+      fltSection.style.display = 'none';
+      nameSection.style.display = 'none';
+      saveBtn.disabled = true;
+      return;
+    }
+    const src = _MS_CUSTOM_REPORT_SOURCES[_rbState.source];
+
+    document.getElementById('rb-columns-grid').innerHTML = src.columns.map(c => {
+      const checked = _rbState.columnIds.has(c.id);
+      return `<label class="rb-check-row">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="rbToggleColumn('${c.id}', this.checked)" />
+        <span>${_rptEscape(c.label)}</span>
+      </label>`;
+    }).join('');
+
+    document.getElementById('rb-filters-grid').innerHTML = src.filters.length === 0
+      ? '<span style="font-size:12px; color:var(--text-muted); font-style:italic;">No filters available for this data source.</span>'
+      : src.filters.map(f => {
+          const checked = _rbState.filterIds.has(f.id);
+          return `<label class="rb-check-row">
+            <input type="checkbox" ${checked ? 'checked' : ''} onchange="rbToggleFilter('${f.id}', this.checked)" />
+            <span>${_rptEscape(f.label)}</span>
+          </label>`;
+        }).join('');
+
+    colSection.style.display = '';
+    fltSection.style.display = '';
+    nameSection.style.display = '';
+    _rbUpdateSaveDisabled();
+  }
+
+  function rbToggleColumn(id, checked) {
+    if (!_rbState) return;
+    if (checked) _rbState.columnIds.add(id);
+    else         _rbState.columnIds.delete(id);
+    _rbUpdateSaveDisabled();
+  }
+  function rbToggleFilter(id, checked) {
+    if (!_rbState) return;
+    if (checked) _rbState.filterIds.add(id);
+    else         _rbState.filterIds.delete(id);
+  }
+  function rbToggleAllColumns() {
+    if (!_rbState || !_rbState.source) return;
+    const src = _MS_CUSTOM_REPORT_SOURCES[_rbState.source];
+    const allOn = src.columns.every(c => _rbState.columnIds.has(c.id));
+    if (allOn) _rbState.columnIds.clear();
+    else       src.columns.forEach(c => _rbState.columnIds.add(c.id));
+    _rbRenderColumnsAndFilters();
+  }
+  function _rbUpdateSaveDisabled() {
+    const btn = document.getElementById('rb-save-btn');
+    const ok = _rbState && _rbState.source && _rbState.columnIds.size > 0;
+    btn.disabled = !ok;
+  }
+
+  async function rbSaveAndRun() {
+    if (!_rbState || !_rbState.source) return;
+    const name = (document.getElementById('rb-name-input').value || '').trim()
+              || `${_MS_CUSTOM_REPORT_SOURCES[_rbState.source].name} (${new Date().toLocaleDateString('en-US', {month:'short', day:'numeric'})})`;
+    const payload = {
+      id: _rbState.editingId || ('cust_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)),
+      name,
+      source: _rbState.source,
+      columnIds: Array.from(_rbState.columnIds),
+      filterIds: Array.from(_rbState.filterIds),
+      createdAt: new Date().toISOString(),
+    };
+    if (!_msCustomReports) _msCustomReports = [];
+    if (_rbState.editingId) {
+      const ix = _msCustomReports.findIndex(c => c.id === _rbState.editingId);
+      if (ix >= 0) _msCustomReports[ix] = Object.assign({}, _msCustomReports[ix], payload);
+    } else {
+      _msCustomReports.push(payload);
+    }
+    _persistCustomReports();
+    closeReportBuilder();
+    location.hash = `#/reports/custom/${payload.id}`;
+  }
+
+  function rbDeleteCurrent() {
+    if (!_rbState || !_rbState.editingId) return;
+    if (!confirm('Delete this custom report?')) return;
+    _msCustomReports = (_msCustomReports || []).filter(c => c.id !== _rbState.editingId);
+    _persistCustomReports();
+    closeReportBuilder();
+    if (location.hash.startsWith('#/reports/custom/')) location.hash = '#/reports';
+    else renderReportsView();
+  }
+  function reportsDeleteCustom(customId) {
+    if (!confirm('Delete this custom report?')) return;
+    _msCustomReports = (_msCustomReports || []).filter(c => c.id !== customId);
+    _persistCustomReports();
+    renderReportsView();
+  }
+
   // ── List screen ────────────────────────────────────────────────────
   async function renderReportsView() {
     await _ensureSavedReportsLoaded();
+    await _ensureCustomReportsLoaded();
     document.getElementById('header-title').textContent = 'Reports';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
@@ -15171,6 +15794,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="reports-card-desc">${_rptEscape(r.description)}</div>
       </a>
     `).join('');
+
+    // Custom Reports grid
+    const customGrid  = document.getElementById('reports-custom-grid');
+    const customEmpty = document.getElementById('reports-custom-empty');
+    const customs     = (_msCustomReports || []).slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    if (customs.length === 0) {
+      customGrid.innerHTML = '';
+      customEmpty.style.display = '';
+    } else {
+      customEmpty.style.display = 'none';
+      customGrid.innerHTML = customs.map(c => {
+        const src = _MS_CUSTOM_REPORT_SOURCES[c.source];
+        const srcName = src ? src.name : c.source;
+        return `<div class="reports-card" onclick="location.hash='#/reports/custom/${c.id}'">
+          <div class="reports-card-icon">${(src && src.icon) || ''}</div>
+          <div class="reports-card-title">${_rptEscape(c.name)}</div>
+          <div class="reports-card-desc">Custom · ${_rptEscape(srcName)}</div>
+          <div class="reports-card-saved-row">
+            <span class="reports-card-meta">${(c.columnIds||[]).length} column${(c.columnIds||[]).length===1?'':'s'} · ${(c.filterIds||[]).length} filter${(c.filterIds||[]).length===1?'':'s'}</span>
+            <span style="display:flex; gap:4px;">
+              <button class="reports-card-del" onclick="event.stopPropagation(); openReportBuilder('${c.id}')" title="Edit this custom report" style="color:var(--text-muted);">✎</button>
+              <button class="reports-card-del" onclick="event.stopPropagation(); reportsDeleteCustom('${c.id}')" title="Delete this custom report">×</button>
+            </span>
+          </div>
+        </div>`;
+      }).join('');
+    }
 
     const savedGrid  = document.getElementById('reports-saved-grid');
     const savedEmpty = document.getElementById('reports-saved-empty');
@@ -16568,7 +17218,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           location.hash = '#/reports';
           return;
         }
+        // Saved views built on custom reports — re-register the virtual
+        // def from the custom config so the engine can find it after a
+        // page reload (custom defs are otherwise built ad-hoc on run).
+        if (typeof sv.basedOn === 'string' && sv.basedOn.indexOf('custom_') === 0) {
+          await _ensureCustomReportsLoaded();
+          const customId = sv.basedOn.slice('custom_'.length);
+          const custom = (_msCustomReports || []).find(c => c.id === customId);
+          if (custom) {
+            const def = _buildVirtualCustomDef(custom);
+            if (def) _MS_REPORT_BY_ID[def.id] = def;
+          }
+        }
         runReport(sv.basedOn, 'saved', Object.assign({}, sv.filters || {}, { _savedId: sv.id }));
+      })();
+      return;
+    }
+    // Match: #/reports/custom/{id} — run a user-built custom report
+    const repCustomMatch = hash.match(/^#\/reports\/custom\/([a-z0-9_-]+)$/i);
+    if (repCustomMatch) {
+      (async () => {
+        await _ensureCustomReportsLoaded();
+        runCustomReport(repCustomMatch[1]);
       })();
       return;
     }
