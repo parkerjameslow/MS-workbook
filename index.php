@@ -4589,12 +4589,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: transparent;
       white-space: nowrap;
     }
-    /* Inline variant lives on the same row as back/tabs — drop the
-       per-user "X → Section" pills (they'd push the row too wide).
-       Section info still surfaces via the per-section initials chips
-       on each section header. */
-    .wb-presence-inline .wb-presence-where { display: none; }
-    .wb-presence-inline .wb-presence-text  { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Inline variant lives on the same row as back/tabs. The where-pills
+       stay visible (they're the most useful presence info — knowing
+       *where* each user is editing) but get tightened down. The whole
+       row gets a small right margin so the pill never sits flush
+       against the container's edge. */
+    .wb-presence-inline {
+      margin-right: 8px;
+      padding: 6px 14px;
+    }
+    .wb-presence-inline .wb-presence-where {
+      margin-left: 6px;
+      gap: 4px;
+    }
+    .wb-presence-inline .wb-presence-where-pill {
+      font-size: 10px;
+      padding: 2px 7px;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .wb-presence-inline .wb-presence-text  { white-space: nowrap; }
 
     /* Section header presence bars — small initials chips appear next
        to the section title for whoever's editing in that section. */
@@ -7187,6 +7203,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin:0 0 18px;">
       Tag people to be emailed when this workbook reaches a specific milestone. Once a step completes, that step's watchers get one email and are cleared — re-add them if you want to be notified again.
     </p>
+    <!-- Browser notifications opt-in — only visible while permission is
+         still in its default state. Lets the operator turn on Chrome
+         notifications so milestone alerts pop up instantly without
+         waiting on email. -->
+    <div id="watchers-notif-prompt" style="display:none; padding:10px 14px; background:var(--surface2); border:1px solid rgba(232,117,26,0.30); border-left:4px solid var(--accent); border-radius:8px; margin:0 0 14px; font-size:13px; color:var(--text); line-height:1.5;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="flex:1; min-width:200px;">Want milestone alerts to pop up instantly in your browser?</span>
+        <button class="btn btn-primary" onclick="watchersEnableBrowserNotif()" style="font-size:12px; padding:6px 14px;">Enable browser notifications</button>
+      </div>
+    </div>
+    <div id="watchers-notif-blocked" style="display:none; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; margin:0 0 14px; font-size:12px; color:var(--text-muted); line-height:1.5;">
+      Browser notifications are blocked. To re-enable, click the lock icon in the address bar → Site settings → Notifications → Allow.
+    </div>
     <div id="watchers-table-body" style="display:flex; flex-direction:column; gap:10px;"></div>
     <p id="watchers-empty-users" style="display:none; font-size:12px; color:var(--text-muted); margin:14px 0 0; padding:12px 14px; background:var(--surface2); border:1px dashed var(--border); border-radius:8px;">
       No users with email on file. Add team members in <strong style="color:var(--text);">Settings → Manage Users</strong> first.
@@ -11758,10 +11787,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     await _ensureWatcherUsersLoaded();
     document.getElementById('modal-watchers').classList.add('open');
     renderWatchersModal();
+    _refreshWatchersNotifPrompt();
   }
 
   function closeWatchersModal() {
     document.getElementById('modal-watchers').classList.remove('open');
+  }
+
+  // Show / hide the "Enable browser notifications" opt-in based on
+  // current permission state. Default → show enable button; granted →
+  // hide everything (it's already on); denied → show the "blocked" hint.
+  function _refreshWatchersNotifPrompt() {
+    const enable  = document.getElementById('watchers-notif-prompt');
+    const blocked = document.getElementById('watchers-notif-blocked');
+    if (!enable || !blocked) return;
+    if (!_notifSupported()) {
+      enable.style.display = 'none';
+      blocked.style.display = 'none';
+      return;
+    }
+    const p = _notifPermission();
+    enable.style.display  = (p === 'default') ? '' : 'none';
+    blocked.style.display = (p === 'denied')  ? '' : 'none';
+  }
+
+  // Triggered by the "Enable browser notifications" button inside the
+  // Watchers modal. Permission requests must be tied to a user gesture
+  // (click) so we never auto-prompt — the operator opts in here.
+  async function watchersEnableBrowserNotif() {
+    const result = await requestBrowserNotifPermission();
+    _refreshWatchersNotifPrompt();
+    if (result === 'granted') {
+      // Fire a quick "you're set" notification so the user actually
+      // sees one immediately and knows it's working.
+      try {
+        new Notification('Notifications enabled', {
+          body: 'Milestone alerts will pop up in this browser.',
+          icon: '/favicon.svg',
+        });
+      } catch (e) {}
+      if (typeof _msToast === 'function') _msToast('Browser notifications enabled.', 'success');
+    } else if (result === 'denied') {
+      if (typeof _msToast === 'function') _msToast('Browser notifications were blocked.', 'error');
+    }
   }
 
   function renderWatchersModal() {
@@ -19294,6 +19362,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Allow autosave now — just after _filling clears (200ms in fillWorkbook + small buffer)
     setTimeout(() => { _appReady = true; }, 210);
 
+    // Kick off background notification polling. Runs on every page so
+    // a watcher gets the Chrome notification even if they're on the
+    // home view, not the specific workbook.
+    if (typeof startNotificationsPolling === 'function') startNotificationsPolling();
+
     // Restore saved username into sidebar input
   })();
 
@@ -20527,6 +20600,91 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Live cell-value sync state
   var _cellValuesSince    = '';   // server timestamp cursor for delta polling
   var _pendingPushes      = new Map(); // fieldPath -> debounce timer id
+
+  // ── In-app + Chrome browser notifications ──────────────────────────
+  // Polled every 12 s on every page (not just workbooks) so a watcher
+  // sees milestone notifications even when they're on the home view.
+  // Cursor stays in sessionStorage so reloading the same tab doesn't
+  // re-fire notifications you already saw, but a brand-new session
+  // starts fresh and shows the most recent batch (catch-up).
+  var _notifSince        = sessionStorage.getItem('ms_notif_since') || '';
+  var _notifInterval     = null;
+  var _notifSeenIds      = new Set(); // dedupe across rapid polls within one session
+  // Hint state for the "Enable browser notifications" prompt — we only
+  // surface it on the Watchers modal (a natural place) when permission
+  // is still in its default state.
+  var _notifPromptShown  = false;
+
+  function _notifSupported() {
+    return typeof window !== 'undefined' && 'Notification' in window;
+  }
+  function _notifPermission() {
+    return _notifSupported() ? Notification.permission : 'unsupported';
+  }
+  async function requestBrowserNotifPermission() {
+    if (!_notifSupported()) return 'unsupported';
+    try {
+      const r = await Notification.requestPermission();
+      return r;
+    } catch (e) { return 'denied'; }
+  }
+
+  function _showBrowserNotification(n) {
+    if (!_notifSupported() || _notifPermission() !== 'granted') return;
+    try {
+      const opts = {
+        body: n.body || '',
+        icon: '/favicon.svg',
+        badge: '/favicon.svg',
+        tag:  'ms-notif-' + n.id,
+        requireInteraction: false,
+        silent: false,
+      };
+      const notif = new Notification(n.title || 'Market Sculpt', opts);
+      if (n.url) {
+        notif.onclick = () => {
+          window.focus();
+          // n.url is an absolute app URL with a hash — assigning to
+          // location.href triggers our hash router. If it's just a
+          // hash fragment, set location.hash directly.
+          if (/^#/.test(n.url)) location.hash = n.url;
+          else                  location.href = n.url;
+          notif.close();
+        };
+      }
+      // Best-effort fire-and-forget mark-as-read so the same row
+      // doesn't re-pop on a different tab. Server-side cursor will
+      // also have moved past it on the next poll.
+      apiCall('mark_notification_read', { id: n.id }).catch(() => {});
+    } catch (e) {}
+  }
+
+  async function _pollNotifications() {
+    try {
+      const r = await apiCall('get_notifications', { since: _notifSince });
+      if (!r || !r.success) return;
+      if (r.server_now) {
+        _notifSince = r.server_now;
+        try { sessionStorage.setItem('ms_notif_since', _notifSince); } catch (e) {}
+      }
+      const items = Array.isArray(r.data) ? r.data : [];
+      items.forEach(n => {
+        if (_notifSeenIds.has(n.id)) return;
+        _notifSeenIds.add(n.id);
+        _showBrowserNotification(n);
+      });
+    } catch (e) {}
+  }
+
+  function startNotificationsPolling() {
+    if (_notifInterval) return;
+    // First call after a short delay so the rest of the page can mount
+    setTimeout(_pollNotifications, 800);
+    _notifInterval = setInterval(_pollNotifications, 12000);
+  }
+  function stopNotificationsPolling() {
+    if (_notifInterval) { clearInterval(_notifInterval); _notifInterval = null; }
+  }
 
   function startPresenceHeartbeat(workbookId) {
     // Stop any previous heartbeat (switching workbooks)

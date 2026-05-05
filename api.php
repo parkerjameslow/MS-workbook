@@ -334,6 +334,22 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS cell_values (
     INDEX idx_wb_updated (workbook_id, updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// In-app + Chrome browser notifications. Polled by every connected
+// client every 12s for fresh entries; entries persist so a user
+// who comes back after a break still sees what they missed (within
+// the LIMIT). Uses created_at as the cursor.
+$pdo->exec("CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    kind VARCHAR(64) NOT NULL DEFAULT '',
+    title VARCHAR(255) NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    url VARCHAR(500) DEFAULT NULL,
+    created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP(3),
+    read_at TIMESTAMP NULL,
+    INDEX idx_user_created (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
@@ -2353,22 +2369,46 @@ switch ($action) {
             break;
         }
 
-        // Resolve emails from the users table
+        // Resolve emails AND user IDs from the users table — emails feed
+        // the SMTP path, user IDs feed the in-app notifications queue
+        // (which the watchers' browsers poll for Chrome notifications).
         $placeholders = implode(',', array_fill(0, count($watcherNames), '?'));
-        $stmt = $pdo->prepare("SELECT display_name, email FROM users
-                               WHERE display_name IN ($placeholders)
-                                 AND email IS NOT NULL AND email != ''");
+        $stmt = $pdo->prepare("SELECT id, display_name, email FROM users
+                               WHERE display_name IN ($placeholders)");
         $stmt->execute($watcherNames);
         $emailByName = [];
-        while ($row = $stmt->fetch()) { $emailByName[$row['display_name']] = $row['email']; }
+        $idByName    = [];
+        while ($row = $stmt->fetch()) {
+            $idByName[$row['display_name']] = (int)$row['id'];
+            if (!empty($row['email'])) $emailByName[$row['display_name']] = $row['email'];
+        }
         $recipients = [];
         foreach ($watcherNames as $n) { if (!empty($emailByName[$n])) $recipients[] = $emailByName[$n]; }
         $recipients = array_values(array_unique($recipients));
+
+        // Insert in-app notifications for every watcher we know about
+        // (even ones with no email). Browser notifications are bonus —
+        // they don't require an email to be on file.
+        $notifTitle = "✓ {$stepLabel} — {$productName}";
+        $notifBody  = "{$clientName}'s workbook just advanced past {$stepLabel}.";
+        try {
+            $insertNotif = $pdo->prepare(
+                "INSERT INTO notifications (user_id, kind, title, body, url) VALUES (?, 'watcher_milestone', ?, ?, ?)"
+            );
+            foreach ($watcherNames as $n) {
+                $uid = $idByName[$n] ?? 0;
+                if ($uid) $insertNotif->execute([$uid, $notifTitle, $notifBody, $appUrl ?: null]);
+            }
+        } catch (PDOException $e) { /* swallow — emails still sent */ }
+
         if (empty($recipients)) {
             echo json_encode([
-                'success'         => false,
-                'error'           => 'No emails on file for the selected watchers.',
-                'attempted_names' => $watcherNames,
+                'success'           => true,
+                'recipients'        => [],
+                'count'             => 0,
+                'browser_notified'  => count(array_filter(array_map(fn($n) => $idByName[$n] ?? 0, $watcherNames))),
+                'attempted_names'   => $watcherNames,
+                'note'              => 'No emails on file — browser notifications enqueued only.',
             ]);
             break;
         }
@@ -2698,6 +2738,44 @@ switch ($action) {
         break;
 
     // Clear: remove the caller's row immediately (on tab close / navigate away).
+    case 'get_notifications':
+        // Polled every ~12 s by every connected client. Returns rows for
+        // the current user newer than the supplied cursor; the client
+        // uses server_now as its next cursor. Limit caps a runaway burst
+        // (eg every workbook in the system advancing in a minute) at a
+        // sane batch size.
+        $since = (string)($input['since'] ?? '');
+        if ($since === '' || !preg_match('/^\d{4}-\d{2}-\d{2}/', $since)) {
+            $since = '1970-01-01 00:00:00';
+        }
+        $stmt = $pdo->prepare(
+            "SELECT id, kind, title, body, url, created_at
+             FROM notifications
+             WHERE user_id = ? AND created_at > ?
+             ORDER BY created_at ASC LIMIT 30"
+        );
+        $stmt->execute([$sessionUser['id'], $since]);
+        $rows = $stmt->fetchAll();
+        // Fractional-second precision so bursts within the same second
+        // can still be cursored correctly. fmt: 'Y-m-d H:i:s.u' →
+        // mysql DATETIME(3) compares the millisecond fraction.
+        $now = (new DateTime('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s.v');
+        echo json_encode([
+            'success'    => true,
+            'data'       => $rows,
+            'server_now' => $now,
+        ]);
+        break;
+
+    case 'mark_notification_read':
+        $nid = (int)($input['id'] ?? 0);
+        if ($nid) {
+            $pdo->prepare("UPDATE notifications SET read_at = NOW() WHERE id = ? AND user_id = ?")
+                ->execute([$nid, $sessionUser['id']]);
+        }
+        echo json_encode(['success' => true]);
+        break;
+
     case 'clear_presence':
         $uid = $sessionUser['id'];
         $pdo->prepare("DELETE FROM presence WHERE user_id = ?")->execute([$uid]);
