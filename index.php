@@ -714,6 +714,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* Subtle "— N variants" trailing badge on item names that have
+       variants. Lighter weight + muted color so it reads as
+       supporting metadata, not part of the item name itself. */
+    .section-summary .ss-rfq-variant-count {
+      font-size: 10.5px;
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0;
+    }
     /* Tiny column-header cells across the top of the table. */
     .section-summary .ss-rfq-th {
       font-size: 9px;
@@ -10781,6 +10790,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const variantRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
 
             let qty = 0, rmbMin = Infinity, rmbMax = -Infinity, total = 0, maxLead = pLead;
+            // Count variants with actual content (name / qty / rmb) so
+            // empty placeholder variant rows don't inflate the badge.
+            let variantCount = 0;
             if (variantRows.length === 0) {
               // No variants — parent IS the line
               qty = pQty;
@@ -10792,9 +10804,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               variantRows.forEach(vr => {
                 const vIns  = vr.querySelectorAll('input');
                 // Variant inputs: name(0), qty(1), rmb(2), lead(3)
+                const vName = (vIns[0]?.value || '').trim();
                 const vQty  = parseFloat(vIns[1]?.value) || 0;
                 const vRmb  = parseFloat(vIns[2]?.value) || 0;
                 const vLead = parseInt(vIns[3]?.value)   || 0;
+                if (!vName && !vQty && !vRmb) return; // skip empty placeholder
+                variantCount++;
                 qty   += vQty;
                 if (vRmb > 0) {
                   if (vRmb < rmbMin) rmbMin = vRmb;
@@ -10809,6 +10824,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
             items.push({
               name:  itemName,
+              variantCount,
               qty,
               rmbMin: rmbMin === Infinity ? 0 : rmbMin,
               rmbMax: rmbMax === -Infinity ? 0 : rmbMax,
@@ -10845,8 +10861,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const usdCell = it.rmbMin > 0
               ? (isRange ? `$${fmt2(usdMin)}–$${fmt2(usdMax)}` : `$${fmt2(usdMin)}`)
               : '—';
+            // Variant count badge — appears next to the item name when
+            // the line has any variants, e.g. "Tank (White) — 5 variants".
+            const variantBadge = it.variantCount > 0
+              ? ` <span class="ss-rfq-variant-count">— ${it.variantCount} variant${it.variantCount === 1 ? '' : 's'}</span>`
+              : '';
+            const titleAttr = it.variantCount > 0
+              ? `${it.name} (${it.variantCount} variant${it.variantCount === 1 ? '' : 's'})`
+              : it.name;
             return (
-              `<div class="ss-rfq-name" title="${cellEsc(it.name)}">${cellEsc(it.name)}</div>` +
+              `<div class="ss-rfq-name" title="${cellEsc(titleAttr)}">${cellEsc(it.name)}${variantBadge}</div>` +
               `<div>${_ssFmtInt(it.qty)}</div>` +
               `<div>${rmbCell}</div>` +
               `<div>${usdCell}</div>` +
