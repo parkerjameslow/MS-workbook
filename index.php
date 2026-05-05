@@ -12812,11 +12812,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Per-unit USD (single value or [min,max]). Use range only when variants
     // have variable pricing — otherwise fall back to the tier-row USD.
+    // Reads from psSummary (the renamed _lastRfqPriceSummary alias used
+    // by the Product Cost block above).
     let perUnitMin, perUnitMax, avgPerUnitUsd;
-    if (ps && ps.hasVariants && ps.usdMin > 0) {
-      perUnitMin    = ps.usdMin;
-      perUnitMax    = ps.usdMax;
-      avgPerUnitUsd = (ps.grandQty > 0 && ps.grandUsd > 0) ? ps.grandUsd / ps.grandQty : ps.usdMin;
+    if (psSummary && psSummary.hasVariants && psSummary.usdMin > 0) {
+      perUnitMin    = psSummary.usdMin;
+      perUnitMax    = psSummary.usdMax;
+      avgPerUnitUsd = (psSummary.grandQty > 0 && psSummary.grandUsd > 0) ? psSummary.grandUsd / psSummary.grandQty : psSummary.usdMin;
     } else {
       perUnitMin = perUnitMax = avgPerUnitUsd = tierUsd;
     }
