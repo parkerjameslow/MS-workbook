@@ -4491,6 +4491,79 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: 0 2px 6px rgba(0,0,0,0.35);
     }
 
+    /* "X is editing" banner at the top of the workbook view. Hidden
+       when no other users are present. Names are colored per-user so
+       they line up with the colored highlights / chips elsewhere. */
+    .wb-presence-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 8px 14px;
+      margin: 8px 0 0;
+      background: linear-gradient(135deg, rgba(232,117,26,0.06) 0%, rgba(232,117,26,0.02) 100%);
+      border: 1px solid rgba(232,117,26,0.20);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .wb-presence-pulse {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: presence-pulse 1.6s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    .wb-presence-text {
+      font-weight: 600;
+      letter-spacing: 0.01em;
+    }
+    .wb-presence-name {
+      font-weight: 700;
+      padding-bottom: 1px;
+    }
+    .wb-presence-where {
+      display: inline-flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-left: auto;
+    }
+    .wb-presence-where-pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid;
+      background: transparent;
+      white-space: nowrap;
+    }
+
+    /* Section header presence bars — small initials chips appear next
+       to the section title for whoever's editing in that section. */
+    .section-presence-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: 8px;
+      flex-shrink: 0;
+    }
+    .section-presence-bar:empty { display: none; }
+    .presence-chip-mini {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0;
+      color: #fff;
+      box-shadow: 0 0 0 2px var(--surface);
+      animation: presence-pulse 1.6s ease-in-out infinite;
+    }
+    .presence-chip-mini + .presence-chip-mini { margin-left: -6px; }
+
     .order-filter-bar { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: wrap; }
     .order-filter-btn {
       font-size: 12px; font-weight: 600; padding: 5px 14px;
@@ -5012,6 +5085,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </div>
 
+  <!-- "X is editing" banner — populated by _renderPresence whenever
+       another user is on this workbook. Hidden when only the current
+       viewer is here. Names are colored per-user so they line up with
+       the colored highlights on focused inputs. -->
+  <div id="wb-presence-banner" class="wb-presence-banner" style="display:none;"></div>
+
   <!-- ── Status Bar ── -->
   <div class="status-bar" id="status-bar">
     <div class="status-bar-left">
@@ -5051,9 +5130,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- ══════════════════════════════════════════════════════════════════════
        SECTION 1 — PRODUCT OVERVIEW
   ═══════════════════════════════════════════════════════════════════════ -->
-  <div class="section-card">
+  <div class="section-card" data-section="overview">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Product Overview</span>
+      <span class="section-presence-bar" data-section-bar="overview" onclick="event.stopPropagation()"></span>
       <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
         <button onclick="event.stopPropagation(); promoteWorkbookToInventory();" id="btn-promote-sku"
           style="background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); font-size:12px; font-weight:600; padding:5px 10px; cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:5px; white-space:nowrap; transition:border-color 0.15s, color 0.15s;"
@@ -5196,7 +5276,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 
   <!-- ── Card: RFQ ── -->
-  <div class="section-card">
+  <div class="section-card" data-section="rfq">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">RFQ</span>
       <div id="rfq-presence-bar" onclick="event.stopPropagation()" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:12px;"></div>
@@ -5281,9 +5361,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 
   <!-- ── Card: Tiered Pricing (Workbook tab) ── -->
-  <div class="section-card">
+  <div class="section-card" data-section="tiers">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Tiered Pricing</span>
+      <span class="section-presence-bar" data-section-bar="tiers" onclick="event.stopPropagation()"></span>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -5309,9 +5390,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 
   <!-- ── Card: Additional Fees ── -->
-  <div class="section-card">
+  <div class="section-card" data-section="fees">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Additional Fees</span>
+      <span class="section-presence-bar" data-section-bar="fees" onclick="event.stopPropagation()"></span>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -5379,9 +5461,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 
   <!-- ── Card: Dimensions & Carton Specifications ── -->
-  <div class="section-card">
+  <div class="section-card" data-section="dimensions">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Dimensions & Carton Specifications</span>
+      <span class="section-presence-bar" data-section-bar="dimensions" onclick="event.stopPropagation()"></span>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -5861,9 +5944,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div id="wb-tab-pricing" class="wb-tab-content">
 
   <!-- ── Card: Delivered Cost Summary ── -->
-  <div class="section-card">
-    <div class="section-header">
+  <div class="section-card" data-section="pricing-summary">
+    <div class="section-header" style="display:flex; align-items:center; gap:8px;">
       <span class="section-title">Delivered Cost Summary</span>
+      <span class="section-presence-bar" data-section-bar="pricing-summary" onclick="event.stopPropagation()"></span>
     </div>
     <div class="section-body">
       <div id="pricing-no-selection-msg" class="pricing-no-selection">
@@ -6016,7 +6100,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 
   <!-- ── Card: Client Quote ── -->
-  <div class="section-card collapsed" id="pricing-quote-ref-card">
+  <div class="section-card collapsed" id="pricing-quote-ref-card" data-section="client-quote">
     <!-- Header: full-width accent-blue summary bar that doubles as the
          section toggle. Same layout is repeated as a footer below the
          line-item table so the operator can read the totals without
@@ -6118,9 +6202,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <!-- ── Tab: Quote for Client ── -->
   <div id="wb-tab-quote" class="wb-tab-content" style="display:none!important">
-  <div class="section-card">
+  <div class="section-card" data-section="quote">
     <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
       <span class="section-title">Quote for Client</span>
+      <span class="section-presence-bar" data-section-bar="quote" onclick="event.stopPropagation()" style="margin-left:auto; margin-right:8px;"></span>
       <button class="email-quote-btn" onclick="emailQuote()" title="Email Quote">
         <span class="email-icon">&#9993;</span>
         <span class="email-label">Email Quote</span>
@@ -6177,9 +6262,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <!-- ── Tab: Art ── -->
   <div id="wb-tab-art" class="wb-tab-content">
-  <div class="section-card">
-    <div class="section-header">
+  <div class="section-card" data-section="art">
+    <div class="section-header" style="display:flex; align-items:center; gap:8px;">
       <span class="section-title">Art</span>
+      <span class="section-presence-bar" data-section-bar="art" onclick="event.stopPropagation()"></span>
     </div>
     <div class="section-body">
       <p style="color:var(--text-muted); margin-bottom:16px;">Upload artwork files, logos, and design assets for this product.</p>
@@ -6243,9 +6329,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <!-- ── Tab: Office Invoice ── -->
   <div id="wb-tab-invoice" class="wb-tab-content" style="display:none!important">
-  <div class="section-card">
-    <div class="section-header">
+  <div class="section-card" data-section="invoice">
+    <div class="section-header" style="display:flex; align-items:center; gap:8px;">
       <span class="section-title">Office Invoice</span>
+      <span class="section-presence-bar" data-section-bar="invoice" onclick="event.stopPropagation()"></span>
     </div>
     <div class="section-body">
       <div class="form-grid form-grid-2">
@@ -20518,60 +20605,116 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       delete el.dataset.presence;
     });
     document.querySelectorAll('.presence-name-tag').forEach(el => el.remove());
-    const bar = document.getElementById('rfq-presence-bar');
-    if (bar) bar.innerHTML = '';
+    const rfqBar = document.getElementById('rfq-presence-bar');
+    if (rfqBar) rfqBar.innerHTML = '';
+    document.querySelectorAll('.section-presence-bar').forEach(b => { b.innerHTML = ''; });
+    const banner = document.getElementById('wb-presence-banner');
+    if (banner) { banner.innerHTML = ''; banner.style.display = 'none'; }
+  }
+
+  // Tiny helper: avatar chip for one user, used by the section bars and
+  // the RFQ bar so styling stays consistent. The RFQ bar shows the
+  // full name pill (legacy look); other section bars use the compact
+  // initials variant to keep small headers uncluttered.
+  function _presenceChip(u, opts) {
+    const initials = (typeof _watcherInitials === 'function') ? _watcherInitials(u.display_name) : (u.display_name || '?').charAt(0);
+    const compact = opts && opts.compact;
+    if (compact) {
+      return `<span class="presence-chip-mini" title="${(u.display_name || '').replace(/"/g,'&quot;')} is editing"
+              style="background:${u.color}; color:#fff;">${initials}</span>`;
+    }
+    return `<span style="display:inline-flex;align-items:center;gap:5px;
+                 background:${u.color}22;border:1px solid ${u.color}88;
+                 border-radius:20px;padding:3px 10px 3px 7px;
+                 font-size:11px;font-weight:700;color:${u.color};white-space:nowrap;">
+      <span style="width:7px;height:7px;border-radius:50%;background:${u.color};
+                   display:inline-block;
+                   animation:presence-pulse 2s ease-in-out infinite;"></span>
+      ${u.display_name}
+    </span>`;
   }
 
   function _renderPresence(users) {
     _clearPresenceIndicators();
+    if (!Array.isArray(users) || users.length === 0) return;
 
-    // ── Presence bar: avatar chips in the RFQ section header ────────────
-    const bar = document.getElementById('rfq-presence-bar');
-    if (bar && users.length > 0) {
-      bar.innerHTML = users.map(u => `
-        <span style="display:inline-flex;align-items:center;gap:5px;
-                     background:${u.color}22;border:1px solid ${u.color}88;
-                     border-radius:20px;padding:3px 10px 3px 7px;
-                     font-size:11px;font-weight:700;color:${u.color};white-space:nowrap;">
-          <span style="width:7px;height:7px;border-radius:50%;background:${u.color};
-                       display:inline-block;
-                       animation:presence-pulse 2s ease-in-out infinite;"></span>
-          ${u.display_name}
-        </span>`).join('');
+    // ── Top "X is editing" banner ───────────────────────────────────────
+    // Lists every user currently on this workbook (by user_id ≠ me, but
+    // the server already excludes us, so just take the list straight).
+    // Names are colored per-user so they line up with their highlights.
+    const banner = document.getElementById('wb-presence-banner');
+    if (banner) {
+      // Build the natural-language list: "X is editing" / "X and Y are
+      // editing" / "X, Y and Z are editing".
+      const parts = users.map(u => `<span class="wb-presence-name" style="color:${u.color}; border-bottom: 2px solid ${u.color};">${u.display_name}</span>`);
+      let listHtml;
+      if (parts.length === 1)      listHtml = `${parts[0]} is editing`;
+      else if (parts.length === 2) listHtml = `${parts[0]} and ${parts[1]} are editing`;
+      else                          listHtml = `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]} are editing`;
+
+      banner.innerHTML =
+        `<span class="wb-presence-pulse"></span>` +
+        `<span class="wb-presence-text">${listHtml}</span>` +
+        `<span class="wb-presence-where">${users.filter(u => u.focused_field).length > 0
+            ? users.map(u => {
+                const p = _parsePresenceField(u.focused_field);
+                if (!p.section) return '';
+                const label = _SECTION_LABELS[p.section] || p.section;
+                return `<span class="wb-presence-where-pill" style="border-color:${u.color}66; color:${u.color};">${u.display_name.split(/\s+/)[0]} → ${label}</span>`;
+              }).filter(Boolean).join('')
+            : ''
+          }</span>`;
+      banner.style.display = '';
     }
 
-    // ── Cell highlights (Google Sheets style) ───────────────────────────
+    // ── Per-section bars + RFQ legacy bar ───────────────────────────────
+    // Group users by section.
+    const bySection = new Map();
     users.forEach(u => {
-      if (!u.focused_field) return;
-      const sep   = u.focused_field.lastIndexOf(':');
+      const p = _parsePresenceField(u.focused_field);
+      if (!p.section) return;
+      if (!bySection.has(p.section)) bySection.set(p.section, []);
+      bySection.get(p.section).push(u);
+    });
+
+    bySection.forEach((list, sec) => {
+      if (sec === 'rfq') {
+        // Keep the original full-pill style on the RFQ bar (legacy look)
+        const rfqBar = document.getElementById('rfq-presence-bar');
+        if (rfqBar) rfqBar.innerHTML = list.map(u => _presenceChip(u, { compact: false })).join('');
+      }
+      // Also populate the generic section bar (covers RFQ if it has the
+      // newer slot, plus all other sections). Compact initials variant.
+      const slots = document.querySelectorAll(`.section-presence-bar[data-section-bar="${sec}"]`);
+      slots.forEach(slot => {
+        slot.innerHTML = list.map(u => _presenceChip(u, { compact: true })).join('');
+      });
+    });
+
+    // ── Cell highlights (Google Sheets style) — RFQ only ────────────────
+    users.forEach(u => {
+      const p = _parsePresenceField(u.focused_field);
+      if (!p.cellPath) return;
+      const sep   = p.cellPath.lastIndexOf(':');
       if (sep < 0) return;
-      const rowId = u.focused_field.slice(0, sep);
-      const idx   = parseInt(u.focused_field.slice(sep + 1), 10);
+      const rowId = p.cellPath.slice(0, sep);
+      const idx   = parseInt(p.cellPath.slice(sep + 1), 10);
       const row   = document.getElementById(rowId);
       if (!row) return;
       const input = row.querySelectorAll('input')[idx];
       if (!input) return;
 
-      // Thick colored border matching the user's color
       input.style.outline      = `3px solid ${u.color}`;
       input.style.outlineOffset = '-1px';
       input.dataset.presence   = '1';
 
-      // Name tag: fixed to viewport, anchored BELOW the input.
-      // Measure the real header bottom from the DOM each time — never use a
-      // hardcoded constant, which breaks under zoom / different screen sizes.
       const rect = input.getBoundingClientRect();
-      if (rect.width === 0) return;                           // not rendered yet
-
+      if (rect.width === 0) return;
       const headerEl  = document.querySelector('.app-header');
       const headerBottom = headerEl ? headerEl.getBoundingClientRect().bottom : 64;
-      const safeTop   = headerBottom + 6;   // 6 px gap so tag never kisses the header
-
-      // Bail if the cell is in / above the header zone OR below the viewport
+      const safeTop = headerBottom + 6;
       if (rect.top < safeTop) return;
       if (rect.bottom > window.innerHeight) return;
-
-      // Tag goes below the cell, clamped so it can't exceed the viewport bottom
       const tagTop = Math.min(rect.bottom + 3, window.innerHeight - 24);
       const tag = document.createElement('div');
       tag.className   = 'presence-name-tag';
@@ -20588,51 +20731,139 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
   }
 
-  // Attach focus/blur listeners to the RFQ table (event delegation, idempotent)
+  // Section name → friendly label, used by the top "X is editing" banner
+  // and per-section presence bars. Keep keys identical to the data-section
+  // attributes on each .section-card in the workbook view.
+  const _SECTION_LABELS = {
+    overview:           'Product Overview',
+    rfq:                'RFQ',
+    tiers:              'Tiered Pricing',
+    fees:               'Additional Fees',
+    dimensions:         'Dimensions & Carton',
+    'pricing-summary':  'Delivered Cost',
+    'client-quote':     'Client Quote',
+    quote:              'Quote for Client',
+    art:                'Art',
+    invoice:            'Office Invoice',
+  };
+
+  // Parse "section|cellPath" or "section" or "" into { section, cellPath }.
+  // Older clients (or RFQ-only state) wrote bare cellPaths without a
+  // section prefix — those still parse correctly with section = null.
+  function _parsePresenceField(field) {
+    if (!field) return { section: null, cellPath: null };
+    const pipe = field.indexOf('|');
+    if (pipe < 0) {
+      // No pipe: either just a section name, or legacy bare cellPath
+      return /^[a-z][a-z0-9-]*$/i.test(field)
+        ? { section: field, cellPath: null }
+        : { section: null,  cellPath: field };
+    }
+    return { section: field.slice(0, pipe) || null, cellPath: field.slice(pipe + 1) || null };
+  }
+
+  // Look up the data-section ancestor of a focused element. Used by the
+  // generic workbook focus tracker so any input in any section reports
+  // its section to other viewers.
+  function _sectionFor(el) {
+    const sec = el && el.closest && el.closest('[data-section]');
+    return sec ? sec.getAttribute('data-section') : null;
+  }
+
+  // Attach focus tracking. The RFQ table keeps its cell-precise format
+  // (so the cell-highlight feature still works); every OTHER input in
+  // the workbook view reports just the section it lives in. Both feed
+  // into _myFocusedField as "<section>|<cellPath?>".
   function _initPresenceFocusTracking() {
     const rfqBody = document.getElementById('rfq-body');
-    if (!rfqBody || rfqBody._presenceReady) return;
-    rfqBody._presenceReady = true;
+    if (rfqBody && !rfqBody._presenceReady) {
+      rfqBody._presenceReady = true;
 
-    rfqBody.addEventListener('focusin', e => {
-      if (e.target.tagName !== 'INPUT') return;
-      const row = e.target.closest('tr[id]');
-      if (!row) return;
-      const inputs = [...row.querySelectorAll('input')];
-      const idx    = inputs.indexOf(e.target);
-      if (idx < 0) return;
-      _myFocusedField = `${row.id}:${idx}`;
-      _sendPresenceHeartbeat();   // push field update immediately
-    });
+      rfqBody.addEventListener('focusin', e => {
+        if (e.target.tagName !== 'INPUT') return;
+        const row = e.target.closest('tr[id]');
+        if (!row) return;
+        const inputs = [...row.querySelectorAll('input')];
+        const idx    = inputs.indexOf(e.target);
+        if (idx < 0) return;
+        _myFocusedField = `rfq|${row.id}:${idx}`;
+        _sendPresenceHeartbeat();
+      });
 
-    rfqBody.addEventListener('focusout', () => {
-      setTimeout(() => {
-        if (!rfqBody.contains(document.activeElement)) {
-          _myFocusedField = '';
+      rfqBody.addEventListener('focusout', () => {
+        setTimeout(() => {
+          if (!rfqBody.contains(document.activeElement)) {
+            // Only clear if focus didn't land in another tracked section
+            const newSec = _sectionFor(document.activeElement);
+            if (!newSec || newSec === 'rfq') {
+              _myFocusedField = '';
+              _sendPresenceHeartbeat();
+            }
+          }
+        }, 120);
+      });
+
+      // Live cell-value broadcast (RFQ-specific): every keystroke
+      // (debounced inside _pushCellValue) sends the field's current value
+      // so other viewers see it within ~250 ms + their next 2 s poll.
+      rfqBody.addEventListener('input', e => {
+        if (!e.isTrusted) return;
+        if (typeof _filling !== 'undefined' && _filling) return;
+        if (e.target.tagName !== 'INPUT') return;
+        if (e.target.type === 'checkbox') return;
+        const row = e.target.closest('tr[id]');
+        if (!row) return;
+        const inputs = [...row.querySelectorAll('input')];
+        const idx    = inputs.indexOf(e.target);
+        if (idx < 0) return;
+        _pushCellValue(`${row.id}:${idx}`, e.target.value);
+      });
+    }
+
+    // Generic workbook-wide section tracker. Fires on focus into any
+    // input/textarea/select that's inside a [data-section] container —
+    // covers Product Overview, Additional Fees, Dimensions, etc. The
+    // RFQ table is its own [data-section="rfq"] so the listener fires
+    // there too, but the more-specific RFQ handler above runs first
+    // (event delegation order) and writes the cell-precise format.
+    const wbView = document.getElementById('view-workbook');
+    if (wbView && !wbView._presenceReady) {
+      wbView._presenceReady = true;
+      wbView.addEventListener('focusin', e => {
+        const t = e.target;
+        if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA' && t.tagName !== 'SELECT')) return;
+        // Don't downgrade an RFQ cell focus to section-only — the more-
+        // specific RFQ handler above already set the field correctly.
+        if (_myFocusedField && _myFocusedField.indexOf('rfq|') === 0 && t.closest('#rfq-body')) return;
+        const section = _sectionFor(t);
+        if (!section) return;
+        if (section === 'rfq' && t.closest('#rfq-body')) return; // RFQ handles itself
+        const newField = section;
+        if (newField !== _myFocusedField) {
+          _myFocusedField = newField;
           _sendPresenceHeartbeat();
         }
-      }, 120);
-    });
-
-    // Live cell-value broadcast: every keystroke (debounced inside
-    // _pushCellValue) sends the field's current value to the server so other
-    // connected viewers see it within ~250 ms + their next 2 s poll.
-    //   - Skip synthetic events (isTrusted === false): those come from
-    //     _pollCellValues applying remote updates and would echo back.
-    //   - Skip during workbook fill: programmatic population fires synthetic
-    //     input events that we don't want to broadcast as new edits.
-    rfqBody.addEventListener('input', e => {
-      if (!e.isTrusted) return;
-      if (typeof _filling !== 'undefined' && _filling) return;
-      if (e.target.tagName !== 'INPUT') return;
-      if (e.target.type === 'checkbox') return;
-      const row = e.target.closest('tr[id]');
-      if (!row) return;
-      const inputs = [...row.querySelectorAll('input')];
-      const idx    = inputs.indexOf(e.target);
-      if (idx < 0) return;
-      _pushCellValue(`${row.id}:${idx}`, e.target.value);
-    });
+      });
+      wbView.addEventListener('focusout', () => {
+        setTimeout(() => {
+          const a = document.activeElement;
+          // If focus went to nothing tracked, clear our presence
+          if (!a || !wbView.contains(a)) {
+            if (_myFocusedField !== '') {
+              _myFocusedField = '';
+              _sendPresenceHeartbeat();
+            }
+            return;
+          }
+          if (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA' && a.tagName !== 'SELECT') {
+            if (_myFocusedField !== '') {
+              _myFocusedField = '';
+              _sendPresenceHeartbeat();
+            }
+          }
+        }, 120);
+      });
+    }
   }
 
   // Clear presence immediately when the tab is closed / navigated away from
