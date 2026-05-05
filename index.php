@@ -725,13 +725,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding-bottom: 2px;
     }
     .section-summary .ss-rfq-th--left { text-align: left; }
-    /* Grand-total bookend rows — heavier border separating them from
-       the per-item rows so the table reads as Header → Items → Total. */
+    /* Divider above the grand-total row — single grid item spanning
+       every column so the border line runs continuously edge-to-edge,
+       no breaks at the column gaps. Putting the border on the
+       individual grand-total cells leaves visible gaps wherever the
+       column-gap is. */
+    .section-summary .ss-rfq-divider {
+      grid-column: 1 / -1;
+      border-top: 1px solid var(--border);
+      height: 0;
+      margin: 4px 0 2px;
+    }
+    /* Grand-total row — heavier weight so it reads as a sum row,
+       no per-cell border (the .ss-rfq-divider above handles the line). */
     .section-summary .ss-rfq-grand-cell {
       font-weight: 700;
       color: var(--text);
-      padding-top: 6px;
-      border-top: 1px solid var(--border);
     }
     .section-summary .ss-rfq-grand-cell--label {
       text-align: left;
@@ -10845,6 +10854,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               `<div>${it.lead > 0 ? it.lead + 'd' : '—'}</div>`
             );
           }).join('');
+          // Divider grid item — spans all columns so the border above
+          // the Grand Total row is continuous edge-to-edge (no breaks
+          // at the column gaps that per-cell borders would produce).
+          const dividerCell = `<div class="ss-rfq-divider"></div>`;
           const grandCells =
             `<div class="ss-rfq-grand-cell ss-rfq-grand-cell--label">Grand Total</div>` +
             `<div class="ss-rfq-grand-cell">${_ssFmtInt(grandQty)}</div>` +
@@ -10853,21 +10866,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             `<div class="ss-rfq-grand-cell ss-rfq-accent">${_ssFmtUsd(grandTotal)}</div>` +
             `<div class="ss-rfq-grand-cell">${grandLead > 0 ? grandLead + 'd' : '—'}</div>`;
 
-          // Compact summary line at the very top — same data the row
-          // at the bottom shows, but in plain prose so the operator
-          // sees the headline numbers without scanning the table.
-          const headlineRow = `<div class="ss-row">
-            <span class="ss-label">Grand Total</span>
-            <span class="ss-value ss-value--accent">${_ssFmtUsd(grandTotal)}</span>
-            <span class="ss-divider">·</span>
-            <span class="ss-value">${_ssFmtInt(grandQty)} units</span>
-            <span class="ss-divider">·</span>
-            <span class="ss-value">${items.length} item${items.length === 1 ? '' : 's'}</span>
-            ${grandLead > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${grandLead}d lead</span>` : ''}
-          </div>`;
-          const tableHtml = `<div class="ss-rfq-table">${headerCells}${itemCells}${grandCells}</div>`;
-
-          _setSectionSummary('rfq', headlineRow + tableHtml);
+          const tableHtml = `<div class="ss-rfq-table">${headerCells}${itemCells}${dividerCell}${grandCells}</div>`;
+          _setSectionSummary('rfq', tableHtml);
           break;
         }
         case 'tiers': {
