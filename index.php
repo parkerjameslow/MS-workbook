@@ -8436,9 +8436,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     // Fit-to-viewBox scale + center, with padding for L/W/H labels.
-    // Left padding wider for the rotated H label; bottom for L/W brackets.
+    // Left padding sized to fit the horizontal H label ("999.9 cm H")
+    // so it reads on a single line matching the L and W labels;
+    // bottom padding for L/W brackets.
     const VBW = 220, VBH = 160;
-    const PAD_L = 38, PAD_R = 18, PAD_TOP = 8, PAD_BOTTOM = 44;
+    const PAD_L = 64, PAD_R = 18, PAD_TOP = 8, PAD_BOTTOM = 44;
     const allX = Object.values(v).map(p => p.x);
     const allY = Object.values(v).map(p => p.y);
     const minX = Math.min(...allX), maxX = Math.max(...allX);
@@ -8587,11 +8589,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     html += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
 
     // H (height) — bracket vertical, hugging the box's left silhouette.
+    // Label reads horizontally (no rotation) so it matches the L and W
+    // labels: text is right-anchored so its right edge sits a hair to
+    // the left of the bracket bar regardless of box width.
     const hX = sxMin - 8;
     const hA = { x: hX, y: tTbl.y };
     const hB = { x: hX, y: tBbl.y };
-    const hLabelPos = { x: hX - 20, y: (hA.y + hB.y)/2 };
-    html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'middle', -90);
+    const hLabelPos = { x: hX - 6, y: (hA.y + hB.y)/2 + 3 };
+    html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'end', 0);
 
     svg.innerHTML = html;
   }
