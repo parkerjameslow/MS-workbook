@@ -698,6 +698,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* Product Overview summary — truncate the description so a long
+       paragraph doesn't blow out the section header. Tooltip carries
+       the full text so the operator can hover to read the rest. */
+    .section-summary .ss-overview-desc {
+      max-width: 360px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    @media (max-width: 768px) {
+      .section-summary .ss-overview-desc { max-width: 180px; }
+    }
     .section-summary .ss-label {
       font-size: 10px;
       font-weight: 700;
@@ -5313,6 +5326,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Product Overview</span>
       <span class="section-presence-bar" data-section-bar="overview" onclick="event.stopPropagation()"></span>
+      <span class="section-summary" data-section-summary="overview"></span>
       <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
         <button onclick="event.stopPropagation(); promoteWorkbookToInventory();" id="btn-promote-sku"
           style="background:none; border:1px solid var(--border); border-radius:8px; color:var(--text-muted); font-size:12px; font-weight:600; padding:5px 10px; cursor:pointer; font-family:inherit; display:flex; align-items:center; gap:5px; white-space:nowrap; transition:border-color 0.15s, color 0.15s;"
@@ -10668,6 +10682,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _updateSectionSummary(name) {
     try {
       switch (name) {
+        case 'overview': {
+          // When the operator manually collapses Product Overview,
+          // show the at-a-glance trio: Client Name → Product Name →
+          // Product Description (truncated). All three reads pull
+          // from the live form inputs so a typed edit shows up the
+          // moment the section is collapsed.
+          const escHtml = s => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+          const client  = (document.getElementById('client-name')?.value  || '').trim();
+          const product = (document.getElementById('product-name')?.value || '').trim();
+          const desc    = (document.getElementById('product-desc')?.value || '').trim();
+          if (!client && !product && !desc) { _setSectionSummary('overview', ''); break; }
+          const parts = [];
+          if (client)  parts.push(`<span class="ss-value">${escHtml(client)}</span>`);
+          if (product) parts.push(`<span class="ss-value ss-value--accent">${escHtml(product)}</span>`);
+          if (desc)    parts.push(`<span class="ss-value ss-overview-desc" title="${escHtml(desc)}">${escHtml(desc)}</span>`);
+          _setSectionSummary('overview',
+            `<div class="ss-row">` + parts.join('<span class="ss-divider">·</span>') + `</div>`
+          );
+          break;
+        }
         case 'rfq': {
           // Walk parent rows; for each parent compute group-level
           // stats from its variants (or fall back to the parent's
@@ -10878,7 +10914,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // them. Per-section recalcs (recalcRfqTotals etc.) call _updateSection-
   // Summary directly with a single name to stay fast.
   function _updateAllSectionSummaries() {
-    ['rfq', 'tiers', 'fees', 'dimensions', 'pallet'].forEach(_updateSectionSummary);
+    ['overview', 'rfq', 'tiers', 'fees', 'dimensions', 'pallet'].forEach(_updateSectionSummary);
   }
 
   // Auto-collapse the data-heavy sections (RFQ, Tiered Pricing,
