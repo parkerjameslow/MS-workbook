@@ -455,7 +455,7 @@ table.rfq-table .num-col { text-align: center; color: #9ba3c0; font-weight: 600;
 
 /* Variant section — sub-rows under each parent line item. Indented
    so they read as nested under the parent; smaller font + lighter
-   styling so they don't compete visually with the parent row. */
+   styling to keep visual weight below the parent row. */
 .variant-section-row td { border: 0; }
 .variant-list { display: flex; flex-direction: column; gap: 6px; padding-left: 12px; }
 .variant-list:empty { padding: 0; }
