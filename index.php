@@ -7201,7 +7201,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       Milestone Watchers
     </div>
     <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin:0 0 18px;">
-      Tag people to be emailed when this workbook reaches a specific milestone. Once a step completes, that step's watchers get one email and are cleared — re-add them if you want to be notified again.
+      Tag people to be alerted when this workbook <strong style="color:var(--text);">moves into</strong> a specific milestone (the moment that step turns green on the flow bar). They get one email + browser notification at that point and are cleared — re-tag them if you want to be alerted on a future stage.
     </p>
     <!-- Browser notifications opt-in — only visible while permission is
          still in its default state. Lets the operator turn on Chrome
@@ -11969,10 +11969,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     btn.classList.toggle('no-watchers',  nextWatchers.length === 0);
   }
 
-  // Fires the "step just completed" notification email to anyone watching
-  // that step, then clears the watch list for that step (one-shot
-  // semantics — operator must re-tag to be notified again). Called from
-  // advanceStatus() after the flow flag has flipped true.
+  // Fires the "now at this stage" notification (email + browser) to
+  // anyone watching the step that JUST became active, then clears the
+  // watch list for that step (one-shot semantics — operator must re-tag
+  // to be notified again). Called from advanceStatus() right after the
+  // flow flag has flipped true — i.e., the moment the workbook MOVES
+  // INTO that stage, not when it leaves.
   async function _fireWatcherNotifications(stepKey) {
     if (!stepKey || !currentClient || !currentWorkbookId) return;
     const key = `${currentClient}|${currentWorkbookId}`;
@@ -12009,7 +12011,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const ok = !!(r && r.success);
         const sentTo = (r && r.recipients) || [];
         const msg = ok
-          ? `Notified ${sentTo.length || list.length} watcher${(sentTo.length || list.length) === 1 ? '' : 's'} that ${stepLabel} is complete.`
+          ? `Notified ${sentTo.length || list.length} watcher${(sentTo.length || list.length) === 1 ? '' : 's'} that the workbook just moved into ${stepLabel}.`
           : `Watchers cleared but email may not have sent. Check console.`;
         _msToast(msg, ok ? 'success' : 'error');
       }

@@ -2389,8 +2389,8 @@ switch ($action) {
         // Insert in-app notifications for every watcher we know about
         // (even ones with no email). Browser notifications are bonus —
         // they don't require an email to be on file.
-        $notifTitle = "✓ {$stepLabel} — {$productName}";
-        $notifBody  = "{$clientName}'s workbook just advanced past {$stepLabel}.";
+        $notifTitle = "Now at: {$stepLabel} — {$productName}";
+        $notifBody  = "{$clientName} / {$productName} just moved into {$stepLabel}.";
         try {
             $insertNotif = $pdo->prepare(
                 "INSERT INTO notifications (user_id, kind, title, body, url) VALUES (?, 'watcher_milestone', ?, ?, ?)"
@@ -2413,7 +2413,7 @@ switch ($action) {
             break;
         }
 
-        $subject = "✓ {$stepLabel} — {$productName} ({$clientName})";
+        $subject = "Now at: {$stepLabel} — {$productName} ({$clientName})";
         $clientNameSafe  = htmlspecialchars($clientName);
         $productSafe     = htmlspecialchars($productName);
         $stepLabelSafe   = htmlspecialchars($stepLabel);
@@ -2428,20 +2428,20 @@ switch ($action) {
 
         $watcherListSafe = implode(', ', array_map('htmlspecialchars', $watcherNames));
 
-        $body = "<div style='margin-bottom:18px;'><span style='background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:5px 14px;border-radius:20px;'>Milestone Reached</span></div>"
+        $body = "<div style='margin-bottom:18px;'><span style='background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:5px 14px;border-radius:20px;'>Now at this stage</span></div>"
               . "<h1 style='margin:0 0 6px;font-size:24px;font-weight:800;color:#1a1d2e;'>{$stepLabelSafe}</h1>"
-              . "<p style='margin:0 0 20px;font-size:15px;color:#6b7280;'>The workbook for <strong>{$productSafe}</strong> ({$clientNameSafe}) has just advanced past <strong>{$stepLabelSafe}</strong>.</p>"
+              . "<p style='margin:0 0 20px;font-size:15px;color:#6b7280;'>The workbook for <strong>{$productSafe}</strong> ({$clientNameSafe}) just moved into <strong>{$stepLabelSafe}</strong>. This is your heads-up that work on this stage is starting now.</p>"
               . ms_detail_table([
-                  ['Client',     $clientNameSafe],
-                  ['Product',    $productSafe],
-                  ['Milestone',  $stepLabelSafe],
-                  ['Tagged',     $watcherListSafe],
+                  ['Client',         $clientNameSafe],
+                  ['Product',        $productSafe],
+                  ['Current stage',  $stepLabelSafe],
+                  ['Tagged',         $watcherListSafe],
               ])
               . $appBtn
-              . "<p style='margin:18px 0 0;font-size:13px;color:#9ba3c0;line-height:1.6;'>You were tagged as a watcher for this milestone. You won&rsquo;t be notified again unless re-tagged on a future step.</p>"
+              . "<p style='margin:18px 0 0;font-size:13px;color:#9ba3c0;line-height:1.6;'>You were tagged as a watcher for this stage. This is a one-time alert — re-tag yourself on a future stage if you want to be notified again.</p>"
               . "<p style='margin:14px 0 0;font-size:14px;color:#374151;'>— Market Sculpt Workbook</p>";
 
-        $html   = ms_email_wrap($subject, "Milestone reached: {$stepLabel}", $body);
+        $html   = ms_email_wrap($subject, "Now at: {$stepLabel}", $body);
         $result = ms_smtp_send($recipients, $subject, $html);
 
         echo json_encode([
