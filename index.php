@@ -20534,6 +20534,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   async function _sendPresenceHeartbeat() {
     if (!_presenceWorkbookId) return;
+    // Re-render the banner + section bars with our current local
+    // _myFocusedField BEFORE awaiting the network round-trip, so the
+    // UI feels instant when the user clicks into a new section.
+    _refreshPresenceUI();
     try {
       await apiCall('update_presence', {
         workbook_id:   _presenceWorkbookId,
@@ -20543,12 +20547,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } catch(e) {}
   }
 
+  // Cache the most-recent server response so _renderPresence can be
+  // re-run with the same other-user list when our local state (focused
+  // section) changes — no need to wait for the next poll.
+  var _lastPresenceUsers = [];
+
   async function _pollPresence() {
     if (!_presenceWorkbookId) return;
     try {
       const res = await apiCall('get_presence', { workbook_id: _presenceWorkbookId });
-      if (res?.success) _renderPresence(res.users || []);
+      if (res?.success) {
+        _lastPresenceUsers = res.users || [];
+        _renderPresence(_lastPresenceUsers);
+      }
     } catch(e) {}
+  }
+
+  function _refreshPresenceUI() {
+    if (_presenceWorkbookId) _renderPresence(_lastPresenceUsers);
   }
 
   // ── Live cell value sync ──────────────────────────────────────────────────
@@ -20664,41 +20680,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function _renderPresence(users) {
     _clearPresenceIndicators();
-    if (!Array.isArray(users) || users.length === 0) return;
+    if (!Array.isArray(users)) users = [];
+
+    // Only render presence UI when we're actually on a workbook detail
+    // view — the banner doesn't make sense from the home page or list views.
+    const onWorkbook = !!document.getElementById('view-workbook')?.classList.contains('active');
+    if (!onWorkbook) return;
+
+    // Prepend the current viewer as a "You" entry so the banner always
+    // shows at least one name (otherwise the user thinks the feature is
+    // broken when they're testing alone). Self entry uses the live local
+    // _myFocusedField and _myPresenceColor so the section chip + the
+    // banner pill both update instantly when they click into a section,
+    // without waiting for the next 2 s poll.
+    const selfDisplay = (window.MS_SESSION && window.MS_SESSION.name) ? window.MS_SESSION.name : 'You';
+    const selfId      = (window.MS_SESSION && window.MS_SESSION.id) || 0;
+    const selfEntry = {
+      display_name:  selfDisplay,
+      color:         _myPresenceColor,
+      focused_field: _myFocusedField || '',
+      is_self:       true,
+      _id:           selfId,
+    };
+    // Combined list — self first so "You" appears at the front of the banner
+    const all = [selfEntry, ...users];
 
     // ── Top "X is editing" banner ───────────────────────────────────────
-    // Lists every user currently on this workbook (by user_id ≠ me, but
-    // the server already excludes us, so just take the list straight).
     // Names are colored per-user so they line up with their highlights.
+    // Renders "You", "You and Parker", "You, Parker and Jackson" etc.
     const banner = document.getElementById('wb-presence-banner');
     if (banner) {
-      // Build the natural-language list: "X is editing" / "X and Y are
-      // editing" / "X, Y and Z are editing".
-      const parts = users.map(u => `<span class="wb-presence-name" style="color:${u.color}; border-bottom: 2px solid ${u.color};">${u.display_name}</span>`);
+      const labelFor = u => u.is_self
+        ? `<span class="wb-presence-name" style="color:${u.color}; border-bottom: 2px solid ${u.color};" title="${selfDisplay}">You</span>`
+        : `<span class="wb-presence-name" style="color:${u.color}; border-bottom: 2px solid ${u.color};">${u.display_name}</span>`;
+      const parts = all.map(labelFor);
+      const verb  = all.length === 1 ? 'is editing' : 'are editing';
       let listHtml;
-      if (parts.length === 1)      listHtml = `${parts[0]} is editing`;
-      else if (parts.length === 2) listHtml = `${parts[0]} and ${parts[1]} are editing`;
-      else                          listHtml = `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]} are editing`;
+      if (parts.length === 1)      listHtml = `${parts[0]} ${verb}`;
+      else if (parts.length === 2) listHtml = `${parts[0]} and ${parts[1]} ${verb}`;
+      else                          listHtml = `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]} ${verb}`;
+
+      const wherePills = all.map(u => {
+        const p = _parsePresenceField(u.focused_field);
+        if (!p.section) return '';
+        const label = _SECTION_LABELS[p.section] || p.section;
+        const who = u.is_self ? 'You' : u.display_name.split(/\s+/)[0];
+        return `<span class="wb-presence-where-pill" style="border-color:${u.color}66; color:${u.color};">${who} → ${label}</span>`;
+      }).filter(Boolean).join('');
 
       banner.innerHTML =
-        `<span class="wb-presence-pulse"></span>` +
+        `<span class="wb-presence-pulse" style="background:${_myPresenceColor};"></span>` +
         `<span class="wb-presence-text">${listHtml}</span>` +
-        `<span class="wb-presence-where">${users.filter(u => u.focused_field).length > 0
-            ? users.map(u => {
-                const p = _parsePresenceField(u.focused_field);
-                if (!p.section) return '';
-                const label = _SECTION_LABELS[p.section] || p.section;
-                return `<span class="wb-presence-where-pill" style="border-color:${u.color}66; color:${u.color};">${u.display_name.split(/\s+/)[0]} → ${label}</span>`;
-              }).filter(Boolean).join('')
-            : ''
-          }</span>`;
+        `<span class="wb-presence-where">${wherePills}</span>`;
       banner.style.display = '';
     }
 
     // ── Per-section bars + RFQ legacy bar ───────────────────────────────
-    // Group users by section.
+    // Group everyone (including self) by their currently-focused section.
     const bySection = new Map();
-    users.forEach(u => {
+    all.forEach(u => {
       const p = _parsePresenceField(u.focused_field);
       if (!p.section) return;
       if (!bySection.has(p.section)) bySection.set(p.section, []);
@@ -20719,7 +20759,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       });
     });
 
-    // ── Cell highlights (Google Sheets style) — RFQ only ────────────────
+    // ── Cell highlights (Google Sheets style) — RFQ only, OTHER USERS only.
+    // We deliberately don't outline our own cell — that's what the native
+    // browser focus ring is for, and a colored outline on top of it looks
+    // doubled-up.
     users.forEach(u => {
       const p = _parsePresenceField(u.focused_field);
       if (!p.cellPath) return;
