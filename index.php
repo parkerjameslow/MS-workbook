@@ -2562,15 +2562,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .wb-watchers-btn:hover { border-color: var(--accent); color: var(--accent); }
     .wb-watchers-btn.has-watchers { border-color: var(--accent); color: var(--accent); }
     .wb-watchers-count {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 0;
+      font-size: 11px; font-weight: 800;
+    }
+    .wb-watchers-count:empty { display: none; }
+    /* Tiny circular initials chip — one per watcher of the upcoming step. */
+    .wb-watcher-initials {
       display: inline-flex; align-items: center; justify-content: center;
-      min-width: 18px; height: 18px; padding: 0 5px;
-      border-radius: 9px; font-size: 11px; font-weight: 800;
-      background: var(--surface2); color: var(--text-muted);
-      transition: background 0.15s, color 0.15s;
-    }
-    .wb-watchers-btn.has-watchers .wb-watchers-count {
+      width: 20px; height: 20px;
+      border-radius: 50%;
       background: var(--accent); color: #fff;
+      font-size: 9px; font-weight: 800;
+      letter-spacing: 0;
+      box-shadow: 0 0 0 1.5px var(--surface);
     }
+    .wb-watcher-initials + .wb-watcher-initials { margin-left: -6px; } /* slight overlap */
 
     /* Modal contents — one row per flow step with bar + label, watchers
        pills, and an "+ Add" select. Completed steps render dimmed with
@@ -11432,10 +11439,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       advanceBtn.disabled = true;
     }
 
-    // Show "Notify Client" button when Quote to Client step is active
+    // Show "Notify Client" button ONLY while the workbook is at the
+    // Quote-to-Client stage — i.e. that step has just been marked
+    // complete but the next one (Client Approved) hasn't yet. Clears
+    // the button from every other stage so the operator can't
+    // accidentally re-send the quote email after the order has moved on.
     const notifyBtn = document.getElementById('btn-notify-quote');
     if (notifyBtn) {
-      const show = !!flow.quoteClient;
+      const show = !!flow.quoteClient && !flow.clientApproved;
       notifyBtn.style.display = show ? 'inline-flex' : 'none';
     }
 
@@ -11684,20 +11695,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderWatchersModal();
   }
 
-  // Updates the small numeric badge on the status-bar Watchers button to
-  // reflect the total count of watchers across all steps. Also toggles
-  // the .has-watchers class so the button highlights orange when there's
-  // at least one tag — useful peripheral signal when scanning workbooks.
+  // Status-bar Watchers button: shows the initials of the people tagged
+  // on the NEXT step (the one the Advance button is about to mark
+  // complete). Other steps' watchers stay hidden here — the modal is
+  // where the full list lives. This keeps the button a glance-able
+  // "who gets emailed if I click Advance now?" signal without cluttering
+  // the bar. If no watchers on the next step, falls back to a generic
+  // "Watchers" label.
+  //
+  // Compute single-letter initials of a display name. "Parker Low" → "PL",
+  // "Karen" → "K". Capped at 2 chars per pill so the chip stays compact.
+  function _watcherInitials(displayName) {
+    if (!displayName) return '?';
+    return String(displayName).trim().split(/\s+/).slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('') || '?';
+  }
+
   function _updateWatchersCountBadge() {
     if (!currentClient || !currentWorkbookId) return;
     const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
     const w = detail.watchers || {};
-    let count = 0;
-    Object.values(w).forEach(arr => { if (Array.isArray(arr)) count += arr.length; });
+    const items = (clientData[currentClient] || []);
+    const item  = items.find(i => i.id === parseInt(currentWorkbookId)) || {};
+    const flow  = item.flow || {};
+    // Determine the upcoming step (the one Advance will fire next). If
+    // the workbook is complete (no upcoming step), there's nothing left
+    // to notify on, so we fall back to the generic label.
+    let currentIdx = -1;
+    for (let i = flowSteps.length - 1; i >= 0; i--) {
+      if (flow[flowSteps[i]]) { currentIdx = i; break; }
+    }
+    const nextIdx = currentIdx + 1;
+    const nextStepKey = (nextIdx < flowSteps.length) ? flowSteps[nextIdx] : null;
+    const nextStepLabel = nextStepKey ? flowLabels[nextIdx] : null;
+
+    const nextWatchers = (nextStepKey && Array.isArray(w[nextStepKey])) ? w[nextStepKey] : [];
+    const totalWatchers = Object.values(w).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0);
+
     const badge = document.getElementById('watchers-count');
-    if (badge) badge.textContent = count;
-    const btn = document.getElementById('btn-watchers');
-    if (btn) btn.classList.toggle('has-watchers', count > 0);
+    const btn   = document.getElementById('btn-watchers');
+    if (!badge || !btn) return;
+
+    if (nextWatchers.length > 0) {
+      // Render each watcher as a tiny initials pill stack inside the
+      // badge slot. Tooltip on the button explains which step these
+      // are watching so the abbreviation isn't ambiguous.
+      badge.innerHTML = nextWatchers.map(name =>
+        `<span class="wb-watcher-initials" title="${String(name).replace(/"/g,'&quot;')}">${_watcherInitials(name)}</span>`
+      ).join('');
+      btn.title = `${nextWatchers.length} watcher${nextWatchers.length === 1 ? '' : 's'} for "${nextStepLabel}"${totalWatchers > nextWatchers.length ? ` · ${totalWatchers - nextWatchers.length} more on later steps` : ''}`;
+    } else {
+      badge.textContent = '';
+      btn.title = nextStepLabel
+        ? `No watchers tagged for "${nextStepLabel}". Click to manage.`
+        : 'Manage milestone watchers';
+    }
+    btn.classList.toggle('has-watchers', nextWatchers.length > 0);
+    btn.classList.toggle('no-watchers',  nextWatchers.length === 0);
   }
 
   // Fires the "step just completed" notification email to anyone watching
@@ -11865,6 +11918,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
     saveToLocalStorage();
     rebuildRfqNav();  // status moved — may enter/leave RFQ queue
+    // Refresh the Watchers button — the upcoming step has changed, so
+    // the displayed initials should track the new "next" step.
+    if (typeof _updateWatchersCountBadge === 'function') _updateWatchersCountBadge();
   }
 
   function advanceStatus() {
@@ -11898,6 +11954,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (advancedStepKey) {
       try { _fireWatcherNotifications(advancedStepKey); } catch (e) { console.error('[MS watcher fire]', e); }
     }
+    // Refresh the Watchers button — the upcoming step has changed, so
+    // the displayed initials should track the new "next" step.
+    if (typeof _updateWatchersCountBadge === 'function') _updateWatchersCountBadge();
   }
 
   /* ── Workbook Tabs ────────────────────────────────────────────────────────── */
