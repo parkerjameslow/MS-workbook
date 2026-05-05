@@ -760,9 +760,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
     .section-summary .ss-rfq-accent { color: var(--accent); }
-    /* Product Overview summary — truncate the description so a long
-       paragraph doesn't blow out the section header. Tooltip carries
-       the full text so the operator can hover to read the rest. */
+    /* Product Overview summary — left-aligned, sits ~10px to the right
+       of the section title (overrides the default right-justification
+       of the generic .section-summary so the Client / Product /
+       Description trio reads as an extension of the title). The
+       action div + chevron stay on the right via margin-left:auto. */
+    .section-card.collapsed .section-summary[data-section-summary="overview"] {
+      align-items: flex-start;
+      margin-left: 10px;
+    }
+    .section-summary[data-section-summary="overview"] .ss-row {
+      justify-content: flex-start;
+    }
+    /* Truncate the description so a long paragraph doesn't blow out
+       the section header. Tooltip carries the full text on hover. */
     .section-summary .ss-overview-desc {
       max-width: 360px;
       overflow: hidden;
