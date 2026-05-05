@@ -62,6 +62,11 @@ try {
 try {
     $pdo->exec("ALTER TABLE users ADD COLUMN commission_pct DECIMAL(5,2) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+// Phone (E.164 format like +14155551234) — used by the milestone-watcher
+// SMS pipeline. Optional per user; SMS path no-ops when blank.
+try {
+    $pdo->exec("ALTER TABLE users ADD COLUMN phone VARCHAR(32) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 
 // Seed default admin if no users exist
 $userCount = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
@@ -353,6 +358,89 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS notifications (
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
+
+// ── SMS helper (Twilio) ───────────────────────────────────────────────────
+// Set the three constants below to enable SMS for milestone watchers.
+// While they're empty, ms_sms_send() short-circuits to a "skipped"
+// result so the rest of the notification pipeline (email + browser
+// notification + in-app banner) still works. Get these from your
+// Twilio console once you've set up an account + bought a number:
+//   https://console.twilio.com/
+//   • TWILIO_ACCOUNT_SID — starts with "AC..."
+//   • TWILIO_AUTH_TOKEN  — long random string (rotate any time)
+//   • TWILIO_FROM_NUMBER — E.164 format, e.g. "+18885551234"
+const TWILIO_ACCOUNT_SID = '';
+const TWILIO_AUTH_TOKEN  = '';
+const TWILIO_FROM_NUMBER = '';
+
+function ms_sms_configured(): bool {
+    return TWILIO_ACCOUNT_SID !== '' && TWILIO_AUTH_TOKEN !== '' && TWILIO_FROM_NUMBER !== '';
+}
+
+// Sends one SMS via Twilio's REST API. Returns ['ok' => bool, ...].
+// Uses curl when available, falls back to a tiny stream wrapper so the
+// shared host doesn't need any extra extensions installed. Body is
+// truncated to 1500 chars to keep us well under Twilio's segment limit
+// for one message group (160 chars per segment, ~10 segments tops).
+function ms_sms_send(string $toE164, string $body): array {
+    if (!ms_sms_configured()) {
+        return ['ok' => false, 'skipped' => true, 'reason' => 'twilio_not_configured'];
+    }
+    $to = trim($toE164);
+    if ($to === '' || $to[0] !== '+' || !preg_match('/^\+\d{7,16}$/', $to)) {
+        return ['ok' => false, 'error' => 'Invalid recipient phone'];
+    }
+    $body = mb_substr(trim($body), 0, 1500);
+    if ($body === '') return ['ok' => false, 'error' => 'Empty body'];
+
+    $url = 'https://api.twilio.com/2010-04-01/Accounts/' . TWILIO_ACCOUNT_SID . '/Messages.json';
+    $payload = http_build_query([
+        'From' => TWILIO_FROM_NUMBER,
+        'To'   => $to,
+        'Body' => $body,
+    ]);
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_USERPWD        => TWILIO_ACCOUNT_SID . ':' . TWILIO_AUTH_TOKEN,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
+            CURLOPT_TIMEOUT        => 12,
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+        if ($resp === false) return ['ok' => false, 'error' => 'curl: ' . $err];
+        $ok = ($code >= 200 && $code < 300);
+        return $ok
+            ? ['ok' => true, 'http' => $code]
+            : ['ok' => false, 'http' => $code, 'response' => substr((string)$resp, 0, 400)];
+    }
+
+    // Streams fallback (no curl). Less detailed errors but works.
+    $ctx = stream_context_create([
+        'http' => [
+            'method'  => 'POST',
+            'header'  => "Content-Type: application/x-www-form-urlencoded\r\n"
+                       . 'Authorization: Basic ' . base64_encode(TWILIO_ACCOUNT_SID . ':' . TWILIO_AUTH_TOKEN) . "\r\n",
+            'content' => $payload,
+            'timeout' => 12,
+            'ignore_errors' => true,
+        ],
+        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+    ]);
+    $resp = @file_get_contents($url, false, $ctx);
+    $code = 0;
+    if (isset($http_response_header[0]) && preg_match('#HTTP/\S+\s+(\d+)#', $http_response_header[0], $m)) $code = (int)$m[1];
+    if ($resp === false) return ['ok' => false, 'error' => 'streams request failed'];
+    return ($code >= 200 && $code < 300)
+        ? ['ok' => true, 'http' => $code]
+        : ['ok' => false, 'http' => $code, 'response' => substr((string)$resp, 0, 400)];
+}
 
 // ── Email helpers ─────────────────────────────────────────────────────────────
 function ms_smtp_send(array $to, string $subject, string $html): array {
@@ -1667,7 +1755,7 @@ switch ($action) {
             echo json_encode(['success' => false, 'error' => 'Admin only']);
             break;
         }
-        $stmt = $pdo->query("SELECT id, username, display_name, email, role, commission_pct, created_at, last_login FROM users ORDER BY created_at ASC");
+        $stmt = $pdo->query("SELECT id, username, display_name, email, phone, role, commission_pct, created_at, last_login FROM users ORDER BY created_at ASC");
         echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
         break;
 
@@ -1727,6 +1815,24 @@ switch ($action) {
             $em = trim((string)$input['email']);
             $fields[] = 'email = ?';
             $params[] = ($em === '' ? null : $em);
+        }
+        // Phone (E.164 expected, e.g. +14155551234) — used by the
+        // milestone-watcher SMS path. Empty clears it. Light validation:
+        // strip whitespace, ensure it starts with + and has 7-16 digits.
+        if (array_key_exists('phone', $input)) {
+            $ph = trim((string)$input['phone']);
+            if ($ph === '') {
+                $fields[] = 'phone = NULL';
+            } else {
+                // Auto-prepend + if the user typed digits-only
+                if ($ph[0] !== '+') $ph = '+' . preg_replace('/\D/', '', $ph);
+                if (preg_match('/^\+\d{7,16}$/', $ph)) {
+                    $fields[] = 'phone = ?';
+                    $params[] = $ph;
+                }
+                // silently drop malformed phone — frontend will show
+                // current DB value on next render so user knows
+            }
         }
         // Role changes: admin only, and we don't let an admin demote
         // themselves — that's how a system ends up with zero admins.
@@ -2369,26 +2475,29 @@ switch ($action) {
             break;
         }
 
-        // Resolve emails AND user IDs from the users table — emails feed
-        // the SMTP path, user IDs feed the in-app notifications queue
-        // (which the watchers' browsers poll for Chrome notifications).
+        // Resolve emails, phones AND user IDs from the users table:
+        //   • email   → SMTP delivery
+        //   • phone   → Twilio SMS delivery
+        //   • user id → in-app notifications queue (browser pop-ups)
         $placeholders = implode(',', array_fill(0, count($watcherNames), '?'));
-        $stmt = $pdo->prepare("SELECT id, display_name, email FROM users
+        $stmt = $pdo->prepare("SELECT id, display_name, email, phone FROM users
                                WHERE display_name IN ($placeholders)");
         $stmt->execute($watcherNames);
         $emailByName = [];
+        $phoneByName = [];
         $idByName    = [];
         while ($row = $stmt->fetch()) {
             $idByName[$row['display_name']] = (int)$row['id'];
             if (!empty($row['email'])) $emailByName[$row['display_name']] = $row['email'];
+            if (!empty($row['phone'])) $phoneByName[$row['display_name']] = $row['phone'];
         }
         $recipients = [];
         foreach ($watcherNames as $n) { if (!empty($emailByName[$n])) $recipients[] = $emailByName[$n]; }
         $recipients = array_values(array_unique($recipients));
 
         // Insert in-app notifications for every watcher we know about
-        // (even ones with no email). Browser notifications are bonus —
-        // they don't require an email to be on file.
+        // (even ones with no email/phone). Browser notifications are
+        // bonus — they don't require any contact info on file.
         $notifTitle = "Now at: {$stepLabel} — {$productName}";
         $notifBody  = "{$clientName} / {$productName} just moved into {$stepLabel}.";
         try {
@@ -2399,16 +2508,35 @@ switch ($action) {
                 $uid = $idByName[$n] ?? 0;
                 if ($uid) $insertNotif->execute([$uid, $notifTitle, $notifBody, $appUrl ?: null]);
             }
-        } catch (PDOException $e) { /* swallow — emails still sent */ }
+        } catch (PDOException $e) { /* swallow — emails/sms still sent */ }
+
+        // ── SMS delivery (Twilio) ──────────────────────────────────────
+        // Sends one SMS per watcher with a phone on file. Body is short
+        // and informational — links would burn segments without much
+        // upside since the recipient probably opens email/app anyway.
+        $smsResults = [];
+        $smsSent    = 0;
+        if (ms_sms_configured()) {
+            $smsBody = "Market Sculpt: {$clientName} / {$productName} just moved into \"{$stepLabel}\".";
+            foreach ($watcherNames as $n) {
+                $ph = $phoneByName[$n] ?? '';
+                if ($ph === '') continue;
+                $r = ms_sms_send($ph, $smsBody);
+                $smsResults[$n] = ['ok' => !empty($r['ok']), 'http' => $r['http'] ?? null];
+                if (!empty($r['ok'])) $smsSent++;
+            }
+        }
 
         if (empty($recipients)) {
             echo json_encode([
                 'success'           => true,
                 'recipients'        => [],
                 'count'             => 0,
+                'sms_sent'          => $smsSent,
+                'sms_results'       => $smsResults,
                 'browser_notified'  => count(array_filter(array_map(fn($n) => $idByName[$n] ?? 0, $watcherNames))),
                 'attempted_names'   => $watcherNames,
-                'note'              => 'No emails on file — browser notifications enqueued only.',
+                'note'              => 'No emails on file — browser/SMS notifications enqueued only.',
             ]);
             break;
         }
@@ -2445,10 +2573,13 @@ switch ($action) {
         $result = ms_smtp_send($recipients, $subject, $html);
 
         echo json_encode([
-            'success'    => $result['ok'] ?? false,
-            'recipients' => $recipients,
-            'count'      => count($recipients),
-            'error'      => $result['error'] ?? null,
+            'success'        => $result['ok'] ?? false,
+            'recipients'     => $recipients,
+            'count'          => count($recipients),
+            'sms_sent'       => $smsSent,
+            'sms_results'    => $smsResults,
+            'sms_configured' => ms_sms_configured(),
+            'error'          => $result['error'] ?? null,
         ]);
         break;
 

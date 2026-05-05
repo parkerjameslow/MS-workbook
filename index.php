@@ -7201,7 +7201,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       Milestone Watchers
     </div>
     <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin:0 0 18px;">
-      Tag people to be alerted when this workbook <strong style="color:var(--text);">moves into</strong> a specific milestone (the moment that step turns green on the flow bar). They get one email + browser notification at that point and are cleared — re-tag them if you want to be alerted on a future stage.
+      Tag people to be alerted when this workbook <strong style="color:var(--text);">moves into</strong> a specific milestone (the moment that step turns green on the flow bar). They get one email, one browser notification, and an SMS (if a phone is on file in Manage Users) — re-tag them if you want to be alerted on a future stage.
     </p>
     <!-- Browser notifications opt-in — only visible while permission is
          still in its default state. Lets the operator turn on Chrome
@@ -14169,6 +14169,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Email</label>
           <input id="udetail-email" type="email" value="${escHtml(u.email || '')}" placeholder="user@example.com" class="field-input" style="font-size:13px;" />
         </div>
+        <!-- Phone (E.164) — used by the milestone-watcher SMS pipeline.
+             Optional; SMS is skipped when blank. Light front-end hint
+             ("+18885551234") to nudge users toward the right format,
+             but the server normalizes/validates on save. -->
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Phone <span style="font-weight:400; font-style:italic;">(for milestone SMS)</span></label>
+          <input id="udetail-phone" type="tel" value="${escHtml(u.phone || '')}" placeholder="+18885551234" class="field-input" style="font-size:13px;" />
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Include country code, e.g. <code>+1</code> for US/Canada. Leave blank to skip SMS for this user.</div>
+        </div>
         <div>
           <label style="font-size:12px; font-weight:600; color:var(--text-muted); display:block; margin-bottom:4px;">Role${isSelf ? ' <span style="font-weight:400; font-style:italic;">(can&#39;t change your own role)</span>' : ''}</label>
           <span class="ship-select-wrap" style="display:block;">
@@ -14257,6 +14266,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       id: u.id,
       display_name: document.getElementById('udetail-display').value.trim(),
       email:        document.getElementById('udetail-email').value.trim(),
+      phone:        (document.getElementById('udetail-phone')?.value || '').trim(),
       // Empty string clears the override (server stores NULL → role default).
       commission_pct: (document.getElementById('udetail-commission')?.value || '').trim()
     };
