@@ -2539,15 +2539,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: block;
     }
 
-    /* ── Sticky Bar ─────────────────────────────────────────────────────── */
-    .wb-sticky-bar {
+    /* ── Workbook sticky header group ─────────────────────────────────────
+       Wraps the back/tabs row + "X is editing" banner + status-flow bar
+       into a single sticky block that stays pinned under the app header
+       while the user scrolls deep into a tab. The wrapper carries the
+       sticky positioning + background so all three rows stay visible
+       together; the inner .wb-sticky-bar lost its own position:sticky.
+       A subtle bottom border separates the sticky block from the
+       scrolling content under it.
+    ─────────────────────────────────────────────────────────────────── */
+    .wb-sticky-group {
       position: sticky;
-      top: 64px;
+      top: 64px;            /* under the global app header */
       z-index: 90;
       background: var(--bg);
-      padding: 16px 0 12px;
-      margin: -32px 0 16px;
-      padding-top: 32px;
+      margin: -32px 0 24px; /* swallows the container's top padding */
+      padding: 32px 0 14px;
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 6px 16px -10px rgba(0,0,0,0.18);
+    }
+    /* Inner bar — keeps its layout but no longer positions itself. The
+       group above handles sticky behavior and background. */
+    .wb-sticky-bar {
+      padding: 0 0 12px;
+      background: transparent;
+    }
+    /* Drop the per-element bottom margins INSIDE the sticky group so
+       the three rows hug each other tightly with predictable spacing. */
+    .wb-sticky-group .wb-presence-banner { margin: 8px 0 0; }
+    .wb-sticky-group .status-bar         { margin: 12px 0 0; }
+    /* On narrow viewports the status bar needs a bit less padding so
+       it doesn't crowd out the sticky vertical real estate. */
+    @media (max-width: 768px) {
+      .wb-sticky-group { padding-top: 16px; padding-bottom: 8px; margin-top: -16px; }
+      .wb-sticky-group .status-bar { padding: 12px 14px; }
     }
 
     /* ── Back Button ────────────────────────────────────────────────────── */
@@ -5100,27 +5125,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 ═══════════════════════════════════════════════════════════════════════ -->
 <div id="view-workbook" class="view">
 <main class="container">
-  <div class="wb-sticky-bar">
-    <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
-      <button class="btn-back" id="btn-back" onclick="history.back()" style="margin-bottom:0; justify-self:start;">← Back to Workbooks</button>
-      <div class="wb-tabs">
-        <button class="wb-tab active" onclick="switchWbTab('workbook', this)"><span class="tab-full">Workbook</span><span class="tab-short">Work</span></button>
-        <button class="wb-tab" onclick="switchWbTab('shipping', this)"><span class="tab-full">Shipping</span><span class="tab-short">Ship</span></button>
-        <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
-        <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
+  <!-- ── Sticky Group ──────────────────────────────────────────────────
+       Pins the back-button + tabs + "X is editing" banner + status
+       (flow) bar to the top of the viewport so they stay visible when
+       the user scrolls deep into the workbook tabs. The wrapper is
+       what's `position: sticky` now — the inner .wb-sticky-bar lost
+       its own sticky positioning so the three rows scroll as one
+       block with a single bottom border separating them from content.
+  ──────────────────────────────────────────────────────────────────── -->
+  <div class="wb-sticky-group" id="wb-sticky-group">
+    <div class="wb-sticky-bar">
+      <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
+        <button class="btn-back" id="btn-back" onclick="history.back()" style="margin-bottom:0; justify-self:start;">← Back to Workbooks</button>
+        <div class="wb-tabs">
+          <button class="wb-tab active" onclick="switchWbTab('workbook', this)"><span class="tab-full">Workbook</span><span class="tab-short">Work</span></button>
+          <button class="wb-tab" onclick="switchWbTab('shipping', this)"><span class="tab-full">Shipping</span><span class="tab-short">Ship</span></button>
+          <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
+          <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
+        </div>
+        <div style="justify-self:end;"></div>
       </div>
-      <div style="justify-self:end;"></div>
     </div>
-  </div>
 
-  <!-- "X is editing" banner — populated by _renderPresence whenever
-       another user is on this workbook. Hidden when only the current
-       viewer is here. Names are colored per-user so they line up with
-       the colored highlights on focused inputs. -->
-  <div id="wb-presence-banner" class="wb-presence-banner" style="display:none;"></div>
+    <!-- "X is editing" banner — populated by _renderPresence with the
+         current viewer ("You") + any other users on this workbook. -->
+    <div id="wb-presence-banner" class="wb-presence-banner" style="display:none;"></div>
 
-  <!-- ── Status Bar ── -->
-  <div class="status-bar" id="status-bar">
+    <!-- ── Status Bar ── -->
+    <div class="status-bar" id="status-bar">
     <div class="status-bar-left">
       <div class="status-label">Status</div>
       <div class="status-flow" id="status-flow">
@@ -5150,7 +5182,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         Mark as Entered →
       </button>
     </div>
-  </div>
+    </div><!-- /.status-bar -->
+  </div><!-- /.wb-sticky-group -->
 
   <!-- ── Tab: Workbook ── -->
   <div id="wb-tab-workbook" class="wb-tab-content active">
