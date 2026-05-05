@@ -11823,14 +11823,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const landedAvg = avgPerUnitUsd + shipPerUnit;
     const landedIsRange = landedMax - landedMin > 0.005;
 
-    // Two margins, used for two different things:
-    //   • clientMarginPct → drives the Suggested Price Per row. Locked to the
-    //     client's default so it never moves when the user tweaks the Margin
-    //     input in this card. Lets you compare the workbook's actual price
-    //     against the client's "expected" price at any time.
-    //   • wbMarginPct → drives Sale Per (auto-populated) and ultimately
-    //     Total USD / Order Profit. Defaults to the client default but is
-    //     editable per workbook.
+    // wbMarginPct drives the Suggested Price Per row — the operator
+    // tweaks Margin and watches Suggested move in lockstep. clientMarginPct
+    // (the client default) is read here only as the fallback when the
+    // workbook hasn't set its own override yet.
     const clientD = (typeof currentClient === 'string' && clientDetails[currentClient]) || {};
     const cmRaw   = clientD.default_margin_pct;
     const clientMarginPct = (cmRaw === '' || cmRaw === null || cmRaw === undefined || isNaN(parseFloat(cmRaw))) ? 50 : parseFloat(cmRaw);
@@ -11845,28 +11841,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const mInput = e('ps-margin-pct');
       if (mInput && mInput !== document.activeElement) mInput.value = wbMarginPct;
     }
-    const wbMarginMul     = 1 + (wbMarginPct / 100);
-    const clientMarginMul = 1 + (clientMarginPct / 100);
+    const wbMarginMul = 1 + (wbMarginPct / 100);
 
-    // Suggested Price Per (USD): Landed × (1 + clientDefault) — fixed reference
-    const suggestedMin = landedMin * clientMarginMul;
-    const suggestedMax = landedMax * clientMarginMul;
+    // Suggested Price Per (USD): Landed × (1 + workbookMargin). Reacts
+    // to the Margin input — changing Margin re-renders Suggested in
+    // place so the operator can dial in a target margin and see what
+    // it implies for sale price. (Used to be locked to the client
+    // default; flipped on 2026-05-05 so Margin actively drives the
+    // Suggested row instead of silently overwriting Sale Per.)
+    const suggestedMin = landedMin * wbMarginMul;
+    const suggestedMax = landedMax * wbMarginMul;
     const suggestedIsRange = suggestedMax - suggestedMin > 0.005;
 
-    // Sale Per is two-way bound to the workbook's Margin input (NOT the
-    // client default), so changing Margin in the card adjusts Sale Per
-    // without moving Suggested:
-    //   • Margin changes  → Sale Per auto-updates to weighted-avg at wbMargin
+    // Sale Per stays editable and "sticky":
     //   • Sale Per typed  → workbook margin back-solves (handler below)
-    // The activeElement guard keeps mid-typing keystrokes intact.
+    //   • Margin changes  → DOES NOT overwrite an existing Sale Per
+    //   • Sale Per empty  → seed it once from landedAvg × wbMargin so
+    //     Total USD / Order Profit aren't blank on first render
+    // This preserves operator intent — once they've picked a sale
+    // price, twiddling Margin only moves Suggested, never their price.
+    const saleInput  = e('ps-sale-per');
+    const saleHasVal = !!(saleInput && (saleInput.value || '').trim() !== '');
     const saleSyncTarget = landedAvg * wbMarginMul;
-    const saleInput = e('ps-sale-per');
-    if (saleInput && saleInput !== document.activeElement && saleSyncTarget > 0) {
-      const formatted = saleSyncTarget.toFixed(2);
-      if (saleInput.value !== formatted) {
-        saleInput.value = formatted;
-        if (!_filling) autoSaveWorkbook();
-      }
+    if (saleInput && !saleHasVal && saleInput !== document.activeElement && saleSyncTarget > 0) {
+      saleInput.value = saleSyncTarget.toFixed(2);
+      if (!_filling) autoSaveWorkbook();
     }
 
     const salePerRaw = (saleInput?.value || '').trim();
