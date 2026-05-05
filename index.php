@@ -12818,21 +12818,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const suggestedMax = landedMax * wbMarginMul;
     const suggestedIsRange = suggestedMax - suggestedMin > 0.005;
 
-    // Sale Per stays editable and "sticky":
-    //   • Sale Per typed  → workbook margin back-solves (handler below)
-    //   • Margin changes  → DOES NOT overwrite an existing Sale Per
-    //   • Sale Per empty  → seed it once from landedAvg × wbMargin so
-    //     Total USD / Order Profit aren't blank on first render
-    // This preserves operator intent — once they've picked a sale
-    // price, twiddling Margin only moves Suggested, never their price.
+    // Sale Per is fully manual, fully independent — operator's "ultimate
+    // say". Nothing here touches it: not Margin changes, not landed cost
+    // moves, not the initial render. The only person who writes to
+    // ps-sale-per is the operator typing in it. Total USD downstream
+    // calculates strictly as salePer × tierQty + appliedFees.
     const saleInput  = e('ps-sale-per');
-    const saleHasVal = !!(saleInput && (saleInput.value || '').trim() !== '');
-    const saleSyncTarget = landedAvg * wbMarginMul;
-    if (saleInput && !saleHasVal && saleInput !== document.activeElement && saleSyncTarget > 0) {
-      saleInput.value = saleSyncTarget.toFixed(2);
-      if (!_filling) autoSaveWorkbook();
-    }
-
     const salePerRaw = (saleInput?.value || '').trim();
     const salePer    = salePerRaw === '' ? NaN : parseFloat(salePerRaw);
 
@@ -13029,10 +13020,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       document.querySelectorAll(`[data-qrs="${key}"]`).forEach(el => { el.textContent = value; });
     };
 
-    setQrs('usd', suggestedMin > 0
-      ? (suggestedIsRange ? '$' + fmt2(suggestedMin) + '–$' + fmt2(suggestedMax) : '$' + fmt2(suggestedMin))
-      : '—');
-    setQrs('total', landedTotal > 0 ? '$' + fmt2(landedTotal) : '—');
+    // Sale Price (USD) reads directly from the operator's Sale Per
+    // input — it's the "ultimate say". Total Order = Sale Per × tier
+    // qty + applied fees (computed above as totalUsd). When Sale Per
+    // is blank, both stats render as "—" so the header doesn't lie
+    // about a value the operator hasn't committed to yet.
+    setQrs('usd',   (!isNaN(salePer) && salePer > 0) ? '$' + fmt2(salePer) : '—');
+    setQrs('total', !isNaN(totalUsd)                 ? '$' + fmt2(totalUsd) : '—');
 
     const prodLeadDays = parseInt(document.getElementById('rfq-max-lead')?.textContent) || 0;
     setQrs('lead', prodLeadDays > 0 ? prodLeadDays + ' days' : '—');
@@ -13419,19 +13413,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     win.document.close();
   }
 
-  // Sale Per input handler — back-solves margin % from (salePer / landedAvg − 1),
-  // updates the margin input synchronously (so the user sees it immediately),
-  // then schedules a debounced Pricing tab re-render + autosave.
+  // Sale Per input handler — pure pass-through. Sale Per is the
+  // operator's "ultimate say", fully independent from Margin. Typing
+  // here does NOT back-solve margin and does NOT touch Suggested
+  // Price. Just re-renders so Total USD / Order Profit pick up the
+  // new salePer × tierQty, and autosaves.
   function onPricingSalePerInput() {
-    const saleRaw = (document.getElementById('ps-sale-per')?.value || '').trim();
-    const sale    = saleRaw === '' ? NaN : parseFloat(saleRaw);
-    if (!isNaN(sale) && sale > 0 && _landedAvgForMargin > 0) {
-      const newMargin = (sale / _landedAvgForMargin - 1) * 100;
-      const mInput = document.getElementById('ps-margin-pct');
-      if (mInput && mInput !== document.activeElement) {
-        mInput.value = Math.max(0, newMargin).toFixed(2);
-      }
-    }
     _schedulePricingTabRender();
     if (!_filling) autoSaveWorkbook();
   }
