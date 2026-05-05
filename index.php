@@ -2540,39 +2540,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     /* ── Workbook sticky header group ─────────────────────────────────────
-       Wraps the back/tabs row + "X is editing" banner + status-flow bar
-       into a single sticky block that stays pinned under the app header
-       while the user scrolls deep into a tab. The wrapper carries the
-       sticky positioning + background so all three rows stay visible
-       together; the inner .wb-sticky-bar lost its own position:sticky.
-       A subtle bottom border separates the sticky block from the
-       scrolling content under it.
+       Pins the back-button + tabs + "X is editing" indicator under the
+       app header. The fulfillment-flow status bar below is NOT pinned
+       — it scrolls with the rest of the page (per user request).
     ─────────────────────────────────────────────────────────────────── */
     .wb-sticky-group {
       position: sticky;
       top: 64px;            /* under the global app header */
       z-index: 90;
       background: var(--bg);
-      margin: -32px 0 24px; /* swallows the container's top padding */
-      padding: 32px 0 14px;
-      border-bottom: 1px solid var(--border);
-      box-shadow: 0 6px 16px -10px rgba(0,0,0,0.18);
+      margin: -32px 0 16px; /* swallows the container's top padding */
+      padding: 32px 0 12px;
     }
-    /* Inner bar — keeps its layout but no longer positions itself. The
-       group above handles sticky behavior and background. */
+    /* Inner bar — layout only; sticky lives on the group above. */
     .wb-sticky-bar {
-      padding: 0 0 12px;
+      padding: 0;
       background: transparent;
     }
-    /* Drop the per-element bottom margins INSIDE the sticky group so
-       the three rows hug each other tightly with predictable spacing. */
-    .wb-sticky-group .wb-presence-banner { margin: 8px 0 0; }
-    .wb-sticky-group .status-bar         { margin: 12px 0 0; }
-    /* On narrow viewports the status bar needs a bit less padding so
-       it doesn't crowd out the sticky vertical real estate. */
     @media (max-width: 768px) {
       .wb-sticky-group { padding-top: 16px; padding-bottom: 8px; margin-top: -16px; }
-      .wb-sticky-group .status-bar { padding: 12px 14px; }
     }
 
     /* ── Back Button ────────────────────────────────────────────────────── */
@@ -3968,12 +3954,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         margin: 0 !important;
         max-width: 100%;
       }
+      /* Mobile: collapse the 3-column grid (back | tabs | presence)
+         to a single column. Presence chip drops below the tabs row;
+         tabs scroll horizontally as before. */
       .wb-sticky-bar > div {
-        flex-direction: column !important;
+        grid-template-columns: 1fr !important;
         gap: 6px;
-        align-items: flex-start !important;
         max-width: 100%;
       }
+      .wb-presence-inline { justify-self: flex-start !important; }
 
       /* Scrollable tabs */
       .wb-tabs {
@@ -4544,21 +4533,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: 0 2px 6px rgba(0,0,0,0.35);
     }
 
-    /* "X is editing" banner at the top of the workbook view. Hidden
-       when no other users are present. Names are colored per-user so
-       they line up with the colored highlights / chips elsewhere. */
+    /* "X is editing" indicator. Now sits inline on the same row as the
+       back-button + tabs (third grid cell). Compact format: a pulsing
+       dot, the natural-language list ("You are editing", "You and Parker
+       are editing"), then space. The where-pills move to a tooltip when
+       inline so the row stays one line. */
     .wb-presence-banner {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      padding: 8px 14px;
-      margin: 8px 0 0;
+      gap: 8px;
+      flex-wrap: nowrap;
+      padding: 6px 12px;
       background: linear-gradient(135deg, rgba(232,117,26,0.06) 0%, rgba(232,117,26,0.02) 100%);
       border: 1px solid rgba(232,117,26,0.20);
-      border-radius: 8px;
-      font-size: 13px;
+      border-radius: 20px;
+      font-size: 12px;
       color: var(--text);
+      max-width: 100%;
+      min-width: 0;
+    }
+    .wb-presence-banner:empty { display: none !important; }
+    .wb-presence-inline {
+      /* Sits in the third grid cell — keep the cell from collapsing
+         when no presence is rendered yet. */
+      min-height: 32px;
     }
     .wb-presence-pulse {
       display: inline-block;
@@ -4591,6 +4589,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: transparent;
       white-space: nowrap;
     }
+    /* Inline variant lives on the same row as back/tabs — drop the
+       per-user "X → Section" pills (they'd push the row too wide).
+       Section info still surfaces via the per-section initials chips
+       on each section header. */
+    .wb-presence-inline .wb-presence-where { display: none; }
+    .wb-presence-inline .wb-presence-text  { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* Section header presence bars — small initials chips appear next
        to the section title for whoever's editing in that section. */
@@ -5126,16 +5130,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div id="view-workbook" class="view">
 <main class="container">
   <!-- ── Sticky Group ──────────────────────────────────────────────────
-       Pins the back-button + tabs + "X is editing" banner + status
-       (flow) bar to the top of the viewport so they stay visible when
-       the user scrolls deep into the workbook tabs. The wrapper is
-       what's `position: sticky` now — the inner .wb-sticky-bar lost
-       its own sticky positioning so the three rows scroll as one
-       block with a single bottom border separating them from content.
+       Only the back-button + tab switcher + "X is editing" indicator
+       are pinned to the top now. The fulfillment-flow status bar
+       below scrolls with normal content (per user request — having
+       the flow pinned felt heavy).
   ──────────────────────────────────────────────────────────────────── -->
   <div class="wb-sticky-group" id="wb-sticky-group">
     <div class="wb-sticky-bar">
-      <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center;">
+      <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px;">
         <button class="btn-back" id="btn-back" onclick="history.back()" style="margin-bottom:0; justify-self:start;">← Back to Workbooks</button>
         <div class="wb-tabs">
           <button class="wb-tab active" onclick="switchWbTab('workbook', this)"><span class="tab-full">Workbook</span><span class="tab-short">Work</span></button>
@@ -5143,16 +5145,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
           <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
         </div>
-        <div style="justify-self:end;"></div>
+        <!-- "X is editing" indicator — populated inline by _renderPresence
+             so it sits on the same row as the back button + tabs. -->
+        <div id="wb-presence-banner" class="wb-presence-banner wb-presence-inline" style="justify-self:end;"></div>
       </div>
     </div>
+  </div>
 
-    <!-- "X is editing" banner — populated by _renderPresence with the
-         current viewer ("You") + any other users on this workbook. -->
-    <div id="wb-presence-banner" class="wb-presence-banner" style="display:none;"></div>
-
-    <!-- ── Status Bar ── -->
-    <div class="status-bar" id="status-bar">
+  <!-- ── Status Bar (fulfillment flow) — NOT pinned ── -->
+  <div class="status-bar" id="status-bar">
     <div class="status-bar-left">
       <div class="status-label">Status</div>
       <div class="status-flow" id="status-flow">
@@ -5182,8 +5183,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         Mark as Entered →
       </button>
     </div>
-    </div><!-- /.status-bar -->
-  </div><!-- /.wb-sticky-group -->
+  </div><!-- /.status-bar -->
 
   <!-- ── Tab: Workbook ── -->
   <div id="wb-tab-workbook" class="wb-tab-content active">
