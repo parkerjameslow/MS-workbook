@@ -640,6 +640,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .section-card.collapsed .section-body {
       display: none;
     }
+    /* Summary line that appears in the section header only when the
+       section is collapsed — gives the operator at-a-glance numbers
+       (RFQ grand total, selected tier, fees total, dimensions,
+       pallet stats) without expanding the section. Hidden when the
+       section is open since the body itself shows the data. */
+    .section-summary {
+      display: none;
+      margin-left: auto;
+      margin-right: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 60%;
+    }
+    .section-summary:empty { display: none !important; }
+    .section-card.collapsed .section-summary { display: inline-flex; align-items: center; gap: 10px; }
+    .section-summary .ss-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      opacity: 0.75;
+    }
+    .section-summary .ss-value {
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .section-summary .ss-value--accent { color: var(--accent); }
+    .section-summary .ss-divider { opacity: 0.35; }
 
     /* ── Sub-section ─────────────────────────────────────────────────────── */
     .subsection {
@@ -5386,6 +5420,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">RFQ</span>
       <div id="rfq-presence-bar" onclick="event.stopPropagation()" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:12px;"></div>
+      <span class="section-summary" data-section-summary="rfq"></span>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -5470,6 +5505,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Tiered Pricing</span>
       <span class="section-presence-bar" data-section-bar="tiers" onclick="event.stopPropagation()"></span>
+      <span class="section-summary" data-section-summary="tiers"></span>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -5499,6 +5535,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Additional Fees</span>
       <span class="section-presence-bar" data-section-bar="fees" onclick="event.stopPropagation()"></span>
+      <span class="section-summary" data-section-summary="fees"></span>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -5570,6 +5607,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Dimensions & Carton Specifications</span>
       <span class="section-presence-bar" data-section-bar="dimensions" onclick="event.stopPropagation()"></span>
+      <span class="section-summary" data-section-summary="dimensions"></span>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -5792,9 +5830,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 
   <!-- ── Card: Pallet Visualization ── -->
-  <div class="section-card">
+  <div class="section-card" data-section="pallet">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
       <span class="section-title">Pallet View — 40 × 48 Standard</span>
+      <span class="section-summary" data-section-summary="pallet"></span>
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
@@ -8800,6 +8839,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     renderPalletViz();
     updateOuterWeightHint();
+    if (typeof _updateSectionSummary === 'function') _updateSectionSummary('dimensions');
   }
 
   // Was the source of the legacy "Est. total outer weight" hint UI; that
@@ -8992,6 +9032,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Store pallet stats globally so shipping tab can read them
     window._palletStats = { perLayer, maxLayers, totalPerPallet, surfaceUse, outerQtyVal, productsPerOuter, totalCartons, palletsNeeded, totalInners, totalProducts };
+    // Keep the collapsed Pallet section header summary in sync
+    if (typeof _updateSectionSummary === 'function') _updateSectionSummary('pallet');
 
     // Inline summary in the Outer Carton column header
     const inlineEl = document.getElementById('pallet-inline-stats');
@@ -9539,6 +9581,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('rfq-max-lead').textContent  = maxLead  ? maxLead + ' days'   : '—';
 
     applyRfqRmbToTiers(grandRmb);
+    // Keep the collapsed RFQ + Tiered Pricing summary lines in sync.
+    if (typeof _updateSectionSummary === 'function') {
+      _updateSectionSummary('rfq');
+      _updateSectionSummary('tiers');
+    }
   }  // end _recalcRfqTotalsInner
 
   function applyRfqRmbToTiers(totalRmb) {
@@ -10557,6 +10604,163 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function toggleSection(card) {
     card.classList.toggle('collapsed');
+    // The summary line only renders while the section is collapsed,
+    // so refresh it whenever the section is toggled — picks up any
+    // edits the operator made in the body before collapsing.
+    const sec = card.getAttribute && card.getAttribute('data-section');
+    if (sec) _updateSectionSummary(sec);
+  }
+
+  // ── Collapsed-section summary engine ───────────────────────────────────
+  // Each of the long workbook sections (RFQ, Tiered Pricing, Additional
+  // Fees, Dimensions, Pallet) gets a tiny one-liner in its header that
+  // shows the most important numbers when the section is collapsed.
+  // Refreshed on workbook fill, on section toggle, and via hooks in the
+  // existing recalc paths (recalcRfqTotals / autoCalcCartons / etc.).
+  // No-op if the target span isn't present on the page (e.g. section
+  // markup hasn't been rendered yet during the initial mount race).
+  function _setSectionSummary(name, html) {
+    const el = document.querySelector(`.section-summary[data-section-summary="${name}"]`);
+    if (el) el.innerHTML = html || '';
+  }
+  const _ssFmtUsd = v => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const _ssFmtInt = v => (v || 0).toLocaleString('en-US');
+
+  function _updateSectionSummary(name) {
+    try {
+      switch (name) {
+        case 'rfq': {
+          // Read from the live total cell that recalcRfqTotals already
+          // maintains — keeps the summary in lockstep with the table.
+          const totalCell = document.getElementById('rfq-total-usd');
+          const total = totalCell ? totalCell.textContent.trim() : '';
+          // Count rows + sum qty for the secondary stat
+          let qty = 0, items = 0;
+          document.querySelectorAll('#rfq-body tr:not([data-rfq-add-for])').forEach(row => {
+            const inputs = row.querySelectorAll('input:not([type="checkbox"])');
+            const qIdx = row.hasAttribute('data-rfq-parent') ? 1 : 2;
+            const q = parseFloat(inputs[qIdx]?.value) || 0;
+            qty += q;
+            if (!row.hasAttribute('data-rfq-parent')) items++;
+          });
+          if (total === '' || total === '—') { _setSectionSummary('rfq', ''); break; }
+          _setSectionSummary('rfq',
+            `<span class="ss-label">Grand Total</span><span class="ss-value ss-value--accent">${total}</span>` +
+            (qty > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${_ssFmtInt(qty)} units</span>` : '') +
+            (items > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${items} item${items === 1 ? '' : 's'}</span>` : '')
+          );
+          break;
+        }
+        case 'tiers': {
+          // Use the selected tier (or first tier) for the headline.
+          // Mirrors how the Pricing tab decides which tier to surface.
+          const rows = document.querySelectorAll('#wb-tier-body tr');
+          if (!rows.length) { _setSectionSummary('tiers', ''); break; }
+          // Find selected tier or fall back to the first row with data
+          let chosen = null;
+          rows.forEach(r => {
+            if (chosen) return;
+            const inputs = r.querySelectorAll('input');
+            const q = parseFloat(inputs[0]?.value) || 0;
+            const p = parseFloat(inputs[1]?.value) || 0;
+            if (q > 0 && p > 0) chosen = { q, rmb: p };
+          });
+          if (!chosen) { _setSectionSummary('tiers', ''); break; }
+          const usd = chosen.rmb / USD_TO_RMB;
+          _setSectionSummary('tiers',
+            `<span class="ss-label">Top Tier</span>` +
+            `<span class="ss-value">${_ssFmtInt(chosen.q)} @ ${_ssFmtUsd(usd)}</span>` +
+            `<span class="ss-divider">·</span>` +
+            `<span class="ss-value ss-value--accent">${_ssFmtUsd(chosen.q * usd)}</span>` +
+            `<span class="ss-divider">·</span>` +
+            `<span class="ss-value">${rows.length} tier${rows.length === 1 ? '' : 's'}</span>`
+          );
+          break;
+        }
+        case 'fees': {
+          // Sum every fee currently entered on the Workbook tab.
+          // collectWorkbookFees() returns the same list the Pricing tab
+          // and Client Quote consume, so the summary number lines up
+          // exactly with what shows there.
+          if (typeof collectWorkbookFees !== 'function') { _setSectionSummary('fees', ''); break; }
+          const fees = collectWorkbookFees() || [];
+          let total = 0;
+          fees.forEach(f => { total += parseFloat(f.usd) || 0; });
+          if (total <= 0 && fees.length === 0) { _setSectionSummary('fees', '0 fees'); break; }
+          _setSectionSummary('fees',
+            `<span class="ss-label">Fees Total</span>` +
+            `<span class="ss-value ss-value--accent">${_ssFmtUsd(total)}</span>` +
+            `<span class="ss-divider">·</span>` +
+            `<span class="ss-value">${fees.length} fee${fees.length === 1 ? '' : 's'}</span>`
+          );
+          break;
+        }
+        case 'dimensions': {
+          // Show product dim L × W × H plus a count of populated carton
+          // sets (inner / outer) so the operator knows whether carton
+          // data has been filled in too.
+          const v = id => parseFloat(document.getElementById(id)?.value) || 0;
+          const L = v('dim-cm-l'), W = v('dim-cm-w'), H = v('dim-cm-h');
+          const innerSet = v('carton-inner-l-cm') > 0 || v('carton-inner-w-cm') > 0 || v('carton-inner-h-cm') > 0;
+          const outerSet = v('carton-outer-l-cm') > 0 || v('carton-outer-w-cm') > 0 || v('carton-outer-h-cm') > 0;
+          let html = '';
+          if (L && W && H) {
+            const fmt = n => (Math.round(n * 10) / 10).toString();
+            html += `<span class="ss-label">Product</span><span class="ss-value">${fmt(L)} × ${fmt(W)} × ${fmt(H)} cm</span>`;
+          }
+          const cartonBits = [];
+          if (innerSet) cartonBits.push('inner');
+          if (outerSet) cartonBits.push('outer');
+          if (cartonBits.length) {
+            if (html) html += `<span class="ss-divider">·</span>`;
+            html += `<span class="ss-value">${cartonBits.join(' + ')} carton</span>`;
+          }
+          _setSectionSummary('dimensions', html);
+          break;
+        }
+        case 'pallet': {
+          // Pallet stats are computed by the existing pallet renderer
+          // and stashed on window._palletStats. Show cartons/pallet +
+          // layer count + total pallets needed if all are available.
+          const ps = window._palletStats;
+          if (!ps) { _setSectionSummary('pallet', ''); break; }
+          const perPallet  = parseInt(ps.totalPerPallet || 0);
+          const layers     = parseInt(ps.maxLayers || 0);
+          const palletsNeeded = parseInt(ps.palletsNeeded || 0);
+          if (!perPallet) { _setSectionSummary('pallet', ''); break; }
+          _setSectionSummary('pallet',
+            `<span class="ss-label">Cartons / Pallet</span>` +
+            `<span class="ss-value ss-value--accent">${_ssFmtInt(perPallet)}</span>` +
+            (layers > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${layers} layer${layers === 1 ? '' : 's'}</span>` : '') +
+            (palletsNeeded > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${palletsNeeded} pallet${palletsNeeded === 1 ? '' : 's'} needed</span>` : '')
+          );
+          break;
+        }
+      }
+    } catch (e) {
+      // Summary is decorative — never let an edge case break the
+      // workbook itself. Log + silently skip.
+      console.error('[MS section summary]', name, e);
+    }
+  }
+
+  // Refresh every section summary in one call. Used on workbook fill +
+  // tab switches when the operator might have edits queued in any of
+  // them. Per-section recalcs (recalcRfqTotals etc.) call _updateSection-
+  // Summary directly with a single name to stay fast.
+  function _updateAllSectionSummaries() {
+    ['rfq', 'tiers', 'fees', 'dimensions', 'pallet'].forEach(_updateSectionSummary);
+  }
+
+  // Auto-collapse the data-heavy sections (RFQ, Tiered Pricing,
+  // Additional Fees, Dimensions, Pallet) on every workbook open so the
+  // operator lands on a clean Product Overview view. The sections are
+  // still ONE click away — the chevron in each header expands them.
+  function _collapseHeavySectionsOnOpen() {
+    ['rfq', 'tiers', 'fees', 'dimensions', 'pallet'].forEach(name => {
+      const card = document.querySelector(`.section-card[data-section="${name}"]`);
+      if (card) card.classList.add('collapsed');
+    });
   }
 
   // Walk every fee currently entered on the Workbook tab and return them
@@ -10724,6 +10928,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // fees flow into Total Landed Cost / Client Quote in real time.
     if (typeof renderPricingFeesCard === 'function') renderPricingFeesCard();
     if (typeof _schedulePricingTabRender === 'function') _schedulePricingTabRender();
+    // Keep the collapsed Additional Fees header summary in sync
+    if (typeof _updateSectionSummary === 'function') _updateSectionSummary('fees');
 
     if (!_filling) autoSaveWorkbook();
   }
@@ -12426,7 +12632,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             variantData.forEach(v => {
               html += `<tr class="cq-variant-row${variantHiddenClass}" data-cq-variant-of="${parentId}">
                 <td></td>
-                <td style="padding-left:32px; color:var(--text-muted);">└ ${v.name || 'Variant'}</td>
+                <td style="padding-left:32px; color:var(--text-muted);">${v.name || 'Variant'}</td>
                 <td style="text-align:right; color:var(--text-muted);">${v.qty > 0 ? v.qty.toLocaleString('en-US') : '—'}</td>
                 <td style="text-align:right; color:var(--text-muted);">${v.sale > 0 ? '$' + _fmt2(v.sale) : '—'}</td>
                 <td style="text-align:right; color:var(--accent);">${v.total > 0 ? '$' + _fmt2(v.total) : '—'}</td>
@@ -13075,8 +13281,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const itemRows = data.lineItems.map(it => {
       const labelEsc = escHtml(it.label);
       if (it.kind === 'variant') {
+        // Strip any legacy "└ " prefix that older renders may have
+        // baked into the label, then render the variant name on its
+        // own indented line — no corner-bracket character.
         const inner = labelEsc.replace(/^└\s*/, '');
-        return `<tr class="row-variant"><td></td><td class="lbl indent">└ ${inner}</td><td class="r">${escHtml(it.qty)}</td><td class="r">${escHtml(it.sale)}</td><td class="r">${escHtml(it.total)}</td></tr>`;
+        return `<tr class="row-variant"><td></td><td class="lbl indent">${inner}</td><td class="r">${escHtml(it.qty)}</td><td class="r">${escHtml(it.sale)}</td><td class="r">${escHtml(it.total)}</td></tr>`;
       }
       if (it.kind === 'fee' || it.kind === 'feeZero') {
         const sign = it.kind === 'fee' ? '+' : '';
@@ -17037,6 +17246,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (_wbLocked) lockWorkbookTab(true);
       // Update promote button to show "X SKUs in Inventory" if already promoted
       updatePromoteButton();
+      // Collapse the data-heavy sections so the operator lands on a
+      // clean Product Overview view, then populate the inline summary
+      // line on each collapsed header so the key numbers are visible
+      // without expanding.
+      _collapseHeavySectionsOnOpen();
+      _updateAllSectionSummaries();
     }, 200);
   }  // end _fillWorkbookInner
 
