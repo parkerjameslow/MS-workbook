@@ -420,6 +420,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .btn-add:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
 
+    /* "Add Line Item" — sits in the RFQ table footer. Compact pill-style
+       (left-aligned, accent-tinted background, brand-orange text + plus
+       icon) that reads as a clear primary "add" action without the
+       chunky dashed-border block style of .btn-add. Hover deepens the
+       fill so it feels button-like. */
+    .rfq-add-line-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-glow);
+      color: var(--accent);
+      border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+      border-radius: 8px;
+      padding: 7px 14px 7px 12px;
+      font-size: 12.5px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      letter-spacing: 0.01em;
+      transition: background 0.15s, border-color 0.15s, transform 0.05s;
+    }
+    .rfq-add-line-btn:hover {
+      background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+      border-color: var(--accent);
+    }
+    .rfq-add-line-btn:active { transform: translateY(1px); }
+    .rfq-add-line-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .rfq-add-line-btn svg { flex-shrink: 0; }
+
     /* ── Status Filter Pills ────────────────────────────────────────────── */
     .status-filter-btn {
       background: var(--surface2);
@@ -5393,13 +5422,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <tbody id="rfq-body"></tbody>
         <tfoot>
           <tr>
-            <td style="padding:0; border-bottom:none;"></td>
-            <td style="padding:0; border-bottom:none;"></td>
-            <td style="padding:0; border-bottom:none;"></td>
-            <td style="padding:4px 12px; border-bottom:none;">
-              <button class="btn btn-add" style="width:100%; margin:4px 0;" onclick="addRfqRow()">+ Add Line Item</button>
+            <td colspan="10" style="padding:8px 14px 12px; border-bottom:none;">
+              <button type="button" class="rfq-add-line-btn" onclick="addRfqRow()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add Line Item
+              </button>
             </td>
-            <td colspan="6" style="padding:0; border-bottom:none;"></td>
           </tr>
           <tr style="background:var(--surface2);">
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">#</th>
