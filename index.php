@@ -642,24 +642,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     /* Summary line that appears in the section header only when the
        section is collapsed — gives the operator at-a-glance numbers
-       (RFQ grand total, selected tier, fees total, dimensions,
-       pallet stats) without expanding the section. Hidden when the
-       section is open since the body itself shows the data. */
+       (RFQ grand total, first tier, fees total, dimensions, pallet
+       stats) without expanding. Hidden when the section is open
+       since the body itself shows the data.
+       Layout: flex:1 + justify-content:flex-end pushes the content
+       block to the RIGHT edge of the header, just before the
+       chevron, so every collapsed-section row lines up cleanly down
+       the right side of the page regardless of summary content width. */
     .section-summary {
       display: none;
-      margin-left: auto;
-      margin-right: 12px;
+      margin-left: 12px;
       font-size: 12px;
       font-weight: 600;
       color: var(--text-muted);
       letter-spacing: 0.01em;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 60%;
+      min-width: 0;
     }
     .section-summary:empty { display: none !important; }
-    .section-card.collapsed .section-summary { display: inline-flex; align-items: center; gap: 10px; }
+    .section-card.collapsed .section-summary {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+      overflow: hidden;
+    }
     .section-summary .ss-label {
       font-size: 10px;
       font-weight: 700;
@@ -671,6 +679,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .section-summary .ss-value {
       color: var(--text);
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
     .section-summary .ss-value--accent { color: var(--accent); }
     .section-summary .ss-divider { opacity: 0.35; }
@@ -10630,50 +10639,67 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try {
       switch (name) {
         case 'rfq': {
-          // Read from the live total cell that recalcRfqTotals already
-          // maintains — keeps the summary in lockstep with the table.
+          // Pull the live grand total from the cell recalcRfqTotals
+          // maintains, plus walk #rfq-body to count units / line items
+          // / variants and find max lead time. Avg/unit derives from
+          // grand total ÷ total units.
           const totalCell = document.getElementById('rfq-total-usd');
-          const total = totalCell ? totalCell.textContent.trim() : '';
-          // Count rows + sum qty for the secondary stat
-          let qty = 0, items = 0;
+          const totalTxt  = totalCell ? totalCell.textContent.trim() : '';
+          const grandUsd  = totalTxt && totalTxt !== '—'
+            ? parseFloat(totalTxt.replace(/[^0-9.\-]/g, '')) || 0
+            : 0;
+          let qty = 0, items = 0, variants = 0, maxLead = 0;
           document.querySelectorAll('#rfq-body tr:not([data-rfq-add-for])').forEach(row => {
             const inputs = row.querySelectorAll('input:not([type="checkbox"])');
-            const qIdx = row.hasAttribute('data-rfq-parent') ? 1 : 2;
+            const isVariant = row.hasAttribute('data-rfq-parent');
+            // Variant rows: name(0), qty(1), rmb(2), lead(3)
+            // Parent rows : sku(0), item(1), qty(2), rmb(3), lead(4)
+            const qIdx = isVariant ? 1 : 2;
+            const lIdx = isVariant ? 3 : 4;
             const q = parseFloat(inputs[qIdx]?.value) || 0;
+            const l = parseInt(inputs[lIdx]?.value)   || 0;
             qty += q;
-            if (!row.hasAttribute('data-rfq-parent')) items++;
+            if (l > maxLead) maxLead = l;
+            if (isVariant) variants++;
+            else items++;
           });
-          if (total === '' || total === '—') { _setSectionSummary('rfq', ''); break; }
-          _setSectionSummary('rfq',
-            `<span class="ss-label">Grand Total</span><span class="ss-value ss-value--accent">${total}</span>` +
-            (qty > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${_ssFmtInt(qty)} units</span>` : '') +
-            (items > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${items} item${items === 1 ? '' : 's'}</span>` : '')
-          );
+          if (!grandUsd && !qty && !items) { _setSectionSummary('rfq', ''); break; }
+          const avgUnit = (grandUsd > 0 && qty > 0) ? (grandUsd / qty) : 0;
+          const parts = [];
+          parts.push(`<span class="ss-label">Grand Total</span><span class="ss-value ss-value--accent">${totalTxt || '—'}</span>`);
+          if (qty > 0)     parts.push(`<span class="ss-value">${_ssFmtInt(qty)} units</span>`);
+          if (avgUnit > 0) parts.push(`<span class="ss-value">${_ssFmtUsd(avgUnit)}/unit avg</span>`);
+          if (items > 0)   parts.push(`<span class="ss-value">${items} item${items === 1 ? '' : 's'}${variants > 0 ? ` · ${variants} variant${variants === 1 ? '' : 's'}` : ''}</span>`);
+          if (maxLead > 0) parts.push(`<span class="ss-value">${maxLead}d lead</span>`);
+          _setSectionSummary('rfq', parts.join('<span class="ss-divider">·</span>'));
           break;
         }
         case 'tiers': {
-          // Use the selected tier (or first tier) for the headline.
-          // Mirrors how the Pricing tab decides which tier to surface.
+          // Show: total tier count + the FIRST tier's qty/unit/total.
+          // "First" = first row with both qty and price filled in
+          // (so empty placeholder rows at the top don't hijack the
+          // summary). User explicitly wants the first tier surfaced,
+          // not the selected one.
           const rows = document.querySelectorAll('#wb-tier-body tr');
           if (!rows.length) { _setSectionSummary('tiers', ''); break; }
-          // Find selected tier or fall back to the first row with data
-          let chosen = null;
+          let first = null, filledCount = 0;
           rows.forEach(r => {
-            if (chosen) return;
             const inputs = r.querySelectorAll('input');
             const q = parseFloat(inputs[0]?.value) || 0;
             const p = parseFloat(inputs[1]?.value) || 0;
-            if (q > 0 && p > 0) chosen = { q, rmb: p };
+            if (q > 0 && p > 0) {
+              filledCount++;
+              if (!first) first = { q, rmb: p };
+            }
           });
-          if (!chosen) { _setSectionSummary('tiers', ''); break; }
-          const usd = chosen.rmb / USD_TO_RMB;
+          if (!first) { _setSectionSummary('tiers', ''); break; }
+          const usd = first.rmb / USD_TO_RMB;
           _setSectionSummary('tiers',
-            `<span class="ss-label">Top Tier</span>` +
-            `<span class="ss-value">${_ssFmtInt(chosen.q)} @ ${_ssFmtUsd(usd)}</span>` +
+            `<span class="ss-label">${filledCount} tier${filledCount === 1 ? '' : 's'}</span>` +
             `<span class="ss-divider">·</span>` +
-            `<span class="ss-value ss-value--accent">${_ssFmtUsd(chosen.q * usd)}</span>` +
+            `<span class="ss-value">Tier 1: ${_ssFmtInt(first.q)} @ ${_ssFmtUsd(usd)}</span>` +
             `<span class="ss-divider">·</span>` +
-            `<span class="ss-value">${rows.length} tier${rows.length === 1 ? '' : 's'}</span>`
+            `<span class="ss-value ss-value--accent">${_ssFmtUsd(first.q * usd)}</span>`
           );
           break;
         }
@@ -10686,36 +10712,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const fees = collectWorkbookFees() || [];
           let total = 0;
           fees.forEach(f => { total += parseFloat(f.usd) || 0; });
-          if (total <= 0 && fees.length === 0) { _setSectionSummary('fees', '0 fees'); break; }
+          // Always show count first so the layout is consistent even
+          // when there are no fees yet (renders "0 fees · $0.00").
           _setSectionSummary('fees',
-            `<span class="ss-label">Fees Total</span>` +
-            `<span class="ss-value ss-value--accent">${_ssFmtUsd(total)}</span>` +
+            `<span class="ss-label">${fees.length} fee${fees.length === 1 ? '' : 's'}</span>` +
             `<span class="ss-divider">·</span>` +
-            `<span class="ss-value">${fees.length} fee${fees.length === 1 ? '' : 's'}</span>`
+            `<span class="ss-value ss-value--accent">${_ssFmtUsd(total)}</span>`
           );
           break;
         }
         case 'dimensions': {
-          // Show product dim L × W × H plus a count of populated carton
-          // sets (inner / outer) so the operator knows whether carton
-          // data has been filled in too.
+          // Show ALL three dim sets the operator might have filled in:
+          // product / inner carton / outer carton — each as L × W × H.
+          // Items render only when they have all three axes set so the
+          // summary doesn't show partial / nonsense dims like "0 × 5 × 0".
           const v = id => parseFloat(document.getElementById(id)?.value) || 0;
-          const L = v('dim-cm-l'), W = v('dim-cm-w'), H = v('dim-cm-h');
-          const innerSet = v('carton-inner-l-cm') > 0 || v('carton-inner-w-cm') > 0 || v('carton-inner-h-cm') > 0;
-          const outerSet = v('carton-outer-l-cm') > 0 || v('carton-outer-w-cm') > 0 || v('carton-outer-h-cm') > 0;
-          let html = '';
-          if (L && W && H) {
-            const fmt = n => (Math.round(n * 10) / 10).toString();
-            html += `<span class="ss-label">Product</span><span class="ss-value">${fmt(L)} × ${fmt(W)} × ${fmt(H)} cm</span>`;
-          }
-          const cartonBits = [];
-          if (innerSet) cartonBits.push('inner');
-          if (outerSet) cartonBits.push('outer');
-          if (cartonBits.length) {
-            if (html) html += `<span class="ss-divider">·</span>`;
-            html += `<span class="ss-value">${cartonBits.join(' + ')} carton</span>`;
-          }
-          _setSectionSummary('dimensions', html);
+          const fmt = n => (Math.round(n * 10) / 10).toString();
+          const dim = (lid, wid, hid) => {
+            const L = v(lid), W = v(wid), H = v(hid);
+            return (L > 0 && W > 0 && H > 0) ? `${fmt(L)} × ${fmt(W)} × ${fmt(H)} cm` : '';
+          };
+          const product = dim('dim-cm-l',          'dim-cm-w',          'dim-cm-h');
+          const inner   = dim('carton-inner-l-cm', 'carton-inner-w-cm', 'carton-inner-h-cm');
+          const outer   = dim('carton-outer-l-cm', 'carton-outer-w-cm', 'carton-outer-h-cm');
+          const parts = [];
+          if (product) parts.push(`<span class="ss-label">Product</span><span class="ss-value">${product}</span>`);
+          if (inner)   parts.push(`<span class="ss-label">Inner</span><span class="ss-value">${inner}</span>`);
+          if (outer)   parts.push(`<span class="ss-label">Outer</span><span class="ss-value">${outer}</span>`);
+          _setSectionSummary('dimensions', parts.join('<span class="ss-divider">·</span>'));
           break;
         }
         case 'pallet': {
@@ -12701,39 +12725,57 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tierQty    = parseInt(tierInputs?.[0]?.value) || 0;
     const tierRmb    = parseFloat(tierRow?.dataset.price) || 0;
     const tierUsd    = tierRmb > 0 ? tierRmb / USD_TO_RMB : 0;
-    // When variants have variable pricing, the deterministic Total Product
-    // Cost uses the weighted-average per-unit USD (grandUsd / grandQty), not
-    // tierUsd (which is the sum of variant unit prices). Tier 1 with
-    // qty == grandQty lands exactly on grandUsd.
+
+    // Sale Per — read once up-here so the Product Cost block (next)
+    // and the Total/Profit calcs (further down) all see the same
+    // value. The full Total Landed Cost block re-reads the input
+    // directly later for clarity, but they'll resolve to the same
+    // number since this is a synchronous render.
+    const _salePerRawTop = (e('ps-sale-per')?.value || '').trim();
+    const _salePerTop    = _salePerRawTop === '' ? NaN : parseFloat(_salePerRawTop);
+
+    // Product Cost block: when the operator has typed a Sale Per
+    // (the "ultimate say"), Unit Price Per + Total Product Cost mirror
+    // it directly so the totals stay consistent across the whole tab.
+    // When Sale Per is blank, fall back to RFQ-derived unit cost so
+    // the block still has a sensible value during the early build-out
+    // phase before the operator commits to a price.
+    const fmt2 = v => v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     const psSummary = _lastRfqPriceSummary;
+    const haveSalePer = !isNaN(_salePerTop) && _salePerTop > 0;
     let productTotal;
-    if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && tierQty > 0) {
-      productTotal = tierQty * (psSummary.grandUsd / psSummary.grandQty);
+    let unitRmbText = '—', unitUsdText = '—';
+
+    if (haveSalePer && tierQty > 0) {
+      // Sale Per drives everything in this block when set.
+      productTotal = _salePerTop * tierQty;
+      unitUsdText  = '$' + fmt2(_salePerTop);
+      unitRmbText  = '¥' + fmt2(_salePerTop * USD_TO_RMB);
     } else {
-      productTotal = tierQty > 0 && tierUsd > 0 ? tierQty * tierUsd : 0;
+      // RFQ-based fallback (cost side). When variants have variable
+      // pricing, the deterministic Total Product Cost uses the
+      // weighted-average per-unit USD (grandUsd / grandQty), not tierUsd
+      // (which is the sum of variant unit prices). Tier 1 with
+      // qty == grandQty lands exactly on grandUsd.
+      if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && tierQty > 0) {
+        productTotal = tierQty * (psSummary.grandUsd / psSummary.grandQty);
+      } else {
+        productTotal = tierQty > 0 && tierUsd > 0 ? tierQty * tierUsd : 0;
+      }
+      // Unit price text: range when variants differ, single otherwise.
+      if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0) {
+        unitRmbText = psSummary.isRange ? '¥' + fmt2(psSummary.rmbMin) + '–¥' + fmt2(psSummary.rmbMax) : '¥' + fmt2(psSummary.rmbMin);
+        unitUsdText = psSummary.isRange ? '$' + fmt2(psSummary.usdMin) + '–$' + fmt2(psSummary.usdMax) : '$' + fmt2(psSummary.usdMin);
+      } else if (tierRmb > 0) {
+        unitRmbText = '¥' + fmt2(tierRmb);
+        unitUsdText = '$' + fmt2(tierUsd);
+      }
     }
 
     if (e('ps-qty'))          e('ps-qty').textContent          = tierQty > 0 ? tierQty.toLocaleString('en-US') + ' units' : '—';
     if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
-    // Total Product Cost (RMB) — same total in yuan, mirrored from USD
-    // via the standard exchange so the operator sees both sides without
-    // touching the calculator.
     const productTotalRmb = productTotal * USD_TO_RMB;
     if (e('ps-product-total-rmb')) e('ps-product-total-rmb').textContent = productTotalRmb > 0 ? fmtRmb(productTotalRmb) : '—';
-
-    // Unit Price Per (RMB / USD): mirrors RFQ Grand Total column logic — single
-    // value when variants share a price, range when they differ. Falls back to
-    // the selected tier's unit price when no variants exist (insert-only mode).
-    const fmt2 = v => v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-    const ps   = _lastRfqPriceSummary;
-    let unitRmbText = '—', unitUsdText = '—';
-    if (ps && ps.hasVariants && ps.rmbMin > 0) {
-      unitRmbText = ps.isRange ? '¥' + fmt2(ps.rmbMin) + '–¥' + fmt2(ps.rmbMax) : '¥' + fmt2(ps.rmbMin);
-      unitUsdText = ps.isRange ? '$' + fmt2(ps.usdMin) + '–$' + fmt2(ps.usdMax) : '$' + fmt2(ps.usdMin);
-    } else if (tierRmb > 0) {
-      unitRmbText = '¥' + fmt2(tierRmb);
-      unitUsdText = '$' + fmt2(tierUsd);
-    }
     if (e('ps-unit-rmb')) e('ps-unit-rmb').textContent = unitRmbText;
     if (e('ps-unit-usd')) e('ps-unit-usd').textContent = unitUsdText;
 
