@@ -1935,18 +1935,46 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rb-source-name { font-size: 13px; font-weight: 700; color: var(--text); }
     .rb-source-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
     .rb-check-row {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 10px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px;
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 8px;
       cursor: pointer;
+      /* Reset the global `label { font-size:11px; font-weight:700;
+         text-transform:uppercase; letter-spacing:.05em; color:muted }`
+         so checkbox row labels read as normal sentence-case body text. */
       font-size: 13px;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: normal;
       color: var(--text);
       user-select: none;
+      min-height: 38px; /* uniform row height regardless of label wrap */
     }
     .rb-check-row:hover { border-color: var(--accent); }
-    .rb-check-row input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    /* The global `input, textarea, select` rule sets width:100% + padding,
+       which stretches checkboxes to fill the row and pushes the label
+       text to the right. Reset all of that here so checkbox sits on the
+       left at its natural ~16px size and the label text is left-aligned. */
+    .rb-check-row input[type="checkbox"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+      padding: 0;
+      margin: 0;
+      flex: 0 0 auto;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+    }
+    .rb-check-row > span {
+      flex: 1;
+      text-align: left;
+      line-height: 1.3;
+      text-transform: none; /* don't double-up if surrounding labels uppercase */
+    }
 
     /* Filter bar — wraps inputs in pill chips. */
     .reports-filter-bar {
