@@ -116,27 +116,55 @@ function handleSubmit(PDO $pdo, string $token, int $clientId, string $clientName
         return;
     }
 
-    // Parse RFQ rows
+    // Parse RFQ rows. Each item may carry a nested `variants` array
+    // (added by the "+ Add variant" button on the form). Real variants
+    // map straight onto the operator's RFQ table — they render as
+    // indented rows under the parent, with their own qtys preserved.
     $items     = (array)($_POST['items'] ?? []);
     $rfqItems  = [];
     foreach ($items as $r) {
-        $itemName = trim((string)($r['item']    ?? ''));
-        $sku      = trim((string)($r['sku']     ?? ''));
-        $qty      = trim((string)($r['qty']     ?? ''));
-        $leadTime = trim((string)($r['leadTime']?? ''));
-        $variant  = trim((string)($r['variant'] ?? ''));
-        if ($itemName === '' && $sku === '' && $qty === '' && $variant === '') continue;
+        if (!is_array($r)) continue;
+        $itemName = trim((string)($r['item']  ?? ''));
+        $sku      = trim((string)($r['sku']   ?? ''));
+        $qty      = trim((string)($r['qty']   ?? ''));
+        $notes    = trim((string)(
+            // The new field is `notes`; fall back to the legacy `variant`
+            // single-text field so a stale browser submission still parses.
+            $r['notes']   ?? $r['variant'] ?? ''
+        ));
+
+        // Variants — array of {name, qty}. Skip blank rows, normalize
+        // into the {variant, qty, priceRmb, leadTime} shape the operator
+        // app expects (priceRmb + leadTime stay blank — the operator
+        // fills those during quoting).
+        $variants = [];
+        $rawVariants = (array)($r['variants'] ?? []);
+        foreach ($rawVariants as $v) {
+            if (!is_array($v)) continue;
+            $vName = trim((string)($v['name'] ?? ''));
+            $vQty  = trim((string)($v['qty']  ?? ''));
+            if ($vName === '' && $vQty === '') continue;
+            $variants[] = [
+                'variant'  => $vName,
+                'qty'      => $vQty,
+                'priceRmb' => '',
+                'leadTime' => '',
+            ];
+        }
+
+        // Skip a row that has nothing in it AT ALL (no item, sku, qty,
+        // notes, or variants). Empty rows are usually leftover slots.
+        if ($itemName === '' && $sku === '' && $qty === '' && $notes === '' && empty($variants)) continue;
+
         $rfqItems[] = [
-            'item'     => $itemName,
-            'sku'      => $sku,
-            'qty'      => $qty,
-            'priceRmb' => '',
-            'leadTime' => $leadTime,
-            'sample'   => false,
-            'variants' => [],
-            // Capture the client-supplied variant name as a free-text note on
-            // the row — operator can split into a real variant later.
-            'clientNote' => $variant,
+            'item'       => $itemName,
+            'sku'        => $sku,
+            'qty'        => $qty,
+            'priceRmb'   => '',
+            'leadTime'   => '',
+            'sample'     => false,
+            'variants'   => $variants,
+            'clientNote' => $notes,
         ];
     }
 
@@ -424,6 +452,75 @@ table.rfq-table .num-col { text-align: center; color: #9ba3c0; font-weight: 600;
 .rfq-remove:hover { background: #fee2e2; color: #dc2626; border-color: #fecaca; }
 .add-row-btn { background: none; border: 1px dashed #d1d5db; border-radius: 8px; color: #6b7280; font-size: 13px; font-weight: 600; padding: 11px 16px; cursor: pointer; font-family: inherit; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; }
 .add-row-btn:hover { border-color: #E8751A; color: #E8751A; background: #fff8f5; }
+
+/* Variant section — sub-rows under each parent line item. Indented
+   so they read as nested under the parent; smaller font + lighter
+   styling so they don't compete visually with the parent row. */
+.variant-section-row td { border: 0; }
+.variant-list { display: flex; flex-direction: column; gap: 6px; padding-left: 12px; }
+.variant-list:empty { padding: 0; }
+.variant-row {
+    display: grid;
+    grid-template-columns: 1fr 110px 28px;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 0;
+}
+.variant-row input {
+    width: 100%;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #1a1d2e;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.variant-row input:focus {
+    border-color: #6b93ff;
+    box-shadow: 0 0 0 2px rgba(107,147,255,0.12);
+}
+.variant-remove {
+    display: inline-flex;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #f8f9fb;
+    color: #9ba3c0;
+    border: 1px solid #e5e7eb;
+    font-size: 14px;
+    line-height: 1;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.variant-remove:hover { background: #fee2e2; color: #dc2626; border-color: #fecaca; }
+.add-variant-btn {
+    background: none;
+    border: 0;
+    padding: 4px 8px;
+    margin-top: 4px;
+    margin-left: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b93ff;
+    cursor: pointer;
+    font-family: inherit;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.add-variant-btn:hover { background: rgba(107,147,255,0.10); color: #4a7fff; }
+@media (max-width: 720px) {
+    .variant-row {
+        grid-template-columns: 1fr 80px 24px;
+        gap: 6px;
+    }
+    .variant-row input { padding: 6px 8px; font-size: 12px; }
+    .variant-list { padding-left: 8px; }
+    .add-variant-btn { margin-left: 8px; }
+}
 .action-bar { display: flex; justify-content: flex-end; gap: 12px; align-items: center; padding: 20px 28px; border-top: 1px solid #f0f2f5; background: #f8f9fb; }
 .action-hint { font-size: 12px; color: #9ba3c0; margin-right: auto; line-height: 1.5; }
 .submit-btn {
@@ -579,7 +676,7 @@ function formContent(string $clientName, string $contactName, string $token): st
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             RFQ Line Items
           </div>
-          <p class="page-sub" style="margin-top:6px;">List each variant or quantity tier you&rsquo;d like priced. SKU is optional.</p>
+          <p class="page-sub" style="margin-top:6px;">List each item you&rsquo;d like priced. Use the <strong>+ Add variant</strong> link under any item to break down qtys by size, color, or finish — those will land as proper variants on our side.</p>
         </div>
         <div class="card-body" style="padding:0;">
           <table class="rfq-table" id="rfq-table">
@@ -589,18 +686,27 @@ function formContent(string $clientName, string $contactName, string $token): st
                 <th>Item</th>
                 <th>SKU (optional)</th>
                 <th style="width:110px;">Quantity</th>
-                <th>Variant / Notes</th>
+                <th>Notes</th>
                 <th style="width:32px;"></th>
               </tr>
             </thead>
             <tbody id="rfq-body">
-              <tr data-row="0">
+              <tr data-row="0" data-row-type="parent">
                 <td class="num-col">1</td>
-                <td data-label="Item"><input type="text" name="items[0][item]" placeholder="e.g. Tote Bag — Black" /></td>
+                <td data-label="Item"><input type="text" name="items[0][item]" placeholder="e.g. Tote Bag" /></td>
                 <td data-label="SKU"><input type="text" name="items[0][sku]"  placeholder="optional" /></td>
                 <td data-label="Quantity"><input type="text" inputmode="numeric" name="items[0][qty]" placeholder="0" /></td>
-                <td data-label="Variant / Notes"><input type="text" name="items[0][variant]" placeholder="size, color, finish…" /></td>
+                <td data-label="Notes"><input type="text" name="items[0][notes]" placeholder="any extra detail…" /></td>
                 <td><span class="rfq-remove" onclick="removeRfqRow(this)" title="Remove">&times;</span></td>
+              </tr>
+              <tr class="variant-section-row" data-parent="0">
+                <td></td>
+                <td colspan="5" style="padding:0 6px 12px;">
+                  <div class="variant-list" id="variants-0"></div>
+                  <button type="button" class="add-variant-btn" onclick="addVariant(0)">
+                    + Add variant (size, color, finish&hellip;)
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -621,37 +727,102 @@ function formContent(string $clientName, string $contactName, string $token): st
     </form>
 
     <script>
+      // Each parent line item gets a unique numeric index. Variant input
+      // names follow PHP's array notation:
+      //   items[<parentIdx>][variants][<variantIdx>][name]
+      //   items[<parentIdx>][variants][<variantIdx>][qty]
+      // The intake.php submit handler walks $_POST['items'][i]['variants']
+      // and emits a real variants[] on the rfqItem so the operator's
+      // RFQ table renders proper variant rows on the workbook side.
       let _rfqRows = 1;
+      // Per-parent variant counter so each variant input name is unique
+      // even after rows are removed and re-added.
+      const _variantCounters = { 0: 0 };
+
+      function _renumberRfqRows() {
+        const tbody = document.getElementById('rfq-body');
+        let n = 1;
+        tbody.querySelectorAll('tr[data-row-type="parent"]').forEach(row => {
+          const numCell = row.querySelector('.num-col');
+          if (numCell) numCell.textContent = n++;
+        });
+      }
+
       function addRfqRow() {
         const tbody = document.getElementById('rfq-body');
         const idx = _rfqRows++;
-        const tr = document.createElement('tr');
-        tr.setAttribute('data-row', idx);
-        tr.innerHTML = `
-          <td class="num-col">${tbody.querySelectorAll('tr').length + 1}</td>
-          <td data-label="Item"><input type="text" name="items[${idx}][item]" placeholder="e.g. Tote Bag — Navy" /></td>
+        _variantCounters[idx] = 0;
+        const parent = document.createElement('tr');
+        parent.setAttribute('data-row', idx);
+        parent.setAttribute('data-row-type', 'parent');
+        parent.innerHTML = `
+          <td class="num-col">?</td>
+          <td data-label="Item"><input type="text" name="items[${idx}][item]" placeholder="e.g. Polo Shirt" /></td>
           <td data-label="SKU"><input type="text" name="items[${idx}][sku]"  placeholder="optional" /></td>
           <td data-label="Quantity"><input type="text" inputmode="numeric" name="items[${idx}][qty]" placeholder="0" /></td>
-          <td data-label="Variant / Notes"><input type="text" name="items[${idx}][variant]" placeholder="size, color, finish…" /></td>
+          <td data-label="Notes"><input type="text" name="items[${idx}][notes]" placeholder="any extra detail…" /></td>
           <td><span class="rfq-remove" onclick="removeRfqRow(this)" title="Remove">&times;</span></td>
         `;
-        tbody.appendChild(tr);
+        const section = document.createElement('tr');
+        section.className = 'variant-section-row';
+        section.setAttribute('data-parent', idx);
+        section.innerHTML = `
+          <td></td>
+          <td colspan="5" style="padding:0 6px 12px;">
+            <div class="variant-list" id="variants-${idx}"></div>
+            <button type="button" class="add-variant-btn" onclick="addVariant(${idx})">
+              + Add variant (size, color, finish&hellip;)
+            </button>
+          </td>
+        `;
+        tbody.appendChild(parent);
+        tbody.appendChild(section);
+        _renumberRfqRows();
       }
+
       function removeRfqRow(span) {
         const tbody = document.getElementById('rfq-body');
+        const parents = tbody.querySelectorAll('tr[data-row-type="parent"]');
         const tr = span.closest('tr');
-        if (tbody.querySelectorAll('tr').length <= 1) {
-          // Don't let them delete the last row — just clear it
+        const idx = tr.getAttribute('data-row');
+        if (parents.length <= 1) {
+          // Don't let them delete the last parent row — just clear inputs
           tr.querySelectorAll('input').forEach(i => i.value = '');
+          // Also clear any variants this parent has
+          const list = document.getElementById('variants-' + idx);
+          if (list) list.innerHTML = '';
           return;
         }
+        // Remove the parent row + its variant section row
+        const section = tbody.querySelector(`tr.variant-section-row[data-parent="${idx}"]`);
         tr.remove();
-        // Renumber
-        tbody.querySelectorAll('tr').forEach((row, i) => {
-          const numCell = row.querySelector('.num-col');
-          if (numCell) numCell.textContent = i + 1;
-        });
+        if (section) section.remove();
+        delete _variantCounters[idx];
+        _renumberRfqRows();
       }
+
+      function addVariant(parentIdx) {
+        const list = document.getElementById('variants-' + parentIdx);
+        if (!list) return;
+        const vIdx = (_variantCounters[parentIdx] = (_variantCounters[parentIdx] || 0) + 1) - 1;
+        const row = document.createElement('div');
+        row.className = 'variant-row';
+        row.setAttribute('data-variant-row', vIdx);
+        row.innerHTML = `
+          <input type="text" name="items[${parentIdx}][variants][${vIdx}][name]" placeholder="Variant (e.g. Black, Large, Glossy)" />
+          <input type="text" inputmode="numeric" name="items[${parentIdx}][variants][${vIdx}][qty]" placeholder="Qty" />
+          <span class="variant-remove" onclick="removeVariant(this)" title="Remove variant">&times;</span>
+        `;
+        list.appendChild(row);
+        // Auto-focus the name field so the user can start typing right away
+        row.querySelector('input')?.focus();
+      }
+
+      function removeVariant(span) {
+        const row = span.closest('.variant-row');
+        if (row) row.remove();
+      }
+
       // Prevent double-submit
       document.getElementById('intake-form').addEventListener('submit', function(e) {
         const btn = document.getElementById('submit-btn');
