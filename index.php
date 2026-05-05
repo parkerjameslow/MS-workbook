@@ -692,8 +692,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         max-content      /* Unit USD */
         max-content      /* Total */
         max-content;     /* Lead */
-      column-gap: 16px;
-      row-gap: 4px;
+      column-gap: 28px;
+      row-gap: 6px;
       align-items: center;
       width: 100%;
       align-self: stretch; /* parent has align-items:flex-end — stretch overrides */
