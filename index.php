@@ -679,25 +679,69 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       flex-wrap: wrap;
       justify-content: flex-end;
     }
-    /* RFQ per-item row — fixed grid columns so item names line up
-       across multiple rows even when the values vary in width. */
-    .section-summary .ss-rfq-line {
+    /* RFQ collapsed summary — multi-row grid with column headers,
+       per-item rows, and a grand-total row that bookends the table.
+       One grid container so columns line up across every row, even
+       when item names / range cells / totals vary in width. */
+    .section-summary .ss-rfq-table {
       display: grid;
-      grid-template-columns: minmax(120px, auto) auto auto auto auto auto;
-      gap: 12px;
+      grid-template-columns:
+        minmax(0, 1fr)   /* Item — flexes to soak up extra space */
+        max-content      /* Qty */
+        max-content      /* Unit RMB */
+        max-content      /* Unit USD */
+        max-content      /* Total */
+        max-content;     /* Lead */
+      column-gap: 16px;
+      row-gap: 4px;
       align-items: center;
-      font-size: 11.5px;
       width: 100%;
-      justify-content: end;
+      align-self: stretch; /* parent has align-items:flex-end — stretch overrides */
+      font-size: 11.5px;
+      font-variant-numeric: tabular-nums;
     }
-    .section-summary .ss-rfq-line > * { white-space: nowrap; text-align: right; }
-    .section-summary .ss-rfq-line .ss-rfq-name {
+    .section-summary .ss-rfq-table > * {
+      white-space: nowrap;
+      text-align: right;
+    }
+    /* First column (item name) left-aligns and can ellipsize on narrow
+       widths — every other cell stays right-aligned, like a financial
+       column report. */
+    .section-summary .ss-rfq-table > .ss-rfq-name {
       text-align: left;
       font-weight: 600;
       color: var(--text);
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* Tiny column-header cells across the top of the table. */
+    .section-summary .ss-rfq-th {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      opacity: 0.75;
+      padding-bottom: 2px;
+    }
+    .section-summary .ss-rfq-th--left { text-align: left; }
+    /* Grand-total bookend rows — heavier border separating them from
+       the per-item rows so the table reads as Header → Items → Total. */
+    .section-summary .ss-rfq-grand-cell {
+      font-weight: 700;
+      color: var(--text);
+      padding-top: 6px;
+      border-top: 1px solid var(--border);
+    }
+    .section-summary .ss-rfq-grand-cell--label {
+      text-align: left;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+    }
+    .section-summary .ss-rfq-accent { color: var(--accent); }
     /* Product Overview summary — truncate the description so a long
        paragraph doesn't blow out the section header. Tooltip carries
        the full text so the operator can hover to read the rest. */
@@ -10768,11 +10812,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           });
           if (items.length === 0) { _setSectionSummary('rfq', ''); break; }
 
-          // Build per-item rows. Use a 6-column grid: name | qty |
-          // RMB range | USD range | total | lead. Range cells render
-          // a single value when min==max so "non-variable" items don't
-          // show a fake "x–x" range.
-          const itemHtml = items.map(it => {
+          // Single grid wraps everything so columns line up across:
+          //   • column-header row at top
+          //   • one row per parent line item
+          //   • grand-total row at bottom (bookend to the top ss-row)
+          // Range cells (RMB / USD) render a single value when
+          // min == max so non-variable items don't show fake "x–x" ranges.
+          const cellEsc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          const headerCells =
+            `<div class="ss-rfq-th ss-rfq-th--left">Item</div>` +
+            `<div class="ss-rfq-th">Qty</div>` +
+            `<div class="ss-rfq-th">Unit (RMB)</div>` +
+            `<div class="ss-rfq-th">Unit (USD)</div>` +
+            `<div class="ss-rfq-th">Total</div>` +
+            `<div class="ss-rfq-th">Lead</div>`;
+          const itemCells = items.map(it => {
             const isRange = (it.rmbMax - it.rmbMin) > 0.005;
             const rmbCell = it.rmbMin > 0
               ? (isRange ? `¥${fmt2(it.rmbMin)}–¥${fmt2(it.rmbMax)}` : `¥${fmt2(it.rmbMin)}`)
@@ -10782,18 +10836,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const usdCell = it.rmbMin > 0
               ? (isRange ? `$${fmt2(usdMin)}–$${fmt2(usdMax)}` : `$${fmt2(usdMin)}`)
               : '—';
-            return `<div class="ss-rfq-line">` +
-              `<span class="ss-rfq-name" title="${it.name.replace(/"/g, '&quot;')}">${it.name}</span>` +
-              `<span class="ss-value">${_ssFmtInt(it.qty)}</span>` +
-              `<span class="ss-value">${rmbCell}</span>` +
-              `<span class="ss-value">${usdCell}</span>` +
-              `<span class="ss-value ss-value--accent">${_ssFmtUsd(it.total)}</span>` +
-              `<span class="ss-value">${it.lead > 0 ? it.lead + 'd' : '—'}</span>` +
-            `</div>`;
+            return (
+              `<div class="ss-rfq-name" title="${cellEsc(it.name)}">${cellEsc(it.name)}</div>` +
+              `<div>${_ssFmtInt(it.qty)}</div>` +
+              `<div>${rmbCell}</div>` +
+              `<div>${usdCell}</div>` +
+              `<div class="ss-rfq-accent">${_ssFmtUsd(it.total)}</div>` +
+              `<div>${it.lead > 0 ? it.lead + 'd' : '—'}</div>`
+            );
           }).join('');
+          const grandCells =
+            `<div class="ss-rfq-grand-cell ss-rfq-grand-cell--label">Grand Total</div>` +
+            `<div class="ss-rfq-grand-cell">${_ssFmtInt(grandQty)}</div>` +
+            `<div class="ss-rfq-grand-cell"></div>` +
+            `<div class="ss-rfq-grand-cell"></div>` +
+            `<div class="ss-rfq-grand-cell ss-rfq-accent">${_ssFmtUsd(grandTotal)}</div>` +
+            `<div class="ss-rfq-grand-cell">${grandLead > 0 ? grandLead + 'd' : '—'}</div>`;
 
-          // Grand total row — single right-aligned ss-row at top.
-          const grandHtml = `<div class="ss-row">
+          // Compact summary line at the very top — same data the row
+          // at the bottom shows, but in plain prose so the operator
+          // sees the headline numbers without scanning the table.
+          const headlineRow = `<div class="ss-row">
             <span class="ss-label">Grand Total</span>
             <span class="ss-value ss-value--accent">${_ssFmtUsd(grandTotal)}</span>
             <span class="ss-divider">·</span>
@@ -10802,8 +10865,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="ss-value">${items.length} item${items.length === 1 ? '' : 's'}</span>
             ${grandLead > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${grandLead}d lead</span>` : ''}
           </div>`;
+          const tableHtml = `<div class="ss-rfq-table">${headerCells}${itemCells}${grandCells}</div>`;
 
-          _setSectionSummary('rfq', grandHtml + itemHtml);
+          _setSectionSummary('rfq', headlineRow + tableHtml);
           break;
         }
         case 'tiers': {
