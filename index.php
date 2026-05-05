@@ -2032,6 +2032,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        scrollbar if the viewport really can't fit the full table. */
     .dash-table th:first-child  { width: 20%; }      /* Product */
     .dash-table th.col-client   { width: 14%; }      /* Client (home view only) */
+    .dash-table th.col-landed   { width: 120px; text-align: right; }
+    .dash-table td.col-landed   { text-align: right; padding-right: 14px; white-space: nowrap; }
     .dash-table th.col-date-created   { width: 100px; }
     .dash-table th.col-date-submitted { width: 100px; }
     .dash-table th.col-order    { width: 110px; }
@@ -2110,6 +2112,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-color: rgba(52,211,153,0.25);
     }
     .wb-order-pill--closed:hover { background: rgba(52,211,153,0.22); }
+
+    /* Landed Cost cell — small monospace-ish numeric pill that reads
+       cleanly alongside the order pill. Uses the brand orange so it
+       stands out from the cooler blue/green order pills. */
+    .wb-landed-pill {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
 
     /* Pending Review badge — surfaced on workbooks created via the
        client-portal intake form (intake.php). Cyan/blue tint to match
@@ -3820,7 +3835,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       /* Dashboard table — mobile card layout */
       .dash-table { table-layout: auto; min-width: unset !important; display: table; width: 100%; }
       .dash-table thead, .dash-table tbody { display: table-row-group; width: 100%; min-width: unset; }
-      .col-flow, .col-date-submitted, .col-client { display: none !important; }
+      .col-flow, .col-date-submitted, .col-client, .col-landed { display: none !important; }
       .col-mobile-status { display: table-cell !important; text-align: right !important; }
       .date-full { display: none !important; }
       .date-short { display: inline !important; }
@@ -4801,6 +4816,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <thead>
             <tr>
               <th class="sortable" onclick="sortClientTable('product')">Product <span class="sort-arrow"></span></th>
+              <th class="col-landed sortable" onclick="sortClientTable('landed')">Landed Cost <span class="sort-arrow"></span></th>
               <th class="col-date-created sortable" onclick="sortClientTable('date')">Date Created <span class="sort-arrow"></span></th>
               <th class="col-date-submitted sortable" onclick="sortClientTable('dateSubmitted')">Date Submitted <span class="sort-arrow"></span></th>
               <th class="col-order">Order</th>
@@ -15245,16 +15261,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const parts = d.split(' ');
       return new Date(2000 + parseInt(parts[2]), months[parts[1]], parseInt(parts[0]));
     };
+    // Pull each workbook's cached Total Landed Cost from the Pricing
+    // tab so we can show a Landed Cost column on this dashboard +
+    // sort by it. The cache is written every time the Pricing tab
+    // re-renders for that workbook; missing/0 → render as "—".
+    const _landedFor = it => {
+      const d = workbookDetail[`${clientName}|${it.id}`] || {};
+      const v = parseFloat(d.pricingLandedTotal);
+      return (!isNaN(v) && v > 0) ? v : 0;
+    };
+
     const dir = _clientSortDir === 'asc' ? 1 : -1;
     items.sort((a, b) => {
       if (_clientSortField === 'product') return dir * a.product.localeCompare(b.product);
       if (_clientSortField === 'dateSubmitted') return dir * (parseDate(a.dateSubmitted) - parseDate(b.dateSubmitted));
       if (_clientSortField === 'status') return dir * (getCurrentStepName(a.flow) || '').localeCompare(getCurrentStepName(b.flow) || '');
+      if (_clientSortField === 'landed')  return dir * (_landedFor(a) - _landedFor(b));
       // Default: furthest-along first, then newest date as tiebreaker
       const scoreDiff = flowScore(b.flow) - flowScore(a.flow);
       if (scoreDiff !== 0) return scoreDiff;
       return parseDate(b.dateCreated) - parseDate(a.dateCreated);
     });
+
+    const _fmtUsdShort = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
     tbody.innerHTML = items.map(item => {
       const complete = isFlowComplete(item.flow);
@@ -15279,9 +15308,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ? ` <span class="pending-review-badge" title="Submitted via client intake link — needs review">Pending Review</span>`
         : '';
 
+      // Landed Cost cell — cached pricingLandedTotal from the Pricing
+      // tab. Empty → "—" (so the operator knows that workbook hasn't
+      // been priced yet).
+      const landed = _landedFor(item);
+      const landedCell = landed > 0
+        ? `<span class="wb-landed-pill" title="Total Landed Cost from this workbook's Pricing tab">${_fmtUsdShort(landed)}</span>`
+        : `<span style="color:var(--text-muted);">—</span>`;
+
       return `
       <tr class="${complete ? 'row-complete' : ''}${pendingReview ? ' row-pending-review' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
         <td class="product-name">${item.product}${pendingBadge}</td>
+        <td class="col-landed">${landedCell}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
         <td class="col-order">${orderCell}</td>
