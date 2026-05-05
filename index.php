@@ -2495,6 +2495,111 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .btn-back:hover { opacity: 0.7; }
 
+    /* ── Workbook Watchers ─────────────────────────────────────────────────
+       Status-bar button + modal styles. Button matches the .cdc-send-style
+       buttons next to it (transparent w/ accent border). Count badge
+       turns solid orange when there's at least one watcher across any
+       step, so the operator can see at a glance whether anyone's tagged. */
+    .wb-watchers-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 10px 6px 12px;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .wb-watchers-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .wb-watchers-btn.has-watchers { border-color: var(--accent); color: var(--accent); }
+    .wb-watchers-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 18px; height: 18px; padding: 0 5px;
+      border-radius: 9px; font-size: 11px; font-weight: 800;
+      background: var(--surface2); color: var(--text-muted);
+      transition: background 0.15s, color 0.15s;
+    }
+    .wb-watchers-btn.has-watchers .wb-watchers-count {
+      background: var(--accent); color: #fff;
+    }
+
+    /* Modal contents — one row per flow step with bar + label, watchers
+       pills, and an "+ Add" select. Completed steps render dimmed with
+       a "Completed" chip and no add control (they've already fired). */
+    .watcher-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      flex-wrap: wrap;
+    }
+    .watcher-row.is-done { opacity: 0.62; }
+    .watcher-row-step {
+      display: flex; align-items: center; gap: 8px;
+      min-width: 180px; flex-shrink: 0;
+    }
+    .watcher-row-bar {
+      width: 28px; height: 6px; border-radius: 3px;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .watcher-row-bar.filled { background: var(--success); }
+    .watcher-row-label {
+      font-size: 13px; font-weight: 600; color: var(--text);
+    }
+    .watcher-row-done-badge {
+      display: inline-block;
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: rgba(52,211,153,0.15);
+      color: var(--success);
+      padding: 2px 7px; border-radius: 10px;
+    }
+    .watcher-row-pills {
+      display: flex; flex-wrap: wrap; gap: 5px;
+      flex: 1; min-width: 0;
+    }
+    .watcher-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: rgba(232,117,26,0.10);
+      color: var(--accent);
+      border: 1px solid rgba(232,117,26,0.30);
+      border-radius: 14px;
+      padding: 3px 4px 3px 10px;
+      font-size: 12px; font-weight: 600;
+      white-space: nowrap;
+    }
+    .watcher-pill-x {
+      background: none; border: none; color: var(--accent);
+      font-size: 14px; line-height: 1; cursor: pointer;
+      padding: 2px 4px; border-radius: 50%;
+      transition: background 0.15s;
+      font-family: inherit;
+    }
+    .watcher-pill-x:hover { background: rgba(232,117,26,0.20); }
+    .watcher-row-add {
+      font-size: 12px; font-family: inherit;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 10px;
+      color: var(--text); cursor: pointer;
+      min-width: 140px;
+    }
+    .watcher-row-empty {
+      color: var(--text-muted); font-size: 12px; font-style: italic;
+    }
+    @media (max-width: 600px) {
+      .watcher-row-step { min-width: 0; width: 100%; }
+      .watcher-row-pills { width: 100%; }
+      .watcher-row-add { width: 100%; }
+    }
+
     /* ── Modal ──────────────────────────────────────────────────────────── */
     .modal-overlay {
       display: none;
@@ -4878,6 +4983,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
         <span id="btn-send-rfq-label">RFQ</span>
       </button>
+      <button id="btn-watchers" onclick="openWatchersModal()" class="wb-watchers-btn" title="Manage milestone watchers">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Watchers</span>
+        <span class="wb-watchers-count" id="watchers-count">0</span>
+      </button>
       <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
       <button class="btn-advance" id="btn-advance" onclick="advanceStatus()">
         Mark as Entered →
@@ -6564,7 +6674,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      toggles which one is visible based on the hash.
 ═══════════════════════════════════════════════════════════════════════ -->
 <div id="view-reports" class="view">
-  <main class="dashboard">
+  <main class="container">
     <!-- ── List screen ── -->
     <div id="reports-list-screen">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:18px;">
@@ -6850,6 +6960,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         Send Notification
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Watchers Modal ─────────────────────────────────────────────────────
+     Per-step subscription manager. The modal shows a row for each flow
+     step with that step's current watchers (avatar pills) plus an
+     "Add watcher" select that pulls from the users table. Watchers are
+     stored at detail_json.watchers[stepKey] = [displayName, ...] and
+     are auto-cleared when the flow advances past their step (so the
+     watcher fires once per add — re-add to be re-notified). -->
+<div class="modal-overlay" id="modal-watchers" onclick="if(event.target===this)closeWatchersModal()" style="z-index:1100;">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title" style="display:flex; align-items:center; gap:8px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Milestone Watchers
+    </div>
+    <p style="font-size:13px; color:var(--text-muted); line-height:1.6; margin:0 0 18px;">
+      Tag people to be emailed when this workbook reaches a specific milestone. Once a step completes, that step's watchers get one email and are cleared — re-add them if you want to be notified again.
+    </p>
+    <div id="watchers-table-body" style="display:flex; flex-direction:column; gap:10px;"></div>
+    <p id="watchers-empty-users" style="display:none; font-size:12px; color:var(--text-muted); margin:14px 0 0; padding:12px 14px; background:var(--surface2); border:1px dashed var(--border); border-radius:8px;">
+      No users with email on file. Add team members in <strong style="color:var(--text);">Settings → Manage Users</strong> first.
+    </p>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:22px;">
+      <button class="btn btn-primary" onclick="closeWatchersModal()">Done</button>
     </div>
   </div>
 </div>
@@ -11328,6 +11464,183 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _notifyPayload = null;
   }
 
+  // ── Watchers (per-step subscription on a workbook) ─────────────────────
+  // Detail-side persistence:
+  //   detail.watchers = { quoteChina: ['Karen'], clientApproved: [...] }
+  // The modal pulls candidate users from the users table (cached in
+  // _watchersUserList) so adding a teammate to "Manage Users" makes
+  // them immediately available to tag here without a code change.
+  // _watchersUserList is invalidated whenever Manage Users persists a
+  // change (handled by clearing the cache from the user-management
+  // save path — see _watchersUserListInvalidate calls if added later).
+  let _watchersUserList = null;
+
+  async function _ensureWatcherUsersLoaded(force) {
+    if (_watchersUserList && !force) return _watchersUserList;
+    try {
+      const r = await apiCall('get_users');
+      _watchersUserList = (r && r.success && Array.isArray(r.data)) ? r.data : [];
+    } catch (e) {
+      _watchersUserList = [];
+    }
+    return _watchersUserList;
+  }
+
+  async function openWatchersModal() {
+    if (!currentClient || !currentWorkbookId) return;
+    await _ensureWatcherUsersLoaded();
+    document.getElementById('modal-watchers').classList.add('open');
+    renderWatchersModal();
+  }
+
+  function closeWatchersModal() {
+    document.getElementById('modal-watchers').classList.remove('open');
+  }
+
+  function renderWatchersModal() {
+    const key   = `${currentClient}|${currentWorkbookId}`;
+    const detail = workbookDetail[key] || {};
+    const items  = clientData[currentClient] || [];
+    const item   = items.find(i => i.id === parseInt(currentWorkbookId)) || {};
+    const flow   = item.flow || {};
+    const watchers = detail.watchers || {};
+
+    const usersWithEmail = (_watchersUserList || []).filter(u => u && u.display_name && u.email);
+    const emptyUsersEl = document.getElementById('watchers-empty-users');
+    if (emptyUsersEl) emptyUsersEl.style.display = usersWithEmail.length === 0 ? 'block' : 'none';
+
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+    const rows = flowSteps.map((stepKey, i) => {
+      const stepLabel = flowLabels[i];
+      const stepDone  = !!flow[stepKey];
+      const watchList = Array.isArray(watchers[stepKey]) ? watchers[stepKey] : [];
+
+      const pills = watchList.length === 0
+        ? `<span class="watcher-row-empty">No watchers</span>`
+        : watchList.map(name => `
+            <span class="watcher-pill" title="Watching ${esc(stepLabel)}">
+              <span>${esc(name)}</span>
+              <button class="watcher-pill-x" onclick="removeWatcher('${esc(stepKey)}','${esc(name)}')" title="Remove">&times;</button>
+            </span>
+          `).join('');
+
+      const availableUsers = usersWithEmail.filter(u => !watchList.includes(u.display_name));
+      const addCtrl = stepDone
+        ? `<span style="font-size:11px; color:var(--text-muted);">Step already completed</span>`
+        : (availableUsers.length === 0
+            ? ``
+            : `<select class="watcher-row-add" onchange="addWatcher('${esc(stepKey)}', this.value); this.value=''">
+                 <option value="">+ Add watcher</option>
+                 ${availableUsers.map(u => `<option value="${esc(u.display_name)}">${esc(u.display_name)}</option>`).join('')}
+               </select>`);
+
+      return `
+        <div class="watcher-row${stepDone ? ' is-done' : ''}">
+          <div class="watcher-row-step">
+            <span class="watcher-row-bar${stepDone ? ' filled' : ''}"></span>
+            <span class="watcher-row-label">${esc(stepLabel)}</span>
+            ${stepDone ? '<span class="watcher-row-done-badge">Completed</span>' : ''}
+          </div>
+          <div class="watcher-row-pills">${pills}</div>
+          ${addCtrl}
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('watchers-table-body').innerHTML = rows;
+    _updateWatchersCountBadge();
+  }
+
+  function addWatcher(stepKey, displayName) {
+    if (!displayName || !currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    const detail = workbookDetail[key] || (workbookDetail[key] = {});
+    if (!detail.watchers) detail.watchers = {};
+    if (!Array.isArray(detail.watchers[stepKey])) detail.watchers[stepKey] = [];
+    if (!detail.watchers[stepKey].includes(displayName)) {
+      detail.watchers[stepKey].push(displayName);
+    }
+    if (!_filling) autoSaveWorkbook();
+    renderWatchersModal();
+  }
+
+  function removeWatcher(stepKey, displayName) {
+    if (!currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    const detail = workbookDetail[key];
+    if (!detail || !detail.watchers || !Array.isArray(detail.watchers[stepKey])) return;
+    detail.watchers[stepKey] = detail.watchers[stepKey].filter(n => n !== displayName);
+    if (detail.watchers[stepKey].length === 0) delete detail.watchers[stepKey];
+    if (!_filling) autoSaveWorkbook();
+    renderWatchersModal();
+  }
+
+  // Updates the small numeric badge on the status-bar Watchers button to
+  // reflect the total count of watchers across all steps. Also toggles
+  // the .has-watchers class so the button highlights orange when there's
+  // at least one tag — useful peripheral signal when scanning workbooks.
+  function _updateWatchersCountBadge() {
+    if (!currentClient || !currentWorkbookId) return;
+    const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
+    const w = detail.watchers || {};
+    let count = 0;
+    Object.values(w).forEach(arr => { if (Array.isArray(arr)) count += arr.length; });
+    const badge = document.getElementById('watchers-count');
+    if (badge) badge.textContent = count;
+    const btn = document.getElementById('btn-watchers');
+    if (btn) btn.classList.toggle('has-watchers', count > 0);
+  }
+
+  // Fires the "step just completed" notification email to anyone watching
+  // that step, then clears the watch list for that step (one-shot
+  // semantics — operator must re-tag to be notified again). Called from
+  // advanceStatus() after the flow flag has flipped true.
+  async function _fireWatcherNotifications(stepKey) {
+    if (!stepKey || !currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    const detail = workbookDetail[key] || {};
+    const list = (detail.watchers && Array.isArray(detail.watchers[stepKey])) ? detail.watchers[stepKey].slice() : [];
+    if (list.length === 0) return;
+
+    const stepIdx = flowSteps.indexOf(stepKey);
+    const stepLabel = flowLabels[stepIdx] || stepKey;
+    const product = (detail.product || document.getElementById('product-name')?.value || 'Workbook').trim();
+    const wbDbId = dbWorkbookMap[key] || currentWorkbookId;
+    const appUrl = `${location.origin}${location.pathname}#/client/${encodeURIComponent(currentClient)}/workbook/${wbDbId}`;
+
+    try {
+      const r = await apiCall('notify_watchers', {
+        workbook_id: wbDbId,
+        step_key:    stepKey,
+        step_label:  stepLabel,
+        product_name: product,
+        client_name:  currentClient,
+        app_url:      appUrl,
+        watchers:     list,
+      });
+      // Clear the watchers for this step regardless of email outcome —
+      // re-firing on the next advance would re-spam, and the operator
+      // can always re-tag if delivery failed.
+      if (detail.watchers) {
+        delete detail.watchers[stepKey];
+        if (Object.keys(detail.watchers).length === 0) delete detail.watchers;
+      }
+      if (!_filling) autoSaveWorkbook();
+      _updateWatchersCountBadge();
+      if (typeof _msToast === 'function') {
+        const ok = !!(r && r.success);
+        const sentTo = (r && r.recipients) || [];
+        const msg = ok
+          ? `Notified ${sentTo.length || list.length} watcher${(sentTo.length || list.length) === 1 ? '' : 's'} that ${stepLabel} is complete.`
+          : `Watchers cleared but email may not have sent. Check console.`;
+        _msToast(msg, ok ? 'success' : 'error');
+      }
+    } catch (e) {
+      console.error('[MS notify_watchers]', e);
+    }
+  }
+
   async function sendNotification() {
     if (!_notifyPayload) return;
     const btn = document.getElementById('btn-notify-send');
@@ -11452,9 +11765,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const item = items.find(i => i.id === parseInt(currentWorkbookId));
     if (!item) return;
 
+    // Track which step just flipped true so we can fire watcher emails
+    // for that step *after* the flag has been written. (Watchers are
+    // one-shot: drained when fired so they don't re-trigger if the
+    // operator goes back and forward again.)
+    let advancedStepKey = null;
     for (let i = 0; i < flowSteps.length; i++) {
       if (!item.flow[flowSteps[i]]) {
         item.flow[flowSteps[i]] = true;
+        advancedStepKey = flowSteps[i];
         break;
       }
     }
@@ -11465,6 +11784,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
     saveToLocalStorage();
     rebuildRfqNav();  // status moved — may enter/leave RFQ queue
+
+    // Fire-and-forget watcher notification for the step that just
+    // completed. Failures are logged but never block the advance.
+    if (advancedStepKey) {
+      try { _fireWatcherNotifications(advancedStepKey); } catch (e) { console.error('[MS watcher fire]', e); }
+    }
   }
 
   /* ── Workbook Tabs ────────────────────────────────────────────────────────── */
@@ -15421,6 +15746,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const items = clientData[clientName] || [];
     const item = items.find(i => i.id === parseInt(workbookId));
     if (item) renderStatusBar(item.flow);
+    // Sync the Watchers count badge with whatever's saved on this workbook
+    if (typeof _updateWatchersCountBadge === 'function') _updateWatchersCountBadge();
 
     // Clear existing tier rows (both tables)
     document.getElementById('tier-body').innerHTML = '';
@@ -16544,6 +16871,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // RFQ queue flags (managed via toggleSendToRfq, not DOM-driven — preserve from existing)
       sentToRfq: !!existing.sentToRfq,
       sentToRfqAt: existing.sentToRfqAt || null,
+      // Per-step milestone watchers — managed by the Watchers modal, not
+      // DOM-driven. Preserve the live in-memory value from existing so
+      // an autosave after add/remove doesn't clobber it.
+      watchers: (existing && typeof existing.watchers === 'object' && existing.watchers !== null) ? existing.watchers : {},
     };
     return detail;
   }

@@ -2333,6 +2333,85 @@ switch ($action) {
         echo json_encode($resp);
         break;
 
+    case 'notify_watchers':
+        // Per-step milestone notification: the workbook has just advanced
+        // past `step_key`, so email everyone the operator tagged as a
+        // watcher for that step. Emails resolved from the users table
+        // by display_name. Watchers without an email on file are
+        // skipped silently — frontend already filters them out, this
+        // is just a server-side safety net.
+        $wbId         = (int)($input['workbook_id'] ?? 0);
+        $stepKey      = (string)($input['step_key']     ?? '');
+        $stepLabel    = (string)($input['step_label']   ?? $stepKey);
+        $productName  = (string)($input['product_name'] ?? 'Workbook');
+        $clientName   = (string)($input['client_name']  ?? '');
+        $appUrl       = (string)($input['app_url']      ?? '');
+        $watcherNames = array_values(array_filter(array_map('strval', (array)($input['watchers'] ?? []))));
+
+        if (!$wbId || $stepKey === '' || empty($watcherNames)) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id, step_key, watchers required']);
+            break;
+        }
+
+        // Resolve emails from the users table
+        $placeholders = implode(',', array_fill(0, count($watcherNames), '?'));
+        $stmt = $pdo->prepare("SELECT display_name, email FROM users
+                               WHERE display_name IN ($placeholders)
+                                 AND email IS NOT NULL AND email != ''");
+        $stmt->execute($watcherNames);
+        $emailByName = [];
+        while ($row = $stmt->fetch()) { $emailByName[$row['display_name']] = $row['email']; }
+        $recipients = [];
+        foreach ($watcherNames as $n) { if (!empty($emailByName[$n])) $recipients[] = $emailByName[$n]; }
+        $recipients = array_values(array_unique($recipients));
+        if (empty($recipients)) {
+            echo json_encode([
+                'success'         => false,
+                'error'           => 'No emails on file for the selected watchers.',
+                'attempted_names' => $watcherNames,
+            ]);
+            break;
+        }
+
+        $subject = "✓ {$stepLabel} — {$productName} ({$clientName})";
+        $clientNameSafe  = htmlspecialchars($clientName);
+        $productSafe     = htmlspecialchars($productName);
+        $stepLabelSafe   = htmlspecialchars($stepLabel);
+        $appUrlSafe      = htmlspecialchars($appUrl);
+
+        $appBtn = $appUrl !== ''
+            ? "<div style='text-align:center;margin:32px 0;'>"
+            . "<a href='{$appUrlSafe}' style='display:inline-block;background:#E8751A;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:8px;letter-spacing:0.01em;'>"
+            . "Open Workbook &rarr;"
+            . "</a></div>"
+            : '';
+
+        $watcherListSafe = implode(', ', array_map('htmlspecialchars', $watcherNames));
+
+        $body = "<div style='margin-bottom:18px;'><span style='background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:5px 14px;border-radius:20px;'>Milestone Reached</span></div>"
+              . "<h1 style='margin:0 0 6px;font-size:24px;font-weight:800;color:#1a1d2e;'>{$stepLabelSafe}</h1>"
+              . "<p style='margin:0 0 20px;font-size:15px;color:#6b7280;'>The workbook for <strong>{$productSafe}</strong> ({$clientNameSafe}) has just advanced past <strong>{$stepLabelSafe}</strong>.</p>"
+              . ms_detail_table([
+                  ['Client',     $clientNameSafe],
+                  ['Product',    $productSafe],
+                  ['Milestone',  $stepLabelSafe],
+                  ['Tagged',     $watcherListSafe],
+              ])
+              . $appBtn
+              . "<p style='margin:18px 0 0;font-size:13px;color:#9ba3c0;line-height:1.6;'>You were tagged as a watcher for this milestone. You won&rsquo;t be notified again unless re-tagged on a future step.</p>"
+              . "<p style='margin:14px 0 0;font-size:14px;color:#374151;'>— Market Sculpt Workbook</p>";
+
+        $html   = ms_email_wrap($subject, "Milestone reached: {$stepLabel}", $body);
+        $result = ms_smtp_send($recipients, $subject, $html);
+
+        echo json_encode([
+            'success'    => $result['ok'] ?? false,
+            'recipients' => $recipients,
+            'count'      => count($recipients),
+            'error'      => $result['error'] ?? null,
+        ]);
+        break;
+
     case 'create_intake_token':
         // Operator-initiated: create a one-time intake link for a client and
         // email it to the address on file. The recipient lands on intake.php,
