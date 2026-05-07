@@ -6266,14 +6266,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
           <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
-            <!-- Label flips between "Total Outer Cartons to Ship" and
-                 "Total Units to Ship" based on manual mode (handled by
-                 onPalletManualToggle). Hint text + placeholder also swap. -->
-            <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Outer Cartons to Ship</label>
-            <input type="number" min="0" placeholder="e.g. 500" id="pallet-total-cartons"
+            <!-- Always "Total Units to Ship" — the pallet view now
+                 derives the carton count and pallets needed from the
+                 unit count + the configured outer-carton arrangement,
+                 so the operator never has to do the cartons-per-unit
+                 math by hand. Auto-fills from the RFQ Grand Total qty.
+                 The id stays "pallet-total-cartons" for backward
+                 compatibility with saved data + downstream callers. -->
+            <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Units to Ship</label>
+            <input type="number" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons"
               style="width:100%; box-sizing:border-box;"
               oninput="renderPalletViz(); syncShippingDims(); calcFreight();" />
-            <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Enter your total shipment carton count to calculate pallets needed.</div>
+            <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Pre-filled from RFQ Grand Total qty — override if shipping a different count.</div>
           </div>
         </div>
       </div>
@@ -9487,24 +9491,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.querySelectorAll('.specs-col[data-carton-col]').forEach(col => {
       col.classList.toggle('pallet-manual-disabled', on);
     });
-    const label = document.getElementById('pallet-total-label');
-    const input = document.getElementById('pallet-total-cartons');
-    const hint  = document.getElementById('pallet-total-hint');
     // 4 mm divider option is only meaningful when fitting products
     // directly on the pallet — hide the row in carton mode.
     const dividerWrap = document.getElementById('pallet-divider-wrap');
     if (dividerWrap) dividerWrap.style.display = on ? '' : 'none';
-    if (on) {
-      if (label) label.textContent = 'Total Units to Ship';
-      if (input) input.placeholder = 'e.g. 1,000';
-      if (hint)  hint.textContent  = 'Pre-filled from RFQ Grand Total qty — override if shipping a different count.';
-      // Pull the current RFQ grand qty into the input on toggle-on
-      if (typeof syncManualPalletTotalUnits === 'function') syncManualPalletTotalUnits();
-    } else {
-      if (label) label.textContent = 'Total Outer Cartons to Ship';
-      if (input) input.placeholder = 'e.g. 500';
-      if (hint)  hint.textContent  = 'Enter your total shipment carton count to calculate pallets needed.';
-    }
+    // Label / placeholder / hint stay as "Total Units to Ship" in
+    // BOTH modes now — the pallet view derives cartons + pallets
+    // from the unit count automatically. Pull the current RFQ grand
+    // qty into the input whenever the toggle changes.
+    if (typeof syncManualPalletTotalUnits === 'function') syncManualPalletTotalUnits();
     renderPalletViz();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
@@ -9998,14 +9993,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     // Scale to fit canvas — origin near top, stack grows upward.
-    // Asymmetric padding: more room on the LEFT (H bracket + label),
-    // less on the RIGHT so the iso silhouette can shift toward the
-    // right edge of the canvas. The L and W labels at the bottom of
-    // the silhouette get more breathing room without losing iso size.
+    // Asymmetric padding: WAY more room on the LEFT for the H bracket
+    // + horizontal H label like "H 62\" (158.5 cm)" (~150 px wide at
+    // 16px), tight right edge for the W label tail. The iso shape
+    // shifts well into the right half of the canvas so the L and W
+    // labels at the bottom corners separate cleanly.
     const footprintSpan = PALLET_L + PALLET_W;
     const stackH = PALLET_DECK + showLayers * stackPitchH;
-    const LABEL_PAD_LEFT  = 130; // room for the H bracket + horizontal H label
-    const LABEL_PAD_RIGHT = 56;  // tight right edge — W label tail clears
+    const LABEL_PAD_LEFT  = 190; // room for the full H bracket + label
+    const LABEL_PAD_RIGHT = 40;  // tight right edge — W label tail clears
     const LABEL_PAD_Y     = 110; // px reserved below for L bracket
     const LABEL_PAD_TOP   = 32;  // px reserved above for the top-right badge
     const s = Math.min(
@@ -10100,10 +10096,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // L bracket — front-left edge bbl(top of diamond) → bfl is W;
     // L runs along bfl(left)→bfr(bottom): the front-left-bottom edge.
     // Match the product viz: place bracket outside this edge. Label
-    // gap sized so the 16px text clears the bracket bar without
-    // overflowing the narrower canvas.
+    // gap sized so the 16px text clears the bracket bar AND L stays
+    // separate from W at the shared bottom corner.
     {
-      const lOff = 14, lLabelGap = 34;
+      const lOff = 16, lLabelGap = 42;
       const a0 = v3.bfl, b0 = v3.bfr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
@@ -10113,7 +10109,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // W bracket — front-right-bottom edge bfr→bbr.
     {
-      const wOff = 14, wLabelGap = 34;
+      const wOff = 16, wLabelGap = 42;
       const a0 = v3.bfr, b0 = v3.bbr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
