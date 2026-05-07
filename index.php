@@ -1960,8 +1960,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       outline: 1px solid rgba(107,147,255,0.25);
       outline-offset: -1px;
     }
-    .rfq-variant-row { background: rgba(232,117,26,0.03); }
-    #rfq-table .rfq-variant-row td { padding: 8px 8px; vertical-align: top; }
+    /* Variant rows inherit the parent row's background via inline style
+       (set in addRfqVariantRow). The leftmost variant cell is indented
+       so a variant visually reads as a child of its parent line item. */
+    .rfq-variant-row { /* bg painted inline from parent row */ }
+    #rfq-table .rfq-variant-row td { padding: 10px 8px; vertical-align: top; }
+    /* The variant name input cell — indent to show nesting under its
+       parent row's Item input. The empty <td>s (handle/sample/SKU) keep
+       their default padding. */
+    #rfq-table .rfq-variant-row td:nth-child(4) {
+      padding-left: 28px;
+      position: relative;
+    }
+    /* Subtle vertical bar in the indent area as a visual nesting cue. */
+    #rfq-table .rfq-variant-row td:nth-child(4)::before {
+      content: "";
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      bottom: 14px;
+      width: 2px;
+      border-radius: 2px;
+      background: rgba(232,117,26,0.35);
+    }
 
     /* Samples dashboard status select */
     .sample-status-sel option {
@@ -1974,37 +1995,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       user-select: none;
     }
 
-    /* Inline "+ Variant" button — circular icon button sized to match
-       the × remove span next to it, so the RFQ actions cell stays as
-       narrow as it was before. Tooltip explains what it does. The
-       earlier "+ Variant" text-pill version was wide enough to push
-       the cell off-screen on the wider RFQ tables. */
-    .rfq-add-variant-inline {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
+    /* Tiny "+ Add Variant" text link, sits inside the Item cell just
+       below the Item input. Styled muted so it doesn't compete with
+       data, brightens to accent on hover. The actions cell on the far
+       right keeps the × alone — no + crowding it. */
+    .rfq-add-variant-link {
+      display: inline-block;
+      margin: 6px 0 0 4px;
+      padding: 2px 6px;
       background: none;
-      border: 1px solid var(--border);
+      border: none;
       color: var(--text-muted);
-      font-size: 15px;
-      font-weight: 600;
-      line-height: 1;
-      padding: 0;
-      margin: 0 4px 0 0;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.2;
       cursor: pointer;
       font-family: inherit;
-      vertical-align: middle;
-      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      letter-spacing: 0.2px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
     }
-    .rfq-add-variant-inline:hover {
-      border-color: var(--accent);
+    .rfq-add-variant-link:hover {
       color: var(--accent);
       background: rgba(232,117,26,0.08);
     }
-    .rfq-add-variant-inline:disabled { opacity: 0.4; cursor: not-allowed; }
+    .rfq-add-variant-link:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* Pallet view manual-mode checkbox — sits at the top of the pallet
        section. Compact pill so it doesn't compete with the canvas. */
@@ -9386,18 +9401,64 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillText(`${noun}: ${bL.toFixed(1)} × ${bW.toFixed(1)} cm — Pallet: ${PALLET_L} × ${PALLET_W} cm`, CW/2, CH/2 + 10);
       if (!manualOn) ctx.fillText('Try reducing the number of inner cartons per outer.', CW/2, CH/2 + 28);
-      document.getElementById('pallet-stats').innerHTML = `
+
+      // ── Manual mode: even when product overhangs, give the operator
+      // the math they actually need: 1 unit per pallet (overhanging),
+      // and how many pallets are required for the total shipment.
+      // Vertical stacking still applies if max-height allows it.
+      let palletStatsHTML = `
         <div style="color:#f59e0b; font-size:13px; font-weight:600; margin-bottom:8px;">⚠ ${noun} exceeds pallet dimensions</div>
         <div style="font-size:12px; color:var(--text-muted); line-height:1.6;">
           The ${lcNoun} footprint (${bL.toFixed(1)} × ${bW.toFixed(1)} cm) is larger than the 40 × 48 in pallet (101.6 × 121.9 cm).<br><br>
           ${remedy}
         </div>`;
+
+      if (manualOn) {
+        const maxLoadHIn = parseFloat(document.getElementById('pallet-max-height').value) || 60;
+        const maxLoadH = maxLoadHIn * 2.54;
+        const stackable = Math.max(1, Math.floor(maxLoadH / bH));
+        const perPalletOverhang = stackable; // 1 per layer × stack height
+        const totalUnits = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
+        const palletsNeeded = totalUnits > 0 ? Math.ceil(totalUnits / perPalletOverhang) : null;
+        palletStatsHTML += `
+          <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">Overhang Stacking</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+              <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perPalletOverhang}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">units / pallet (overhanging, ${stackable} layer${stackable === 1 ? '' : 's'} high)</div></div>
+              <div><div style="font-size:22px; font-weight:700; color:${palletsNeeded ? 'var(--accent)' : 'var(--text-muted)'};">${palletsNeeded != null ? palletsNeeded.toLocaleString() : '—'}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed${totalUnits ? ` for ${totalUnits.toLocaleString()} units` : ' — enter total below'}</div></div>
+            </div>
+          </div>`;
+        // Replace the canvas message with something more useful.
+        ctx.clearRect(0, 0, CW, CH);
+        ctx.fillStyle = '#aaa';
+        ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Product overhangs pallet — ${perPalletOverhang} unit${perPalletOverhang === 1 ? '' : 's'} per pallet`, CW/2, CH/2 - 18);
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillText(`Product: ${bL.toFixed(1)} × ${bW.toFixed(1)} × ${bH.toFixed(1)} cm`, CW/2, CH/2 + 4);
+        ctx.fillText(`Pallet base: ${PALLET_L} × ${PALLET_W} cm (40 × 48 in)`, CW/2, CH/2 + 22);
+        if (palletsNeeded != null) {
+          ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, sans-serif';
+          ctx.fillStyle = '#E8751A';
+          ctx.fillText(`${palletsNeeded.toLocaleString()} pallet${palletsNeeded === 1 ? '' : 's'} needed`, CW/2, CH/2 + 50);
+        }
+      }
+
+      document.getElementById('pallet-stats').innerHTML = palletStatsHTML;
       const inlineEl = document.getElementById('pallet-inline-stats');
       if (inlineEl) {
         inlineEl.style.display = '';
-        inlineEl.innerHTML = manualOn
-          ? `<span style="color:#f59e0b;">⚠ Product too large for pallet base</span>`
-          : `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`;
+        if (manualOn) {
+          const totalUnits = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
+          const maxLoadHIn = parseFloat(document.getElementById('pallet-max-height').value) || 60;
+          const stackable = Math.max(1, Math.floor((maxLoadHIn * 2.54) / bH));
+          const palletsNeeded = totalUnits > 0 ? Math.ceil(totalUnits / stackable) : null;
+          inlineEl.innerHTML = palletsNeeded != null
+            ? `<span style="color:#f59e0b;">⚠ Product overhangs pallet</span> · <strong>${stackable}</strong> per pallet · <strong>${palletsNeeded.toLocaleString()}</strong> pallets for ${totalUnits.toLocaleString()} units`
+            : `<span style="color:#f59e0b;">⚠ Product overhangs pallet</span> · ${stackable} per pallet (enter total units below)`;
+        } else {
+          inlineEl.innerHTML = `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`;
+        }
       }
       return;
     }
@@ -9721,7 +9782,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.ondrop = function(e) { e.preventDefault(); tr.style.borderTop=''; rfqDropRow(e, id); };
     const usdVal = priceRmb ? (parseFloat(priceRmb) / USD_TO_RMB).toFixed(2) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
-    const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:13px; box-sizing:border-box;';
+    // Slightly taller row — bumped vertical padding from 10px to 12px so
+    // the row has room for the inline "+ Add Variant" link below the
+    // Item input without feeling cramped.
+    const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-size:13px; box-sizing:border-box;';
     if (isFirstRow) {
       tr.style.background = 'rgba(232, 117, 26, 0.08)';
       tr.ondragover = null;
@@ -9738,14 +9802,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals()" style="${inputStyle}" /></td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
+        <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
       <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
-      <td style="white-space:nowrap;">
-        <button type="button" class="rfq-add-variant-inline" onclick="addRfqVariantRow(${id})" title="Add a variant under this item" aria-label="Add a variant">+</button>
+      <td style="white-space:nowrap; text-align:center;">
         <span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove line item">&times;</span>
       </td>
     `;
@@ -10097,6 +10161,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.id = `rfq-var-${vid}`;
     tr.classList.add('rfq-variant-row');
     tr.setAttribute('data-rfq-parent', parentId);
+    // Inherit the parent row's background so the variant visually reads
+    // as part of the same line item (e.g. orange-highlighted first row →
+    // orange-tinted variants underneath; plain row → plain variants).
+    try {
+      const parentRow = document.getElementById(`rfq-${parentId}`);
+      const parentBg = parentRow && parentRow.style && parentRow.style.background;
+      if (parentBg) tr.style.background = parentBg;
+    } catch (_) {}
     // Drag events must live on the <tr> itself because draggable is set on <tr>
     // (dragstart fires on the draggable element, not on child <td>s)
     tr.ondragover  = function(e) { if (_draggingVarId !== null) { e.preventDefault(); tr.style.borderTop = '2px solid var(--accent)'; } };
