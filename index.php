@@ -6274,12 +6274,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- Pallet-specific notes — sits between the pallet view and
            the container view. Use for pallet-stacking instructions,
            per-pallet labeling rules, etc. Persisted to
-           detail.palletStackNotes. -->
+           detail.palletStackNotes. Wrapped by initRichEditors so it
+           gets the same B / I / U / list / AI toolbar as the product
+           description. -->
       <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border);">
         <label for="pallet-stack-notes" style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Additional Notes — Pallet</label>
-        <textarea id="pallet-stack-notes" rows="3"
+        <textarea id="pallet-stack-notes" data-rich="1" rows="3"
           placeholder="Notes about the per-pallet build — labeling, stacking rules, fragility callouts, separator material, etc."
-          oninput="if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook()"
           style="width:100%; box-sizing:border-box; resize:vertical; min-height:64px;"></textarea>
       </div>
 
@@ -6307,12 +6308,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- Container-level notes — for whole-shipment instructions
            (driver pickup, trans-loading rules, customs paperwork
            callouts, etc.). Persisted to detail.palletNotes (legacy
-           field name from when this was the only notes box). -->
+           field name from when this was the only notes box). Rich-
+           text enabled so the toolbar matches the product desc. -->
       <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border);">
         <label for="pallet-notes" style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Additional Notes — Container / Shipment</label>
-        <textarea id="pallet-notes" rows="3"
+        <textarea id="pallet-notes" data-rich="1" rows="3"
           placeholder="Notes about the whole shipment — special handling, customs paperwork, driver pickup instructions, etc."
-          oninput="if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook()"
           style="width:100%; box-sizing:border-box; resize:vertical; min-height:64px;"></textarea>
       </div>
     </div>
@@ -9548,7 +9549,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const HC_L = 1203, HC_W = 235, HC_H = 269;
   const HC_MAX_KG = 26000;     // max payload (kg)
   const HC_USABLE_CBM = 67;    // usable cargo volume (m³)
-  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg) {
+  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg, unitCbmArg, unitWeightKgArg) {
     const canvas = document.getElementById('container-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -9784,6 +9785,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const fmtCbm = (m3) => m3 < 1
         ? `${m3.toFixed(2)} m³`
         : `${m3.toLocaleString('en-US', {maximumFractionDigits:1})} m³`;
+      // Loose-load top-off: how many extra units fit in the leftover
+      // CBM/weight if shipped in cardboard boxes (no pallet) — pure
+      // unit dims, no pallet/divider overhead. Limited by either CBM
+      // remaining or weight remaining, whichever is tighter.
+      const unitCbm = (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0;
+      const unitWtKg = (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0;
+      let looseByCbm = 0, looseByWeight = Infinity, looseFit = 0;
+      if (unitCbm > 0) {
+        // Real-world cardboard packing isn't 100% efficient — assume
+        // 80% volumetric utilization (rest is box wall + air gaps).
+        const PACK_EFFICIENCY = 0.80;
+        looseByCbm = Math.floor((cbmRoomLeft * PACK_EFFICIENCY) / unitCbm);
+        looseByWeight = unitWtKg > 0 ? Math.floor(weightRoomLeftKg / unitWtKg) : Infinity;
+        looseFit = Math.max(0, Math.min(looseByCbm, looseByWeight));
+      }
+      const looseLabel = unitWord === 'units' || unitWord === 'unit'
+        ? 'loose units (cardboard, no pallet)'
+        : 'loose cartons (no pallet)';
+
       const remainingBlock = palletsNeeded > 0
         ? `<div style="margin-top:14px; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">
@@ -9802,6 +9822,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  to fill the 40' HC limit of <strong>${HC_USABLE_CBM} CBM</strong> · <strong>${HC_MAX_KG.toLocaleString()} kg</strong>
                </div>
              </div>
+             ${looseFit > 0 ? `
+             <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
+               <div style="font-size:11px; font-weight:700; color:var(--accent); margin-bottom:4px;">↳ Top-Off Capacity</div>
+               <div style="font-size:13px; color:var(--text); line-height:1.5;">
+                 You could top off the last container with up to
+                 <strong style="color:var(--accent);">~${looseFit.toLocaleString()}</strong> more ${looseLabel}
+                 by skipping the pallet and shipping in cardboard boxes.
+               </div>
+               <div style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.5;">
+                 Bound by ${looseByCbm <= looseByWeight ? 'CBM' : 'weight'}: ${fmtCbm(cbmRoomLeft)} ÷ ${unitCbm < 0.01 ? (unitCbm * 1000).toFixed(2) + ' L' : unitCbm.toFixed(4) + ' m³'} per unit, at ~80% packing efficiency
+                 ${unitWtKg > 0 ? ` &nbsp;·&nbsp; weight cap: ${Math.floor(weightRoomLeftKg / unitWtKg).toLocaleString()} units` : ''}
+               </div>
+             </div>` : ''}
            </div>`
         : `<div style="margin-top:14px; padding:12px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.5;">
              A single 40' HC fits <strong>${palletsPerContainer}</strong> pallets${verticalLayers > 1 ? ` (${verticalLayers}-high)` : ''}, up to <strong>${HC_USABLE_CBM} CBM</strong> / <strong>${HC_MAX_KG.toLocaleString()} kg</strong>.
@@ -10180,13 +10213,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     syncShippingPalletStats();
 
     // Refresh the 40' HC container preview using the just-computed
-    // pallet stack height + per-pallet weight + units-per-pallet so
-    // the side stats panel can render Total Weight, Total Volume,
-    // and "+N more units to fill the last container" accurately.
+    // pallet stack height + per-pallet weight + units-per-pallet +
+    // per-unit volume + per-unit weight so the side stats panel can
+    // render Total Weight, Total Volume, "+N more units palletized"
+    // and "+N more loose units (in cardboard boxes)" accurately.
+    const unitCbmM3 = (bL * bW * bH) / 1_000_000; // cm³ → m³
     if (typeof renderContainerViz === 'function') {
       renderContainerViz(
         palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm,
-        palletWeightKg, totalPerPallet, unitWordP
+        palletWeightKg, totalPerPallet, unitWordP,
+        unitCbmM3, unitWeightKg
       );
     }
   }
