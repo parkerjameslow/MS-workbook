@@ -2003,6 +2003,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: rgba(232,117,26,0.06);
     }
     .rfq-add-variant-inline:disabled { opacity: 0.4; cursor: not-allowed; }
+    /* On narrow viewports (mobile / split screens) the actions cell
+       runs out of horizontal room for the "+ Variant" pill alongside
+       the × remove. Stack vertically so neither gets pushed off-canvas
+       and both stay tappable. */
+    @media (max-width: 920px) {
+      .rfq-add-variant-inline {
+        display: block;
+        margin: 0 0 6px 0;
+        width: fit-content;
+      }
+    }
+
+    /* Pallet view manual-mode checkbox — sits at the top of the pallet
+       section. Compact pill so it doesn't compete with the canvas. */
+    .pallet-manual-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .pallet-manual-toggle:hover { border-color: var(--accent); }
+    .pallet-manual-toggle input[type="checkbox"] {
+      width: 14px; height: 14px; padding: 0; margin: 0;
+      flex: 0 0 auto; background: transparent; border: 0; box-shadow: none;
+      accent-color: var(--accent); cursor: pointer;
+    }
+    /* Visually disable the Inner / Outer Carton sections when manual
+       mode is on — operator knows they're irrelevant to the pallet
+       math while the checkbox is ticked. */
+    .specs-col.pallet-manual-disabled {
+      opacity: 0.45;
+      pointer-events: none;
+      filter: grayscale(0.4);
+      transition: opacity 0.2s, filter 0.2s;
+    }
 
     .karen-cell.field-filled input {
       background: var(--filled-bg);
@@ -5985,7 +6030,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
 
         <!-- Column 2: Inner Carton -->
-        <div class="specs-col">
+        <div class="specs-col" data-carton-col="inner">
           <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
             <span>Inner Carton</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -6055,7 +6100,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
 
         <!-- Column 3: Outer Carton -->
-        <div class="specs-col">
+        <div class="specs-col" data-carton-col="outer">
           <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
             <span>Outer Carton</span>
             <div style="display:flex; align-items:center; gap:8px;">
@@ -6155,6 +6200,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
+      <!-- Manual mode checkbox — when ON, the pallet calc skips the
+           inner/outer carton dims and computes how many products fit
+           directly on a 40 × 48 pallet base using just the product
+           dimensions. Useful for crates / unboxed items where the
+           cartonization pipeline doesn't apply. The Inner / Outer
+           Carton sections on the Workbook tab gray out so the
+           operator knows they're not in play. -->
+      <label class="pallet-manual-toggle">
+        <input type="checkbox" id="pallet-manual" onchange="onPalletManualToggle()" />
+        <span>Manual mode — fit products directly on the pallet base (skip carton dimensions)</span>
+      </label>
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
         <canvas id="pallet-canvas" width="480" height="360" style="flex-shrink:0; border-radius:8px; background:var(--surface2);"></canvas>
         <div style="flex:1; min-width:200px;">
@@ -6170,11 +6226,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
           <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
-            <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Outer Cartons to Ship</label>
+            <!-- Label flips between "Total Outer Cartons to Ship" and
+                 "Total Units to Ship" based on manual mode (handled by
+                 onPalletManualToggle). Hint text + placeholder also swap. -->
+            <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Outer Cartons to Ship</label>
             <input type="number" min="0" placeholder="e.g. 500" id="pallet-total-cartons"
               style="width:100%; box-sizing:border-box;"
               oninput="renderPalletViz(); syncShippingDims(); calcFreight();" />
-            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Enter your total shipment carton count to calculate pallets needed.</div>
+            <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Enter your total shipment carton count to calculate pallets needed.</div>
           </div>
         </div>
       </div>
@@ -9250,6 +9309,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return (o1.cols * o1.rows >= o2.cols * o2.rows) ? o1 : o2;
   }
 
+  // Manual-mode toggle handler — flips the pallet calc between
+  // standard (carton-driven) and manual (product-direct) mode.
+  // In manual mode:
+  //   • Inner / Outer Carton columns gray out (data-carton-col="inner|outer")
+  //   • Pallet stats use product L×W×H to fit products directly on
+  //     the 40 × 48 base
+  //   • The "Total Outer Cartons to Ship" label flips to
+  //     "Total Units to Ship" and the placeholder/hint update too
+  // Persists to detail.palletManual via autosave so the toggle
+  // stays set across reloads.
+  function onPalletManualToggle() {
+    const cb = document.getElementById('pallet-manual');
+    const on = !!(cb && cb.checked);
+    document.querySelectorAll('.specs-col[data-carton-col]').forEach(col => {
+      col.classList.toggle('pallet-manual-disabled', on);
+    });
+    const label = document.getElementById('pallet-total-label');
+    const input = document.getElementById('pallet-total-cartons');
+    const hint  = document.getElementById('pallet-total-hint');
+    if (on) {
+      if (label) label.textContent = 'Total Units to Ship';
+      if (input) input.placeholder = 'e.g. 1,000';
+      if (hint)  hint.textContent  = 'Enter your total unit (product) count to calculate pallets needed.';
+    } else {
+      if (label) label.textContent = 'Total Outer Cartons to Ship';
+      if (input) input.placeholder = 'e.g. 500';
+      if (hint)  hint.textContent  = 'Enter your total shipment carton count to calculate pallets needed.';
+    }
+    renderPalletViz();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   function renderPalletViz() {
     const canvas = document.getElementById('pallet-canvas');
     if (!canvas) return;
@@ -9257,17 +9348,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const CW = canvas.width, CH = canvas.height;
     ctx.clearRect(0, 0, CW, CH);
 
-    const bL = parseFloat(document.getElementById('carton-outer-l-cm').value);
-    const bW = parseFloat(document.getElementById('carton-outer-w-cm').value);
-    const bH = parseFloat(document.getElementById('carton-outer-h-cm').value);
+    // Manual mode: build pallet stats from PRODUCT dims directly,
+    // bypassing inner/outer carton math entirely. Useful for crates
+    // or unboxed items where the cartonization pipeline doesn't fit.
+    const manualOn = !!document.getElementById('pallet-manual')?.checked;
+    let bL, bW, bH;
+    if (manualOn) {
+      bL = parseFloat(document.getElementById('dim-cm-l').value);
+      bW = parseFloat(document.getElementById('dim-cm-w').value);
+      bH = parseFloat(document.getElementById('dim-cm-h').value);
+    } else {
+      bL = parseFloat(document.getElementById('carton-outer-l-cm').value);
+      bW = parseFloat(document.getElementById('carton-outer-w-cm').value);
+      bH = parseFloat(document.getElementById('carton-outer-h-cm').value);
+    }
 
     if (!bL || !bW || !bH) {
       ctx.fillStyle = '#aaa';
       ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Enter outer carton dimensions', CW/2, CH/2 - 8);
+      const need = manualOn ? 'product' : 'outer carton';
+      ctx.fillText(`Enter ${need} dimensions`, CW/2, CH/2 - 8);
       ctx.fillText('to see pallet visualization', CW/2, CH/2 + 10);
-      document.getElementById('pallet-stats').innerHTML = '<span style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</span>';
+      document.getElementById('pallet-stats').innerHTML = `<span style="color:var(--text-muted); font-size:13px;">Enter ${need} dimensions to calculate.</span>`;
       const inlineEl = document.getElementById('pallet-inline-stats');
       if (inlineEl) { inlineEl.style.display = 'none'; inlineEl.textContent = ''; }
       return;
@@ -9333,24 +9436,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const labelPt = isoProj(PALLET_L/2, 0, PALLET_W + 4, s, ox, oy);
     ctx.fillText('40 × 48 in', labelPt.x, labelPt.y + 4);
 
-    // Stats
+    // Stats — labels swap based on manual mode (units vs cartons).
     const surfaceUse = Math.round((layout.cols * layout.bL * layout.rows * layout.bW) / (PALLET_L * PALLET_W) * 100);
     const totalPerPallet = perLayer * maxLayers;
     const totalCartons = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
     const palletsNeeded = totalCartons > 0 ? Math.ceil(totalCartons / totalPerPallet) : null;
+    const unitWord  = manualOn ? 'unit' : 'outer carton';
+    const unitWordP = manualOn ? 'units' : 'outer cartons';
 
-    // Derived product counts
-    const innerQtyVal  = parseInt(document.getElementById('carton-inner-count').value) || 0; // products per inner
-    const outerQtyVal  = parseInt(document.getElementById('carton-outer-count').value) || 0; // inner cartons per outer
+    // Carton-driven product counts only apply outside manual mode
+    const innerQtyVal  = manualOn ? 0 : (parseInt(document.getElementById('carton-inner-count').value) || 0);
+    const outerQtyVal  = manualOn ? 0 : (parseInt(document.getElementById('carton-outer-count').value) || 0);
     const productsPerOuter = (innerQtyVal > 0 && outerQtyVal > 0) ? innerQtyVal * outerQtyVal : 0;
     const totalInners  = (totalCartons > 0 && outerQtyVal > 0) ? totalCartons * outerQtyVal : 0;
     const totalProducts = (totalCartons > 0 && productsPerOuter > 0) ? totalCartons * productsPerOuter : 0;
 
     document.getElementById('pallet-stats').innerHTML = `
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
-        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perLayer}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">outer cartons / layer</div></div>
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perLayer}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${unitWordP} / layer</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${maxLayers}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">max layers</div></div>
-        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalPerPallet}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">outer cartons / pallet</div></div>
+        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalPerPallet}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${unitWordP} / pallet</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">surface coverage</div></div>
         ${productsPerOuter > 0 ? `
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${outerQtyVal}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">inner cartons / outer</div></div>
@@ -9358,7 +9463,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       ${totalCartons > 0 ? `
       <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
-        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalCartons} outer cartons</div>
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalCartons.toLocaleString()} ${unitWordP}</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed</div></div>
           ${totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>'}
@@ -9366,7 +9471,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>` : ''}
       <div style="margin-top:14px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
-        Box orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer
+        ${manualOn ? 'Product' : 'Box'} orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer${manualOn ? '<br><span style="color:var(--accent); font-weight:600;">Manual mode — fitting products directly on pallet base.</span>' : ''}
       </div>`;
 
     // Store pallet stats globally so shipping tab can read them
@@ -17459,6 +17564,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // the visibility based on the select state.
       _s('product-subcategory-other',   data.productSubcategoryOther  || '');
       _s('product-subcategory-other-2', data.productSubcategoryOther2 || '');
+      // Pallet manual mode: restore the checkbox + sync the dependent
+      // UI (gray-out + label) so a hard refresh doesn't lose the flag.
+      const palletManualEl = document.getElementById('pallet-manual');
+      if (palletManualEl) {
+        palletManualEl.checked = !!data.palletManualMode;
+        if (typeof onPalletManualToggle === 'function') {
+          // _filling guard inside onPalletManualToggle skips autosave;
+          // calling it just for the UI side-effects (gray + label swap).
+          onPalletManualToggle();
+        }
+      }
       document.getElementById('mat2-wrap').classList.toggle('has-value', !!data.productSubcategory2);
       checkSecondaryLock();
       if (typeof _onMaterialChange === 'function') _onMaterialChange();
@@ -17754,6 +17870,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Wrap any [data-rich] textarea in the formatting / AI toolbar.
       // Idempotent — safe to re-call when switching workbooks.
       if (typeof initRichEditors === 'function') initRichEditors();
+      // Disable browser autofill on every workbook input so Chrome
+      // doesn't dump saved usernames/passwords into random text fields
+      // (Sale Per, Quantity, dimensions, etc.). autocomplete="off" is
+      // sometimes ignored on its own, so we also tag with name + a
+      // unique randomized data-form-1p-ignore for password managers.
+      try {
+        const wbView = document.getElementById('view-workbook');
+        if (wbView) {
+          wbView.querySelectorAll('input, textarea, select').forEach(el => {
+            if (el.type === 'checkbox' || el.type === 'radio') return;
+            if (!el.hasAttribute('autocomplete')) el.setAttribute('autocomplete', 'off');
+            if (!el.hasAttribute('autocorrect'))  el.setAttribute('autocorrect', 'off');
+            if (!el.hasAttribute('spellcheck'))   el.setAttribute('spellcheck', 'false');
+            if (!el.hasAttribute('data-1p-ignore')) el.setAttribute('data-1p-ignore', 'true');
+            if (!el.hasAttribute('data-lpignore'))  el.setAttribute('data-lpignore', 'true');
+          });
+        }
+      } catch (e) { /* best-effort — never block the workbook from loading */ }
     }, 200);
   }  // end _fillWorkbookInner
 
@@ -18471,6 +18605,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // anything other than "Other".
       productSubcategoryOther:  _v('product-subcategory-other'),
       productSubcategoryOther2: _v('product-subcategory-other-2'),
+      // Pallet manual-mode flag — when true, the Pallet View ignores
+      // outer carton dims and fits products directly on the 40 × 48
+      // pallet base. Used for crates / unboxed shipments.
+      palletManualMode: !!document.getElementById('pallet-manual')?.checked,
       materials: _v('materials'),
       pantone: _v('pantone-text'),
       cmyk: _v('cmyk'),
@@ -18600,10 +18738,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function autoSaveWorkbook() {
     if (!currentClient || !currentWorkbookId || _filling || !_appReady) return;
+    // Two-tier save: write to localStorage IMMEDIATELY so a hard
+    // refresh within the next second never loses data, then debounce
+    // the slower API call so we don't hammer the server on every
+    // keystroke. localStorage write is synchronous and microseconds-fast.
+    try {
+      const key = `${currentClient}|${currentWorkbookId}`;
+      const detail = collectWorkbookDetail();
+      workbookDetail[key] = detail;
+      saveToLocalStorage();
+    } catch (e) { /* best-effort — don't block input flow */ }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       doSaveWorkbook();
-    }, 800); // Save 0.8s after last change
+    }, 400); // Server-side save 400ms after last change (was 800ms)
   }
 
   function doSaveWorkbook() {
