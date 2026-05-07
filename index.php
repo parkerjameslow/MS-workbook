@@ -6245,16 +6245,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span>Add 4 mm divider between products (cardboard / foam separators)</span>
       </label>
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
-        <canvas id="pallet-canvas" width="700" height="440" style="flex:0 1 700px; min-width:300px; max-width:700px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+        <canvas id="pallet-canvas" width="540" height="420" style="flex:0 1 540px; min-width:300px; max-width:540px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
         <div style="flex:1; min-width:200px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);">Pallet Stats</div>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <label style="font-size:11px; color:var(--text-muted); white-space:nowrap;">Max height</label>
-              <input type="number" id="pallet-max-height" value="60" min="1" max="120" step="1"
-                style="width:56px; text-align:center; font-size:12px;"
-                oninput="renderPalletViz()" />
-              <span style="font-size:11px; color:var(--text-muted);">in</span>
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px;">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); padding-top:6px;">Pallet Stats</div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <label style="font-size:11px; color:var(--text-muted); white-space:nowrap;">Max height</label>
+                <input type="number" id="pallet-max-height" value="60" min="1" max="120" step="1"
+                  style="width:56px; text-align:center; font-size:12px;"
+                  oninput="renderPalletViz()" />
+                <span style="font-size:11px; color:var(--text-muted);">in</span>
+              </div>
+              <!-- Per-layer / per-row height — populated by renderPalletViz
+                   from the current product/carton height + divider pad,
+                   displayed in inches (rounded up) so the operator can
+                   see at a glance what each row stacks at. -->
+              <div id="pallet-layer-height-hint" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></div>
             </div>
           </div>
           <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
@@ -9974,15 +9981,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const maxLayers = Math.max(1, Math.floor(maxLoadH / stackPitchH));
     const showLayers = Math.min(maxLayers, 12); // cap visual layers
 
+    // Per-row / per-layer height hint — sits directly below the Max
+    // Height field. Shows the height of each outer-carton (or product,
+    // in manual mode) row in inches, rounded UP so the operator knows
+    // the worst-case per-layer height including the 4 mm divider pad
+    // when applicable.
+    const layerHintEl = document.getElementById('pallet-layer-height-hint');
+    if (layerHintEl) {
+      if (bH > 0) {
+        const layerInRound = Math.ceil(stackPitchH / 2.54);
+        const noun = manualOn ? 'product' : 'carton';
+        layerHintEl.innerHTML = `Each ${noun} row: <strong>~${layerInRound}"</strong> <span style="opacity:0.7;">(${stackPitchH.toFixed(1)} cm${dividerOn ? ' incl. 4mm pad' : ''})</span>`;
+      } else {
+        layerHintEl.textContent = '';
+      }
+    }
+
     // Scale to fit canvas — origin near top, stack grows upward.
     // Reserve padding so the L/W/H dim brackets and labels can sit
     // OUTSIDE the silhouette without clipping. Sized for 16px dim
     // label text + a top-right "40 × 48 in" badge.
     const footprintSpan = PALLET_L + PALLET_W;
     const stackH = PALLET_DECK + showLayers * stackPitchH;
-    const LABEL_PAD_X = 140; // px reserved on each side for H label + W label
-    const LABEL_PAD_Y = 130; // px reserved below for L bracket
-    const LABEL_PAD_TOP = 36; // px reserved above for the top-right badge
+    const LABEL_PAD_X = 110; // px reserved on each side for H label + W label
+    const LABEL_PAD_Y = 110; // px reserved below for L bracket
+    const LABEL_PAD_TOP = 32; // px reserved above for the top-right badge
     const s = Math.min(
       (CW - LABEL_PAD_X * 2) / (footprintSpan * ISO_COS30),
       (CH - LABEL_PAD_Y - LABEL_PAD_TOP) / (stackH + footprintSpan * ISO_SIN30)
@@ -10071,9 +10094,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // L bracket — front-left edge bbl(top of diamond) → bfl is W;
     // L runs along bfl(left)→bfr(bottom): the front-left-bottom edge.
     // Match the product viz: place bracket outside this edge. Label
-    // gap is generous so the 16px text never crowds the bar.
+    // gap sized so the 16px text clears the bracket bar without
+    // overflowing the narrower canvas.
     {
-      const lOff = 18, lLabelGap = 46;
+      const lOff = 14, lLabelGap = 34;
       const a0 = v3.bfl, b0 = v3.bfr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
@@ -10083,7 +10107,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // W bracket — front-right-bottom edge bfr→bbr.
     {
-      const wOff = 18, wLabelGap = 46;
+      const wOff = 14, wLabelGap = 34;
       const a0 = v3.bfr, b0 = v3.bbr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
@@ -10093,13 +10117,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // H bracket — vertical, OUTSIDE the leftmost silhouette point
     // (sxMin), running from top of stack to base. Label sits to the
-    // LEFT of the bar, right-anchored, with extra gap so the larger
-    // text never overlaps the bracket bar.
+    // LEFT of the bar, right-anchored.
     {
-      const hX = sxMin - 34;
+      const hX = sxMin - 26;
       const a = { x: hX, y: v3.tfl.y };
       const b = { x: hX, y: v3.bfl.y };
-      drawDim(a, b, { x: hX - 18, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
+      drawDim(a, b, { x: hX - 12, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
     }
     // Pallet "40 × 48 in" badge — anchored top-right corner of the
     // canvas so it never overlaps the L bracket below the silhouette.
