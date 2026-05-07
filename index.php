@@ -6016,8 +6016,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-kg" oninput="convertWeight('dim-weight-kg','dim-weight-lbs','kg'); autoCalcCartons()" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="text" placeholder="—" id="dim-weight-lbs" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs')" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-kg" oninput="convertWeight('dim-weight-kg','dim-weight-lbs','kg'); autoCalcCartons(); renderPalletViz()" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="text" placeholder="—" id="dim-weight-lbs" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Packaging Type</div>
               <div class="select-wrapper">
@@ -6142,8 +6142,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb</div>
             <div class="specs-row-label">Weight</div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg')" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs')" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg'); renderPalletViz()" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
             <!-- Two qty fields. Both are user-editable:
                  • Inner-per-Outer  — manual or auto-derived from arrangement.
                  • Units-per-Outer  — the user can type a target here and we
@@ -9400,7 +9400,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (on) {
       if (label) label.textContent = 'Total Units to Ship';
       if (input) input.placeholder = 'e.g. 1,000';
-      if (hint)  hint.textContent  = 'Enter your total unit (product) count to calculate pallets needed.';
+      if (hint)  hint.textContent  = 'Pre-filled from RFQ Grand Total qty — override if shipping a different count.';
+      // Pull the current RFQ grand qty into the input on toggle-on
+      if (typeof syncManualPalletTotalUnits === 'function') syncManualPalletTotalUnits();
     } else {
       if (label) label.textContent = 'Total Outer Cartons to Ship';
       if (input) input.placeholder = 'e.g. 500';
@@ -9408,6 +9410,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     renderPalletViz();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
+  // Auto-populate the "Total Units to Ship" pallet input from the RFQ
+  // Grand Total qty when the workbook is in manual mode. The merge
+  // rule respects user overrides:
+  //   - If the input is empty → fill with grandQty
+  //   - If the input still equals the value we last auto-synced (i.e.
+  //     the user hasn't typed anything different) → re-sync
+  //   - Otherwise (user has overridden) → leave it alone
+  // The previously-synced value lives on the input's data-last-rfq-sync
+  // attribute. Clearing the input resets the override and lets a new
+  // RFQ value flow in.
+  function syncManualPalletTotalUnits() {
+    const manualOn = !!document.getElementById('pallet-manual')?.checked;
+    if (!manualOn) return;
+    const input = document.getElementById('pallet-total-cartons');
+    if (!input) return;
+    const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
+    if (!grandQty) return;
+    const last = input.dataset.lastRfqSync || '';
+    const current = String(input.value || '').trim();
+    if (current === '' || current === last) {
+      const next = String(grandQty);
+      if (current !== next) {
+        input.value = next;
+        input.dataset.lastRfqSync = next;
+        // Trigger downstream calcs that this input's oninput would fire
+        if (typeof renderPalletViz === 'function') renderPalletViz();
+        if (typeof syncShippingDims === 'function') syncShippingDims();
+        if (typeof calcFreight === 'function') calcFreight();
+        if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+      } else {
+        // Already in sync — just normalize the marker
+        input.dataset.lastRfqSync = next;
+      }
+    }
   }
 
   function renderPalletViz() {
@@ -9534,12 +9572,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalInners  = (totalCartons > 0 && outerQtyVal > 0) ? totalCartons * outerQtyVal : 0;
     const totalProducts = (totalCartons > 0 && productsPerOuter > 0) ? totalCartons * productsPerOuter : 0;
 
+    // Per-unit weight: in manual mode this is the product weight,
+    // in carton mode it's the outer carton weight. Used to surface
+    // weight/pallet so the operator can sanity-check pallets against
+    // truck/container weight limits without leaving the page.
+    const unitWeightKg = manualOn
+      ? (parseFloat(document.getElementById('dim-weight-kg').value) || 0)
+      : (parseFloat(document.getElementById('carton-outer-weight').value) || 0);
+    const palletWeightKg = unitWeightKg > 0 ? unitWeightKg * totalPerPallet : 0;
+    const fmtWt = (kg) => {
+      if (!kg || kg <= 0) return '—';
+      const lbs = kg * KG_TO_LBS;
+      return kg < 10
+        ? `${kg.toFixed(2)} kg <span style="color:var(--text-muted); font-weight:500;">/ ${lbs.toFixed(2)} lb</span>`
+        : `${kg.toLocaleString('en-US', {maximumFractionDigits:1})} kg <span style="color:var(--text-muted); font-weight:500;">/ ${lbs.toLocaleString('en-US', {maximumFractionDigits:1})} lb</span>`;
+    };
+
     document.getElementById('pallet-stats').innerHTML = `
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perLayer}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${unitWordP} / layer</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${maxLayers}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">max layers</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalPerPallet}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${unitWordP} / pallet</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">surface coverage</div></div>
+        ${unitWeightKg > 0 ? `
+        <div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / ${unitWord}</div></div>
+        <div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(palletWeightKg)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / pallet</div></div>` : `
+        <div style="grid-column:span 2; font-size:11px; color:var(--text-muted); padding:6px 0; line-height:1.5;">
+          Enter ${manualOn ? 'product' : 'outer carton'} weight in the dimensions section to see weight per ${unitWord} and per pallet.
+        </div>`}
         ${productsPerOuter > 0 ? `
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${outerQtyVal}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">inner cartons / outer</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${productsPerOuter}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">products / outer carton</div></div>` : ''}
@@ -9549,7 +9609,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalCartons.toLocaleString()} ${unitWordP}</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed</div></div>
-          ${totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>'}
+          ${unitWeightKg > 0 ? `<div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg * totalCartons)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total shipment weight</div></div>` : (totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>')}
           ${totalProducts > 0 ? `<div style="grid-column:span 2;"><div style="font-size:22px; font-weight:700; color:var(--text);">${totalProducts.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total products</div></div>` : ''}
         </div>
       </div>` : ''}
@@ -10083,6 +10143,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     };
 
     document.getElementById('rfq-total-qty').textContent = grandQty ? grandQty.toLocaleString('en-US') : '—';
+
+    // In manual mode, propagate the RFQ Grand Total qty into the
+    // "Total Units to Ship" input on the Pallet section so the pallets
+    // count is computed automatically. Respects user overrides — see
+    // syncManualPalletTotalUnits() for the merge rule.
+    if (typeof syncManualPalletTotalUnits === 'function') syncManualPalletTotalUnits();
 
     // Unit Price (RMB): variant mode → single price or range; else → sum (legacy "insert" behavior)
     const rmbCell = document.getElementById('rfq-total-rmb');
