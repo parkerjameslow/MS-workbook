@@ -9534,7 +9534,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const HC_L = 1203, HC_W = 235, HC_H = 269;
   const HC_MAX_KG = 26000;     // max payload (kg)
   const HC_USABLE_CBM = 67;    // usable cargo volume (m³)
-  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg) {
+  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg) {
     const canvas = document.getElementById('container-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -9728,6 +9728,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const weightRoomLeftKg = palletWeightKg > 0
       ? Math.max(0, HC_MAX_KG - lastContainerWeightKg)
       : HC_MAX_KG;
+    // Units math — how many products fit per pallet, how many more
+    // products would fill the empty pallet slots in the last container.
+    const unitsPerPallet = (unitsPerPalletArg && unitsPerPalletArg > 0) ? unitsPerPalletArg : 0;
+    const unitWord = unitWordArg || 'units';
+    const unitsToFillLastContainer = unitsPerPallet * palletsRoomLeft;
+    // CBM math — each pallet occupies (PALLET_L × PALLET_W × stack
+    // height) cm³. Convert to m³, multiply by pallets in last container,
+    // subtract from the 67 CBM usable cargo allowance.
+    const palletCbm = (PALLET_L * PALLET_W * palletStack) / 1_000_000; // m³
+    const lastContainerCbm = palletCbm * palletsInLast;
+    const cbmRoomLeft = Math.max(0, HC_USABLE_CBM - lastContainerCbm);
+    const totalShipmentCbm = palletCbm * palletsNeeded;
 
     // ── Inline summary line above the canvas ───────────────────────────
     if (inlineEl) {
@@ -9755,15 +9767,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const palletsBadge = palletsNeeded > 0
         ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${containersNeeded} × 40' HC container${containersNeeded === 1 ? '' : 's'}</div>`
         : '';
+      const fmtCbm = (m3) => m3 < 1
+        ? `${m3.toFixed(2)} m³`
+        : `${m3.toLocaleString('en-US', {maximumFractionDigits:1})} m³`;
       const remainingBlock = palletsNeeded > 0
         ? `<div style="margin-top:14px; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">
                Last Container — Room to Fill
              </div>
              <div style="font-size:13px; color:var(--text); line-height:1.55;">
-               <div>You can fit <strong style="color:var(--accent);">${palletsRoomLeft}</strong> more pallet${palletsRoomLeft === 1 ? '' : 's'}</div>
+               <div>+ <strong style="color:var(--accent);">${palletsRoomLeft}</strong> more pallet${palletsRoomLeft === 1 ? '' : 's'}</div>
+               ${unitsPerPallet > 0
+                 ? `<div style="margin-top:4px;">+ <strong style="color:var(--accent);">${unitsToFillLastContainer.toLocaleString()}</strong> more ${unitWord} (${unitsPerPallet.toLocaleString()} / pallet)</div>`
+                 : ''}
+               <div style="margin-top:4px;">+ <strong style="color:var(--accent);">${fmtCbm(cbmRoomLeft)}</strong> CBM</div>
                ${palletWeightKg > 0
-                 ? `<div style="margin-top:4px;">+ <strong style="color:var(--accent);">${fmtKg(weightRoomLeftKg)}</strong> more weight</div>`
+                 ? `<div style="margin-top:4px;">+ <strong style="color:var(--accent);">${fmtKg(weightRoomLeftKg)}</strong> weight</div>`
                  : `<div style="margin-top:4px; font-size:11px; color:var(--text-muted);">Enter product / carton weight to see weight remaining</div>`}
                <div style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
                  to fill the 40' HC limit of <strong>${HC_USABLE_CBM} CBM</strong> · <strong>${HC_MAX_KG.toLocaleString()} kg</strong>
@@ -9786,6 +9805,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Weight</div>
             <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtKg(totalShipmentWeightKg)}</div>
             <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${palletsNeeded.toLocaleString()} pallets × ${fmtKg(palletWeightKg)}</div>
+          </div>` : ''}
+          ${palletsNeeded > 0 ? `
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Volume</div>
+            <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtCbm(totalShipmentCbm)}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${fmtCbm(palletCbm)} per pallet × ${palletsNeeded.toLocaleString()} pallets</div>
           </div>` : ''}
           ${remainingBlock}
         </div>
@@ -10141,10 +10166,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     syncShippingPalletStats();
 
     // Refresh the 40' HC container preview using the just-computed
-    // pallet stack height + per-pallet weight so the side stats panel
-    // can render Total Weight and Space Remaining accurately.
+    // pallet stack height + per-pallet weight + units-per-pallet so
+    // the side stats panel can render Total Weight, Total Volume,
+    // and "+N more units to fill the last container" accurately.
     if (typeof renderContainerViz === 'function') {
-      renderContainerViz(palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm, palletWeightKg);
+      renderContainerViz(
+        palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm,
+        palletWeightKg, totalPerPallet, unitWordP
+      );
     }
   }
 
