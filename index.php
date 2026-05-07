@@ -6245,7 +6245,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span>Add 4 mm divider between products (cardboard / foam separators)</span>
       </label>
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
-        <canvas id="pallet-canvas" width="480" height="360" style="flex-shrink:0; border-radius:8px; background:var(--surface2);"></canvas>
+        <canvas id="pallet-canvas" width="700" height="440" style="flex:0 1 700px; min-width:300px; max-width:700px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
         <div style="flex:1; min-width:200px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
             <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);">Pallet Stats</div>
@@ -6296,8 +6296,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div id="container-stats-inline" style="font-size:12px; color:var(--text-muted);"></div>
         </div>
         <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
-          <div style="flex:1 1 480px; min-width:280px;">
-            <canvas id="container-canvas" width="640" height="320" style="width:100%; max-width:640px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+          <div style="flex:1 1 600px; min-width:300px;">
+            <canvas id="container-canvas" width="800" height="380" style="width:100%; max-width:800px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
           </div>
           <div id="container-side-stats" style="flex:1 1 240px; min-width:220px; max-width:340px;">
             <!-- populated by renderContainerViz -->
