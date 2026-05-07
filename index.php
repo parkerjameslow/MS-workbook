@@ -9584,9 +9584,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Iso projection — shared with the pallet viz. Generous padding so
     // the W and L labels (which extend down/right) and H label (left)
-    // fit comfortably without clipping. Bumped for the larger 14px
-    // dim labels.
-    const PAD_LEFT = 110, PAD_RIGHT = 120, PAD_TOP = 32, PAD_BOTTOM = 90;
+    // fit comfortably without clipping. Sized for 16px dim labels +
+    // a top-right "40' HC" badge.
+    const PAD_LEFT = 130, PAD_RIGHT = 140, PAD_TOP = 40, PAD_BOTTOM = 100;
     const footprintSpan = HC_L + HC_W;
     const stackSpan = totalPalletsHeight + footprintSpan * ISO_SIN30;
     const s = Math.min(
@@ -9674,8 +9674,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const TICK = 4;
     ctx.fillStyle = '#6b7280';
     ctx.strokeStyle = '#6b7280';
-    ctx.lineWidth = 1.2;
-    ctx.font = `700 14px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.lineWidth = 1.4;
+    ctx.font = `700 16px -apple-system, BlinkMacSystemFont, sans-serif`;
     const drawDim = (a, b, labelPos, txt, anchor='center') => {
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       const dx = b.x - a.x, dy = b.y - a.y;
@@ -9696,11 +9696,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return inRem < 0.5 ? `${feet}'` : `${feet}'${inRem.toFixed(0)}"`;
     };
     // Bracket bars sit close to the silhouette; labels are pushed
-    // well past the bars so the larger 14px text never crosses the
-    // bracket bar line.
+    // well past the bars so the 16px text reads cleanly without
+    // crashing into the bracket bar.
     // L bracket — front-left-bottom edge
     {
-      const lOff = 16, lLabelGap = 38;
+      const lOff = 18, lLabelGap = 48;
       const a0 = cv.bfl, b0 = cv.bfr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
@@ -9710,7 +9710,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // W bracket — front-right-bottom edge
     {
-      const wOff = 16, wLabelGap = 38;
+      const wOff = 18, wLabelGap = 48;
       const a0 = cv.bfr, b0 = cv.bbr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
@@ -9720,18 +9720,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // H bracket — vertical, OUTSIDE leftmost silhouette
     {
-      const hX = sxMin - 24;
+      const hX = sxMin - 30;
       const a = { x: hX, y: cv.tfl.y };
       const b = { x: hX, y: cv.bfl.y };
-      drawDim(a, b, { x: hX - 12, y: (a.y + b.y)/2 }, `H ${fmtFt(HC_H)} (${(HC_H/100).toFixed(2)} m)`, 'right');
+      drawDim(a, b, { x: hX - 16, y: (a.y + b.y)/2 }, `H ${fmtFt(HC_H)} (${(HC_H/100).toFixed(2)} m)`, 'right');
     }
-    // Container badge below the L bracket
-    ctx.fillStyle = '#9ca3af';
-    ctx.font = `500 10px -apple-system, sans-serif`;
-    ctx.textAlign = 'center';
+    // Container badge — anchored top-right corner of the canvas so it
+    // doesn't overlap the L bracket beneath the wireframe.
+    ctx.fillStyle = '#6b7280';
+    ctx.font = `700 12px -apple-system, sans-serif`;
+    ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
-    const badgePt = isoProj(HC_L/2, 0, HC_W, s, ox, oy);
-    ctx.fillText("40' High Cube Container", badgePt.x, badgePt.y + 50);
+    ctx.fillText("40' High Cube Container", CW - 14, 12);
 
     // ── Compute container math ─────────────────────────────────────────
     const containersNeeded = palletsNeeded > 0 ? Math.ceil(palletsNeeded / palletsPerContainer) : 0;
@@ -10011,18 +10011,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Scale to fit canvas — origin near top, stack grows upward.
     // Reserve padding so the L/W/H dim brackets and labels can sit
-    // OUTSIDE the silhouette without clipping. Bumped for the larger
-    // 14px dim label text.
+    // OUTSIDE the silhouette without clipping. Sized for 16px dim
+    // label text + a top-right "40 × 48 in" badge.
     const footprintSpan = PALLET_L + PALLET_W;
     const stackH = PALLET_DECK + showLayers * stackPitchH;
-    const LABEL_PAD_X = 120; // px reserved on each side for H label + W label
-    const LABEL_PAD_Y = 110; // px reserved below for L bracket + footer
+    const LABEL_PAD_X = 140; // px reserved on each side for H label + W label
+    const LABEL_PAD_Y = 130; // px reserved below for L bracket
+    const LABEL_PAD_TOP = 36; // px reserved above for the top-right badge
     const s = Math.min(
       (CW - LABEL_PAD_X * 2) / (footprintSpan * ISO_COS30),
-      (CH - LABEL_PAD_Y - 24) / (stackH + footprintSpan * ISO_SIN30)
+      (CH - LABEL_PAD_Y - LABEL_PAD_TOP) / (stackH + footprintSpan * ISO_SIN30)
     );
     const ox = CW / 2 + (PALLET_W - PALLET_L) * ISO_COS30 * s / 2;
-    const oy = stackH * s + 18; // near top of canvas, leave a bit of room above
+    const oy = stackH * s + LABEL_PAD_TOP; // top-right badge sits above
 
     // Draw pallet deck
     drawIsoBox(ctx, 0, 0, 0, PALLET_L, PALLET_DECK, PALLET_W, s, ox, oy, '#a8a8a8');
@@ -10097,17 +10098,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ctx.textBaseline = 'middle';
       ctx.fillText(txt, labelPos.x, labelPos.y);
     };
-    ctx.lineWidth = 1.2;
-    ctx.font = `700 14px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.lineWidth = 1.4;
+    ctx.font = `700 16px -apple-system, BlinkMacSystemFont, sans-serif`;
     const inSize = (cm) => `${(cm / 2.54).toFixed(0)}"`;
     const cmSize = (cm) => `${cm.toFixed(1)} cm`;
 
     // L bracket — front-left edge bbl(top of diamond) → bfl is W;
     // L runs along bfl(left)→bfr(bottom): the front-left-bottom edge.
     // Match the product viz: place bracket outside this edge. Label
-    // gap is generous so the larger 14px text never crowds the bar.
+    // gap is generous so the 16px text never crowds the bar.
     {
-      const lOff = 16, lLabelGap = 38;
+      const lOff = 18, lLabelGap = 46;
       const a0 = v3.bfl, b0 = v3.bfr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
@@ -10117,7 +10118,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // W bracket — front-right-bottom edge bfr→bbr.
     {
-      const wOff = 16, wLabelGap = 38;
+      const wOff = 18, wLabelGap = 46;
       const a0 = v3.bfr, b0 = v3.bbr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
@@ -10130,18 +10131,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // LEFT of the bar, right-anchored, with extra gap so the larger
     // text never overlaps the bracket bar.
     {
-      const hX = sxMin - 28;
+      const hX = sxMin - 34;
       const a = { x: hX, y: v3.tfl.y };
       const b = { x: hX, y: v3.bfl.y };
-      drawDim(a, b, { x: hX - 14, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
+      drawDim(a, b, { x: hX - 18, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
     }
-    // Pallet 40 × 48 footer label sits below the L bracket
-    ctx.fillStyle = '#9ca3af';
-    ctx.font = `500 11px -apple-system, sans-serif`;
-    ctx.textAlign = 'center';
+    // Pallet "40 × 48 in" badge — anchored top-right corner of the
+    // canvas so it never overlaps the L bracket below the silhouette.
+    ctx.fillStyle = '#6b7280';
+    ctx.font = `700 12px -apple-system, sans-serif`;
+    ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
-    const footPt = isoProj(PALLET_L/2, 0, PALLET_W, s, ox, oy);
-    ctx.fillText('40 × 48 in pallet', footPt.x, footPt.y + 46);
+    ctx.fillText('40 × 48 in pallet', CW - 12, 10);
 
     // Stats — labels swap based on manual mode (units vs cartons).
     // Surface use measures product area only (excludes the divider gap
