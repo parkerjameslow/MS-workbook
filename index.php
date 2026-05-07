@@ -9504,17 +9504,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
-  // Auto-populate the "Total ___ to Ship" pallet input from the RFQ
-  // Grand Total qty so the pallet section reflects the actual order
-  // size, not whatever was typed in by hand. Behavior by mode:
-  //   • Manual mode → input = grandQty (1 product = 1 pallet item)
-  //   • Carton mode → input = ceil(grandQty / productsPerOuter), so
-  //     "Total Outer Cartons to Ship" auto-derives from how many
-  //     products you're shipping ÷ how many fit per outer carton
+  // Auto-populate "Total Units to Ship" from the RFQ Grand Total qty.
+  // Behavior is now identical in BOTH manual and carton mode — the
+  // input always represents PRODUCT count; the pallet view derives
+  // carton count and pallets needed from that downstream.
   // Merge rule respects user overrides:
-  //   - If the input is empty → fill with the derived value
-  //   - If the input still equals the value we last auto-synced
-  //     (i.e. the user hasn't typed anything different) → re-sync
+  //   - If the input is empty → fill with grandQty
+  //   - If the input still equals the value we last auto-synced (i.e.
+  //     the user hasn't typed anything different) → re-sync
   //   - Otherwise (user has overridden) → leave it alone
   // The previously-synced value lives on data-last-rfq-sync. Clearing
   // the input resets the override and lets a new RFQ value flow in.
@@ -9523,22 +9520,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!input) return;
     const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
     if (!grandQty) return;
-    const manualOn = !!document.getElementById('pallet-manual')?.checked;
-    let derived;
-    if (manualOn) {
-      derived = grandQty;
-    } else {
-      // Carton mode — derive cartons from products-per-outer
-      const innerQty = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
-      const outerQty = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-      const productsPerOuter = (innerQty > 0 && outerQty > 0) ? innerQty * outerQty : 0;
-      if (!productsPerOuter) return; // Can't derive cartons without an outer arrangement
-      derived = Math.ceil(grandQty / productsPerOuter);
-    }
     const last    = input.dataset.lastRfqSync || '';
     const current = String(input.value || '').trim();
     if (current === '' || current === last) {
-      const next = String(derived);
+      const next = String(grandQty);
       if (current !== next) {
         input.value = next;
         input.dataset.lastRfqSync = next;
@@ -10134,28 +10119,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     ctx.textBaseline = 'top';
     ctx.fillText('40 × 48 in pallet', CW - 12, 10);
 
-    // Stats — labels swap based on manual mode (units vs cartons).
-    // Surface use measures product area only (excludes the divider gap
-    // so 100% means the products themselves cover the pallet — the gap
-    // doesn't contribute to coverage).
+    // Surface use measures product/carton area only (excludes the
+    // divider gap so 100% means the items themselves cover the pallet).
     const surfaceUse = Math.round((layout.cols * drawL * layout.rows * drawW) / (PALLET_L * PALLET_W) * 100);
+    // totalPerPallet always means "items (products in manual mode /
+    // outer cartons in carton mode) per pallet"
     const totalPerPallet = perLayer * maxLayers;
-    const totalCartons = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
-    const palletsNeeded = totalCartons > 0 ? Math.ceil(totalCartons / totalPerPallet) : null;
     const unitWord  = manualOn ? 'unit' : 'outer carton';
     const unitWordP = manualOn ? 'units' : 'outer cartons';
 
+    // The "Total Units to Ship" input is now ALWAYS interpreted as
+    // PRODUCT count, regardless of mode. The pallet view derives
+    // outer cartons + pallets needed from that. (The id is kept as
+    // pallet-total-cartons for backward-compat with saved data.)
+    const totalUnits   = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
     // Carton-driven product counts only apply outside manual mode
     const innerQtyVal  = manualOn ? 0 : (parseInt(document.getElementById('carton-inner-count').value) || 0);
     const outerQtyVal  = manualOn ? 0 : (parseInt(document.getElementById('carton-outer-count').value) || 0);
     const productsPerOuter = (innerQtyVal > 0 && outerQtyVal > 0) ? innerQtyVal * outerQtyVal : 0;
+    // In manual mode, items-on-pallet = products. In carton mode,
+    // items-on-pallet = outer cartons, derived from units / products-
+    // per-outer (round up — partial cartons need a full slot).
+    const totalCartons = manualOn
+      ? totalUnits
+      : (productsPerOuter > 0 ? Math.ceil(totalUnits / productsPerOuter) : 0);
     const totalInners  = (totalCartons > 0 && outerQtyVal > 0) ? totalCartons * outerQtyVal : 0;
-    // "Total products" uses the RFQ Grand Total qty when available
-    // (it's the source of truth for the order size). Falls back to
-    // cartons × products-per-outer when the RFQ isn't filled in yet.
+    const totalProducts = totalUnits;
+    // Pallets needed = items-on-pallet ÷ items-per-pallet (round up)
+    const palletsNeeded = (totalCartons > 0 && totalPerPallet > 0)
+      ? Math.ceil(totalCartons / totalPerPallet)
+      : null;
+    // RFQ grand qty (kept for legacy callers / display logic)
     const rfqGrandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
-    const cartonProducts = (totalCartons > 0 && productsPerOuter > 0) ? totalCartons * productsPerOuter : 0;
-    const totalProducts = rfqGrandQty > 0 ? rfqGrandQty : cartonProducts;
 
     // Per-unit weight: in manual mode this is the product weight,
     // in carton mode it's the outer carton weight. Used to surface
@@ -10309,11 +10304,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${outerQtyVal}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">inner cartons / outer</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${productsPerOuter}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">products / outer carton</div></div>` : ''}
       </div>
-      ${totalCartons > 0 ? `
+      ${totalUnits > 0 ? `
       <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
-        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalCartons.toLocaleString()} ${unitWordP}</div>
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalUnits.toLocaleString()} units</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-          <div><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed</div></div>
+          ${!manualOn && totalCartons > 0 ? `<div style="grid-column:span 2;"><div style="font-size:18px; font-weight:700; color:var(--text);">${totalCartons.toLocaleString()} <span style="font-size:11px; font-weight:500; color:var(--text-muted);">outer cartons</span></div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${productsPerOuter > 0 ? `${productsPerOuter} products / outer carton` : ''}</div></div>` : ''}
+          <div><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded || 0}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed</div></div>
           ${unitWeightKg > 0 ? `<div>
             <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg * totalCartons + dividerWeightPerPalletKg * (palletsNeeded || 0) + PALLET_TARE_KG * (palletsNeeded || 0))}</div>
             <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total shipment weight${dividerOn ? ' <span style=\"opacity:0.7;\">(incl. dividers)</span>' : ''}</div>
