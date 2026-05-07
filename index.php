@@ -1938,6 +1938,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       user-select: none;
     }
 
+    /* Inline "+ Variant" pill — sits in the actions cell of each RFQ
+       parent row. Tiny + muted by default so it doesn't compete with
+       the line item content for the 95% of cases where variants
+       aren't needed; brightens to accent on hover so it's still
+       discoverable. */
+    .rfq-add-variant-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 3px 7px;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      margin-right: 6px;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      letter-spacing: 0.01em;
+    }
+    .rfq-add-variant-inline:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(232,117,26,0.06);
+    }
+    .rfq-add-variant-inline:disabled { opacity: 0.4; cursor: not-allowed; }
+
     .karen-cell.field-filled input {
       background: var(--filled-bg);
       border-color: var(--filled-border);
@@ -5596,17 +5626,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="field">
             <label>Material Type</label>
             <div class="select-wrapper">
-              <select id="product-subcategory" onchange="checkSecondaryLock()">
+              <select id="product-subcategory" onchange="checkSecondaryLock(); _onMaterialChange()">
                 <option value="">Select category first...</option>
               </select>
             </div>
+            <!-- "Other" follow-up — shown only when the primary material
+                 is set to "Other" so the operator can type a custom
+                 material name. Saved as productSubcategoryOther on detail_json. -->
+            <input type="text" id="product-subcategory-other" placeholder="Specify the material…"
+                   oninput="autoSaveWorkbook && autoSaveWorkbook()"
+                   style="display:none; margin-top:6px;" />
             <div class="secondary-select-wrap" id="mat2-wrap">
               <div class="secondary-select-label">Secondary Material</div>
               <div class="select-wrapper">
-                <select id="product-subcategory-2" disabled onchange="onSecondaryChange('mat2-wrap', this)">
+                <select id="product-subcategory-2" disabled onchange="onSecondaryChange('mat2-wrap', this); _onMaterialChange()">
                   <option value="">None</option>
                 </select>
               </div>
+              <input type="text" id="product-subcategory-other-2" placeholder="Specify the secondary material…"
+                     oninput="autoSaveWorkbook && autoSaveWorkbook()"
+                     style="display:none; margin-top:6px;" />
             </div>
           </div>
         </div>
@@ -7631,7 +7670,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <!-- ── New Workbook Modal ─────────────────────────────────────────────── -->
-<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+<!-- Click-outside-to-close was removed (2026-05-07) — too easy to lose
+     a half-typed product description by clicking the dim area. The
+     modal now stays open until Cancel or Create is pressed. -->
+<div class="modal-overlay" id="modal-overlay">
   <div class="modal">
     <div class="modal-title">New Workbook</div>
     <form id="new-workbook-form" onsubmit="createWorkbook(event)">
@@ -8401,14 +8443,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const subSel  = document.getElementById('product-subcategory');
     const subSel2 = document.getElementById('product-subcategory-2');
 
-    // Primary material — driven by primary category
+    // Primary material — driven by primary category. Always tack on
+    // "Other" at the end so the operator can fall back to typing a
+    // custom material name (handled by _onMaterialChange below).
     const prev = subSel.value;
     subSel.innerHTML = '';
     if (!cat || !SUBCATEGORIES[cat]) {
       subSel.innerHTML = '<option value="">Select category first...</option>';
     } else {
       subSel.innerHTML = '<option value="">Select material type...</option>' +
-        SUBCATEGORIES[cat].map(s => `<option value="${s}">${s}</option>`).join('');
+        SUBCATEGORIES[cat].map(s => `<option value="${s}">${s}</option>`).join('') +
+        '<option value="Other">Other…</option>';
       if (prev) subSel.value = prev; // restore if still valid
     }
 
@@ -8419,10 +8464,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? [...new Set(cats.flatMap(c => SUBCATEGORIES[c]))]
       : Object.values(SUBCATEGORIES).flat();
     subSel2.innerHTML = '<option value="">None</option>' +
-      matOpts.map(s => `<option value="${s}">${s}</option>`).join('');
+      matOpts.map(s => `<option value="${s}">${s}</option>`).join('') +
+      '<option value="Other">Other…</option>';
     if (prev2) subSel2.value = prev2;
     document.getElementById('mat2-wrap').classList.toggle('has-value', !!subSel2.value);
     checkSecondaryLock();
+    _onMaterialChange();
+  }
+
+  // Toggle the "Other" custom-material text input visibility based on
+  // the current select value. Shown only when the operator picks
+  // "Other"; the text they type is captured into productSubcategoryOther
+  // (or productSubcategoryOther2) on save.
+  function _onMaterialChange() {
+    const sel  = document.getElementById('product-subcategory');
+    const sel2 = document.getElementById('product-subcategory-2');
+    const inp  = document.getElementById('product-subcategory-other');
+    const inp2 = document.getElementById('product-subcategory-other-2');
+    if (inp)  inp.style.display  = (sel  && sel.value  === 'Other') ? '' : 'none';
+    if (inp2) inp2.style.display = (sel2 && sel2.value === 'Other') ? '' : 'none';
   }
 
   function checkSecondaryLock() {
@@ -9541,6 +9601,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td style="white-space:nowrap;">
+        <button type="button" class="rfq-add-variant-inline" onclick="addRfqVariantRow(${id})" title="Add a variant under this item">+ Variant</button>
         <span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove line item">&times;</span>
       </td>
     `;
@@ -9923,52 +9984,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!_filling) autoSaveWorkbook();
   }
 
-  // Keep a "+ Add Variant" row just below the last variant (or the parent row when
-  // no variants exist yet). The button on the parent row has been removed — this is
-  // now the only way to add variants, and it always stays at the bottom.
+  // The big full-width "+ Add Variant" row was eating space for the
+  // 95% of items that don't use variants. Replaced by a small inline
+  // "+ Variant" pill in the parent row's actions cell (see addRfqRow
+  // above). This function now just clears any stale add-rows that
+  // might be lingering from older saves; it never creates new ones.
   function _updateVarAddRow(parentId) {
-    // Remove existing trailing add-row for this parent
     document.querySelector(`[data-rfq-add-for="${parentId}"]`)?.remove();
-
-    const varRows = document.querySelectorAll(`[data-rfq-parent="${parentId}"]`);
-    // Anchor: after last variant, or directly after the parent row if none exist yet
-    const anchor = varRows.length > 0
-      ? varRows[varRows.length - 1]
-      : document.getElementById(`rfq-${parentId}`);
-    if (!anchor) return;
-
-    const tr = document.createElement('tr');
-    tr.setAttribute('data-rfq-add-for', String(parentId));
-    tr.className = 'rfq-var-add-row';
-    // 3 empty leading cells (drag handle, sample checkbox, SKU) — matches "+ Add Line Item" layout
-    for (let i = 0; i < 3; i++) {
-      const e = document.createElement('td');
-      e.style.cssText = 'padding:0;border-bottom:none;';
-      tr.appendChild(e);
-    }
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = '+ Add Variant';
-    btn.className = 'btn btn-add';
-    btn.style.cssText = 'width:100%;margin:4px 0;';
-    btn.onclick = () => addRfqVariantRow(parentId);
-    if (typeof _wbLocked !== 'undefined' && _wbLocked) {
-      btn.disabled = true;
-      btn.style.opacity = '0.4';
-      btn.style.cursor  = 'default';
-    }
-    const td = document.createElement('td');
-    td.style.cssText = 'padding:4px 12px;border-bottom:none;';
-    td.appendChild(btn);
-    tr.appendChild(td);
-    // Remaining 6 columns
-    const rest = document.createElement('td');
-    rest.colSpan = 6;
-    rest.style.cssText = 'padding:0;border-bottom:none;';
-    tr.appendChild(rest);
-
-    // Insert after anchor (last variant, or parent row when no variants exist)
-    anchor.after(tr);
   }
 
   function syncParentQtyFromVariants(parentId) {
@@ -14210,34 +14232,76 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   async function createWorkbook(e) {
     e.preventDefault();
     const product = document.getElementById('modal-product').value.trim();
-    const client = document.getElementById('modal-client').value;
-    const desc = document.getElementById('modal-desc').value.trim();
+    const desc    = document.getElementById('modal-desc').value.trim();
 
-    if (!product || !client || !desc) return;
+    // Resolve client from the dropdown when visible, otherwise from the
+    // pinned client context (modal-client-label) — when the operator
+    // opens this modal from a client dashboard, the dropdown is hidden
+    // and `modal-client.value` could be empty even though the modal
+    // header shows the client name. Fall back to the displayed label
+    // so we never silent-fail on the "create from client view" path.
+    const dropdownEl = document.getElementById('modal-client');
+    const labelEl    = document.getElementById('modal-client-label');
+    let client = (dropdownEl?.value || '').trim();
+    if (!client) client = (labelEl?.textContent || '').trim();
+    if (!client) {
+      // Last-ditch: pull from URL hash so the function never silently
+      // exits without telling the operator what's wrong.
+      const m = location.hash.match(/^#\/client\/([^/]+)/);
+      if (m) { try { client = decodeURIComponent(m[1]); } catch(e) { client = m[1]; } }
+    }
+
+    // Validate — but ALERT instead of silent-returning so the operator
+    // sees what's missing. The previous silent-return is exactly why
+    // "Night Lights" looked like it didn't save: dropdown was hidden,
+    // value was empty, function exited with no UI feedback.
+    if (!product) { alert('Product name is required.'); return; }
+    if (!client)  { alert('Pick a client first (or open this from a client dashboard).'); return; }
+    if (!desc)    { alert('Description is required.'); return; }
+
+    // Disable the submit button to prevent double-clicks while the API
+    // call is in flight. Re-enable on any failure path.
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Creating…'; }
+    const _restoreBtn = () => { if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Create Workbook'; } };
 
     // Save to DB
     const clientId = dbClientMap[client];
     let newId;
     if (clientId) {
-      // allow_duplicate:true — user explicitly created this from the UI.
-      // The server-side dedup guard is intended to block seed-retry loops,
-      // not legitimate user creations (e.g. "Box v1", "Box v2" at the same name).
-      const result = await apiCall('add_workbook', {
-        client_id: clientId,
-        product_name: product,
-        description: desc,
-        allow_duplicate: true
-      });
-      if (result.success) {
-        newId = parseInt(result.id);
+      try {
+        // allow_duplicate:true — user explicitly created this from the UI.
+        // The server-side dedup guard is intended to block seed-retry
+        // loops, not legitimate user creations.
+        const result = await apiCall('add_workbook', {
+          client_id: clientId,
+          product_name: product,
+          description: desc,
+          allow_duplicate: true
+        });
+        if (result && result.success) {
+          newId = parseInt(result.id);
+        } else {
+          alert('Could not create workbook: ' + ((result && result.error) || 'unknown error'));
+          _restoreBtn();
+          return;
+        }
+      } catch (err) {
+        alert('Could not create workbook: ' + (err && err.message ? err.message : 'network error'));
+        _restoreBtn();
+        return;
       }
+    } else {
+      // No clientId in dbClientMap means the client hasn't been synced
+      // to the DB yet. Tell the operator instead of silently creating
+      // a local-only workbook that won't persist past a refresh.
+      alert(`Client "${client}" hasn't been synced to the database yet. Save the client (re-open the client dashboard) and try again.`);
+      _restoreBtn();
+      return;
     }
 
     // Add to local data
     const items = clientData[client] || [];
-    if (!newId) {
-      newId = items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
-    }
     const today = new Date();
     const dateStr = today.getDate() + ' ' + today.toLocaleString('en-US', { month: 'short' }) + ' ' + String(today.getFullYear()).slice(2);
 
@@ -14260,8 +14324,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     closeModal();
+    _restoreBtn();
 
-    // Navigate to the new workbook
+    // Toast confirmation, then jump to the new workbook so the operator
+    // lands directly on the editable surface.
+    if (typeof _msToast === 'function') {
+      _msToast(`"${product}" created — opening workbook…`, 'success');
+    }
     location.hash = `#/client/${encodeURIComponent(client)}/workbook/${newId}`;
   }
 
@@ -17349,8 +17418,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (data.productCategory) updateSubcategories();
       _s('product-subcategory', data.productSubcategory);
       _s('product-subcategory-2', data.productSubcategory2 || '');
+      // Restore the "Other" custom-material text + reveal the input
+      // when the saved value was "Other". _onMaterialChange() flips
+      // the visibility based on the select state.
+      _s('product-subcategory-other',   data.productSubcategoryOther  || '');
+      _s('product-subcategory-other-2', data.productSubcategoryOther2 || '');
       document.getElementById('mat2-wrap').classList.toggle('has-value', !!data.productSubcategory2);
       checkSecondaryLock();
+      if (typeof _onMaterialChange === 'function') _onMaterialChange();
       _s('materials', data.materials);
       _s('pantone-text', data.pantone);
       _s('cmyk', data.cmyk);
@@ -18354,6 +18429,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       productCategory2: _v('product-category-2'),
       productSubcategory: _v('product-subcategory'),
       productSubcategory2: _v('product-subcategory-2'),
+      // Free-text follow-up shown only when the matching subcategory
+      // is "Other". Persists alongside the select value so reloads
+      // restore both pieces — empty string when the operator picked
+      // anything other than "Other".
+      productSubcategoryOther:  _v('product-subcategory-other'),
+      productSubcategoryOther2: _v('product-subcategory-other-2'),
       materials: _v('materials'),
       pantone: _v('pantone-text'),
       cmyk: _v('cmyk'),
