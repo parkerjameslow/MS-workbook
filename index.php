@@ -9998,19 +9998,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     // Scale to fit canvas — origin near top, stack grows upward.
-    // Reserve padding so the L/W/H dim brackets and labels can sit
-    // OUTSIDE the silhouette without clipping. Sized for 16px dim
-    // label text + a top-right "40 × 48 in" badge.
+    // Asymmetric padding: more room on the LEFT (H bracket + label),
+    // less on the RIGHT so the iso silhouette can shift toward the
+    // right edge of the canvas. The L and W labels at the bottom of
+    // the silhouette get more breathing room without losing iso size.
     const footprintSpan = PALLET_L + PALLET_W;
     const stackH = PALLET_DECK + showLayers * stackPitchH;
-    const LABEL_PAD_X = 110; // px reserved on each side for H label + W label
-    const LABEL_PAD_Y = 110; // px reserved below for L bracket
-    const LABEL_PAD_TOP = 32; // px reserved above for the top-right badge
+    const LABEL_PAD_LEFT  = 130; // room for the H bracket + horizontal H label
+    const LABEL_PAD_RIGHT = 56;  // tight right edge — W label tail clears
+    const LABEL_PAD_Y     = 110; // px reserved below for L bracket
+    const LABEL_PAD_TOP   = 32;  // px reserved above for the top-right badge
     const s = Math.min(
-      (CW - LABEL_PAD_X * 2) / (footprintSpan * ISO_COS30),
+      (CW - LABEL_PAD_LEFT - LABEL_PAD_RIGHT) / (footprintSpan * ISO_COS30),
       (CH - LABEL_PAD_Y - LABEL_PAD_TOP) / (stackH + footprintSpan * ISO_SIN30)
     );
-    const ox = CW / 2 + (PALLET_W - PALLET_L) * ISO_COS30 * s / 2;
+    // Pin the iso's leftmost silhouette point exactly at LABEL_PAD_LEFT
+    // so all the extra slack lives on the left where the H label sits.
+    // The leftmost screen x of the diamond is at (0, 0, PALLET_W) →
+    // ox - PALLET_W * ISO_COS30 * s, so ox = LABEL_PAD_LEFT + that.
+    const ox = LABEL_PAD_LEFT + PALLET_W * ISO_COS30 * s;
     const oy = stackH * s + LABEL_PAD_TOP; // top-right badge sits above
 
     // Draw pallet deck
