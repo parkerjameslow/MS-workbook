@@ -967,6 +967,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: none !important;
       border: 0 !important;
     }
+    /* The contenteditable surface — visual twin of a textarea but
+       renders inline HTML formatting (bold/italic/underline/lists)
+       as the operator types. Sized like a normal textarea so the
+       surrounding form layout doesn't shift. */
+    .ms-rich-content {
+      width: 100%;
+      min-height: 80px;
+      padding: 10px 12px;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      line-height: 1.5;
+      outline: 0;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+    .ms-rich-content:empty::before {
+      content: attr(data-placeholder);
+      color: var(--text-muted);
+      opacity: 0.6;
+      pointer-events: none;
+    }
+    .ms-rich-content p { margin: 0 0 8px; }
+    .ms-rich-content p:last-child { margin-bottom: 0; }
+    .ms-rich-content h1, .ms-rich-content h2, .ms-rich-content h3 {
+      font-size: 15px; font-weight: 700; margin: 8px 0 6px; color: var(--text);
+    }
+    .ms-rich-content ul, .ms-rich-content ol {
+      margin: 4px 0 8px; padding-left: 22px;
+    }
+    .ms-rich-content li { margin: 2px 0; }
+    .ms-rich-content strong { font-weight: 700; color: var(--text); }
+    .ms-rich-content em     { font-style: italic; }
+    .ms-rich-content u      { text-decoration: underline; }
+    .ms-rich-content del    { text-decoration: line-through; opacity: 0.7; }
     .ms-rich-ai-menu {
       position: absolute;
       top: calc(100% + 4px);
@@ -21779,8 +21815,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // of one-click actions that POST to api.php → ai_text_action,
   // which proxies to Anthropic Claude (configured at the top of api.php).
   // ════════════════════════════════════════════════════════════════════
+  // Init or re-sync every [data-rich] textarea. Idempotent — first
+  // call wraps the textarea in a contenteditable surface; subsequent
+  // calls re-sync the surface from textarea.value (which fillWorkbook
+  // mutates programmatically when switching workbooks).
   function initRichEditors() {
-    document.querySelectorAll('textarea[data-rich]').forEach(_msInitOneRichEditor);
+    document.querySelectorAll('textarea[data-rich]').forEach(ta => {
+      if (!ta._msRichInit) _msInitOneRichEditor(ta);
+      else                 _msSyncFromTextarea(ta);
+    });
+  }
+
+  // Convert legacy markdown-marker content (left over from before the
+  // switch to true WYSIWYG) into HTML the contenteditable can render.
+  // If the input already looks like HTML (contains a tag), leave it
+  // alone — it round-trips cleanly through innerHTML.
+  function _msMarkdownToHtml(text) {
+    if (!text) return '';
+    // Already HTML-ish? Use as-is.
+    if (/<[a-z][^>]*>/i.test(text)) return text;
+    let html = text
+      // Escape any stray <, > before applying transforms so user-typed
+      // angle brackets don't get treated as tags.
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      // Bold + italic: order matters — process bold first so the **
+      // pairs aren't gobbled by the italic single-* matcher.
+      .replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+?)\*/g, '<em>$1</em>')
+      .replace(/~~([^~]+?)~~/g, '<del>$1</del>')
+      // Heading "## Foo" at line start
+      .replace(/(^|\n)## (.+?)(?=\n|$)/g, '$1<h3>$2</h3>')
+      // List items: convert "- foo" runs into <ul><li>foo</li></ul>,
+      // "1. foo" runs into <ol><li>foo</li></ol>. Keep it crude — only
+      // groups of consecutive list lines.
+      .replace(/(^|\n)((?:- .+(?:\n|$))+)/g, (_m, lead, block) => {
+        const items = block.trim().split('\n').map(l => `<li>${l.replace(/^- /, '')}</li>`).join('');
+        return `${lead}<ul>${items}</ul>`;
+      })
+      .replace(/(^|\n)((?:\d+\. .+(?:\n|$))+)/g, (_m, lead, block) => {
+        const items = block.trim().split('\n').map(l => `<li>${l.replace(/^\d+\. /, '')}</li>`).join('');
+        return `${lead}<ol>${items}</ol>`;
+      })
+      // Plain newlines → <br> for line breaks inside paragraphs
+      .replace(/\n/g, '<br>');
+    return html;
+  }
+
+  // Sync textarea.value (the source of truth for save/load) into the
+  // contenteditable's innerHTML. Called on init AND whenever
+  // fillWorkbook updates a textarea programmatically.
+  function _msSyncFromTextarea(ta) {
+    const editor = ta._msRichEditor;
+    if (!editor) return;
+    const html = _msMarkdownToHtml(ta.value || '');
+    if (editor.innerHTML !== html) editor.innerHTML = html;
   }
 
   function _msInitOneRichEditor(textarea) {
@@ -21816,113 +21906,130 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button type="button" class="ms-rich-ai-item" data-ai="custom"><span class="ai-icon">✏️</span><span>Custom prompt…</span></button>
       </div>
     `;
+
+    // Build the contenteditable surface — this is what the operator
+    // sees and types into. Bold/italic/etc. render inline as styled
+    // HTML, not as raw markdown markers like the old textarea showed.
+    const editor = document.createElement('div');
+    editor.className  = 'ms-rich-content';
+    editor.contentEditable = 'true';
+    editor.spellcheck = true;
+    editor.setAttribute('role', 'textbox');
+    editor.setAttribute('aria-multiline', 'true');
+    if (textarea.placeholder) editor.setAttribute('data-placeholder', textarea.placeholder);
+
     wrap.appendChild(toolbar);
+    wrap.appendChild(editor);
+    // Move the original textarea inside the wrap and hide it. It stays
+    // the source of truth for save/load — collectWorkbookDetail reads
+    // textarea.value, autosave watchers fire on its input event.
+    textarea.style.cssText += ';display:none;';
     wrap.appendChild(textarea);
+
+    // Initial population: convert any legacy markdown markers into HTML
+    // so old saves render as actual bold/italic instead of literal **'s.
+    editor.innerHTML = _msMarkdownToHtml(textarea.value || '');
+    textarea._msRichEditor = editor;
+
+    // On every keystroke / format change, push the rendered HTML back
+    // into the hidden textarea + fire an input event so existing
+    // autosave + presence-broadcast listeners pick up the change.
+    const sync = () => {
+      const html = editor.innerHTML;
+      // Treat empty editor as truly empty so collectWorkbookDetail
+      // doesn't store stray "<br>" artifacts the browser inserts.
+      const empty = html.replace(/<br\s*\/?>/gi, '').replace(/\s+/g, '') === '';
+      textarea.value = empty ? '' : html;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    editor.addEventListener('input', sync);
+    editor.addEventListener('blur',  sync);
+
+    // Paste handler: strip foreign formatting so pasting from Word /
+    // websites doesn't dump weird styles into the editor. Plain text
+    // wins; the operator can apply our format buttons after.
+    editor.addEventListener('paste', e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
+      document.execCommand('insertText', false, text);
+    });
 
     const aiMenu = toolbar.querySelector('.ms-rich-ai-menu');
     toolbar.querySelectorAll('[data-cmd]').forEach(btn => {
+      // mousedown (not click) so the editor's selection doesn't get
+      // wiped before execCommand runs — clicking a button steals
+      // focus and clears Selection ranges.
+      btn.addEventListener('mousedown', e => { e.preventDefault(); });
       btn.addEventListener('click', e => {
         e.preventDefault(); e.stopPropagation();
         const cmd = btn.getAttribute('data-cmd');
         if (cmd === 'ai') {
-          // Close any other open AI menus first
           document.querySelectorAll('.ms-rich-ai-menu.open').forEach(m => { if (m !== aiMenu) m.classList.remove('open'); });
           aiMenu.classList.toggle('open');
           return;
         }
-        _msApplyRichFormat(textarea, cmd);
+        _msApplyRichFormat(editor, cmd);
+        sync();
       });
     });
     toolbar.querySelectorAll('[data-ai]').forEach(btn => {
       btn.addEventListener('click', async e => {
         e.preventDefault(); e.stopPropagation();
         aiMenu.classList.remove('open');
-        await _msRunAiAction(textarea, btn.getAttribute('data-ai'));
+        await _msRunAiAction(editor, textarea, btn.getAttribute('data-ai'));
       });
     });
-    // Click-outside closes the AI menu
     document.addEventListener('click', e => {
       if (!toolbar.contains(e.target)) aiMenu.classList.remove('open');
     });
-    // ⌘B / ⌘I / ⌘U shortcuts inside the textarea
-    textarea.addEventListener('keydown', e => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); _msApplyRichFormat(textarea, 'bold'); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); _msApplyRichFormat(textarea, 'italic'); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); _msApplyRichFormat(textarea, 'underline'); }
+    // ⌘B / ⌘I / ⌘U: contenteditable handles these natively, but we
+    // re-route through our handler to make sure sync() fires.
+    editor.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); _msApplyRichFormat(editor, 'bold');      sync(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); _msApplyRichFormat(editor, 'italic');    sync(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); _msApplyRichFormat(editor, 'underline'); sync(); }
     });
   }
 
-  // Apply a markdown-style format to the current textarea selection.
-  // Wraps selection (or inserts markers if no selection) and dispatches
-  // an `input` event so listeners (autosave, presence broadcast, etc.)
-  // pick up the change.
-  function _msApplyRichFormat(ta, cmd) {
-    const start = ta.selectionStart, end = ta.selectionEnd;
-    const value = ta.value;
-    let selected = value.slice(start, end);
-    let prefix = '', suffix = '';
-
-    if (cmd === 'bold')    { prefix = '**'; suffix = '**'; }
-    else if (cmd === 'italic') { prefix = '*';  suffix = '*';  }
-    // Underline has no native markdown — store as inline HTML <u>
-    // tags so it round-trips through plain-text storage.
-    else if (cmd === 'underline')     { prefix = '<u>';  suffix = '</u>';  }
-    // Strikethrough — standard GFM markdown
-    else if (cmd === 'strikethrough') { prefix = '~~';  suffix = '~~';  }
+  // Apply a format to the current selection inside the contenteditable.
+  // Uses document.execCommand — deprecated in spec but still works in
+  // every modern browser and is the only practical way to get
+  // bold/italic/underline toggling without writing a full Range API
+  // implementation. Editor must be focused first or execCommand no-ops.
+  function _msApplyRichFormat(editor, cmd) {
+    editor.focus();
+    if (cmd === 'bold')          document.execCommand('bold');
+    else if (cmd === 'italic')   document.execCommand('italic');
+    else if (cmd === 'underline')document.execCommand('underline');
+    else if (cmd === 'strikethrough') document.execCommand('strikeThrough');
+    else if (cmd === 'ul')       document.execCommand('insertUnorderedList');
+    else if (cmd === 'ol')       document.execCommand('insertOrderedList');
     else if (cmd === 'heading') {
-      // Prepend "## " to the start of the line containing the selection
-      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
-      const newValue = value.slice(0, lineStart) + '## ' + value.slice(lineStart);
-      ta.value = newValue;
-      ta.setSelectionRange(start + 3, end + 3);
-      ta.focus();
-      ta.dispatchEvent(new Event('input', { bubbles: true }));
-      return;
+      // formatBlock toggles a paragraph block to the given tag. Cycle
+      // between H3 and P so clicking again removes the heading.
+      const sel = document.getSelection();
+      const node = sel?.anchorNode;
+      const inHeading = node && (node.nodeType === 1 ? node : node.parentElement)?.closest('h1,h2,h3,h4,h5,h6');
+      document.execCommand('formatBlock', false, inHeading ? 'p' : 'h3');
     }
-    else if (cmd === 'ul' || cmd === 'ol') {
-      const lines = (selected || 'List item').split('\n');
-      const transformed = lines.map((l, i) => {
-        const lt = l.replace(/^(\s*[-*]\s+|\s*\d+\.\s+)/, '');
-        return cmd === 'ul' ? `- ${lt}` : `${i + 1}. ${lt}`;
-      }).join('\n');
-      const newValue = value.slice(0, start) + transformed + value.slice(end);
-      ta.value = newValue;
-      ta.setSelectionRange(start, start + transformed.length);
-      ta.focus();
-      ta.dispatchEvent(new Event('input', { bubbles: true }));
-      return;
-    }
-
-    let newValue, newStart, newEnd;
-    if (selected) {
-      newValue = value.slice(0, start) + prefix + selected + suffix + value.slice(end);
-      newStart = start + prefix.length;
-      newEnd   = newStart + selected.length;
-    } else {
-      newValue = value.slice(0, start) + prefix + suffix + value.slice(end);
-      newStart = newEnd = start + prefix.length;
-    }
-    ta.value = newValue;
-    ta.setSelectionRange(newStart, newEnd);
-    ta.focus();
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
-  // Run an AI action on the textarea text. Posts to api.php →
-  // ai_text_action which proxies to Anthropic Claude. Replaces the
-  // textarea value with the response. Disables the textarea + shows
-  // a small "Thinking…" pulse on the toolbar while in flight.
-  async function _msRunAiAction(ta, action) {
-    const text = ta.value;
+  // AI action: send the editor's plain-text content to the backend,
+  // replace the editor with the response. Sends innerText (not HTML)
+  // so Claude sees clean prose instead of tag soup; response comes
+  // back as plain text and we drop it back in as innerText to preserve
+  // line breaks. Operator can re-apply formatting after.
+  async function _msRunAiAction(editor, textarea, action) {
+    const text = (editor.innerText || '').trim();
     let prompt = '';
     if (action === 'custom') {
       prompt = window.prompt('What would you like the AI to do with this text?', '');
       if (!prompt) return;
-    } else if (!text.trim()) {
+    } else if (!text) {
       alert('Type something in this field first — AI needs context to work with.');
       return;
     }
-    const wrap = ta.closest('.ms-rich-editor');
+    const wrap = editor.closest('.ms-rich-editor');
     const toolbar = wrap?.querySelector('.ms-rich-toolbar');
     let busy;
     if (toolbar) {
@@ -21931,7 +22038,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       busy.innerHTML = '<span class="dot"></span>Thinking…';
       toolbar.appendChild(busy);
     }
-    ta.disabled = true;
+    editor.contentEditable = 'false';
     try {
       const r = await apiCall('ai_text_action', { text, action, prompt });
       if (!r || !r.success) {
@@ -21939,14 +22046,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return;
       }
       if (typeof r.text === 'string') {
-        ta.value = r.text;
-        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        // Convert any markdown the model returned into HTML, then drop
+        // it into the editor. innerText would lose paragraph breaks.
+        editor.innerHTML = _msMarkdownToHtml(r.text);
+        textarea.value = editor.innerHTML;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
         if (typeof _msToast === 'function') _msToast('AI updated this field.', 'success');
       }
     } catch (e) {
       alert('AI request failed: ' + (e && e.message ? e.message : 'unknown error'));
     } finally {
-      ta.disabled = false;
+      editor.contentEditable = 'true';
       busy?.remove();
     }
   }
