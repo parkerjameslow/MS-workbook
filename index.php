@@ -4932,6 +4932,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     @keyframes badge-pulse {
       0%, 100% { opacity: 1; } 50% { opacity: 0.7; }
     }
+    /* Autofill detector — Chrome fires `animationstart` on inputs the
+       moment :-webkit-autofill matches, even when autocomplete="off"
+       theoretically blocks the fill. We attach a 1ms keyframe whose
+       only purpose is to trigger that event so JS can scrub the value
+       before the user notices. See the global animationstart listener
+       in the JS section. */
+    @keyframes ms-autofill-detect { from { opacity: 1; } to { opacity: 1; } }
+    input:-webkit-autofill,
+    textarea:-webkit-autofill,
+    select:-webkit-autofill {
+      animation-name: ms-autofill-detect;
+      animation-duration: 1ms;
+    }
     @keyframes presence-pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.5; transform: scale(0.85); }
@@ -5759,7 +5772,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="margin-top:18px;">
         <label style="display:block; margin-bottom:8px;">Product Video(s)</label>
         <div class="video-add-row">
-          <input type="url" id="videoUrlInput" name="videoUrlInput_no_autofill" placeholder="Paste YouTube, Vimeo, or direct video URL…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore="true" data-lpignore="true" data-form-type="other" onkeydown="if(event.key==='Enter'){addProductVideo();event.preventDefault();}" />
+          <input type="url" id="videoUrlInput" value="" placeholder="Paste YouTube, Vimeo, or direct video URL…" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore="true" data-lpignore="true" data-form-type="other" data-no-autofill="1" onkeydown="if(event.key==='Enter'){addProductVideo();event.preventDefault();}" onfocus="msStripAutofill(this)" oninput="msStripAutofill(this)" />
           <button class="btn" onclick="addProductVideo()" type="button" style="white-space:nowrap; flex-shrink:0;">Add URL</button>
           <button class="btn" onclick="document.getElementById('videoFileInput').click()" type="button" style="white-space:nowrap; flex-shrink:0;">Browse</button>
         </div>
@@ -8180,6 +8193,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (menu && !menu.contains(e.target)) closeUserDropdown();
   });
 
+  // ── Autofill nuke — global animationstart listener ─────────────────
+  // Chrome fires `animationstart` with name "ms-autofill-detect" the
+  // moment :-webkit-autofill activates on an element. We use that as
+  // the earliest possible signal that the browser/password-manager has
+  // tried to fill the field, and we scrub:
+  //   - Always: any field tagged data-no-autofill="1" (no exceptions)
+  //   - Otherwise: only fields whose autofilled value matches the
+  //     active session user's display_name / username (those can never
+  //     legitimately appear in workbook data fields).
+  // Use capture so we run before any focus handler the field defines.
+  document.addEventListener('animationstart', function(e) {
+    if (e.animationName !== 'ms-autofill-detect') return;
+    const el = e.target;
+    if (!el || typeof el.value !== 'string') return;
+    if (el.getAttribute('data-no-autofill') === '1') {
+      el.value = '';
+      return;
+    }
+    const sessName = (window.MS_SESSION && (window.MS_SESSION.name || window.MS_SESSION.display_name)) || '';
+    const sessUser = (window.MS_SESSION && window.MS_SESSION.username) || '';
+    const v = el.value.trim().toLowerCase();
+    if ((sessName && v === sessName.toLowerCase()) ||
+        (sessUser && v === sessUser.toLowerCase())) {
+      el.value = '';
+    }
+  }, true);
+
   /* ── Change Password Modal ──────────────────────────────────────────────── */
   function openChangePasswordModal() {
     let modal = document.getElementById('change-password-modal');
@@ -8385,10 +8425,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const input = document.getElementById('videoUrlInput');
     const url = input.value.trim();
     if (!url) return;
+    // Last-line autofill defense: never let a Product Video entry be
+    // saved if its value matches the session user's display name.
+    // (Chrome's password manager autofills certain types of inputs
+    // even with autocomplete=off and the user could hit Enter without
+    // realizing.)
+    const sessName = (window.MS_SESSION && (window.MS_SESSION.name || window.MS_SESSION.display_name)) || '';
+    if (sessName && url.toLowerCase() === sessName.toLowerCase()) {
+      input.value = '';
+      return;
+    }
     _productVideos.push(url);
     input.value = '';
     renderVideoGallery();
     saveVideoList();
+  }
+
+  // Strip a value off a "no autofill" input if browser/password-manager
+  // autofill snuck through despite autocomplete=off. Called on focus
+  // and input events. The check looks for values that match the active
+  // user's display name or username (those are 100% autofill garbage —
+  // a video URL never legitimately equals the operator's name).
+  function msStripAutofill(el) {
+    if (!el || typeof el.value !== 'string' || !el.value) return;
+    const sessName = (window.MS_SESSION && (window.MS_SESSION.name || window.MS_SESSION.display_name)) || '';
+    const sessUser = (window.MS_SESSION && window.MS_SESSION.username) || '';
+    const v = el.value.trim().toLowerCase();
+    if ((sessName && v === sessName.toLowerCase()) ||
+        (sessUser && v === sessUser.toLowerCase())) {
+      el.value = '';
+    }
   }
 
   async function handleVideoFiles(files) {
@@ -10399,10 +10465,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (tier1 && tier1.dataset.price) unitPrice = tier1.dataset.price;
     }
     tr.dataset.price = unitPrice || '';
-    // All price cells are view-only — driven by RFQ total
-    const rmbCell = `<td id="wb-tier-rmb-${id}" style="font-size:13px; color:var(--text-muted);">
-        <span id="wb-tier-rmb-val-${id}">—</span>
-      </td>`;
+    // Tier 1: Unit Price (RMB) is read-only — driven by the RFQ Grand
+    // Total (auto-mirrored). All other tiers: Unit Price (RMB) is an
+    // input so the operator can dial in quantity-discount pricing for
+    // tiers 2, 3, 4… The value writes back to row.dataset.price (the
+    // single source of truth for tier pricing).
+    const rmbCell = isFirst
+      ? `<td id="wb-tier-rmb-${id}" style="font-size:13px; color:var(--text-muted);">
+           <span id="wb-tier-rmb-val-${id}">—</span>
+         </td>`
+      : `<td id="wb-tier-rmb-${id}" style="font-size:13px;">
+           <div class="currency-prefix currency-rmb" style="position:relative;">
+             <input type="number" min="0" step="0.01" placeholder="0.00"
+                    id="wb-tier-rmb-input-${id}"
+                    value="${unitPrice || ''}"
+                    oninput="onWbTierRmbInput(${id})"
+                    style="width:120px; padding-left:24px;"
+                    autocomplete="off" data-1p-ignore="true" data-lpignore="true" />
+           </div>
+         </td>`;
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
       <td>
@@ -10439,6 +10520,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const useRange = ps && ps.hasVariants && ps.rmbMin > 0;
 
     if (rmbValEl) {
+      // Only tier 1 has a label-style RMB cell (rmbValEl exists). For
+      // tiers 2+ this element is null (the cell is an input the operator
+      // controls directly), so skip painting.
       if (useRange) {
         rmbValEl.textContent = ps.isRange
           ? '¥ ' + fmt2(ps.rmbMin) + '–¥ ' + fmt2(ps.rmbMax)
@@ -10475,6 +10559,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       populateTierDropdown();
       autoSaveWorkbook();
     }
+  }
+
+  // Manual Unit Price (RMB) input on tier rows 2+ — writes back to the
+  // row's dataset.price (single source of truth) and re-runs the
+  // standard tier recalc so USD + Total update.
+  function onWbTierRmbInput(id) {
+    const row   = document.getElementById(`wb-tier-${id}`);
+    const input = document.getElementById(`wb-tier-rmb-input-${id}`);
+    if (!row || !input) return;
+    row.dataset.price = input.value || '';
+    recalcWbTier(id);
   }
 
   function removeWbTierRow(id) {
