@@ -1972,6 +1972,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #rfq-table .rfq-variant-row td:nth-child(4) {
       padding-left: 28px;
     }
+    /* Make a parent row + its variant rows visually read as one unit
+       by suppressing the bottom border between them. The last variant
+       in a group keeps its border so the next line item is still
+       cleanly separated. Uses :has() (Safari 15.4+, Chrome 105+,
+       Firefox 121+ — all current evergreen browsers). */
+    #rfq-table tbody tr:has(+ tr.rfq-variant-row) td {
+      border-bottom: none;
+    }
 
     /* Samples dashboard status select */
     .sample-status-sel option {
@@ -6227,6 +6235,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="checkbox" id="pallet-manual" onchange="onPalletManualToggle()" />
         <span>Manual mode — fit products directly on the pallet base (skip carton dimensions)</span>
       </label>
+      <!-- 4mm divider toggle — only meaningful in manual mode. Adds a
+           0.4 cm gap on every side of every product (between items on
+           a layer AND between layers) so the operator can plan for
+           cardboard/foam separators between adjacent crates. Hidden in
+           carton mode (the carton model already accounts for spacing). -->
+      <label class="pallet-manual-toggle" id="pallet-divider-wrap" style="display:none; margin-top:8px;">
+        <input type="checkbox" id="pallet-divider" onchange="renderPalletViz(); if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook();" />
+        <span>Add 4 mm divider between products (cardboard / foam separators)</span>
+      </label>
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
         <canvas id="pallet-canvas" width="480" height="360" style="flex-shrink:0; border-radius:8px; background:var(--surface2);"></canvas>
         <div style="flex:1; min-width:200px;">
@@ -6252,6 +6269,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Enter your total shipment carton count to calculate pallets needed.</div>
           </div>
         </div>
+      </div>
+      <!-- Additional Notes — free-form notes about the pallet plan
+           (special handling, fragility, separator material, stacking
+           rules, etc.). Persisted to detail.palletNotes. -->
+      <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border);">
+        <label for="pallet-notes" style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Additional Notes</label>
+        <textarea id="pallet-notes" rows="3"
+          placeholder="Notes about the pallet plan — special handling, fragility, separator material, stacking rules, etc."
+          oninput="if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook()"
+          style="width:100%; box-sizing:border-box; resize:vertical; min-height:64px;"></textarea>
       </div>
     </div>
   </div>
@@ -8918,11 +8945,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!cfg) return;
     const svg = document.getElementById(cfg.svg);
     if (!svg) return;
-    const L = parseFloat(document.getElementById(cfg.l)?.value);
-    const W = parseFloat(document.getElementById(cfg.w)?.value);
-    const H = parseFloat(document.getElementById(cfg.h)?.value);
-    if (!L || !W || !H) {
-      svg.innerHTML = '<text x="100" y="78" text-anchor="middle" fill="#9ba3c0" font-family="inherit" font-size="11" font-style="italic">Enter dimensions</text>';
+    // Treat blank, zero, and NaN as "no dimensions". Trim handles
+    // whitespace-only inputs that would otherwise parseFloat to NaN.
+    const rawL = (document.getElementById(cfg.l)?.value || '').trim();
+    const rawW = (document.getElementById(cfg.w)?.value || '').trim();
+    const rawH = (document.getElementById(cfg.h)?.value || '').trim();
+    const L = parseFloat(rawL);
+    const W = parseFloat(rawW);
+    const H = parseFloat(rawH);
+    const hasAll = rawL !== '' && rawW !== '' && rawH !== '' &&
+                   !isNaN(L) && !isNaN(W) && !isNaN(H) &&
+                   L > 0 && W > 0 && H > 0;
+    if (!hasAll) {
+      // Wipe every child node first so no stale paths/polygons leak
+      // through if the previous innerHTML replacement was deferred or
+      // cached by the browser, then drop in a single placeholder text.
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      const ns = 'http://www.w3.org/2000/svg';
+      const txt = document.createElementNS(ns, 'text');
+      txt.setAttribute('x', '100');
+      txt.setAttribute('y', '78');
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('fill', '#9ba3c0');
+      txt.setAttribute('font-family', 'inherit');
+      txt.setAttribute('font-size', '11');
+      txt.setAttribute('font-style', 'italic');
+      txt.textContent = 'Enter dimensions';
+      svg.appendChild(txt);
       return;
     }
 
@@ -9397,6 +9446,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const label = document.getElementById('pallet-total-label');
     const input = document.getElementById('pallet-total-cartons');
     const hint  = document.getElementById('pallet-total-hint');
+    // 4 mm divider option is only meaningful when fitting products
+    // directly on the pallet — hide the row in carton mode.
+    const dividerWrap = document.getElementById('pallet-divider-wrap');
+    if (dividerWrap) dividerWrap.style.display = on ? '' : 'none';
     if (on) {
       if (label) label.textContent = 'Total Units to Ship';
       if (input) input.placeholder = 'e.g. 1,000';
@@ -9483,7 +9536,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
-    const layout = bestPalletOrientation(bL, bW);
+    // 4 mm divider — applies in manual mode only. Adds 0.4 cm of pad
+    // around every product on every axis so adjacent items have room
+    // for cardboard / foam separators. The padding flows into the
+    // orientation math (cols/rows) AND the vertical stack (max layers).
+    const dividerOn = manualOn && !!document.getElementById('pallet-divider')?.checked;
+    const padCm = dividerOn ? 0.4 : 0;
+    const layout = bestPalletOrientation(bL + padCm, bW + padCm);
     const perLayer = layout.cols * layout.rows;
 
     // Footprint too large to fit on pallet. We do NOT assume overhang —
@@ -9522,43 +9581,103 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const maxLoadHIn = parseFloat(document.getElementById('pallet-max-height').value) || 60;
     const maxLoadH = maxLoadHIn * 2.54; // convert inches to cm
-    const maxLayers = Math.max(1, Math.floor(maxLoadH / bH));
+    // Vertical stack pitch includes the divider pad — products are
+    // separated by 0.4 cm of cardboard / foam between layers too when
+    // the divider option is on.
+    const stackPitchH = bH + padCm;
+    const maxLayers = Math.max(1, Math.floor(maxLoadH / stackPitchH));
     const showLayers = Math.min(maxLayers, 12); // cap visual layers
 
-    // Scale to fit canvas — origin near top, stack grows upward
+    // Scale to fit canvas — origin near top, stack grows upward.
+    // Reserve extra padding for the L/W/H dimension labels we draw
+    // around the pallet stack.
     const footprintSpan = PALLET_L + PALLET_W;
-    const stackH = PALLET_DECK + showLayers * bH;
+    const stackH = PALLET_DECK + showLayers * stackPitchH;
+    const LABEL_PAD = 36; // px reserved for dim labels
     const s = Math.min(
-      (CW * 0.82) / (footprintSpan * ISO_COS30),
-      (CH * 0.88) / (stackH + footprintSpan * ISO_SIN30)
+      (CW * 0.82 - LABEL_PAD) / (footprintSpan * ISO_COS30),
+      (CH * 0.88 - LABEL_PAD) / (stackH + footprintSpan * ISO_SIN30)
     );
     const ox = CW / 2 + (PALLET_W - PALLET_L) * ISO_COS30 * s / 2;
-    const oy = stackH * s + 10; // near top of canvas
+    const oy = stackH * s + 10 + (LABEL_PAD * 0.4); // near top of canvas, leave room for top label
 
     // Draw pallet deck
     drawIsoBox(ctx, 0, 0, 0, PALLET_L, PALLET_DECK, PALLET_W, s, ox, oy, '#a8a8a8');
 
     // Draw boxes back-to-front: diag 0 (back corner) → max (front corner)
+    // Each cell occupies layout.bL × layout.bW (including the divider
+    // pad); the actual drawn box is the cell minus pad on each axis,
+    // which leaves a 0.4 cm gap between adjacent items.
+    const drawL = layout.bL - padCm;
+    const drawW = layout.bW - padCm;
     for (let layer = 0; layer < showLayers; layer++) {
       for (let diag = 0; diag <= layout.cols + layout.rows - 2; diag++) {
         for (let col = Math.max(0, diag - layout.rows + 1); col <= Math.min(diag, layout.cols - 1); col++) {
           const row = diag - col;
           drawIsoBox(ctx,
-            col * layout.bL, PALLET_DECK + layer * bH, row * layout.bW,
-            layout.bL, bH, layout.bW, s, ox, oy, '#E8751A');
+            col * layout.bL, PALLET_DECK + layer * stackPitchH, row * layout.bW,
+            drawL, bH, drawW, s, ox, oy, '#E8751A');
         }
       }
     }
 
-    // Pallet label
-    ctx.fillStyle = '#888';
-    ctx.font = `${Math.round(s * 8)}px -apple-system, sans-serif`;
+    // ── Dimension labels (L / W / H) — match the product overview viz
+    // style: pallet length runs along the front-bottom edge, pallet
+    // width along the right-bottom edge, and the stack height up the
+    // left vertical edge.
+    const inSize = (cm) => `${(cm / 2.54).toFixed(0)}"`;
+    const cmSize = (cm) => `${cm.toFixed(1)} cm`;
+    const totalH_cm = PALLET_DECK + showLayers * stackPitchH; // total stack height incl. pallet deck
+    const labelFont = `${Math.max(10, Math.round(s * 5.5))}px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.font = labelFont;
+    ctx.fillStyle = '#6b7280';
+    // L label — front-left edge bracket. Front face runs from
+    // isoProj(0,0,PALLET_W) to isoProj(PALLET_L,0,PALLET_W).
+    {
+      const a = isoProj(0, 0, PALLET_W, s, ox, oy);
+      const b = isoProj(PALLET_L, 0, PALLET_W, s, ox, oy);
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      ctx.textAlign = 'center';
+      ctx.fillText(`L ${inSize(PALLET_L)} (${cmSize(PALLET_L)})`, mx, my + 18);
+    }
+    // W label — right-bottom edge: isoProj(PALLET_L,0,0) → isoProj(PALLET_L,0,PALLET_W).
+    {
+      const a = isoProj(PALLET_L, 0, 0, s, ox, oy);
+      const b = isoProj(PALLET_L, 0, PALLET_W, s, ox, oy);
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      ctx.save();
+      ctx.translate(mx + 22, my + 6);
+      ctx.textAlign = 'center';
+      ctx.fillText(`W ${inSize(PALLET_W)} (${cmSize(PALLET_W)})`, 0, 0);
+      ctx.restore();
+    }
+    // H label — left vertical edge: isoProj(0,0,0) up to isoProj(0,totalH,0).
+    {
+      const a = isoProj(0, 0, 0, s, ox, oy);
+      const b = isoProj(0, totalH_cm, 0, s, ox, oy);
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      ctx.save();
+      ctx.translate(mx - 14, my);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center';
+      ctx.fillText(`H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 0, 0);
+      ctx.restore();
+    }
+    // Pallet 40 × 48 footer label (kept for clarity)
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = `${Math.round(s * 6.5)}px -apple-system, sans-serif`;
     ctx.textAlign = 'center';
-    const labelPt = isoProj(PALLET_L/2, 0, PALLET_W + 4, s, ox, oy);
-    ctx.fillText('40 × 48 in', labelPt.x, labelPt.y + 4);
+    const labelPt = isoProj(PALLET_L/2, 0, PALLET_W + 6, s, ox, oy);
+    ctx.fillText('40 × 48 in pallet', labelPt.x, labelPt.y + 4);
 
     // Stats — labels swap based on manual mode (units vs cartons).
-    const surfaceUse = Math.round((layout.cols * layout.bL * layout.rows * layout.bW) / (PALLET_L * PALLET_W) * 100);
+    // Surface use measures product area only (excludes the divider gap
+    // so 100% means the products themselves cover the pallet — the gap
+    // doesn't contribute to coverage).
+    const surfaceUse = Math.round((layout.cols * drawL * layout.rows * drawW) / (PALLET_L * PALLET_W) * 100);
     const totalPerPallet = perLayer * maxLayers;
     const totalCartons = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
     const palletsNeeded = totalCartons > 0 ? Math.ceil(totalCartons / totalPerPallet) : null;
@@ -9614,7 +9733,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>` : ''}
       <div style="margin-top:14px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
-        ${manualOn ? 'Product' : 'Box'} orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer${manualOn ? '<br><span style="color:var(--accent); font-weight:600;">Manual mode — fitting products directly on pallet base.</span>' : ''}
+        ${manualOn ? 'Product' : 'Box'} orientation: ${drawL.toFixed(1)} × ${drawW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer${dividerOn ? ` &nbsp;·&nbsp; <span style="color:var(--accent); font-weight:600;">+ 4 mm dividers</span>` : ''}${manualOn ? '<br><span style="color:var(--accent); font-weight:600;">Manual mode — fitting products directly on pallet base.</span>' : ''}
       </div>`;
 
     // Store pallet stats globally so shipping tab can read them
@@ -17771,6 +17890,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           onPalletManualToggle();
         }
       }
+      // Pallet 4 mm divider toggle — only applies in manual mode but we
+      // restore the checkbox state regardless so toggling manual mode
+      // back on shows their previous choice.
+      const palletDividerEl = document.getElementById('pallet-divider');
+      if (palletDividerEl) palletDividerEl.checked = !!data.palletDivider;
+      // Free-form pallet notes
+      _s('pallet-notes', data.palletNotes);
       document.getElementById('mat2-wrap').classList.toggle('has-value', !!data.productSubcategory2);
       checkSecondaryLock();
       if (typeof _onMaterialChange === 'function') _onMaterialChange();
@@ -18910,6 +19036,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // outer carton dims and fits products directly on the 40 × 48
       // pallet base. Used for crates / unboxed shipments.
       palletManualMode: !!document.getElementById('pallet-manual')?.checked,
+      palletDivider:    !!document.getElementById('pallet-divider')?.checked,
+      palletNotes:      _v('pallet-notes'),
       materials: _v('materials'),
       pantone: _v('pantone-text'),
       cmyk: _v('cmyk'),
