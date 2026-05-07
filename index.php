@@ -21805,9 +21805,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </button>
       <span class="ms-rich-divider"></span>
       <button type="button" class="ms-rich-btn" data-cmd="heading" title="Section heading">H</button>
-      <button type="button" class="ms-rich-btn ms-rich-btn--ai" data-cmd="ai" title="AI text actions">
-        <span aria-hidden="true">✨</span><span>AI</span>
-      </button>
+      <button type="button" class="ms-rich-btn ms-rich-btn--ai" data-cmd="ai" title="AI text actions">AI</button>
       <div class="ms-rich-ai-menu">
         <button type="button" class="ms-rich-ai-item" data-ai="improve"><span class="ai-icon">✨</span><span>Improve writing</span></button>
         <button type="button" class="ms-rich-ai-item" data-ai="shorter"><span class="ai-icon">✂️</span><span>Make shorter</span></button>
