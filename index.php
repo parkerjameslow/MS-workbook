@@ -9589,17 +9589,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const showLayers = Math.min(maxLayers, 12); // cap visual layers
 
     // Scale to fit canvas — origin near top, stack grows upward.
-    // Reserve extra padding for the L/W/H dimension labels we draw
-    // around the pallet stack.
+    // Reserve padding so the L/W/H dim brackets and labels can sit
+    // OUTSIDE the silhouette without clipping.
     const footprintSpan = PALLET_L + PALLET_W;
     const stackH = PALLET_DECK + showLayers * stackPitchH;
-    const LABEL_PAD = 36; // px reserved for dim labels
+    const LABEL_PAD_X = 80; // px reserved on each side for H label + W label
+    const LABEL_PAD_Y = 70; // px reserved below for L bracket + footer
     const s = Math.min(
-      (CW * 0.82 - LABEL_PAD) / (footprintSpan * ISO_COS30),
-      (CH * 0.88 - LABEL_PAD) / (stackH + footprintSpan * ISO_SIN30)
+      (CW - LABEL_PAD_X * 2) / (footprintSpan * ISO_COS30),
+      (CH - LABEL_PAD_Y - 24) / (stackH + footprintSpan * ISO_SIN30)
     );
     const ox = CW / 2 + (PALLET_W - PALLET_L) * ISO_COS30 * s / 2;
-    const oy = stackH * s + 10 + (LABEL_PAD * 0.4); // near top of canvas, leave room for top label
+    const oy = stackH * s + 18; // near top of canvas, leave a bit of room above
 
     // Draw pallet deck
     drawIsoBox(ctx, 0, 0, 0, PALLET_L, PALLET_DECK, PALLET_W, s, ox, oy, '#a8a8a8');
@@ -9621,57 +9622,101 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    // ── Dimension labels (L / W / H) — match the product overview viz
-    // style: pallet length runs along the front-bottom edge, pallet
-    // width along the right-bottom edge, and the stack height up the
-    // left vertical edge.
+    // ── Dimension labels (L / W / H) — match the product overview
+    // SVG viz style: bracket bars sit OUTSIDE the silhouette with end
+    // ticks, labels read horizontally past the bar. Pull all vertices
+    // into screen space so we can find the outward perpendicular for
+    // each face automatically (works regardless of stack height).
+    const totalH_cm = PALLET_DECK + showLayers * stackPitchH;
+    const v3 = {
+      bbl: isoProj(0,        0,         0,        s, ox, oy),
+      bbr: isoProj(PALLET_L, 0,         0,        s, ox, oy),
+      bfl: isoProj(0,        0,         PALLET_W, s, ox, oy),
+      bfr: isoProj(PALLET_L, 0,         PALLET_W, s, ox, oy),
+      tbl: isoProj(0,        totalH_cm, 0,        s, ox, oy),
+      tbr: isoProj(PALLET_L, totalH_cm, 0,        s, ox, oy),
+      tfl: isoProj(0,        totalH_cm, PALLET_W, s, ox, oy),
+      tfr: isoProj(PALLET_L, totalH_cm, PALLET_W, s, ox, oy)
+    };
+    const allPts = Object.values(v3);
+    const cxBox = allPts.reduce((sum,p) => sum + p.x, 0) / allPts.length;
+    const cyBox = allPts.reduce((sum,p) => sum + p.y, 0) / allPts.length;
+    const sxMin = Math.min(...allPts.map(p => p.x));
+    // Pick the perpendicular pointing AWAY from the box centroid.
+    const outwardPerp = (a, b) => {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      const px = -dy/len, py = dx/len;
+      const midX = (a.x + b.x)/2, midY = (a.y + b.y)/2;
+      const dot = px*(midX - cxBox) + py*(midY - cyBox);
+      return dot >= 0 ? { x: px, y: py } : { x: -px, y: -py };
+    };
+    const TICK = 4;
+    const dimColor = '#6b7280';
+    ctx.fillStyle = dimColor;
+    ctx.strokeStyle = dimColor;
+    ctx.lineWidth = 1;
+    const drawDim = (a, b, labelPos, txt, anchor='center') => {
+      // Bar
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      // End ticks (perpendicular to a→b)
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      const tpx = -dy/len * TICK, tpy = dx/len * TICK;
+      ctx.beginPath();
+      ctx.moveTo(a.x - tpx, a.y - tpy); ctx.lineTo(a.x + tpx, a.y + tpy);
+      ctx.moveTo(b.x - tpx, b.y - tpy); ctx.lineTo(b.x + tpx, b.y + tpy);
+      ctx.stroke();
+      // Label
+      ctx.textAlign = anchor;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(txt, labelPos.x, labelPos.y);
+    };
+    ctx.font = `600 11px -apple-system, BlinkMacSystemFont, sans-serif`;
     const inSize = (cm) => `${(cm / 2.54).toFixed(0)}"`;
     const cmSize = (cm) => `${cm.toFixed(1)} cm`;
-    const totalH_cm = PALLET_DECK + showLayers * stackPitchH; // total stack height incl. pallet deck
-    const labelFont = `${Math.max(10, Math.round(s * 5.5))}px -apple-system, BlinkMacSystemFont, sans-serif`;
-    ctx.font = labelFont;
-    ctx.fillStyle = '#6b7280';
-    // L label — front-left edge bracket. Front face runs from
-    // isoProj(0,0,PALLET_W) to isoProj(PALLET_L,0,PALLET_W).
+
+    // L bracket — front-left edge bbl(top of diamond) → bfl is W;
+    // L runs along bfl(left)→bfr(bottom): the front-left-bottom edge.
+    // Match the product viz: place bracket outside this edge.
     {
-      const a = isoProj(0, 0, PALLET_W, s, ox, oy);
-      const b = isoProj(PALLET_L, 0, PALLET_W, s, ox, oy);
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
-      ctx.textAlign = 'center';
-      ctx.fillText(`L ${inSize(PALLET_L)} (${cmSize(PALLET_L)})`, mx, my + 18);
+      const lOff = 12, lLabelGap = 18;
+      const a0 = v3.bfl, b0 = v3.bfr;
+      const p = outwardPerp(a0, b0);
+      const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
+      const b = { x: b0.x + p.x*lOff, y: b0.y + p.y*lOff };
+      const mid = { x: (a.x + b.x)/2 + p.x*lLabelGap, y: (a.y + b.y)/2 + p.y*lLabelGap };
+      drawDim(a, b, mid, `L ${inSize(PALLET_L)} (${cmSize(PALLET_L)})`);
     }
-    // W label — right-bottom edge: isoProj(PALLET_L,0,0) → isoProj(PALLET_L,0,PALLET_W).
+    // W bracket — front-right-bottom edge bfr→bbr.
     {
-      const a = isoProj(PALLET_L, 0, 0, s, ox, oy);
-      const b = isoProj(PALLET_L, 0, PALLET_W, s, ox, oy);
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
-      ctx.save();
-      ctx.translate(mx + 22, my + 6);
-      ctx.textAlign = 'center';
-      ctx.fillText(`W ${inSize(PALLET_W)} (${cmSize(PALLET_W)})`, 0, 0);
-      ctx.restore();
+      const wOff = 12, wLabelGap = 18;
+      const a0 = v3.bfr, b0 = v3.bbr;
+      const p = outwardPerp(a0, b0);
+      const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
+      const b = { x: b0.x + p.x*wOff, y: b0.y + p.y*wOff };
+      const mid = { x: (a.x + b.x)/2 + p.x*wLabelGap, y: (a.y + b.y)/2 + p.y*wLabelGap };
+      drawDim(a, b, mid, `W ${inSize(PALLET_W)} (${cmSize(PALLET_W)})`);
     }
-    // H label — left vertical edge: isoProj(0,0,0) up to isoProj(0,totalH,0).
+    // H bracket — vertical, OUTSIDE the leftmost silhouette point
+    // (sxMin), running from top of stack to base. Label sits to the
+    // LEFT of the bar, right-anchored.
     {
-      const a = isoProj(0, 0, 0, s, ox, oy);
-      const b = isoProj(0, totalH_cm, 0, s, ox, oy);
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
-      ctx.save();
-      ctx.translate(mx - 14, my);
-      ctx.rotate(-Math.PI / 2);
-      ctx.textAlign = 'center';
-      ctx.fillText(`H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 0, 0);
-      ctx.restore();
+      const hX = sxMin - 14;
+      const a = { x: hX, y: v3.tfl.y };
+      const b = { x: hX, y: v3.bfl.y };
+      drawDim(a, b, { x: hX - 6, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
     }
-    // Pallet 40 × 48 footer label (kept for clarity)
+    // Pallet 40 × 48 footer label sits below the L bracket
     ctx.fillStyle = '#9ca3af';
-    ctx.font = `${Math.round(s * 6.5)}px -apple-system, sans-serif`;
+    ctx.font = `500 10px -apple-system, sans-serif`;
     ctx.textAlign = 'center';
-    const labelPt = isoProj(PALLET_L/2, 0, PALLET_W + 6, s, ox, oy);
-    ctx.fillText('40 × 48 in pallet', labelPt.x, labelPt.y + 4);
+    ctx.textBaseline = 'top';
+    const footPt = isoProj(PALLET_L/2, 0, PALLET_W, s, ox, oy);
+    ctx.fillText('40 × 48 in pallet', footPt.x, footPt.y + 38);
 
     // Stats — labels swap based on manual mode (units vs cartons).
     // Surface use measures product area only (excludes the divider gap
@@ -9701,19 +9746,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Divider material weight — when the 4 mm divider option is on,
     // approximate the cardboard / foam separator weight added per
     // pallet so the shipment weight stays honest. Model:
-    //   • One full-pallet sheet between each layer + one beneath the
-    //     bottom layer = `maxLayers` sheets per pallet (cap visual at
-    //     showLayers but use maxLayers for the actual stack count).
+    //   • Horizontal sheets — one full pallet sheet between each layer
+    //     + one beneath the bottom layer = `maxLayers` sheets per pallet
+    //   • Vertical sheets — between adjacent items on each layer:
+    //     (cols-1) sheets running across the pallet width × layer
+    //     height + (rows-1) sheets running across the pallet length ×
+    //     layer height, repeated across all layers
     //   • Sheet weight ≈ 0.8 kg/m² (typical 4 mm double-wall corrugated
-    //     cardboard at ~800 g/m²; foam separators are usually lighter
-    //     so this is a conservative estimate).
+    //     cardboard at ~800 g/m²; foam separators run lighter so this
+    //     is a conservative estimate).
     const PALLET_AREA_M2 = (PALLET_L * PALLET_W) / 10000; // cm² → m²
     const DIVIDER_KG_PER_M2 = 0.8;
-    const dividerSheetKg = PALLET_AREA_M2 * DIVIDER_KG_PER_M2;
-    const dividerSheetsPerPallet = dividerOn ? maxLayers : 0;
-    const dividerWeightPerPalletKg = dividerSheetKg * dividerSheetsPerPallet;
+    let dividerWeightPerPalletKg = 0;
+    if (dividerOn) {
+      // Horizontal layer sheets
+      const horizontalArea_m2 = maxLayers * PALLET_AREA_M2;
+      // Vertical between-item sheets (per layer): (cols-1) × W × bH
+      // running rows-direction + (rows-1) × L × bH running cols-direction.
+      const verticalAreaPerLayer_cm2 = Math.max(0, layout.cols - 1) * PALLET_W * bH +
+                                       Math.max(0, layout.rows - 1) * PALLET_L * bH;
+      const verticalArea_m2 = (maxLayers * verticalAreaPerLayer_cm2) / 10000;
+      dividerWeightPerPalletKg = (horizontalArea_m2 + verticalArea_m2) * DIVIDER_KG_PER_M2;
+    }
+    // Standard wood pallet tare weight ≈ 45 lb (≈ 20.41 kg). Always
+    // included in weight/pallet — it's part of the load every truck/
+    // container has to carry.
+    const PALLET_TARE_LB = 45;
+    const PALLET_TARE_KG = PALLET_TARE_LB * 0.453592; // ≈ 20.41
     const palletWeightKg = unitWeightKg > 0
-      ? (unitWeightKg * totalPerPallet) + dividerWeightPerPalletKg
+      ? (unitWeightKg * totalPerPallet) + dividerWeightPerPalletKg + PALLET_TARE_KG
       : 0;
     const fmtWt = (kg) => {
       if (!kg || kg <= 0) return '—';
