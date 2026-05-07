@@ -21794,9 +21794,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     toolbar.innerHTML = `
       <button type="button" class="ms-rich-btn" data-cmd="bold" title="Bold (⌘B)"><strong>B</strong></button>
       <button type="button" class="ms-rich-btn" data-cmd="italic" title="Italic (⌘I)"><em>I</em></button>
+      <button type="button" class="ms-rich-btn" data-cmd="underline" title="Underline (⌘U)"><span style="text-decoration:underline;">U</span></button>
+      <button type="button" class="ms-rich-btn" data-cmd="strikethrough" title="Strikethrough"><span style="text-decoration:line-through;">S</span></button>
       <span class="ms-rich-divider"></span>
-      <button type="button" class="ms-rich-btn" data-cmd="ul" title="Bulleted list">• List</button>
-      <button type="button" class="ms-rich-btn" data-cmd="ol" title="Numbered list">1. List</button>
+      <button type="button" class="ms-rich-btn" data-cmd="ul" title="Bulleted list" aria-label="Bulleted list">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.2" fill="currentColor"/><circle cx="3.5" cy="12" r="1.2" fill="currentColor"/><circle cx="3.5" cy="18" r="1.2" fill="currentColor"/></svg>
+      </button>
+      <button type="button" class="ms-rich-btn" data-cmd="ol" title="Numbered list" aria-label="Numbered list">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v-2.5"/><path d="M4 10h2.5c0 -0.5 -0.5 -1 -1.25 -1s-1.25 0.5 -1.25 1c0 1.5 2.5 1.5 2.5 3h-2.5"/><path d="M4 14.5c0.5 -0.5 1 -0.5 1.5 0c0.5 0.5 0.5 1.5 0 2c0.5 0.5 0.5 1.5 0 2c-0.5 0.5 -1 0.5 -1.5 0"/></svg>
+      </button>
       <span class="ms-rich-divider"></span>
       <button type="button" class="ms-rich-btn" data-cmd="heading" title="Section heading">H</button>
       <button type="button" class="ms-rich-btn ms-rich-btn--ai" data-cmd="ai" title="AI text actions">
@@ -21840,10 +21846,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.addEventListener('click', e => {
       if (!toolbar.contains(e.target)) aiMenu.classList.remove('open');
     });
-    // ⌘B / ⌘I shortcuts inside the textarea
+    // ⌘B / ⌘I / ⌘U shortcuts inside the textarea
     textarea.addEventListener('keydown', e => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); _msApplyRichFormat(textarea, 'bold'); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); _msApplyRichFormat(textarea, 'italic'); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); _msApplyRichFormat(textarea, 'underline'); }
     });
   }
 
@@ -21859,6 +21866,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     if (cmd === 'bold')    { prefix = '**'; suffix = '**'; }
     else if (cmd === 'italic') { prefix = '*';  suffix = '*';  }
+    // Underline has no native markdown — store as inline HTML <u>
+    // tags so it round-trips through plain-text storage.
+    else if (cmd === 'underline')     { prefix = '<u>';  suffix = '</u>';  }
+    // Strikethrough — standard GFM markdown
+    else if (cmd === 'strikethrough') { prefix = '~~';  suffix = '~~';  }
     else if (cmd === 'heading') {
       // Prepend "## " to the start of the line containing the selection
       const lineStart = value.lastIndexOf('\n', start - 1) + 1;
