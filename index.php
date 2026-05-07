@@ -9885,11 +9885,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Scale to fit canvas — origin near top, stack grows upward.
     // Reserve padding so the L/W/H dim brackets and labels can sit
-    // OUTSIDE the silhouette without clipping.
+    // OUTSIDE the silhouette without clipping. Generous gaps so labels
+    // don't crowd the bracket bars.
     const footprintSpan = PALLET_L + PALLET_W;
     const stackH = PALLET_DECK + showLayers * stackPitchH;
-    const LABEL_PAD_X = 80; // px reserved on each side for H label + W label
-    const LABEL_PAD_Y = 70; // px reserved below for L bracket + footer
+    const LABEL_PAD_X = 100; // px reserved on each side for H label + W label
+    const LABEL_PAD_Y = 90; // px reserved below for L bracket + footer
     const s = Math.min(
       (CW - LABEL_PAD_X * 2) / (footprintSpan * ISO_COS30),
       (CH - LABEL_PAD_Y - 24) / (stackH + footprintSpan * ISO_SIN30)
@@ -9976,9 +9977,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // L bracket — front-left edge bbl(top of diamond) → bfl is W;
     // L runs along bfl(left)→bfr(bottom): the front-left-bottom edge.
-    // Match the product viz: place bracket outside this edge.
+    // Match the product viz: place bracket outside this edge. Label
+    // gap is generous so the text never crowds the bracket bar.
     {
-      const lOff = 12, lLabelGap = 18;
+      const lOff = 14, lLabelGap = 30;
       const a0 = v3.bfl, b0 = v3.bfr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
@@ -9988,7 +9990,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // W bracket — front-right-bottom edge bfr→bbr.
     {
-      const wOff = 12, wLabelGap = 18;
+      const wOff = 14, wLabelGap = 30;
       const a0 = v3.bfr, b0 = v3.bbr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
@@ -9998,12 +10000,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // H bracket — vertical, OUTSIDE the leftmost silhouette point
     // (sxMin), running from top of stack to base. Label sits to the
-    // LEFT of the bar, right-anchored.
+    // LEFT of the bar, right-anchored, with extra gap so the text
+    // never overlaps the bracket bar.
     {
-      const hX = sxMin - 14;
+      const hX = sxMin - 22;
       const a = { x: hX, y: v3.tfl.y };
       const b = { x: hX, y: v3.bfl.y };
-      drawDim(a, b, { x: hX - 6, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
+      drawDim(a, b, { x: hX - 12, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
     }
     // Pallet 40 × 48 footer label sits below the L bracket
     ctx.fillStyle = '#9ca3af';
