@@ -5941,29 +5941,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr>
             <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Sample Fee(s)</td>
             <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-sample-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" style="width:100%;" autocomplete="off" /></div></td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-sample-rmb" oninput="convertFee('sample','rmb')" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-sample-usd" oninput="convertFee('sample','usd')" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
             <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('sample','Sample Fee(s)')" title="Clear">×</span></td>
           </tr>
           <tr>
             <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Tooling Fee(s)</td>
             <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-tooling-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" style="width:100%;" autocomplete="off" /></div></td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-tooling-rmb" oninput="convertFee('tooling','rmb')" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-tooling-usd" oninput="convertFee('tooling','usd')" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
             <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('tooling','Tooling Fee(s)')" title="Clear">×</span></td>
           </tr>
           <tr>
             <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Die Fee(s)</td>
             <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-die-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" style="width:100%;" autocomplete="off" /></div></td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-die-rmb" oninput="convertFee('die','rmb')" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-die-usd" oninput="convertFee('die','usd')" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
             <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('die','Die Fee(s)')" title="Clear">×</span></td>
           </tr>
           <tr>
             <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Plate Fee(s)</td>
             <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-plate-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" style="width:100%;" autocomplete="off" /></div></td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-rmb"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-plate-rmb" oninput="convertFee('plate','rmb')" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-plate-usd" oninput="convertFee('plate','usd')" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
             <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('plate','Plate Fee(s)')" title="Clear">×</span></td>
           </tr>
         </tbody>
@@ -5973,7 +5973,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">Design Fee(s)</td>
             <td style="padding:4px 8px;"><input type="text" class="form-input" placeholder="Description…" id="fee-design-desc" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></td>
             <td style="padding:6px 12px; font-size:12px; color:var(--text-muted); font-style:italic;">USD only</td>
-            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" style="width:100%;" autocomplete="off" /></div></td>
+            <td style="padding:4px 8px;"><div class="currency-prefix currency-usd"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00" id="fee-design-usd" oninput="calcAdditionalFees()" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" style="width:100%;" autocomplete="off" /></div></td>
             <td style="padding:4px 8px; text-align:center;"><span class="remove-tier" onclick="openClearFeeModal('design','Design Fee(s)')" title="Clear">×</span></td>
           </tr>
         </tbody>
@@ -9992,7 +9992,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">surface coverage</div></div>
         ${unitWeightKg > 0 ? `
         <div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / ${unitWord}</div></div>
-        <div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(palletWeightKg)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / pallet${dividerOn ? ` <span style="opacity:0.75;">(incl. ${fmtWt(dividerWeightPerPalletKg)} dividers)</span>` : ''}</div></div>` : `
+        <div>
+          <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(palletWeightKg)}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / pallet${dividerOn ? ` <span style="opacity:0.75;">(incl. ${fmtWt(dividerWeightPerPalletKg)} dividers)</span>` : ''}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4; opacity:0.85;">
+            &nbsp;↳ pallet alone: <strong>${fmtWt(PALLET_TARE_KG)}</strong> <span style="opacity:0.7;">(45 lb)</span>
+          </div>
+        </div>` : `
         <div style="grid-column:span 2; font-size:11px; color:var(--text-muted); padding:6px 0; line-height:1.5;">
           Enter ${manualOn ? 'product' : 'outer carton'} weight in the dimensions section to see weight per ${unitWord} and per pallet.
         </div>`}
@@ -11386,13 +11392,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div id="add-fee-rmb-row">
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Amount (RMB)</label>
             <div class="currency-prefix currency-rmb">
-              <input id="add-fee-rmb" type="number" step="0.01" min="0" class="form-input" style="width:100%;padding-left:28px;" placeholder="0.00" oninput="onAddFeeRmbInput()" autocomplete="off" />
+              <input id="add-fee-rmb" type="text" inputmode="decimal" class="form-input" style="width:100%;padding-left:28px;" placeholder="0.00" oninput="onAddFeeRmbInput()" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" autocomplete="off" />
             </div>
           </div>
           <div>
             <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Amount (USD)</label>
             <div class="currency-prefix currency-usd">
-              <input id="add-fee-usd" type="number" step="0.01" min="0" class="form-input" style="width:100%;padding-left:28px;" placeholder="0.00" oninput="onAddFeeUsdInput()" autocomplete="off" />
+              <input id="add-fee-usd" type="text" inputmode="decimal" class="form-input" style="width:100%;padding-left:28px;" placeholder="0.00" oninput="onAddFeeUsdInput()" onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)" autocomplete="off" />
             </div>
           </div>
           <button class="btn btn-primary" onclick="confirmAddFee()">Add Fee</button>
@@ -11412,22 +11418,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function onAddFeeRmbInput() {
-    const rmb = parseFloat(document.getElementById('add-fee-rmb').value) || 0;
-    document.getElementById('add-fee-usd').value = rmb > 0 ? (rmb / USD_TO_RMB).toFixed(2) : '';
+    const rmb = _msFeeNum(document.getElementById('add-fee-rmb'));
+    document.getElementById('add-fee-usd').value = rmb > 0 ? _msFeeFmt(rmb / USD_TO_RMB) : '';
   }
 
   function onAddFeeUsdInput() {
     const type = document.getElementById('add-fee-type').value;
     if (type === 'design') return;
-    const usd = parseFloat(document.getElementById('add-fee-usd').value) || 0;
-    document.getElementById('add-fee-rmb').value = usd > 0 ? (usd * USD_TO_RMB).toFixed(2) : '';
+    const usd = _msFeeNum(document.getElementById('add-fee-usd'));
+    document.getElementById('add-fee-rmb').value = usd > 0 ? _msFeeFmt(usd * USD_TO_RMB) : '';
   }
 
   function confirmAddFee() {
     const type  = document.getElementById('add-fee-type').value;
     const desc  = document.getElementById('add-fee-desc').value.trim();
-    const rmb   = parseFloat(document.getElementById('add-fee-rmb').value) || 0;
-    const usd   = parseFloat(document.getElementById('add-fee-usd').value) || 0;
+    const rmb   = _msFeeNum(document.getElementById('add-fee-rmb'));
+    const usd   = _msFeeNum(document.getElementById('add-fee-usd'));
     const errEl = document.getElementById('add-fee-error');
     errEl.style.display = 'none';
     if (!desc) { errEl.textContent = 'Description is required.'; errEl.style.display = 'block'; return; }
@@ -11528,13 +11534,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td style="padding:4px 8px;">
             ${isDesign
               ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;padding:0 8px;">USD only</span>`
-              : `<div class="currency-prefix currency-rmb"><input type="number" step="0.01" min="0" placeholder="0.00"
-                  value="${r.rmb || ''}" oninput="updateExtraFeeField(${r.id},'rmb',this.value)"
+              : `<div class="currency-prefix currency-rmb"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00"
+                  value="${r.rmb > 0 ? _msFeeFmt(r.rmb) : ''}" oninput="updateExtraFeeField(${r.id},'rmb',this.value)"
+                  onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)"
                   style="width:100%;" /></div>`}
           </td>
           <td style="padding:4px 8px;">
-            <div class="currency-prefix currency-usd"><input type="number" step="0.01" min="0" placeholder="0.00"
-              value="${r.usd || ''}" oninput="updateExtraFeeField(${r.id},'usd',this.value)"
+            <div class="currency-prefix currency-usd"><input type="text" inputmode="decimal" data-fee-money="1" placeholder="0.00"
+              value="${r.usd > 0 ? _msFeeFmt(r.usd) : ''}" oninput="updateExtraFeeField(${r.id},'usd',this.value)"
+              onfocus="_msFeeFocus(this)" onblur="_msFeeBlur(this)"
               style="width:100%;" /></div>
           </td>
           <td style="padding:4px 8px; text-align:center;">
@@ -11563,19 +11571,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function updateExtraFeeField(id, field, value) {
     const row = _extraFeeRows.find(r => r.id === id);
     if (!row) return;
+    // Strip any commas the user pasted/typed into the money field.
+    const cleanNum = (v) => {
+      const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+      return isNaN(n) ? 0 : n;
+    };
     if (field === 'desc') {
       row.desc = value;
     } else if (field === 'rmb') {
-      row.rmb = parseFloat(value) || 0;
+      row.rmb = cleanNum(value);
       row.usd = row.rmb > 0 ? parseFloat((row.rmb / USD_TO_RMB).toFixed(2)) : 0;
-      // Update the USD input without re-rendering
+      // Update the USD input without re-rendering — show comma-formatted
+      // (the user is editing the RMB input, not this one)
       const tr = document.getElementById(`extra-fee-tr-${id}`);
-      if (tr) { const usdIn = tr.querySelectorAll('input[type="number"]')[1]; if (usdIn) usdIn.value = row.usd || ''; }
+      if (tr) { const usdIn = tr.querySelectorAll('input[data-fee-money="1"]')[1]; if (usdIn) usdIn.value = row.usd > 0 ? _msFeeFmt(row.usd) : ''; }
     } else if (field === 'usd') {
-      row.usd = parseFloat(value) || 0;
+      row.usd = cleanNum(value);
       row.rmb = row.usd > 0 ? parseFloat((row.usd * USD_TO_RMB).toFixed(2)) : 0;
       const tr = document.getElementById(`extra-fee-tr-${id}`);
-      if (tr) { const rmbIn = tr.querySelector('input[type="number"]'); if (rmbIn) rmbIn.value = row.rmb || ''; }
+      if (tr) { const rmbIn = tr.querySelector('input[data-fee-money="1"]'); if (rmbIn) rmbIn.value = row.rmb > 0 ? _msFeeFmt(row.rmb) : ''; }
     }
     // Refresh only pricing tab display (don't re-render workbook rows — would lose focus)
     const pr = document.getElementById('pricing-extra-fee-rows');
@@ -11593,16 +11607,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     calcAdditionalFees();
   }
 
+  // ── Fee input helpers — comma-separated thousands ──────────────────
+  // Fee inputs are <input type="text" inputmode="decimal"> instead of
+  // type="number" so they can display "1,500.00" while still allowing
+  // numeric editing. _msFeeNum strips commas before parsing; the
+  // focus/blur pair lets the user type raw digits while focused and
+  // see the comma-formatted version on blur.
+  function _msFeeNum(el) {
+    if (!el) return 0;
+    const v = String(el.value || '').replace(/,/g, '').trim();
+    const n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
+  }
+  function _msFeeFmt(v) {
+    const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+    if (!n || n <= 0 || isNaN(n)) return '';
+    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function _msFeeFocus(el) {
+    if (!el) return;
+    const n = _msFeeNum(el);
+    el.value = n > 0 ? n.toFixed(2) : '';
+    try { el.select(); } catch (_) {}
+  }
+  function _msFeeBlur(el) {
+    if (!el) return;
+    el.value = _msFeeFmt(el.value);
+  }
+  // Format every Additional Fees money input on the workbook tab —
+  // called after a workbook loads so saved values get pretty commas.
+  function _msFormatAllFeeInputs() {
+    document.querySelectorAll('#wb-tab-workbook input[data-fee-money="1"]').forEach(_msFeeBlur);
+  }
+
   function convertFee(name, from) {
     const rmbEl = document.getElementById(`fee-${name}-rmb`);
     const usdEl = document.getElementById(`fee-${name}-usd`);
     if (!rmbEl || !usdEl) return;
     if (from === 'rmb') {
-      const rmb = parseFloat(rmbEl.value) || 0;
-      usdEl.value = rmb > 0 ? (rmb / USD_TO_RMB).toFixed(2) : '';
+      const rmb = _msFeeNum(rmbEl);
+      // While the user is typing in the RMB field, show the converted
+      // USD value comma-formatted (the field they're not editing).
+      usdEl.value = rmb > 0 ? _msFeeFmt(rmb / USD_TO_RMB) : '';
     } else {
-      const usd = parseFloat(usdEl.value) || 0;
-      rmbEl.value = usd > 0 ? (usd * USD_TO_RMB).toFixed(2) : '';
+      const usd = _msFeeNum(usdEl);
+      rmbEl.value = usd > 0 ? _msFeeFmt(usd * USD_TO_RMB) : '';
     }
     calcAdditionalFees();
   }
@@ -12007,7 +12056,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function calcAdditionalFees() {
-    const get    = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const get    = id => _msFeeNum(document.getElementById(id));
     const sample  = get('fee-sample-usd');
     const tooling = get('fee-tooling-usd');
     const die     = get('fee-die-usd');
@@ -18236,6 +18285,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('fee-plate-usd',    data.feePlateUsd);
       _s('fee-design-desc',  data.feeDesignDesc);
       _s('fee-design-usd',   data.feeDesignUsd);
+      // After loading raw values, format all fee money inputs with
+      // commas so the saved values display as "1,500.00" instead of
+      // "1500".
+      if (typeof _msFormatAllFeeInputs === 'function') _msFormatAllFeeInputs();
       _extraFeeRows = [];
       _extraFeeCounter = 0;
       if (Array.isArray(data.extraFeeRows)) {
@@ -19336,19 +19389,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       rfqItems: collectRfqItems(),
       qcNotes: _v('quote-qc'),
       feeSampleDesc:  _v('fee-sample-desc'),
-      feeSampleRmb:   _v('fee-sample-rmb'),
-      feeSampleUsd:   _v('fee-sample-usd'),
+      // Money fields are now comma-formatted text inputs — strip the
+      // commas before persisting so the stored value is a plain number
+      // string ("1500" not "1,500.00"). _msFeeNum returns 0 for blank,
+      // which we coerce back to '' to keep the schema clean.
+      feeSampleRmb:   (() => { const n = _msFeeNum(document.getElementById('fee-sample-rmb'));   return n > 0 ? String(n) : ''; })(),
+      feeSampleUsd:   (() => { const n = _msFeeNum(document.getElementById('fee-sample-usd'));   return n > 0 ? String(n) : ''; })(),
       feeToolingDesc: _v('fee-tooling-desc'),
-      feeToolingRmb:  _v('fee-tooling-rmb'),
-      feeToolingUsd:  _v('fee-tooling-usd'),
+      feeToolingRmb:  (() => { const n = _msFeeNum(document.getElementById('fee-tooling-rmb'));  return n > 0 ? String(n) : ''; })(),
+      feeToolingUsd:  (() => { const n = _msFeeNum(document.getElementById('fee-tooling-usd'));  return n > 0 ? String(n) : ''; })(),
       feeDieDesc:     _v('fee-die-desc'),
-      feeDieRmb:      _v('fee-die-rmb'),
-      feeDieUsd:      _v('fee-die-usd'),
+      feeDieRmb:      (() => { const n = _msFeeNum(document.getElementById('fee-die-rmb'));      return n > 0 ? String(n) : ''; })(),
+      feeDieUsd:      (() => { const n = _msFeeNum(document.getElementById('fee-die-usd'));      return n > 0 ? String(n) : ''; })(),
       feePlateDesc:   _v('fee-plate-desc'),
-      feePlateRmb:    _v('fee-plate-rmb'),
-      feePlateUsd:    _v('fee-plate-usd'),
+      feePlateRmb:    (() => { const n = _msFeeNum(document.getElementById('fee-plate-rmb'));    return n > 0 ? String(n) : ''; })(),
+      feePlateUsd:    (() => { const n = _msFeeNum(document.getElementById('fee-plate-usd'));    return n > 0 ? String(n) : ''; })(),
       feeDesignDesc:  _v('fee-design-desc'),
-      feeDesignUsd:   _v('fee-design-usd'),
+      feeDesignUsd:   (() => { const n = _msFeeNum(document.getElementById('fee-design-usd'));   return n > 0 ? String(n) : ''; })(),
       extraFeeRows:  _extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd})),
       // Which fees the operator has ticked on the Pricing tab to apply
       // to Total Landed Cost + the Client Quote line items.
