@@ -889,6 +889,123 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
       opacity: 0.6;
     }
+
+    /* ── Rich Text Editor ─────────────────────────────────────────────────
+       Wraps any [data-rich] textarea in a small toolbar offering
+       markdown-style formatting (bold, italic, lists) plus an "AI"
+       dropdown that calls api.php → ai_text_action. The textarea
+       itself still stores plain (markdown) text so persistence /
+       collectWorkbookDetail() / autosave keep working unchanged. */
+    .ms-rich-editor {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      overflow: visible;
+      position: relative;
+    }
+    .ms-rich-editor:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .ms-rich-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 8px;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      position: relative;
+    }
+    .ms-rich-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+      min-width: 28px;
+    }
+    .ms-rich-btn:hover { background: var(--surface); color: var(--text); }
+    .ms-rich-btn:active { transform: translateY(1px); }
+    .ms-rich-btn--ai {
+      background: linear-gradient(135deg, rgba(232,117,26,0.16), rgba(107,147,255,0.16));
+      border-color: rgba(232,117,26,0.30);
+      color: var(--accent);
+      margin-left: auto;
+      padding: 4px 12px;
+      font-weight: 700;
+    }
+    .ms-rich-btn--ai:hover { filter: brightness(1.06); background: linear-gradient(135deg, rgba(232,117,26,0.24), rgba(107,147,255,0.24)); }
+    .ms-rich-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+    .ms-rich-editor textarea {
+      border: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      resize: vertical;
+      width: 100%;
+      padding: 10px 12px;
+    }
+    .ms-rich-editor textarea:focus {
+      box-shadow: none !important;
+      border: 0 !important;
+    }
+    .ms-rich-ai-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 4px;
+      z-index: 60;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+      padding: 6px;
+      display: none;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 220px;
+    }
+    .ms-rich-ai-menu.open { display: flex; }
+    .ms-rich-ai-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; font-size: 13px;
+      background: none; border: 0; cursor: pointer;
+      color: var(--text); border-radius: 6px;
+      text-align: left; font-family: inherit;
+      width: 100%;
+    }
+    .ms-rich-ai-item:hover { background: var(--surface2); color: var(--accent); }
+    .ms-rich-ai-item .ai-icon {
+      width: 18px; text-align: center; font-size: 13px;
+      flex-shrink: 0;
+    }
+    .ms-rich-ai-busy {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; font-size: 12px; color: var(--accent);
+      font-weight: 600;
+    }
+    .ms-rich-ai-busy .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent);
+      animation: presence-pulse 1.2s ease-in-out infinite;
+    }
     input[readonly], textarea[readonly],
     .field-filled input[readonly],
     .field-filled textarea[readonly] {
@@ -5426,7 +5543,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div class="field col-full">
           <label>Product Description</label>
-          <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc"></textarea>
+          <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc" data-rich="1"></textarea>
         </div>
       </div>
 
@@ -5620,7 +5737,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="form-grid form-grid-2" style="margin-top:16px;">
         <div class="field karen-field col-full">
           <label>Quote Notes</label>
-          <textarea placeholder="Additional notes, special requirements, or instructions…" id="quote-qc" style="min-height:70px;"></textarea>
+          <textarea placeholder="Additional notes, special requirements, or instructions…" id="quote-qc" data-rich="1" style="min-height:70px;"></textarea>
         </div>
       </div>
     </div>
@@ -6523,7 +6640,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div class="field col-full">
           <label>Notes / Terms</label>
-          <textarea placeholder="Payment terms, delivery details, special conditions…" id="quote-cl-notes" style="min-height:80px;"></textarea>
+          <textarea placeholder="Payment terms, delivery details, special conditions…" id="quote-cl-notes" data-rich="1" style="min-height:80px;"></textarea>
         </div>
       </div>
     </div>
@@ -6579,7 +6696,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       <div class="field" style="margin-top:12px;">
         <label>Art Notes</label>
-        <textarea placeholder="Design specifications, color requirements, placement instructions..." id="art-notes" style="min-height:80px;"></textarea>
+        <textarea placeholder="Design specifications, color requirements, placement instructions..." id="art-notes" data-rich="1" style="min-height:80px;"></textarea>
       </div>
 
       <div style="margin-top:18px;">
@@ -6674,7 +6791,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div class="field col-full">
           <label>Notes</label>
-          <textarea placeholder="Additional notes, PO numbers, references…" id="inv-notes" style="min-height:80px;"></textarea>
+          <textarea placeholder="Additional notes, PO numbers, references…" id="inv-notes" data-rich="1" style="min-height:80px;"></textarea>
         </div>
       </div>
     </div>
@@ -17523,6 +17640,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // without expanding.
       _collapseHeavySectionsOnOpen();
       _updateAllSectionSummaries();
+      // Wrap any [data-rich] textarea in the formatting / AI toolbar.
+      // Idempotent — safe to re-call when switching workbooks.
+      if (typeof initRichEditors === 'function') initRichEditors();
     }, 200);
   }  // end _fillWorkbookInner
 
@@ -21567,6 +21687,179 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // (so the cell-highlight feature still works); every OTHER input in
   // the workbook view reports just the section it lives in. Both feed
   // into _myFocusedField as "<section>|<cellPath?>".
+  // ════════════════════════════════════════════════════════════════════
+  // Rich-text editor — markdown formatting toolbar + AI text actions
+  //
+  // Wraps any [data-rich] textarea with a small toolbar (Bold, Italic,
+  // bullet/numbered list, ✨ AI). Format buttons mutate the textarea
+  // value with markdown-style markers so the underlying storage stays
+  // plain text — collectWorkbookDetail / autosave / fillWorkbook all
+  // continue to work without changes. The AI button opens a dropdown
+  // of one-click actions that POST to api.php → ai_text_action,
+  // which proxies to Anthropic Claude (configured at the top of api.php).
+  // ════════════════════════════════════════════════════════════════════
+  function initRichEditors() {
+    document.querySelectorAll('textarea[data-rich]').forEach(_msInitOneRichEditor);
+  }
+
+  function _msInitOneRichEditor(textarea) {
+    if (!textarea || textarea._msRichInit) return;
+    textarea._msRichInit = true;
+    const wrap = document.createElement('div');
+    wrap.className = 'ms-rich-editor';
+    textarea.parentNode.insertBefore(wrap, textarea);
+    const toolbar = document.createElement('div');
+    toolbar.className = 'ms-rich-toolbar';
+    toolbar.innerHTML = `
+      <button type="button" class="ms-rich-btn" data-cmd="bold" title="Bold (⌘B)"><strong>B</strong></button>
+      <button type="button" class="ms-rich-btn" data-cmd="italic" title="Italic (⌘I)"><em>I</em></button>
+      <span class="ms-rich-divider"></span>
+      <button type="button" class="ms-rich-btn" data-cmd="ul" title="Bulleted list">• List</button>
+      <button type="button" class="ms-rich-btn" data-cmd="ol" title="Numbered list">1. List</button>
+      <span class="ms-rich-divider"></span>
+      <button type="button" class="ms-rich-btn" data-cmd="heading" title="Section heading">H</button>
+      <button type="button" class="ms-rich-btn ms-rich-btn--ai" data-cmd="ai" title="AI text actions">
+        <span aria-hidden="true">✨</span><span>AI</span>
+      </button>
+      <div class="ms-rich-ai-menu">
+        <button type="button" class="ms-rich-ai-item" data-ai="improve"><span class="ai-icon">✨</span><span>Improve writing</span></button>
+        <button type="button" class="ms-rich-ai-item" data-ai="shorter"><span class="ai-icon">✂️</span><span>Make shorter</span></button>
+        <button type="button" class="ms-rich-ai-item" data-ai="expand"><span class="ai-icon">📖</span><span>Expand with detail</span></button>
+        <button type="button" class="ms-rich-ai-item" data-ai="fix_grammar"><span class="ai-icon">✓</span><span>Fix grammar</span></button>
+        <button type="button" class="ms-rich-ai-item" data-ai="professional"><span class="ai-icon">👔</span><span>Make professional</span></button>
+        <button type="button" class="ms-rich-ai-item" data-ai="bullet_summary"><span class="ai-icon">≡</span><span>Summarize as bullets</span></button>
+        <button type="button" class="ms-rich-ai-item" data-ai="custom"><span class="ai-icon">✏️</span><span>Custom prompt…</span></button>
+      </div>
+    `;
+    wrap.appendChild(toolbar);
+    wrap.appendChild(textarea);
+
+    const aiMenu = toolbar.querySelector('.ms-rich-ai-menu');
+    toolbar.querySelectorAll('[data-cmd]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault(); e.stopPropagation();
+        const cmd = btn.getAttribute('data-cmd');
+        if (cmd === 'ai') {
+          // Close any other open AI menus first
+          document.querySelectorAll('.ms-rich-ai-menu.open').forEach(m => { if (m !== aiMenu) m.classList.remove('open'); });
+          aiMenu.classList.toggle('open');
+          return;
+        }
+        _msApplyRichFormat(textarea, cmd);
+      });
+    });
+    toolbar.querySelectorAll('[data-ai]').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.preventDefault(); e.stopPropagation();
+        aiMenu.classList.remove('open');
+        await _msRunAiAction(textarea, btn.getAttribute('data-ai'));
+      });
+    });
+    // Click-outside closes the AI menu
+    document.addEventListener('click', e => {
+      if (!toolbar.contains(e.target)) aiMenu.classList.remove('open');
+    });
+    // ⌘B / ⌘I shortcuts inside the textarea
+    textarea.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); _msApplyRichFormat(textarea, 'bold'); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') { e.preventDefault(); _msApplyRichFormat(textarea, 'italic'); }
+    });
+  }
+
+  // Apply a markdown-style format to the current textarea selection.
+  // Wraps selection (or inserts markers if no selection) and dispatches
+  // an `input` event so listeners (autosave, presence broadcast, etc.)
+  // pick up the change.
+  function _msApplyRichFormat(ta, cmd) {
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const value = ta.value;
+    let selected = value.slice(start, end);
+    let prefix = '', suffix = '';
+
+    if (cmd === 'bold')    { prefix = '**'; suffix = '**'; }
+    else if (cmd === 'italic') { prefix = '*';  suffix = '*';  }
+    else if (cmd === 'heading') {
+      // Prepend "## " to the start of the line containing the selection
+      const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+      const newValue = value.slice(0, lineStart) + '## ' + value.slice(lineStart);
+      ta.value = newValue;
+      ta.setSelectionRange(start + 3, end + 3);
+      ta.focus();
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    else if (cmd === 'ul' || cmd === 'ol') {
+      const lines = (selected || 'List item').split('\n');
+      const transformed = lines.map((l, i) => {
+        const lt = l.replace(/^(\s*[-*]\s+|\s*\d+\.\s+)/, '');
+        return cmd === 'ul' ? `- ${lt}` : `${i + 1}. ${lt}`;
+      }).join('\n');
+      const newValue = value.slice(0, start) + transformed + value.slice(end);
+      ta.value = newValue;
+      ta.setSelectionRange(start, start + transformed.length);
+      ta.focus();
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+
+    let newValue, newStart, newEnd;
+    if (selected) {
+      newValue = value.slice(0, start) + prefix + selected + suffix + value.slice(end);
+      newStart = start + prefix.length;
+      newEnd   = newStart + selected.length;
+    } else {
+      newValue = value.slice(0, start) + prefix + suffix + value.slice(end);
+      newStart = newEnd = start + prefix.length;
+    }
+    ta.value = newValue;
+    ta.setSelectionRange(newStart, newEnd);
+    ta.focus();
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  // Run an AI action on the textarea text. Posts to api.php →
+  // ai_text_action which proxies to Anthropic Claude. Replaces the
+  // textarea value with the response. Disables the textarea + shows
+  // a small "Thinking…" pulse on the toolbar while in flight.
+  async function _msRunAiAction(ta, action) {
+    const text = ta.value;
+    let prompt = '';
+    if (action === 'custom') {
+      prompt = window.prompt('What would you like the AI to do with this text?', '');
+      if (!prompt) return;
+    } else if (!text.trim()) {
+      alert('Type something in this field first — AI needs context to work with.');
+      return;
+    }
+    const wrap = ta.closest('.ms-rich-editor');
+    const toolbar = wrap?.querySelector('.ms-rich-toolbar');
+    let busy;
+    if (toolbar) {
+      busy = document.createElement('span');
+      busy.className = 'ms-rich-ai-busy';
+      busy.innerHTML = '<span class="dot"></span>Thinking…';
+      toolbar.appendChild(busy);
+    }
+    ta.disabled = true;
+    try {
+      const r = await apiCall('ai_text_action', { text, action, prompt });
+      if (!r || !r.success) {
+        alert((r && r.error) || 'AI request failed.');
+        return;
+      }
+      if (typeof r.text === 'string') {
+        ta.value = r.text;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        if (typeof _msToast === 'function') _msToast('AI updated this field.', 'success');
+      }
+    } catch (e) {
+      alert('AI request failed: ' + (e && e.message ? e.message : 'unknown error'));
+    } finally {
+      ta.disabled = false;
+      busy?.remove();
+    }
+  }
+
   function _initPresenceFocusTracking() {
     const rfqBody = document.getElementById('rfq-body');
     if (rfqBody && !rfqBody._presenceReady) {

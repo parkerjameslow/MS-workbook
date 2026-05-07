@@ -373,6 +373,19 @@ const TWILIO_ACCOUNT_SID = '';
 const TWILIO_AUTH_TOKEN  = '';
 const TWILIO_FROM_NUMBER = '';
 
+// ── AI text-action provider (Anthropic Claude) ────────────────────────
+// Drop your Anthropic API key here to enable the ✨ AI button on every
+// rich-text field (Product Description, Quote Notes, Art Notes, etc.).
+// Get a key from https://console.anthropic.com/settings/keys.
+// While the key is empty the AI button still appears but every action
+// returns a "not configured" error so the rest of the app keeps working.
+//
+// Model picks a smart default — Claude Sonnet 3.5 is fast + cheap and
+// great at the rewrite / shorten / fix-grammar tasks the toolbar
+// surfaces. Override via constant if you want to try a different one.
+const ANTHROPIC_API_KEY = '';
+const ANTHROPIC_MODEL   = 'claude-3-5-sonnet-20241022';
+
 function ms_sms_configured(): bool {
     return TWILIO_ACCOUNT_SID !== '' && TWILIO_AUTH_TOKEN !== '' && TWILIO_FROM_NUMBER !== '';
 }
@@ -440,6 +453,73 @@ function ms_sms_send(string $toE164, string $body): array {
     return ($code >= 200 && $code < 300)
         ? ['ok' => true, 'http' => $code]
         : ['ok' => false, 'http' => $code, 'response' => substr((string)$resp, 0, 400)];
+}
+
+// ── Anthropic Claude helper ───────────────────────────────────────────────
+// Sends one chat-style request to the Messages API with the provided
+// system prompt + user message. Returns ['ok' => bool, 'text' => string,
+// 'error' => string|null]. No-ops with a clear error when ANTHROPIC_API_KEY
+// is empty, so the AI button on the frontend can show a useful "set
+// up your key in api.php" message instead of a generic failure.
+function ms_anthropic_send(string $system, string $userMsg, int $maxTokens = 1024): array {
+    if (ANTHROPIC_API_KEY === '') {
+        return ['ok' => false, 'error' => 'AI is not configured. Add an Anthropic API key in api.php (look for ANTHROPIC_API_KEY).'];
+    }
+    $payload = json_encode([
+        'model'      => ANTHROPIC_MODEL,
+        'max_tokens' => $maxTokens,
+        'system'     => $system,
+        'messages'   => [['role' => 'user', 'content' => $userMsg]],
+    ]);
+    $url = 'https://api.anthropic.com/v1/messages';
+    $headers = [
+        'x-api-key: ' . ANTHROPIC_API_KEY,
+        'anthropic-version: 2023-06-01',
+        'content-type: application/json',
+    ];
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_TIMEOUT        => 45,
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+        if ($resp === false) return ['ok' => false, 'error' => 'curl: ' . $err];
+        if ($code < 200 || $code >= 300) {
+            return ['ok' => false, 'error' => "Anthropic HTTP {$code}", 'detail' => substr((string)$resp, 0, 600)];
+        }
+    } else {
+        // Streams fallback for hosts without curl
+        $ctx = stream_context_create([
+            'http' => [
+                'method'  => 'POST',
+                'header'  => implode("\r\n", $headers) . "\r\n",
+                'content' => $payload,
+                'timeout' => 45,
+                'ignore_errors' => true,
+            ],
+            'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+        ]);
+        $resp = @file_get_contents($url, false, $ctx);
+        if ($resp === false) return ['ok' => false, 'error' => 'streams request failed'];
+    }
+
+    $data = json_decode($resp, true);
+    if (!is_array($data)) return ['ok' => false, 'error' => 'Invalid JSON from Anthropic'];
+    // Messages API responses come back as { content: [{ type: 'text', text: '...' }, ...] }
+    $text = '';
+    foreach (($data['content'] ?? []) as $part) {
+        if (($part['type'] ?? '') === 'text') $text .= ($part['text'] ?? '');
+    }
+    if ($text === '') return ['ok' => false, 'error' => $data['error']['message'] ?? 'Empty response'];
+    return ['ok' => true, 'text' => trim($text)];
 }
 
 // ── Email helpers ─────────────────────────────────────────────────────────────
@@ -2453,6 +2533,54 @@ switch ($action) {
         if ($portalUrl)    $resp['portal_url']   = $portalUrl;
         if (isset($portalToken)) $resp['portal_token'] = $portalToken;
         echo json_encode($resp);
+        break;
+
+    case 'ai_text_action':
+        // Powers the ✨ AI button on every rich-text field. Receives the
+        // current textarea text plus an `action` key, picks an
+        // appropriate system prompt, and proxies to Anthropic Claude.
+        // The response replaces the field's text on the frontend.
+        $text   = (string)($input['text']   ?? '');
+        $action = (string)($input['action'] ?? '');
+        $custom = trim((string)($input['prompt'] ?? ''));
+        $promptMap = [
+            'improve'        => 'Improve this text — clearer, better-flowing, more polished — but keep the meaning, detail, and tone intact. Return ONLY the improved text, nothing else.',
+            'shorter'        => 'Make this text more concise. Keep all key information; cut filler. Return ONLY the rewritten text, nothing else.',
+            'expand'         => 'Expand this text with more useful detail and helpful context. Stay accurate; do not invent specifics. Return ONLY the expanded text, nothing else.',
+            'fix_grammar'    => 'Fix grammar, spelling, and punctuation. Keep the meaning, voice, and tone unchanged. Return ONLY the corrected text, nothing else.',
+            'professional'   => 'Rewrite this text in a clear, professional, business-appropriate tone. Preserve the substance. Return ONLY the rewritten text, nothing else.',
+            'bullet_summary' => 'Summarize this text as a tight bulleted list. Use \"- \" markers. Return ONLY the bullet list, nothing else.',
+        ];
+        $instruction = $promptMap[$action] ?? '';
+        if ($action === 'custom') {
+            if ($custom === '') {
+                echo json_encode(['success' => false, 'error' => 'Custom prompt is empty.']);
+                break;
+            }
+            $instruction = $custom . "\n\nReturn ONLY the result, nothing else.";
+        } elseif ($instruction === '') {
+            echo json_encode(['success' => false, 'error' => "Unknown action: {$action}"]);
+            break;
+        }
+        if (trim($text) === '' && $action !== 'custom') {
+            echo json_encode(['success' => false, 'error' => 'No text to act on.']);
+            break;
+        }
+        // System prompt sets the agent persona once; user message is
+        // the instruction + the source text. Keeping them separate
+        // lets the model treat the instruction as authoritative.
+        $system = "You are a helpful editor for a product-quoting workbook. You rewrite, shorten, expand, or fix text exactly as requested. Always return only the rewritten text — no preamble, no commentary, no quotes around the result.";
+        $userMsg = $instruction . "\n\n---\n\n" . $text;
+        $r = ms_anthropic_send($system, $userMsg, 2048);
+        if (!($r['ok'] ?? false)) {
+            echo json_encode([
+                'success' => false,
+                'error'   => $r['error'] ?? 'AI request failed',
+                'detail'  => $r['detail'] ?? null,
+            ]);
+            break;
+        }
+        echo json_encode(['success' => true, 'text' => $r['text']]);
         break;
 
     case 'notify_watchers':
