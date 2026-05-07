@@ -6270,6 +6270,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         </div>
       </div>
+
+      <!-- Pallet-specific notes — sits between the pallet view and
+           the container view. Use for pallet-stacking instructions,
+           per-pallet labeling rules, etc. Persisted to
+           detail.palletStackNotes. -->
+      <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border);">
+        <label for="pallet-stack-notes" style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Additional Notes — Pallet</label>
+        <textarea id="pallet-stack-notes" rows="3"
+          placeholder="Notes about the per-pallet build — labeling, stacking rules, fragility callouts, separator material, etc."
+          oninput="if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook()"
+          style="width:100%; box-sizing:border-box; resize:vertical; min-height:64px;"></textarea>
+      </div>
+
       <!-- 40' High Cube container view — wireframe outer container
            with solid pallets stacked inside, so the operator can see
            how the whole shipment sits in a 40 HC. Computes pallets
@@ -6291,13 +6304,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>
 
-      <!-- Additional Notes — free-form notes about the pallet plan
-           (special handling, fragility, separator material, stacking
-           rules, etc.). Persisted to detail.palletNotes. -->
+      <!-- Container-level notes — for whole-shipment instructions
+           (driver pickup, trans-loading rules, customs paperwork
+           callouts, etc.). Persisted to detail.palletNotes (legacy
+           field name from when this was the only notes box). -->
       <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border);">
-        <label for="pallet-notes" style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Additional Notes</label>
+        <label for="pallet-notes" style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Additional Notes — Container / Shipment</label>
         <textarea id="pallet-notes" rows="3"
-          placeholder="Notes about the pallet plan — special handling, fragility, separator material, stacking rules, etc."
+          placeholder="Notes about the whole shipment — special handling, customs paperwork, driver pickup instructions, etc."
           oninput="if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook()"
           style="width:100%; box-sizing:border-box; resize:vertical; min-height:64px;"></textarea>
       </div>
@@ -18363,7 +18377,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const palletDividerEl = document.getElementById('pallet-divider');
       if (palletDividerEl) palletDividerEl.checked = !!data.palletDivider;
       // Free-form pallet notes
-      _s('pallet-notes', data.palletNotes);
+      _s('pallet-notes',       data.palletNotes);
+      _s('pallet-stack-notes', data.palletStackNotes);
       document.getElementById('mat2-wrap').classList.toggle('has-value', !!data.productSubcategory2);
       checkSecondaryLock();
       if (typeof _onMaterialChange === 'function') _onMaterialChange();
@@ -19509,6 +19524,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       palletManualMode: !!document.getElementById('pallet-manual')?.checked,
       palletDivider:    !!document.getElementById('pallet-divider')?.checked,
       palletNotes:      _v('pallet-notes'),
+      palletStackNotes: _v('pallet-stack-notes'),
       materials: _v('materials'),
       pantone: _v('pantone-text'),
       cmyk: _v('cmyk'),
