@@ -6270,6 +6270,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         </div>
       </div>
+      <!-- 40' High Cube container view — wireframe outer container
+           with solid pallets stacked inside, so the operator can see
+           how the whole shipment sits in a 40 HC. Computes pallets
+           per container and total containers needed. -->
+      <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">40' High Cube Container View</div>
+          <div id="container-stats-inline" style="font-size:12px; color:var(--text-muted);"></div>
+        </div>
+        <canvas id="container-canvas" width="900" height="320" style="width:100%; max-width:900px; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+      </div>
+
       <!-- Additional Notes — free-form notes about the pallet plan
            (special handling, fragility, separator material, stacking
            rules, etc.). Persisted to detail.palletNotes. -->
@@ -9501,6 +9513,191 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
+  // ── 40' High Cube container viz ─────────────────────────────────────
+  // Renders the container as a wireframe iso box and the loaded pallets
+  // (with their product stacks on top) as solid boxes inside. Computes
+  // best-fit pallet arrangement on the container floor for either
+  // orientation and falls back to whichever fits more pallets. Updates
+  // the inline "X pallets per HC · Y containers needed" summary.
+  // 40' HC INTERIOR dimensions (cm): 1203 L × 235 W × 269 H
+  const HC_L = 1203, HC_W = 235, HC_H = 269;
+  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm) {
+    const canvas = document.getElementById('container-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const CW = canvas.width, CH = canvas.height;
+    ctx.clearRect(0, 0, CW, CH);
+    const inlineEl = document.getElementById('container-stats-inline');
+
+    // Fit pallets on the container floor — try both orientations.
+    const optA = { cols: Math.floor(HC_L / PALLET_L), rows: Math.floor(HC_W / PALLET_W), pL: PALLET_L, pW: PALLET_W };
+    const optB = { cols: Math.floor(HC_L / PALLET_W), rows: Math.floor(HC_W / PALLET_L), pL: PALLET_W, pW: PALLET_L };
+    const palletLayout = (optA.cols * optA.rows >= optB.cols * optB.rows) ? optA : optB;
+    const palletsPerContainer = palletLayout.cols * palletLayout.rows;
+    const palletsToShow = palletsNeeded > 0
+      ? Math.min(palletsNeeded, palletsPerContainer)
+      : palletsPerContainer; // empty state — show a full container
+
+    // Stack height of each pallet (pallet deck + product stack) — falls
+    // back to a sensible default for the empty preview.
+    const stackTotal = (palletStackHcm && palletStackHcm > 0)
+      ? Math.min(palletStackHcm, HC_H - 2)
+      : Math.min(180, HC_H - 2);
+
+    // Iso projection — shared with the pallet viz. Reserve generous
+    // padding for dim labels around the wireframe.
+    const PAD_X = 70, PAD_TOP = 24, PAD_BOTTOM = 60;
+    const footprintSpan = HC_L + HC_W;
+    const stackSpan = stackTotal + footprintSpan * ISO_SIN30;
+    const s = Math.min(
+      (CW - PAD_X * 2) / (footprintSpan * ISO_COS30),
+      (CH - PAD_TOP - PAD_BOTTOM) / stackSpan
+    );
+    const ox = CW / 2 + (HC_W - HC_L) * ISO_COS30 * s / 2;
+    const oy = stackTotal * s + PAD_TOP;
+
+    // ── Draw pallets (solid) inside the container ─────────────────────
+    let drawn = 0;
+    // Painter's order: back-to-front, bottom-to-top
+    for (let diag = 0; diag <= palletLayout.cols + palletLayout.rows - 2 && drawn < palletsToShow; diag++) {
+      for (let col = Math.max(0, diag - palletLayout.rows + 1); col <= Math.min(diag, palletLayout.cols - 1); col++) {
+        if (drawn >= palletsToShow) break;
+        const row = diag - col;
+        const x = col * palletLayout.pL;
+        const z = row * palletLayout.pW;
+        // Pallet deck (gray)
+        drawIsoBox(ctx, x, 0, z, palletLayout.pL, PALLET_DECK, palletLayout.pW, s, ox, oy, '#a8a8a8');
+        // Product stack (orange) — sits on top of the deck
+        const stackOnly = Math.max(0, stackTotal - PALLET_DECK);
+        if (stackOnly > 0) {
+          drawIsoBox(ctx, x, PALLET_DECK, z, palletLayout.pL, stackOnly, palletLayout.pW, s, ox, oy, '#E8751A');
+        }
+        drawn++;
+      }
+    }
+
+    // ── Draw container as wireframe overlay ───────────────────────────
+    // 12 edges of a box. Use a semi-transparent steel-blue to evoke
+    // the metal container without obscuring the pallets inside.
+    const cv = {
+      bbl: isoProj(0,    0,    0,    s, ox, oy),
+      bbr: isoProj(HC_L, 0,    0,    s, ox, oy),
+      bfl: isoProj(0,    0,    HC_W, s, ox, oy),
+      bfr: isoProj(HC_L, 0,    HC_W, s, ox, oy),
+      tbl: isoProj(0,    HC_H, 0,    s, ox, oy),
+      tbr: isoProj(HC_L, HC_H, 0,    s, ox, oy),
+      tfl: isoProj(0,    HC_H, HC_W, s, ox, oy),
+      tfr: isoProj(HC_L, HC_H, HC_W, s, ox, oy)
+    };
+    const edges = [
+      ['bbl','bbr'],['bfl','bfr'],['bbl','bfl'],['bbr','bfr'], // bottom
+      ['tbl','tbr'],['tfl','tfr'],['tbl','tfl'],['tbr','tfr'], // top
+      ['bbl','tbl'],['bbr','tbr'],['bfl','tfl'],['bfr','tfr']  // verticals
+    ];
+    ctx.strokeStyle = 'rgba(70, 130, 180, 0.55)';
+    ctx.lineWidth = 1.4;
+    edges.forEach(([a, b]) => {
+      ctx.beginPath();
+      ctx.moveTo(cv[a].x, cv[a].y);
+      ctx.lineTo(cv[b].x, cv[b].y);
+      ctx.stroke();
+    });
+
+    // Container roof — light fill so it reads as a solid surface but
+    // the pallets remain visible through the side walls.
+    ctx.fillStyle = 'rgba(70, 130, 180, 0.10)';
+    ctx.beginPath();
+    ctx.moveTo(cv.tbl.x, cv.tbl.y);
+    ctx.lineTo(cv.tbr.x, cv.tbr.y);
+    ctx.lineTo(cv.tfr.x, cv.tfr.y);
+    ctx.lineTo(cv.tfl.x, cv.tfl.y);
+    ctx.closePath();
+    ctx.fill();
+
+    // ── Dim labels (L, W, H) outside the wireframe ────────────────────
+    const allPts = Object.values(cv);
+    const cxBox = allPts.reduce((sum,p) => sum + p.x, 0) / allPts.length;
+    const cyBox = allPts.reduce((sum,p) => sum + p.y, 0) / allPts.length;
+    const sxMin = Math.min(...allPts.map(p => p.x));
+    const outwardPerp = (a, b) => {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      const px = -dy/len, py = dx/len;
+      const midX = (a.x + b.x)/2, midY = (a.y + b.y)/2;
+      const dot = px*(midX - cxBox) + py*(midY - cyBox);
+      return dot >= 0 ? { x: px, y: py } : { x: -px, y: -py };
+    };
+    const TICK = 4;
+    ctx.fillStyle = '#6b7280';
+    ctx.strokeStyle = '#6b7280';
+    ctx.lineWidth = 1;
+    ctx.font = `600 11px -apple-system, BlinkMacSystemFont, sans-serif`;
+    const drawDim = (a, b, labelPos, txt, anchor='center') => {
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.sqrt(dx*dx + dy*dy) || 1;
+      const tpx = -dy/len * TICK, tpy = dx/len * TICK;
+      ctx.beginPath();
+      ctx.moveTo(a.x - tpx, a.y - tpy); ctx.lineTo(a.x + tpx, a.y + tpy);
+      ctx.moveTo(b.x - tpx, b.y - tpy); ctx.lineTo(b.x + tpx, b.y + tpy);
+      ctx.stroke();
+      ctx.textAlign = anchor;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(txt, labelPos.x, labelPos.y);
+    };
+    const fmtFt = (cm) => {
+      const inches = cm / 2.54;
+      const feet   = Math.floor(inches / 12);
+      const inRem  = inches - feet * 12;
+      return inRem < 0.5 ? `${feet}'` : `${feet}'${inRem.toFixed(0)}"`;
+    };
+    // L bracket — front-left-bottom edge
+    {
+      const lOff = 12, lLabelGap = 18;
+      const a0 = cv.bfl, b0 = cv.bfr;
+      const p = outwardPerp(a0, b0);
+      const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
+      const b = { x: b0.x + p.x*lOff, y: b0.y + p.y*lOff };
+      const mid = { x: (a.x + b.x)/2 + p.x*lLabelGap, y: (a.y + b.y)/2 + p.y*lLabelGap };
+      drawDim(a, b, mid, `L ${fmtFt(HC_L)} (${(HC_L/100).toFixed(2)} m)`);
+    }
+    // W bracket — front-right-bottom edge
+    {
+      const wOff = 12, wLabelGap = 18;
+      const a0 = cv.bfr, b0 = cv.bbr;
+      const p = outwardPerp(a0, b0);
+      const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
+      const b = { x: b0.x + p.x*wOff, y: b0.y + p.y*wOff };
+      const mid = { x: (a.x + b.x)/2 + p.x*wLabelGap, y: (a.y + b.y)/2 + p.y*wLabelGap };
+      drawDim(a, b, mid, `W ${fmtFt(HC_W)} (${(HC_W/100).toFixed(2)} m)`);
+    }
+    // H bracket — vertical, OUTSIDE leftmost silhouette
+    {
+      const hX = sxMin - 14;
+      const a = { x: hX, y: cv.tfl.y };
+      const b = { x: hX, y: cv.bfl.y };
+      drawDim(a, b, { x: hX - 6, y: (a.y + b.y)/2 }, `H ${fmtFt(HC_H)} (${(HC_H/100).toFixed(2)} m)`, 'right');
+    }
+    // Container badge label
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = `600 11px -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const badgePt = isoProj(HC_L/2, 0, HC_W, s, ox, oy);
+    ctx.fillText("40' High Cube Container", badgePt.x, badgePt.y + 38);
+
+    // ── Inline summary line ───────────────────────────────────────────
+    if (inlineEl) {
+      const containersNeeded = palletsNeeded > 0 ? Math.ceil(palletsNeeded / palletsPerContainer) : 0;
+      if (palletsNeeded > 0) {
+        inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC &nbsp;·&nbsp; ` +
+          `<strong style="color:var(--accent);">${containersNeeded}</strong> container${containersNeeded === 1 ? '' : 's'} needed for ${palletsNeeded.toLocaleString()} pallets`;
+      } else {
+        inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC <span style="opacity:0.7;">(enter a shipment qty to see containers needed)</span>`;
+      }
+    }
+  }
+
   function renderPalletViz() {
     const canvas = document.getElementById('pallet-canvas');
     if (!canvas) return;
@@ -9533,6 +9730,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       document.getElementById('pallet-stats').innerHTML = `<span style="color:var(--text-muted); font-size:13px;">Enter ${need} dimensions to calculate.</span>`;
       const inlineEl = document.getElementById('pallet-inline-stats');
       if (inlineEl) { inlineEl.style.display = 'none'; inlineEl.textContent = ''; }
+      // Still render an empty-state container preview so the operator
+      // sees the 40' HC capacity badge even before entering dims.
+      if (typeof renderContainerViz === 'function') renderContainerViz(0, 0, PALLET_L, PALLET_W, 0, 0, 0);
       return;
     }
 
@@ -9805,7 +10005,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalCartons.toLocaleString()} ${unitWordP}</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed</div></div>
-          ${unitWeightKg > 0 ? `<div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg * totalCartons + dividerWeightPerPalletKg * (palletsNeeded || 0))}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total shipment weight${dividerOn ? ' <span style=\"opacity:0.7;\">(incl. dividers)</span>' : ''}</div></div>` : (totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>')}
+          ${unitWeightKg > 0 ? `<div>
+            <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg * totalCartons + dividerWeightPerPalletKg * (palletsNeeded || 0) + PALLET_TARE_KG * (palletsNeeded || 0))}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total shipment weight${dividerOn ? ' <span style=\"opacity:0.7;\">(incl. dividers)</span>' : ''}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4; opacity:0.85;">
+              &nbsp;↳ pallets alone: <strong>${fmtWt(PALLET_TARE_KG * (palletsNeeded || 0))}</strong>
+              <span style="opacity:0.7;">(${(palletsNeeded || 0).toLocaleString()} × 45 lb)</span>
+            </div>
+          </div>` : (totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>')}
           ${totalProducts > 0 ? `<div style="grid-column:span 2;"><div style="font-size:22px; font-weight:700; color:var(--text);">${totalProducts.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total products</div></div>` : ''}
         </div>
       </div>` : ''}
@@ -9828,6 +10035,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Refresh shipping tab pallet stats if visible
     syncShippingPalletStats();
+
+    // Refresh the 40' HC container preview using the just-computed
+    // pallet stack height (pallet deck + product stack incl. divider
+    // pad) so the in-container pallets render at the right height.
+    if (typeof renderContainerViz === 'function') {
+      renderContainerViz(palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm);
+    }
   }
 
   let convertingDim = false;
