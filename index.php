@@ -9698,7 +9698,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const unitWeightKg = manualOn
       ? (parseFloat(document.getElementById('dim-weight-kg').value) || 0)
       : (parseFloat(document.getElementById('carton-outer-weight').value) || 0);
-    const palletWeightKg = unitWeightKg > 0 ? unitWeightKg * totalPerPallet : 0;
+    // Divider material weight — when the 4 mm divider option is on,
+    // approximate the cardboard / foam separator weight added per
+    // pallet so the shipment weight stays honest. Model:
+    //   • One full-pallet sheet between each layer + one beneath the
+    //     bottom layer = `maxLayers` sheets per pallet (cap visual at
+    //     showLayers but use maxLayers for the actual stack count).
+    //   • Sheet weight ≈ 0.8 kg/m² (typical 4 mm double-wall corrugated
+    //     cardboard at ~800 g/m²; foam separators are usually lighter
+    //     so this is a conservative estimate).
+    const PALLET_AREA_M2 = (PALLET_L * PALLET_W) / 10000; // cm² → m²
+    const DIVIDER_KG_PER_M2 = 0.8;
+    const dividerSheetKg = PALLET_AREA_M2 * DIVIDER_KG_PER_M2;
+    const dividerSheetsPerPallet = dividerOn ? maxLayers : 0;
+    const dividerWeightPerPalletKg = dividerSheetKg * dividerSheetsPerPallet;
+    const palletWeightKg = unitWeightKg > 0
+      ? (unitWeightKg * totalPerPallet) + dividerWeightPerPalletKg
+      : 0;
     const fmtWt = (kg) => {
       if (!kg || kg <= 0) return '—';
       const lbs = kg * KG_TO_LBS;
@@ -9715,7 +9731,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">surface coverage</div></div>
         ${unitWeightKg > 0 ? `
         <div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / ${unitWord}</div></div>
-        <div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(palletWeightKg)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / pallet</div></div>` : `
+        <div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(palletWeightKg)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / pallet${dividerOn ? ` <span style="opacity:0.75;">(incl. ${fmtWt(dividerWeightPerPalletKg)} dividers)</span>` : ''}</div></div>` : `
         <div style="grid-column:span 2; font-size:11px; color:var(--text-muted); padding:6px 0; line-height:1.5;">
           Enter ${manualOn ? 'product' : 'outer carton'} weight in the dimensions section to see weight per ${unitWord} and per pallet.
         </div>`}
@@ -9728,7 +9744,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalCartons.toLocaleString()} ${unitWordP}</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed</div></div>
-          ${unitWeightKg > 0 ? `<div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg * totalCartons)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total shipment weight</div></div>` : (totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>')}
+          ${unitWeightKg > 0 ? `<div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg * totalCartons + dividerWeightPerPalletKg * (palletsNeeded || 0))}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total shipment weight${dividerOn ? ' <span style=\"opacity:0.7;\">(incl. dividers)</span>' : ''}</div></div>` : (totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>')}
           ${totalProducts > 0 ? `<div style="grid-column:span 2;"><div style="font-size:22px; font-weight:700; color:var(--text);">${totalProducts.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total products</div></div>` : ''}
         </div>
       </div>` : ''}
