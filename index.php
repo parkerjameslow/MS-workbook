@@ -2119,7 +2119,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .specs-box-viz {
       width: 100%;
       height: auto;
-      max-height: 180px;
+      max-height: 220px;
       display: block;
       background: rgba(155,163,192,0.04);
       border: 1px dashed var(--border);
@@ -6048,7 +6048,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <!-- 3D preview — rendered from L/W/H. Falls back to a placeholder
                  message until at least one dimension is filled in. -->
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-product" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-product" class="specs-box-viz" viewBox="0 0 240 180" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
           </div>
         </div>
@@ -6118,7 +6118,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="specs-full-row" id="inner-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-inner" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-inner" class="specs-box-viz" viewBox="0 0 240 180" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
           </div>
         </div>
@@ -6201,7 +6201,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <div class="specs-full-row" id="outer-arrange-hint" style="display:none; margin-top:5px; font-size:11px; color:var(--accent); line-height:1.5;"></div>
             <div class="specs-full-row" style="margin-top:14px;">
-              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 220 160" preserveAspectRatio="xMidYMid meet"></svg>
+              <svg id="viz-outer" class="specs-box-viz" viewBox="0 0 240 180" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
             <!-- Pallet inline stats — below qty -->
             <div class="specs-full-row" id="pallet-inline-stats" style="display:none; margin-top:8px; font-size:11px; color:var(--accent); line-height:1.6;"></div>
@@ -8999,12 +8999,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       const ns = 'http://www.w3.org/2000/svg';
       const txt = document.createElementNS(ns, 'text');
-      txt.setAttribute('x', '100');
-      txt.setAttribute('y', '78');
+      txt.setAttribute('x', '120');
+      txt.setAttribute('y', '90');
       txt.setAttribute('text-anchor', 'middle');
       txt.setAttribute('fill', '#9ba3c0');
       txt.setAttribute('font-family', 'inherit');
-      txt.setAttribute('font-size', '11');
+      txt.setAttribute('font-size', '12');
       txt.setAttribute('font-style', 'italic');
       txt.textContent = 'Enter dimensions';
       svg.appendChild(txt);
@@ -9057,9 +9057,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Fit-to-viewBox scale + center, with padding for L/W/H labels.
     // Left padding sized to fit the horizontal H label ("999.9 cm H")
     // so it reads on a single line matching the L and W labels;
-    // bottom padding for L/W brackets.
-    const VBW = 220, VBH = 160;
-    const PAD_L = 64, PAD_R = 18, PAD_TOP = 8, PAD_BOTTOM = 44;
+    // bottom padding for L/W brackets. Padding is generous so the
+    // larger 13px label text doesn't crash the silhouette.
+    const VBW = 240, VBH = 180;
+    const PAD_L = 78, PAD_R = 22, PAD_TOP = 14, PAD_BOTTOM = 56;
     const allX = Object.values(v).map(p => p.x);
     const allY = Object.values(v).map(p => p.y);
     const minX = Math.min(...allX), maxX = Math.max(...allX);
@@ -9147,7 +9148,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sxMax = Math.max(...allXf.map(p => p.x));
     const syMax = Math.max(...allXf.map(p => p.y));
 
-    const TICK = 3;
+    const TICK = 4;
     const drawDim = (a, b, labelPos, txt, anchor='middle', rotate=0) => {
       // Solid line from a to b with end ticks; text near labelPos
       let textT = '';
@@ -9160,10 +9161,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return { x: -dy/len * TICK, y: dx/len * TICK };
       })();
       return `
-        <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${c}" stroke-width="0.9" />
-        <line x1="${(a.x - perp.x).toFixed(1)}" y1="${(a.y - perp.y).toFixed(1)}" x2="${(a.x + perp.x).toFixed(1)}" y2="${(a.y + perp.y).toFixed(1)}" stroke="${c}" stroke-width="0.9" />
-        <line x1="${(b.x - perp.x).toFixed(1)}" y1="${(b.y - perp.y).toFixed(1)}" x2="${(b.x + perp.x).toFixed(1)}" y2="${(b.y + perp.y).toFixed(1)}" stroke="${c}" stroke-width="0.9" />
-        <text x="${labelPos.x.toFixed(1)}" y="${labelPos.y.toFixed(1)}" text-anchor="${anchor}" fill="${c}" font-family="inherit" font-size="9.5" font-weight="700" ${textT}>${txt}</text>
+        <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${c}" stroke-width="1" />
+        <line x1="${(a.x - perp.x).toFixed(1)}" y1="${(a.y - perp.y).toFixed(1)}" x2="${(a.x + perp.x).toFixed(1)}" y2="${(a.y + perp.y).toFixed(1)}" stroke="${c}" stroke-width="1" />
+        <line x1="${(b.x - perp.x).toFixed(1)}" y1="${(b.y - perp.y).toFixed(1)}" x2="${(b.x + perp.x).toFixed(1)}" y2="${(b.y + perp.y).toFixed(1)}" stroke="${c}" stroke-width="1" />
+        <text x="${labelPos.x.toFixed(1)}" y="${labelPos.y.toFixed(1)}" text-anchor="${anchor}" fill="${c}" font-family="inherit" font-size="13" font-weight="700" ${textT}>${txt}</text>
       `;
     };
 
@@ -9190,31 +9191,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // hang out further away.
 
     // L (length) — bracket along the back-bottom edge bbl→bbr.
-    const lOff = 10;        // bar this far from the box silhouette edge
-    const lLabelGap = 24;   // text baseline this far past the bar
+    const lOff = 12;        // bar this far from the box silhouette edge
+    const lLabelGap = 32;   // text baseline this far past the bar
     const lP = outwardPerp(tBbl, tBbr);
     const lA = { x: tBbl.x + lP.x*lOff, y: tBbl.y + lP.y*lOff };
     const lB = { x: tBbr.x + lP.x*lOff, y: tBbr.y + lP.y*lOff };
-    const lMid = { x: (lA.x + lB.x)/2 + lP.x*lLabelGap, y: (lA.y + lB.y)/2 + lP.y*lLabelGap + 3 };
+    const lMid = { x: (lA.x + lB.x)/2 + lP.x*lLabelGap, y: (lA.y + lB.y)/2 + lP.y*lLabelGap + 4 };
     html += drawDim(lA, lB, lMid, `${L.toFixed(1)} cm L`);
 
     // W (depth) — bracket along the right-bottom edge bfr→bbr.
-    const wOff = 10;
-    const wLabelGap = 24;
+    const wOff = 12;
+    const wLabelGap = 32;
     const wP = outwardPerp(tBfr, tBbr);
     const wA = { x: tBfr.x + wP.x*wOff, y: tBfr.y + wP.y*wOff };
     const wB = { x: tBbr.x + wP.x*wOff, y: tBbr.y + wP.y*wOff };
-    const wMid = { x: (wA.x + wB.x)/2 + wP.x*wLabelGap, y: (wA.y + wB.y)/2 + wP.y*wLabelGap + 3 };
+    const wMid = { x: (wA.x + wB.x)/2 + wP.x*wLabelGap, y: (wA.y + wB.y)/2 + wP.y*wLabelGap + 4 };
     html += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
 
     // H (height) — bracket vertical, hugging the box's left silhouette.
     // Label reads horizontally (no rotation) so it matches the L and W
     // labels: text is right-anchored so its right edge sits a hair to
     // the left of the bracket bar regardless of box width.
-    const hX = sxMin - 8;
+    const hX = sxMin - 12;
     const hA = { x: hX, y: tTbl.y };
     const hB = { x: hX, y: tBbl.y };
-    const hLabelPos = { x: hX - 6, y: (hA.y + hB.y)/2 + 3 };
+    const hLabelPos = { x: hX - 8, y: (hA.y + hB.y)/2 + 4 };
     html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'end', 0);
 
     svg.innerHTML = html;
@@ -9583,8 +9584,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Iso projection — shared with the pallet viz. Generous padding so
     // the W and L labels (which extend down/right) and H label (left)
-    // fit comfortably without clipping.
-    const PAD_LEFT = 90, PAD_RIGHT = 100, PAD_TOP = 24, PAD_BOTTOM = 70;
+    // fit comfortably without clipping. Bumped for the larger 14px
+    // dim labels.
+    const PAD_LEFT = 110, PAD_RIGHT = 120, PAD_TOP = 32, PAD_BOTTOM = 90;
     const footprintSpan = HC_L + HC_W;
     const stackSpan = totalPalletsHeight + footprintSpan * ISO_SIN30;
     const s = Math.min(
@@ -9672,8 +9674,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const TICK = 4;
     ctx.fillStyle = '#6b7280';
     ctx.strokeStyle = '#6b7280';
-    ctx.lineWidth = 1;
-    ctx.font = `600 11px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.lineWidth = 1.2;
+    ctx.font = `700 14px -apple-system, BlinkMacSystemFont, sans-serif`;
     const drawDim = (a, b, labelPos, txt, anchor='center') => {
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       const dx = b.x - a.x, dy = b.y - a.y;
@@ -9694,11 +9696,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return inRem < 0.5 ? `${feet}'` : `${feet}'${inRem.toFixed(0)}"`;
     };
     // Bracket bars sit close to the silhouette; labels are pushed
-    // further out (lLabelGap / wLabelGap) so they read clearly below /
-    // beside the bars instead of floating on top of them.
+    // well past the bars so the larger 14px text never crosses the
+    // bracket bar line.
     // L bracket — front-left-bottom edge
     {
-      const lOff = 14, lLabelGap = 32;
+      const lOff = 16, lLabelGap = 38;
       const a0 = cv.bfl, b0 = cv.bfr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
@@ -9708,7 +9710,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // W bracket — front-right-bottom edge
     {
-      const wOff = 14, wLabelGap = 32;
+      const wOff = 16, wLabelGap = 38;
       const a0 = cv.bfr, b0 = cv.bbr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
@@ -9718,10 +9720,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // H bracket — vertical, OUTSIDE leftmost silhouette
     {
-      const hX = sxMin - 18;
+      const hX = sxMin - 24;
       const a = { x: hX, y: cv.tfl.y };
       const b = { x: hX, y: cv.bfl.y };
-      drawDim(a, b, { x: hX - 8, y: (a.y + b.y)/2 }, `H ${fmtFt(HC_H)} (${(HC_H/100).toFixed(2)} m)`, 'right');
+      drawDim(a, b, { x: hX - 12, y: (a.y + b.y)/2 }, `H ${fmtFt(HC_H)} (${(HC_H/100).toFixed(2)} m)`, 'right');
     }
     // Container badge below the L bracket
     ctx.fillStyle = '#9ca3af';
@@ -9957,12 +9959,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Scale to fit canvas — origin near top, stack grows upward.
     // Reserve padding so the L/W/H dim brackets and labels can sit
-    // OUTSIDE the silhouette without clipping. Generous gaps so labels
-    // don't crowd the bracket bars.
+    // OUTSIDE the silhouette without clipping. Bumped for the larger
+    // 14px dim label text.
     const footprintSpan = PALLET_L + PALLET_W;
     const stackH = PALLET_DECK + showLayers * stackPitchH;
-    const LABEL_PAD_X = 100; // px reserved on each side for H label + W label
-    const LABEL_PAD_Y = 90; // px reserved below for L bracket + footer
+    const LABEL_PAD_X = 120; // px reserved on each side for H label + W label
+    const LABEL_PAD_Y = 110; // px reserved below for L bracket + footer
     const s = Math.min(
       (CW - LABEL_PAD_X * 2) / (footprintSpan * ISO_COS30),
       (CH - LABEL_PAD_Y - 24) / (stackH + footprintSpan * ISO_SIN30)
@@ -10043,16 +10045,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ctx.textBaseline = 'middle';
       ctx.fillText(txt, labelPos.x, labelPos.y);
     };
-    ctx.font = `600 11px -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.lineWidth = 1.2;
+    ctx.font = `700 14px -apple-system, BlinkMacSystemFont, sans-serif`;
     const inSize = (cm) => `${(cm / 2.54).toFixed(0)}"`;
     const cmSize = (cm) => `${cm.toFixed(1)} cm`;
 
     // L bracket — front-left edge bbl(top of diamond) → bfl is W;
     // L runs along bfl(left)→bfr(bottom): the front-left-bottom edge.
     // Match the product viz: place bracket outside this edge. Label
-    // gap is generous so the text never crowds the bracket bar.
+    // gap is generous so the larger 14px text never crowds the bar.
     {
-      const lOff = 14, lLabelGap = 30;
+      const lOff = 16, lLabelGap = 38;
       const a0 = v3.bfl, b0 = v3.bfr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
@@ -10062,7 +10065,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // W bracket — front-right-bottom edge bfr→bbr.
     {
-      const wOff = 14, wLabelGap = 30;
+      const wOff = 16, wLabelGap = 38;
       const a0 = v3.bfr, b0 = v3.bbr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
@@ -10072,21 +10075,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // H bracket — vertical, OUTSIDE the leftmost silhouette point
     // (sxMin), running from top of stack to base. Label sits to the
-    // LEFT of the bar, right-anchored, with extra gap so the text
-    // never overlaps the bracket bar.
+    // LEFT of the bar, right-anchored, with extra gap so the larger
+    // text never overlaps the bracket bar.
     {
-      const hX = sxMin - 22;
+      const hX = sxMin - 28;
       const a = { x: hX, y: v3.tfl.y };
       const b = { x: hX, y: v3.bfl.y };
-      drawDim(a, b, { x: hX - 12, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
+      drawDim(a, b, { x: hX - 14, y: (a.y + b.y)/2 }, `H ${inSize(totalH_cm)} (${cmSize(totalH_cm)})`, 'right');
     }
     // Pallet 40 × 48 footer label sits below the L bracket
     ctx.fillStyle = '#9ca3af';
-    ctx.font = `500 10px -apple-system, sans-serif`;
+    ctx.font = `500 11px -apple-system, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const footPt = isoProj(PALLET_L/2, 0, PALLET_W, s, ox, oy);
-    ctx.fillText('40 × 48 in pallet', footPt.x, footPt.y + 38);
+    ctx.fillText('40 × 48 in pallet', footPt.x, footPt.y + 46);
 
     // Stats — labels swap based on manual mode (units vs cartons).
     // Surface use measures product area only (excludes the divider gap
