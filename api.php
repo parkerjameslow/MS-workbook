@@ -2005,6 +2005,46 @@ switch ($action) {
         echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
         break;
 
+    case 'move_workbook':
+        // Reassign an existing workbook to a different client.
+        // Used by the Client dropdown in Product Overview — when the
+        // operator picks a different client we re-parent the workbook
+        // (no copy, no flow reset). target_client may be a client name
+        // (preferred — matches the dropdown's value) or a client_id.
+        if (empty($input['id'])) {
+            echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
+            break;
+        }
+        $stmt = $pdo->prepare("SELECT id, client_id FROM workbooks WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$input['id']]);
+        $wb = $stmt->fetch();
+        if (!$wb) {
+            echo json_encode(['success' => false, 'error' => 'Workbook not found']);
+            break;
+        }
+        $targetClientId = null;
+        if (!empty($input['target_client_id'])) {
+            $targetClientId = (int) $input['target_client_id'];
+        } elseif (!empty($input['target_client'])) {
+            $cs = $pdo->prepare("SELECT id FROM clients WHERE name = ? AND deleted_at IS NULL");
+            $cs->execute([trim($input['target_client'])]);
+            $cl = $cs->fetch();
+            if ($cl) $targetClientId = (int) $cl['id'];
+        }
+        if (!$targetClientId) {
+            echo json_encode(['success' => false, 'error' => 'Target client not found']);
+            break;
+        }
+        if ((int) $wb['client_id'] === $targetClientId) {
+            // Already there — no-op success
+            echo json_encode(['success' => true, 'id' => $wb['id'], 'new_workbook_id' => $wb['id'], 'unchanged' => true]);
+            break;
+        }
+        $upd = $pdo->prepare("UPDATE workbooks SET client_id = ? WHERE id = ?");
+        $upd->execute([$targetClientId, $wb['id']]);
+        echo json_encode(['success' => true, 'id' => $wb['id'], 'new_workbook_id' => $wb['id']]);
+        break;
+
     case 'dedup_workbooks':
         // Admin-only one-shot cleanup for accidental duplicates created by the
         // seed-retry bug. Groups non-deleted workbooks by (client_id, product_name),

@@ -1966,22 +1966,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rfq-variant-row { /* bg painted inline from parent row */ }
     #rfq-table .rfq-variant-row td { padding: 10px 8px; vertical-align: top; }
     /* The variant name input cell — indent to show nesting under its
-       parent row's Item input. The empty <td>s (handle/sample/SKU) keep
-       their default padding. */
+       parent row's Item input. No vertical bar in the gutter — the
+       indent alone is the nesting cue. The empty <td>s (handle / sample
+       / SKU) keep their default padding. */
     #rfq-table .rfq-variant-row td:nth-child(4) {
       padding-left: 28px;
-      position: relative;
-    }
-    /* Subtle vertical bar in the indent area as a visual nesting cue. */
-    #rfq-table .rfq-variant-row td:nth-child(4)::before {
-      content: "";
-      position: absolute;
-      left: 14px;
-      top: 14px;
-      bottom: 14px;
-      width: 2px;
-      border-radius: 2px;
-      background: rgba(232,117,26,0.35);
     }
 
     /* Samples dashboard status select */
@@ -5652,7 +5641,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="form-grid form-grid-2">
         <div class="field">
           <label>Client Name</label>
-          <input type="text" placeholder="e.g. Acme Corp" id="client-name" />
+          <!-- Dropdown of all clients. Changing the selection MOVES this
+               workbook to the selected client (after a confirmation
+               prompt). Populated by populateClientNameSelect() on
+               workbook open and after the client list is rebuilt. -->
+          <div class="select-wrapper">
+            <select id="client-name" onchange="onWorkbookClientChange(this)">
+              <option value="">Select a client…</option>
+            </select>
+          </div>
         </div>
         <div class="field">
           <label>Product Name</label>
@@ -9385,14 +9382,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const layout = bestPalletOrientation(bL, bW);
     const perLayer = layout.cols * layout.rows;
 
-    // Footprint too large to fit on pallet — wording flips between
-    // "Product" and "Outer carton" depending on which mode we're in,
-    // since manual mode reads from dim-cm-* not carton-outer-*.
+    // Footprint too large to fit on pallet. We do NOT assume overhang —
+    // if a single unit is wider than 40×48 in, then 0 fit per pallet.
+    // The operator should re-check dimensions (likely a unit error like
+    // 220 cm meant 22 cm) or accept this is a corner case for ops to
+    // handle off-system.
     if (perLayer === 0) {
       const noun     = manualOn ? 'Product' : 'Outer carton';
       const lcNoun   = manualOn ? 'product' : 'outer carton';
       const remedy   = manualOn
-        ? 'A 40 × 48 in pallet base can\'t hold this product footprint. If this is a crate that overhangs the pallet, that\'s expected — note it on the shipping plan.'
+        ? 'Double-check the product dimensions — a 40 × 48 in (101.6 × 121.9 cm) pallet base can\'t hold this footprint. If this is intentional (oversized crate), it must be handled outside the pallet calculator.'
         : 'Try reducing the <strong>inner cartons / outer</strong> qty so the outer carton fits on the pallet.';
       ctx.fillStyle = '#aaa';
       ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
@@ -9401,64 +9400,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillText(`${noun}: ${bL.toFixed(1)} × ${bW.toFixed(1)} cm — Pallet: ${PALLET_L} × ${PALLET_W} cm`, CW/2, CH/2 + 10);
       if (!manualOn) ctx.fillText('Try reducing the number of inner cartons per outer.', CW/2, CH/2 + 28);
-
-      // ── Manual mode: even when product overhangs, give the operator
-      // the math they actually need: 1 unit per pallet (overhanging),
-      // and how many pallets are required for the total shipment.
-      // Vertical stacking still applies if max-height allows it.
-      let palletStatsHTML = `
+      document.getElementById('pallet-stats').innerHTML = `
         <div style="color:#f59e0b; font-size:13px; font-weight:600; margin-bottom:8px;">⚠ ${noun} exceeds pallet dimensions</div>
         <div style="font-size:12px; color:var(--text-muted); line-height:1.6;">
           The ${lcNoun} footprint (${bL.toFixed(1)} × ${bW.toFixed(1)} cm) is larger than the 40 × 48 in pallet (101.6 × 121.9 cm).<br><br>
           ${remedy}
         </div>`;
-
-      if (manualOn) {
-        const maxLoadHIn = parseFloat(document.getElementById('pallet-max-height').value) || 60;
-        const maxLoadH = maxLoadHIn * 2.54;
-        const stackable = Math.max(1, Math.floor(maxLoadH / bH));
-        const perPalletOverhang = stackable; // 1 per layer × stack height
-        const totalUnits = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
-        const palletsNeeded = totalUnits > 0 ? Math.ceil(totalUnits / perPalletOverhang) : null;
-        palletStatsHTML += `
-          <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
-            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">Overhang Stacking</div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-              <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perPalletOverhang}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">units / pallet (overhanging, ${stackable} layer${stackable === 1 ? '' : 's'} high)</div></div>
-              <div><div style="font-size:22px; font-weight:700; color:${palletsNeeded ? 'var(--accent)' : 'var(--text-muted)'};">${palletsNeeded != null ? palletsNeeded.toLocaleString() : '—'}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed${totalUnits ? ` for ${totalUnits.toLocaleString()} units` : ' — enter total below'}</div></div>
-            </div>
-          </div>`;
-        // Replace the canvas message with something more useful.
-        ctx.clearRect(0, 0, CW, CH);
-        ctx.fillStyle = '#aaa';
-        ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`Product overhangs pallet — ${perPalletOverhang} unit${perPalletOverhang === 1 ? '' : 's'} per pallet`, CW/2, CH/2 - 18);
-        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
-        ctx.fillText(`Product: ${bL.toFixed(1)} × ${bW.toFixed(1)} × ${bH.toFixed(1)} cm`, CW/2, CH/2 + 4);
-        ctx.fillText(`Pallet base: ${PALLET_L} × ${PALLET_W} cm (40 × 48 in)`, CW/2, CH/2 + 22);
-        if (palletsNeeded != null) {
-          ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, sans-serif';
-          ctx.fillStyle = '#E8751A';
-          ctx.fillText(`${palletsNeeded.toLocaleString()} pallet${palletsNeeded === 1 ? '' : 's'} needed`, CW/2, CH/2 + 50);
-        }
-      }
-
-      document.getElementById('pallet-stats').innerHTML = palletStatsHTML;
       const inlineEl = document.getElementById('pallet-inline-stats');
       if (inlineEl) {
         inlineEl.style.display = '';
-        if (manualOn) {
-          const totalUnits = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
-          const maxLoadHIn = parseFloat(document.getElementById('pallet-max-height').value) || 60;
-          const stackable = Math.max(1, Math.floor((maxLoadHIn * 2.54) / bH));
-          const palletsNeeded = totalUnits > 0 ? Math.ceil(totalUnits / stackable) : null;
-          inlineEl.innerHTML = palletsNeeded != null
-            ? `<span style="color:#f59e0b;">⚠ Product overhangs pallet</span> · <strong>${stackable}</strong> per pallet · <strong>${palletsNeeded.toLocaleString()}</strong> pallets for ${totalUnits.toLocaleString()} units`
-            : `<span style="color:#f59e0b;">⚠ Product overhangs pallet</span> · ${stackable} per pallet (enter total units below)`;
-        } else {
-          inlineEl.innerHTML = `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`;
-        }
+        inlineEl.innerHTML = manualOn
+          ? `<span style="color:#f59e0b;">⚠ Product too large for pallet base — check dimensions</span>`
+          : `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`;
       }
       return;
     }
@@ -17611,7 +17564,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     if (data && !Array.isArray(data) && (data.client || data.product || data.productImages || data.productImage)) {
       // Workbook tab
-      _s('client-name', data.client);
+      // Populate the Client dropdown options first (it's a <select>),
+      // then set the active selection. Falls back to plain .value
+      // assignment if the helper isn't loaded yet (defensive).
+      if (typeof populateClientNameSelect === 'function') {
+        populateClientNameSelect(data.client || currentClient || '');
+      } else {
+        _s('client-name', data.client);
+      }
       _s('product-name', data.product);
       _s('product-desc', data.desc);
       _s('dim-in-l', data.dimInL);
@@ -18006,6 +17966,77 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (item && detail.product) {
       item.product = detail.product;
       item.description = detail.desc || item.description;
+    }
+  }
+
+  /* ── Workbook client dropdown ─────────────────────────────────────────
+     The Client field in Product Overview is a <select> so the operator
+     can either confirm the active client or move the workbook to a
+     different one. Repopulated on workbook open so the option list
+     stays in sync with the sidebar. */
+  function populateClientNameSelect(selected) {
+    const sel = document.getElementById('client-name');
+    if (!sel || sel.tagName !== 'SELECT') return;
+    const names = Object.keys(clientData || {}).sort((a, b) => a.localeCompare(b));
+    // Build options — keep the current value selected even if it isn't
+    // in the client list yet (e.g. after a fresh sidebar reload before
+    // clientData is fully hydrated).
+    const opts = ['<option value="">Select a client…</option>'];
+    let hasSelected = false;
+    names.forEach(n => {
+      const isSel = n === selected;
+      if (isSel) hasSelected = true;
+      const safe = n.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      opts.push(`<option value="${safe}"${isSel ? ' selected' : ''}>${safe}</option>`);
+    });
+    if (selected && !hasSelected) {
+      const safe = selected.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      opts.push(`<option value="${safe}" selected>${safe}</option>`);
+    }
+    sel.innerHTML = opts.join('');
+    // Cache the on-load value so we know what to revert to if the user
+    // cancels a move-confirmation prompt.
+    sel.dataset.previousClient = selected || '';
+  }
+
+  async function onWorkbookClientChange(sel) {
+    const newClient = (sel.value || '').trim();
+    const prevClient = sel.dataset.previousClient || currentClient || '';
+    if (!newClient || newClient === prevClient) {
+      return; // no-op (or "Select a client…" placeholder)
+    }
+    if (!currentWorkbookId) {
+      sel.value = prevClient;
+      return;
+    }
+    const productName = (document.getElementById('product-name')?.value || 'this workbook').trim() || 'this workbook';
+    const ok = confirm(
+      `Move "${productName}" from ${prevClient || '(no client)'} to ${newClient}?\n\n` +
+      `The workbook will move into ${newClient}'s list. This is reversible — you can move it back the same way.`
+    );
+    if (!ok) {
+      sel.value = prevClient;
+      return;
+    }
+    // Persist any in-flight edits before the move so we don't lose them
+    // when the workbook detail is reloaded under the new client key.
+    try { if (typeof autoSaveWorkbook === 'function') await autoSaveWorkbook(); } catch (_) {}
+
+    const wbDbId = dbWorkbookMap[`${prevClient}|${currentWorkbookId}`] || currentWorkbookId;
+    const r = await apiCall('move_workbook', { id: wbDbId, target_client: newClient });
+    if (!r || !r.success) {
+      alert(r && r.error ? r.error : 'Failed to move workbook. Please try again.');
+      sel.value = prevClient;
+      return;
+    }
+    // Refresh client + workbook caches so the sidebar reflects the move,
+    // then navigate to the new (client, workbook) pair.
+    try { await loadFromDatabase(); } catch (_) {}
+    if (typeof rebuildSidebar === 'function') rebuildSidebar();
+    const newWbId = r.new_workbook_id || currentWorkbookId;
+    location.hash = `#/client/${encodeURIComponent(newClient)}/workbook/${newWbId}`;
+    if (typeof showToast === 'function') {
+      showToast(`Moved "${productName}" to ${newClient}`, 'success');
     }
   }
 
