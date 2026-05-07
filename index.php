@@ -6273,13 +6273,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- 40' High Cube container view — wireframe outer container
            with solid pallets stacked inside, so the operator can see
            how the whole shipment sits in a 40 HC. Computes pallets
-           per container and total containers needed. -->
+           per container, total containers needed, double-stacking
+           when pallet height allows, and how much space remains in
+           the last partially-filled container. -->
       <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border);">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
           <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">40' High Cube Container View</div>
           <div id="container-stats-inline" style="font-size:12px; color:var(--text-muted);"></div>
         </div>
-        <canvas id="container-canvas" width="900" height="320" style="width:100%; max-width:900px; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+        <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
+          <div style="flex:1 1 480px; min-width:280px;">
+            <canvas id="container-canvas" width="640" height="320" style="width:100%; max-width:640px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+          </div>
+          <div id="container-side-stats" style="flex:1 1 240px; min-width:220px; max-width:340px;">
+            <!-- populated by renderContainerViz -->
+          </div>
+        </div>
       </div>
 
       <!-- Additional Notes — free-form notes about the pallet plan
@@ -9515,70 +9524,89 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // ── 40' High Cube container viz ─────────────────────────────────────
   // Renders the container as a wireframe iso box and the loaded pallets
-  // (with their product stacks on top) as solid boxes inside. Computes
-  // best-fit pallet arrangement on the container floor for either
-  // orientation and falls back to whichever fits more pallets. Updates
-  // the inline "X pallets per HC · Y containers needed" summary.
+  // (with their product stacks on top) as solid boxes inside. Computes:
+  //   • Best-fit pallet floor arrangement (try both orientations)
+  //   • Vertical stacking — up to 2 layers of pallets if heights allow
+  //   • Total weight, total pallets, space remaining (per-container)
   // 40' HC INTERIOR dimensions (cm): 1203 L × 235 W × 269 H
+  // Cargo planning capacity (per user / standard practice):
+  //   ~67 CBM usable cargo space, 26,000 kg max payload.
   const HC_L = 1203, HC_W = 235, HC_H = 269;
-  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm) {
+  const HC_MAX_KG = 26000;     // max payload (kg)
+  const HC_USABLE_CBM = 67;    // usable cargo volume (m³)
+  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg) {
     const canvas = document.getElementById('container-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const CW = canvas.width, CH = canvas.height;
     ctx.clearRect(0, 0, CW, CH);
     const inlineEl = document.getElementById('container-stats-inline');
+    const sideEl   = document.getElementById('container-side-stats');
 
     // Fit pallets on the container floor — try both orientations.
     const optA = { cols: Math.floor(HC_L / PALLET_L), rows: Math.floor(HC_W / PALLET_W), pL: PALLET_L, pW: PALLET_W };
     const optB = { cols: Math.floor(HC_L / PALLET_W), rows: Math.floor(HC_W / PALLET_L), pL: PALLET_W, pW: PALLET_L };
     const palletLayout = (optA.cols * optA.rows >= optB.cols * optB.rows) ? optA : optB;
-    const palletsPerContainer = palletLayout.cols * palletLayout.rows;
+    const palletsPerLayer = palletLayout.cols * palletLayout.rows;
+
+    // Stack height of each pallet (pallet deck + product stack).
+    // Falls back to ~150 cm for the empty preview.
+    const palletStack = (palletStackHcm && palletStackHcm > 0)
+      ? palletStackHcm
+      : 152;
+    // Vertical layers of pallets that fit in the container (cap at 2 —
+    // double-stacking is industry-standard upper limit for stability;
+    // triple-stacking is rare and we'd overstate capacity).
+    const verticalLayers = Math.max(1, Math.min(2, Math.floor(HC_H / palletStack)));
+    const palletsPerContainer = palletsPerLayer * verticalLayers;
     const palletsToShow = palletsNeeded > 0
       ? Math.min(palletsNeeded, palletsPerContainer)
       : palletsPerContainer; // empty state — show a full container
 
-    // Stack height of each pallet (pallet deck + product stack) — falls
-    // back to a sensible default for the empty preview.
-    const stackTotal = (palletStackHcm && palletStackHcm > 0)
-      ? Math.min(palletStackHcm, HC_H - 2)
-      : Math.min(180, HC_H - 2);
+    // Total visible stack height for canvas scaling.
+    const totalPalletsHeight = Math.min(verticalLayers * palletStack, HC_H);
 
-    // Iso projection — shared with the pallet viz. Reserve generous
-    // padding for dim labels around the wireframe.
-    const PAD_X = 70, PAD_TOP = 24, PAD_BOTTOM = 60;
+    // Iso projection — shared with the pallet viz. Generous padding so
+    // the W and L labels (which extend down/right) and H label (left)
+    // fit comfortably without clipping.
+    const PAD_LEFT = 90, PAD_RIGHT = 100, PAD_TOP = 24, PAD_BOTTOM = 70;
     const footprintSpan = HC_L + HC_W;
-    const stackSpan = stackTotal + footprintSpan * ISO_SIN30;
+    const stackSpan = totalPalletsHeight + footprintSpan * ISO_SIN30;
     const s = Math.min(
-      (CW - PAD_X * 2) / (footprintSpan * ISO_COS30),
+      (CW - PAD_LEFT - PAD_RIGHT) / (footprintSpan * ISO_COS30),
       (CH - PAD_TOP - PAD_BOTTOM) / stackSpan
     );
-    const ox = CW / 2 + (HC_W - HC_L) * ISO_COS30 * s / 2;
-    const oy = stackTotal * s + PAD_TOP;
+    // Center along x — average of the leftmost (0,0,HC_W) and rightmost
+    // (HC_L,0,0) projected x positions.
+    const ox = (CW + (HC_W - HC_L) * ISO_COS30 * s) / 2;
+    const oy = totalPalletsHeight * s + PAD_TOP;
 
     // ── Draw pallets (solid) inside the container ─────────────────────
+    // Layer 0 = bottom, layer 1 = top (when stacked). Each layer is
+    // drawn back-to-front in painter's order. Top layer is drawn after
+    // the bottom one so it overlaps correctly.
     let drawn = 0;
-    // Painter's order: back-to-front, bottom-to-top
-    for (let diag = 0; diag <= palletLayout.cols + palletLayout.rows - 2 && drawn < palletsToShow; diag++) {
-      for (let col = Math.max(0, diag - palletLayout.rows + 1); col <= Math.min(diag, palletLayout.cols - 1); col++) {
-        if (drawn >= palletsToShow) break;
-        const row = diag - col;
-        const x = col * palletLayout.pL;
-        const z = row * palletLayout.pW;
-        // Pallet deck (gray)
-        drawIsoBox(ctx, x, 0, z, palletLayout.pL, PALLET_DECK, palletLayout.pW, s, ox, oy, '#a8a8a8');
-        // Product stack (orange) — sits on top of the deck
-        const stackOnly = Math.max(0, stackTotal - PALLET_DECK);
-        if (stackOnly > 0) {
-          drawIsoBox(ctx, x, PALLET_DECK, z, palletLayout.pL, stackOnly, palletLayout.pW, s, ox, oy, '#E8751A');
+    const stackOnly = Math.max(0, palletStack - PALLET_DECK);
+    for (let layerIdx = 0; layerIdx < verticalLayers && drawn < palletsToShow; layerIdx++) {
+      const layerY = layerIdx * palletStack;
+      for (let diag = 0; diag <= palletLayout.cols + palletLayout.rows - 2 && drawn < palletsToShow; diag++) {
+        for (let col = Math.max(0, diag - palletLayout.rows + 1); col <= Math.min(diag, palletLayout.cols - 1); col++) {
+          if (drawn >= palletsToShow) break;
+          const row = diag - col;
+          const x = col * palletLayout.pL;
+          const z = row * palletLayout.pW;
+          // Pallet deck (gray)
+          drawIsoBox(ctx, x, layerY, z, palletLayout.pL, PALLET_DECK, palletLayout.pW, s, ox, oy, '#a8a8a8');
+          // Product stack (orange) on top of the deck
+          if (stackOnly > 0) {
+            drawIsoBox(ctx, x, layerY + PALLET_DECK, z, palletLayout.pL, stackOnly, palletLayout.pW, s, ox, oy, '#E8751A');
+          }
+          drawn++;
         }
-        drawn++;
       }
     }
 
     // ── Draw container as wireframe overlay ───────────────────────────
-    // 12 edges of a box. Use a semi-transparent steel-blue to evoke
-    // the metal container without obscuring the pallets inside.
     const cv = {
       bbl: isoProj(0,    0,    0,    s, ox, oy),
       bbr: isoProj(HC_L, 0,    0,    s, ox, oy),
@@ -9590,9 +9618,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tfr: isoProj(HC_L, HC_H, HC_W, s, ox, oy)
     };
     const edges = [
-      ['bbl','bbr'],['bfl','bfr'],['bbl','bfl'],['bbr','bfr'], // bottom
-      ['tbl','tbr'],['tfl','tfr'],['tbl','tfl'],['tbr','tfr'], // top
-      ['bbl','tbl'],['bbr','tbr'],['bfl','tfl'],['bfr','tfr']  // verticals
+      ['bbl','bbr'],['bfl','bfr'],['bbl','bfl'],['bbr','bfr'],
+      ['tbl','tbr'],['tfl','tfr'],['tbl','tfl'],['tbr','tfr'],
+      ['bbl','tbl'],['bbr','tbr'],['bfl','tfl'],['bfr','tfr']
     ];
     ctx.strokeStyle = 'rgba(70, 130, 180, 0.55)';
     ctx.lineWidth = 1.4;
@@ -9602,10 +9630,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ctx.lineTo(cv[b].x, cv[b].y);
       ctx.stroke();
     });
-
-    // Container roof — light fill so it reads as a solid surface but
-    // the pallets remain visible through the side walls.
-    ctx.fillStyle = 'rgba(70, 130, 180, 0.10)';
+    // Roof tint — light steel-blue so the container reads as enclosed
+    // but the cargo inside stays visible through the side walls.
+    ctx.fillStyle = 'rgba(70, 130, 180, 0.08)';
     ctx.beginPath();
     ctx.moveTo(cv.tbl.x, cv.tbl.y);
     ctx.lineTo(cv.tbr.x, cv.tbr.y);
@@ -9651,9 +9678,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const inRem  = inches - feet * 12;
       return inRem < 0.5 ? `${feet}'` : `${feet}'${inRem.toFixed(0)}"`;
     };
+    // Bracket bars sit close to the silhouette; labels are pushed
+    // further out (lLabelGap / wLabelGap) so they read clearly below /
+    // beside the bars instead of floating on top of them.
     // L bracket — front-left-bottom edge
     {
-      const lOff = 12, lLabelGap = 18;
+      const lOff = 14, lLabelGap = 32;
       const a0 = cv.bfl, b0 = cv.bfr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*lOff, y: a0.y + p.y*lOff };
@@ -9663,7 +9693,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // W bracket — front-right-bottom edge
     {
-      const wOff = 12, wLabelGap = 18;
+      const wOff = 14, wLabelGap = 32;
       const a0 = cv.bfr, b0 = cv.bbr;
       const p = outwardPerp(a0, b0);
       const a = { x: a0.x + p.x*wOff, y: a0.y + p.y*wOff };
@@ -9673,28 +9703,93 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // H bracket — vertical, OUTSIDE leftmost silhouette
     {
-      const hX = sxMin - 14;
+      const hX = sxMin - 18;
       const a = { x: hX, y: cv.tfl.y };
       const b = { x: hX, y: cv.bfl.y };
-      drawDim(a, b, { x: hX - 6, y: (a.y + b.y)/2 }, `H ${fmtFt(HC_H)} (${(HC_H/100).toFixed(2)} m)`, 'right');
+      drawDim(a, b, { x: hX - 8, y: (a.y + b.y)/2 }, `H ${fmtFt(HC_H)} (${(HC_H/100).toFixed(2)} m)`, 'right');
     }
-    // Container badge label
+    // Container badge below the L bracket
     ctx.fillStyle = '#9ca3af';
-    ctx.font = `600 11px -apple-system, sans-serif`;
+    ctx.font = `500 10px -apple-system, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const badgePt = isoProj(HC_L/2, 0, HC_W, s, ox, oy);
-    ctx.fillText("40' High Cube Container", badgePt.x, badgePt.y + 38);
+    ctx.fillText("40' High Cube Container", badgePt.x, badgePt.y + 50);
 
-    // ── Inline summary line ───────────────────────────────────────────
+    // ── Compute container math ─────────────────────────────────────────
+    const containersNeeded = palletsNeeded > 0 ? Math.ceil(palletsNeeded / palletsPerContainer) : 0;
+    const palletsInLast = palletsNeeded > 0
+      ? (palletsNeeded - (containersNeeded - 1) * palletsPerContainer)
+      : 0;
+    const palletsRoomLeft = Math.max(0, palletsPerContainer - palletsInLast);
+    const palletWeightKg = palletWeightKgArg && palletWeightKgArg > 0 ? palletWeightKgArg : 0;
+    const lastContainerWeightKg = palletWeightKg * palletsInLast;
+    const totalShipmentWeightKg = palletWeightKg * palletsNeeded;
+    const weightRoomLeftKg = palletWeightKg > 0
+      ? Math.max(0, HC_MAX_KG - lastContainerWeightKg)
+      : HC_MAX_KG;
+
+    // ── Inline summary line above the canvas ───────────────────────────
     if (inlineEl) {
-      const containersNeeded = palletsNeeded > 0 ? Math.ceil(palletsNeeded / palletsPerContainer) : 0;
+      const stackTag = verticalLayers > 1 ? ` <span style="opacity:0.7;">(${verticalLayers}-high)</span>` : '';
       if (palletsNeeded > 0) {
-        inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC &nbsp;·&nbsp; ` +
+        inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC${stackTag} &nbsp;·&nbsp; ` +
           `<strong style="color:var(--accent);">${containersNeeded}</strong> container${containersNeeded === 1 ? '' : 's'} needed for ${palletsNeeded.toLocaleString()} pallets`;
       } else {
-        inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC <span style="opacity:0.7;">(enter a shipment qty to see containers needed)</span>`;
+        inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC${stackTag} <span style="opacity:0.7;">(enter shipment qty to see containers needed)</span>`;
       }
+    }
+
+    // ── Side stats panel ───────────────────────────────────────────────
+    if (sideEl) {
+      const fmtKg = (kg) => {
+        if (!kg || kg <= 0) return '0 kg';
+        const lb = kg * 2.20462;
+        return kg < 10
+          ? `${kg.toFixed(2)} kg <span style="color:var(--text-muted); font-weight:500;">/ ${lb.toFixed(2)} lb</span>`
+          : `${kg.toLocaleString('en-US', {maximumFractionDigits:1})} kg <span style="color:var(--text-muted); font-weight:500;">/ ${lb.toLocaleString('en-US', {maximumFractionDigits:1})} lb</span>`;
+      };
+      const stackBadge = verticalLayers > 1
+        ? `<div style="font-size:11px; color:var(--accent); margin-top:4px;">↳ ${verticalLayers}-pallet vertical stacking enabled</div>`
+        : '';
+      const palletsBadge = palletsNeeded > 0
+        ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${containersNeeded} × 40' HC container${containersNeeded === 1 ? '' : 's'}</div>`
+        : '';
+      const remainingBlock = palletsNeeded > 0
+        ? `<div style="margin-top:14px; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
+             <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">
+               Last Container — Room to Fill
+             </div>
+             <div style="font-size:13px; color:var(--text); line-height:1.55;">
+               <div>You can fit <strong style="color:var(--accent);">${palletsRoomLeft}</strong> more pallet${palletsRoomLeft === 1 ? '' : 's'}</div>
+               ${palletWeightKg > 0
+                 ? `<div style="margin-top:4px;">+ <strong style="color:var(--accent);">${fmtKg(weightRoomLeftKg)}</strong> more weight</div>`
+                 : `<div style="margin-top:4px; font-size:11px; color:var(--text-muted);">Enter product / carton weight to see weight remaining</div>`}
+               <div style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
+                 to fill the 40' HC limit of <strong>${HC_USABLE_CBM} CBM</strong> · <strong>${HC_MAX_KG.toLocaleString()} kg</strong>
+               </div>
+             </div>
+           </div>`
+        : `<div style="margin-top:14px; padding:12px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.5;">
+             A single 40' HC fits <strong>${palletsPerContainer}</strong> pallets${verticalLayers > 1 ? ` (${verticalLayers}-high)` : ''}, up to <strong>${HC_USABLE_CBM} CBM</strong> / <strong>${HC_MAX_KG.toLocaleString()} kg</strong>.
+           </div>`;
+      sideEl.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Pallets</div>
+            <div style="font-size:22px; font-weight:700; color:var(--text);">${palletsNeeded.toLocaleString()}</div>
+            ${palletsBadge}
+            ${stackBadge}
+          </div>
+          ${palletWeightKg > 0 ? `
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Weight</div>
+            <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtKg(totalShipmentWeightKg)}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${palletsNeeded.toLocaleString()} pallets × ${fmtKg(palletWeightKg)}</div>
+          </div>` : ''}
+          ${remainingBlock}
+        </div>
+      `;
     }
   }
 
@@ -10043,10 +10138,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     syncShippingPalletStats();
 
     // Refresh the 40' HC container preview using the just-computed
-    // pallet stack height (pallet deck + product stack incl. divider
-    // pad) so the in-container pallets render at the right height.
+    // pallet stack height + per-pallet weight so the side stats panel
+    // can render Total Weight and Space Remaining accurately.
     if (typeof renderContainerViz === 'function') {
-      renderContainerViz(palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm);
+      renderContainerViz(palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm, palletWeightKg);
     }
   }
 
