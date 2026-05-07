@@ -1974,46 +1974,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       user-select: none;
     }
 
-    /* Inline "+ Variant" pill — sits in the actions cell of each RFQ
-       parent row. Tiny + muted by default so it doesn't compete with
-       the line item content for the 95% of cases where variants
-       aren't needed; brightens to accent on hover so it's still
-       discoverable. */
+    /* Inline "+ Variant" button — circular icon button sized to match
+       the × remove span next to it, so the RFQ actions cell stays as
+       narrow as it was before. Tooltip explains what it does. The
+       earlier "+ Variant" text-pill version was wide enough to push
+       the cell off-screen on the wider RFQ tables. */
     .rfq-add-variant-inline {
       display: inline-flex;
       align-items: center;
-      gap: 3px;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
       background: none;
       border: 1px solid var(--border);
-      border-radius: 6px;
       color: var(--text-muted);
-      font-size: 10.5px;
+      font-size: 15px;
       font-weight: 600;
-      padding: 3px 7px;
+      line-height: 1;
+      padding: 0;
+      margin: 0 4px 0 0;
       cursor: pointer;
       font-family: inherit;
-      white-space: nowrap;
-      margin-right: 6px;
+      vertical-align: middle;
       transition: border-color 0.15s, color 0.15s, background 0.15s;
-      letter-spacing: 0.01em;
     }
     .rfq-add-variant-inline:hover {
       border-color: var(--accent);
       color: var(--accent);
-      background: rgba(232,117,26,0.06);
+      background: rgba(232,117,26,0.08);
     }
     .rfq-add-variant-inline:disabled { opacity: 0.4; cursor: not-allowed; }
-    /* On narrow viewports (mobile / split screens) the actions cell
-       runs out of horizontal room for the "+ Variant" pill alongside
-       the × remove. Stack vertically so neither gets pushed off-canvas
-       and both stay tappable. */
-    @media (max-width: 920px) {
-      .rfq-add-variant-inline {
-        display: block;
-        margin: 0 0 6px 0;
-        width: fit-content;
-      }
-    }
 
     /* Pallet view manual-mode checkbox — sits at the top of the pallet
        section. Compact pill so it doesn't compete with the canvas. */
@@ -5756,7 +5747,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="margin-top:18px;">
         <label style="display:block; margin-bottom:8px;">Product Video(s)</label>
         <div class="video-add-row">
-          <input type="text" id="videoUrlInput" placeholder="Paste YouTube, Vimeo, or direct video URL…" onkeydown="if(event.key==='Enter'){addProductVideo();event.preventDefault();}" />
+          <input type="url" id="videoUrlInput" name="videoUrlInput_no_autofill" placeholder="Paste YouTube, Vimeo, or direct video URL…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore="true" data-lpignore="true" data-form-type="other" onkeydown="if(event.key==='Enter'){addProductVideo();event.preventDefault();}" />
           <button class="btn" onclick="addProductVideo()" type="button" style="white-space:nowrap; flex-shrink:0;">Add URL</button>
           <button class="btn" onclick="document.getElementById('videoFileInput').click()" type="button" style="white-space:nowrap; flex-shrink:0;">Browse</button>
         </div>
@@ -9379,23 +9370,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const layout = bestPalletOrientation(bL, bW);
     const perLayer = layout.cols * layout.rows;
 
-    // Carton too large to fit on pallet — show warning instead of empty view
+    // Footprint too large to fit on pallet — wording flips between
+    // "Product" and "Outer carton" depending on which mode we're in,
+    // since manual mode reads from dim-cm-* not carton-outer-*.
     if (perLayer === 0) {
+      const noun     = manualOn ? 'Product' : 'Outer carton';
+      const lcNoun   = manualOn ? 'product' : 'outer carton';
+      const remedy   = manualOn
+        ? 'A 40 × 48 in pallet base can\'t hold this product footprint. If this is a crate that overhangs the pallet, that\'s expected — note it on the shipping plan.'
+        : 'Try reducing the <strong>inner cartons / outer</strong> qty so the outer carton fits on the pallet.';
       ctx.fillStyle = '#aaa';
       ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('Outer carton is too large for a 40 × 48 pallet.', CW/2, CH/2 - 10);
+      ctx.fillText(`${noun} is too large for a 40 × 48 pallet.`, CW/2, CH/2 - 10);
       ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.fillText(`Carton: ${bL.toFixed(1)} × ${bW.toFixed(1)} cm — Pallet: ${PALLET_L} × ${PALLET_W} cm`, CW/2, CH/2 + 10);
-      ctx.fillText('Try reducing the number of inner cartons per outer.', CW/2, CH/2 + 28);
+      ctx.fillText(`${noun}: ${bL.toFixed(1)} × ${bW.toFixed(1)} cm — Pallet: ${PALLET_L} × ${PALLET_W} cm`, CW/2, CH/2 + 10);
+      if (!manualOn) ctx.fillText('Try reducing the number of inner cartons per outer.', CW/2, CH/2 + 28);
       document.getElementById('pallet-stats').innerHTML = `
-        <div style="color:#f59e0b; font-size:13px; font-weight:600; margin-bottom:8px;">⚠ Outer carton exceeds pallet dimensions</div>
+        <div style="color:#f59e0b; font-size:13px; font-weight:600; margin-bottom:8px;">⚠ ${noun} exceeds pallet dimensions</div>
         <div style="font-size:12px; color:var(--text-muted); line-height:1.6;">
-          The outer carton footprint (${bL.toFixed(1)} × ${bW.toFixed(1)} cm) is larger than the 40 × 48 in pallet (101.6 × 121.9 cm).<br><br>
-          Try reducing the <strong>inner cartons / outer</strong> qty so the outer carton fits on the pallet.
+          The ${lcNoun} footprint (${bL.toFixed(1)} × ${bW.toFixed(1)} cm) is larger than the 40 × 48 in pallet (101.6 × 121.9 cm).<br><br>
+          ${remedy}
         </div>`;
       const inlineEl = document.getElementById('pallet-inline-stats');
-      if (inlineEl) { inlineEl.style.display = ''; inlineEl.innerHTML = '<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>'; }
+      if (inlineEl) {
+        inlineEl.style.display = '';
+        inlineEl.innerHTML = manualOn
+          ? `<span style="color:#f59e0b;">⚠ Product too large for pallet base</span>`
+          : `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`;
+      }
       return;
     }
 
@@ -9742,7 +9745,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td style="white-space:nowrap;">
-        <button type="button" class="rfq-add-variant-inline" onclick="addRfqVariantRow(${id})" title="Add a variant under this item">+ Variant</button>
+        <button type="button" class="rfq-add-variant-inline" onclick="addRfqVariantRow(${id})" title="Add a variant under this item" aria-label="Add a variant">+</button>
         <span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove line item">&times;</span>
       </td>
     `;
@@ -17871,22 +17874,56 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Idempotent — safe to re-call when switching workbooks.
       if (typeof initRichEditors === 'function') initRichEditors();
       // Disable browser autofill on every workbook input so Chrome
-      // doesn't dump saved usernames/passwords into random text fields
-      // (Sale Per, Quantity, dimensions, etc.). autocomplete="off" is
-      // sometimes ignored on its own, so we also tag with name + a
-      // unique randomized data-form-1p-ignore for password managers.
+      // doesn't dump saved usernames/passwords (e.g. "Parker Low") into
+      // random text fields (Sale Per, Quantity, dimensions, video URL,
+      // etc.). autocomplete="off" alone is unreliable, so we layer:
+      //   1. HTML-level attributes (autocomplete/data-1p-ignore/etc.)
+      //   2. A scrub pass that clears any value matching the session
+      //      display name (Chrome autofill leaves it behind).
+      //   3. A delayed re-scrub at 600ms because some autofill kicks in
+      //      AFTER the initial paint, AFTER our first sweep.
       try {
         const wbView = document.getElementById('view-workbook');
-        if (wbView) {
+        const sessName = (window.MS_SESSION && (window.MS_SESSION.name || window.MS_SESSION.display_name)) || '';
+        const sessUser = (window.MS_SESSION && window.MS_SESSION.username) || '';
+        // IDs that genuinely could legitimately contain the user's name
+        // (e.g. CTA-name fields). Empty list — the workbook never stores
+        // the session user's name in a data field, so any match is garbage.
+        const allowList = new Set([]);
+        const _scrubAutofill = () => {
+          if (!wbView) return;
           wbView.querySelectorAll('input, textarea, select').forEach(el => {
-            if (el.type === 'checkbox' || el.type === 'radio') return;
+            if (el.type === 'checkbox' || el.type === 'radio' || el.type === 'file') return;
+            // Layer 1 — anti-autofill markup (idempotent)
             if (!el.hasAttribute('autocomplete')) el.setAttribute('autocomplete', 'off');
             if (!el.hasAttribute('autocorrect'))  el.setAttribute('autocorrect', 'off');
             if (!el.hasAttribute('spellcheck'))   el.setAttribute('spellcheck', 'false');
             if (!el.hasAttribute('data-1p-ignore')) el.setAttribute('data-1p-ignore', 'true');
             if (!el.hasAttribute('data-lpignore'))  el.setAttribute('data-lpignore', 'true');
+            if (!el.hasAttribute('data-form-type')) el.setAttribute('data-form-type', 'other');
+            // Layer 2 — clear values that are obvious autofill leftovers
+            if (el.tagName === 'INPUT' && typeof el.value === 'string' && el.value) {
+              const v = el.value.trim();
+              if (allowList.has(el.id)) return;
+              const isUserName = sessName && v.toLowerCase() === sessName.toLowerCase();
+              const isUserId   = sessUser && v.toLowerCase() === sessUser.toLowerCase();
+              if (isUserName || isUserId) {
+                el.value = '';
+                // fire input so any autosave debouncer notices the clear
+                try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+              }
+            }
           });
-        }
+          // The video URL input is an entry-only buffer — workbook load
+          // never writes to it. If it has any value at this point, it
+          // is browser autofill garbage. Always clear it.
+          const vid = document.getElementById('videoUrlInput');
+          if (vid && vid.value) vid.value = '';
+        };
+        _scrubAutofill();
+        // Chrome's autofill sometimes runs AFTER our first sweep — re-check.
+        setTimeout(_scrubAutofill, 600);
+        setTimeout(_scrubAutofill, 1500);
       } catch (e) { /* best-effort — never block the workbook from loading */ }
     }, 200);
   }  // end _fillWorkbookInner
