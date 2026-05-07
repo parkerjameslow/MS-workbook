@@ -12197,7 +12197,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // consume this list, so any fee that's "real" on the Workbook tab is
   // available to apply.
   function collectWorkbookFees() {
-    const get = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+    // Fee inputs are now comma-formatted text inputs (e.g. "7,500.00"),
+    // so plain parseFloat would read "7" and stop at the comma. Route
+    // every read through _msFeeNum which strips commas first.
+    const get = (id) => _msFeeNum(document.getElementById(id));
     const txt = (id) => (document.getElementById(id)?.value || '').trim();
     const std = [
       { id: 'sample',  label: 'Sample Fee(s)',  rmb: get('fee-sample-rmb'),  usd: get('fee-sample-usd'),  desc: txt('fee-sample-desc')  },
