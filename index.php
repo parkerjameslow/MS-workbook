@@ -9841,6 +9841,57 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : `<div style="margin-top:14px; padding:12px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.5;">
              A single 40' HC fits <strong>${palletsPerContainer}</strong> pallets${verticalLayers > 1 ? ` (${verticalLayers}-high)` : ''}, up to <strong>${HC_USABLE_CBM} CBM</strong> / <strong>${HC_MAX_KG.toLocaleString()} kg</strong>.
            </div>`;
+      // ── Optimization tip — can we double-stack pallets if max
+      // height is reduced? Triggers only when current pallet stack is
+      // tall enough that 2× it overflows the 8'10" container interior
+      // AND a smaller stack would actually fit two pallets vertically.
+      // Computes the savings: new pallets/container, new units/pallet,
+      // and a target "Total Units to Ship" that fully fills 1 container.
+      let optimizationTip = '';
+      const currentMaxHeightIn = parseFloat(document.getElementById('pallet-max-height')?.value) || 60;
+      const manualOnInner = !!document.getElementById('pallet-manual')?.checked;
+      const bHcm = manualOnInner
+        ? (parseFloat(document.getElementById('dim-cm-h')?.value) || 0)
+        : (parseFloat(document.getElementById('carton-outer-h-cm')?.value) || 0);
+      const maxStackForDoubleCm = (HC_H - 2 * PALLET_DECK) / 2;
+      const maxStackForDoubleIn = Math.floor(maxStackForDoubleCm / 2.54);
+      if (verticalLayers === 1 && bHcm > 0 && unitsPerPallet > 0 &&
+          currentMaxHeightIn > maxStackForDoubleIn) {
+        const currentLayersInPallet = Math.max(1, Math.floor((currentMaxHeightIn * 2.54) / bHcm));
+        const productsPerLayer     = currentLayersInPallet > 0 ? Math.round(unitsPerPallet / currentLayersInPallet) : 0;
+        const newLayersInPallet    = Math.max(1, Math.floor(maxStackForDoubleCm / bHcm));
+        const newUnitsPerPallet    = productsPerLayer * newLayersInPallet;
+        const newPalletsPerContainer = palletsPerLayer * 2;
+        const newUnitsPerContainer = newUnitsPerPallet * newPalletsPerContainer;
+        const currentUnitsPerContainer = unitsPerPallet * palletsPerLayer;
+        // Only tip the user off if the change would actually IMPROVE
+        // capacity — e.g. very tall products may end up with so few
+        // layers per pallet that a shorter pallet doesn't help.
+        if (newUnitsPerContainer > currentUnitsPerContainer) {
+          const totalLabelWord = (unitWord === 'units' || unitWord === 'unit') ? 'Units' : 'Outer Cartons';
+          const stackedHeightIn = ((currentMaxHeightIn + (PALLET_DECK / 2.54)) * 2).toFixed(0);
+          optimizationTip = `
+            <div style="margin-top:6px; padding:14px; border:1px solid var(--accent); border-radius:8px; background:rgba(232,117,26,0.06);">
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+                <span style="font-size:14px;">💡</span>
+                <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent);">Optimization Tip — Maximize Container</span>
+              </div>
+              <div style="font-size:13px; color:var(--text); line-height:1.55;">
+                Reduce <strong>Max Height</strong> from <strong>${currentMaxHeightIn}"</strong> to <strong>${maxStackForDoubleIn}"</strong> to enable 2-pallet vertical stacking.
+                <span style="color:var(--text-muted);">(Two ${currentMaxHeightIn}" pallets stacked = ~${stackedHeightIn}", which exceeds the 8'10" container interior.)</span>
+              </div>
+              <div style="margin-top:10px; padding:10px; background:rgba(232,117,26,0.08); border-radius:6px; font-size:12px; line-height:1.7;">
+                <div>→ <strong style="color:var(--accent);">${newPalletsPerContainer}</strong> pallets per container <span style="color:var(--text-muted);">(was ${palletsPerContainer})</span></div>
+                <div>→ <strong style="color:var(--accent);">${newUnitsPerPallet.toLocaleString()}</strong> ${unitWord} per pallet <span style="color:var(--text-muted);">(was ${unitsPerPallet.toLocaleString()})</span></div>
+                <div>→ <strong style="color:var(--accent);">${newUnitsPerContainer.toLocaleString()}</strong> ${unitWord} per fully-loaded container</div>
+              </div>
+              <div style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
+                ↳ Set <strong>Total ${totalLabelWord} to Ship</strong> to <strong>${newUnitsPerContainer.toLocaleString()}</strong> to fully fill one container.
+              </div>
+            </div>`;
+        }
+      }
+
       sideEl.innerHTML = `
         <div style="display:flex; flex-direction:column; gap:14px;">
           <div>
@@ -9862,6 +9913,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${fmtCbm(palletCbm)} per pallet × ${palletsNeeded.toLocaleString()} pallets</div>
           </div>` : ''}
           ${remainingBlock}
+          ${optimizationTip}
         </div>
       `;
     }
