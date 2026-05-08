@@ -6327,8 +6327,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div id="container-stats-inline" style="font-size:12px; color:var(--text-muted);"></div>
         </div>
         <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
-          <div style="flex:1 1 600px; min-width:300px;">
+          <div style="flex:1 1 600px; min-width:300px; display:flex; flex-direction:column; gap:14px;">
             <canvas id="container-canvas" width="800" height="380" style="width:100%; max-width:800px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+            <!-- Last Container — Room to Fill lives here so it fills the
+                 white space directly under the container 3D viz, instead
+                 of cramping the right stats panel. Populated by
+                 renderContainerViz. -->
+            <div id="container-fill-room"></div>
           </div>
           <div id="container-side-stats" style="flex:1 1 240px; min-width:220px; max-width:340px;">
             <!-- populated by renderContainerViz -->
@@ -9813,6 +9818,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     ctx.clearRect(0, 0, CW, CH);
     const inlineEl = document.getElementById('container-stats-inline');
     const sideEl   = document.getElementById('container-side-stats');
+    const fillEl   = document.getElementById('container-fill-room');
 
     // Fit pallets on the container floor — try both orientations.
     const optA = { cols: Math.floor(HC_L / PALLET_L), rows: Math.floor(HC_W / PALLET_W), pL: PALLET_L, pW: PALLET_W };
@@ -10179,17 +10185,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const targetFillWithLoose  = targetFillPallets + looseFit * productsPerItem;
       const upBtn = `display:inline-flex; align-items:center; gap:4px; padding:2px 8px; font-size:10px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:4px; cursor:pointer; white-space:nowrap; margin-left:6px; vertical-align:middle;`;
 
-      // ── Last Container — Room to Fill (collapsed by default) ─────────
-      // Wrapped in a <details> element so the operator only sees the
-      // panel when they explicitly want to top off / fill. After a
+      // ── Last Container — Room to Fill (always expanded) ──────────────
+      // <details open> so the operator can always see the Fill / Top-Off
+      // controls + remaining-room stats. The summary still acts as a
+      // collapse handle if they want to hide it temporarily. After a
       // successful Top Off, the body shows 0 across the board (the
       // loose-CBM-consumed subtraction above zeros out room-left).
       // <summary>'s default disclosure triangle is suppressed via
-      // ::-webkit-details-marker / list-style:none in the global CSS;
-      // a custom chevron is inlined here instead. The Fill / Top-Off
-      // buttons live INSIDE the body so they only render when expanded.
+      // list-style:none; a custom chevron is inlined instead.
       const remainingBlock = palletsNeeded > 0
-        ? `<details style="margin-top:14px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
+        ? `<details open style="margin-top:14px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
              <summary style="list-style:none; padding:10px 12px; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; user-select:none;">
                <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">
                  Last Container — Room to Fill
@@ -10265,9 +10270,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtCbm(totalShipmentCbm)}</div>
             <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${fmtCbm(palletCbm)} per pallet × ${palletsNeeded.toLocaleString()} pallets</div>
           </div>` : ''}
-          ${remainingBlock}
         </div>
       `;
+      // Render the Last Container — Room to Fill block in its own slot
+      // beneath the container 3D viz so it fills the white space there
+      // instead of crowding the side stats panel.
+      if (fillEl) fillEl.innerHTML = remainingBlock;
+    } else if (fillEl) {
+      fillEl.innerHTML = '';
     }
   }
 
@@ -10352,12 +10362,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           : `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`;
       }
       // Even when the current box overhangs, surface a fit suggestion
-      // if shrinking the footprint by ≤30% lands a clean grid. Helps
-      // the operator when their first cut is just slightly too large
-      // (e.g. 110 × 130 cm needs 101 × 121 to fit a 1 × 1).
+      // if an outer carton is filled in and shrinking it lands a clean
+      // grid. Same outer-carton-required gate as the non-overhang path.
       const _maxHIn = parseFloat(document.getElementById('pallet-max-height')?.value) || 60;
+      const _oL = parseFloat(document.getElementById('carton-outer-l-cm')?.value);
+      const _oW = parseFloat(document.getElementById('carton-outer-w-cm')?.value);
+      const _oH = parseFloat(document.getElementById('carton-outer-h-cm')?.value);
       if (typeof _renderPalletFitSuggestion === 'function') {
-        _renderPalletFitSuggestion(bL, bW, bH, padCm, _maxHIn * 2.54, manualOn, 0, 1, 0);
+        if (_oL > 0 && _oW > 0 && _oH > 0) {
+          _renderPalletFitSuggestion(_oL, _oW, _oH, 0, _maxHIn * 2.54, false, 0, 1, 0);
+        } else {
+          const sugHost = document.getElementById('pallet-fit-suggestion');
+          if (sugHost) { sugHost.style.display = 'none'; sugHost.innerHTML = ''; }
+        }
       }
       return;
     }
@@ -10834,12 +10851,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Pallet Fit Suggestion ────────────────────────────────────────
     // Surface a one-click "use these dims instead" panel under the 3D
-    // pallet viz when the current outer-carton (or product) footprint
-    // wastes pallet space, when it overhangs the 40 × 48 base, or when
-    // shaving a bit off the height would unlock another full layer.
+    // pallet viz when the outer-carton footprint wastes pallet space,
+    // overhangs the 40 × 48 base, or could trim height for an extra
+    // layer. Per spec the suggestion ONLY runs when an outer carton
+    // L / W / H is filled in — manual-mode product dims don't trigger
+    // it, and a partially-filled outer carton column suppresses it.
     if (typeof _renderPalletFitSuggestion === 'function') {
-      _renderPalletFitSuggestion(bL, bW, bH, padCm, maxLoadH, manualOn,
-                                 perLayer, maxLayers, totalPerPallet);
+      const oL = parseFloat(document.getElementById('carton-outer-l-cm')?.value);
+      const oW = parseFloat(document.getElementById('carton-outer-w-cm')?.value);
+      const oH = parseFloat(document.getElementById('carton-outer-h-cm')?.value);
+      if (oL > 0 && oW > 0 && oH > 0) {
+        // Always size the suggestion against the OUTER CARTON, even in
+        // manual mode (the user explicitly asked for outer-carton fit
+        // tips, not product fit tips). Re-derive perLayer / maxLayers
+        // from the outer carton dims since the live `bL/bW/bH` may be
+        // product dims in manual mode.
+        const oLayout    = bestPalletOrientation(oL + 0, oW + 0);
+        const oPerLayer  = (oLayout.cols || 0) * (oLayout.rows || 0);
+        const oMaxLayers = Math.max(1, Math.floor(maxLoadH / (oH || 1)));
+        const oTotalPerPallet = oPerLayer * oMaxLayers;
+        _renderPalletFitSuggestion(oL, oW, oH, 0, maxLoadH, false,
+                                   oPerLayer, oMaxLayers, oTotalPerPallet);
+      } else {
+        const sugHost = document.getElementById('pallet-fit-suggestion');
+        if (sugHost) { sugHost.style.display = 'none'; sugHost.innerHTML = ''; }
+      }
     }
   }
 
