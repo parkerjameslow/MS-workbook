@@ -6289,7 +6289,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <input type="number" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons"
               style="width:100%; box-sizing:border-box;"
-              oninput="renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();" />
+              oninput="this.dataset.looseTopOff=''; renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();" />
             <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Auto-filled from <strong>RFQ Grand Total qty</strong> — override if shipping a partial.</div>
           </div>
         </div>
@@ -9632,7 +9632,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
-  function applyTotalUnitsSuggestion(units) {
+  function applyTotalUnitsSuggestion(units, looseUnitsCount) {
     const el = document.getElementById('pallet-total-cartons');
     if (!el) return;
     const v = parseInt(units);
@@ -9642,6 +9642,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // overwritten by the next RFQ recalc — this is an explicit
     // override applied via the suggestion button.
     el.dataset.lastRfqSync = ''; // let the override stand
+    // When the operator clicks "↻ Top Off", we receive a positive
+    // looseUnitsCount — the products that should be shipped LOOSE
+    // (cardboard, no pallet) inside the leftover container CBM. The
+    // container viz reads this flag to render those products in blue
+    // so they're visually distinct from the orange palletized goods.
+    // Cleared when the operator types a new value into the input.
+    if (looseUnitsCount && looseUnitsCount > 0) {
+      el.dataset.looseTopOff = String(looseUnitsCount);
+    } else {
+      el.dataset.looseTopOff = '';
+    }
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
@@ -9856,6 +9867,70 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             drawIsoBox(ctx, x, layerY + PALLET_DECK, z, palletLayout.pL, stackOnly, palletLayout.pW, s, ox, oy, '#E8751A');
           }
           drawn++;
+        }
+      }
+    }
+
+    // ── Draw loose top-off load (BLUE) when active ────────────────────
+    // The "↻ Top Off" button on the Last Container card sets a flag
+    // on the Total Units input meaning "the products beyond the
+    // palletized count are loose-loaded cardboard boxes filling the
+    // leftover container CBM". Render those in BLUE, stacked above
+    // the pallets in whatever vertical headroom + footprint area is
+    // still free, so the operator can see what their top-off looks
+    // like next to the palletized cargo.
+    const looseTopOffStr = document.getElementById('pallet-total-cartons')?.dataset.looseTopOff || '';
+    const looseTopOffUnits = parseInt(looseTopOffStr) || 0;
+    if (looseTopOffUnits > 0 && palletsToShow > 0) {
+      // Determine box size + how many fit. Size = the same product/
+      // outer-carton dims the user is tracking (drawCellL/W are the
+      // pallet-cell sizes; we want the actual box, which is what
+      // _shipUnit uses on the shipping side). Pull from DOM.
+      const _manualOn = !!document.getElementById('pallet-manual')?.checked;
+      const get = id => parseFloat(document.getElementById(id)?.value) || 0;
+      const boxL = _manualOn ? get('dim-cm-l') : get('carton-outer-l-cm');
+      const boxW = _manualOn ? get('dim-cm-w') : get('carton-outer-w-cm');
+      const boxH = _manualOn ? get('dim-cm-h') : get('carton-outer-h-cm');
+      // Convert the loose-units count (in PRODUCTS) to the number of
+      // BOXES we'll render. In manual mode 1 product = 1 box; in
+      // carton mode each box holds productsPerOuter products.
+      const _innerQty = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+      const _outerQty = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+      const _ppo = (_innerQty > 0 && _outerQty > 0) ? _innerQty * _outerQty : 0;
+      const productsPerBox = _manualOn ? 1 : (_ppo || 1);
+      const looseBoxesToDraw = Math.max(0, Math.ceil(looseTopOffUnits / productsPerBox));
+      if (boxL > 0 && boxW > 0 && boxH > 0 && looseBoxesToDraw > 0) {
+        // Floor space the loose boxes get is whatever the pallets
+        // didn't claim: pallets occupy palletLayout.cols × pL by
+        // palletLayout.rows × pW. Available headroom is HC_H minus
+        // top-of-pallets. Stack loose boxes in the headroom above the
+        // pallets, filling the entire footprint.
+        const palletsTopY = verticalLayers * palletStack;
+        const headroom = Math.max(0, HC_H - palletsTopY);
+        if (headroom >= boxH) {
+          const looseColsX = Math.floor(HC_L / boxL);
+          const looseColsZ = Math.floor(HC_W / boxW);
+          const loosePerLayer = looseColsX * looseColsZ;
+          const looseLayers   = Math.min(Math.floor(headroom / boxH), Math.ceil(looseBoxesToDraw / Math.max(1, loosePerLayer)));
+          let looseDrawn = 0;
+          // Center the loose stack on the container floor for clarity.
+          const looseOffX = Math.max(0, (HC_L - looseColsX * boxL) / 2);
+          const looseOffZ = Math.max(0, (HC_W - looseColsZ * boxW) / 2);
+          const looseColor = '#3b82f6'; // blue-500
+          for (let ly = 0; ly < looseLayers && looseDrawn < looseBoxesToDraw; ly++) {
+            for (let diag = 0; diag <= looseColsX + looseColsZ - 2 && looseDrawn < looseBoxesToDraw; diag++) {
+              for (let cx = Math.max(0, diag - looseColsZ + 1); cx <= Math.min(diag, looseColsX - 1); cx++) {
+                if (looseDrawn >= looseBoxesToDraw) break;
+                const cz = diag - cx;
+                drawIsoBox(ctx,
+                  looseOffX + cx * boxL,
+                  palletsTopY + ly * boxH,
+                  looseOffZ + cz * boxW,
+                  boxL, boxH, boxW, s, ox, oy, looseColor);
+                looseDrawn++;
+              }
+            }
+          }
         }
       }
     }
@@ -10087,7 +10162,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
                  <div style="font-size:11px; font-weight:700; color:var(--accent);">↳ Top-Off Capacity</div>
-                 <button type="button" style="${upBtn}" onclick="applyTotalUnitsSuggestion(${targetFillWithLoose})" title="Bump Total Units to ${targetFillWithLoose.toLocaleString()} (pallets + loose top-off)">↻ Top Off</button>
+                 <button type="button" style="${upBtn}" onclick="applyTotalUnitsSuggestion(${targetFillWithLoose}, ${looseFit * productsPerItem})" title="Bump Total Units to ${targetFillWithLoose.toLocaleString()} — pallets + loose top-off in blue">↻ Top Off</button>
                </div>
                <div style="font-size:13px; color:var(--text); line-height:1.5;">
                  You could top off the last container with up to
@@ -10560,7 +10635,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   <span>↳ Fill 1 container w/ loose top-off:</span>
                   <strong>${looseTotal.toLocaleString()}</strong>
                   <span style="color:var(--text-muted);">${unitWordP}</span>
-                  <button type="button" style="${upBtnStyle}" onclick="applyTotalUnitsSuggestion(${looseTotal})" title="Set Total Units to Ship to ${looseTotal.toLocaleString()}">↻ Update Units</button>
+                  <button type="button" style="${upBtnStyle}" onclick="applyTotalUnitsSuggestion(${looseTotal}, ${looseFitInRemaining * (manualOn ? 1 : ((parseInt(document.getElementById('carton-inner-count')?.value)||0) * (parseInt(document.getElementById('carton-outer-count')?.value)||0) || 1))})" title="Set Total Units to ${looseTotal.toLocaleString()} — pallets + loose top-off in blue">↻ Update Units</button>
                 </div>` : ''}
               </div>
             </div>`;
