@@ -11402,80 +11402,91 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // PDF and the emailed report stay identical.
   function _buildPalletCalcSuggestions(r) {
     if (!r) return [];
+    // Trimmed to the three suggestions the operator actually asked for:
+    //   1. Total pallets needed for the entered qty + dims
+    //   2. Suggested footprint that improves pallet fit (only when a
+    //      meaningfully better arrangement exists within ±30% of the
+    //      current carton)
+    //   3. Estimated 40' HC containers (with double-stack heuristic)
+    // The order below matches the on-screen + emailed report.
     const HC_INT_H = 269, PALLET_DECK = 15;
     const stackTotalCm = PALLET_DECK + r.maxLayers * r.pkgH;
-    const stackTotalIn = stackTotalCm / 2.54;
     const fitsDouble   = stackTotalCm <= (HC_INT_H / 2);
-    const dynamic = [];
-    // Surface coverage tips
-    if (r.surfaceUse > 0 && r.surfaceUse < 70) {
-      dynamic.push({
-        kind: 'warn',
-        title: `Low pallet coverage — ${r.surfaceUse}%`,
-        body: `Only ${r.surfaceUse}% of the ${r.palLabel.split(' (')[0]} surface is used. Consider sizing the carton to a divisor of the pallet (e.g. ${(r.palL / Math.max(1, r.layoutCols + 1)).toFixed(1)} × ${(r.palW / Math.max(1, r.layoutRows + 1)).toFixed(1)} cm) for tighter packing and fewer pallets per shipment.`
-      });
-    } else if (r.surfaceUse >= 90) {
-      dynamic.push({
-        kind: 'good',
-        title: `Excellent surface coverage — ${r.surfaceUse}%`,
-        body: `Cartons fill the pallet near-perfectly (${r.layoutCols} × ${r.layoutRows} per layer). No floor-plan changes recommended.`
-      });
-    }
-    // Heavy load callout
-    if (r.pkgWtKg > 15) {
-      dynamic.push({
-        kind: 'warn',
-        title: 'Heavy carton — keep it on the pallet base',
-        body: `At ${r.pkgWtKg.toFixed(1)} kg per carton, place the lowest layer first and rotate carton facings so weight distributes evenly across the deck. Strap with poly bands every 3–4 layers.`
-      });
-    }
-    // Vertical stacking inside the 40' HC
-    if (fitsDouble) {
-      dynamic.push({
-        kind: 'good',
-        title: '2-pallet vertical stacking enabled',
-        body: `This pallet stacks at <strong>${stackTotalIn.toFixed(0)}"</strong> (${stackTotalCm.toFixed(0)} cm) — under the 53" double-stack threshold. Two pallets fit vertically in a 40' HC, doubling container throughput.`
-      });
-    } else {
-      const targetIn = Math.floor((HC_INT_H / 2 - PALLET_DECK) / 2.54);
-      dynamic.push({
-        kind: 'tip',
-        title: 'Consider trimming the load height for double-stacking',
-        body: `Stack height is <strong>${stackTotalIn.toFixed(0)}"</strong>. Reducing it to ≤ <strong>${targetIn}"</strong> per pallet would let two pallets stack vertically inside an 8'10" 40' HC — roughly doubling pallets per container.`
-      });
-    }
-    // Total weight per pallet sanity
-    if (r.palletWtKg > 1000) {
-      dynamic.push({
-        kind: 'warn',
-        title: 'Pallet weight near forklift limit',
-        body: `At <strong>${r.palletWtKg.toFixed(0)} kg</strong> per pallet, you're near the typical 1,000 kg single-fork max. Verify the forklift class at both the origin and destination terminals before booking.`
-      });
-    }
-    // Pallets-per-container quick math
+    const out = [];
+
+    // 1) Total pallets needed at the entered dims.
     if (r.totalQty > 0 && r.palletsNeeded > 0) {
-      const palletsPerContainer = fitsDouble ? 36 : 18; // approx for 40' HC
+      out.push({
+        kind: 'info',
+        title: `${r.palletsNeeded.toLocaleString()} pallet${r.palletsNeeded === 1 ? '' : 's'} needed`,
+        body: `Shipping <strong>${r.totalQty.toLocaleString()}</strong> units at <strong>${(r.totalPerPallet || 0).toLocaleString()}</strong> per pallet (${r.layoutCols} × ${r.layoutRows} per layer × ${r.maxLayers} layers) at the entered dims.`
+      });
+    } else if (r.totalQty <= 0) {
+      out.push({
+        kind: 'tip',
+        title: 'Enter a Total qty to see pallets needed',
+        body: `Add a Total qty above and the calculator will tell you how many pallets are required at <strong>${(r.totalPerPallet || 0).toLocaleString()}</strong> ${(r.totalPerPallet || 0) === 1 ? 'unit' : 'units'} per pallet.`
+      });
+    }
+
+    // 2) Suggested footprint — search a small grid of cols × rows
+    //    that divide the pallet evenly, score by per-pallet count,
+    //    keep the best one within ±30% per axis of the current dims.
+    const MIN_DIM = 5, MAX_DELTA = 0.30;
+    const palL = r.palL, palW = r.palW;
+    const curUpp = (r.totalPerPallet || 0);
+    let best = null;
+    const consider = (newL, newW, cols, rows) => {
+      if (newL < MIN_DIM || newW < MIN_DIM) return;
+      if (newL * cols > palL + 0.1) return;
+      if (newW * rows > palW + 0.1) return;
+      const lDelta = Math.abs(newL - r.pkgL) / r.pkgL;
+      const wDelta = Math.abs(newW - r.pkgW) / r.pkgW;
+      if (lDelta > MAX_DELTA || wDelta > MAX_DELTA) return;
+      const upp = cols * rows * r.maxLayers;
+      const closeness = -(lDelta + wDelta);
+      if (!best || upp > best.upp ||
+          (upp === best.upp && closeness > best.closeness)) {
+        best = { newL, newW, cols, rows, upp, closeness };
+      }
+    };
+    if (palL > 0 && palW > 0 && r.pkgL > 0 && r.pkgW > 0) {
+      for (let cols = 1; cols <= 10; cols++) {
+        for (let rows = 1; rows <= 10; rows++) {
+          consider(palL / cols, palW / rows, cols, rows);
+          consider(palW / cols, palL / rows, cols, rows);
+        }
+      }
+    }
+    if (best && best.upp > curUpp) {
+      const fmt = (cm) => r.unit === 'in'
+        ? `${(cm / 2.54).toFixed(1)}"`
+        : `${cm.toFixed(1)} cm`;
+      const gain = best.upp - curUpp;
+      const gainPct = curUpp > 0 ? Math.round((gain / curUpp) * 100) : 0;
+      const newPallets = (r.totalQty > 0 && best.upp > 0)
+        ? Math.ceil(r.totalQty / best.upp) : 0;
+      const palletDelta = (r.palletsNeeded || 0) - newPallets;
+      out.push({
+        kind: 'tip',
+        title: `Try ${fmt(best.newL)} × ${fmt(best.newW)} carton for a tighter fit`,
+        body: `Resizing to <strong>${fmt(best.newL)} × ${fmt(best.newW)} × ${fmt(r.pkgH)}</strong> packs <strong>${best.cols} × ${best.rows}</strong> per layer (${best.upp.toLocaleString()} per pallet — +${gain.toLocaleString()}, +${gainPct}%)${newPallets > 0 ? `. Drops pallets needed to <strong>${newPallets.toLocaleString()}</strong>${palletDelta > 0 ? ` (saves ${palletDelta.toLocaleString()})` : ''}` : ''}.`
+      });
+    }
+
+    // 3) Estimated 40' HC containers — uses the same double-stack
+    //    heuristic as the workbook view (stack height ≤ 134.5 cm
+    //    fits two pallets vertically).
+    if (r.totalQty > 0 && r.palletsNeeded > 0) {
+      const palletsPerContainer = fitsDouble ? 36 : 18;
       const containers = Math.ceil(r.palletsNeeded / palletsPerContainer);
-      dynamic.push({
+      out.push({
         kind: 'info',
         title: `Estimated ${containers} × 40' HC container${containers === 1 ? '' : 's'}`,
-        body: `${r.palletsNeeded.toLocaleString()} pallets ÷ ${palletsPerContainer} per container ${fitsDouble ? '(2-stacked)' : '(single layer)'} = ${containers} container${containers === 1 ? '' : 's'}. Heavy pallets load first against the back wall; lighter / fragile pallets ride near the doors so they're unloaded first.`
+        body: `${r.palletsNeeded.toLocaleString()} pallets ÷ ${palletsPerContainer} per container ${fitsDouble ? '(2-stacked vertically)' : '(single layer — stack too tall to double up)'} = <strong>${containers}</strong> 40' HC container${containers === 1 ? '' : 's'}.`
       });
     }
-    // Static best-practices — always shown.
-    const staticTips = [
-      { kind:'tip', title:'Heavy on bottom, light on top',
-        body:'Build pallets bottom-heavy. Rotate carton orientation between layers so vertical seams don\'t line up — this is called "interlocking" and stops the column from shearing in transit.' },
-      { kind:'tip', title:'Label faces outward',
-        body:'Position carton labels so SKU + quantity are visible from at least two sides of the pallet. Receivers can scan without re-stacking.' },
-      { kind:'tip', title:'Strap + stretch-wrap',
-        body:'Top-strap with two poly bands crossed over the top layer, then stretch-wrap the column tightly with corner protectors at all four corners (typically 80 ga / 20 µm film, 4–5 revolutions).' },
-      { kind:'tip', title:'Container loading order',
-        body:'Heaviest pallets load first against the nose (front) of the container. Lighter and short-stacked pallets ride near the doors so weight stays balanced over the rear axle.' },
-      { kind:'tip', title:'Brace the load',
-        body:'Use load bars or airbags between pallet rows to stop sliding. A 40\' HC at 95% utilization with no bracing will shift 2–4" during ocean transit — enough to crush carton corners.' },
-    ];
-    return [...dynamic, ...staticTips];
+    return out;
   }
 
   function _renderDimsCalcOptimization(r) {
