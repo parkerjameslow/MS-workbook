@@ -7996,7 +7996,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            that POSTs the run + canvas image to api.php. -->
       <button type="button" id="dc-email-toggle-btn" onclick="toggleDimsCalcEmailForm()" disabled
         style="font-size:12px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:7px 14px; cursor:pointer; opacity:0.55;"
-        title="Calculate first, then email the report">📧 Email Report</button>
+        title="Calculate first, then email the report">Email Report</button>
       <div style="display:flex; gap:8px;">
         <button type="button" class="btn-cancel" onclick="closeDimsCalcModal()">Close</button>
         <button type="button" class="btn-create" onclick="runDimsCalc()" style="background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:600; cursor:pointer;">Calculate</button>
