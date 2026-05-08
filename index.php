@@ -8026,6 +8026,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div id="dc-stats" style="flex:1 1 220px; min-width:200px; font-size:13px; line-height:1.7; color:var(--text);"></div>
       </div>
+      <!-- Container View — collapsed by default. When expanded, renders
+           a 40' HC iso wireframe with the pallet stack drawn inside so
+           the operator can see how the shipment loads. The canvas is
+           drawn on every Calculate run but stays hidden inside the
+           collapsed <details> until the user opens it. -->
+      <details id="dc-container-details" style="margin-top:18px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
+        <summary style="list-style:none; padding:10px 14px; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; user-select:none;">
+          <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Container View — 40' High Cube</span>
+          <span id="dc-container-summary-stat" style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+            <span style="font-size:13px;">▾</span>
+          </span>
+        </summary>
+        <div style="padding:0 14px 14px;">
+          <canvas id="dc-container-canvas" width="800" height="340" style="width:100%; max-width:800px; height:auto; border-radius:8px; background:var(--surface); display:block;"></canvas>
+          <div id="dc-container-stats" style="margin-top:10px; font-size:12px; color:var(--text); line-height:1.6;"></div>
+        </div>
+      </details>
       <!-- Optimization tips — populated by runDimsCalc() with both
            static best-practices (heavy on bottom, label outward, etc.)
            and dynamic suggestions derived from the current run (e.g.
@@ -11392,6 +11409,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof _renderDimsCalcOptimization === 'function') {
       _renderDimsCalcOptimization(window._dimsCalcLastRun);
     }
+    // Render the collapsed Container View — drawn even when collapsed
+    // so opening <details> instantly reveals an up-to-date viz.
+    if (typeof _drawDimsCalcContainerViz === 'function') {
+      _drawDimsCalcContainerViz(window._dimsCalcLastRun);
+    }
   }
 
   // ── Pallet Calc — Optimization & Stacking Suggestions ────────────────
@@ -11807,6 +11829,126 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
     ctx.fillText(opts.palLabel, CW - 12, 10);
+  }
+
+  // Standalone container preview for the Pallet Calc modal — draws a
+  // 40' HC wireframe with the loaded pallet count rendered as solid
+  // iso boxes inside, plus a stats line below the canvas (pallets per
+  // container, containers needed, double-stack flag). Mirrors the
+  // workbook's renderContainerViz at a smaller scale so the modal
+  // doesn't depend on workbook state. Reads from window._dimsCalcLastRun.
+  function _drawDimsCalcContainerViz(r) {
+    const c = document.getElementById('dc-container-canvas');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const CW = c.width, CH = c.height;
+    ctx.clearRect(0, 0, CW, CH);
+    if (!r || !r.palL || !r.palW || !r.pkgH || !r.perLayer) {
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '13px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Run Calculate to see the container view.', CW/2, CH/2);
+      const stats = document.getElementById('dc-container-stats');
+      if (stats) stats.innerHTML = '';
+      const summary = document.getElementById('dc-container-summary-stat');
+      if (summary) summary.innerHTML = '<span style="font-size:13px;">▾</span>';
+      return;
+    }
+    // 40' HC interior dims (cm)
+    const HC_L = 1203, HC_W = 235, HC_H = 269;
+    const PALLET_DECK_LOCAL = 15;
+    const palletStackCm = PALLET_DECK_LOCAL + r.maxLayers * r.pkgH;
+    // Pallets per layer — try both pallet rotations on the floor
+    const pAcols = Math.floor(HC_L / r.palL), pArows = Math.floor(HC_W / r.palW);
+    const pBcols = Math.floor(HC_L / r.palW), pBrows = Math.floor(HC_W / r.palL);
+    const useA = (pAcols * pArows) >= (pBcols * pBrows);
+    const palCols = useA ? pAcols : pBcols;
+    const palRows = useA ? pArows : pBrows;
+    const palL_oriented = useA ? r.palL : r.palW;
+    const palW_oriented = useA ? r.palW : r.palL;
+    const palletsPerLayer = palCols * palRows;
+    const verticalLayers = Math.max(1, Math.min(2, Math.floor(HC_H / palletStackCm)));
+    const palletsPerContainer = palletsPerLayer * verticalLayers;
+    const palletsNeeded = r.palletsNeeded || 0;
+    const palletsToShow = palletsNeeded > 0
+      ? Math.min(palletsNeeded, palletsPerContainer)
+      : palletsPerContainer;
+    const containersNeeded = palletsNeeded > 0
+      ? Math.ceil(palletsNeeded / palletsPerContainer) : 0;
+    // Iso projection setup — same camera as the pallet viz.
+    const totalStackCm = Math.min(verticalLayers * palletStackCm, HC_H);
+    const footprintSpan = HC_L + HC_W;
+    const PAD_L = 110, PAD_R = 120, PAD_T = 30, PAD_B = 60;
+    const s = Math.min(
+      (CW - PAD_L - PAD_R) / (footprintSpan * ISO_COS30),
+      (CH - PAD_T - PAD_B) / (totalStackCm + footprintSpan * ISO_SIN30)
+    );
+    const ox = (CW + (HC_W - HC_L) * ISO_COS30 * s) / 2;
+    const oy = totalStackCm * s + PAD_T;
+    // ── Draw loaded pallets (orange) — back-to-front, layer-by-layer
+    let drawn = 0;
+    outer:
+    for (let layer = 0; layer < verticalLayers; layer++) {
+      const layerY = layer * palletStackCm;
+      // Each pallet rendered as deck + cargo block on top
+      for (let diag = 0; diag <= palCols + palRows - 2; diag++) {
+        for (let col = Math.max(0, diag - palRows + 1); col <= Math.min(diag, palCols - 1); col++) {
+          const row = diag - col;
+          if (drawn >= palletsToShow) break outer;
+          const px = col * palL_oriented;
+          const pz = row * palW_oriented;
+          // Pallet deck (grey)
+          drawIsoBox(ctx, px, layerY, pz, palL_oriented, PALLET_DECK_LOCAL, palW_oriented, s, ox, oy, '#a8a8a8');
+          // Cargo column (orange)
+          drawIsoBox(ctx, px, layerY + PALLET_DECK_LOCAL, pz, palL_oriented, palletStackCm - PALLET_DECK_LOCAL, palW_oriented, s, ox, oy, '#E8751A');
+          drawn++;
+        }
+      }
+    }
+    // ── Wireframe container outline
+    const proj = (wx, wy, wz) => ({
+      x: ox + (wx - wz) * ISO_COS30 * s,
+      y: oy + (wx + wz) * ISO_SIN30 * s - wy * s
+    });
+    const v = {
+      bbl: proj(0, 0, 0),       bbr: proj(HC_L, 0, 0),
+      bfl: proj(0, 0, HC_W),    bfr: proj(HC_L, 0, HC_W),
+      tbl: proj(0, HC_H, 0),    tbr: proj(HC_L, HC_H, 0),
+      tfl: proj(0, HC_H, HC_W), tfr: proj(HC_L, HC_H, HC_W)
+    };
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1;
+    const line = (a, b) => { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); };
+    [['bbl','bbr'],['bbr','bfr'],['bfr','bfl'],['bfl','bbl'],
+     ['tbl','tbr'],['tbr','tfr'],['tfr','tfl'],['tfl','tbl'],
+     ['bbl','tbl'],['bbr','tbr'],['bfr','tfr'],['bfl','tfl']
+    ].forEach(([a,b]) => line(v[a], v[b]));
+    // Container label top-right
+    ctx.fillStyle = '#6b7280';
+    ctx.font = `700 11px -apple-system, sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`40' HC (${verticalLayers}-pallet vertical)`, CW - 12, 10);
+    // Stats line below the canvas
+    const stats = document.getElementById('dc-container-stats');
+    if (stats) {
+      const fitsTag = verticalLayers > 1
+        ? '<span style="color:#10b981; font-weight:700;">2-pallet vertical stacking enabled</span>'
+        : '<span style="color:#f59e0b; font-weight:700;">single-layer only — stack too tall to double up</span>';
+      stats.innerHTML = `
+        <strong>${palletsPerContainer}</strong> pallets per 40' HC <span style="color:var(--text-muted);">(${palCols} × ${palRows} per floor × ${verticalLayers}-high)</span>
+        ${palletsNeeded > 0 ? `&nbsp;·&nbsp; <strong style="color:var(--accent);">${containersNeeded}</strong> container${containersNeeded === 1 ? '' : 's'} needed` : ''}
+        <br>${fitsTag}.
+      `;
+    }
+    // Compact summary in the <details> header (visible when collapsed)
+    const summary = document.getElementById('dc-container-summary-stat');
+    if (summary) {
+      const compact = palletsNeeded > 0
+        ? `<span style="color:var(--accent); font-weight:700;">${containersNeeded}</span> × 40' HC`
+        : `<span style="color:var(--text-muted);">${palletsPerContainer} pallets / 40' HC</span>`;
+      summary.innerHTML = `${compact} <span style="font-size:13px;">▾</span>`;
+    }
   }
 
   // Cmd/Ctrl+Shift+D opens the modal as a power-user shortcut.
