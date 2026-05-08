@@ -6255,7 +6255,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span>Add 4 mm divider between products (cardboard / foam separators)</span>
       </label>
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
-        <canvas id="pallet-canvas" width="540" height="420" style="flex:0 1 540px; min-width:300px; max-width:540px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+        <div style="flex:0 1 540px; min-width:300px; max-width:540px; display:flex; flex-direction:column; gap:14px;">
+          <canvas id="pallet-canvas" width="540" height="420" style="width:100%; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+          <!-- Pallet Fit Suggestion — surfaces a better outer-carton (or
+               product, in manual mode) footprint that improves utilisation
+               on the 40 × 48 in pallet. Hidden until the engine finds a
+               closer-to-perfect arrangement. -->
+          <div id="pallet-fit-suggestion" style="display:none;"></div>
+        </div>
         <div style="flex:1; min-width:200px;">
           <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px;">
             <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); padding-top:6px;">Pallet Stats</div>
@@ -10054,9 +10061,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const palletWeightKg = palletWeightKgArg && palletWeightKgArg > 0 ? palletWeightKgArg : 0;
     const lastContainerWeightKg = palletWeightKg * palletsInLast;
     const totalShipmentWeightKg = palletWeightKg * palletsNeeded;
-    const weightRoomLeftKg = palletWeightKg > 0
-      ? Math.max(0, HC_MAX_KG - lastContainerWeightKg)
-      : HC_MAX_KG;
     // Units math — how many products fit per pallet, how many more
     // products would fill the empty pallet slots in the last container.
     const unitsPerPallet = (unitsPerPalletArg && unitsPerPalletArg > 0) ? unitsPerPalletArg : 0;
@@ -10067,8 +10071,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // subtract from the 67 CBM usable cargo allowance.
     const palletCbm = (PALLET_L * PALLET_W * palletStack) / 1_000_000; // m³
     const lastContainerCbm = palletCbm * palletsInLast;
-    const cbmRoomLeft = Math.max(0, HC_USABLE_CBM - lastContainerCbm);
     const totalShipmentCbm = palletCbm * palletsNeeded;
+    // ── Loose top-off accounting ─────────────────────────────────────
+    // When the operator clicks "↻ Top Off", we stash the loose unit
+    // count (in PRODUCTS) on the input's dataset. Those loose cardboard
+    // boxes consume CBM and weight inside the last container, so we
+    // subtract them here BEFORE computing room-left. Without this, the
+    // panel would still report "+13 CBM remaining" right after Top Off,
+    // contradicting the user's just-applied action.
+    const _looseStrCV   = document.getElementById('pallet-total-cartons')?.dataset.looseTopOff || '';
+    const _looseUnitsCV = parseInt(_looseStrCV) || 0;
+    // Convert loose products → loose-cardboard-cartons via the same
+    // products-per-item ratio used when stashing (1 in manual mode,
+    // products-per-outer-carton in carton mode).
+    const _innerCV   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    const _outerCV   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    const _ppoCV     = (_innerCV > 0 && _outerCV > 0) ? _innerCV * _outerCV : 0;
+    const _manualCV  = !!document.getElementById('pallet-manual')?.checked;
+    const _ppiCV     = _manualCV ? 1 : (_ppoCV || 1);
+    const _looseCartonCountCV = _ppiCV > 0 ? (_looseUnitsCV / _ppiCV) : 0;
+    const _unitCbmCV = (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0;
+    const _unitWtCV  = (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0;
+    // Effective CBM consumed by loose cartons. Divide by 0.80 packing
+    // efficiency so the loose-fit cap (which uses ×0.80) and the
+    // room-left value stay self-consistent — i.e. once the operator
+    // tops off the maximum we suggested, room-left collapses to ~0
+    // rather than leaving a phantom 20% slack the user can't actually
+    // use.
+    const _looseCbmConsumed = _unitCbmCV > 0 ? (_looseCartonCountCV * _unitCbmCV) / 0.80 : 0;
+    const _looseWtConsumed  = _unitWtCV > 0 ? (_looseCartonCountCV * _unitWtCV)  : 0;
+    const cbmRoomLeft = Math.max(0, HC_USABLE_CBM - lastContainerCbm - _looseCbmConsumed);
+    const weightRoomLeftKg = palletWeightKg > 0
+      ? Math.max(0, HC_MAX_KG - lastContainerWeightKg - _looseWtConsumed)
+      : Math.max(0, HC_MAX_KG - _looseWtConsumed);
 
     // ── Inline summary line above the canvas ───────────────────────────
     if (inlineEl) {
@@ -10129,52 +10164,79 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const _ppoForFill      = (_innerQtyForFill > 0 && _outerQtyForFill > 0) ? _innerQtyForFill * _outerQtyForFill : 0;
       const _manualOnFill    = !!document.getElementById('pallet-manual')?.checked;
       const productsPerItem  = _manualOnFill ? 1 : (_ppoForFill || 1);
-      const currentTotalUnitsRaw = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
-      // Target: enough Total Units to fully load the last container's
-      // pallet slots (no loose top-off).
-      const targetFillPallets    = currentTotalUnitsRaw + unitsToFillLastContainer * productsPerItem;
-      // Target: fully load pallets + add loose top-off for any leftover CBM.
+      // ── Fill / Top-Off target — absolute, NOT additive ────────────────
+      // Earlier versions did `current + roomLeft × productsPerItem`, but
+      // ceil() rounding meant clicking again kept inflating the qty
+      // (each click bumped palletsNeeded past the container boundary →
+      // a brand-new container appeared with another full set of empty
+      // slots → another huge "+roomLeft" bump). The fix: compute the
+      // exact products needed to fully load the CURRENT container count
+      // (palletsPerContainer × containersNeeded × items-per-pallet, in
+      // products), so repeated clicks settle on the same value.
+      const targetFillPallets    = palletsPerContainer * containersNeeded * unitsPerPallet * productsPerItem;
+      // Top-off adds the loose-load capacity to a fully-palletized
+      // shipment (still absolute, so repeat clicks are stable too).
       const targetFillWithLoose  = targetFillPallets + looseFit * productsPerItem;
       const upBtn = `display:inline-flex; align-items:center; gap:4px; padding:2px 8px; font-size:10px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:4px; cursor:pointer; white-space:nowrap; margin-left:6px; vertical-align:middle;`;
 
+      // ── Last Container — Room to Fill (collapsed by default) ─────────
+      // Wrapped in a <details> element so the operator only sees the
+      // panel when they explicitly want to top off / fill. After a
+      // successful Top Off, the body shows 0 across the board (the
+      // loose-CBM-consumed subtraction above zeros out room-left).
+      // <summary>'s default disclosure triangle is suppressed via
+      // ::-webkit-details-marker / list-style:none in the global CSS;
+      // a custom chevron is inlined here instead. The Fill / Top-Off
+      // buttons live INSIDE the body so they only render when expanded.
       const remainingBlock = palletsNeeded > 0
-        ? `<div style="margin-top:14px; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
-             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
-               <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">
+        ? `<details style="margin-top:14px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
+             <summary style="list-style:none; padding:10px 12px; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; user-select:none;">
+               <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">
                  Last Container — Room to Fill
+               </span>
+               <span style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+                 ${palletsRoomLeft > 0
+                   ? `<span style="color:var(--accent); font-weight:700;">+${palletsRoomLeft}</span>`
+                   : `<span style="opacity:0.7;">full</span>`}
+                 <span style="font-size:13px;">▾</span>
+               </span>
+             </summary>
+             <div style="padding:0 12px 12px;">
+               ${palletsRoomLeft > 0 ? `<div style="display:flex; justify-content:flex-end; margin-bottom:6px;"><button type="button" style="${upBtn} margin-left:0;" onclick="applyTotalUnitsSuggestion(${targetFillPallets})" title="Bump Total Units to ${targetFillPallets.toLocaleString()} to fill the last container with pallets">↻ Fill</button></div>` : ''}
+               <div style="font-size:13px; color:var(--text); line-height:1.55;">
+                 <div>+ <strong style="color:var(--accent);">${palletsRoomLeft}</strong> more pallet${palletsRoomLeft === 1 ? '' : 's'}</div>
+                 ${unitsPerPallet > 0
+                   ? `<div style="margin-top:4px;">+ <strong style="color:var(--accent);">${(unitsPerPallet * palletsRoomLeft).toLocaleString()}</strong> more ${unitWord} (${unitsPerPallet.toLocaleString()} / pallet)</div>`
+                   : ''}
+                 <div style="margin-top:4px;">+ <strong style="color:var(--accent);">${fmtCbm(cbmRoomLeft)}</strong> CBM</div>
+                 ${palletWeightKg > 0
+                   ? `<div style="margin-top:4px;">+ <strong style="color:var(--accent);">${fmtKg(weightRoomLeftKg)}</strong> weight</div>`
+                   : `<div style="margin-top:4px; font-size:11px; color:var(--text-muted);">Enter product / carton weight to see weight remaining</div>`}
+                 <div style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
+                   to fill the 40' HC limit of <strong>${HC_USABLE_CBM} CBM</strong> · <strong>${HC_MAX_KG.toLocaleString()} kg</strong>
+                 </div>
                </div>
-               ${palletsRoomLeft > 0 ? `<button type="button" style="${upBtn}" onclick="applyTotalUnitsSuggestion(${targetFillPallets})" title="Bump Total Units to ${targetFillPallets.toLocaleString()} to fill the last container with pallets">↻ Fill</button>` : ''}
+               ${looseFit > 0 ? `
+               <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
+                 <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+                   <div style="font-size:11px; font-weight:700; color:var(--accent);">↳ Top-Off Capacity</div>
+                   <button type="button" style="${upBtn}" onclick="applyTotalUnitsSuggestion(${targetFillWithLoose}, ${looseFit * productsPerItem})" title="Bump Total Units to ${targetFillWithLoose.toLocaleString()} — pallets + loose top-off in blue">↻ Top Off</button>
+                 </div>
+                 <div style="font-size:13px; color:var(--text); line-height:1.5;">
+                   You could top off the last container with up to
+                   <strong style="color:var(--accent);">~${looseFit.toLocaleString()}</strong> more ${looseLabel}
+                   by skipping the pallet and shipping in cardboard boxes.
+                 </div>
+                 <div style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.5;">
+                   Bound by ${looseByCbm <= looseByWeight ? 'CBM' : 'weight'}: ${fmtCbm(cbmRoomLeft)} ÷ ${unitCbm < 0.01 ? (unitCbm * 1000).toFixed(2) + ' L' : unitCbm.toFixed(4) + ' m³'} per unit, at ~80% packing efficiency
+                   ${unitWtKg > 0 ? ` &nbsp;·&nbsp; weight cap: ${Math.floor(weightRoomLeftKg / unitWtKg).toLocaleString()} units` : ''}
+                 </div>
+               </div>` : (_looseUnitsCV > 0 ? `
+               <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); font-size:11px; color:var(--text-muted); line-height:1.5;">
+                 ↳ Top-off applied — ${_looseUnitsCV.toLocaleString()} loose ${unitWord}${_looseUnitsCV === 1 ? '' : 's'} already consume the last container's leftover capacity.
+               </div>` : '')}
              </div>
-             <div style="font-size:13px; color:var(--text); line-height:1.55;">
-               <div>+ <strong style="color:var(--accent);">${palletsRoomLeft}</strong> more pallet${palletsRoomLeft === 1 ? '' : 's'}</div>
-               ${unitsPerPallet > 0
-                 ? `<div style="margin-top:4px;">+ <strong style="color:var(--accent);">${unitsToFillLastContainer.toLocaleString()}</strong> more ${unitWord} (${unitsPerPallet.toLocaleString()} / pallet)</div>`
-                 : ''}
-               <div style="margin-top:4px;">+ <strong style="color:var(--accent);">${fmtCbm(cbmRoomLeft)}</strong> CBM</div>
-               ${palletWeightKg > 0
-                 ? `<div style="margin-top:4px;">+ <strong style="color:var(--accent);">${fmtKg(weightRoomLeftKg)}</strong> weight</div>`
-                 : `<div style="margin-top:4px; font-size:11px; color:var(--text-muted);">Enter product / carton weight to see weight remaining</div>`}
-               <div style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
-                 to fill the 40' HC limit of <strong>${HC_USABLE_CBM} CBM</strong> · <strong>${HC_MAX_KG.toLocaleString()} kg</strong>
-               </div>
-             </div>
-             ${looseFit > 0 ? `
-             <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
-               <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
-                 <div style="font-size:11px; font-weight:700; color:var(--accent);">↳ Top-Off Capacity</div>
-                 <button type="button" style="${upBtn}" onclick="applyTotalUnitsSuggestion(${targetFillWithLoose}, ${looseFit * productsPerItem})" title="Bump Total Units to ${targetFillWithLoose.toLocaleString()} — pallets + loose top-off in blue">↻ Top Off</button>
-               </div>
-               <div style="font-size:13px; color:var(--text); line-height:1.5;">
-                 You could top off the last container with up to
-                 <strong style="color:var(--accent);">~${looseFit.toLocaleString()}</strong> more ${looseLabel}
-                 by skipping the pallet and shipping in cardboard boxes.
-               </div>
-               <div style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.5;">
-                 Bound by ${looseByCbm <= looseByWeight ? 'CBM' : 'weight'}: ${fmtCbm(cbmRoomLeft)} ÷ ${unitCbm < 0.01 ? (unitCbm * 1000).toFixed(2) + ' L' : unitCbm.toFixed(4) + ' m³'} per unit, at ~80% packing efficiency
-                 ${unitWtKg > 0 ? ` &nbsp;·&nbsp; weight cap: ${Math.floor(weightRoomLeftKg / unitWtKg).toLocaleString()} units` : ''}
-               </div>
-             </div>` : ''}
-           </div>`
+           </details>`
         : `<div style="margin-top:14px; padding:12px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.5;">
              A single 40' HC fits <strong>${palletsPerContainer}</strong> pallets${verticalLayers > 1 ? ` (${verticalLayers}-high)` : ''}, up to <strong>${HC_USABLE_CBM} CBM</strong> / <strong>${HC_MAX_KG.toLocaleString()} kg</strong>.
            </div>`;
@@ -10479,16 +10541,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // outer cartons + pallets needed from that. (The id is kept as
     // pallet-total-cartons for backward-compat with saved data.)
     const totalUnits   = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
+    // Loose top-off count (in PRODUCTS) — stashed by "↻ Top Off" so the
+    // last container's leftover CBM gets blue cardboard boxes in the
+    // viz. The loose units must be SUBTRACTED before computing
+    // palletsNeeded, otherwise the totalUnits = palletized + loose lump
+    // forces an extra container and the "Fill" button bumps the qty
+    // every click. Tap an empty/0 dataset → palletizedUnits = totalUnits.
+    const _looseTopOffStr  = document.getElementById('pallet-total-cartons')?.dataset.looseTopOff || '';
+    const _looseTopOffNum  = parseInt(_looseTopOffStr) || 0;
+    const palletizedUnits  = Math.max(0, totalUnits - _looseTopOffNum);
     // Carton-driven product counts only apply outside manual mode
     const innerQtyVal  = manualOn ? 0 : (parseInt(document.getElementById('carton-inner-count').value) || 0);
     const outerQtyVal  = manualOn ? 0 : (parseInt(document.getElementById('carton-outer-count').value) || 0);
     const productsPerOuter = (innerQtyVal > 0 && outerQtyVal > 0) ? innerQtyVal * outerQtyVal : 0;
     // In manual mode, items-on-pallet = products. In carton mode,
     // items-on-pallet = outer cartons, derived from units / products-
-    // per-outer (round up — partial cartons need a full slot).
+    // per-outer (round up — partial cartons need a full slot). Use the
+    // PALLETIZED count here so the loose top-off doesn't get billed as
+    // palletized.
     const totalCartons = manualOn
-      ? totalUnits
-      : (productsPerOuter > 0 ? Math.ceil(totalUnits / productsPerOuter) : 0);
+      ? palletizedUnits
+      : (productsPerOuter > 0 ? Math.ceil(palletizedUnits / productsPerOuter) : 0);
     const totalInners  = (totalCartons > 0 && outerQtyVal > 0) ? totalCartons * outerQtyVal : 0;
     const totalProducts = totalUnits;
     // Pallets needed = items-on-pallet ÷ items-per-pallet (round up)
