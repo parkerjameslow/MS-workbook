@@ -9512,11 +9512,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
-  // ── Pallet Max Height — persistent default ─────────────────────────
-  // The "Max height" input on the Pallet View is a USER-LEVEL default,
-  // not per-workbook. Once the operator picks a value, it sticks for
-  // every workbook they open until they change it again. Stored in
-  // localStorage so it survives logouts/refreshes on the same device.
+  // ── Pallet Max Height — per-workbook value + new-workbook seed ────
+  // The "Max height" input is saved PER WORKBOOK (detail.palletMaxHeight).
+  // localStorage holds a "default for new workbooks" seed only — it
+  // does NOT override values on existing workbooks. So setting 47" on
+  // the workbook you're editing affects this workbook + every NEW
+  // workbook created from now on, but every workbook that already
+  // existed keeps whatever it had (which falls back to the HTML
+  // default of 60" for legacy workbooks that never saved this field).
   const _PALLET_MAX_HEIGHT_KEY = 'ms_pallet_max_height_default';
   function savePalletMaxHeightDefault() {
     const el = document.getElementById('pallet-max-height');
@@ -9525,13 +9528,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (isNaN(v) || v <= 0) return;
     try { localStorage.setItem(_PALLET_MAX_HEIGHT_KEY, String(v)); } catch (_) { /* private mode etc. */ }
   }
-  function applyPalletMaxHeightDefault() {
+  // Read the new-workbook seed from localStorage. Used at workbook
+  // CREATION time only — never on the open path.
+  function getPalletMaxHeightSeed() {
+    try {
+      const saved = localStorage.getItem(_PALLET_MAX_HEIGHT_KEY);
+      const v = parseFloat(saved);
+      if (!isNaN(v) && v > 0) return v;
+    } catch (_) {}
+    return null;
+  }
+  // Apply the per-workbook value to the input. If the workbook has no
+  // saved value (legacy workbook), fall back to the HTML default of
+  // 60" — NOT to the localStorage seed. This is what keeps the user's
+  // recent default change from rewriting every old workbook.
+  function applyPalletMaxHeight(savedValue) {
     const el = document.getElementById('pallet-max-height');
     if (!el) return;
-    let saved;
-    try { saved = localStorage.getItem(_PALLET_MAX_HEIGHT_KEY); } catch (_) { return; }
-    const v = parseFloat(saved);
-    if (!isNaN(v) && v > 0) el.value = String(v);
+    const v = parseFloat(savedValue);
+    if (!isNaN(v) && v > 0) {
+      el.value = String(v);
+    } else {
+      el.value = '60'; // HTML default
+    }
   }
 
   // Auto-populate "Total Units to Ship" from the RFQ Grand Total qty.
@@ -15511,11 +15530,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // allow_duplicate:true — user explicitly created this from the UI.
         // The server-side dedup guard is intended to block seed-retry
         // loops, not legitimate user creations.
+        // Seed palletMaxHeight from the user's localStorage default
+        // (set the last time they changed it on any workbook). This is
+        // the ONLY place the localStorage seed flows in — opening an
+        // existing workbook never reads it. Lets a recent "47" default
+        // apply to new workbooks without rewriting old ones.
+        const _palletSeed = (typeof getPalletMaxHeightSeed === 'function') ? getPalletMaxHeightSeed() : null;
+        const _newWbDetail = _palletSeed ? { palletMaxHeight: _palletSeed } : {};
         const result = await apiCall('add_workbook', {
           client_id: clientId,
           product_name: product,
           description: desc,
-          allow_duplicate: true
+          allow_duplicate: true,
+          detail: _newWbDetail
         });
         if (result && result.success) {
           newId = parseInt(result.id);
@@ -18668,10 +18695,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // the visibility based on the select state.
       _s('product-subcategory-other',   data.productSubcategoryOther  || '');
       _s('product-subcategory-other-2', data.productSubcategoryOther2 || '');
-      // Restore the user-level Max Height default (saved to localStorage
-      // the last time anyone changed it). Runs before renderPalletViz
-      // is triggered so the saved value is what every pallet calc uses.
-      if (typeof applyPalletMaxHeightDefault === 'function') applyPalletMaxHeightDefault();
+      // Pallet Max Height — restore from this workbook's saved value
+      // (data.palletMaxHeight). Falls back to the HTML default of 60"
+      // for legacy workbooks that never saved this field. The
+      // localStorage default is NOT applied here — it only seeds
+      // BRAND-NEW workbooks at creation time, so a recent default
+      // change doesn't rewrite the height on every existing workbook.
+      if (typeof applyPalletMaxHeight === 'function') applyPalletMaxHeight(data.palletMaxHeight);
       // Pallet manual mode: restore the checkbox + sync the dependent
       // UI (gray-out + label) so a hard refresh doesn't lose the flag.
       const palletManualEl = document.getElementById('pallet-manual');
@@ -19835,6 +19865,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // pallet base. Used for crates / unboxed shipments.
       palletManualMode: !!document.getElementById('pallet-manual')?.checked,
       palletDivider:    !!document.getElementById('pallet-divider')?.checked,
+      palletMaxHeight:  (() => { const v = parseFloat(document.getElementById('pallet-max-height')?.value); return (!isNaN(v) && v > 0) ? v : null; })(),
       palletNotes:      _v('pallet-notes'),
       palletStackNotes: _v('pallet-stack-notes'),
       materials: _v('materials'),
