@@ -6273,11 +6273,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  math by hand. Auto-fills from the RFQ Grand Total qty.
                  The id stays "pallet-total-cartons" for backward
                  compatibility with saved data + downstream callers. -->
-            <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Total Units to Ship</label>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px;">
+              <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Total Units to Ship</label>
+              <button type="button" id="pallet-total-resync-btn" onclick="resyncPalletTotalUnitsFromRfq()" style="display:none; font-size:11px; font-weight:600; color:var(--accent); background:none; border:none; padding:0; cursor:pointer; text-decoration:underline;" title="Re-pull this value from the RFQ Grand Total qty">↻ Sync from RFQ</button>
+            </div>
             <input type="number" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons"
               style="width:100%; box-sizing:border-box;"
-              oninput="renderPalletViz(); syncShippingDims(); calcFreight();" />
-            <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Pre-filled from RFQ Grand Total qty — override if shipping a different count.</div>
+              oninput="renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();" />
+            <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Auto-filled from <strong>RFQ Grand Total qty</strong> — override if shipping a partial.</div>
           </div>
         </div>
       </div>
@@ -9505,35 +9508,87 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // Auto-populate "Total Units to Ship" from the RFQ Grand Total qty.
-  // Behavior is now identical in BOTH manual and carton mode — the
-  // input always represents PRODUCT count; the pallet view derives
-  // carton count and pallets needed from that downstream.
+  // The input always represents PRODUCT count; the pallet view
+  // derives carton count and pallets needed from that downstream.
   // Merge rule respects user overrides:
   //   - If the input is empty → fill with grandQty
   //   - If the input still equals the value we last auto-synced (i.e.
   //     the user hasn't typed anything different) → re-sync
-  //   - Otherwise (user has overridden) → leave it alone
-  // The previously-synced value lives on data-last-rfq-sync. Clearing
-  // the input resets the override and lets a new RFQ value flow in.
+  //   - Also: if the input matches grandQty exactly, register it as
+  //     auto-synced so future RFQ edits propagate (handles the case
+  //     where a saved workbook lands with a value that already matches
+  //     the current RFQ — without this, the dataset.lastRfqSync was
+  //     empty and we'd treat the value as a user override forever).
+  //   - Otherwise (user has overridden to a different value) → leave
+  //     it alone, but show the "↻ Sync from RFQ" button so the user
+  //     can pull the RFQ value in with one click.
+  // After every sync attempt, refresh the hint text so the operator
+  // can see the live RFQ qty and the override status.
   function syncManualPalletTotalUnits() {
     const input = document.getElementById('pallet-total-cartons');
     if (!input) return;
     const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
-    if (!grandQty) return;
     const last    = input.dataset.lastRfqSync || '';
     const current = String(input.value || '').trim();
-    if (current === '' || current === last) {
-      const next = String(grandQty);
-      if (current !== next) {
-        input.value = next;
-        input.dataset.lastRfqSync = next;
-        if (typeof renderPalletViz === 'function') renderPalletViz();
-        if (typeof syncShippingDims === 'function') syncShippingDims();
-        if (typeof calcFreight === 'function') calcFreight();
-        if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
-      } else {
-        input.dataset.lastRfqSync = next;
+    const target  = grandQty > 0 ? String(grandQty) : '';
+
+    if (target) {
+      // Sync if empty, matches the last auto-synced value, or already
+      // happens to match grandQty (the load-time recovery case).
+      if (current === '' || current === last || current === target) {
+        if (current !== target) {
+          input.value = target;
+          if (typeof renderPalletViz === 'function') renderPalletViz();
+          if (typeof syncShippingDims === 'function') syncShippingDims();
+          if (typeof calcFreight === 'function') calcFreight();
+          if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+        }
+        input.dataset.lastRfqSync = target;
       }
+    }
+    // Update hint + show/hide the re-sync button so the operator
+    // always sees whether the field is locked to RFQ or overridden.
+    _refreshPalletTotalHint();
+  }
+
+  // Force a re-pull from the RFQ Grand Total — drops any user
+  // override and locks the input back to the live RFQ qty. Wired to
+  // the "↻ Sync from RFQ" button next to the input.
+  function resyncPalletTotalUnitsFromRfq() {
+    const input = document.getElementById('pallet-total-cartons');
+    if (!input) return;
+    const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
+    if (!grandQty) return;
+    input.value = String(grandQty);
+    input.dataset.lastRfqSync = String(grandQty);
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+    _refreshPalletTotalHint();
+  }
+
+  // Refresh the small hint text under the Total Units input + show the
+  // "Sync from RFQ" button only when the input is genuinely overridden.
+  function _refreshPalletTotalHint() {
+    const input = document.getElementById('pallet-total-cartons');
+    const hint  = document.getElementById('pallet-total-hint');
+    const btn   = document.getElementById('pallet-total-resync-btn');
+    if (!input || !hint) return;
+    const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
+    const current  = String(input.value || '').trim();
+    const target   = grandQty > 0 ? String(grandQty) : '';
+    if (!grandQty) {
+      hint.innerHTML = `Will auto-fill from <strong>RFQ Grand Total qty</strong> once the RFQ is filled in.`;
+      if (btn) btn.style.display = 'none';
+      return;
+    }
+    if (current === target) {
+      hint.innerHTML = `Synced with <strong>RFQ Grand Total qty</strong> (${grandQty.toLocaleString()} units).`;
+      if (btn) btn.style.display = 'none';
+    } else {
+      hint.innerHTML = `Overridden — <strong>RFQ Grand Total</strong> is <strong>${grandQty.toLocaleString()}</strong> units.`;
+      if (btn) btn.style.display = '';
     }
   }
 
