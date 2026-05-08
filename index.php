@@ -10110,12 +10110,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // which leaves a 0.4 cm gap between adjacent items.
     const drawL = layout.bL - padCm;
     const drawW = layout.bW - padCm;
+    // Center the box pattern on the pallet base — when the items don't
+    // fully cover the 40 × 48 footprint (e.g. 3 × 3 of 22 cm products
+    // leaves margin on every side), evenly split the leftover space so
+    // the stack sits centered instead of jammed into the back corner.
+    const occupiedL = layout.cols * layout.bL;
+    const occupiedW = layout.rows * layout.bW;
+    const offsetX = Math.max(0, (PALLET_L - occupiedL) / 2);
+    const offsetZ = Math.max(0, (PALLET_W - occupiedW) / 2);
     for (let layer = 0; layer < showLayers; layer++) {
       for (let diag = 0; diag <= layout.cols + layout.rows - 2; diag++) {
         for (let col = Math.max(0, diag - layout.rows + 1); col <= Math.min(diag, layout.cols - 1); col++) {
           const row = diag - col;
           drawIsoBox(ctx,
-            col * layout.bL, PALLET_DECK + layer * stackPitchH, row * layout.bW,
+            offsetX + col * layout.bL, PALLET_DECK + layer * stackPitchH, offsetZ + row * layout.bW,
             drawL, bH, drawW, s, ox, oy, '#E8751A');
         }
       }
