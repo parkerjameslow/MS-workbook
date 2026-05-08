@@ -5471,7 +5471,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       style="display:inline-flex; align-items:center; font-size:12px; font-weight:600; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:5px 12px; white-space:nowrap; cursor:pointer; transition:border-color 0.15s, color 0.15s;"
       onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
       onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text)';">
-      Dims Calc
+      Pallet Calc
     </button>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-btn" onclick="toggleUserDropdown()" title="Account">
@@ -7923,7 +7923,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div class="modal-overlay" id="dims-calc-modal-overlay" onclick="if(event.target===this)closeDimsCalcModal()">
   <div class="modal" style="width:760px; max-width:96vw; max-height:92vh; overflow-y:auto;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-      <div class="modal-title" style="margin:0;">Dimensions Calculator</div>
+      <div class="modal-title" style="margin:0;">Pallet Calculator</div>
       <button type="button" onclick="closeDimsCalcModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--text-muted);padding:0;">&times;</button>
     </div>
     <div style="font-size:12px; color:var(--text-muted); margin:-8px 0 18px; line-height:1.5;">
@@ -7990,9 +7990,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
-    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
-      <button type="button" class="btn-cancel" onclick="closeDimsCalcModal()">Close</button>
-      <button type="button" class="btn-create" onclick="runDimsCalc()" style="background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:600; cursor:pointer;">Calculate</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+      <!-- Email export — only enabled once a Calculate run produced
+           results. Click toggles a small inline form (recipient + Send)
+           that POSTs the run + canvas image to api.php. -->
+      <button type="button" id="dc-email-toggle-btn" onclick="toggleDimsCalcEmailForm()" disabled
+        style="font-size:12px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:7px 14px; cursor:pointer; opacity:0.55;"
+        title="Calculate first, then email the report">📧 Email Report</button>
+      <div style="display:flex; gap:8px;">
+        <button type="button" class="btn-cancel" onclick="closeDimsCalcModal()">Close</button>
+        <button type="button" class="btn-create" onclick="runDimsCalc()" style="background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:600; cursor:pointer;">Calculate</button>
+      </div>
+    </div>
+
+    <!-- Inline email recipient form — hidden until the operator hits the
+         Email Report button. Sends to api.php?action=email_pallet_calc.
+         Status text below shows in-flight / success / error states. -->
+    <div id="dc-email-form" style="display:none; margin-top:14px; padding:12px 14px; border:1px solid var(--accent); border-radius:8px; background:rgba(232,117,26,0.06);">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input type="email" id="dc-email-to" placeholder="recipient@example.com"
+          style="flex:1 1 220px; min-width:200px; padding:7px 10px; box-sizing:border-box;" />
+        <button type="button" onclick="sendDimsCalcEmail()" id="dc-email-send-btn"
+          style="background:var(--accent); color:#fff; border:none; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;">Send</button>
+        <button type="button" onclick="toggleDimsCalcEmailForm(false)"
+          style="background:transparent; color:var(--text-muted); border:1px solid var(--border); padding:7px 14px; border-radius:6px; font-size:12px; cursor:pointer;">Cancel</button>
+      </div>
+      <div id="dc-email-status" style="font-size:11px; color:var(--text-muted); margin-top:8px; line-height:1.5;"></div>
     </div>
 
     <!-- Results — hidden until first Calculate run -->
@@ -8003,6 +8026,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div id="dc-stats" style="flex:1 1 220px; min-width:200px; font-size:13px; line-height:1.7; color:var(--text);"></div>
       </div>
+      <!-- Optimization tips — populated by runDimsCalc() with both
+           static best-practices (heavy on bottom, label outward, etc.)
+           and dynamic suggestions derived from the current run (e.g.
+           "double-stacking enabled — pallets fit ≤ 47 in"). -->
+      <div id="dc-optimization" style="margin-top:22px;"></div>
     </div>
   </div>
 </div>
@@ -11343,6 +11371,197 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ctx.fillText(`Package too large for ${pal.label}.`, c.width/2, c.height/2);
       }
     }
+    // Cache the latest run for the email export — sent verbatim to
+    // api.php so the server-side template doesn't need to recompute.
+    window._dimsCalcLastRun = {
+      pkgL, pkgW, pkgH, pkgWtKg, totalQty, loadHIn,
+      palL: pal.l, palW: pal.w, palLabel: pal.label,
+      perLayer, maxLayers, totalPerPallet, palletsNeeded, surfaceUse,
+      palletWtKg, totalWtKg, layoutCols: layout.cols, layoutRows: layout.rows,
+      boxL: layout.bL, boxW: layout.bW, unit
+    };
+    // Enable the Email button — the report is now meaningful.
+    const emailBtn = document.getElementById('dc-email-toggle-btn');
+    if (emailBtn) {
+      emailBtn.disabled = false;
+      emailBtn.style.opacity = '';
+      emailBtn.style.color = 'var(--text)';
+      emailBtn.title = 'Email this pallet report';
+    }
+    // Populate the optimization-tips section (dynamic + static).
+    if (typeof _renderDimsCalcOptimization === 'function') {
+      _renderDimsCalcOptimization(window._dimsCalcLastRun);
+    }
+  }
+
+  // ── Pallet Calc — Optimization & Stacking Suggestions ────────────────
+  // Combines run-specific suggestions (e.g. "shave H by 3 cm to unlock
+  // an extra layer") with static stacking / container-loading best
+  // practices the operator should follow regardless of the input. The
+  // server-side email export reuses the exact same HTML so the printed
+  // PDF and the emailed report stay identical.
+  function _buildPalletCalcSuggestions(r) {
+    if (!r) return [];
+    const HC_INT_H = 269, PALLET_DECK = 15;
+    const stackTotalCm = PALLET_DECK + r.maxLayers * r.pkgH;
+    const stackTotalIn = stackTotalCm / 2.54;
+    const fitsDouble   = stackTotalCm <= (HC_INT_H / 2);
+    const dynamic = [];
+    // Surface coverage tips
+    if (r.surfaceUse > 0 && r.surfaceUse < 70) {
+      dynamic.push({
+        kind: 'warn',
+        title: `Low pallet coverage — ${r.surfaceUse}%`,
+        body: `Only ${r.surfaceUse}% of the ${r.palLabel.split(' (')[0]} surface is used. Consider sizing the carton to a divisor of the pallet (e.g. ${(r.palL / Math.max(1, r.layoutCols + 1)).toFixed(1)} × ${(r.palW / Math.max(1, r.layoutRows + 1)).toFixed(1)} cm) for tighter packing and fewer pallets per shipment.`
+      });
+    } else if (r.surfaceUse >= 90) {
+      dynamic.push({
+        kind: 'good',
+        title: `Excellent surface coverage — ${r.surfaceUse}%`,
+        body: `Cartons fill the pallet near-perfectly (${r.layoutCols} × ${r.layoutRows} per layer). No floor-plan changes recommended.`
+      });
+    }
+    // Heavy load callout
+    if (r.pkgWtKg > 15) {
+      dynamic.push({
+        kind: 'warn',
+        title: 'Heavy carton — keep it on the pallet base',
+        body: `At ${r.pkgWtKg.toFixed(1)} kg per carton, place the lowest layer first and rotate carton facings so weight distributes evenly across the deck. Strap with poly bands every 3–4 layers.`
+      });
+    }
+    // Vertical stacking inside the 40' HC
+    if (fitsDouble) {
+      dynamic.push({
+        kind: 'good',
+        title: '2-pallet vertical stacking enabled',
+        body: `This pallet stacks at <strong>${stackTotalIn.toFixed(0)}"</strong> (${stackTotalCm.toFixed(0)} cm) — under the 53" double-stack threshold. Two pallets fit vertically in a 40' HC, doubling container throughput.`
+      });
+    } else {
+      const targetIn = Math.floor((HC_INT_H / 2 - PALLET_DECK) / 2.54);
+      dynamic.push({
+        kind: 'tip',
+        title: 'Consider trimming the load height for double-stacking',
+        body: `Stack height is <strong>${stackTotalIn.toFixed(0)}"</strong>. Reducing it to ≤ <strong>${targetIn}"</strong> per pallet would let two pallets stack vertically inside an 8'10" 40' HC — roughly doubling pallets per container.`
+      });
+    }
+    // Total weight per pallet sanity
+    if (r.palletWtKg > 1000) {
+      dynamic.push({
+        kind: 'warn',
+        title: 'Pallet weight near forklift limit',
+        body: `At <strong>${r.palletWtKg.toFixed(0)} kg</strong> per pallet, you're near the typical 1,000 kg single-fork max. Verify the forklift class at both the origin and destination terminals before booking.`
+      });
+    }
+    // Pallets-per-container quick math
+    if (r.totalQty > 0 && r.palletsNeeded > 0) {
+      const palletsPerContainer = fitsDouble ? 36 : 18; // approx for 40' HC
+      const containers = Math.ceil(r.palletsNeeded / palletsPerContainer);
+      dynamic.push({
+        kind: 'info',
+        title: `Estimated ${containers} × 40' HC container${containers === 1 ? '' : 's'}`,
+        body: `${r.palletsNeeded.toLocaleString()} pallets ÷ ${palletsPerContainer} per container ${fitsDouble ? '(2-stacked)' : '(single layer)'} = ${containers} container${containers === 1 ? '' : 's'}. Heavy pallets load first against the back wall; lighter / fragile pallets ride near the doors so they're unloaded first.`
+      });
+    }
+    // Static best-practices — always shown.
+    const staticTips = [
+      { kind:'tip', title:'Heavy on bottom, light on top',
+        body:'Build pallets bottom-heavy. Rotate carton orientation between layers so vertical seams don\'t line up — this is called "interlocking" and stops the column from shearing in transit.' },
+      { kind:'tip', title:'Label faces outward',
+        body:'Position carton labels so SKU + quantity are visible from at least two sides of the pallet. Receivers can scan without re-stacking.' },
+      { kind:'tip', title:'Strap + stretch-wrap',
+        body:'Top-strap with two poly bands crossed over the top layer, then stretch-wrap the column tightly with corner protectors at all four corners (typically 80 ga / 20 µm film, 4–5 revolutions).' },
+      { kind:'tip', title:'Container loading order',
+        body:'Heaviest pallets load first against the nose (front) of the container. Lighter and short-stacked pallets ride near the doors so weight stays balanced over the rear axle.' },
+      { kind:'tip', title:'Brace the load',
+        body:'Use load bars or airbags between pallet rows to stop sliding. A 40\' HC at 95% utilization with no bracing will shift 2–4" during ocean transit — enough to crush carton corners.' },
+    ];
+    return [...dynamic, ...staticTips];
+  }
+
+  function _renderDimsCalcOptimization(r) {
+    const host = document.getElementById('dc-optimization');
+    if (!host) return;
+    const items = _buildPalletCalcSuggestions(r);
+    if (!items.length) { host.innerHTML = ''; return; }
+    const colors = {
+      good: { bd:'#10b981', bg:'rgba(16,185,129,0.08)', icon:'✓' },
+      warn: { bd:'#f59e0b', bg:'rgba(245,158,11,0.08)', icon:'⚠' },
+      tip:  { bd:'var(--accent)', bg:'rgba(232,117,26,0.06)', icon:'💡' },
+      info: { bd:'#6366f1', bg:'rgba(99,102,241,0.08)', icon:'ℹ' },
+    };
+    const cards = items.map(it => {
+      const c = colors[it.kind] || colors.tip;
+      return `
+        <div style="padding:11px 13px; border:1px solid ${c.bd}; border-radius:8px; background:${c.bg}; line-height:1.55;">
+          <div style="font-size:12px; font-weight:700; color:${c.bd}; margin-bottom:4px;">
+            <span style="margin-right:5px;">${c.icon}</span>${it.title}
+          </div>
+          <div style="font-size:12px; color:var(--text);">${it.body}</div>
+        </div>`;
+    }).join('');
+    host.innerHTML = `
+      <div style="font-size:13px; font-weight:700; color:var(--accent); margin-bottom:10px; padding-top:8px; border-top:1px solid var(--border);">
+        Optimization & Stacking Suggestions
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        ${cards}
+      </div>
+    `;
+  }
+
+  // ── Email export helpers ─────────────────────────────────────────────
+  function toggleDimsCalcEmailForm(force) {
+    const form = document.getElementById('dc-email-form');
+    if (!form) return;
+    const showing = form.style.display !== 'none';
+    const next = (typeof force === 'boolean') ? force : !showing;
+    form.style.display = next ? '' : 'none';
+    if (next) {
+      const status = document.getElementById('dc-email-status');
+      if (status) status.textContent = '';
+      setTimeout(() => document.getElementById('dc-email-to')?.focus(), 30);
+    }
+  }
+
+  function sendDimsCalcEmail() {
+    const run = window._dimsCalcLastRun;
+    const status = document.getElementById('dc-email-status');
+    const sendBtn = document.getElementById('dc-email-send-btn');
+    if (!run) {
+      if (status) status.innerHTML = '<span style="color:#f59e0b;">Run Calculate first to generate a report.</span>';
+      return;
+    }
+    const to = (document.getElementById('dc-email-to')?.value || '').trim();
+    if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+      if (status) status.innerHTML = '<span style="color:#f59e0b;">Enter a valid email address.</span>';
+      return;
+    }
+    const canvas = document.getElementById('dc-canvas');
+    let imageDataUrl = '';
+    try { imageDataUrl = canvas ? canvas.toDataURL('image/png') : ''; } catch (_) {}
+    const suggestions = _buildPalletCalcSuggestions(run);
+    if (status) status.innerHTML = '<span style="color:var(--text-muted);">Sending…</span>';
+    if (sendBtn) sendBtn.disabled = true;
+    fetch('api.php?action=email_pallet_calc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, run, image: imageDataUrl, suggestions })
+    })
+      .then(r => r.json())
+      .then(j => {
+        if (sendBtn) sendBtn.disabled = false;
+        if (j && j.ok) {
+          if (status) status.innerHTML = `<span style="color:#10b981;">✓ Sent to ${to}.</span>`;
+          setTimeout(() => toggleDimsCalcEmailForm(false), 1500);
+        } else {
+          const msg = (j && j.error) ? j.error : 'Send failed.';
+          if (status) status.innerHTML = `<span style="color:#ef4444;">${msg}</span>`;
+        }
+      })
+      .catch(err => {
+        if (sendBtn) sendBtn.disabled = false;
+        if (status) status.innerHTML = `<span style="color:#ef4444;">Network error: ${err.message || err}</span>`;
+      });
   }
 
   // Standalone iso renderer for the calculator modal — independent of

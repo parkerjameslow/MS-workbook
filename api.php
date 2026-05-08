@@ -573,6 +573,89 @@ function ms_smtp_send(array $to, string $subject, string $html): array {
     return strpos($sent, '250') !== false ? ['ok' => true] : ['ok' => false, 'error' => "Send failed: $sent"];
 }
 
+// Attachment-aware SMTP sender — used by the Pallet Calc email export.
+// Builds a multipart/related body so inline images (referenced by cid:)
+// render in the email client AND fall back to a downloadable
+// attachment for clients that block inline images. Each $attachments
+// item: ['name' => ..., 'mime' => 'image/png', 'data' => base64String,
+// 'cid' => 'foo@bar', 'inline' => true|false].
+function ms_smtp_send_with_attachments(array $to, string $subject, string $html, array $attachments = []): array {
+    if (empty($attachments)) return ms_smtp_send($to, $subject, $html);
+    $host  = 'smtp.gmail.com';
+    $port  = 587;
+    $user  = 'parker@marketsculpt.com';
+    $pass  = 'gcsgalchcnfnheth';
+    $fname = 'Market Sculpt';
+
+    $fp = @fsockopen('tcp://' . $host, $port, $errno, $errstr, 15);
+    if (!$fp) return ['ok' => false, 'error' => "Connect failed: $errstr"];
+    stream_set_timeout($fp, 15);
+    fgets($fp, 512);
+
+    fwrite($fp, "EHLO marketsculpt.com\r\n");
+    do { $l = fgets($fp, 512); } while (strlen($l) >= 4 && $l[3] !== ' ');
+    fwrite($fp, "STARTTLS\r\n"); fgets($fp, 512);
+    stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
+    fwrite($fp, "EHLO marketsculpt.com\r\n");
+    do { $l = fgets($fp, 512); } while (strlen($l) >= 4 && $l[3] !== ' ');
+    fwrite($fp, "AUTH LOGIN\r\n"); fgets($fp, 512);
+    fwrite($fp, base64_encode($user) . "\r\n"); fgets($fp, 512);
+    fwrite($fp, base64_encode($pass) . "\r\n");
+    $auth = fgets($fp, 512);
+    if (strpos($auth, '235') === false) {
+        fwrite($fp, "QUIT\r\n"); fclose($fp);
+        return ['ok' => false, 'error' => "Auth failed: $auth"];
+    }
+    fwrite($fp, "MAIL FROM:<{$user}>\r\n"); fgets($fp, 512);
+    foreach ($to as $addr) { fwrite($fp, "RCPT TO:<{$addr}>\r\n"); fgets($fp, 512); }
+    fwrite($fp, "DATA\r\n"); fgets($fp, 512);
+
+    $boundaryMixed   = 'mx_' . md5(uniqid('m', true));
+    $boundaryRelated = 'rel_' . md5(uniqid('r', true));
+    $boundaryAlt     = 'alt_' . md5(uniqid('a', true));
+    $plain = wordwrap(strip_tags(preg_replace('/<[^>]+>/', ' ', $html)), 76, "\r\n");
+
+    $headers = "From: {$fname} <{$user}>\r\nTo: " . implode(', ', $to) . "\r\n"
+             . "Subject: {$subject}\r\nMIME-Version: 1.0\r\n"
+             . "Content-Type: multipart/mixed; boundary=\"{$boundaryMixed}\"\r\n"
+             . "X-Mailer: MarketSculptWorkbook/1.0\r\n\r\n";
+
+    // — Mixed → Related (HTML + inline images) → Alternative (plain + HTML)
+    $msg  = "--{$boundaryMixed}\r\n"
+          . "Content-Type: multipart/related; boundary=\"{$boundaryRelated}\"\r\n\r\n"
+          . "--{$boundaryRelated}\r\n"
+          . "Content-Type: multipart/alternative; boundary=\"{$boundaryAlt}\"\r\n\r\n"
+          . "--{$boundaryAlt}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n{$plain}\r\n"
+          . "--{$boundaryAlt}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n{$html}\r\n"
+          . "--{$boundaryAlt}--\r\n";
+    // Inline (cid:) attachments live inside the Related part
+    foreach ($attachments as $att) {
+        if (empty($att['inline']) || empty($att['cid'])) continue;
+        $msg .= "--{$boundaryRelated}\r\n"
+              . "Content-Type: {$att['mime']}; name=\"{$att['name']}\"\r\n"
+              . "Content-Transfer-Encoding: base64\r\n"
+              . "Content-ID: <{$att['cid']}>\r\n"
+              . "Content-Disposition: inline; filename=\"{$att['name']}\"\r\n\r\n"
+              . chunk_split($att['data'], 76, "\r\n") . "\r\n";
+    }
+    $msg .= "--{$boundaryRelated}--\r\n";
+    // Regular (non-inline) attachments live at the Mixed level
+    foreach ($attachments as $att) {
+        if (!empty($att['inline'])) continue;
+        $msg .= "--{$boundaryMixed}\r\n"
+              . "Content-Type: {$att['mime']}; name=\"{$att['name']}\"\r\n"
+              . "Content-Transfer-Encoding: base64\r\n"
+              . "Content-Disposition: attachment; filename=\"{$att['name']}\"\r\n\r\n"
+              . chunk_split($att['data'], 76, "\r\n") . "\r\n";
+    }
+    $msg .= "--{$boundaryMixed}--\r\n";
+
+    fwrite($fp, $headers . $msg . ".\r\n");
+    $sent = fgets($fp, 512);
+    fwrite($fp, "QUIT\r\n"); fclose($fp);
+    return strpos($sent, '250') !== false ? ['ok' => true] : ['ok' => false, 'error' => "Send failed: $sent"];
+}
+
 function ms_email_wrap(string $title, string $preheader, string $body): string {
     return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . htmlspecialchars($title) . '</title></head>'
     . '<body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;">'
@@ -3152,6 +3235,99 @@ switch ($action) {
             'updates'    => $rows,
             'server_now' => date('Y-m-d H:i:s')
         ]);
+        break;
+
+    case 'email_pallet_calc':
+        // Receives a Pallet Calculator run + canvas image (base64 PNG)
+        // + suggestion list, builds an HTML report email, attaches the
+        // canvas as a PNG, and ships it through ms_smtp_send so the
+        // recipient ends up with a self-contained Pallet Report they
+        // can print to PDF or forward downstream. The same suggestions
+        // shown in the modal render verbatim so on-screen and emailed
+        // outputs always match.
+        $body = json_decode(file_get_contents('php://input'), true) ?? [];
+        $to = trim((string)($body['to'] ?? ''));
+        $run = is_array($body['run'] ?? null) ? $body['run'] : [];
+        $img = (string)($body['image'] ?? '');
+        $sug = is_array($body['suggestions'] ?? null) ? $body['suggestions'] : [];
+        if (!$to || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['ok' => false, 'error' => 'Recipient email is invalid.']);
+            break;
+        }
+        if (!$run || empty($run['perLayer'])) {
+            echo json_encode(['ok' => false, 'error' => 'No calculation results to send. Run Calculate first.']);
+            break;
+        }
+        $unit = ($run['unit'] ?? 'cm') === 'in' ? 'in' : 'cm';
+        $fmtL = function ($cm) use ($unit) {
+            return $unit === 'cm'
+                ? number_format($cm, 1) . ' cm'
+                : number_format($cm / 2.54, 1) . '"';
+        };
+        $fmtKg = function ($kg) {
+            $lb = $kg * 2.20462;
+            return number_format($kg, $kg < 10 ? 2 : 1) . ' kg / ' . number_format($lb, $lb < 10 ? 2 : 1) . ' lb';
+        };
+        // ── Stats summary table ──────────────────────────────────────
+        $rows = [
+            ['Pallet',            htmlspecialchars((string)($run['palLabel'] ?? '40 × 48'))],
+            ['Carton dimensions', $fmtL((float)($run['pkgL'] ?? 0)) . ' × ' . $fmtL((float)($run['pkgW'] ?? 0)) . ' × ' . $fmtL((float)($run['pkgH'] ?? 0))],
+            ['Layout per layer',  ((int)($run['layoutCols'] ?? 0)) . ' × ' . ((int)($run['layoutRows'] ?? 0)) . ' = <strong>' . ((int)($run['perLayer'] ?? 0)) . '</strong>'],
+            ['Max layers',        (string)((int)($run['maxLayers'] ?? 0)) . ' (load height ' . ((int)($run['loadHIn'] ?? 60)) . '")'],
+            ['Items per pallet',  '<strong style="color:#E8751A;">' . number_format((int)($run['totalPerPallet'] ?? 0)) . '</strong>'],
+            ['Surface coverage',  ((int)($run['surfaceUse'] ?? 0)) . '%'],
+        ];
+        if (!empty($run['palletWtKg']))  $rows[] = ['Weight per pallet', $fmtKg((float)$run['palletWtKg'])];
+        if (!empty($run['totalQty']))    $rows[] = ['Shipment qty',      number_format((int)$run['totalQty']) . ' units'];
+        if (!empty($run['palletsNeeded'])) $rows[] = ['Pallets needed',  '<strong style="color:#E8751A;">' . number_format((int)$run['palletsNeeded']) . '</strong>'];
+        if (!empty($run['totalWtKg']))   $rows[] = ['Total shipment wt', $fmtKg((float)$run['totalWtKg'])];
+        $statsHtml = ms_detail_table($rows);
+        // ── Inline canvas image (uses cid: reference for compatibility) ─
+        $imgHtml = '';
+        $attachments = [];
+        if (preg_match('/^data:image\/(png|jpeg);base64,(.+)$/', $img, $m)) {
+            $cid = 'palletviz-' . md5(uniqid('p', true)) . '@marketsculpt.com';
+            $attachments[] = [
+                'name'    => 'pallet-viz.png',
+                'mime'    => 'image/' . $m[1],
+                'data'    => $m[2],          // already base64
+                'cid'     => $cid,
+                'inline'  => true,
+            ];
+            $imgHtml = '<div style="margin:18px 0; text-align:center;"><img src="cid:' . $cid . '" alt="Pallet 3D preview" style="max-width:100%; border-radius:8px; border:1px solid #e5e7eb;" /></div>';
+        }
+        // ── Suggestions list ────────────────────────────────────────
+        $sugHtml = '';
+        if (!empty($sug)) {
+            $palette = [
+                'good' => '#10b981', 'warn' => '#f59e0b',
+                'tip'  => '#E8751A', 'info' => '#6366f1',
+            ];
+            $blocks = '';
+            foreach ($sug as $it) {
+                $kind  = $it['kind']  ?? 'tip';
+                $title = $it['title'] ?? '';
+                $bdy   = $it['body']  ?? '';
+                $color = $palette[$kind] ?? $palette['tip'];
+                $blocks .= '<tr><td style="padding:0 0 10px;"><div style="border:1px solid ' . $color . '; border-radius:8px; padding:11px 13px; background:rgba(0,0,0,0.02);">'
+                        . '<div style="font-size:12px; font-weight:700; color:' . $color . '; margin-bottom:4px;">' . htmlspecialchars($title) . '</div>'
+                        . '<div style="font-size:13px; color:#1a1d2e; line-height:1.55;">' . $bdy . '</div>'
+                        . '</div></td></tr>';
+            }
+            $sugHtml = '<h3 style="font-size:15px; color:#E8751A; margin:24px 0 12px; border-top:1px solid #e5e7eb; padding-top:16px;">Optimization &amp; Stacking Suggestions</h3>'
+                     . '<table width="100%" cellpadding="0" cellspacing="0" border="0">' . $blocks . '</table>';
+        }
+        // ── Compose ─────────────────────────────────────────────────
+        $emailBody = '<h2 style="margin:0 0 6px; font-size:22px; color:#181b26;">Pallet Calculator Report</h2>'
+                   . '<p style="margin:0 0 18px; color:#6b7280; font-size:13px;">Generated on ' . date('M j, Y \a\t g:i a') . '</p>'
+                   . $imgHtml
+                   . $statsHtml
+                   . $sugHtml
+                   . '<p style="margin:22px 0 0; font-size:11px; color:#9ba3c0; line-height:1.6;">Tip: print this email to PDF from your email client (File → Print → Save as PDF) to keep a hard copy for the shipping file.</p>';
+        $subject = 'Pallet Calc Report — ' . number_format((int)($run['totalPerPallet'] ?? 0)) . ' / pallet · ' . ($run['palLabel'] ?? '');
+        $html = ms_email_wrap($subject, 'Pallet fit summary, suggestions, and 3D preview', $emailBody);
+        $res = ms_smtp_send_with_attachments([$to], $subject, $html, $attachments);
+        echo json_encode($res);
         break;
 
     default:
