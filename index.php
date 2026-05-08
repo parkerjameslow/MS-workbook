@@ -11486,7 +11486,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         body: `${r.palletsNeeded.toLocaleString()} pallets ÷ ${palletsPerContainer} per container ${fitsDouble ? '(2-stacked vertically)' : '(single layer — stack too tall to double up)'} = <strong>${containers}</strong> 40' HC container${containers === 1 ? '' : 's'}.`
       });
     }
+
+    // 4) Double-stack rescue — when the current pallet is too tall to
+    //    stack two-high inside an 8'10" 40' HC, propose dropping the
+    //    Loading height input to the threshold (≈47 in cargo / ≈49 in
+    //    overall) so two pallets fit vertically. Recomputes the new
+    //    layers / pallets / containers so the savings are concrete.
+    if (!fitsDouble && r.totalQty > 0 && r.pkgH > 0) {
+      const maxLoadCmForDouble = (HC_INT_H - 2 * PALLET_DECK) / 2;        // 119.5 cm cargo
+      const maxLoadInForDouble = Math.floor(maxLoadCmForDouble / 2.54);   // ≈ 47"
+      // Only meaningful if the new height still allows ≥1 layer.
+      const newMaxLayers     = Math.max(1, Math.floor(maxLoadCmForDouble / r.pkgH));
+      const newPerPallet     = (r.perLayer || 0) * newMaxLayers;
+      const newPalletsNeeded = newPerPallet > 0 ? Math.ceil(r.totalQty / newPerPallet) : 0;
+      const newContainers    = newPalletsNeeded > 0 ? Math.ceil(newPalletsNeeded / 36) : 0;
+      const curContainers    = Math.ceil(r.palletsNeeded / 18);
+      // Don't surface unless it actually helps (fewer containers OR
+      // newPalletsNeeded fits inside ONE container — that's the
+      // "fit all units in 1 container" case the user called out).
+      if (newContainers > 0 && newContainers <= curContainers) {
+        const fitsInOne = newContainers === 1;
+        out.push({
+          kind: 'good',
+          title: `Drop load height to ${maxLoadInForDouble}" to enable double-stacking`,
+          body: `At <strong>${maxLoadInForDouble}"</strong> per pallet (${newMaxLayers} layer${newMaxLayers === 1 ? '' : 's'} × ${r.perLayer} per layer = <strong>${newPerPallet.toLocaleString()}</strong> per pallet), two pallets fit vertically inside the 40' HC. Ships <strong>${r.totalQty.toLocaleString()}</strong> units in <strong>${newPalletsNeeded.toLocaleString()}</strong> pallet${newPalletsNeeded === 1 ? '' : 's'} = <strong>${newContainers}</strong> container${newContainers === 1 ? '' : 's'}${fitsInOne ? ' (everything fits in a single 40' HC)' : (curContainers > newContainers ? ` (saves ${curContainers - newContainers})` : '')}. <a href="#" onclick="event.preventDefault(); applyDimsCalcLoadHeight(${maxLoadInForDouble});" style="color:#10b981; font-weight:700; text-decoration:underline;">↻ Apply ${maxLoadInForDouble}"</a>`
+        });
+      }
+    }
     return out;
+  }
+
+  // Apply a recommended load-height value back into the calculator
+  // input + immediately rerun so the panel + viz update in place.
+  function applyDimsCalcLoadHeight(inches) {
+    const el = document.getElementById('dc-load-height');
+    if (!el) return;
+    el.value = String(inches);
+    if (typeof runDimsCalc === 'function') runDimsCalc();
   }
 
   function _renderDimsCalcOptimization(r) {
