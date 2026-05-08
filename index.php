@@ -6011,14 +6011,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">cm</div>
             <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-l" oninput="convertDim('dim-cm-l','dim-in-l','cm'); autoCalcCartons(); renderBoxViz('product'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-l" oninput="convertDim('dim-in-l','dim-cm-l','in'); autoCalcCartons(); renderBoxViz('product'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-w" oninput="convertDim('dim-cm-w','dim-in-w','cm'); autoCalcCartons(); renderBoxViz('product'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-w" oninput="convertDim('dim-in-w','dim-cm-w','in'); autoCalcCartons(); renderBoxViz('product'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in'); autoCalcCartons(); renderBoxViz('product')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-cm-h" oninput="convertDim('dim-cm-h','dim-in-h','cm'); autoCalcCartons(); renderBoxViz('product'); renderPalletViz()" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="dim-in-h" oninput="convertDim('dim-in-h','dim-cm-h','in'); autoCalcCartons(); renderBoxViz('product'); renderPalletViz()" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -9504,6 +9504,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // qty into the input whenever the toggle changes.
     if (typeof syncManualPalletTotalUnits === 'function') syncManualPalletTotalUnits();
     renderPalletViz();
+    // The shipping tab pulls dims/weight/count from PRODUCT in manual
+    // mode and OUTER CARTON otherwise — refresh both functions so the
+    // freight calc + dim display flip correctly when the toggle changes.
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
@@ -10394,8 +10399,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       inlineEl.innerHTML = `<span style="opacity:0.75;">Pallet:</span> <strong>${perLayer}</strong> / layer &nbsp;·&nbsp; <strong>${totalPerPallet}</strong> / pallet${palletPart}`;
     }
 
-    // Refresh shipping tab pallet stats if visible
+    // Refresh shipping tab dims/freight + pallet stats. The shipping
+    // tab pulls its dims/weight from PRODUCT in manual mode and
+    // OUTER CARTON otherwise (see _shipUnit) — calling these here
+    // keeps the shipping tab in sync the moment the operator toggles
+    // manual mode, edits product/carton dims, or changes the unit
+    // count, without waiting for the tab to be reopened.
     syncShippingPalletStats();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
 
     // Refresh the 40' HC container preview using the just-computed
     // pallet stack height + per-pallet weight + units-per-pallet +
@@ -15005,8 +15017,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const el = document.getElementById('sh-pallet-stats-body');
     if (!el) return;
     const ps = window._palletStats;
+    const manualOn = !!document.getElementById('pallet-manual')?.checked;
     if (!ps) {
-      el.innerHTML = '<span style="font-size:12px; color:var(--text-muted); font-style:italic;">Enter outer carton dimensions on the Workbook tab to see pallet stats.</span>';
+      el.innerHTML = `<span style="font-size:12px; color:var(--text-muted); font-style:italic;">Enter ${manualOn ? 'product' : 'outer carton'} dimensions on the Workbook tab to see pallet stats.</span>`;
       return;
     }
     const stat = (val, lbl, accent) =>
@@ -15015,18 +15028,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="sh-pallet-stat-lbl">${lbl}</div>
       </div>`;
 
+    // Per-pallet item label flips with mode — products in manual,
+    // outer cartons in carton mode.
+    const itemP = manualOn ? 'units' : 'outer cartons';
     let html = `<div class="sh-pallet-grid">
-      ${stat(ps.perLayer,       'outer cartons / layer')}
+      ${stat(ps.perLayer,       `${itemP} / layer`)}
       ${stat(ps.maxLayers,      'max layers')}
-      ${stat(ps.totalPerPallet, 'outer cartons / pallet')}
+      ${stat(ps.totalPerPallet, `${itemP} / pallet`)}
       ${stat(ps.surfaceUse + '%', 'surface coverage')}
-      ${ps.productsPerOuter > 0 ? stat(ps.outerQtyVal, 'inner cartons / outer') + stat(ps.productsPerOuter, 'products / outer carton') : ''}`;
+      ${!manualOn && ps.productsPerOuter > 0 ? stat(ps.outerQtyVal, 'inner cartons / outer') + stat(ps.productsPerOuter, 'products / outer carton') : ''}`;
 
     if (ps.totalCartons > 0) {
+      const shipmentLabel = manualOn
+        ? `Shipment of ${ps.totalCartons.toLocaleString()} units`
+        : `Shipment of ${ps.totalCartons.toLocaleString()} outer cartons`;
       html += `<hr class="sh-pallet-divider">
-        <div class="sh-pallet-section-label">Shipment of ${ps.totalCartons} cartons</div>
+        <div class="sh-pallet-section-label">${shipmentLabel}</div>
         ${stat(ps.palletsNeeded, 'pallets needed', true)}
-        ${ps.totalInners > 0 ? stat(ps.totalInners, 'total inner cartons') : '<div></div>'}
+        ${!manualOn && ps.totalInners > 0 ? stat(ps.totalInners, 'total inner cartons') : '<div></div>'}
         ${ps.totalProducts > 0 ? `<div class="sh-pallet-stat" style="grid-column:span 2;"><div class="sh-pallet-stat-val">${ps.totalProducts.toLocaleString()}</div><div class="sh-pallet-stat-lbl">total products</div></div>` : ''}`;
     }
     html += '</div>';
@@ -15034,57 +15053,100 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // Sync outer carton dims/weight display from workbook fields
-  function syncShippingDims() {
+  // Shipping-tab "ship unit" resolver. In carton mode the freight is
+  // calculated against the OUTER CARTON dims/weight × carton count.
+  // In manual mode (pallet view fits products directly on the pallet,
+  // no cartons), the shipping math has to fall back to PRODUCT dims/
+  // weight × unit count — otherwise the shipping tab is just blank.
+  function _shipUnit() {
+    const manualOn = !!document.getElementById('pallet-manual')?.checked;
     const get = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const totalUnits = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
+    if (manualOn) {
+      return {
+        mode: 'manual',
+        unitLabel: 'product',
+        unitLabelP: 'products',
+        lCm: get('dim-cm-l'),
+        wCm: get('dim-cm-w'),
+        hCm: get('dim-cm-h'),
+        wtKg: get('dim-weight-kg'),
+        count: totalUnits, // 1 product per pallet item
+      };
+    }
+    // Carton mode — derive carton count from total units / per-outer
+    const innerQty = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    const outerQty = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    const productsPerOuter = (innerQty > 0 && outerQty > 0) ? innerQty * outerQty : 0;
+    const cartonCount = productsPerOuter > 0 ? Math.ceil(totalUnits / productsPerOuter) : 0;
+    return {
+      mode: 'carton',
+      unitLabel: 'outer carton',
+      unitLabelP: 'outer cartons',
+      lCm: get('carton-outer-l-cm'),
+      wCm: get('carton-outer-w-cm'),
+      hCm: get('carton-outer-h-cm'),
+      wtKg: get('carton-outer-weight'),
+      count: cartonCount,
+    };
+  }
+
+  function syncShippingDims() {
     const fmt = v => v > 0 ? v.toFixed(2) : '—';
+    const ship = _shipUnit();
 
-    // Cartons in shipment (from pallet-total-cartons)
-    const totalCartons = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
+    // Items in shipment — either total cartons (carton mode) or total
+    // units / products (manual mode). Label flips accordingly.
     const cartonsEl = document.getElementById('sh-cartons-val');
-    if (cartonsEl) cartonsEl.textContent = totalCartons > 0 ? totalCartons.toLocaleString() : '—';
+    if (cartonsEl) cartonsEl.textContent = ship.count > 0 ? ship.count.toLocaleString() : '—';
+    const cartonsLbl = document.getElementById('sh-cartons-label');
+    if (cartonsLbl) cartonsLbl.textContent = ship.mode === 'manual' ? 'units in shipment' : 'cartons in shipment';
 
-    const lCm  = get('carton-outer-l-cm');
-    const wCm  = get('carton-outer-w-cm');
-    const hCm  = get('carton-outer-h-cm');
-    const lIn  = get('carton-outer-l-in') || (lCm ? lCm / 2.54 : 0);
-    const wIn  = get('carton-outer-w-in') || (wCm ? wCm / 2.54 : 0);
-    const hIn  = get('carton-outer-h-in') || (hCm ? hCm / 2.54 : 0);
-    const wtKg  = get('carton-outer-weight');
-    const wtLbs = get('carton-outer-weight-lbs') || (wtKg ? wtKg * 2.20462 : 0);
+    const lIn = ship.lCm ? ship.lCm / 2.54 : 0;
+    const wIn = ship.wCm ? ship.wCm / 2.54 : 0;
+    const hIn = ship.hCm ? ship.hCm / 2.54 : 0;
+    const wtLbs = ship.wtKg ? ship.wtKg * 2.20462 : 0;
 
-    document.getElementById('sh-l-cm').textContent  = fmt(lCm);
+    document.getElementById('sh-l-cm').textContent  = fmt(ship.lCm);
     document.getElementById('sh-l-in').textContent  = fmt(lIn);
-    document.getElementById('sh-w-cm').textContent  = fmt(wCm);
+    document.getElementById('sh-w-cm').textContent  = fmt(ship.wCm);
     document.getElementById('sh-w-in').textContent  = fmt(wIn);
-    document.getElementById('sh-h-cm').textContent  = fmt(hCm);
+    document.getElementById('sh-h-cm').textContent  = fmt(ship.hCm);
     document.getElementById('sh-h-in').textContent  = fmt(hIn);
-    document.getElementById('sh-wt-kg').textContent  = fmt(wtKg);
+    document.getElementById('sh-wt-kg').textContent  = fmt(ship.wtKg);
     document.getElementById('sh-wt-lbs').textContent = fmt(wtLbs);
 
-    const innerPerOuter  = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-    const unitsPerInner  = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
-    const unitsPerOuter  = innerPerOuter > 0 && unitsPerInner > 0 ? innerPerOuter * unitsPerInner : 0;
+    // Inner / units per outer only meaningful in carton mode.
     const ipo = document.getElementById('sh-inner-per-outer');
     const upo = document.getElementById('sh-units-per-outer');
-    if (ipo) ipo.textContent = innerPerOuter > 0 ? innerPerOuter : '—';
-    if (upo) upo.textContent = unitsPerOuter > 0 ? unitsPerOuter : '—';
+    if (ship.mode === 'carton') {
+      const innerPerOuter  = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+      const unitsPerInner  = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+      const unitsPerOuter  = innerPerOuter > 0 && unitsPerInner > 0 ? innerPerOuter * unitsPerInner : 0;
+      if (ipo) ipo.textContent = innerPerOuter > 0 ? innerPerOuter : '—';
+      if (upo) upo.textContent = unitsPerOuter > 0 ? unitsPerOuter : '—';
+    } else {
+      if (ipo) ipo.textContent = '—';
+      if (upo) upo.textContent = '1'; // each unit IS the ship unit
+    }
   }
 
   function calcFreight() {
     syncShippingDims();
 
-    const get = id => parseFloat(document.getElementById(id)?.value) || 0;
-
-    // Dims pulled from workbook outer carton (already in cm)
-    const lCm      = get('carton-outer-l-cm');
-    const wCm      = get('carton-outer-w-cm');
-    const hCm      = get('carton-outer-h-cm');
-    const actualKg = get('carton-outer-weight');  // kg per carton
+    // Shipping unit — outer carton in carton mode, individual product
+    // in manual mode. Freight cost scales with whichever the shipper
+    // is actually packing.
+    const ship     = _shipUnit();
+    const lCm      = ship.lCm;
+    const wCm      = ship.wCm;
+    const hCm      = ship.hCm;
+    const actualKg = ship.wtKg;
 
     const rawMode  = document.getElementById('freight-mode').value;
     const mode     = freightMethodRates[rawMode] ? rawMode : 'slow'; // fallback to slow if mode unknown/empty
     const rate     = freightMethodRates[mode];
-    const cartons  = parseInt(document.getElementById('pallet-total-cartons')?.value) || 1;
+    const cartons  = ship.count > 0 ? ship.count : 1;
     const exchange = FREIGHT_EXCHANGE_RATE;
 
     // Update rate chip displays
