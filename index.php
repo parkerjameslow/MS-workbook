@@ -6254,7 +6254,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <label style="font-size:11px; color:var(--text-muted); white-space:nowrap;">Max height</label>
                 <input type="number" id="pallet-max-height" value="60" min="1" max="120" step="1"
                   style="width:56px; text-align:center; font-size:12px;"
-                  oninput="renderPalletViz()" />
+                  oninput="renderPalletViz(); savePalletMaxHeightDefault();" />
                 <span style="font-size:11px; color:var(--text-muted);">in</span>
               </div>
               <!-- Per-layer / per-row height — populated by renderPalletViz
@@ -9510,6 +9510,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
+  // ── Pallet Max Height — persistent default ─────────────────────────
+  // The "Max height" input on the Pallet View is a USER-LEVEL default,
+  // not per-workbook. Once the operator picks a value, it sticks for
+  // every workbook they open until they change it again. Stored in
+  // localStorage so it survives logouts/refreshes on the same device.
+  const _PALLET_MAX_HEIGHT_KEY = 'ms_pallet_max_height_default';
+  function savePalletMaxHeightDefault() {
+    const el = document.getElementById('pallet-max-height');
+    if (!el) return;
+    const v = parseFloat(el.value);
+    if (isNaN(v) || v <= 0) return;
+    try { localStorage.setItem(_PALLET_MAX_HEIGHT_KEY, String(v)); } catch (_) { /* private mode etc. */ }
+  }
+  function applyPalletMaxHeightDefault() {
+    const el = document.getElementById('pallet-max-height');
+    if (!el) return;
+    let saved;
+    try { saved = localStorage.getItem(_PALLET_MAX_HEIGHT_KEY); } catch (_) { return; }
+    const v = parseFloat(saved);
+    if (!isNaN(v) && v > 0) el.value = String(v);
   }
 
   // Auto-populate "Total Units to Ship" from the RFQ Grand Total qty.
@@ -18646,6 +18668,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // the visibility based on the select state.
       _s('product-subcategory-other',   data.productSubcategoryOther  || '');
       _s('product-subcategory-other-2', data.productSubcategoryOther2 || '');
+      // Restore the user-level Max Height default (saved to localStorage
+      // the last time anyone changed it). Runs before renderPalletViz
+      // is triggered so the saved value is what every pallet calc uses.
+      if (typeof applyPalletMaxHeightDefault === 'function') applyPalletMaxHeightDefault();
       // Pallet manual mode: restore the checkbox + sync the dependent
       // UI (gray-out + label) so a hard refresh doesn't lose the flag.
       const palletManualEl = document.getElementById('pallet-manual');
