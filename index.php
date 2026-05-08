@@ -9615,6 +9615,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
+  // ── Apply-suggestion helpers ────────────────────────────────────────
+  // The optimization tip + container side-panel surface concrete
+  // suggestions ("reduce max height to 47", "set total units to
+  // 9,360", "top off with 1,407 loose units"). These helpers wire
+  // those suggestions to one-click "Update" buttons that mutate the
+  // relevant input + trigger downstream renders. Each one accepts a
+  // numeric value (or reads it back from a data attribute) and
+  // applies the change as if the operator typed it.
+  function applyMaxHeightSuggestion(inches) {
+    const el = document.getElementById('pallet-max-height');
+    if (!el) return;
+    const v = parseFloat(inches);
+    if (isNaN(v) || v <= 0) return;
+    el.value = String(v);
+    if (typeof savePalletMaxHeightDefault === 'function') savePalletMaxHeightDefault();
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  function applyTotalUnitsSuggestion(units) {
+    const el = document.getElementById('pallet-total-cartons');
+    if (!el) return;
+    const v = parseInt(units);
+    if (isNaN(v) || v < 0) return;
+    el.value = String(v);
+    // Update auto-sync marker so the new value isn't immediately
+    // overwritten by the next RFQ recalc — this is an explicit
+    // override applied via the suggestion button.
+    el.dataset.lastRfqSync = ''; // let the override stand
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof _refreshPalletTotalHint === 'function') _refreshPalletTotalHint();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   // ── Pallet Max Height — per-workbook value + new-workbook seed ────
   // The "Max height" input is saved PER WORKBOOK (detail.palletMaxHeight).
   // localStorage holds a "default for new workbooks" seed only — it
@@ -10009,10 +10044,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ? 'loose units (cardboard, no pallet)'
         : 'loose cartons (no pallet)';
 
+      // Compute the actual product/unit qtys behind each suggestion so
+      // the Update buttons can flip the Total Units to Ship straight
+      // to a meaningful target. In manual mode every "ship item" is a
+      // product (1:1). In carton mode each ship item is an outer
+      // carton holding `productsPerOuter` products, so we multiply by
+      // that to reach the products figure the input expects.
+      const _innerQtyForFill = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+      const _outerQtyForFill = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+      const _ppoForFill      = (_innerQtyForFill > 0 && _outerQtyForFill > 0) ? _innerQtyForFill * _outerQtyForFill : 0;
+      const _manualOnFill    = !!document.getElementById('pallet-manual')?.checked;
+      const productsPerItem  = _manualOnFill ? 1 : (_ppoForFill || 1);
+      const currentTotalUnitsRaw = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
+      // Target: enough Total Units to fully load the last container's
+      // pallet slots (no loose top-off).
+      const targetFillPallets    = currentTotalUnitsRaw + unitsToFillLastContainer * productsPerItem;
+      // Target: fully load pallets + add loose top-off for any leftover CBM.
+      const targetFillWithLoose  = targetFillPallets + looseFit * productsPerItem;
+      const upBtn = `display:inline-flex; align-items:center; gap:4px; padding:2px 8px; font-size:10px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:4px; cursor:pointer; white-space:nowrap; margin-left:6px; vertical-align:middle;`;
+
       const remainingBlock = palletsNeeded > 0
         ? `<div style="margin-top:14px; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2);">
-             <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">
-               Last Container — Room to Fill
+             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+               <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">
+                 Last Container — Room to Fill
+               </div>
+               ${palletsRoomLeft > 0 ? `<button type="button" style="${upBtn}" onclick="applyTotalUnitsSuggestion(${targetFillPallets})" title="Bump Total Units to ${targetFillPallets.toLocaleString()} to fill the last container with pallets">↻ Fill</button>` : ''}
              </div>
              <div style="font-size:13px; color:var(--text); line-height:1.55;">
                <div>+ <strong style="color:var(--accent);">${palletsRoomLeft}</strong> more pallet${palletsRoomLeft === 1 ? '' : 's'}</div>
@@ -10029,7 +10086,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              </div>
              ${looseFit > 0 ? `
              <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
-               <div style="font-size:11px; font-weight:700; color:var(--accent); margin-bottom:4px;">↳ Top-Off Capacity</div>
+               <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+                 <div style="font-size:11px; font-weight:700; color:var(--accent);">↳ Top-Off Capacity</div>
+                 <button type="button" style="${upBtn}" onclick="applyTotalUnitsSuggestion(${targetFillWithLoose})" title="Bump Total Units to ${targetFillWithLoose.toLocaleString()} (pallets + loose top-off)">↻ Top Off</button>
+               </div>
                <div style="font-size:13px; color:var(--text); line-height:1.5;">
                  You could top off the last container with up to
                  <strong style="color:var(--accent);">~${looseFit.toLocaleString()}</strong> more ${looseLabel}
@@ -10462,6 +10522,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ? `${m3.toFixed(2)} m³`
             : `${m3.toLocaleString('en-US', {maximumFractionDigits:1})} m³`;
           const totalLabelWord = (unitWord === 'units' || unitWord === 'unit') ? 'Units' : 'Outer Cartons';
+          // Inline button styling, kept tight so the suggestion card
+          // stays compact even with multiple Update affordances.
+          const upBtnStyle = `display:inline-flex; align-items:center; gap:4px; padding:3px 9px; font-size:11px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:5px; cursor:pointer; white-space:nowrap; margin-left:8px;`;
+          const looseTotal = newUnitsPerContainer + looseFitInRemaining;
           optimizationTipHTML = `
             <div style="margin-top:16px; padding:14px; border:1px solid var(--accent); border-radius:8px; background:rgba(232,117,26,0.06);">
               <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
@@ -10470,6 +10534,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               </div>
               <div style="font-size:13px; color:var(--text); line-height:1.55;">
                 Reduce <strong>Max Height</strong> from <strong>${currentMaxHeightIn}"</strong> to <strong>${maxStackForDoubleIn}"</strong> per pallet so two pallets stack vertically inside the 8'10" container.
+                <button type="button" style="${upBtnStyle}" onclick="applyMaxHeightSuggestion(${maxStackForDoubleIn})" title="Set Max Height to ${maxStackForDoubleIn}&quot;">↻ Update Max Height</button>
               </div>
               <div style="margin-top:10px; padding:10px 12px; background:rgba(232,117,26,0.08); border-radius:6px; font-size:12px; line-height:1.7;">
                 <div>→ <strong style="color:var(--accent);">${newPalletsPerContainer}</strong> pallets per container <span style="color:var(--text-muted);">(was ${palletsPerLayerInContainer})</span></div>
@@ -10484,10 +10549,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <strong style="color:var(--accent);">~${looseFitInRemaining.toLocaleString()}</strong>
                 more loose ${unitWordP} (cardboard, no pallet, 80% packing efficiency).
               </div>` : ''}
-              <div style="margin-top:10px; font-size:11px; color:var(--text-muted); line-height:1.5;">
-                ↳ Set <strong>Total ${totalLabelWord} to Ship</strong> to
-                <strong>${newUnitsPerContainer.toLocaleString()}</strong>
-                to fully utilize one container with palletized goods${looseFitInRemaining > 0 ? `, or <strong>${(newUnitsPerContainer + looseFitInRemaining).toLocaleString()}</strong> if you also load loose units in the leftover CBM` : ''}.
+              <div style="margin-top:12px; padding-top:10px; border-top:1px dashed var(--border); font-size:12px; color:var(--text); line-height:1.6;">
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
+                  <span>↳ Fill 1 container with pallets:</span>
+                  <strong>${newUnitsPerContainer.toLocaleString()}</strong>
+                  <span style="color:var(--text-muted);">${unitWordP}</span>
+                  <button type="button" style="${upBtnStyle}" onclick="applyTotalUnitsSuggestion(${newUnitsPerContainer})" title="Set Total Units to Ship to ${newUnitsPerContainer.toLocaleString()}">↻ Update Units</button>
+                </div>
+                ${looseFitInRemaining > 0 ? `
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px;">
+                  <span>↳ Fill 1 container w/ loose top-off:</span>
+                  <strong>${looseTotal.toLocaleString()}</strong>
+                  <span style="color:var(--text-muted);">${unitWordP}</span>
+                  <button type="button" style="${upBtnStyle}" onclick="applyTotalUnitsSuggestion(${looseTotal})" title="Set Total Units to Ship to ${looseTotal.toLocaleString()}">↻ Update Units</button>
+                </div>` : ''}
               </div>
             </div>`;
         }
@@ -10530,7 +10605,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span style="opacity:0.7;">(${(palletsNeeded || 0).toLocaleString()} × 45 lb)</span>
             </div>
           </div>` : (totalInners > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalInners}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total inner cartons</div></div>` : '<div></div>')}
-          ${totalProducts > 0 ? `<div style="grid-column:span 2;"><div style="font-size:22px; font-weight:700; color:var(--text);">${totalProducts.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total products</div></div>` : ''}
+          ${totalProducts > 0 ? `<div style="grid-column:span 2;">
+            <div style="font-size:22px; font-weight:700; color:var(--text);">${totalProducts.toLocaleString()}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total products</div>
+            ${(() => {
+              // Sub-text: how many OUTER CARTONS that many products
+              // would fill at the current outer carton arrangement.
+              // Only meaningful when an outer arrangement is set
+              // (productsPerOuter > 0). Uses the OUTER CARTON dims so
+              // the operator can sanity-check carton count + size at
+              // a glance, even when in manual mode.
+              const outerL = parseFloat(document.getElementById('carton-outer-l-cm')?.value);
+              const outerW = parseFloat(document.getElementById('carton-outer-w-cm')?.value);
+              const outerH = parseFloat(document.getElementById('carton-outer-h-cm')?.value);
+              if (productsPerOuter > 0) {
+                const cartonsNeeded = Math.ceil(totalProducts / productsPerOuter);
+                const dimStr = (outerL && outerW && outerH)
+                  ? ` at <strong>${outerL.toFixed(1)} × ${outerW.toFixed(1)} × ${outerH.toFixed(1)} cm</strong>`
+                  : '';
+                return `<div style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4; opacity:0.85;">
+                  &nbsp;↳ fills <strong>${cartonsNeeded.toLocaleString()}</strong> outer carton${cartonsNeeded === 1 ? '' : 's'}${dimStr}
+                  <span style="opacity:0.7;">(${productsPerOuter.toLocaleString()} / outer)</span>
+                </div>`;
+              }
+              return '';
+            })()}
+          </div>` : ''}
         </div>
       </div>` : ''}
       <div style="margin-top:14px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
