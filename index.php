@@ -10306,6 +10306,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Still render an empty-state container preview so the operator
       // sees the 40' HC capacity badge even before entering dims.
       if (typeof renderContainerViz === 'function') renderContainerViz(0, 0, PALLET_L, PALLET_W, 0, 0, 0);
+      const sugHost = document.getElementById('pallet-fit-suggestion');
+      if (sugHost) { sugHost.style.display = 'none'; sugHost.innerHTML = ''; }
       return;
     }
 
@@ -10348,6 +10350,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         inlineEl.innerHTML = manualOn
           ? `<span style="color:#f59e0b;">⚠ Product too large for pallet base — check dimensions</span>`
           : `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`;
+      }
+      // Even when the current box overhangs, surface a fit suggestion
+      // if shrinking the footprint by ≤30% lands a clean grid. Helps
+      // the operator when their first cut is just slightly too large
+      // (e.g. 110 × 130 cm needs 101 × 121 to fit a 1 × 1).
+      const _maxHIn = parseFloat(document.getElementById('pallet-max-height')?.value) || 60;
+      if (typeof _renderPalletFitSuggestion === 'function') {
+        _renderPalletFitSuggestion(bL, bW, bH, padCm, _maxHIn * 2.54, manualOn, 0, 1, 0);
       }
       return;
     }
@@ -10821,6 +10831,170 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         unitCbmM3, unitWeightKg
       );
     }
+
+    // ── Pallet Fit Suggestion ────────────────────────────────────────
+    // Surface a one-click "use these dims instead" panel under the 3D
+    // pallet viz when the current outer-carton (or product) footprint
+    // wastes pallet space, when it overhangs the 40 × 48 base, or when
+    // shaving a bit off the height would unlock another full layer.
+    if (typeof _renderPalletFitSuggestion === 'function') {
+      _renderPalletFitSuggestion(bL, bW, bH, padCm, maxLoadH, manualOn,
+                                 perLayer, maxLayers, totalPerPallet);
+    }
+  }
+
+  // ── Pallet fit optimiser ─────────────────────────────────────────────
+  // Searches a small grid of (cols × rows) arrangements that fit
+  // perfectly on the 40 × 48 in pallet base, finds the one with the
+  // highest items-per-pallet that stays within ±30% of the current
+  // L / W (so the operator isn't asked to redesign the box around a
+  // 5 cm cube). Also probes a "shave the height" option that adds one
+  // more layer without changing the footprint. Renders into
+  // #pallet-fit-suggestion. Hides the panel when the current dims are
+  // already the best we can find.
+  function _palletFitSearch(curL, curW, curH, padCm, maxLoadH) {
+    if (!curL || !curW || !curH) return null;
+    const PL = 101.6, PW = 121.92;            // 40 × 48 in pallet base, cm
+    const MIN_DIM = 5;                        // don't suggest sub-5 cm boxes
+    const MAX_DELTA = 0.30;                   // ±30% per axis vs current
+    const curLayout = bestPalletOrientation(curL + padCm, curW + padCm);
+    const curPerLayer = (curLayout.cols || 0) * (curLayout.rows || 0);
+    const curStackPitch = curH + padCm;
+    const curMaxLayers = Math.max(1, Math.floor(maxLoadH / curStackPitch));
+    const curUpp = curPerLayer * curMaxLayers;
+    let best = null;
+    const considerFloor = (newL, newW, cols, rows) => {
+      if (newL < MIN_DIM || newW < MIN_DIM) return;
+      // Floor must actually fit on the pallet (account for floating-
+      // point slop from the / cols and / rows divisions by allowing a
+      // 1 mm tolerance against the pallet edges).
+      if ((newL + padCm) * cols > PL + 0.1) return;
+      if ((newW + padCm) * rows > PW + 0.1) return;
+      const lDelta = Math.abs(newL - curL) / curL;
+      const wDelta = Math.abs(newW - curW) / curW;
+      if (lDelta > MAX_DELTA || wDelta > MAX_DELTA) return;
+      const perLayer = cols * rows;
+      const upp = perLayer * curMaxLayers;
+      const score = upp;
+      const closeness = -(lDelta + wDelta);
+      if (!best || score > best.score ||
+          (score === best.score && closeness > best.closeness)) {
+        best = { kind: 'floor', newL, newW, newH: curH, cols, rows,
+                 perLayer, layers: curMaxLayers, upp, score, closeness };
+      }
+    };
+    for (let cols = 1; cols <= 10; cols++) {
+      for (let rows = 1; rows <= 10; rows++) {
+        // Two pallet orientations — boxes lay along L × W or rotated.
+        const aL = PL / cols - padCm, aW = PW / rows - padCm;
+        const bL = PW / cols - padCm, bW = PL / rows - padCm;
+        considerFloor(aL, aW, cols, rows);
+        considerFloor(bL, bW, cols, rows);
+      }
+    }
+    // Height probe — keep current floor, shave H so one more layer fits.
+    const newLayersTarget = curMaxLayers + 1;
+    const newPitch = maxLoadH / newLayersTarget;
+    const newH = newPitch - padCm;
+    if (newH >= MIN_DIM && newH < curH) {
+      const heightDelta = (curH - newH) / curH;
+      if (heightDelta <= MAX_DELTA) {
+        const upp = curPerLayer * newLayersTarget;
+        if (!best || upp > best.upp) {
+          best = { kind: 'height', newL: curL, newW: curW, newH,
+                   cols: curLayout.cols, rows: curLayout.rows,
+                   perLayer: curPerLayer, layers: newLayersTarget,
+                   upp, score: upp, closeness: -heightDelta };
+        }
+      }
+    }
+    if (!best) return null;
+    if (best.upp <= curUpp) return null;        // no improvement
+    return { ...best, curUpp, curPerLayer, curMaxLayers };
+  }
+
+  function _renderPalletFitSuggestion(bL, bW, bH, padCm, maxLoadH, manualOn,
+                                      curPerLayer, curMaxLayers, curTotalPerPallet) {
+    const host = document.getElementById('pallet-fit-suggestion');
+    if (!host) return;
+    if (!bL || !bW || !bH) { host.style.display = 'none'; host.innerHTML = ''; return; }
+    const sug = _palletFitSearch(bL, bW, bH, padCm, maxLoadH);
+    if (!sug) { host.style.display = 'none'; host.innerHTML = ''; return; }
+    const target = manualOn ? 'product' : 'outer carton';
+    const ppGain = sug.upp - sug.curUpp;
+    const ppGainPct = sug.curUpp > 0 ? Math.round((ppGain / sug.curUpp) * 100) : 0;
+    const newL = sug.newL.toFixed(1);
+    const newW = sug.newW.toFixed(1);
+    const newH = sug.newH.toFixed(1);
+    const inFmt = (cm) => `${(cm / 2.54).toFixed(1)}"`;
+    const headline = sug.kind === 'height'
+      ? `Trim height by <strong>${(bH - sug.newH).toFixed(1)} cm</strong> to unlock <strong>${sug.layers - sug.curMaxLayers}</strong> more layer${sug.layers - sug.curMaxLayers === 1 ? '' : 's'} per pallet.`
+      : `Resize the ${target} footprint to <strong>${newL} × ${newW} cm</strong> for a near-perfect 40 × 48 fit.`;
+    const apply = `applyPalletFitSuggestion(${sug.newL}, ${sug.newW}, ${sug.newH}, ${manualOn ? 'true' : 'false'})`;
+    const btnStyle = `display:inline-flex; align-items:center; gap:4px; padding:6px 12px; font-size:12px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:6px; cursor:pointer; white-space:nowrap;`;
+    host.style.display = '';
+    host.innerHTML = `
+      <div style="padding:14px; border:1px solid var(--accent); border-radius:8px; background:rgba(232,117,26,0.06);">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+          <span style="font-size:14px;">📦</span>
+          <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent);">Pallet Fit Suggestion</span>
+        </div>
+        <div style="font-size:13px; color:var(--text); line-height:1.55; margin-bottom:10px;">
+          ${headline}
+        </div>
+        <div style="padding:10px 12px; background:rgba(232,117,26,0.08); border-radius:6px; font-size:12px; line-height:1.7; margin-bottom:10px;">
+          <div>→ <strong style="color:var(--accent);">${sug.cols} × ${sug.rows}</strong> per layer <span style="color:var(--text-muted);">(was ${sug.curPerLayer})</span></div>
+          <div>→ <strong style="color:var(--accent);">${sug.layers}</strong> layer${sug.layers === 1 ? '' : 's'} <span style="color:var(--text-muted);">(was ${sug.curMaxLayers})</span></div>
+          <div>→ <strong style="color:var(--accent);">${sug.upp.toLocaleString()}</strong> ${target}s per pallet <span style="color:var(--text-muted);">(was ${sug.curUpp.toLocaleString()}, +${ppGain.toLocaleString()} / +${ppGainPct}%)</span></div>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+          <div style="font-size:11px; color:var(--text-muted); line-height:1.5;">
+            New ${target} dims: <strong>${newL} × ${newW} × ${newH} cm</strong>
+            <span style="opacity:0.7;">(${inFmt(sug.newL)} × ${inFmt(sug.newW)} × ${inFmt(sug.newH)})</span>
+          </div>
+          <button type="button" style="${btnStyle}" onclick="${apply}" title="Update ${target} dimensions to ${newL} × ${newW} × ${newH} cm">↻ Apply Suggested Dims</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Apply a suggested footprint — flips the relevant L/W/H inputs (in
+  // cm + in), clears the row/side/stack arrangement (otherwise it'd
+  // re-derive the dims back to whatever the operator had) and triggers
+  // every downstream recalc so the pallet stack, container preview,
+  // freight, and shipping tab all snap to the new layout.
+  function applyPalletFitSuggestion(newL, newW, newH, manualOn) {
+    const round2 = (x) => Math.round(x * 100) / 100;
+    const setDim = (cmId, inId, valueCm) => {
+      const cm = round2(valueCm);
+      const inEl = document.getElementById(inId);
+      const cmEl = document.getElementById(cmId);
+      if (cmEl) cmEl.value = String(cm);
+      if (inEl) inEl.value = round2(cm / 2.54).toFixed(2);
+    };
+    if (manualOn) {
+      setDim('dim-cm-l', 'dim-in-l', newL);
+      setDim('dim-cm-w', 'dim-in-w', newW);
+      setDim('dim-cm-h', 'dim-in-h', newH);
+      if (typeof renderBoxViz === 'function') renderBoxViz('product');
+    } else {
+      // Clear the outer arrangement first so autoCalcCartons doesn't
+      // turn around and overwrite our dims from inner × Row/Side/Height.
+      ['carton-outer-row', 'carton-outer-side', 'carton-outer-stack'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      setDim('carton-outer-l-cm', 'carton-outer-l-in', newL);
+      setDim('carton-outer-w-cm', 'carton-outer-w-in', newW);
+      setDim('carton-outer-h-cm', 'carton-outer-h-in', newH);
+      if (typeof renderBoxViz === 'function') renderBoxViz('outer');
+      const hint = document.getElementById('outer-arrange-hint');
+      if (hint) hint.style.display = 'none';
+    }
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
   let convertingDim = false;
