@@ -7944,7 +7944,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <input id="dc-pkg-w" type="number" min="0" step="0.01" placeholder="width" style="width:100%; box-sizing:border-box;" />
       <input id="dc-pkg-h" type="number" min="0" step="0.01" placeholder="height" style="width:100%; box-sizing:border-box;" />
     </div>
-    <div style="font-size:11px; color:var(--text-muted); margin-bottom:14px;">Length × Width × Height</div>
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+      <div style="font-size:11px; color:var(--text-muted);">Length × Width × Height</div>
+      <!-- Lock toggle: when on, the carton-resize suggestion in the
+           Optimization panel is filtered to options ≥ the current
+           package dims so the engine never proposes shrinking the
+           carton. Useful when the carton size is fixed by the supplier. -->
+      <label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted); cursor:pointer; user-select:none;">
+        <input type="checkbox" id="dc-lock-dims" onchange="if(typeof runDimsCalc==='function') runDimsCalc();"
+          style="width:13px; height:13px; accent-color:var(--accent); cursor:pointer; margin:0;" />
+        Lock dims — don't suggest smaller
+      </label>
+    </div>
 
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; align-items:center;">
       <div>
@@ -7994,9 +8005,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- Email export — only enabled once a Calculate run produced
            results. Click toggles a small inline form (recipient + Send)
            that POSTs the run + canvas image to api.php. -->
-      <button type="button" id="dc-email-toggle-btn" onclick="toggleDimsCalcEmailForm()" disabled
-        style="font-size:12px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:7px 14px; cursor:pointer; opacity:0.55;"
-        title="Calculate first, then email the report">Email Report</button>
+      <div style="display:flex; gap:8px;">
+        <button type="button" id="dc-email-toggle-btn" onclick="toggleDimsCalcEmailForm()" disabled
+          style="font-size:12px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:7px 14px; cursor:pointer; opacity:0.55;"
+          title="Calculate first, then email the report">Email Report</button>
+        <button type="button" id="dc-pdf-btn" onclick="downloadDimsCalcPdf()" disabled
+          style="font-size:12px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:7px 14px; cursor:pointer; opacity:0.55;"
+          title="Calculate first, then download the report as PDF">Download PDF</button>
+      </div>
       <div style="display:flex; gap:8px;">
         <button type="button" class="btn-cancel" onclick="closeDimsCalcModal()">Close</button>
         <button type="button" class="btn-create" onclick="runDimsCalc()" style="background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:600; cursor:pointer;">Calculate</button>
@@ -11397,13 +11413,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       palletWtKg, totalWtKg, layoutCols: layout.cols, layoutRows: layout.rows,
       boxL: layout.bL, boxW: layout.bW, unit
     };
-    // Enable the Email button — the report is now meaningful.
+    // Enable the Email + Download PDF buttons — the report is now
+    // meaningful.
     const emailBtn = document.getElementById('dc-email-toggle-btn');
     if (emailBtn) {
       emailBtn.disabled = false;
       emailBtn.style.opacity = '';
       emailBtn.style.color = 'var(--text)';
       emailBtn.title = 'Email this pallet report';
+    }
+    const pdfBtn = document.getElementById('dc-pdf-btn');
+    if (pdfBtn) {
+      pdfBtn.disabled = false;
+      pdfBtn.style.opacity = '';
+      pdfBtn.style.color = 'var(--text)';
+      pdfBtn.title = 'Download this pallet report as PDF';
     }
     // Populate the optimization-tips section (dynamic + static).
     if (typeof _renderDimsCalcOptimization === 'function') {
@@ -11442,11 +11466,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const MIN_DIM = 5, MAX_DELTA = 0.30;
     const palL = r.palL, palW = r.palW;
     const curUpp = (r.totalPerPallet || 0);
+    // Lock toggle — when checked, the engine refuses to propose any
+    // option whose footprint is SMALLER than the entered carton on
+    // either axis. The supplier can't make the box smaller, so don't
+    // bother suggesting it.
+    const dimsLocked = !!document.getElementById('dc-lock-dims')?.checked;
     let best = null;
     const consider = (newL, newW, cols, rows) => {
       if (newL < MIN_DIM || newW < MIN_DIM) return;
       if (newL * cols > palL + 0.1) return;
       if (newW * rows > palW + 0.1) return;
+      // Lock floor — both axes must be ≥ current dims (small float
+      // tolerance so a near-equal candidate isn't rejected for slop).
+      if (dimsLocked && (newL < r.pkgL - 0.01 || newW < r.pkgW - 0.01)) return;
       const lDelta = Math.abs(newL - r.pkgL) / r.pkgL;
       const wDelta = Math.abs(newW - r.pkgW) / r.pkgW;
       if (lDelta > MAX_DELTA || wDelta > MAX_DELTA) return;
@@ -11724,6 +11756,92 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (sendBtn) sendBtn.disabled = false;
         if (status) status.innerHTML = `<span style="color:#ef4444;">Network error: ${err.message || err}</span>`;
       });
+  }
+
+  // Download a PDF of the current Pallet Calc run. Builds the same
+  // HTML layout the email export uses, opens it in a hidden new
+  // window, and triggers the browser's print-to-PDF dialog. The user
+  // picks "Save as PDF" as the destination and the file lands locally
+  // — no server round-trip and no extra JS library required.
+  function downloadDimsCalcPdf() {
+    const r = window._dimsCalcLastRun;
+    if (!r) return;
+    const palletCanvas    = document.getElementById('dc-canvas');
+    const containerCanvas = document.getElementById('dc-container-canvas');
+    let palletImg = '', containerImg = '';
+    try { if (palletCanvas)    palletImg    = palletCanvas.toDataURL('image/png'); } catch (_) {}
+    try { if (containerCanvas) containerImg = containerCanvas.toDataURL('image/png'); } catch (_) {}
+    const sug = (typeof _buildPalletCalcSuggestions === 'function')
+      ? _buildPalletCalcSuggestions(r) : [];
+    const fmtL = (cm) => r.unit === 'in' ? `${(cm/2.54).toFixed(1)}"` : `${cm.toFixed(1)} cm`;
+    const fmtKg = (kg) => {
+      const lb = kg * 2.20462;
+      const r2 = (n) => n < 10 ? n.toFixed(2) : n.toLocaleString('en-US', {maximumFractionDigits:1});
+      return `${r2(kg)} kg / ${r2(lb)} lb`;
+    };
+    const rows = [
+      ['Pallet',            r.palLabel || '40 × 48'],
+      ['Carton dimensions', `${fmtL(r.pkgL)} × ${fmtL(r.pkgW)} × ${fmtL(r.pkgH)}`],
+      ['Layout per layer',  `${r.layoutCols} × ${r.layoutRows} = <strong>${r.perLayer}</strong>`],
+      ['Max layers',        `${r.maxLayers} (load height ${r.loadHIn || 60}")`],
+      ['Items per pallet',  `<strong>${(r.totalPerPallet || 0).toLocaleString()}</strong>`],
+      ['Surface coverage',  `${r.surfaceUse || 0}%`]
+    ];
+    if (r.palletWtKg)    rows.push(['Weight per pallet', fmtKg(r.palletWtKg)]);
+    if (r.totalQty)      rows.push(['Shipment qty',      `${r.totalQty.toLocaleString()} units`]);
+    if (r.palletsNeeded) rows.push(['Pallets needed',    `<strong>${r.palletsNeeded.toLocaleString()}</strong>`]);
+    if (r.totalWtKg)     rows.push(['Total shipment wt', fmtKg(r.totalWtKg)]);
+    const palette = {
+      good: '#10b981', warn: '#f59e0b',
+      tip:  '#E8751A', info: '#6366f1'
+    };
+    const sugBlocks = sug.map(it => {
+      const color = palette[it.kind] || palette.tip;
+      return `<div style="border:1px solid ${color}; border-radius:8px; padding:11px 13px; margin-bottom:10px; background:rgba(0,0,0,0.02);">
+        <div style="font-size:12px; font-weight:700; color:${color}; margin-bottom:4px;">${it.title}</div>
+        <div style="font-size:13px; color:#1a1d2e; line-height:1.55;">${it.body}</div>
+      </div>`;
+    }).join('');
+    const tableRows = rows.map((row, i) => {
+      const bg = i % 2 === 0 ? '#f8f9fb' : '#ffffff';
+      return `<tr style="background:${bg};">
+        <td style="padding:10px 16px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#9ba3c0; width:38%;">${row[0]}</td>
+        <td style="padding:10px 16px; font-size:14px; color:#1a1d2e;">${row[1]}</td>
+      </tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Pallet Calc Report</title>
+      <style>
+        @page { size: letter; margin: 0.5in; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#1a1d2e; margin:0; padding:24px; }
+        h1 { color:#181b26; font-size:24px; margin:0 0 4px; }
+        h2 { color:#E8751A; font-size:16px; margin:24px 0 12px; border-top:1px solid #e5e7eb; padding-top:14px; }
+        .meta { color:#6b7280; font-size:12px; margin-bottom:18px; }
+        .viz { text-align:center; margin:14px 0; }
+        .viz img { max-width:100%; border-radius:8px; border:1px solid #e5e7eb; }
+        table { width:100%; border-collapse:collapse; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; margin:14px 0; }
+        @media print { body { padding:0; } .no-print { display:none; } }
+      </style>
+    </head><body>
+      <h1>Pallet Calculator Report</h1>
+      <div class="meta">Generated ${new Date().toLocaleString()}</div>
+      ${palletImg ? `<div class="viz"><img src="${palletImg}" alt="Pallet 3D preview" /></div>` : ''}
+      <table>${tableRows}</table>
+      ${containerImg ? `<h2>Container View — 40' High Cube</h2><div class="viz"><img src="${containerImg}" alt="Container 3D preview" /></div>` : ''}
+      ${sugBlocks ? `<h2>Optimization &amp; Stacking Suggestions</h2>${sugBlocks}` : ''}
+      <div class="no-print" style="margin-top:30px; padding:14px; background:#f8f9fb; border-radius:8px; text-align:center;">
+        <button onclick="window.print()" style="padding:10px 24px; background:#E8751A; color:#fff; border:none; border-radius:6px; font-size:14px; font-weight:700; cursor:pointer;">Save as PDF</button>
+        <span style="margin-left:14px; color:#6b7280; font-size:12px;">Tip: in the print dialog, set the destination to "Save as PDF".</span>
+      </div>
+      <script>setTimeout(function(){window.print();}, 350);<\/script>
+    </body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('Pop-up blocker is preventing the PDF window from opening. Allow pop-ups for this site and try again.');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   }
 
   // Standalone iso renderer for the calculator modal — independent of
