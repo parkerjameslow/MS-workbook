@@ -11402,36 +11402,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // PDF and the emailed report stay identical.
   function _buildPalletCalcSuggestions(r) {
     if (!r) return [];
-    // Trimmed to the three suggestions the operator actually asked for:
-    //   1. Total pallets needed for the entered qty + dims
-    //   2. Suggested footprint that improves pallet fit (only when a
-    //      meaningfully better arrangement exists within ±30% of the
-    //      current carton)
-    //   3. Estimated 40' HC containers (with double-stack heuristic)
-    // The order below matches the on-screen + emailed report.
+    // Builds two pools — actionable suggestions (tip/good with an
+    // Apply button) and pure facts (info). Suggestions render FIRST so
+    // they're impossible to miss. Each suggestion can attach an
+    // `action` object { label, fn } that the renderer turns into a
+    // real <button>.
     const HC_INT_H = 269, PALLET_DECK = 15;
     const stackTotalCm = PALLET_DECK + r.maxLayers * r.pkgH;
     const fitsDouble   = stackTotalCm <= (HC_INT_H / 2);
-    const out = [];
+    const suggestions = [];   // tip / good — surface FIRST
+    const facts       = [];   // info — totals & estimates, render AFTER
 
-    // 1) Total pallets needed at the entered dims.
-    if (r.totalQty > 0 && r.palletsNeeded > 0) {
-      out.push({
-        kind: 'info',
-        title: `${r.palletsNeeded.toLocaleString()} pallet${r.palletsNeeded === 1 ? '' : 's'} needed`,
-        body: `Shipping <strong>${r.totalQty.toLocaleString()}</strong> units at <strong>${(r.totalPerPallet || 0).toLocaleString()}</strong> per pallet (${r.layoutCols} × ${r.layoutRows} per layer × ${r.maxLayers} layers) at the entered dims.`
-      });
-    } else if (r.totalQty <= 0) {
-      out.push({
-        kind: 'tip',
-        title: 'Enter a Total qty to see pallets needed',
-        body: `Add a Total qty above and the calculator will tell you how many pallets are required at <strong>${(r.totalPerPallet || 0).toLocaleString()}</strong> ${(r.totalPerPallet || 0) === 1 ? 'unit' : 'units'} per pallet.`
-      });
-    }
-
-    // 2) Suggested footprint — search a small grid of cols × rows
-    //    that divide the pallet evenly, score by per-pallet count,
-    //    keep the best one within ±30% per axis of the current dims.
+    // ── Suggestion: tighter carton footprint ─────────────────────────
+    // Search a small grid of cols × rows that divide the pallet evenly
+    // and keep the closest-to-current option that beats per-pallet
+    // count (within ±30% of the current carton on each axis).
     const MIN_DIM = 5, MAX_DELTA = 0.30;
     const palL = r.palL, palW = r.palW;
     const curUpp = (r.totalPerPallet || 0);
@@ -11467,53 +11452,67 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const newPallets = (r.totalQty > 0 && best.upp > 0)
         ? Math.ceil(r.totalQty / best.upp) : 0;
       const palletDelta = (r.palletsNeeded || 0) - newPallets;
-      out.push({
+      // Apply call needs the values in the CURRENT input unit (cm or in)
+      // so we don't double-convert when runDimsCalc reads them back.
+      const applyL = r.unit === 'in' ? (best.newL / 2.54) : best.newL;
+      const applyW = r.unit === 'in' ? (best.newW / 2.54) : best.newW;
+      suggestions.push({
         kind: 'tip',
         title: `Try ${fmt(best.newL)} × ${fmt(best.newW)} carton for a tighter fit`,
-        body: `Resizing to <strong>${fmt(best.newL)} × ${fmt(best.newW)} × ${fmt(r.pkgH)}</strong> packs <strong>${best.cols} × ${best.rows}</strong> per layer (${best.upp.toLocaleString()} per pallet — +${gain.toLocaleString()}, +${gainPct}%)${newPallets > 0 ? `. Drops pallets needed to <strong>${newPallets.toLocaleString()}</strong>${palletDelta > 0 ? ` (saves ${palletDelta.toLocaleString()})` : ''}` : ''}.`
+        body: `Resizing to <strong>${fmt(best.newL)} × ${fmt(best.newW)} × ${fmt(r.pkgH)}</strong> packs <strong>${best.cols} × ${best.rows}</strong> per layer (${best.upp.toLocaleString()} per pallet — +${gain.toLocaleString()}, +${gainPct}%)${newPallets > 0 ? `. Drops pallets needed to <strong>${newPallets.toLocaleString()}</strong>${palletDelta > 0 ? ` (saves ${palletDelta.toLocaleString()})` : ''}` : ''}.`,
+        actionLabel: `Apply ${fmt(best.newL)} × ${fmt(best.newW)}`,
+        actionCall:  `applyDimsCalcCartonDims(${applyL.toFixed(2)}, ${applyW.toFixed(2)})`
       });
     }
 
-    // 3) Estimated 40' HC containers — uses the same double-stack
-    //    heuristic as the workbook view (stack height ≤ 134.5 cm
-    //    fits two pallets vertically).
+    // ── Suggestion: drop load height to enable double-stacking ───────
+    if (!fitsDouble && r.totalQty > 0 && r.pkgH > 0) {
+      const maxLoadCmForDouble = (HC_INT_H - 2 * PALLET_DECK) / 2;
+      const maxLoadInForDouble = Math.floor(maxLoadCmForDouble / 2.54);
+      const newMaxLayers     = Math.max(1, Math.floor(maxLoadCmForDouble / r.pkgH));
+      const newPerPallet     = (r.perLayer || 0) * newMaxLayers;
+      const newPalletsNeeded = newPerPallet > 0 ? Math.ceil(r.totalQty / newPerPallet) : 0;
+      const newContainers    = newPalletsNeeded > 0 ? Math.ceil(newPalletsNeeded / 36) : 0;
+      const curContainers    = Math.ceil(r.palletsNeeded / 18);
+      if (newContainers > 0 && newContainers <= curContainers) {
+        const fitsInOne = newContainers === 1;
+        suggestions.push({
+          kind: 'good',
+          title: `Drop load height to ${maxLoadInForDouble}" to enable double-stacking`,
+          body: `At <strong>${maxLoadInForDouble}"</strong> per pallet (${newMaxLayers} layer${newMaxLayers === 1 ? '' : 's'} × ${r.perLayer} per layer = <strong>${newPerPallet.toLocaleString()}</strong> per pallet), two pallets fit vertically inside the 40' HC. Ships <strong>${r.totalQty.toLocaleString()}</strong> units in <strong>${newPalletsNeeded.toLocaleString()}</strong> pallet${newPalletsNeeded === 1 ? '' : 's'} = <strong>${newContainers}</strong> container${newContainers === 1 ? '' : 's'}${fitsInOne ? " (everything fits in a single 40' HC)" : (curContainers > newContainers ? ` (saves ${curContainers - newContainers})` : '')}.`,
+          actionLabel: `Apply ${maxLoadInForDouble}"`,
+          actionCall:  `applyDimsCalcLoadHeight(${maxLoadInForDouble})`
+        });
+      }
+    }
+
+    // ── Fact: total pallets needed at the entered dims ───────────────
+    if (r.totalQty > 0 && r.palletsNeeded > 0) {
+      facts.push({
+        kind: 'info',
+        title: `${r.palletsNeeded.toLocaleString()} pallet${r.palletsNeeded === 1 ? '' : 's'} needed`,
+        body: `Shipping <strong>${r.totalQty.toLocaleString()}</strong> units at <strong>${(r.totalPerPallet || 0).toLocaleString()}</strong> per pallet (${r.layoutCols} × ${r.layoutRows} per layer × ${r.maxLayers} layers) at the entered dims.`
+      });
+    } else if (r.totalQty <= 0) {
+      facts.push({
+        kind: 'tip',
+        title: 'Enter a Total qty to see pallets needed',
+        body: `Add a Total qty above and the calculator will tell you how many pallets are required at <strong>${(r.totalPerPallet || 0).toLocaleString()}</strong> ${(r.totalPerPallet || 0) === 1 ? 'unit' : 'units'} per pallet.`
+      });
+    }
+
+    // ── Fact: estimated 40' HC containers ────────────────────────────
     if (r.totalQty > 0 && r.palletsNeeded > 0) {
       const palletsPerContainer = fitsDouble ? 36 : 18;
       const containers = Math.ceil(r.palletsNeeded / palletsPerContainer);
-      out.push({
+      facts.push({
         kind: 'info',
         title: `Estimated ${containers} × 40' HC container${containers === 1 ? '' : 's'}`,
         body: `${r.palletsNeeded.toLocaleString()} pallets ÷ ${palletsPerContainer} per container ${fitsDouble ? '(2-stacked vertically)' : '(single layer — stack too tall to double up)'} = <strong>${containers}</strong> 40' HC container${containers === 1 ? '' : 's'}.`
       });
     }
 
-    // 4) Double-stack rescue — when the current pallet is too tall to
-    //    stack two-high inside an 8'10" 40' HC, propose dropping the
-    //    Loading height input to the threshold (≈47 in cargo / ≈49 in
-    //    overall) so two pallets fit vertically. Recomputes the new
-    //    layers / pallets / containers so the savings are concrete.
-    if (!fitsDouble && r.totalQty > 0 && r.pkgH > 0) {
-      const maxLoadCmForDouble = (HC_INT_H - 2 * PALLET_DECK) / 2;        // 119.5 cm cargo
-      const maxLoadInForDouble = Math.floor(maxLoadCmForDouble / 2.54);   // ≈ 47"
-      // Only meaningful if the new height still allows ≥1 layer.
-      const newMaxLayers     = Math.max(1, Math.floor(maxLoadCmForDouble / r.pkgH));
-      const newPerPallet     = (r.perLayer || 0) * newMaxLayers;
-      const newPalletsNeeded = newPerPallet > 0 ? Math.ceil(r.totalQty / newPerPallet) : 0;
-      const newContainers    = newPalletsNeeded > 0 ? Math.ceil(newPalletsNeeded / 36) : 0;
-      const curContainers    = Math.ceil(r.palletsNeeded / 18);
-      // Don't surface unless it actually helps (fewer containers OR
-      // newPalletsNeeded fits inside ONE container — that's the
-      // "fit all units in 1 container" case the user called out).
-      if (newContainers > 0 && newContainers <= curContainers) {
-        const fitsInOne = newContainers === 1;
-        out.push({
-          kind: 'good',
-          title: `Drop load height to ${maxLoadInForDouble}" to enable double-stacking`,
-          body: `At <strong>${maxLoadInForDouble}"</strong> per pallet (${newMaxLayers} layer${newMaxLayers === 1 ? '' : 's'} × ${r.perLayer} per layer = <strong>${newPerPallet.toLocaleString()}</strong> per pallet), two pallets fit vertically inside the 40' HC. Ships <strong>${r.totalQty.toLocaleString()}</strong> units in <strong>${newPalletsNeeded.toLocaleString()}</strong> pallet${newPalletsNeeded === 1 ? '' : 's'} = <strong>${newContainers}</strong> container${newContainers === 1 ? '' : 's'}${fitsInOne ? " (everything fits in a single 40' HC)" : (curContainers > newContainers ? ` (saves ${curContainers - newContainers})` : '')}. <a href="#" onclick="event.preventDefault(); applyDimsCalcLoadHeight(${maxLoadInForDouble});" style="color:#10b981; font-weight:700; text-decoration:underline;">↻ Apply ${maxLoadInForDouble}"</a>`
-        });
-      }
-    }
-    return out;
+    return [...suggestions, ...facts];
   }
 
   // Apply a recommended load-height value back into the calculator
@@ -11522,6 +11521,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const el = document.getElementById('dc-load-height');
     if (!el) return;
     el.value = String(inches);
+    if (typeof runDimsCalc === 'function') runDimsCalc();
+  }
+  // Apply a suggested carton footprint (length × width) back into the
+  // calculator's package L/W inputs. Values arrive in the active unit
+  // (cm or in) so no conversion is needed before assignment.
+  function applyDimsCalcCartonDims(newL, newW) {
+    const lEl = document.getElementById('dc-pkg-l');
+    const wEl = document.getElementById('dc-pkg-w');
+    if (lEl) lEl.value = Number(newL).toFixed(2);
+    if (wEl) wEl.value = Number(newW).toFixed(2);
     if (typeof runDimsCalc === 'function') runDimsCalc();
   }
 
@@ -11538,12 +11547,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     };
     const cards = items.map(it => {
       const c = colors[it.kind] || colors.tip;
+      // Real <button> for actionable suggestions — solid accent fill so
+      // it reads as a primary CTA, not as inline text. Hover deepens
+      // the bg so the click affordance is obvious.
+      const actionHtml = it.actionCall
+        ? `<div style="margin-top:10px;">
+             <button type="button" onclick="${it.actionCall}"
+               style="background:${c.bd}; color:#fff; border:none; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"
+               onmouseover="this.style.filter='brightness(0.92)';"
+               onmouseout="this.style.filter='';">↻ ${it.actionLabel || 'Apply'}</button>
+           </div>`
+        : '';
       return `
         <div style="padding:11px 13px; border:1px solid ${c.bd}; border-radius:8px; background:${c.bg}; line-height:1.55;">
           <div style="font-size:12px; font-weight:700; color:${c.bd}; margin-bottom:4px;">
             <span style="margin-right:5px;">${c.icon}</span>${it.title}
           </div>
           <div style="font-size:12px; color:var(--text);">${it.body}</div>
+          ${actionHtml}
         </div>`;
     }).join('');
     host.innerHTML = `
