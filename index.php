@@ -5463,6 +5463,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              oninput="hdrCalcUsdToRmb()" onpaste="setTimeout(() => hdrCalcUsdToRmb(), 0)" />
     </div>
     <span id="fx-rate-display" title="Live CNY→USD exchange rate" style="font-size:11px; font-weight:600; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:3px 8px; white-space:nowrap; letter-spacing:0.02em;">1 ¥ = $—</span>
+    <!-- Quick-access dimensions / pallet load calculator. Pops a modal
+         that's independent of any open workbook — the operator can
+         sanity-check pallet fits without leaving (or saving) what
+         they're working on. -->
+    <button id="dims-calc-btn" onclick="openDimsCalcModal()" title="Quick pallet-fit calculator (Cmd/Ctrl+Shift+D)"
+      style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:5px 10px; white-space:nowrap; cursor:pointer; transition:border-color 0.15s, color 0.15s;"
+      onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
+      onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text)';">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M3 7h18"></path><path d="M3 12h18"></path><path d="M3 17h18"></path><path d="M7 3v18"></path><path d="M17 3v18"></path></svg>
+      Dims Calc
+    </button>
     <div class="user-menu" id="user-menu">
       <button class="user-menu-btn" onclick="toggleUserDropdown()" title="Account">
         <span style="font-size:16px;">👤</span>
@@ -7890,6 +7901,98 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button type="submit" class="btn-create">Create Workbook</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ── Dimensions Calculator Modal ──────────────────────────────────────
+     Quick pallet-fit calculator — independent of any open workbook.
+     Operator types package L/W/H/weight + picks a pallet preset, hits
+     Calculate, and gets per-layer / total / pallets-needed stats plus
+     a 3D iso preview. Doesn't touch the workbook's pallet view at all. -->
+<div class="modal-overlay" id="dims-calc-modal-overlay" onclick="if(event.target===this)closeDimsCalcModal()">
+  <div class="modal" style="width:760px; max-width:96vw; max-height:92vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <div class="modal-title" style="margin:0;">Dimensions Calculator</div>
+      <button type="button" onclick="closeDimsCalcModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--text-muted);padding:0;">&times;</button>
+    </div>
+    <div style="font-size:12px; color:var(--text-muted); margin:-8px 0 18px; line-height:1.5;">
+      Compute and optimize pallet loads. Enter your package and pallet specs and press Calculate.
+    </div>
+
+    <!-- Package data -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+      <div style="font-size:13px; font-weight:700; color:var(--accent);">Package data</div>
+      <!-- Unit toggle (cm vs in) -->
+      <div style="display:inline-flex; border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+        <button type="button" id="dc-unit-cm" onclick="setDimsCalcUnit('cm')" style="border:none; background:var(--accent); color:#fff; padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer;">cm</button>
+        <button type="button" id="dc-unit-in" onclick="setDimsCalcUnit('in')" style="border:none; background:var(--surface2); color:var(--text-muted); padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer;">in</button>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:14px;">
+      <input id="dc-pkg-l" type="number" min="0" step="0.01" placeholder="length" style="width:100%; box-sizing:border-box;" />
+      <input id="dc-pkg-w" type="number" min="0" step="0.01" placeholder="width" style="width:100%; box-sizing:border-box;" />
+      <input id="dc-pkg-h" type="number" min="0" step="0.01" placeholder="height" style="width:100%; box-sizing:border-box;" />
+    </div>
+    <div style="font-size:11px; color:var(--text-muted); margin-bottom:14px;">Length × Width × Height</div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px; align-items:center;">
+      <div>
+        <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Package weight (kg)</label>
+        <input id="dc-pkg-wt" type="number" min="0" step="0.01" placeholder="e.g. 1.7" style="width:100%; box-sizing:border-box;" />
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Total qty (optional)</label>
+        <input id="dc-pkg-qty" type="number" min="0" step="1" placeholder="e.g. 6,000" style="width:100%; box-sizing:border-box;" />
+      </div>
+    </div>
+
+    <!-- Pallet data -->
+    <div style="font-size:13px; font-weight:700; color:var(--accent); margin-bottom:10px;">Pallet data</div>
+    <div style="display:grid; grid-template-columns:1.6fr 1fr; gap:14px; margin-bottom:18px; align-items:end;">
+      <div>
+        <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Pallet</label>
+        <div class="select-wrapper">
+          <select id="dc-pallet-preset" onchange="onDimsCalcPalletChange()">
+            <option value="40x48"  data-l="101.6" data-w="121.92" selected>40 × 48 in (US Standard)</option>
+            <option value="euro"   data-l="120"   data-w="80">Europallet 1200 × 800 mm</option>
+            <option value="indus"  data-l="120"   data-w="100">Industrial 1200 × 1000 mm</option>
+            <option value="asia"   data-l="110"   data-w="110">Asian Block 1100 × 1100 mm</option>
+            <option value="half"   data-l="80"    data-w="60">Half Pallet 800 × 600 mm</option>
+            <option value="custom" data-l=""      data-w="">Custom…</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Loading height (in, w/o pallet)</label>
+        <input id="dc-load-height" type="number" min="1" max="120" step="1" value="60" style="width:100%; box-sizing:border-box;" />
+      </div>
+    </div>
+    <!-- Custom pallet dims (shown only when "Custom" preset is picked) -->
+    <div id="dc-custom-pallet-row" style="display:none; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:18px;">
+      <div>
+        <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Pallet length (cm)</label>
+        <input id="dc-pallet-l" type="number" min="0" step="0.1" placeholder="e.g. 101.6" style="width:100%; box-sizing:border-box;" />
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:4px;">Pallet width (cm)</label>
+        <input id="dc-pallet-w" type="number" min="0" step="0.1" placeholder="e.g. 121.92" style="width:100%; box-sizing:border-box;" />
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+      <button type="button" class="btn-cancel" onclick="closeDimsCalcModal()">Close</button>
+      <button type="button" class="btn-create" onclick="runDimsCalc()" style="background:var(--accent); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:600; cursor:pointer;">Calculate</button>
+    </div>
+
+    <!-- Results — hidden until first Calculate run -->
+    <div id="dc-results" style="display:none; margin-top:22px; padding-top:18px; border-top:1px solid var(--border);">
+      <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
+        <div style="flex:1 1 300px; min-width:280px;">
+          <canvas id="dc-canvas" width="540" height="380" style="width:100%; max-width:540px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+        </div>
+        <div id="dc-stats" style="flex:1 1 220px; min-width:200px; font-size:13px; line-height:1.7; color:var(--text);"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -10621,6 +10724,282 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rmbEl = document.getElementById('hdr-calc-rmb');
     rmbEl.value = usd > 0 ? _fmtCalc(usd * USD_TO_RMB) : '';
   }
+
+  /* ── Dimensions Calculator (header modal) ────────────────────────────
+     Free-floating pallet-fit calculator that doesn't touch any
+     workbook data. The operator types package L/W/H/weight + picks a
+     pallet preset (or Custom), and Calculate fits boxes on the pallet
+     base with best-orientation packing. Internal state lives on
+     window._dimsCalc so the unit toggle can convert in place. */
+  window._dimsCalc = { unit: 'cm' };
+
+  function openDimsCalcModal() {
+    const ov = document.getElementById('dims-calc-modal-overlay');
+    if (!ov) return;
+    ov.classList.add('open');
+    ov.style.display = 'flex';
+    setTimeout(() => document.getElementById('dc-pkg-l')?.focus(), 50);
+  }
+  function closeDimsCalcModal() {
+    const ov = document.getElementById('dims-calc-modal-overlay');
+    if (!ov) return;
+    ov.classList.remove('open');
+    ov.style.display = 'none';
+  }
+
+  function setDimsCalcUnit(unit) {
+    const prev = window._dimsCalc.unit;
+    if (prev === unit) return;
+    window._dimsCalc.unit = unit;
+    // Toggle button styles
+    const cmBtn = document.getElementById('dc-unit-cm');
+    const inBtn = document.getElementById('dc-unit-in');
+    if (cmBtn && inBtn) {
+      const active = (el) => { el.style.background = 'var(--accent)'; el.style.color = '#fff'; };
+      const idle   = (el) => { el.style.background = 'var(--surface2)'; el.style.color = 'var(--text-muted)'; };
+      if (unit === 'cm') { active(cmBtn); idle(inBtn); }
+      else               { active(inBtn); idle(cmBtn); }
+    }
+    // Convert existing package dim values in place so the operator
+    // doesn't have to retype after switching units.
+    const factor = (prev === 'cm' && unit === 'in') ? (1 / 2.54)
+                 : (prev === 'in' && unit === 'cm') ? 2.54
+                 : 1;
+    if (factor !== 1) {
+      ['dc-pkg-l', 'dc-pkg-w', 'dc-pkg-h'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const v = parseFloat(el.value);
+        if (!isNaN(v) && v > 0) el.value = (v * factor).toFixed(2);
+      });
+    }
+    // Update placeholder text on package size hint line — re-render
+    // results too so dim labels in the canvas match the new unit.
+    if (document.getElementById('dc-results')?.style.display !== 'none') runDimsCalc();
+  }
+
+  function onDimsCalcPalletChange() {
+    const sel = document.getElementById('dc-pallet-preset');
+    const customRow = document.getElementById('dc-custom-pallet-row');
+    if (!sel || !customRow) return;
+    if (sel.value === 'custom') customRow.style.display = 'grid';
+    else customRow.style.display = 'none';
+  }
+
+  function _dcResolvePalletCm() {
+    const sel = document.getElementById('dc-pallet-preset');
+    if (!sel) return null;
+    if (sel.value === 'custom') {
+      const l = parseFloat(document.getElementById('dc-pallet-l')?.value);
+      const w = parseFloat(document.getElementById('dc-pallet-w')?.value);
+      if (!l || !w) return null;
+      return { l, w, label: 'Custom pallet' };
+    }
+    const opt = sel.options[sel.selectedIndex];
+    const l = parseFloat(opt?.dataset?.l);
+    const w = parseFloat(opt?.dataset?.w);
+    if (!l || !w) return null;
+    return { l, w, label: opt.textContent.trim() };
+  }
+
+  function runDimsCalc() {
+    const unit = window._dimsCalc.unit;
+    const toCm = (v) => unit === 'cm' ? v : v * 2.54;
+    const pkgL = toCm(parseFloat(document.getElementById('dc-pkg-l')?.value) || 0);
+    const pkgW = toCm(parseFloat(document.getElementById('dc-pkg-w')?.value) || 0);
+    const pkgH = toCm(parseFloat(document.getElementById('dc-pkg-h')?.value) || 0);
+    const pkgWtKg = parseFloat(document.getElementById('dc-pkg-wt')?.value) || 0;
+    const totalQty = parseInt(document.getElementById('dc-pkg-qty')?.value) || 0;
+    const loadHIn = parseFloat(document.getElementById('dc-load-height')?.value) || 60;
+    const loadH = loadHIn * 2.54;
+    const pal = _dcResolvePalletCm();
+    const resultsEl = document.getElementById('dc-results');
+    const statsEl   = document.getElementById('dc-stats');
+    if (!pal || !pkgL || !pkgW || !pkgH) {
+      if (resultsEl) resultsEl.style.display = '';
+      if (statsEl) statsEl.innerHTML = `<div style="color:var(--text-muted); font-style:italic;">Enter package length, width, height, and pick a pallet to compute.</div>`;
+      const c = document.getElementById('dc-canvas');
+      if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
+      return;
+    }
+    // Best-orientation packing on the pallet base.
+    const o1 = { cols: Math.floor(pal.l / pkgL), rows: Math.floor(pal.w / pkgW), bL: pkgL, bW: pkgW };
+    const o2 = { cols: Math.floor(pal.l / pkgW), rows: Math.floor(pal.w / pkgL), bL: pkgW, bW: pkgL };
+    const layout = (o1.cols * o1.rows >= o2.cols * o2.rows) ? o1 : o2;
+    const perLayer = layout.cols * layout.rows;
+    const maxLayers = Math.max(1, Math.floor(loadH / pkgH));
+    const totalPerPallet = perLayer * maxLayers;
+    const palletsNeeded = (totalQty > 0 && totalPerPallet > 0) ? Math.ceil(totalQty / totalPerPallet) : 0;
+    const surfaceUse = perLayer > 0
+      ? Math.round((layout.cols * layout.bL * layout.rows * layout.bW) / (pal.l * pal.w) * 100)
+      : 0;
+    // ── Stats panel ─────────────────────────────────────────────────
+    const fmtKg = (kg) => kg < 10 ? kg.toFixed(2) : kg.toLocaleString('en-US', {maximumFractionDigits:1});
+    const palletWtKg = pkgWtKg > 0 ? pkgWtKg * totalPerPallet : 0;
+    const totalWtKg  = totalQty > 0 && pkgWtKg > 0 ? pkgWtKg * totalQty : 0;
+    if (statsEl) {
+      const fitWarn = perLayer === 0
+        ? `<div style="color:#f59e0b; font-weight:600; margin-bottom:8px;">⚠ Package too large — doesn't fit on the ${pal.label}.</div>`
+        : '';
+      statsEl.innerHTML = `
+        ${fitWarn}
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Per Pallet</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; margin-bottom:12px;">
+          <div><div style="font-size:20px; font-weight:700; color:var(--text);">${perLayer}</div><div style="font-size:11px; color:var(--text-muted);">per layer</div></div>
+          <div><div style="font-size:20px; font-weight:700; color:var(--text);">${maxLayers}</div><div style="font-size:11px; color:var(--text-muted);">max layers</div></div>
+          <div><div style="font-size:20px; font-weight:700; color:var(--accent);">${totalPerPallet.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted);">items / pallet</div></div>
+          <div><div style="font-size:20px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted);">surface use</div></div>
+          ${palletWtKg > 0 ? `<div style="grid-column:span 2;"><div style="font-size:14px; font-weight:700; color:var(--text);">${fmtKg(palletWtKg)} kg <span style="font-weight:500; color:var(--text-muted);">/ ${fmtKg(palletWtKg * 2.20462)} lb</span></div><div style="font-size:11px; color:var(--text-muted);">weight per pallet</div></div>` : ''}
+        </div>
+        ${totalQty > 0 ? `
+        <div style="margin-top:6px; padding-top:12px; border-top:1px solid var(--border);">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Shipment of ${totalQty.toLocaleString()}</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 16px;">
+            <div><div style="font-size:20px; font-weight:700; color:var(--accent);">${palletsNeeded}</div><div style="font-size:11px; color:var(--text-muted);">pallets needed</div></div>
+            ${totalWtKg > 0 ? `<div><div style="font-size:14px; font-weight:700; color:var(--text);">${fmtKg(totalWtKg)} kg</div><div style="font-size:11px; color:var(--text-muted);">total weight</div></div>` : '<div></div>'}
+          </div>
+        </div>` : ''}
+        <div style="margin-top:10px; font-size:11px; color:var(--text-muted); line-height:1.5;">
+          ${pal.label} · ${pal.l.toFixed(1)} × ${pal.w.toFixed(1)} cm <br>
+          Box orientation: ${layout.bL.toFixed(1)} × ${layout.bW.toFixed(1)} cm · ${layout.cols} × ${layout.rows} per layer
+        </div>
+      `;
+    }
+    if (resultsEl) resultsEl.style.display = '';
+    // ── 3D iso preview ──────────────────────────────────────────────
+    if (perLayer > 0) {
+      _drawDimsCalcViz({
+        palL: pal.l, palW: pal.w, palLabel: pal.label,
+        bL: layout.bL, bW: layout.bW, bH: pkgH,
+        cols: layout.cols, rows: layout.rows,
+        showLayers: Math.min(maxLayers, 10),
+        unit
+      });
+    } else {
+      const c = document.getElementById('dc-canvas');
+      if (c) {
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, c.width, c.height);
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = `600 13px -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`Package too large for ${pal.label}.`, c.width/2, c.height/2);
+      }
+    }
+  }
+
+  // Standalone iso renderer for the calculator modal — independent of
+  // the workbook pallet viz (which depends on a lot of workbook state).
+  function _drawDimsCalcViz(opts) {
+    const c = document.getElementById('dc-canvas');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const CW = c.width, CH = c.height;
+    ctx.clearRect(0, 0, CW, CH);
+    const PALLET_DECK_LOCAL = 15; // cm
+    const cos30 = ISO_COS30, sin30 = ISO_SIN30;
+    const proj = (wx, wy, wz, s, ox, oy) => ({
+      x: ox + (wx - wz) * cos30 * s,
+      y: oy + (wx + wz) * sin30 * s - wy * s
+    });
+    const stackTotal = PALLET_DECK_LOCAL + opts.showLayers * opts.bH;
+    const footprintSpan = opts.palL + opts.palW;
+    const PAD_L = 130, PAD_R = 40, PAD_T = 30, PAD_B = 90;
+    const s = Math.min(
+      (CW - PAD_L - PAD_R) / (footprintSpan * cos30),
+      (CH - PAD_T - PAD_B)   / (stackTotal + footprintSpan * sin30)
+    );
+    const ox = PAD_L + opts.palW * cos30 * s;
+    const oy = stackTotal * s + PAD_T;
+    // Pallet deck
+    drawIsoBox(ctx, 0, 0, 0, opts.palL, PALLET_DECK_LOCAL, opts.palW, s, ox, oy, '#a8a8a8');
+    // Boxes — centered on pallet base
+    const occL = opts.cols * opts.bL;
+    const occW = opts.rows * opts.bW;
+    const offX = Math.max(0, (opts.palL - occL) / 2);
+    const offZ = Math.max(0, (opts.palW - occW) / 2);
+    for (let layer = 0; layer < opts.showLayers; layer++) {
+      for (let diag = 0; diag <= opts.cols + opts.rows - 2; diag++) {
+        for (let col = Math.max(0, diag - opts.rows + 1); col <= Math.min(diag, opts.cols - 1); col++) {
+          const row = diag - col;
+          drawIsoBox(ctx,
+            offX + col * opts.bL, PALLET_DECK_LOCAL + layer * opts.bH, offZ + row * opts.bW,
+            opts.bL, opts.bH, opts.bW, s, ox, oy, '#E8751A');
+        }
+      }
+    }
+    // Dim labels (L / W / H) — same bracket style as the workbook viz
+    const v3 = {
+      bbl: proj(0,         0,          0,        s, ox, oy),
+      bbr: proj(opts.palL, 0,          0,        s, ox, oy),
+      bfl: proj(0,         0,          opts.palW, s, ox, oy),
+      bfr: proj(opts.palL, 0,          opts.palW, s, ox, oy),
+      tfl: proj(0,         stackTotal, opts.palW, s, ox, oy)
+    };
+    const allPts = Object.values(v3);
+    const cxBox = allPts.reduce((a,p)=>a+p.x,0)/allPts.length;
+    const cyBox = allPts.reduce((a,p)=>a+p.y,0)/allPts.length;
+    const sxMin = Math.min(...allPts.map(p=>p.x));
+    const outwardPerp = (a,b) => {
+      const dx=b.x-a.x, dy=b.y-a.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+      const px=-dy/len, py=dx/len;
+      const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+      const dot = px*(mx-cxBox) + py*(my-cyBox);
+      return dot>=0 ? {x:px,y:py} : {x:-px,y:-py};
+    };
+    const TICK = 4;
+    ctx.fillStyle = '#6b7280';
+    ctx.strokeStyle = '#6b7280';
+    ctx.lineWidth = 1.2;
+    ctx.font = `700 13px -apple-system, sans-serif`;
+    const drawDim = (a, b, lp, txt, anchor='center') => {
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+      const dx=b.x-a.x, dy=b.y-a.y, len=Math.sqrt(dx*dx+dy*dy)||1;
+      const tpx=-dy/len*TICK, tpy=dx/len*TICK;
+      ctx.beginPath();
+      ctx.moveTo(a.x-tpx,a.y-tpy); ctx.lineTo(a.x+tpx,a.y+tpy);
+      ctx.moveTo(b.x-tpx,b.y-tpy); ctx.lineTo(b.x+tpx,b.y+tpy);
+      ctx.stroke();
+      ctx.textAlign = anchor;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(txt, lp.x, lp.y);
+    };
+    const fmtL = (cm) => opts.unit === 'cm' ? `${cm.toFixed(1)} cm` : `${(cm/2.54).toFixed(1)}"`;
+    // L
+    {
+      const a0=v3.bfl, b0=v3.bfr, p=outwardPerp(a0,b0);
+      const a={x:a0.x+p.x*16,y:a0.y+p.y*16}, b={x:b0.x+p.x*16,y:b0.y+p.y*16};
+      const m={x:(a.x+b.x)/2+p.x*36,y:(a.y+b.y)/2+p.y*36};
+      drawDim(a,b,m,`L ${fmtL(opts.palL)}`);
+    }
+    // W
+    {
+      const a0=v3.bfr, b0=v3.bbr, p=outwardPerp(a0,b0);
+      const a={x:a0.x+p.x*16,y:a0.y+p.y*16}, b={x:b0.x+p.x*16,y:b0.y+p.y*16};
+      const m={x:(a.x+b.x)/2+p.x*36,y:(a.y+b.y)/2+p.y*36};
+      drawDim(a,b,m,`W ${fmtL(opts.palW)}`);
+    }
+    // H
+    {
+      const hX = sxMin - 22;
+      const a={x:hX,y:v3.tfl.y}, b={x:hX,y:v3.bfl.y};
+      drawDim(a,b,{x:hX-12,y:(a.y+b.y)/2},`H ${fmtL(stackTotal)}`,'right');
+    }
+    // Pallet label top-right
+    ctx.fillStyle = '#6b7280';
+    ctx.font = `700 11px -apple-system, sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(opts.palLabel, CW - 12, 10);
+  }
+
+  // Cmd/Ctrl+Shift+D opens the modal as a power-user shortcut.
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+      e.preventDefault();
+      openDimsCalcModal();
+    }
+  });
 
   async function fetchLiveRate() {
     // Check localStorage cache first (30-min TTL)
