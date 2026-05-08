@@ -11515,11 +11515,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return [...suggestions, ...facts];
   }
 
+  // Snapshot the current calculator inputs so the operator can Revert
+  // back to their original dims after trying a suggestion. Only takes
+  // a snapshot the FIRST time an Apply is pressed — repeat applies (try
+  // suggestion 2 right after suggestion 1) keep the original baseline
+  // intact so Revert always returns to where the user started.
+  function _dimsCalcSnapshot() {
+    if (window._dimsCalcOriginal) return; // baseline already captured
+    const get = (id) => document.getElementById(id)?.value || '';
+    window._dimsCalcOriginal = {
+      pkgL:        get('dc-pkg-l'),
+      pkgW:        get('dc-pkg-w'),
+      pkgH:        get('dc-pkg-h'),
+      pkgWt:       get('dc-pkg-wt'),
+      pkgQty:      get('dc-pkg-qty'),
+      loadHeight:  get('dc-load-height'),
+      palletPre:   get('dc-pallet-preset'),
+      palletL:     get('dc-pallet-l'),
+      palletW:     get('dc-pallet-w'),
+      unit:        (window._dimsCalc && window._dimsCalc.unit) || 'cm'
+    };
+  }
   // Apply a recommended load-height value back into the calculator
   // input + immediately rerun so the panel + viz update in place.
   function applyDimsCalcLoadHeight(inches) {
     const el = document.getElementById('dc-load-height');
     if (!el) return;
+    _dimsCalcSnapshot();
     el.value = String(inches);
     if (typeof runDimsCalc === 'function') runDimsCalc();
   }
@@ -11529,8 +11551,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function applyDimsCalcCartonDims(newL, newW) {
     const lEl = document.getElementById('dc-pkg-l');
     const wEl = document.getElementById('dc-pkg-w');
+    _dimsCalcSnapshot();
     if (lEl) lEl.value = Number(newL).toFixed(2);
     if (wEl) wEl.value = Number(newW).toFixed(2);
+    if (typeof runDimsCalc === 'function') runDimsCalc();
+  }
+  // Revert calculator inputs to whatever the operator had BEFORE their
+  // first Apply press, then rerun. Clears the snapshot so the next
+  // Apply re-captures from the current state — the user can apply,
+  // revert, apply a different suggestion, revert again, etc.
+  function revertDimsCalc() {
+    const snap = window._dimsCalcOriginal;
+    if (!snap) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    // Restore unit toggle first so the L/W/H values land in the right
+    // unit context (setDimsCalcUnit converts in-place; we don't want
+    // that — so we bypass it and set window._dimsCalc.unit directly,
+    // then update the toggle button styling manually.)
+    if (window._dimsCalc) window._dimsCalc.unit = snap.unit;
+    const cmBtn = document.getElementById('dc-unit-cm');
+    const inBtn = document.getElementById('dc-unit-in');
+    if (cmBtn && inBtn) {
+      const active = (el) => { el.style.background = 'var(--accent)'; el.style.color = '#fff'; };
+      const idle   = (el) => { el.style.background = 'var(--surface2)'; el.style.color = 'var(--text-muted)'; };
+      if (snap.unit === 'cm') { active(cmBtn); idle(inBtn); }
+      else                    { active(inBtn); idle(cmBtn); }
+    }
+    set('dc-pkg-l',         snap.pkgL);
+    set('dc-pkg-w',         snap.pkgW);
+    set('dc-pkg-h',         snap.pkgH);
+    set('dc-pkg-wt',        snap.pkgWt);
+    set('dc-pkg-qty',       snap.pkgQty);
+    set('dc-load-height',   snap.loadHeight);
+    set('dc-pallet-preset', snap.palletPre);
+    set('dc-pallet-l',      snap.palletL);
+    set('dc-pallet-w',      snap.palletW);
+    if (typeof onDimsCalcPalletChange === 'function') onDimsCalcPalletChange();
+    window._dimsCalcOriginal = null;
     if (typeof runDimsCalc === 'function') runDimsCalc();
   }
 
@@ -11567,10 +11624,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${actionHtml}
         </div>`;
     }).join('');
+    // Revert banner — surfaced only when the operator has applied at
+    // least one suggestion. Lets them flip back to their original
+    // dims and try a different suggestion side-by-side.
+    const revertBanner = window._dimsCalcOriginal
+      ? `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 13px; margin-bottom:10px; border:1px solid #6366f1; border-radius:8px; background:rgba(99,102,241,0.08); flex-wrap:wrap;">
+          <div style="font-size:12px; color:var(--text); line-height:1.5;">
+            <strong style="color:#6366f1;">↻ Suggestion applied.</strong> Compare it to the original or try a different one.
+          </div>
+          <button type="button" onclick="revertDimsCalc()"
+            style="background:#6366f1; color:#fff; border:none; padding:6px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap;"
+            onmouseover="this.style.filter='brightness(0.92)';"
+            onmouseout="this.style.filter='';">↺ Revert to original</button>
+        </div>`
+      : '';
     host.innerHTML = `
       <div style="font-size:13px; font-weight:700; color:var(--accent); margin-bottom:10px; padding-top:8px; border-top:1px solid var(--border);">
         Optimization & Stacking Suggestions
       </div>
+      ${revertBanner}
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         ${cards}
       </div>
