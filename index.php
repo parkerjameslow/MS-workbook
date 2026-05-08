@@ -5468,10 +5468,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          sanity-check pallet fits without leaving (or saving) what
          they're working on. -->
     <button id="dims-calc-btn" onclick="openDimsCalcModal()" title="Quick pallet-fit calculator (Cmd/Ctrl+Shift+D)"
-      style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:5px 10px; white-space:nowrap; cursor:pointer; transition:border-color 0.15s, color 0.15s;"
+      style="display:inline-flex; align-items:center; font-size:12px; font-weight:600; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:5px 12px; white-space:nowrap; cursor:pointer; transition:border-color 0.15s, color 0.15s;"
       onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)';"
       onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text)';">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M3 7h18"></path><path d="M3 12h18"></path><path d="M3 17h18"></path><path d="M7 3v18"></path><path d="M17 3v18"></path></svg>
       Dims Calc
     </button>
     <div class="user-menu" id="user-menu">
