@@ -6332,53 +6332,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="checkbox" id="pallet-divider" onchange="renderPalletViz(); if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook();" />
         <span>Add 4 mm divider between products (cardboard / foam separators)</span>
       </label>
-      <!-- Top control row — Max height + Total Units to Ship. Sits
-           ABOVE the side-by-side comparison so both halves reference
-           the same shipping assumptions. -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:18px;">
-        <div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); white-space:nowrap;">Max height</label>
-            <input type="number" id="pallet-max-height" value="60" min="1" max="120" step="1"
-              style="width:64px; text-align:center; font-size:12px;"
-              oninput="renderPalletViz(); savePalletMaxHeightDefault();" />
-            <span style="font-size:11px; color:var(--text-muted);">in</span>
-            <span id="pallet-layer-height-hint" style="margin-left:8px; font-size:11px; color:var(--text-muted); white-space:nowrap;"></span>
-          </div>
-        </div>
-        <div>
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px;">
-            <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Total Units to Ship</label>
-            <button type="button" id="pallet-total-resync-btn" onclick="resyncPalletTotalUnitsFromRfq()" style="display:none; font-size:11px; font-weight:600; color:var(--accent); background:none; border:none; padding:0; cursor:pointer; text-decoration:underline;" title="Re-pull this value from the RFQ Grand Total qty">↻ Sync from RFQ</button>
-          </div>
-          <input type="number" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons"
-            style="width:100%; box-sizing:border-box;"
-            oninput="this.dataset.looseTopOff=''; renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();" />
-          <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Auto-filled from <strong>RFQ Grand Total qty</strong> — override if shipping a partial.</div>
-        </div>
-      </div>
-
-      <!-- ── Side-by-side comparison ───────────────────────────────────
-           Left: pallet rendered with the EXACT outer-carton dims the
-           operator entered. Right: "Most Efficient" pallet using the
-           dim-suggestion engine's recommended footprint, with an Apply
-           button to flip the workbook to those dims. Both halves share
-           the same Max height + Total Units inputs above so the user
-           is comparing equivalent shipping scenarios. -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:flex-start;">
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted);">As Entered</div>
+      <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
+        <div style="flex:0 1 540px; min-width:300px; max-width:540px; display:flex; flex-direction:column; gap:14px;">
           <canvas id="pallet-canvas" width="540" height="420" style="width:100%; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
-          <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
-          <!-- Pallet Fit Suggestion (legacy card) — kept for the email/
-               PDF export pipeline but hidden by default; the side-by-
-               side comparison replaces its on-screen role. -->
+          <!-- Pallet Fit Suggestion — surfaces a better outer-carton (or
+               product, in manual mode) footprint that improves utilisation
+               on the 40 × 48 in pallet. Hidden until the engine finds a
+               closer-to-perfect arrangement. -->
           <div id="pallet-fit-suggestion" style="display:none;"></div>
         </div>
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--accent);">Most Efficient</div>
-          <canvas id="pallet-canvas-efficient" width="540" height="420" style="width:100%; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
-          <div id="pallet-stats-efficient" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to see the most efficient layout.</div>
+        <div style="flex:1; min-width:200px;">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px;">
+            <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); padding-top:6px;">Pallet Stats</div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <label style="font-size:11px; color:var(--text-muted); white-space:nowrap;">Max height</label>
+                <input type="number" id="pallet-max-height" value="60" min="1" max="120" step="1"
+                  style="width:56px; text-align:center; font-size:12px;"
+                  oninput="renderPalletViz(); savePalletMaxHeightDefault();" />
+                <span style="font-size:11px; color:var(--text-muted);">in</span>
+              </div>
+              <!-- Per-layer / per-row height — populated by renderPalletViz
+                   from the current product/carton height + divider pad,
+                   displayed in inches (rounded up) so the operator can
+                   see at a glance what each row stacks at. -->
+              <div id="pallet-layer-height-hint" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></div>
+            </div>
+          </div>
+          <div id="pallet-stats" style="color:var(--text-muted); font-size:13px;">Enter outer carton dimensions to calculate.</div>
+          <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+            <!-- Always "Total Units to Ship" — the pallet view now
+                 derives the carton count and pallets needed from the
+                 unit count + the configured outer-carton arrangement,
+                 so the operator never has to do the cartons-per-unit
+                 math by hand. Auto-fills from the RFQ Grand Total qty.
+                 The id stays "pallet-total-cartons" for backward
+                 compatibility with saved data + downstream callers. -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px;">
+              <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Total Units to Ship</label>
+              <button type="button" id="pallet-total-resync-btn" onclick="resyncPalletTotalUnitsFromRfq()" style="display:none; font-size:11px; font-weight:600; color:var(--accent); background:none; border:none; padding:0; cursor:pointer; text-decoration:underline;" title="Re-pull this value from the RFQ Grand Total qty">↻ Sync from RFQ</button>
+            </div>
+            <input type="number" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons"
+              style="width:100%; box-sizing:border-box;"
+              oninput="this.dataset.looseTopOff=''; renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();" />
+            <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Auto-filled from <strong>RFQ Grand Total qty</strong> — override if shipping a partial.</div>
+          </div>
         </div>
       </div>
 
@@ -10555,10 +10553,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (typeof renderContainerViz === 'function') renderContainerViz(0, 0, PALLET_L, PALLET_W, 0, 0, 0);
       const sugHost = document.getElementById('pallet-fit-suggestion');
       if (sugHost) { sugHost.style.display = 'none'; sugHost.innerHTML = ''; }
-      // Clear the side-by-side "Most Efficient" canvas + stats too.
-      if (typeof _renderEfficientPalletPreview === 'function') {
-        _renderEfficientPalletPreview(0, 0, 0, 0, 0, manualOn, 0, 1, 0);
-      }
       return;
     }
 
@@ -11118,14 +11112,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (sugHost) { sugHost.style.display = 'none'; sugHost.innerHTML = ''; }
       }
     }
-    // ── Side-by-side "Most Efficient" preview ────────────────────────
-    // Renders the suggested-dim arrangement on the right canvas so the
-    // operator can compare it against the as-entered version on the
-    // left at a glance.
-    if (typeof _renderEfficientPalletPreview === 'function') {
-      _renderEfficientPalletPreview(bL, bW, bH, padCm, maxLoadH, manualOn,
-                                    perLayer, maxLayers, totalPerPallet);
-    }
   }
 
   // ── Pallet fit optimiser ─────────────────────────────────────────────
@@ -11217,129 +11203,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!best) return null;
     if (best.upp <= curUpp) return null;        // no improvement
     return { ...best, curUpp, curPerLayer, curMaxLayers };
-  }
-
-  // ── "Most Efficient" pallet preview (right side of the comparison) ──
-  // Re-uses _palletFitSearch to find the best alternative footprint, then
-  // draws an iso preview to #pallet-canvas-efficient + a stats block to
-  // #pallet-stats-efficient. When the current dims are already optimal
-  // (or no outer carton is set), shows a friendly "already optimal" /
-  // "enter dims" placeholder instead of leaving the canvas blank.
-  function _renderEfficientPalletPreview(bL, bW, bH, padCm, maxLoadH, manualOn,
-                                         curPerLayer, curMaxLayers, curTotalPerPallet) {
-    const canvas = document.getElementById('pallet-canvas-efficient');
-    const statsHost = document.getElementById('pallet-stats-efficient');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const CW = canvas.width, CH = canvas.height;
-    ctx.clearRect(0, 0, CW, CH);
-    const placeholder = (msg) => {
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(msg, CW / 2, CH / 2);
-      if (statsHost) statsHost.innerHTML = `<span style="color:var(--text-muted); font-style:italic;">${msg}</span>`;
-    };
-    if (!bL || !bW || !bH) { placeholder('Enter outer carton dimensions to see the most efficient layout.'); return; }
-    const sug = _palletFitSearch(bL, bW, bH, padCm, maxLoadH);
-    // Pick the dims to draw — suggested if better, else the entered set
-    // (so the right pane visualises "already optimal" rather than going
-    // blank). Track whether this is a real suggestion vs. a copy.
-    const isSuggestion = !!sug;
-    const newL = isSuggestion ? sug.newL : bL;
-    const newW = isSuggestion ? sug.newW : bW;
-    const newH = isSuggestion ? sug.newH : bH;
-    const newCols   = isSuggestion ? sug.cols     : curPerLayer && curMaxLayers ? Math.round(Math.sqrt(curPerLayer)) : 1;
-    const newRows   = isSuggestion ? sug.rows     : curPerLayer && newCols ? Math.round(curPerLayer / newCols) : 1;
-    const newLayers = isSuggestion ? sug.layers   : (curMaxLayers || 1);
-    // Re-run bestPalletOrientation on the chosen dims so we draw the
-    // canonical layout (cols/rows the iso draw uses).
-    const layoutE = bestPalletOrientation(newL + padCm, newW + padCm);
-    const drawL = layoutE.bL - padCm;
-    const drawW = layoutE.bW - padCm;
-    const stackPitch = newH + padCm;
-    const showLayers = Math.min(newLayers, 12);
-    const totalH_cm = PALLET_DECK + showLayers * stackPitch;
-    // Iso projection — same camera as the workbook pallet viz so the
-    // two canvases align visually.
-    const footprintSpan = PALLET_L + PALLET_W;
-    const PAD_LEFT = 190, PAD_RIGHT = 40, PAD_Y = 110, PAD_TOP = 32;
-    const stackH = PALLET_DECK + showLayers * stackPitch;
-    const s = Math.min(
-      (CW - PAD_LEFT - PAD_RIGHT) / (footprintSpan * ISO_COS30),
-      (CH - PAD_Y - PAD_TOP) / (stackH + footprintSpan * ISO_SIN30)
-    );
-    const ox = PAD_LEFT + PALLET_W * ISO_COS30 * s;
-    const oy = stackH * s + PAD_TOP;
-    drawIsoBox(ctx, 0, 0, 0, PALLET_L, PALLET_DECK, PALLET_W, s, ox, oy, '#a8a8a8');
-    const occupiedL = layoutE.cols * layoutE.bL;
-    const occupiedW = layoutE.rows * layoutE.bW;
-    const offsetX = Math.max(0, (PALLET_L - occupiedL) / 2);
-    const offsetZ = Math.max(0, (PALLET_W - occupiedW) / 2);
-    // Use a green highlight for the "efficient" carton so the operator
-    // sees at a glance that this is the proposal, not the as-entered.
-    const accentColor = isSuggestion ? '#10b981' : '#E8751A';
-    for (let layer = 0; layer < showLayers; layer++) {
-      for (let diag = 0; diag <= layoutE.cols + layoutE.rows - 2; diag++) {
-        for (let col = Math.max(0, diag - layoutE.rows + 1); col <= Math.min(diag, layoutE.cols - 1); col++) {
-          const row = diag - col;
-          drawIsoBox(ctx,
-            offsetX + col * layoutE.bL, PALLET_DECK + layer * stackPitch, offsetZ + row * layoutE.bW,
-            drawL, newH, drawW, s, ox, oy, accentColor);
-        }
-      }
-    }
-    // Pallet badge
-    ctx.fillStyle = '#6b7280';
-    ctx.font = `700 12px -apple-system, sans-serif`;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    ctx.fillText('40 × 48 in pallet', CW - 12, 10);
-    // Stats block under the canvas
-    if (statsHost) {
-      const newPerLayer = layoutE.cols * layoutE.rows;
-      const newPerPallet = newPerLayer * showLayers;
-      const surfaceUse = Math.round((layoutE.cols * drawL * layoutE.rows * drawW) / (PALLET_L * PALLET_W) * 100);
-      const fmtCm = (cm) => `${cm.toFixed(1)} cm`;
-      const fmtIn = (cm) => `${(cm / 2.54).toFixed(1)}"`;
-      const totalUnits = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
-      // Carton-mode product math
-      const innerQty = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
-      const outerQty = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-      const productsPerOuter = (innerQty > 0 && outerQty > 0) ? innerQty * outerQty : 0;
-      const totalCartons = manualOn
-        ? totalUnits
-        : (productsPerOuter > 0 ? Math.ceil(totalUnits / productsPerOuter) : 0);
-      const palletsNeeded = (totalCartons > 0 && newPerPallet > 0)
-        ? Math.ceil(totalCartons / newPerPallet) : 0;
-      // Compare against the as-entered numbers
-      const curPallets = (totalCartons > 0 && curTotalPerPallet > 0)
-        ? Math.ceil(totalCartons / curTotalPerPallet) : 0;
-      const palletDelta = curPallets - palletsNeeded;
-      const upBtn = `display:inline-flex; align-items:center; gap:4px; padding:6px 14px; font-size:12px; font-weight:700; color:#fff; background:#10b981; border:none; border-radius:6px; cursor:pointer; white-space:nowrap;`;
-      const heading = isSuggestion
-        ? `<span style="color:#10b981; font-weight:700;">Recommended:</span> <strong>${fmtCm(newL)} × ${fmtCm(newW)} × ${fmtCm(newH)}</strong> <span style="color:var(--text-muted);">(${fmtIn(newL)} × ${fmtIn(newW)} × ${fmtIn(newH)})</span>`
-        : `<span style="color:var(--text-muted); font-style:italic;">✓ As-entered dims are already optimal — no improvement found within ±30%.</span>`;
-      const apply = isSuggestion
-        ? `applyPalletFitSuggestion(${newL}, ${newW}, ${newH}, ${manualOn ? 'true' : 'false'})`
-        : '';
-      statsHost.innerHTML = `
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:13px; line-height:1.55;">${heading}</div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <div><div style="font-size:22px; font-weight:700; color:var(--text);">${newPerLayer}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${manualOn ? 'units' : 'outer cartons'} / layer</div></div>
-            <div><div style="font-size:22px; font-weight:700; color:var(--text);">${showLayers}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">max layers</div></div>
-            <div><div style="font-size:22px; font-weight:700; color:#10b981;">${newPerPallet.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${manualOn ? 'units' : 'outer cartons'} / pallet</div></div>
-            <div><div style="font-size:22px; font-weight:700; color:var(--text);">${surfaceUse}%</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">surface coverage</div></div>
-            ${totalUnits > 0 && palletsNeeded > 0 ? `
-            <div style="grid-column:span 2; padding-top:10px; border-top:1px solid var(--border);">
-              <div style="font-size:22px; font-weight:700; color:#10b981;">${palletsNeeded.toLocaleString()}</div>
-              <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed${palletDelta > 0 ? ` <span style="color:#10b981; font-weight:700;">(saves ${palletDelta.toLocaleString()})</span>` : (palletDelta < 0 ? ` <span style="color:#f59e0b;">(+${Math.abs(palletDelta).toLocaleString()})</span>` : '')}</div>
-            </div>` : ''}
-          </div>
-          ${isSuggestion ? `<button type="button" style="${upBtn} align-self:flex-start;" onclick="${apply}" title="Apply ${fmtCm(newL)} × ${fmtCm(newW)} × ${fmtCm(newH)} to the outer carton">↻ Apply These Dims</button>` : ''}
-        </div>`;
-    }
   }
 
   function _renderPalletFitSuggestion(bL, bW, bH, padCm, maxLoadH, manualOn,
