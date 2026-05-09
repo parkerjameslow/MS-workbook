@@ -2070,6 +2070,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       filter: grayscale(0.4);
       transition: opacity 0.2s, filter 0.2s;
     }
+    /* Whole Pallet View card grays out — dim-driven pallet + container
+       math is meaningless when the operator is shipping by case weight
+       only. Header stays interactive so the section can still be
+       collapsed manually if desired. */
+    .section-card[data-section="pallet"].weight-only-disabled .section-body {
+      opacity: 0.45;
+      pointer-events: none;
+      filter: grayscale(0.4);
+      transition: opacity 0.2s, filter 0.2s;
+    }
 
     .karen-cell.field-filled input {
       background: var(--filled-bg);
@@ -9771,6 +9781,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
     const productCol = document.querySelector('.specs-col:not([data-carton-col])');
     if (productCol) productCol.classList.toggle('weight-only-locked', on);
+    // Pallet View card (which also hosts the Container View) grays out
+    // wholesale — the dim-driven pallet/container math has no inputs
+    // to work with in weight-only mode.
+    const palletCard = document.querySelector('.section-card[data-section="pallet"]');
+    if (palletCard) palletCard.classList.toggle('weight-only-disabled', on);
     // Also disable the manual-mode pallet checkbox if override is on
     // — the two modes are mutually exclusive.
     const palletManualEl = document.getElementById('pallet-manual');
