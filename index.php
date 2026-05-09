@@ -2051,6 +2051,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       filter: grayscale(0.4);
       transition: opacity 0.2s, filter 0.2s;
     }
+    /* Same dim/disable treatment when Weight Only Override is on, but
+       limited to the L/W/H/weight grid above the override block in
+       the Product column (the override controls themselves stay
+       interactive — they sit OUTSIDE this selector). */
+    .specs-col.weight-only-locked > .specs-col-title,
+    .specs-col.weight-only-locked .specs-dim-grid:not(#weight-only-block .specs-dim-grid) {
+      opacity: 0.45;
+      pointer-events: none;
+      filter: grayscale(0.4);
+      transition: opacity 0.2s, filter 0.2s;
+    }
+    /* Inner / Outer columns get the full pallet-manual-disabled look. */
+    .specs-col.weight-only-disabled {
+      opacity: 0.45;
+      pointer-events: none;
+      filter: grayscale(0.4);
+      transition: opacity 0.2s, filter 0.2s;
+    }
 
     .karen-cell.field-filled input {
       background: var(--filled-bg);
@@ -6060,6 +6078,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-full-row" style="margin-top:14px;">
               <svg id="viz-product" class="specs-box-viz" viewBox="0 0 240 180" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
+            <!-- ── Weight-Only Override ──────────────────────────────
+                 When this box is checked the operator skips ALL of the
+                 dim sections (Product, Inner, Outer all gray out via
+                 the .weight-only-disabled class) and just types Case
+                 Qty + per-case Weight. Total Actual Weight = Case Qty
+                 × Weight, and the shipping tab's Actual Weight reads
+                 from this pair instead of the dim-driven math. The
+                 sub-text below the inputs shows the live total so the
+                 operator sees the resulting kg / lb without leaving
+                 the Workbook tab. -->
+            <div class="specs-full-row" id="weight-only-block" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+              <label class="weight-only-toggle" style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:12px; color:var(--text);">
+                <input type="checkbox" id="weight-only-override" onchange="onWeightOnlyToggle()"
+                  style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;" />
+                <span style="font-weight:700;">Weight Only Override</span>
+                <span style="font-size:11px; color:var(--text-muted); font-weight:400;">(skip dims, ship by case)</span>
+              </label>
+              <div id="weight-only-fields" style="margin-top:10px; opacity:0.45; pointer-events:none;">
+                <div class="specs-row-label" style="margin-bottom:5px;">Case Qty</div>
+                <input type="number" min="0" step="1" placeholder="—" id="weight-only-qty" disabled
+                  oninput="onWeightOnlyChanged()" style="width:100%; box-sizing:border-box;" />
+                <div class="specs-dim-grid" style="margin-top:8px;">
+                  <div></div>
+                  <div class="specs-unit-header">kg</div>
+                  <div class="specs-unit-header">lb</div>
+                  <div class="specs-row-label">Weight</div>
+                  <div class="specs-input-wrap">
+                    <input type="number" step="0.001" min="0" placeholder="—" id="weight-only-kg" disabled
+                      oninput="convertWeight('weight-only-kg','weight-only-lbs','kg'); onWeightOnlyChanged()" />
+                    <span class="specs-unit-tag">kg</span>
+                  </div>
+                  <div class="specs-input-wrap">
+                    <input type="text" placeholder="—" id="weight-only-lbs" disabled
+                      oninput="convertWeight('weight-only-lbs','weight-only-kg','lbs'); onWeightOnlyChanged()" />
+                    <span class="specs-unit-tag">lb</span>
+                  </div>
+                </div>
+                <div id="weight-only-actual-hint" style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
+                  Enter Case Qty + Weight to see the total Actual Weight.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -9682,6 +9742,73 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // The shipping tab pulls dims/weight/count from PRODUCT in manual
     // mode and OUTER CARTON otherwise — refresh both functions so the
     // freight calc + dim display flip correctly when the toggle changes.
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
+  // ── Weight-Only Override ────────────────────────────────────────────
+  // When ticked, the operator skips ALL dim sections and just types
+  // Case Qty + per-case Weight. Shipping freight reads those two
+  // numbers as the Actual Weight bucket. Inner / Outer columns get
+  // the same pallet-manual-disabled gray-out; the Product column
+  // grays its dim grid + 3D viz but leaves the override controls
+  // themselves fully interactive (they live in the same column).
+  function onWeightOnlyToggle() {
+    const cb = document.getElementById('weight-only-override');
+    if (!cb) return;
+    const on = !!cb.checked;
+    // Toggle the override fields' enabled/disabled visuals.
+    const fields = document.getElementById('weight-only-fields');
+    if (fields) {
+      fields.style.opacity = on ? '' : '0.45';
+      fields.style.pointerEvents = on ? '' : 'none';
+    }
+    ['weight-only-qty', 'weight-only-kg', 'weight-only-lbs'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !on;
+    });
+    // Gray out the OTHER columns (Inner + Outer) and the Product
+    // dim grid above this block.
+    document.querySelectorAll('.specs-col[data-carton-col]').forEach(col => {
+      col.classList.toggle('weight-only-disabled', on);
+    });
+    const productCol = document.querySelector('.specs-col:not([data-carton-col])');
+    if (productCol) productCol.classList.toggle('weight-only-locked', on);
+    // Also disable the manual-mode pallet checkbox if override is on
+    // — the two modes are mutually exclusive.
+    const palletManualEl = document.getElementById('pallet-manual');
+    if (palletManualEl) {
+      palletManualEl.disabled = on;
+      if (on && palletManualEl.checked) {
+        palletManualEl.checked = false;
+        if (typeof onPalletManualToggle === 'function') onPalletManualToggle();
+      }
+    }
+    onWeightOnlyChanged();
+    // Refresh dependent views.
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  // Recompute the Actual Weight sub-text + push the values downstream
+  // every time Case Qty / Weight (kg|lb) changes. Doesn't touch the
+  // override checkbox state.
+  function onWeightOnlyChanged() {
+    const qty = parseInt(document.getElementById('weight-only-qty')?.value) || 0;
+    const wt  = parseFloat(document.getElementById('weight-only-kg')?.value) || 0;
+    const hint = document.getElementById('weight-only-actual-hint');
+    if (hint) {
+      if (qty > 0 && wt > 0) {
+        const totalKg = qty * wt;
+        const totalLb = totalKg * 2.20462;
+        const fmt = (n) => n < 10 ? n.toFixed(2) : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+        hint.innerHTML = `↳ Actual Weight: <strong>${fmt(totalKg)} kg</strong> <span style="opacity:0.7;">/ ${fmt(totalLb)} lb</span> <span style="opacity:0.7;">(${qty.toLocaleString()} × ${wt} kg)</span>`;
+      } else {
+        hint.innerHTML = `Enter Case Qty + Weight to see the total Actual Weight.`;
+      }
+    }
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
@@ -16566,6 +16693,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const manualOn = !!document.getElementById('pallet-manual')?.checked;
     const get = id => parseFloat(document.getElementById(id)?.value) || 0;
     const totalUnits = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
+    // Weight-only override: skip dim-driven math entirely and pass
+    // through the operator's Case Qty + per-case Weight as the ship
+    // unit. Dims = 0 so volumetric weight collapses to 0; chargeable
+    // weight ends up equal to actual.
+    const weightOnly = !!document.getElementById('weight-only-override')?.checked;
+    if (weightOnly) {
+      const caseQty = parseInt(document.getElementById('weight-only-qty')?.value) || 0;
+      const caseKg  = parseFloat(document.getElementById('weight-only-kg')?.value) || 0;
+      return {
+        mode: 'weight-only',
+        unitLabel: 'case', unitLabelP: 'cases',
+        lCm: 0, wCm: 0, hCm: 0,
+        wtKg: caseKg,
+        count: caseQty
+      };
+    }
     if (manualOn) {
       return {
         mode: 'manual',
@@ -16660,6 +16803,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (usdEl) usdEl.textContent = (rate / exchange).toFixed(2);
 
     if (!lCm || !wCm || !hCm) {
+      // Weight-only override: freight is driven by Actual Weight alone
+      // (no dims → no volumetric). Render Actual + Chargeable from the
+      // override values and label volumetric N/A so the panel still
+      // reads cleanly without making the operator type fake dims.
+      if (ship.mode === 'weight-only' && actualKg > 0 && cartons > 0) {
+        const totalActual = actualKg * cartons;
+        const fmt = (kg) => kg.toFixed(2) + ' kg  /  ' + (kg * 2.20462).toFixed(2) + ' lbs';
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        set('freight-out-actual',  fmt(totalActual));
+        set('freight-out-vol',     'N/A — weight-only mode');
+        set('freight-out-charge',  fmt(totalActual));
+        set('freight-out-formula', `${cartons.toLocaleString()} cases × ${actualKg} kg`);
+        const costEl = document.getElementById('freight-out-cost');
+        if (costEl) costEl.textContent = (totalActual * rate).toLocaleString('en-US', {style:'currency', currency:'USD', maximumFractionDigits:2}).replace('US$','$') + ' RMB est.';
+        // Bars — Actual full, others blank.
+        const setBar = (valId, barId, val, h) => {
+          const v = document.getElementById(valId), b = document.getElementById(barId);
+          if (v) v.textContent = val;
+          if (b) b.style.height = h;
+        };
+        setBar('freight-bar-actual-val', 'freight-bar-actual', totalActual.toFixed(0) + ' kg', '100%');
+        setBar('freight-bar-vol-val',    'freight-bar-vol',    '—',                              '0%');
+        setBar('freight-bar-charge-val', 'freight-bar-charge', totalActual.toFixed(0) + ' kg', '100%');
+        return;
+      }
       ['freight-out-actual','freight-out-vol','freight-out-charge','freight-out-formula','freight-out-cost'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.textContent = '—';
@@ -20181,6 +20349,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // back on shows their previous choice.
       const palletDividerEl = document.getElementById('pallet-divider');
       if (palletDividerEl) palletDividerEl.checked = !!data.palletDivider;
+      // Weight-only override — restore the checkbox + qty + kg/lb,
+      // then call the toggle so the gray-out + enable state matches.
+      _s('weight-only-qty', data.weightOnlyCaseQty);
+      _s('weight-only-kg',  data.weightOnlyKg);
+      _s('weight-only-lbs', data.weightOnlyLbs);
+      const weightOnlyEl = document.getElementById('weight-only-override');
+      if (weightOnlyEl) {
+        weightOnlyEl.checked = !!data.weightOnlyOverride;
+        if (typeof onWeightOnlyToggle === 'function') onWeightOnlyToggle();
+      }
       // Free-form pallet notes
       _s('pallet-notes',       data.palletNotes);
       _s('pallet-stack-notes', data.palletStackNotes);
@@ -21327,6 +21505,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // outer carton dims and fits products directly on the 40 × 48
       // pallet base. Used for crates / unboxed shipments.
       palletManualMode: !!document.getElementById('pallet-manual')?.checked,
+      // Weight-only override — skips dims, ships by Case Qty × per-case
+      // Weight. Persists the checkbox + the two numbers so a hard
+      // refresh keeps everything where the operator left it.
+      weightOnlyOverride: !!document.getElementById('weight-only-override')?.checked,
+      weightOnlyCaseQty:  _v('weight-only-qty'),
+      weightOnlyKg:       _v('weight-only-kg'),
+      weightOnlyLbs:      _v('weight-only-lbs'),
       palletDivider:    !!document.getElementById('pallet-divider')?.checked,
       palletMaxHeight:  (() => { const v = parseFloat(document.getElementById('pallet-max-height')?.value); return (!isNaN(v) && v > 0) ? v : null; })(),
       palletNotes:      _v('pallet-notes'),
