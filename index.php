@@ -2051,12 +2051,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       filter: grayscale(0.4);
       transition: opacity 0.2s, filter 0.2s;
     }
-    /* Same dim/disable treatment when Weight Only Override is on, but
-       limited to the L/W/H/weight grid above the override block in
-       the Product column (the override controls themselves stay
-       interactive — they sit OUTSIDE this selector). */
+    /* Weight Only Override active — gray out ONLY the title bar + the
+       L/W/H/weight grid in the Product column. The #weight-only-block
+       lives OUTSIDE the .specs-dim-grid as a sibling, so the operator
+       can keep editing the override checkbox + Case Qty + Weight
+       inputs even while the rest of the column is dimmed. */
     .specs-col.weight-only-locked > .specs-col-title,
-    .specs-col.weight-only-locked .specs-dim-grid:not(#weight-only-block .specs-dim-grid) {
+    .specs-col.weight-only-locked > .specs-dim-grid {
       opacity: 0.45;
       pointer-events: none;
       filter: grayscale(0.4);
@@ -6078,46 +6079,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-full-row" style="margin-top:14px;">
               <svg id="viz-product" class="specs-box-viz" viewBox="0 0 240 180" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
-            <!-- ── Weight-Only Override ──────────────────────────────
-                 When this box is checked the operator skips ALL of the
-                 dim sections (Product, Inner, Outer all gray out via
-                 the .weight-only-disabled class) and just types Case
-                 Qty + per-case Weight. Total Actual Weight = Case Qty
-                 × Weight, and the shipping tab's Actual Weight reads
-                 from this pair instead of the dim-driven math. The
-                 sub-text below the inputs shows the live total so the
-                 operator sees the resulting kg / lb without leaving
-                 the Workbook tab. -->
-            <div class="specs-full-row" id="weight-only-block" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
-              <label class="weight-only-toggle" style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:12px; color:var(--text);">
-                <input type="checkbox" id="weight-only-override" onchange="onWeightOnlyToggle()"
-                  style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;" />
-                <span style="font-weight:700;">Weight Only Override</span>
-                <span style="font-size:11px; color:var(--text-muted); font-weight:400;">(skip dims, ship by case)</span>
-              </label>
-              <div id="weight-only-fields" style="margin-top:10px; opacity:0.45; pointer-events:none;">
-                <div class="specs-row-label" style="margin-bottom:5px;">Case Qty</div>
-                <input type="number" min="0" step="1" placeholder="—" id="weight-only-qty" disabled
-                  oninput="onWeightOnlyChanged()" style="width:100%; box-sizing:border-box;" />
-                <div class="specs-dim-grid" style="margin-top:8px;">
-                  <div></div>
-                  <div class="specs-unit-header">kg</div>
-                  <div class="specs-unit-header">lb</div>
-                  <div class="specs-row-label">Weight</div>
-                  <div class="specs-input-wrap">
-                    <input type="number" step="0.001" min="0" placeholder="—" id="weight-only-kg" disabled
-                      oninput="convertWeight('weight-only-kg','weight-only-lbs','kg'); onWeightOnlyChanged()" />
-                    <span class="specs-unit-tag">kg</span>
-                  </div>
-                  <div class="specs-input-wrap">
-                    <input type="text" placeholder="—" id="weight-only-lbs" disabled
-                      oninput="convertWeight('weight-only-lbs','weight-only-kg','lbs'); onWeightOnlyChanged()" />
-                    <span class="specs-unit-tag">lb</span>
-                  </div>
+          </div>
+          <!-- ── Weight-Only Override ──────────────────────────────
+               Lives OUTSIDE the dim grid above so the gray-out treatment
+               (which targets .specs-col-title + .specs-dim-grid only)
+               doesn't catch this block. Operator can still tick / untick
+               the checkbox and edit Case Qty + Weight while the dim
+               fields are dimmed. -->
+          <div id="weight-only-block" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+            <label class="weight-only-toggle" style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:12px; color:var(--text);">
+              <input type="checkbox" id="weight-only-override" onchange="onWeightOnlyToggle()"
+                style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;" />
+              <span style="font-weight:700;">Weight Only Override</span>
+              <span style="font-size:11px; color:var(--text-muted); font-weight:400;">(skip dims, ship by case)</span>
+            </label>
+            <div id="weight-only-fields" style="margin-top:10px; opacity:0.45; pointer-events:none;">
+              <div class="specs-row-label" style="margin-bottom:5px;">Case Qty</div>
+              <input type="number" min="0" step="1" placeholder="—" id="weight-only-qty" disabled
+                oninput="onWeightOnlyChanged()" style="width:100%; box-sizing:border-box;" />
+              <div class="specs-dim-grid" style="margin-top:8px;">
+                <div></div>
+                <div class="specs-unit-header">kg</div>
+                <div class="specs-unit-header">lb</div>
+                <div class="specs-row-label">Weight</div>
+                <div class="specs-input-wrap">
+                  <input type="number" step="0.001" min="0" placeholder="—" id="weight-only-kg" disabled
+                    oninput="convertWeight('weight-only-kg','weight-only-lbs','kg'); onWeightOnlyChanged()" />
+                  <span class="specs-unit-tag">kg</span>
                 </div>
-                <div id="weight-only-actual-hint" style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
-                  Enter Case Qty + Weight to see the total Actual Weight.
+                <div class="specs-input-wrap">
+                  <input type="text" placeholder="—" id="weight-only-lbs" disabled
+                    oninput="convertWeight('weight-only-lbs','weight-only-kg','lbs'); onWeightOnlyChanged()" />
+                  <span class="specs-unit-tag">lb</span>
                 </div>
+              </div>
+              <div id="weight-only-actual-hint" style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
+                Enter Case Qty + Weight to see the total Actual Weight.
               </div>
             </div>
           </div>
