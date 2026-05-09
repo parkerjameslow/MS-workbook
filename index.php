@@ -6041,9 +6041,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         <!-- Column 1: Product Dimensions -->
         <div class="specs-col">
-          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between;">
+          <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
             <span>Product Dimensions</span>
-            <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('product')" title="Clear all Product Dimensions">Clear</button>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <!-- Lock toggle: disables the L/W/H/weight inputs so the
+                   product dims can't be accidentally changed, AND tells
+                   the pallet-fit optimiser not to recommend an outer
+                   carton smaller than the product on any axis (the
+                   carton has to contain it). -->
+              <label style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:500; color:var(--text-muted); cursor:pointer; user-select:none; text-transform:none; letter-spacing:0;">
+                <input type="checkbox" id="product-dims-lock" onchange="onProductDimsLockToggle()"
+                  style="width:13px; height:13px; accent-color:var(--accent); cursor:pointer; margin:0;" />
+                Lock
+              </label>
+              <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('product')" title="Clear all Product Dimensions">Clear</button>
+            </div>
           </div>
           <div class="specs-dim-grid">
             <div></div>
@@ -9755,6 +9767,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
+  // ── Product Dimensions Lock ─────────────────────────────────────────
+  // When checked, the L/W/H/weight inputs in the Product column become
+  // read-only so the operator can't accidentally edit them, AND the
+  // pallet-fit optimiser refuses to suggest any outer-carton footprint
+  // SMALLER than the locked product dims on any axis (a carton has to
+  // contain the product). The lock state lives on the checkbox + a
+  // .product-dims-locked class on the input row, plus persists to
+  // detail.productDimsLocked so a hard refresh keeps the lock.
+  function onProductDimsLockToggle() {
+    const cb = document.getElementById('product-dims-lock');
+    if (!cb) return;
+    const on = !!cb.checked;
+    ['dim-cm-l', 'dim-in-l', 'dim-cm-w', 'dim-in-w',
+     'dim-cm-h', 'dim-in-h', 'dim-weight-kg', 'dim-weight-lbs'
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = on;
+    });
+    // Re-run the pallet view so the side-by-side "Most Efficient"
+    // pane respects the new lock immediately.
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   // ── Weight-Only Override ────────────────────────────────────────────
   // When ticked, the operator skips ALL dim sections and just types
   // Case Qty + per-case Weight. Shipping freight reads those two
@@ -11111,6 +11147,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const curStackPitch = curH + padCm;
     const curMaxLayers = Math.max(1, Math.floor(maxLoadH / curStackPitch));
     const curUpp = curPerLayer * curMaxLayers;
+    // Product Dimensions Lock — when on, no outer-carton suggestion may
+    // be smaller than the product on any axis (the carton has to
+    // contain it). Reads the locked product L/W/H from the workbook
+    // inputs; either orientation of (productL/productW) is allowed
+    // since the carton can be rotated relative to the product.
+    const lockOn = !!document.getElementById('product-dims-lock')?.checked;
+    const prodL  = lockOn ? (parseFloat(document.getElementById('dim-cm-l')?.value) || 0) : 0;
+    const prodW  = lockOn ? (parseFloat(document.getElementById('dim-cm-w')?.value) || 0) : 0;
+    const prodH  = lockOn ? (parseFloat(document.getElementById('dim-cm-h')?.value) || 0) : 0;
+    const productFits = (newL, newW, newH) => {
+      if (!lockOn) return true;
+      if (prodH > 0 && newH < prodH - 0.01) return false;
+      // Carton can hold the product in either L↔W orientation.
+      const fitA = (prodL <= newL + 0.01) && (prodW <= newW + 0.01);
+      const fitB = (prodW <= newL + 0.01) && (prodL <= newW + 0.01);
+      return fitA || fitB;
+    };
     let best = null;
     const considerFloor = (newL, newW, cols, rows) => {
       if (newL < MIN_DIM || newW < MIN_DIM) return;
@@ -11119,6 +11172,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // 1 mm tolerance against the pallet edges).
       if ((newL + padCm) * cols > PL + 0.1) return;
       if ((newW + padCm) * rows > PW + 0.1) return;
+      // Lock floor — outer carton must contain the locked product.
+      if (!productFits(newL, newW, curH)) return;
       const lDelta = Math.abs(newL - curL) / curL;
       const wDelta = Math.abs(newW - curW) / curW;
       if (lDelta > MAX_DELTA || wDelta > MAX_DELTA) return;
@@ -11145,7 +11200,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const newLayersTarget = curMaxLayers + 1;
     const newPitch = maxLoadH / newLayersTarget;
     const newH = newPitch - padCm;
-    if (newH >= MIN_DIM && newH < curH) {
+    // Skip the height-shave branch if locked product H wouldn't fit
+    // inside the proposed shorter carton.
+    if (newH >= MIN_DIM && newH < curH && productFits(curL, curW, newH)) {
       const heightDelta = (curH - newH) / curH;
       if (heightDelta <= MAX_DELTA) {
         const upp = curPerLayer * newLayersTarget;
@@ -20497,6 +20554,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // back on shows their previous choice.
       const palletDividerEl = document.getElementById('pallet-divider');
       if (palletDividerEl) palletDividerEl.checked = !!data.palletDivider;
+      // Product Dimensions lock — restore the checkbox state then call
+      // the toggle so the disabled state on the dim inputs matches.
+      const productLockEl = document.getElementById('product-dims-lock');
+      if (productLockEl) {
+        productLockEl.checked = !!data.productDimsLocked;
+        if (typeof onProductDimsLockToggle === 'function') onProductDimsLockToggle();
+      }
       // Weight-only override — restore the checkbox + qty + kg/lb,
       // then call the toggle so the gray-out + enable state matches.
       _s('weight-only-qty', data.weightOnlyCaseQty);
@@ -21653,6 +21717,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // outer carton dims and fits products directly on the 40 × 48
       // pallet base. Used for crates / unboxed shipments.
       palletManualMode: !!document.getElementById('pallet-manual')?.checked,
+      // Product Dimensions lock — disables L/W/H/weight inputs and
+      // floors the pallet-fit suggestion engine at the product dims so
+      // it can't recommend a smaller outer carton.
+      productDimsLocked: !!document.getElementById('product-dims-lock')?.checked,
       // Weight-only override — skips dims, ships by Case Qty × per-case
       // Weight. Persists the checkbox + the two numbers so a hard
       // refresh keeps everything where the operator left it.
