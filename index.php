@@ -6087,11 +6087,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                the checkbox and edit Case Qty + Weight while the dim
                fields are dimmed. -->
           <div id="weight-only-block" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
-            <label class="weight-only-toggle" style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:12px; color:var(--text);">
+            <label class="weight-only-toggle" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:12px; font-weight:700; color:var(--text); white-space:nowrap;">
               <input type="checkbox" id="weight-only-override" onchange="onWeightOnlyToggle()"
                 style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;" />
-              <span style="font-weight:700;">Weight Only Override</span>
-              <span style="font-size:11px; color:var(--text-muted); font-weight:400;">(skip dims, ship by case)</span>
+              Weight Only Override
             </label>
             <div id="weight-only-fields" style="margin-top:10px; opacity:0.45; pointer-events:none;">
               <div class="specs-row-label" style="margin-bottom:5px;">Case Qty</div>
