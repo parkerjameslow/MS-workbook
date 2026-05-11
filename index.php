@@ -8368,7 +8368,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
           <input id="new-user-email" type="email" placeholder="Email (optional)" class="field-input" style="font-size:13px;" />
           <span class="pw-wrap" style="display:block; position:relative;">
-            <input id="new-user-password" type="password" placeholder="Password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
+            <input id="new-user-password" type="password" placeholder="Password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;"
+              autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" data-form-type="other" />
             <button type="button" onclick="togglePasswordField(this)" aria-label="Toggle password visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#9ba3c0; padding:2px; line-height:0; display:flex; align-items:center;">
               <svg class="eye-show" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="block"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               <svg class="eye-hide" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -8600,15 +8601,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div id="cp-error" style="display:none; background:rgba(251,113,133,0.12); border:1px solid rgba(251,113,133,0.35); color:#fb7185; border-radius:8px; padding:8px 12px; font-size:13px;"></div>
             <div>
               <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px;">Current Password</label>
-              <input id="cp-current" type="password" class="form-input" style="width:100%;" />
+              <input id="cp-current" type="password" class="form-input" style="width:100%;"
+                autocomplete="current-password" data-1p-ignore="true" data-lpignore="true" data-form-type="other" />
             </div>
             <div>
               <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px;">New Password</label>
-              <input id="cp-new" type="password" class="form-input" style="width:100%;" />
+              <input id="cp-new" type="password" class="form-input" style="width:100%;"
+                autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" data-form-type="other" />
             </div>
             <div>
               <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px;">Confirm New Password</label>
-              <input id="cp-confirm" type="password" class="form-input" style="width:100%;" />
+              <input id="cp-confirm" type="password" class="form-input" style="width:100%;"
+                autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" data-form-type="other" />
             </div>
             <button class="btn btn-primary" onclick="submitChangePassword()">Update Password</button>
           </div>
@@ -18298,14 +18302,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="font-size:13px; font-weight:600; margin-bottom:10px;">Change Password</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
           <span class="pw-wrap" style="display:block; position:relative;">
-            <input id="udetail-newpw" type="password" placeholder="New password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
+            <input id="udetail-newpw" type="password" placeholder="New password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;"
+              autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" data-form-type="other" />
             <button type="button" onclick="togglePasswordField(this)" aria-label="Toggle password visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#9ba3c0; padding:2px; line-height:0; display:flex; align-items:center;">
               <svg class="eye-show" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="block"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               <svg class="eye-hide" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
             </button>
           </span>
           <span class="pw-wrap" style="display:block; position:relative;">
-            <input id="udetail-newpw-conf" type="password" placeholder="Confirm password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;" />
+            <input id="udetail-newpw-conf" type="password" placeholder="Confirm password" class="field-input" style="font-size:13px; width:100%; padding-right:36px;"
+              autocomplete="new-password" data-1p-ignore="true" data-lpignore="true" data-form-type="other" />
             <button type="button" onclick="togglePasswordField(this)" aria-label="Toggle password visibility" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#9ba3c0; padding:2px; line-height:0; display:flex; align-items:center;">
               <svg class="eye-show" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="block"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               <svg class="eye-hide" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" display="none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
