@@ -6652,8 +6652,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             Override
           </label>
           <span style="font-size:11px; color:var(--text-muted);">$</span>
-          <input type="number" min="0" step="0.01" id="freight-cost-override" placeholder="—" disabled
+          <!-- type="text" so we can render the value with thousand-
+               separator commas (a native number input strips them).
+               On focus we drop the commas so the operator types raw
+               digits, then re-format on blur. -->
+          <input type="text" inputmode="decimal" id="freight-cost-override" placeholder="—" disabled
             oninput="onShippingCostOverrideInput()"
+            onfocus="_unformatShippingOverride(this)"
+            onblur="_formatShippingOverride(this)"
             style="flex:1; min-width:100px; padding:5px 8px; box-sizing:border-box; font-size:13px;" />
           <span style="font-size:11px; color:var(--text-muted);">USD</span>
         </div>
@@ -17155,9 +17161,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _getShippingCostOverrideUsd() {
     const cb = document.getElementById('freight-cost-override-toggle');
     if (!cb || !cb.checked) return null;
-    const v = parseFloat(document.getElementById('freight-cost-override')?.value);
+    // Strip the thousand-separator commas before parsing so the
+    // formatted display ("12,345.67") still resolves to 12345.67.
+    const raw = (document.getElementById('freight-cost-override')?.value || '').replace(/,/g, '').trim();
+    const v = parseFloat(raw);
     if (!isFinite(v) || v < 0) return null;
     return v;
+  }
+  // Format helpers for the override input — commas while idle, raw
+  // digits while editing so deletion / arrow-key nav stay sane.
+  function _formatShippingOverride(el) {
+    if (!el) return;
+    const raw = (el.value || '').replace(/,/g, '').trim();
+    if (raw === '') return;
+    const v = parseFloat(raw);
+    if (!isFinite(v)) return;
+    // Preserve the decimal portion the operator typed (or default to
+    // no decimals when they typed a whole number).
+    const dotIdx = raw.indexOf('.');
+    const decimals = dotIdx >= 0 ? Math.min(2, raw.length - dotIdx - 1) : 0;
+    el.value = v.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: 2
+    });
+  }
+  function _unformatShippingOverride(el) {
+    if (!el) return;
+    el.value = (el.value || '').replace(/,/g, '');
   }
   function onShippingCostOverrideToggle() {
     const cb    = document.getElementById('freight-cost-override-toggle');
@@ -17167,10 +17197,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     input.disabled = !on;
     if (on && !input.value) {
       // Pre-fill with the currently-computed cost so the operator
-      // sees the starting baseline they're about to adjust.
+      // sees the starting baseline they're about to adjust. Format
+      // with commas right away.
       const costStr = document.getElementById('freight-out-cost')?.textContent || '';
       const m = costStr.match(/\$\s*([\d,]+(?:\.\d+)?)/);
-      if (m) input.value = m[1].replace(/,/g, '');
+      if (m) {
+        const raw = m[1].replace(/,/g, '');
+        input.value = raw;
+        _formatShippingOverride(input);
+      }
+    } else if (on) {
+      // Re-format an existing value that came in unformatted (load,
+      // paste, etc.) so the display stays consistent.
+      _formatShippingOverride(input);
     }
     if (typeof calcFreight === 'function') calcFreight();
     if (typeof renderPalletViz === 'function') renderPalletViz();
