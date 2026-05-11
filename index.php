@@ -12959,8 +12959,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const id      = parseInt(row.id.replace('rfq-', ''));
       const inputs  = row.querySelectorAll('input:not([type="checkbox"])');
       const name    = inputs[1]?.value?.trim() || '';
-      const qty     = parseFloat(inputs[2]?.value) || 0;
-      const rmb     = parseFloat(inputs[3]?.value) || 0;  // the "original" price
+      const qty     = _msNumFromInput(inputs[2]);
+      const rmb     = _msNumFromInput(inputs[3]);  // the "original" price
       const lead    = inputs[4]?.value || '';
       const leadNum = parseInt(lead);
 
@@ -12978,8 +12978,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         varRows.forEach(vr => {
           const vi       = vr.querySelectorAll('input');
           const vName    = vi[0]?.value?.trim() || '';
-          const vQty     = parseFloat(vi[1]?.value) || 0;
-          const vRmb     = parseFloat(vi[2]?.value) || 0;
+          const vQty     = _msNumFromInput(vi[1]);
+          const vRmb     = _msNumFromInput(vi[2]);
           const vLead    = vi[3]?.value || '';
           const vLeadNum = parseInt(vLead);
           if (!isNaN(vLeadNum) && vLeadNum > maxLead) maxLead = vLeadNum;
@@ -13275,9 +13275,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       let sum = 0;
       variantRows.forEach(vr => {
         const vi = vr.querySelectorAll('input');
-        sum += parseFloat(vi[1]?.value) || 0;
+        sum += _msNumFromInput(vi[1]);
       });
-      qtyInput.value = sum || '';
+      // Write the parent qty with thousand-separator commas so the
+      // display matches what the variant rows show after blur. Empty
+      // when the sum is 0 (no variant qty filled in yet).
+      qtyInput.value = sum > 0 ? sum.toLocaleString('en-US') : '';
       qtyInput.readOnly = true;
       qtyInput.style.opacity = '0.6';
       qtyInput.style.cursor = 'default';
@@ -14351,8 +14354,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const pIns = parent.querySelectorAll('input:not([type="checkbox"])');
             // Parent inputs: sku(0), item(1), qty(2), rmb(3), lead(4)
             const itemName = (pIns[1]?.value || '').trim() || `Item ${idx + 1}`;
-            const pQty     = parseFloat(pIns[2]?.value) || 0;
-            const pRmb     = parseFloat(pIns[3]?.value) || 0;
+            const pQty     = _msNumFromInput(pIns[2]);
+            const pRmb     = _msNumFromInput(pIns[3]);
             const pLead    = parseInt(pIns[4]?.value)   || 0;
             const id       = parseInt(parent.id.replace('rfq-', ''));
             const variantRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
@@ -14375,9 +14378,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 const vIns  = vr.querySelectorAll('input');
                 // Variant inputs: name(0), qty(1), rmb(2), lead(3)
                 const vName = (vIns[0]?.value || '').trim();
-                const vQty  = parseFloat(vIns[1]?.value) || 0;
-                const vRmb  = parseFloat(vIns[2]?.value) || 0;
-                const vLead = parseInt(vIns[3]?.value)   || 0;
+                const vQty  = _msNumFromInput(vIns[1]);
+                const vRmb  = _msNumFromInput(vIns[2]);
+                const vLead = parseInt(_msStripCommasStr(vIns[3]?.value)) || 0;
                 if (!vName && !vQty && !vRmb) return; // skip empty placeholder
                 variantCount++;
                 qty   += vQty;
@@ -16406,9 +16409,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
           if (group.variants.length === 0) {
             // Single-line item (no variants) — non-expandable row.
-            const pRawQty = parseInt(pInputs[2]?.value) || 0;
+            const pRawQty = _msIntFromInput(pInputs[2]);
             const pQty   = _scaleQty(pRawQty);
-            const pRmb   = parseFloat(pInputs[3]?.value) || 0;
+            const pRmb   = _msNumFromInput(pInputs[3]);
             const pUsd   = _fxUsdFromRmb(pRmb);
             const pLanded = pUsd + _ctxShipPerUnit;
             const pSale   = pLanded * _ctxWbMarginMul;
@@ -16435,9 +16438,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             group.variants.forEach(vr => {
               const vi = vr.querySelectorAll('input:not([type="checkbox"])');
               const vName = (vi[0]?.value || '').trim();
-              const vQty  = _scaleQty(parseInt(vi[1]?.value) || 0);
-              const vRmb  = parseFloat(vi[2]?.value) || 0;
-              const vLead = parseInt(vi[3]?.value) || 0;
+              const vQty  = _scaleQty(_msIntFromInput(vi[1]));
+              const vRmb  = _msNumFromInput(vi[2]);
+              const vLead = parseInt(_msStripCommasStr(vi[3]?.value)) || 0;
               const vUsd  = _fxUsdFromRmb(vRmb);
               const vLanded = vUsd + _ctxShipPerUnit;
               const vSale   = vLanded * _ctxWbMarginMul;
