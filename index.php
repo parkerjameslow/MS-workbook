@@ -16079,7 +16079,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   /* ── Pricing Tab Summary Renderer ──────────────────────────────────────── */
+  // Outer try/catch wrapper — if anything in the pricing render throws
+  // (e.g. a refactor introduces a TDZ from referencing a const before
+  // its declaration site), we LOG to the console instead of letting
+  // the error bubble all the way up to _fillWorkbookInner and break
+  // workbook loading entirely. The pricing tab might end up in a
+  // half-rendered state, but the rest of the workbook stays usable.
   function renderPricingTab() {
+    try { _renderPricingTabInner(); }
+    catch (e) { try { console.error('[MS renderPricingTab]', e); } catch (_) {} }
+  }
+  function _renderPricingTabInner() {
     // RFQ input handlers + workbook-load already keep _lastRfqPriceSummary
     // fresh, so we only run the (expensive) recalc here as a defensive
     // first-time prime. Skipping the redundant call cuts the per-keystroke
@@ -16130,13 +16140,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     // Full Container Pitch scaling — when applied, the workbook's
     // pallet-total-cartons holds the bumped qty. We scale every RFQ
-    // line's qty by (effectiveQty / grandQty) so the Client Quote line
-    // items + summary bars match the rolled-up Delivered Cost Summary.
-    // Falls back to 1.0 (no scaling) when pitch is off or qty data is
-    // missing.
-    const _rfqGrandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
-    const _cqQtyScale = (effectiveQty > 0 && _rfqGrandQty > 0 && effectiveQty !== _rfqGrandQty)
-      ? (effectiveQty / _rfqGrandQty) : 1;
+    // line's qty by (pitchUnits / grandRfqQty) so the Client Quote
+    // line items + summary bars match the rolled-up Delivered Cost
+    // Summary. Self-contained so it doesn't depend on `effectiveQty`
+    // (which is declared further down the function — referencing it
+    // here would land in the const-TDZ and blow up workbook load).
+    const _pitchOnCq          = !!window._fullContainerPitchSnap;
+    const _pitchTotalUnitsCq  = _pitchOnCq ? (parseInt(document.getElementById('pallet-total-cartons')?.value) || 0) : 0;
+    const _rfqGrandQty        = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
+    const _cqQtyScale = (_pitchOnCq && _pitchTotalUnitsCq > 0 && _rfqGrandQty > 0 && _pitchTotalUnitsCq !== _rfqGrandQty)
+      ? (_pitchTotalUnitsCq / _rfqGrandQty) : 1;
     const _scaleQty = (q) => _cqQtyScale === 1 ? q : Math.round(q * _cqQtyScale);
     const refEl = document.getElementById('pricing-quote-ref-body');
     if (refEl) {
