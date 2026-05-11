@@ -10127,52 +10127,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    // ── Draw loose top-off load (BLUE) when active ────────────────────
-    // The "↻ Top Off" button on the Last Container card sets a flag
-    // on the Total Units input meaning "the products beyond the
-    // palletized count are loose-loaded cardboard boxes filling the
-    // leftover container CBM". Render those in BLUE, stacked above
-    // the pallets in whatever vertical headroom + footprint area is
-    // still free, so the operator can see what their top-off looks
-    // like next to the palletized cargo.
+    // ── Draw loose top-off load (BLUE) — FLOOR-LOADED at the door end ──
+    // The "↻ Top Off" button stashes a "products beyond the palletized
+    // count" flag on the Total Units input. Render those products as
+    // BLUE cardboard boxes on the CONTAINER FLOOR, anchored at the
+    // door end (high x) of the container, in the strip of floor that
+    // the pallets don't occupy. Real ocean shipments load loose-load
+    // boxes from the floor outward toward the doors, NOT on top of
+    // the pallets — and stacking them in the headroom misrepresents
+    // both the centre of gravity and how the load is actually pulled
+    // off at the destination terminal.
     const looseTopOffStr = document.getElementById('pallet-total-cartons')?.dataset.looseTopOff || '';
     const looseTopOffUnits = parseInt(looseTopOffStr) || 0;
     if (looseTopOffUnits > 0 && palletsToShow > 0) {
-      // Determine box size + how many fit. Size = the same product/
-      // outer-carton dims the user is tracking (drawCellL/W are the
-      // pallet-cell sizes; we want the actual box, which is what
-      // _shipUnit uses on the shipping side). Pull from DOM.
       const _manualOn = !!document.getElementById('pallet-manual')?.checked;
       const get = id => parseFloat(document.getElementById(id)?.value) || 0;
       const boxL = _manualOn ? get('dim-cm-l') : get('carton-outer-l-cm');
       const boxW = _manualOn ? get('dim-cm-w') : get('carton-outer-w-cm');
       const boxH = _manualOn ? get('dim-cm-h') : get('carton-outer-h-cm');
-      // Convert the loose-units count (in PRODUCTS) to the number of
-      // BOXES we'll render. In manual mode 1 product = 1 box; in
-      // carton mode each box holds productsPerOuter products.
       const _innerQty = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
       const _outerQty = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
       const _ppo = (_innerQty > 0 && _outerQty > 0) ? _innerQty * _outerQty : 0;
       const productsPerBox = _manualOn ? 1 : (_ppo || 1);
       const looseBoxesToDraw = Math.max(0, Math.ceil(looseTopOffUnits / productsPerBox));
       if (boxL > 0 && boxW > 0 && boxH > 0 && looseBoxesToDraw > 0) {
-        // Floor space the loose boxes get is whatever the pallets
-        // didn't claim: pallets occupy palletLayout.cols × pL by
-        // palletLayout.rows × pW. Available headroom is HC_H minus
-        // top-of-pallets. Stack loose boxes in the headroom above the
-        // pallets, filling the entire footprint.
-        const palletsTopY = verticalLayers * palletStack;
-        const headroom = Math.max(0, HC_H - palletsTopY);
-        if (headroom >= boxH) {
-          const looseColsX = Math.floor(HC_L / boxL);
-          const looseColsZ = Math.floor(HC_W / boxW);
-          const loosePerLayer = looseColsX * looseColsZ;
-          const looseLayers   = Math.min(Math.floor(headroom / boxH), Math.ceil(looseBoxesToDraw / Math.max(1, loosePerLayer)));
-          let looseDrawn = 0;
-          // Center the loose stack on the container floor for clarity.
-          const looseOffX = Math.max(0, (HC_L - looseColsX * boxL) / 2);
+        // Door-end strip = the x-range between the last pallet column
+        // and HC_L. Pallets fill from x=0 to palCols × pL; the leftover
+        // sits at the door (high x) side of the container.
+        const palletsXUsed = palletLayout.cols * palletLayout.pL;
+        const looseXSpace  = Math.max(0, HC_L - palletsXUsed);
+        const looseColsX   = Math.max(0, Math.floor(looseXSpace / boxL));
+        const looseColsZ   = Math.max(0, Math.floor(HC_W / boxW));
+        // Stack height capped at the pallet stack height (so the loose
+        // load doesn't visually exceed the cargo level + so we don't
+        // misrepresent door clearance).
+        const looseStackMaxH = Math.min(HC_H, verticalLayers * palletStack);
+        const looseMaxLayers = Math.max(0, Math.floor(looseStackMaxH / boxH));
+        const loosePerLayer  = looseColsX * looseColsZ;
+        const looseLayers    = loosePerLayer > 0
+          ? Math.min(looseMaxLayers, Math.ceil(looseBoxesToDraw / loosePerLayer))
+          : 0;
+        if (looseLayers > 0 && loosePerLayer > 0) {
+          // Anchor the loose stack to x = HC_L (door end). The stack
+          // grows backward into the container from there.
+          const looseStackXSpan = looseColsX * boxL;
+          const looseOffX = HC_L - looseStackXSpan;
           const looseOffZ = Math.max(0, (HC_W - looseColsZ * boxW) / 2);
           const looseColor = '#3b82f6'; // blue-500
+          let looseDrawn = 0;
           for (let ly = 0; ly < looseLayers && looseDrawn < looseBoxesToDraw; ly++) {
             for (let diag = 0; diag <= looseColsX + looseColsZ - 2 && looseDrawn < looseBoxesToDraw; diag++) {
               for (let cx = Math.max(0, diag - looseColsZ + 1); cx <= Math.min(diag, looseColsX - 1); cx++) {
@@ -10180,7 +10182,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 const cz = diag - cx;
                 drawIsoBox(ctx,
                   looseOffX + cx * boxL,
-                  palletsTopY + ly * boxH,
+                  ly * boxH,                 // floor-up, not pallet-top
                   looseOffZ + cz * boxW,
                   boxL, boxH, boxW, s, ox, oy, looseColor);
                 looseDrawn++;
