@@ -6407,6 +6407,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
           <div style="flex:1 1 600px; min-width:300px; display:flex; flex-direction:column; gap:14px;">
             <canvas id="container-canvas" width="800" height="380" style="width:100%; max-width:800px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
+            <!-- Hypothetical pricing scenarios — sits directly under
+                 the container 3D viz. Renders two cards: (A) the cost
+                 of the as-entered shipment qty at partial container,
+                 and (B) the cost if the same product were used to fill
+                 the remaining container space (pallets + loose top-
+                 off). Lets the operator pitch "fill the container" to
+                 the client with a concrete dollar comparison. -->
+            <div id="container-hypothetical"></div>
             <!-- Last Container — Room to Fill lives here so it fills the
                  white space directly under the container 3D viz, instead
                  of cramping the right stats panel. Populated by
@@ -10514,6 +10522,148 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } else if (fillEl) {
       fillEl.innerHTML = '';
     }
+    // Hypothetical pricing scenarios — sits between the 3D viz and
+    // the Room-to-Fill panel. Computes (A) cost of the as-entered
+    // shipment vs (B) cost of filling the remaining container space.
+    // Use the FUNCTION ARGS for unitCbm / unitWtKg (the local consts
+    // of those names are scoped inside the if (sideEl) block above).
+    if (typeof _renderContainerHypotheticals === 'function') {
+      _renderContainerHypotheticals({
+        palletsNeeded, palletsPerContainer, palletsInLast, palletsRoomLeft,
+        cbmRoomLeft, weightRoomLeftKg,
+        palletWeightKg, unitsPerPallet,
+        unitWord,
+        unitCbm: (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0,
+        unitWtKg: (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0
+      });
+    }
+  }
+
+  // ── Container Hypothetical Pricing Scenarios ─────────────────────────
+  // Renders two cards under the 3D container viz:
+  //   A. Actual — cost of the current shipment qty at the partial
+  //      container state (product cost + freight).
+  //   B. Full Container — cost if the operator fills the remaining
+  //      container space with the same product (pallets + loose top-
+  //      off). Lets them pitch "fill it up" with a concrete delta.
+  // Freight method = the shipping tab's #freight-mode dropdown; falls
+  // back to "fast" (Fast Boat) when nothing is selected. Per-unit USD
+  // price = _lastRfqPriceSummary.grandUsdUnit (single price) or
+  // grandUsd / grandQty (weighted across variants).
+  function _renderContainerHypotheticals(ctx) {
+    const host = document.getElementById('container-hypothetical');
+    if (!host) return;
+    const totalUnits = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
+    const manualOn   = !!document.getElementById('pallet-manual')?.checked;
+    const innerQty   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    const outerQty   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    const productsPerOuter = (innerQty > 0 && outerQty > 0) ? innerQty * outerQty : 0;
+    const productsPerItem  = manualOn ? 1 : (productsPerOuter || 0);
+    // Per-unit USD product price — required for any pricing math.
+    const ps = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary) || null;
+    let usdPerUnit = 0;
+    if (ps) {
+      if (ps.grandUsdUnit && ps.grandUsdUnit > 0) usdPerUnit = ps.grandUsdUnit;
+      else if (ps.grandUsd && ps.grandQty)         usdPerUnit = ps.grandUsd / ps.grandQty;
+      else if (ps.usdMin && ps.usdMin > 0)         usdPerUnit = ps.usdMin;
+    }
+    // Bail conditions — show a friendly stub instead of a half-baked
+    // panel when we lack the inputs needed for either scenario.
+    if (!totalUnits || !ps || !usdPerUnit || ctx.palletsNeeded <= 0) {
+      const reason = !totalUnits      ? 'Enter Total Units to Ship.'
+                   : !ps              ? 'Add an RFQ line item to enable price math.'
+                   : !usdPerUnit      ? 'Set an RFQ price so we can compute scenario cost.'
+                   : 'Set outer carton dimensions so the pallet count is known.';
+      host.innerHTML = `
+        <div style="padding:12px 14px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.55;">
+          <strong style="color:var(--text);">Hypothetical scenarios:</strong> ${reason}
+        </div>`;
+      return;
+    }
+    // Freight method — prefer the shipping tab's selection, else Fast.
+    const modeSel = document.getElementById('freight-mode');
+    const method  = (modeSel && modeSel.value && freightMethodRates[modeSel.value]) ? modeSel.value : 'fast';
+    const methodLabel = (typeof SPLIT_METHOD_LABELS !== 'undefined' && SPLIT_METHOD_LABELS[method]) || method;
+    const usingUserMethod = (modeSel && modeSel.value && modeSel.value === method && method !== 'fast') || (modeSel && modeSel.value === 'fast');
+    // Scenario B math — fill remaining container space.
+    //   • palletsRoomLeft → additional palletized items (cartons or
+    //     products) = roomLeft × unitsPerPallet
+    //   • Convert items → products via productsPerItem
+    //   • Loose top-off (in items) via cbmRoomLeft / unitCbm × 0.80 efficiency
+    //     capped by remaining weight allowance.
+    const palletItems     = (ctx.palletsRoomLeft || 0) * (ctx.unitsPerPallet || 0);
+    const palletProducts  = palletItems * (productsPerItem || 1);
+    const PACK_EFF = 0.80;
+    let looseItems = 0;
+    if (ctx.unitCbm > 0) {
+      const byCbm    = Math.floor((ctx.cbmRoomLeft * PACK_EFF) / ctx.unitCbm);
+      const byWeight = ctx.unitWtKg > 0 ? Math.floor(ctx.weightRoomLeftKg / ctx.unitWtKg) : byCbm;
+      looseItems = Math.max(0, Math.min(byCbm, byWeight));
+    }
+    const looseProducts = looseItems * (productsPerItem || 1);
+    const additionalProducts = palletProducts + looseProducts;
+    const fullQty = totalUnits + additionalProducts;
+    // Freight costs — calcSplitCost takes qty in PRODUCTS and bakes in
+    // outer-carton conversion + per-mode rate/divisor for us.
+    const freightA = (typeof calcSplitCost === 'function') ? calcSplitCost(method, totalUnits) : null;
+    const freightB = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)    : null;
+    // Pull USD numbers from the cost strings (e.g. "$1,234.56").
+    const parseUsd = (s) => s ? parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0 : 0;
+    const freightUsdA = freightA ? parseUsd(freightA.usdStr) : 0;
+    const freightUsdB = freightB ? parseUsd(freightB.usdStr) : 0;
+    const productUsdA = totalUnits * usdPerUnit;
+    const productUsdB = fullQty    * usdPerUnit;
+    const totalUsdA   = productUsdA + freightUsdA;
+    const totalUsdB   = productUsdB + freightUsdB;
+    const landedA = totalUnits > 0 ? totalUsdA / totalUnits : 0;
+    const landedB = fullQty    > 0 ? totalUsdB / fullQty    : 0;
+    const savings = landedA - landedB;
+    const savingsPct = landedA > 0 ? Math.round((savings / landedA) * 100) : 0;
+    const fmt$ = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const card = (kind, title, lines, footer) => {
+      const colors = {
+        actual: { bd:'var(--border)', bg:'var(--surface2)', accent:'var(--text)' },
+        full:   { bd:'#10b981',        bg:'rgba(16,185,129,0.08)', accent:'#10b981' }
+      };
+      const c = colors[kind] || colors.actual;
+      return `<div style="padding:14px; border:1px solid ${c.bd}; border-radius:8px; background:${c.bg}; flex:1 1 280px; min-width:240px;">
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:${c.accent}; margin-bottom:10px;">${title}</div>
+        ${lines.map(l => `<div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; line-height:1.8;">
+          <span style="color:var(--text-muted);">${l[0]}</span>
+          <span style="color:var(--text); font-weight:600; white-space:nowrap;">${l[1]}</span>
+        </div>`).join('')}
+        ${footer ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:11px; color:var(--text-muted); line-height:1.5;">${footer}</div>` : ''}
+      </div>`;
+    };
+    const linesA = [
+      ['Units shipped',  totalUnits.toLocaleString()],
+      ['Pallets needed', ctx.palletsNeeded.toLocaleString()],
+      ['Product cost',   fmt$(productUsdA)],
+      [`Freight (${methodLabel})`, fmt$(freightUsdA)],
+      ['Total landed',   `<strong style="font-size:14px;">${fmt$(totalUsdA)}</strong>`],
+      ['Per-unit landed', fmt$(landedA)]
+    ];
+    const linesB = [
+      ['Units shipped',  `${fullQty.toLocaleString()} <span style="color:#10b981; font-weight:700;">(+${additionalProducts.toLocaleString()})</span>`],
+      ['Pallets needed', `${(ctx.palletsNeeded + (ctx.palletsRoomLeft || 0)).toLocaleString()}`],
+      ['Product cost',   fmt$(productUsdB)],
+      [`Freight (${methodLabel})`, fmt$(freightUsdB)],
+      ['Total landed',   `<strong style="font-size:14px; color:#10b981;">${fmt$(totalUsdB)}</strong>`],
+      ['Per-unit landed', `<strong style="color:#10b981;">${fmt$(landedB)}</strong>`]
+    ];
+    const footerB = savings > 0
+      ? `↓ <strong style="color:#10b981;">${fmt$(savings)}/unit (${savingsPct}%)</strong> lower than the partial-container scenario — filling the container with ${additionalProducts.toLocaleString()} more units spreads freight across the full load.`
+      : `Filling the container doesn't lower the per-unit landed cost at the current price point.`;
+    const footerA = `${ctx.palletsRoomLeft || 0} pallet slot${(ctx.palletsRoomLeft || 0) === 1 ? '' : 's'} unused in the last container.`;
+    host.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px;">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Hypothetical Scenarios</div>
+        <div style="font-size:11px; color:var(--text-muted);">Method: <strong style="color:var(--text);">${methodLabel}</strong> · Per-unit: ${fmt$(usdPerUnit)}</div>
+      </div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        ${card('actual', 'A · Actual (Partial)',      linesA, footerA)}
+        ${card('full',   'B · Full Container Pitch',  linesB, footerB)}
+      </div>`;
   }
 
   function renderPalletViz() {
