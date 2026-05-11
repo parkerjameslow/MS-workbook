@@ -9987,6 +9987,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (current === '' || current === last || current === target) {
         if (current !== target) {
           input.value = target;
+          // Reverting to the clean RFQ qty has to wipe any stashed
+          // loose top-off — otherwise the previously-applied Full
+          // Container Pitch flag lingers and the container viz keeps
+          // drawing leftover blue boxes while the Hypothetical panel
+          // computes against a phantom palletized subset.
+          input.dataset.looseTopOff = '';
           if (typeof renderPalletViz === 'function') renderPalletViz();
           if (typeof syncShippingDims === 'function') syncShippingDims();
           if (typeof calcFreight === 'function') calcFreight();
@@ -10010,6 +10016,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!grandQty) return;
     input.value = String(grandQty);
     input.dataset.lastRfqSync = String(grandQty);
+    // Manual revert to the RFQ qty also clears the loose top-off flag
+    // so Scenario B in the Hypothetical Scenarios panel rebuilds from
+    // the clean RFQ qty (most-efficient pitch from scratch), and the
+    // container viz drops the leftover blue boxes from the previous
+    // Apply Full Container Pitch press.
+    input.dataset.looseTopOff = '';
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
