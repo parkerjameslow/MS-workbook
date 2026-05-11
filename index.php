@@ -11759,14 +11759,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _hdrLiveFormat(rmbEl);
     const rmb   = _parseCalc(rmbEl.value);
     const usdEl = document.getElementById('hdr-calc-usd');
-    usdEl.value = rmb > 0 ? _fmtCalc(rmb / USD_TO_RMB) : '';
+    // Convert + ceil to the cent so the header calc matches every
+    // other RMB↔USD conversion in the workbook.
+    usdEl.value = rmb > 0 ? _fmtCalc(_fxUsdFromRmb(rmb)) : '';
   }
   function hdrCalcUsdToRmb() {
     const usdEl = document.getElementById('hdr-calc-usd');
     _hdrLiveFormat(usdEl);
     const usd   = _parseCalc(usdEl.value);
     const rmbEl = document.getElementById('hdr-calc-rmb');
-    rmbEl.value = usd > 0 ? _fmtCalc(usd * USD_TO_RMB) : '';
+    rmbEl.value = usd > 0 ? _fmtCalc(_fxRmbFromUsd(usd)) : '';
   }
 
   /* ── Dimensions Calculator (header modal) ────────────────────────────
@@ -12659,7 +12661,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function convertRmbToUsd() {
     const rmb = parseFloat(document.getElementById('quote-unit-rmb').value);
     const usdEl = document.getElementById('quote-unit');
-    usdEl.value = isNaN(rmb) ? '' : (rmb / USD_TO_RMB).toFixed(2);
+    usdEl.value = isNaN(rmb) ? '' : _fxUsdFromRmb(rmb).toFixed(2);
   }
 
   /* ── RFQ Line Items ─────────────────────────────────────────────────── */
@@ -12679,7 +12681,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.ondragover = function(e) { e.preventDefault(); tr.style.borderTop='2px solid var(--accent)'; };
     tr.ondragleave = function() { tr.style.borderTop=''; };
     tr.ondrop = function(e) { e.preventDefault(); tr.style.borderTop=''; rfqDropRow(e, id); };
-    const usdVal = priceRmb ? (parseFloat(priceRmb) / USD_TO_RMB).toFixed(2) : '';
+    const usdVal = priceRmb ? _fxUsdFromRmb(priceRmb).toFixed(2) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
     // Slightly taller row — bumped vertical padding from 10px to 12px so
     // the row has room for the inline "+ Add Variant" link below the
@@ -12758,8 +12760,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const inputs = row.querySelectorAll('input:not([type="checkbox"])');
     const qty = parseFloat(inputs[2]?.value) || 0;
     const rmb = parseFloat(inputs[3]?.value) || 0;
-    const usd = rmb / USD_TO_RMB;
-    const total = qty * usd;
+    const usd = _fxUsdFromRmb(rmb);  // ceil to the cent
+    const total = qty > 0 && usd > 0 ? _msCeil2(qty * usd) : 0;
     const usdEl = document.getElementById(`rfq-usd-${id}`);
     const totalEl = document.getElementById(`rfq-total-${id}`);
     if (usdEl) usdEl.textContent = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
@@ -13059,7 +13061,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         priceRmb = parentInputs[3]?.value || '';
       }
     }
-    const usdVal = priceRmb ? (parseFloat(priceRmb) / USD_TO_RMB).toFixed(2) : '';
+    const usdVal = priceRmb ? _fxUsdFromRmb(priceRmb).toFixed(2) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
     const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:13px; box-sizing:border-box; background:var(--surface2); color:var(--text); font-family:inherit;';
     const tr = document.createElement('tr');
@@ -13641,7 +13643,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const chargePerCarton = Math.max(actualKg, volWeight);
     const totalCharge = chargePerCarton * cartons;
     const rmb = totalCharge * rate;
-    const usd = rmb / FREIGHT_EXCHANGE_RATE;
+    const usd = rmb / USD_TO_RMB;
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return { rmbStr: `¥${fmt2(rmb)}`, usdStr: `$${fmt2(usd)}` };
   }
@@ -13823,14 +13825,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function onAddFeeRmbInput() {
     const rmb = _msFeeNum(document.getElementById('add-fee-rmb'));
-    document.getElementById('add-fee-usd').value = rmb > 0 ? _msFeeFmt(rmb / USD_TO_RMB) : '';
+    document.getElementById('add-fee-usd').value = rmb > 0 ? _msFeeFmt(_fxUsdFromRmb(rmb)) : '';
   }
 
   function onAddFeeUsdInput() {
     const type = document.getElementById('add-fee-type').value;
     if (type === 'design') return;
     const usd = _msFeeNum(document.getElementById('add-fee-usd'));
-    document.getElementById('add-fee-rmb').value = usd > 0 ? _msFeeFmt(usd * USD_TO_RMB) : '';
+    document.getElementById('add-fee-rmb').value = usd > 0 ? _msFeeFmt(_fxRmbFromUsd(usd)) : '';
   }
 
   function confirmAddFee() {
@@ -13984,14 +13986,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       row.desc = value;
     } else if (field === 'rmb') {
       row.rmb = cleanNum(value);
-      row.usd = row.rmb > 0 ? parseFloat((row.rmb / USD_TO_RMB).toFixed(2)) : 0;
+      row.usd = row.rmb > 0 ? _fxUsdFromRmb(row.rmb) : 0;
       // Update the USD input without re-rendering — show comma-formatted
       // (the user is editing the RMB input, not this one)
       const tr = document.getElementById(`extra-fee-tr-${id}`);
       if (tr) { const usdIn = tr.querySelectorAll('input[data-fee-money="1"]')[1]; if (usdIn) usdIn.value = row.usd > 0 ? _msFeeFmt(row.usd) : ''; }
     } else if (field === 'usd') {
       row.usd = cleanNum(value);
-      row.rmb = row.usd > 0 ? parseFloat((row.usd * USD_TO_RMB).toFixed(2)) : 0;
+      row.rmb = row.usd > 0 ? _fxRmbFromUsd(row.usd) : 0;
       const tr = document.getElementById(`extra-fee-tr-${id}`);
       if (tr) { const rmbIn = tr.querySelector('input[data-fee-money="1"]'); if (rmbIn) rmbIn.value = row.rmb > 0 ? _msFeeFmt(row.rmb) : ''; }
     }
@@ -14028,6 +14030,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!n || n <= 0 || isNaN(n)) return '';
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  // ── FX rounding ──────────────────────────────────────────────────
+  // RMB↔USD conversions always round UP to the hundredth (so the
+  // converted value never under-quotes the cost, even by a fraction
+  // of a cent). Wraps both RMB-from-USD and USD-from-RMB paths plus
+  // the USD_TO_RMB variants used on the shipping side.
+  function _msCeil2(n) {
+    const v = Number(n);
+    if (!isFinite(v)) return 0;
+    return Math.ceil(v * 100) / 100;
+  }
+  function _fxUsdFromRmb(rmb)  { return _msCeil2((Number(rmb) || 0) / USD_TO_RMB); }
+  function _fxRmbFromUsd(usd)  { return _msCeil2((Number(usd) || 0) * USD_TO_RMB); }
+  function _fxFreightUsdFromRmb(rmb) { return _msCeil2((Number(rmb) || 0) / USD_TO_RMB); }
+  function _fxFreightRmbFromUsd(usd) { return _msCeil2((Number(usd) || 0) * USD_TO_RMB); }
   function _msFeeFocus(el) {
     if (!el) return;
     const n = _msFeeNum(el);
@@ -14050,12 +14066,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!rmbEl || !usdEl) return;
     if (from === 'rmb') {
       const rmb = _msFeeNum(rmbEl);
-      // While the user is typing in the RMB field, show the converted
-      // USD value comma-formatted (the field they're not editing).
-      usdEl.value = rmb > 0 ? _msFeeFmt(rmb / USD_TO_RMB) : '';
+      // RMB→USD always rounds UP to the cent so quotes never under-
+      // represent the dollar cost by a fractional cent.
+      usdEl.value = rmb > 0 ? _msFeeFmt(_fxUsdFromRmb(rmb)) : '';
     } else {
       const usd = _msFeeNum(usdEl);
-      rmbEl.value = usd > 0 ? _msFeeFmt(usd * USD_TO_RMB) : '';
+      rmbEl.value = usd > 0 ? _msFeeFmt(_fxRmbFromUsd(usd)) : '';
     }
     calcAdditionalFees();
   }
@@ -16029,7 +16045,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const freightMethodRates    = { slow: 12, fast: 14, airupp: 44, directair: 65 };
   const freightMethodDivisors = { slow: 6000, fast: 6000, airupp: 5000, directair: 5000 };
 
-  const FREIGHT_EXCHANGE_RATE = 7.2; // ¥ per $1 USD
+  // The shipping side used to ship through a hardcoded
+  // USD_TO_RMB = 7.2. That made $16,500 override render as
+  // ¥118,800 even though today's live rate is ~6.806. All freight
+  // conversions now read USD_TO_RMB directly so the shipping tab
+  // matches the header CNY↔USD calc.
 
   function updateFreightRate() {
     const rawMode = document.getElementById('freight-mode').value;
@@ -16038,7 +16058,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rmbEl = document.getElementById('freight-rate-rmb-display');
     const usdEl = document.getElementById('freight-rate-usd-display');
     if (rmbEl) rmbEl.textContent = r.toFixed(2);
-    if (usdEl) usdEl.textContent = (r / FREIGHT_EXCHANGE_RATE).toFixed(2);
+    if (usdEl) usdEl.textContent = (r / USD_TO_RMB).toFixed(2);
     renderPricingTab();
   }
 
@@ -16075,7 +16095,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _ctxWeightText  = document.getElementById('freight-wt-' + _ctxFreightMode)?.textContent || '—';
     const _ctxChargeKg    = parseFloat(_ctxWeightText) || 0;
     const _ctxShippingUsd = (_ctxChargeKg > 0 && _ctxRateRmb > 0)
-      ? (_ctxChargeKg * _ctxRateRmb) / FREIGHT_EXCHANGE_RATE
+      ? (_ctxChargeKg * _ctxRateRmb) / USD_TO_RMB
       : 0;
     const _ctxShipPerUnit = (_ctxTierQty > 0 && _ctxShippingUsd > 0) ? _ctxShippingUsd / _ctxTierQty : 0;
 
@@ -16358,7 +16378,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const mode = document.getElementById('freight-mode')?.value || 'slow';
     const modeNames = { slow: 'Slow Boat', fast: 'Fast Boat', airupp: 'Air + UPS', directair: 'Direct Air' };
     const rateRmb = freightMethodRates[mode] || 0;
-    const rateUsd = rateRmb / FREIGHT_EXCHANGE_RATE;
+    const rateUsd = rateRmb / USD_TO_RMB;
     const weightText   = e('freight-wt-' + mode)?.textContent || '—';
     const chargeableKg = parseFloat(weightText) || 0;
     // Manual override: if the operator typed a fixed shipping cost on
@@ -16367,11 +16387,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _shipOverrideUsd = (typeof _getShippingCostOverrideUsd === 'function')
       ? _getShippingCostOverrideUsd() : null;
     const shippingRmb  = (_shipOverrideUsd !== null)
-      ? _shipOverrideUsd * FREIGHT_EXCHANGE_RATE
+      ? _shipOverrideUsd * USD_TO_RMB
       : (chargeableKg > 0 ? chargeableKg * rateRmb : 0);
     const shippingUsd  = (_shipOverrideUsd !== null)
       ? _shipOverrideUsd
-      : (shippingRmb > 0 ? shippingRmb / FREIGHT_EXCHANGE_RATE : 0);
+      : (shippingRmb > 0 ? shippingRmb / USD_TO_RMB : 0);
 
     if (e('ps-sh-method'))  e('ps-sh-method').textContent  = modeNames[mode] || '—';
     if (e('ps-sh-weight'))  e('ps-sh-weight').textContent  = chargeableKg > 0 ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg' : '—';
@@ -17274,7 +17294,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const mode     = freightMethodRates[rawMode] ? rawMode : 'slow'; // fallback to slow if mode unknown/empty
     const rate     = freightMethodRates[mode];
     const cartons  = ship.count > 0 ? ship.count : 1;
-    const exchange = FREIGHT_EXCHANGE_RATE;
+    const exchange = USD_TO_RMB;
 
     // Update rate chip displays
     const rmbEl = document.getElementById('freight-rate-rmb-display');
