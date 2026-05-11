@@ -13516,10 +13516,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          </td>`
       : `<td id="wb-tier-rmb-${id}" style="font-size:13px;">
            <div class="currency-prefix currency-rmb" style="position:relative;">
-             <input type="number" min="0" step="0.01" placeholder="0.00"
+             <input type="text" inputmode="decimal" placeholder="0.00" data-num-dec="1"
                     id="wb-tier-rmb-input-${id}"
                     value="${unitPrice || ''}"
                     oninput="onWbTierRmbInput(${id})"
+                    onfocus="_msStripCommasOnFocus(this)"
+                    onblur="_msFmtDecOnBlur(this); onWbTierRmbInput(${id})"
                     style="width:120px; padding-left:24px;"
                     autocomplete="off" data-1p-ignore="true" data-lpignore="true" />
            </div>
@@ -13527,8 +13529,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
       <td>
-        <input type="number" min="0" placeholder="e.g. 100" value="${qty}"
+        <input type="text" inputmode="numeric" placeholder="e.g. 100" value="${qty}" data-num-int="1"
                oninput="recalcWbTier(${id})"
+               onfocus="_msStripCommasOnFocus(this)"
+               onblur="_msFmtIntOnBlur(this); recalcWbTier(${id})"
                style="width:110px;${isFirst ? ' background:var(--surface2); color:var(--text-muted); cursor:not-allowed;' : ''}"
                ${isFirst ? 'readonly title="Auto-populated from Quote Details qty"' : ''} />
       </td>
@@ -13544,9 +13548,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function recalcWbTier(id) {
     const row = document.getElementById(`wb-tier-${id}`);
     const inputs = row.querySelectorAll('input');
-    const qty = parseFloat(inputs[0].value);
-    // All rows are view-only for price — read from dataset
-    const rmb = parseFloat(row.dataset.price);
+    // Comma-tolerant reads — qty input can hold "1,234" after blur, and
+    // dataset.price gets written by onWbTierRmbInput which also strips
+    // before saving so it stays raw on disk.
+    const qty = _msNumFromInput(inputs[0]);
+    const rmb = parseFloat(_msStripCommasStr(row.dataset.price));
     const usd = rmb / USD_TO_RMB;
     const rmbValEl = document.getElementById(`wb-tier-rmb-val-${id}`);
     const usdEl = document.getElementById(`wb-tier-usd-${id}`);
@@ -13603,12 +13609,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // Manual Unit Price (RMB) input on tier rows 2+ — writes back to the
   // row's dataset.price (single source of truth) and re-runs the
-  // standard tier recalc so USD + Total update.
+  // standard tier recalc so USD + Total update. dataset.price stays
+  // raw (no commas) so downstream parsers see clean numbers; the
+  // input display can show "1,234.56" without breaking the math.
   function onWbTierRmbInput(id) {
     const row   = document.getElementById(`wb-tier-${id}`);
     const input = document.getElementById(`wb-tier-rmb-input-${id}`);
     if (!row || !input) return;
-    row.dataset.price = input.value || '';
+    row.dataset.price = _msStripCommasStr(input.value);
     recalcWbTier(id);
   }
 
@@ -13744,7 +13752,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
       if (inputs.length >= 1) {
-        tiers.push({ qty: inputs[0].value, price: row.dataset.price || '' });
+        // Strip the display commas before saving so detail_json holds
+        // raw "1234" — keeps front-end and server-side parsers aligned
+        // across a refresh.
+        tiers.push({
+          qty: _msStripCommasStr(inputs[0].value),
+          price: _msStripCommasStr(row.dataset.price)
+        });
       }
     });
     return tiers;
