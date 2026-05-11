@@ -2380,6 +2380,36 @@ switch ($action) {
             ];
         }
 
+        // 1b. Pairs from EVERY non-deleted workbook. This is the path
+        //     that picks up workbooks the operator hasn't bothered to
+        //     promote to a permanent SKU yet (e.g. quotes without an
+        //     SKU set on the RFQ row). Their commission rows are still
+        //     written with is_estimate=1 so the dashboard shows the
+        //     projection — exactly what the operator expects when they
+        //     see a non-zero Grand Total on the Workbook tab.
+        try {
+            $allRows = $pdo->query("
+                SELECT w.id AS workbook_id, c.name AS client_name
+                FROM workbooks w
+                JOIN clients c ON c.id = w.client_id
+                WHERE (w.deleted_at IS NULL OR w.deleted_at = '')
+                  AND (c.deleted_at IS NULL OR c.deleted_at = '')
+            ")->fetchAll();
+            foreach ($allRows as $r) {
+                if (!$r['client_name'] || !$r['workbook_id']) continue;
+                $key = $r['client_name'] . '|' . $r['workbook_id'];
+                if (!isset($pairs[$key])) {
+                    $pairs[$key] = [
+                        'client_name' => $r['client_name'],
+                        'workbook_id' => (int)$r['workbook_id'],
+                    ];
+                }
+            }
+        } catch (Exception $_) {
+            // Older installs may not have w.deleted_at or c.deleted_at.
+            // Fall through to whatever we already have in $pairs.
+        }
+
         // 2. Pairs from active orders. Orders live as JSON under
         //    app_state['ms_orders'].data[orderId].entries[*].{clientName,workbookId}.
         $os = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ?");
