@@ -6386,9 +6386,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Total Units to Ship</label>
               <button type="button" id="pallet-total-resync-btn" onclick="resyncPalletTotalUnitsFromRfq()" style="display:none; font-size:11px; font-weight:600; color:var(--accent); background:none; border:none; padding:0; cursor:pointer; text-decoration:underline;" title="Re-pull this value from the RFQ Grand Total qty">↻ Sync from RFQ</button>
             </div>
-            <input type="number" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons"
+            <input type="text" inputmode="numeric" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons" data-num-int="1"
               style="width:100%; box-sizing:border-box;"
-              oninput="this.dataset.looseTopOff=''; if(typeof _clearFullContainerPitchSnap==='function')_clearFullContainerPitchSnap(); renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();" />
+              oninput="this.dataset.looseTopOff=''; if(typeof _clearFullContainerPitchSnap==='function')_clearFullContainerPitchSnap(); renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();"
+              onfocus="_msStripCommasOnFocus(this)"
+              onblur="_msFmtIntOnBlur(this); renderPalletViz();" />
             <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Auto-filled from <strong>RFQ Grand Total qty</strong> — override if shipping a partial.</div>
           </div>
         </div>
@@ -10808,7 +10810,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _renderContainerHypotheticals(ctx) {
     const host = document.getElementById('container-hypothetical');
     if (!host) return;
-    const totalUnits = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
+    const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
     const manualOn   = !!document.getElementById('pallet-manual')?.checked;
     const innerQty   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
     const outerQty   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
@@ -11248,7 +11250,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // PRODUCT count, regardless of mode. The pallet view derives
     // outer cartons + pallets needed from that. (The id is kept as
     // pallet-total-cartons for backward-compat with saved data.)
-    const totalUnits   = parseInt(document.getElementById('pallet-total-cartons').value) || 0;
+    const totalUnits   = _msIntFromInput(document.getElementById('pallet-total-cartons'));
     // Loose top-off count (in PRODUCTS) — stashed by "↻ Top Off" so the
     // last container's leftover CBM gets blue cardboard boxes in the
     // viz. The loose units must be SUBTRACTED before computing
@@ -12833,8 +12835,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
       </td>
-      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqRow(${id})" style="${inputStyle}" /></td>
-      <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqRow(${id})" style="${inputStyle} padding-left:28px;" /></div></td>
+      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
+            oninput="recalcRfqRow(${id})"
+            onfocus="_msStripCommasOnFocus(this)"
+            onblur="_msFmtIntOnBlur(this); recalcRfqRow(${id})"
+            style="${inputStyle}" /></td>
+      <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" data-num-dec="1"
+            oninput="recalcRfqRow(${id})"
+            onfocus="_msStripCommasOnFocus(this)"
+            onblur="_msFmtDecOnBlur(this); recalcRfqRow(${id})"
+            style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
@@ -12886,8 +12896,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const row = document.getElementById(`rfq-${id}`);
     if (!row) return;
     const inputs = row.querySelectorAll('input:not([type="checkbox"])');
-    const qty = parseFloat(inputs[2]?.value) || 0;
-    const rmb = parseFloat(inputs[3]?.value) || 0;
+    const qty = _msNumFromInput(inputs[2]);
+    const rmb = _msNumFromInput(inputs[3]);
     const usd = _fxUsdFromRmb(rmb);  // ceil to the cent
     const total = qty > 0 && usd > 0 ? _msCeil2(qty * usd) : 0;
     const usdEl = document.getElementById(`rfq-usd-${id}`);
@@ -13220,8 +13230,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td></td>
       <td></td>
       <td><input type="text" placeholder="e.g. Small / Red…" value="${variant}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
-      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
-      <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle} padding-left:28px;" /></div></td>
+      <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
+            oninput="recalcRfqVariantRow(${vid})"
+            onfocus="_msStripCommasOnFocus(this)"
+            onblur="_msFmtIntOnBlur(this); recalcRfqVariantRow(${vid})"
+            style="${inputStyle}" /></td>
+      <td><div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" inputmode="decimal" placeholder="0.00" value="${priceRmb}" data-num-dec="1"
+            oninput="recalcRfqVariantRow(${vid})"
+            onfocus="_msStripCommasOnFocus(this)"
+            onblur="_msFmtDecOnBlur(this); recalcRfqVariantRow(${vid})"
+            style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-var-usd-${vid}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600; padding-right:12px;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
       <td class="total-cell" id="rfq-var-total-${vid}" style="text-align:right; font-size:13px; padding-right:12px;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
@@ -13302,10 +13320,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const row = document.getElementById(`rfq-var-${vid}`);
     if (!row) return;
     const inputs = row.querySelectorAll('input');
-    const qty = parseFloat(inputs[1]?.value) || 0;
-    const rmb = parseFloat(inputs[2]?.value) || 0;
-    const usd = rmb / USD_TO_RMB;
-    const total = qty * usd;
+    const qty = _msNumFromInput(inputs[1]);
+    const rmb = _msNumFromInput(inputs[2]);
+    const usd = _fxUsdFromRmb(rmb);     // ceil to the cent
+    const total = qty > 0 && usd > 0 ? _msCeil2(qty * usd) : 0;
     const usdEl = document.getElementById(`rfq-var-usd-${vid}`);
     const totalEl = document.getElementById(`rfq-var-total-${vid}`);
     if (usdEl) usdEl.textContent = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
@@ -13327,18 +13345,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const variants = [];
       variantRows.forEach(vr => {
         const vi = vr.querySelectorAll('input');
+        // Strip the display commas before saving so detail_json holds
+        // raw "1234" not "1,234" — keeps the server-side parsers and
+        // the front-end recalc in agreement on values either side of
+        // a refresh.
         variants.push({
           variant: vi[0]?.value || '',
-          qty: vi[1]?.value || '',
-          priceRmb: vi[2]?.value || '',
+          qty: _msStripCommasStr(vi[1]?.value),
+          priceRmb: _msStripCommasStr(vi[2]?.value),
           leadTime: vi[3]?.value || ''
         });
       });
       items.push({
         sku: inputs[0]?.value || '',   // SKU is col 3 → inputs[0]
         item: inputs[1]?.value || '',  // Item is col 4 → inputs[1]
-        qty: inputs[2]?.value || '',
-        priceRmb: inputs[3]?.value || '',
+        qty: _msStripCommasStr(inputs[2]?.value),
+        priceRmb: _msStripCommasStr(inputs[3]?.value),
         leadTime: inputs[4]?.value || '',
         sample: sampleCheck?.checked || false,
         variants
@@ -14159,6 +14181,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
     if (!n || n <= 0 || isNaN(n)) return '';
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // ── Shared comma-formatter for qty / money inputs ─────────────────
+  // Every numeric workbook input now reads through these helpers so
+  // typing flows naturally (raw digits on focus, formatted on blur)
+  // and every parser strips commas before parseFloat / parseInt.
+  function _msStripCommasStr(s) { return String(s == null ? '' : s).replace(/,/g, ''); }
+  function _msNumFromInput(el)  { return parseFloat(_msStripCommasStr(el && el.value)) || 0; }
+  function _msIntFromInput(el)  { return parseInt(_msStripCommasStr(el && el.value), 10) || 0; }
+  // On focus — drop commas so digit / arrow-key editing is sane and
+  // the operator never has to delete a comma to type past it.
+  function _msStripCommasOnFocus(el) {
+    if (!el) return;
+    const stripped = _msStripCommasStr(el.value);
+    if (stripped !== el.value) el.value = stripped;
+    try { el.select(); } catch (_) {}
+  }
+  // On blur — re-format with thousand-separator commas. Integer mode
+  // for qty fields (no decimals); decimal mode for money fields
+  // (preserve the precision the operator actually typed, up to 2dp).
+  function _msFmtIntOnBlur(el) {
+    if (!el) return;
+    const raw = _msStripCommasStr(el.value).trim();
+    if (raw === '') { el.value = ''; return; }
+    const n = parseInt(raw, 10);
+    if (!isFinite(n) || isNaN(n)) return;
+    el.value = n.toLocaleString('en-US');
+  }
+  function _msFmtDecOnBlur(el) {
+    if (!el) return;
+    const raw = _msStripCommasStr(el.value).trim();
+    if (raw === '') { el.value = ''; return; }
+    const n = parseFloat(raw);
+    if (!isFinite(n) || isNaN(n)) return;
+    const dotIdx = raw.indexOf('.');
+    const decimals = dotIdx >= 0 ? Math.min(2, raw.length - dotIdx - 1) : 0;
+    el.value = n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: 2 });
+  }
+  // Apply blur-formatting to every input in a subtree — used after a
+  // workbook loads so saved raw values render with commas immediately.
+  function _msReformatAllNumericInputs(rootEl) {
+    if (!rootEl) return;
+    rootEl.querySelectorAll('input[data-num-int="1"]').forEach(_msFmtIntOnBlur);
+    rootEl.querySelectorAll('input[data-num-dec="1"]').forEach(_msFmtDecOnBlur);
   }
   // ── FX rounding ──────────────────────────────────────────────────
   // RMB↔USD conversions always round UP to the hundredth (so the
@@ -16269,7 +16334,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // (which is declared further down the function — referencing it
     // here would land in the const-TDZ and blow up workbook load).
     const _pitchOnCq          = !!window._fullContainerPitchSnap;
-    const _pitchTotalUnitsCq  = _pitchOnCq ? (parseInt(document.getElementById('pallet-total-cartons')?.value) || 0) : 0;
+    const _pitchTotalUnitsCq  = _pitchOnCq ? (_msIntFromInput(document.getElementById('pallet-total-cartons'))) : 0;
     const _rfqGrandQty        = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
     const _cqQtyScale = (_pitchOnCq && _pitchTotalUnitsCq > 0 && _rfqGrandQty > 0 && _pitchTotalUnitsCq !== _rfqGrandQty)
       ? (_pitchTotalUnitsCq / _rfqGrandQty) : 1;
@@ -16487,7 +16552,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // the client will see. Hitting Revert clears the snapshot, which
     // drops effectiveQty back to the tier qty automatically.
     const _pitchOn    = !!window._fullContainerPitchSnap;
-    const _pitchQty   = _pitchOn ? (parseInt(document.getElementById('pallet-total-cartons')?.value) || 0) : 0;
+    const _pitchQty   = _pitchOn ? (_msIntFromInput(document.getElementById('pallet-total-cartons'))) : 0;
     const effectiveQty = (_pitchOn && _pitchQty > tierQty) ? _pitchQty : tierQty;
     const _pitchDelta  = effectiveQty - tierQty;
 
@@ -17300,7 +17365,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _shipUnit() {
     const manualOn = !!document.getElementById('pallet-manual')?.checked;
     const get = id => parseFloat(document.getElementById(id)?.value) || 0;
-    const totalUnits = parseInt(document.getElementById('pallet-total-cartons')?.value) || 0;
+    const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
     // Weight-only override: skip dim-driven math entirely and pass
     // through the operator's Case Qty + per-case Weight as the ship
     // unit. Dims = 0 so volumetric weight collapses to 0; chargeable
@@ -21127,6 +21192,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // commas so the saved values display as "1,500.00" instead of
       // "1500".
       if (typeof _msFormatAllFeeInputs === 'function') _msFormatAllFeeInputs();
+      // Same treatment for every numeric input tagged with
+      // data-num-int / data-num-dec (RFQ qty / price, Pallet Total
+      // Units, etc.) so commas appear immediately on workbook load
+      // instead of waiting for the operator to focus + blur each one.
+      if (typeof _msReformatAllNumericInputs === 'function') {
+        _msReformatAllNumericInputs(document.body);
+      }
       _extraFeeRows = [];
       _extraFeeCounter = 0;
       if (Array.isArray(data.extraFeeRows)) {
