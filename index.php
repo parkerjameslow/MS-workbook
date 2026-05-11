@@ -6639,6 +6639,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="freight-result-label">Estimated Shipping Cost</span>
           <span class="freight-result-value cost" id="freight-out-cost">—</span>
         </div>
+        <!-- Manual override — tick the box to type a fixed USD shipping
+             cost. When active, the value above flips to the override,
+             the Total Landed Cost block reads the override for
+             shipping, and the Hypothetical Scenarios panel reuses it
+             for both A and B (matching real-world ocean freight where
+             you pay per container regardless of fill rate). -->
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);">
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--text); cursor:pointer; user-select:none;">
+            <input type="checkbox" id="freight-cost-override-toggle" onchange="onShippingCostOverrideToggle()"
+              style="width:13px; height:13px; accent-color:var(--accent); cursor:pointer; margin:0;" />
+            Override
+          </label>
+          <span style="font-size:11px; color:var(--text-muted);">$</span>
+          <input type="number" min="0" step="0.01" id="freight-cost-override" placeholder="—" disabled
+            oninput="onShippingCostOverrideInput()"
+            style="flex:1; min-width:100px; padding:5px 8px; box-sizing:border-box; font-size:13px;" />
+          <span style="font-size:11px; color:var(--text-muted);">USD</span>
+        </div>
         <div class="freight-extra" id="freight-extra" style="display:none;">
           Extra cost due to volumetric: <span></span>
         </div>
@@ -10685,13 +10703,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const additionalProducts = palletProducts + looseProducts;
     const fullQty = totalUnits + additionalProducts;
     // Freight costs — calcSplitCost takes qty in PRODUCTS and bakes in
-    // outer-carton conversion + per-mode rate/divisor for us.
-    const freightA = (typeof calcSplitCost === 'function') ? calcSplitCost(method, totalUnits) : null;
-    const freightB = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)    : null;
-    // Pull USD numbers from the cost strings (e.g. "$1,234.56").
+    // outer-carton conversion + per-mode rate/divisor for us. Manual
+    // shipping-cost override (if active) replaces BOTH scenarios with
+    // the same value, since real-world ocean freight is per-container
+    // regardless of fill rate. Per-unit cost then differs between A
+    // and B purely from the division by qty — which IS the whole
+    // point of the "fill the container" pitch.
+    const overrideUsd = (typeof _getShippingCostOverrideUsd === 'function')
+      ? _getShippingCostOverrideUsd() : null;
     const parseUsd = (s) => s ? parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0 : 0;
-    const freightUsdA = freightA ? parseUsd(freightA.usdStr) : 0;
-    const freightUsdB = freightB ? parseUsd(freightB.usdStr) : 0;
+    let freightUsdA, freightUsdB;
+    if (overrideUsd !== null) {
+      freightUsdA = overrideUsd;
+      freightUsdB = overrideUsd;
+    } else {
+      const freightA = (typeof calcSplitCost === 'function') ? calcSplitCost(method, totalUnits) : null;
+      const freightB = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)    : null;
+      freightUsdA = freightA ? parseUsd(freightA.usdStr) : 0;
+      freightUsdB = freightB ? parseUsd(freightB.usdStr) : 0;
+    }
     const productUsdA = totalUnits * usdPerUnit;
     const productUsdB = fullQty    * usdPerUnit;
     const totalUsdA   = productUsdA + freightUsdA;
@@ -10726,11 +10756,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ${actionHtml}
       </div>`;
     };
+    const freightLabel = overrideUsd !== null
+      ? `Freight (override)`
+      : `Freight (${methodLabel})`;
     const linesA = [
       ['Units shipped',  totalUnits.toLocaleString()],
       ['Pallets needed', ctx.palletsNeeded.toLocaleString()],
       ['Product cost',   fmt$(productUsdA)],
-      [`Freight (${methodLabel})`, fmt$(freightUsdA)],
+      [freightLabel,     fmt$(freightUsdA)],
       ['Total landed',   `<strong style="font-size:14px;">${fmt$(totalUsdA)}</strong>`],
       ['Per-unit landed', fmt$(landedA)]
     ];
@@ -10738,7 +10771,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ['Units shipped',  `${fullQty.toLocaleString()} <span style="color:#10b981; font-weight:700;">(+${additionalProducts.toLocaleString()})</span>`],
       ['Pallets needed', `${(ctx.palletsNeeded + (ctx.palletsRoomLeft || 0)).toLocaleString()}`],
       ['Product cost',   fmt$(productUsdB)],
-      [`Freight (${methodLabel})`, fmt$(freightUsdB)],
+      [freightLabel,     fmt$(freightUsdB)],
       ['Total landed',   `<strong style="font-size:14px; color:#10b981;">${fmt$(totalUsdB)}</strong>`],
       ['Per-unit landed', `<strong style="color:#10b981;">${fmt$(landedB)}</strong>`]
     ];
@@ -16287,8 +16320,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rateUsd = rateRmb / FREIGHT_EXCHANGE_RATE;
     const weightText   = e('freight-wt-' + mode)?.textContent || '—';
     const chargeableKg = parseFloat(weightText) || 0;
-    const shippingRmb  = chargeableKg > 0 ? chargeableKg * rateRmb : 0;
-    const shippingUsd  = shippingRmb > 0 ? shippingRmb / FREIGHT_EXCHANGE_RATE : 0;
+    // Manual override: if the operator typed a fixed shipping cost on
+    // the Shipping tab, that value supersedes the computed
+    // chargeable-weight × rate math here.
+    const _shipOverrideUsd = (typeof _getShippingCostOverrideUsd === 'function')
+      ? _getShippingCostOverrideUsd() : null;
+    const shippingRmb  = (_shipOverrideUsd !== null)
+      ? _shipOverrideUsd * FREIGHT_EXCHANGE_RATE
+      : (chargeableKg > 0 ? chargeableKg * rateRmb : 0);
+    const shippingUsd  = (_shipOverrideUsd !== null)
+      ? _shipOverrideUsd
+      : (shippingRmb > 0 ? shippingRmb / FREIGHT_EXCHANGE_RATE : 0);
 
     if (e('ps-sh-method'))  e('ps-sh-method').textContent  = modeNames[mode] || '—';
     if (e('ps-sh-weight'))  e('ps-sh-weight').textContent  = chargeableKg > 0 ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg' : '—';
@@ -17103,6 +17145,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
+  // ── Shipping Cost Manual Override ──────────────────────────────────
+  // Tick the Override box under Estimated Shipping Cost and type a
+  // USD value. _getShippingCostOverrideUsd() returns that override (or
+  // null when inactive), and every freight-cost consumer downstream
+  // (calcFreight display, Total Landed Cost block, Hypothetical
+  // Scenarios panel) reads through this helper so they all stay in
+  // sync with whatever the operator typed.
+  function _getShippingCostOverrideUsd() {
+    const cb = document.getElementById('freight-cost-override-toggle');
+    if (!cb || !cb.checked) return null;
+    const v = parseFloat(document.getElementById('freight-cost-override')?.value);
+    if (!isFinite(v) || v < 0) return null;
+    return v;
+  }
+  function onShippingCostOverrideToggle() {
+    const cb    = document.getElementById('freight-cost-override-toggle');
+    const input = document.getElementById('freight-cost-override');
+    if (!cb || !input) return;
+    const on = !!cb.checked;
+    input.disabled = !on;
+    if (on && !input.value) {
+      // Pre-fill with the currently-computed cost so the operator
+      // sees the starting baseline they're about to adjust.
+      const costStr = document.getElementById('freight-out-cost')?.textContent || '';
+      const m = costStr.match(/\$\s*([\d,]+(?:\.\d+)?)/);
+      if (m) input.value = m[1].replace(/,/g, '');
+    }
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof renderPricingTab === 'function') renderPricingTab();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  function onShippingCostOverrideInput() {
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof renderPricingTab === 'function') renderPricingTab();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   function calcFreight() {
     syncShippingDims();
 
@@ -17168,8 +17249,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalActual     = actualKg * cartons;
     const totalVol        = volWeight * cartons;
     const totalCharge     = chargePerCarton * cartons;
-    const totalCostRmb    = totalCharge * rate;
-    const totalCostUsd    = exchange > 0 ? totalCostRmb / exchange : 0;
+    const computedCostRmb = totalCharge * rate;
+    const computedCostUsd = exchange > 0 ? computedCostRmb / exchange : 0;
+    // Manual override (if active) replaces both display values + the
+    // numbers the downstream cards (Total Landed Cost, Hypothetical
+    // Scenarios) read back from these elements.
+    const overrideUsd = _getShippingCostOverrideUsd();
+    const totalCostUsd = (overrideUsd !== null) ? overrideUsd : computedCostUsd;
+    const totalCostRmb = (overrideUsd !== null) ? overrideUsd * exchange : computedCostRmb;
 
     const formulaStr = `(${lCm.toFixed(0)} × ${wCm.toFixed(0)} × ${hCm.toFixed(0)}) ÷ ${divisor.toLocaleString()}`;
 
@@ -17178,7 +17265,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('freight-out-vol').textContent     = totalVol.toFixed(2)     + ' kg  /  ' + (totalVol     * 2.20462).toFixed(2) + ' lbs';
     document.getElementById('freight-out-charge').textContent  = totalCharge.toFixed(2)  + ' kg  /  ' + (totalCharge  * 2.20462).toFixed(2) + ' lbs';
     document.getElementById('freight-out-formula').textContent = formulaStr;
-    document.getElementById('freight-out-cost').textContent    = '¥ ' + totalCostRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + totalCostUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('freight-out-cost').textContent    = '¥ ' + totalCostRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + totalCostUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + (overrideUsd !== null ? '  *' : '');
 
     // Bar chart
     const maxWt = Math.max(totalActual, totalVol, 0.01);
@@ -20681,6 +20768,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         productLockEl.checked = !!data.productDimsLocked;
         if (typeof onProductDimsLockToggle === 'function') onProductDimsLockToggle();
       }
+      // Manual freight-cost override — restore the value first so the
+      // toggle handler picks it up; calcFreight runs after.
+      _s('freight-cost-override', data.freightCostOverrideUsd);
+      const freightOverrideEl = document.getElementById('freight-cost-override-toggle');
+      if (freightOverrideEl) {
+        freightOverrideEl.checked = !!data.freightCostOverrideOn;
+        if (typeof onShippingCostOverrideToggle === 'function') onShippingCostOverrideToggle();
+      }
       // Weight-only override — restore the checkbox + qty + kg/lb,
       // then call the toggle so the gray-out + enable state matches.
       _s('weight-only-qty', data.weightOnlyCaseQty);
@@ -21841,6 +21936,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // floors the pallet-fit suggestion engine at the product dims so
       // it can't recommend a smaller outer carton.
       productDimsLocked: !!document.getElementById('product-dims-lock')?.checked,
+      // Manual override on the shipping tab's Estimated Shipping Cost
+      // — checkbox + USD amount. When active, all downstream consumers
+      // (Total Landed Cost, Hypothetical Scenarios) read this value
+      // instead of the chargeable-weight × rate computation.
+      freightCostOverrideOn:  !!document.getElementById('freight-cost-override-toggle')?.checked,
+      freightCostOverrideUsd: _v('freight-cost-override'),
       // Weight-only override — skips dims, ships by Case Qty × per-case
       // Weight. Persists the checkbox + the two numbers so a hard
       // refresh keeps everything where the operator left it.
