@@ -6374,7 +6374,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
             <input type="number" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons"
               style="width:100%; box-sizing:border-box;"
-              oninput="this.dataset.looseTopOff=''; renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();" />
+              oninput="this.dataset.looseTopOff=''; if(typeof _clearFullContainerPitchSnap==='function')_clearFullContainerPitchSnap(); renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();" />
             <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Auto-filled from <strong>RFQ Grand Total qty</strong> — override if shipping a partial.</div>
           </div>
         </div>
@@ -9915,6 +9915,61 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
+  // ── Full Container Pitch — apply / revert ─────────────────────────────
+  // Wraps applyTotalUnitsSuggestion with a snapshot of the previous
+  // state so the operator can press the button once to APPLY the
+  // suggestion, then press it again to REVERT back to whatever they
+  // had before. Without the snapshot, repeated clicks compounded the
+  // qty into the tens of thousands (each click re-suggested a bigger
+  // "fill the container" target from the already-applied state, and
+  // when looseUnitsCount happened to land on 0 the looseTopOff flag
+  // would clear and rebloat the palletized count further).
+  window._fullContainerPitchSnap = null;
+  function applyFullContainerPitch(fullQty, looseProducts, appliedFlag) {
+    const el = document.getElementById('pallet-total-cartons');
+    if (!el) return;
+    // Snapshot the CURRENT state so revert returns to exactly here.
+    // Skip re-snapshotting if a snapshot already exists (consecutive
+    // applies without a revert in between keep the original baseline).
+    if (!window._fullContainerPitchSnap) {
+      window._fullContainerPitchSnap = {
+        totalUnits:   el.value || '',
+        looseTopOff:  el.dataset.looseTopOff || '',
+        lastRfqSync:  el.dataset.lastRfqSync || '',
+        appliedQty:   String(parseInt(fullQty) || 0),
+        appliedLoose: String(parseInt(looseProducts) || 0)
+      };
+    } else {
+      // Update the "what we applied" pointer so the rendered Hypothetical
+      // panel can detect the applied state even if dims changed since.
+      window._fullContainerPitchSnap.appliedQty   = String(parseInt(fullQty) || 0);
+      window._fullContainerPitchSnap.appliedLoose = String(parseInt(looseProducts) || 0);
+    }
+    applyTotalUnitsSuggestion(fullQty, looseProducts);
+  }
+  function revertFullContainerPitch() {
+    const el = document.getElementById('pallet-total-cartons');
+    if (!el || !window._fullContainerPitchSnap) return;
+    const snap = window._fullContainerPitchSnap;
+    el.value = snap.totalUnits || '';
+    el.dataset.looseTopOff = snap.looseTopOff || '';
+    el.dataset.lastRfqSync = snap.lastRfqSync || '';
+    window._fullContainerPitchSnap = null;
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof _refreshPalletTotalHint === 'function') _refreshPalletTotalHint();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  // Any non-pitch path that changes the Total Units value MUST clear
+  // the snapshot too — otherwise a stale snapshot points at a baseline
+  // the operator already moved past. Manual typing into the input,
+  // the Sync from RFQ button, the optimisation-tip Update buttons,
+  // etc. all funnel through here.
+  function _clearFullContainerPitchSnap() {
+    window._fullContainerPitchSnap = null;
+  }
+
   // ── Pallet Max Height — per-workbook value + new-workbook seed ────
   // The "Max height" input is saved PER WORKBOOK (detail.palletMaxHeight).
   // localStorage holds a "default for new workbooks" seed only — it
@@ -9991,8 +10046,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           // loose top-off — otherwise the previously-applied Full
           // Container Pitch flag lingers and the container viz keeps
           // drawing leftover blue boxes while the Hypothetical panel
-          // computes against a phantom palletized subset.
+          // computes against a phantom palletized subset. Also drop
+          // the Full Container Pitch snapshot so the button rebuilds
+          // its "Apply" affordance from a clean baseline.
           input.dataset.looseTopOff = '';
+          if (typeof _clearFullContainerPitchSnap === 'function') _clearFullContainerPitchSnap();
           if (typeof renderPalletViz === 'function') renderPalletViz();
           if (typeof syncShippingDims === 'function') syncShippingDims();
           if (typeof calcFreight === 'function') calcFreight();
@@ -10020,8 +10078,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // so Scenario B in the Hypothetical Scenarios panel rebuilds from
     // the clean RFQ qty (most-efficient pitch from scratch), and the
     // container viz drops the leftover blue boxes from the previous
-    // Apply Full Container Pitch press.
+    // Apply Full Container Pitch press. Also drop the pitch snapshot
+    // so the button reverts to its "Apply" affordance.
     input.dataset.looseTopOff = '';
+    if (typeof _clearFullContainerPitchSnap === 'function') _clearFullContainerPitchSnap();
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
@@ -10691,16 +10751,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Hypothetical Scenarios</div>
         <div style="font-size:11px; color:var(--text-muted);">Method: <strong style="color:var(--text);">${methodLabel}</strong> · Per-unit: ${fmt$(usdPerUnit)}</div>
       </div>
-      <div style="display:flex; gap:12px; flex-wrap:wrap;">
-        ${card('actual', 'A · Actual (Partial)',      linesA, footerA)}
-        ${card('full',   'B · Full Container Pitch',  linesB, footerB,
-          // Apply the full-container scenario to the workbook: bump
-          // Total Units to fullQty and stash the loose product count
-          // so the container viz draws blue cardboard at the door.
-          { label: `Apply Full Container Pitch (${fullQty.toLocaleString()} units)`,
-            title: `Set Total Units to ${fullQty.toLocaleString()} and load the loose top-off`,
-            call:  `applyTotalUnitsSuggestion(${fullQty}, ${looseProducts})` })}
-      </div>`;
+      ${(() => {
+        // Apply / Revert toggle: once the Full Container Pitch has
+        // been applied to the workbook, the button on Scenario B
+        // turns into "↺ Revert" so the operator can flip back without
+        // re-clicking Apply (which would compound the qty into the
+        // tens of thousands as previously seen).
+        const snap = window._fullContainerPitchSnap;
+        const isApplied = !!snap;
+        const action = isApplied
+          ? { label: `Revert to ${parseInt(snap.totalUnits) ? parseInt(snap.totalUnits).toLocaleString() : '—'} units`,
+              title: 'Revert Total Units to the pre-apply value',
+              call:  `revertFullContainerPitch()` }
+          : { label: `Apply Full Container Pitch (${fullQty.toLocaleString()} units)`,
+              title: `Set Total Units to ${fullQty.toLocaleString()} and load the loose top-off`,
+              call:  `applyFullContainerPitch(${fullQty}, ${looseProducts})` };
+        return `<div style="display:flex; gap:12px; flex-wrap:wrap;">
+          ${card('actual', 'A · Actual (Partial)',      linesA, footerA)}
+          ${card('full',   'B · Full Container Pitch',  linesB, footerB, action)}
+        </div>`;
+      })()}`;
   }
 
   function renderPalletViz() {
