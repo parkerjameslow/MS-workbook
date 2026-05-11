@@ -5768,28 +5768,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
           </div>
           <div class="field">
-            <label>Material Type</label>
-            <div class="select-wrapper">
-              <select id="product-subcategory" onchange="checkSecondaryLock(); _onMaterialChange()">
-                <option value="">Select category first...</option>
-              </select>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+              <label style="margin:0;">Material Type</label>
+              <!-- Tick to surface a SECOND material selector inline beside
+                   the primary one. When unchecked the secondary value is
+                   cleared so it doesn't sneak into saves. State persists
+                   to detail.materialSecondEnabled. -->
+              <label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--text-muted); cursor:pointer; user-select:none; text-transform:none; letter-spacing:0; font-weight:500;">
+                <input type="checkbox" id="mat2-toggle" onchange="onMat2ToggleVisibility()"
+                  style="width:13px; height:13px; accent-color:var(--accent); cursor:pointer; margin:0;" />
+                + Add second material
+              </label>
             </div>
-            <!-- "Other" follow-up — shown only when the primary material
-                 is set to "Other" so the operator can type a custom
-                 material name. Saved as productSubcategoryOther on detail_json. -->
-            <input type="text" id="product-subcategory-other" placeholder="Specify the material…"
-                   oninput="autoSaveWorkbook && autoSaveWorkbook()"
-                   style="display:none; margin-top:6px;" />
-            <div class="secondary-select-wrap" id="mat2-wrap">
-              <div class="secondary-select-label">Secondary Material</div>
-              <div class="select-wrapper">
-                <select id="product-subcategory-2" disabled onchange="onSecondaryChange('mat2-wrap', this); _onMaterialChange()">
-                  <option value="">None</option>
-                </select>
+            <div id="mat-inline-row" style="display:flex; gap:10px; align-items:flex-start;">
+              <div style="flex:1; min-width:0;">
+                <div class="select-wrapper">
+                  <select id="product-subcategory" onchange="checkSecondaryLock(); _onMaterialChange()">
+                    <option value="">Select category first...</option>
+                  </select>
+                </div>
+                <!-- "Other" follow-up — shown only when the primary material
+                     is set to "Other" so the operator can type a custom
+                     material name. Saved as productSubcategoryOther on detail_json. -->
+                <input type="text" id="product-subcategory-other" placeholder="Specify the material…"
+                       oninput="autoSaveWorkbook && autoSaveWorkbook()"
+                       style="display:none; margin-top:6px; width:100%; box-sizing:border-box;" />
               </div>
-              <input type="text" id="product-subcategory-other-2" placeholder="Specify the secondary material…"
-                     oninput="autoSaveWorkbook && autoSaveWorkbook()"
-                     style="display:none; margin-top:6px;" />
+              <div class="secondary-select-wrap" id="mat2-wrap" style="display:none; flex:1; min-width:0; margin-top:0;">
+                <div class="select-wrapper">
+                  <select id="product-subcategory-2" disabled onchange="onSecondaryChange('mat2-wrap', this); _onMaterialChange()">
+                    <option value="">None</option>
+                  </select>
+                </div>
+                <input type="text" id="product-subcategory-other-2" placeholder="Specify the secondary material…"
+                       oninput="autoSaveWorkbook && autoSaveWorkbook()"
+                       style="display:none; margin-top:6px; width:100%; box-sizing:border-box;" />
+              </div>
             </div>
           </div>
         </div>
@@ -9041,6 +9055,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onSecondaryChange(wrapId, sel) {
     document.getElementById(wrapId).classList.toggle('has-value', !!sel.value);
     if (_appReady) autoSaveWorkbook();
+  }
+
+  // Toggle the inline Secondary Material selector on / off. When OFF the
+  // selector hides AND the value is cleared so a stale selection can't
+  // sneak into the saved workbook. When ON the selector reveals inline
+  // beside the primary Material Type and unlocks via checkSecondaryLock
+  // (which still requires category + primary material to be filled in
+  // before the dropdown becomes interactive).
+  function onMat2ToggleVisibility() {
+    const cb   = document.getElementById('mat2-toggle');
+    const wrap = document.getElementById('mat2-wrap');
+    if (!cb || !wrap) return;
+    const on = !!cb.checked;
+    wrap.style.display = on ? '' : 'none';
+    if (!on) {
+      const sel = document.getElementById('product-subcategory-2');
+      const oth = document.getElementById('product-subcategory-other-2');
+      if (sel) sel.value = '';
+      if (oth) { oth.value = ''; oth.style.display = 'none'; }
+      wrap.classList.remove('has-value');
+    } else if (typeof checkSecondaryLock === 'function') {
+      // Refresh lock state so the secondary dropdown enables the moment
+      // the operator ticks the box (if category + primary material are
+      // already set).
+      checkSecondaryLock();
+    }
+    if (_appReady && typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
   }
 
   /* ── Art Tab ─────────────────────────────────────────────────────────────── */
@@ -20899,6 +20940,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (data.productCategory) updateSubcategories();
       _s('product-subcategory', data.productSubcategory);
       _s('product-subcategory-2', data.productSubcategory2 || '');
+      // Restore the "+ Add second material" toggle. Default to enabled
+      // whenever a secondary value or other-text actually exists so
+      // legacy workbooks (saved before the toggle existed) auto-show
+      // their secondary material on next load.
+      const mat2Toggle = document.getElementById('mat2-toggle');
+      if (mat2Toggle) {
+        const hasSecondary = !!(data.productSubcategory2 || data.productSubcategoryOther2);
+        mat2Toggle.checked = !!data.materialSecondEnabled || hasSecondary;
+        if (typeof onMat2ToggleVisibility === 'function') onMat2ToggleVisibility();
+      }
       // Restore the "Other" custom-material text + reveal the input
       // when the saved value was "Other". _onMaterialChange() flips
       // the visibility based on the select state.
@@ -22086,6 +22137,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       dimCmH: _v('dim-cm-h'),
       productCategory: _v('product-category'),
       productCategory2: _v('product-category-2'),
+      // Track whether the operator has surfaced the secondary material
+      // slot inline next to the primary. Auto-derived from a saved
+      // value (so a workbook that already has a second material loads
+      // with the toggle checked) but also persisted on its own so the
+      // toggle state is sticky even when the operator clears the value.
+      materialSecondEnabled: !!document.getElementById('mat2-toggle')?.checked,
       productSubcategory: _v('product-subcategory'),
       productSubcategory2: _v('product-subcategory-2'),
       // Free-text follow-up shown only when the matching subcategory
