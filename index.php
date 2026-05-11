@@ -12856,9 +12856,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         });
 
         // Combined same-price group (shown under the original item name)
+        // _fxUsdFromRmb ceil-rounds to the cent so the totals row's
+        // per-unit USD matches the per-line column ($11.06, not $11.05).
         if (sameQty > 0) {
-          const usd   = rmb / USD_TO_RMB;
-          const total = sameQty * usd;
+          const usd   = _fxUsdFromRmb(rmb);
+          const total = _msCeil2(sameQty * usd);
           grandQty     += sameQty;
           grandRmb     += rmb;
           grandUsdUnit += usd;
@@ -12868,8 +12870,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         // Individually-priced variants
         diffVariants.forEach(({ vName, vQty, vRmb, vLead }) => {
-          const vUsd   = vRmb / USD_TO_RMB;
-          const vTotal = vQty * vUsd;
+          const vUsd   = _fxUsdFromRmb(vRmb);
+          const vTotal = _msCeil2(vQty * vUsd);
           grandQty     += vQty;
           grandRmb     += vRmb;
           grandUsdUnit += vUsd;
@@ -12882,8 +12884,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       } else {
         // ── No variants: one summary row for the parent ───────────────────
-        const usd   = rmb / USD_TO_RMB;
-        const total = qty * usd;
+        const usd   = _fxUsdFromRmb(rmb);
+        const total = _msCeil2(qty * usd);
 
         grandQty     += qty;
         grandRmb     += rmb;
@@ -12954,8 +12956,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (pricedItems.length > 0) {
       rmbMin = Math.min(...pricedItems.map(s => s.rmb));
       rmbMax = Math.max(...pricedItems.map(s => s.rmb));
-      usdMin = rmbMin / USD_TO_RMB;
-      usdMax = rmbMax / USD_TO_RMB;
+      usdMin = _fxUsdFromRmb(rmbMin);
+      usdMax = _fxUsdFromRmb(rmbMax);
       isRange = hasVariants && (rmbMax - rmbMin > PRICE_EPS);
     }
 
