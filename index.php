@@ -24811,9 +24811,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ? `<span class="wb-presence-name" style="color:${u.color}; border-bottom: 2px solid ${u.color};" title="${selfDisplay}">You</span>`
         : `<span class="wb-presence-name" style="color:${u.color}; border-bottom: 2px solid ${u.color};">${u.display_name}</span>`;
       const parts = all.map(labelFor);
+      // When only "You" are editing — alone — swap the bland "is
+      // editing" for "is smart" as a small morale boost. Other single-
+      // user / multi-user cases stay on the normal verbiage.
+      const soloSelf = all.length === 1 && all[0].is_self;
       const verb  = all.length === 1 ? 'is editing' : 'are editing';
       let listHtml;
-      if (parts.length === 1)      listHtml = `${parts[0]} ${verb}`;
+      if (parts.length === 1)      listHtml = `${parts[0]} ${soloSelf ? 'is smart' : verb}`;
       else if (parts.length === 2) listHtml = `${parts[0]} and ${parts[1]} ${verb}`;
       else                          listHtml = `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]} ${verb}`;
 
