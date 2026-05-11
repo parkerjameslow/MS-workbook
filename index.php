@@ -11704,6 +11704,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       el.textContent = `1 ¥ = $${cnyToUsd}`;
       el.title = `CNY → USD rate: $${cnyToUsd} per Yuan (source: ${source}, updated ${time})`;
     }
+    // Push the live rate to app_state so server-side recompute paths
+    // (commissions backfill, etc.) convert RMB→USD using the same rate
+    // the operator sees on screen. Without this the server falls back
+    // to a stale 7.24 and the Commissions dashboard underquotes the
+    // gross by ~5% on every commission row.
+    if (rate > 0 && typeof apiCall === 'function') {
+      try {
+        apiCall('save_app_state', {
+          key: 'fx_usd_cny',
+          value: JSON.stringify({ rate, ts: Date.now(), source })
+        }).catch(() => {});
+      } catch (_) { /* best-effort */ }
+    }
   }
 
   // ── Header currency calculator ───────────────────────────────────────────
