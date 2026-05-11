@@ -10154,25 +10154,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // Door-end strip = the x-range between the last pallet column
         // and HC_L. Pallets fill from x=0 to palCols × pL; the leftover
         // sits at the door (high x) side of the container.
-        const palletsXUsed = palletLayout.cols * palletLayout.pL;
-        const looseXSpace  = Math.max(0, HC_L - palletsXUsed);
-        const looseColsX   = Math.max(0, Math.floor(looseXSpace / boxL));
-        const looseColsZ   = Math.max(0, Math.floor(HC_W / boxW));
-        // Stack height capped at the pallet stack height (so the loose
-        // load doesn't visually exceed the cargo level + so we don't
-        // misrepresent door clearance).
-        const looseStackMaxH = Math.min(HC_H, verticalLayers * palletStack);
-        const looseMaxLayers = Math.max(0, Math.floor(looseStackMaxH / boxH));
+        const palletsXUsed   = palletLayout.cols * palletLayout.pL;
+        const palletsZUsed   = palletLayout.rows * palletLayout.pW;
+        const looseXSpace    = Math.max(0, HC_L - palletsXUsed);
+        const looseColsX     = Math.max(0, Math.floor(looseXSpace / boxL));
+        // Match the loose stack's z (width) extent to the pallets'
+        // z extent so the orange + blue blocks read as a continuous
+        // load. Falls back to full HC_W if pallets cover no z.
+        const looseZSpace    = palletsZUsed > 0 ? palletsZUsed : HC_W;
+        const looseColsZ     = Math.max(0, Math.floor(looseZSpace / boxW));
+        // Stack the loose load up to the SAME y as the top of the
+        // palletised cargo so the two blocks line up visually. Cap to
+        // HC_H so we don't punch through the ceiling.
+        const palletTopY     = Math.min(HC_H, verticalLayers * palletStack);
+        const looseMaxLayers = Math.max(0, Math.floor(palletTopY / boxH));
         const loosePerLayer  = looseColsX * looseColsZ;
         const looseLayers    = loosePerLayer > 0
           ? Math.min(looseMaxLayers, Math.ceil(looseBoxesToDraw / loosePerLayer))
           : 0;
         if (looseLayers > 0 && loosePerLayer > 0) {
-          // Anchor the loose stack to x = HC_L (door end). The stack
-          // grows backward into the container from there.
+          // Anchor the loose stack to the right edge of the last pallet
+          // column so orange and blue TOUCH (no awkward gap), and
+          // anchor z to the pallet's z origin so the widths line up.
           const looseStackXSpan = looseColsX * boxL;
-          const looseOffX = HC_L - looseStackXSpan;
-          const looseOffZ = Math.max(0, (HC_W - looseColsZ * boxW) / 2);
+          // Door-end if room allows, otherwise pin against pallets.
+          const looseOffX = Math.min(HC_L - looseStackXSpan, palletsXUsed);
+          const looseOffZ = palletsZUsed > 0 ? 0 : Math.max(0, (HC_W - looseColsZ * boxW) / 2);
           const looseColor = '#3b82f6'; // blue-500
           let looseDrawn = 0;
           for (let ly = 0; ly < looseLayers && looseDrawn < looseBoxesToDraw; ly++) {
@@ -10622,12 +10629,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const savings = landedA - landedB;
     const savingsPct = landedA > 0 ? Math.round((savings / landedA) * 100) : 0;
     const fmt$ = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const card = (kind, title, lines, footer) => {
+    const card = (kind, title, lines, footer, action) => {
       const colors = {
         actual: { bd:'var(--border)', bg:'var(--surface2)', accent:'var(--text)' },
         full:   { bd:'#10b981',        bg:'rgba(16,185,129,0.08)', accent:'#10b981' }
       };
       const c = colors[kind] || colors.actual;
+      const actionHtml = action
+        ? `<div style="margin-top:10px;">
+             <button type="button" onclick="${action.call}"
+               style="background:${c.accent}; color:#fff; border:none; padding:7px 14px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"
+               onmouseover="this.style.filter='brightness(0.92)';"
+               onmouseout="this.style.filter='';"
+               title="${action.title || action.label}">↻ ${action.label}</button>
+           </div>`
+        : '';
       return `<div style="padding:14px; border:1px solid ${c.bd}; border-radius:8px; background:${c.bg}; flex:1 1 280px; min-width:240px;">
         <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:${c.accent}; margin-bottom:10px;">${title}</div>
         ${lines.map(l => `<div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; line-height:1.8;">
@@ -10635,6 +10651,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span style="color:var(--text); font-weight:600; white-space:nowrap;">${l[1]}</span>
         </div>`).join('')}
         ${footer ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:11px; color:var(--text-muted); line-height:1.5;">${footer}</div>` : ''}
+        ${actionHtml}
       </div>`;
     };
     const linesA = [
@@ -10664,7 +10681,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div style="display:flex; gap:12px; flex-wrap:wrap;">
         ${card('actual', 'A · Actual (Partial)',      linesA, footerA)}
-        ${card('full',   'B · Full Container Pitch',  linesB, footerB)}
+        ${card('full',   'B · Full Container Pitch',  linesB, footerB,
+          // Apply the full-container scenario to the workbook: bump
+          // Total Units to fullQty and stash the loose product count
+          // so the container viz draws blue cardboard at the door.
+          { label: `Apply Full Container Pitch (${fullQty.toLocaleString()} units)`,
+            title: `Set Total Units to ${fullQty.toLocaleString()} and load the loose top-off`,
+            call:  `applyTotalUnitsSuggestion(${fullQty}, ${looseProducts})` })}
       </div>`;
   }
 
