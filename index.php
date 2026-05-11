@@ -9994,6 +9994,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       overrideEl.value = String(FULL_CONTAINER_FREIGHT_USD);
       if (typeof onShippingCostOverrideToggle === 'function') onShippingCostOverrideToggle();
     }
+    // Refresh the Pricing tab's Delivered Cost Summary so Product
+    // Cost + Shipping Per + Total Landed Cost all roll up to the
+    // bumped qty in real time.
+    if (typeof renderPricingTab === 'function') renderPricingTab();
   }
   function revertFullContainerPitch() {
     const el = document.getElementById('pallet-total-cartons');
@@ -10017,6 +10021,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
+    if (typeof renderPricingTab === 'function') renderPricingTab();
     if (typeof _refreshPalletTotalHint === 'function') _refreshPalletTotalHint();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
@@ -14155,10 +14160,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             // empty placeholder variant rows don't inflate the badge.
             let variantCount = 0;
             if (variantRows.length === 0) {
-              // No variants — parent IS the line
+              // No variants — parent IS the line. Ceil per-unit USD to
+              // the cent so the collapsed summary line matches the
+              // expanded section (which also uses _fxUsdFromRmb).
               qty = pQty;
               if (pRmb > 0) { rmbMin = pRmb; rmbMax = pRmb; }
-              total = pQty * (pRmb / USD_TO_RMB);
+              total = _msCeil2(pQty * _fxUsdFromRmb(pRmb));
             } else {
               // Has variants — parent qty is ignored to avoid
               // double-counting against the variant qtys.
@@ -14176,7 +14183,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   if (vRmb < rmbMin) rmbMin = vRmb;
                   if (vRmb > rmbMax) rmbMax = vRmb;
                 }
-                total += vQty * (vRmb / USD_TO_RMB);
+                total += _msCeil2(vQty * _fxUsdFromRmb(vRmb));
                 if (vLead > maxLead) maxLead = vLead;
               });
             }
@@ -14217,8 +14224,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const rmbCell = it.rmbMin > 0
               ? (isRange ? `¥${fmt2(it.rmbMin)}–¥${fmt2(it.rmbMax)}` : `¥${fmt2(it.rmbMin)}`)
               : '—';
-            const usdMin = it.rmbMin / USD_TO_RMB;
-            const usdMax = it.rmbMax / USD_TO_RMB;
+            const usdMin = _fxUsdFromRmb(it.rmbMin);
+            const usdMax = _fxUsdFromRmb(it.rmbMax);
             const usdCell = it.rmbMin > 0
               ? (isRange ? `$${fmt2(usdMin)}–$${fmt2(usdMax)}` : `$${fmt2(usdMin)}`)
               : '—';
@@ -16321,7 +16328,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tierInputs = tierRow?.querySelectorAll('input');
     const tierQty    = parseInt(tierInputs?.[0]?.value) || 0;
     const tierRmb    = parseFloat(tierRow?.dataset.price) || 0;
-    const tierUsd    = tierRmb > 0 ? tierRmb / USD_TO_RMB : 0;
+    const tierUsd    = tierRmb > 0 ? _fxUsdFromRmb(tierRmb) : 0;
+    // Full Container Pitch override — when the operator has pressed
+    // Apply Full Container Pitch on the workbook, the snapshot lives
+    // on window and pallet-total-cartons holds the bumped qty. Push
+    // that through the Delivered Cost Summary so Product Cost +
+    // Shipping Per + Total Landed all reflect the higher qty quote
+    // the client will see. Hitting Revert clears the snapshot, which
+    // drops effectiveQty back to the tier qty automatically.
+    const _pitchOn    = !!window._fullContainerPitchSnap;
+    const _pitchQty   = _pitchOn ? (parseInt(document.getElementById('pallet-total-cartons')?.value) || 0) : 0;
+    const effectiveQty = (_pitchOn && _pitchQty > tierQty) ? _pitchQty : tierQty;
+    const _pitchDelta  = effectiveQty - tierQty;
 
     // Sale Per — read once up-here so the Product Cost block (next)
     // and the Total/Profit calcs (further down) all see the same
@@ -16343,21 +16361,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let productTotal;
     let unitRmbText = '—', unitUsdText = '—';
 
-    if (haveSalePer && tierQty > 0) {
+    // effectiveQty drives Product Cost. When Full Container Pitch is
+    // applied this rolls up to the bumped qty (pallet-total-cartons);
+    // otherwise it stays on the tier qty as before.
+    if (haveSalePer && effectiveQty > 0) {
       // Sale Per drives everything in this block when set.
-      productTotal = _salePerTop * tierQty;
+      productTotal = _msCeil2(_salePerTop * effectiveQty);
       unitUsdText  = '$' + fmt2(_salePerTop);
-      unitRmbText  = '¥' + fmt2(_salePerTop * USD_TO_RMB);
+      unitRmbText  = '¥' + fmt2(_fxRmbFromUsd(_salePerTop));
     } else {
       // RFQ-based fallback (cost side). When variants have variable
       // pricing, the deterministic Total Product Cost uses the
       // weighted-average per-unit USD (grandUsd / grandQty), not tierUsd
       // (which is the sum of variant unit prices). Tier 1 with
       // qty == grandQty lands exactly on grandUsd.
-      if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && tierQty > 0) {
-        productTotal = tierQty * (psSummary.grandUsd / psSummary.grandQty);
+      if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && effectiveQty > 0) {
+        productTotal = _msCeil2(effectiveQty * (psSummary.grandUsd / psSummary.grandQty));
       } else {
-        productTotal = tierQty > 0 && tierUsd > 0 ? tierQty * tierUsd : 0;
+        productTotal = effectiveQty > 0 && tierUsd > 0 ? _msCeil2(effectiveQty * tierUsd) : 0;
       }
       // Unit price text: range when variants differ, single otherwise.
       if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0) {
@@ -16369,9 +16390,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    if (e('ps-qty'))          e('ps-qty').textContent          = tierQty > 0 ? tierQty.toLocaleString('en-US') + ' units' : '—';
+    // Pitch badge on the Quantity row — surfaces the delta vs the
+    // tier qty so the operator can see the override is active.
+    const pitchSuffix = (_pitchOn && _pitchDelta > 0)
+      ? ` <span style="color:#10b981; font-weight:700; font-size:11px;">(Full Container +${_pitchDelta.toLocaleString()})</span>`
+      : '';
+    if (e('ps-qty'))          e('ps-qty').innerHTML          = effectiveQty > 0 ? effectiveQty.toLocaleString('en-US') + ' units' + pitchSuffix : '—';
     if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
-    const productTotalRmb = productTotal * USD_TO_RMB;
+    const productTotalRmb = _fxRmbFromUsd(productTotal);
     if (e('ps-product-total-rmb')) e('ps-product-total-rmb').textContent = productTotalRmb > 0 ? fmtRmb(productTotalRmb) : '—';
     if (e('ps-unit-rmb')) e('ps-unit-rmb').textContent = unitRmbText;
     if (e('ps-unit-usd')) e('ps-unit-usd').textContent = unitUsdText;
@@ -16398,10 +16424,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-sh-method'))  e('ps-sh-method').textContent  = modeNames[mode] || '—';
     if (e('ps-sh-weight'))  e('ps-sh-weight').textContent  = chargeableKg > 0 ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg' : '—';
     if (e('ps-sh-rate'))    e('ps-sh-rate').textContent    = rateRmb > 0 ? `¥${rateRmb} / kg  ($${rateUsd.toFixed(2)}/kg)` : '—';
-    // Shipping per unit (USD) — total shipping ÷ tier qty (the qty we're
-    // quoting on). Mirrors what feeds Landed Per below, but exposed
-    // explicitly so the user can sanity-check the unit-level allocation.
-    const shipPerUsd = (tierQty > 0 && shippingUsd > 0) ? shippingUsd / tierQty : 0;
+    // Shipping per unit (USD) — total shipping ÷ effective qty (the
+    // qty we're quoting on, which rolls up to the Full Container Pitch
+    // when it's been applied from the workbook). Mirrors what feeds
+    // Landed Per below.
+    const shipPerUsd = (effectiveQty > 0 && shippingUsd > 0) ? _msCeil2(shippingUsd / effectiveQty) : 0;
     if (e('ps-sh-per'))     e('ps-sh-per').textContent    = shipPerUsd > 0 ? '$' + shipPerUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
     if (e('ps-sh-total-rmb')) e('ps-sh-total-rmb').textContent = shippingRmb > 0 ? fmtRmb(shippingRmb) : '—';
     if (e('ps-sh-total'))     e('ps-sh-total').textContent     = shippingUsd > 0 ? fmtUsd(shippingUsd) : '—';
