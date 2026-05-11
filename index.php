@@ -16128,6 +16128,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     //   • hidden variant rows revealed by toggleClientQuoteParent()
     // Add-Variant placeholder rows are skipped.
     const _fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    // Full Container Pitch scaling — when applied, the workbook's
+    // pallet-total-cartons holds the bumped qty. We scale every RFQ
+    // line's qty by (effectiveQty / grandQty) so the Client Quote line
+    // items + summary bars match the rolled-up Delivered Cost Summary.
+    // Falls back to 1.0 (no scaling) when pitch is off or qty data is
+    // missing.
+    const _rfqGrandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
+    const _cqQtyScale = (effectiveQty > 0 && _rfqGrandQty > 0 && effectiveQty !== _rfqGrandQty)
+      ? (effectiveQty / _rfqGrandQty) : 1;
+    const _scaleQty = (q) => _cqQtyScale === 1 ? q : Math.round(q * _cqQtyScale);
     const refEl = document.getElementById('pricing-quote-ref-body');
     if (refEl) {
       const allRows = document.querySelectorAll('#rfq-body tr');
@@ -16181,17 +16191,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
           if (group.variants.length === 0) {
             // Single-line item (no variants) — non-expandable row.
-            const pQty   = parseInt(pInputs[2]?.value) || 0;
+            const pRawQty = parseInt(pInputs[2]?.value) || 0;
+            const pQty   = _scaleQty(pRawQty);
             const pRmb   = parseFloat(pInputs[3]?.value) || 0;
-            const pUsd   = pRmb / USD_TO_RMB;
+            const pUsd   = _fxUsdFromRmb(pRmb);
             const pLanded = pUsd + _ctxShipPerUnit;
             const pSale   = pLanded * _ctxWbMarginMul;
-            const pTotal  = pQty * pSale;
+            const pTotal  = _msCeil2(pQty * pSale);
+            const pitchBadge = (_cqQtyScale !== 1 && pQty > pRawQty)
+              ? ` <span style="color:#10b981; font-weight:700; font-size:10px;">(+${(pQty - pRawQty).toLocaleString('en-US')})</span>`
+              : '';
 
             html += `<tr class="cq-parent-row no-variants">
               <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
               <td style="font-weight:500;">${parentName}</td>
-              <td style="text-align:right;">${pQty > 0 ? pQty.toLocaleString('en-US') : '—'}</td>
+              <td style="text-align:right;">${pQty > 0 ? pQty.toLocaleString('en-US') + pitchBadge : '—'}</td>
               <td style="text-align:right;">${pSale > 0 ? '$' + _fmt2(pSale) : '—'}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${pTotal > 0 ? '$' + _fmt2(pTotal) : '—'}</td>
             </tr>`;
@@ -16206,13 +16220,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             group.variants.forEach(vr => {
               const vi = vr.querySelectorAll('input:not([type="checkbox"])');
               const vName = (vi[0]?.value || '').trim();
-              const vQty  = parseInt(vi[1]?.value) || 0;
+              const vQty  = _scaleQty(parseInt(vi[1]?.value) || 0);
               const vRmb  = parseFloat(vi[2]?.value) || 0;
               const vLead = parseInt(vi[3]?.value) || 0;
-              const vUsd  = vRmb / USD_TO_RMB;
+              const vUsd  = _fxUsdFromRmb(vRmb);
               const vLanded = vUsd + _ctxShipPerUnit;
               const vSale   = vLanded * _ctxWbMarginMul;
-              const vTotal  = vQty * vSale;
+              const vTotal  = _msCeil2(vQty * vSale);
 
               totalQty += vQty;
               totalSale += vTotal;
@@ -16518,10 +16532,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       workbookDetail[_wbKey].pricingLandedTotal = landedTotal > 0 ? landedTotal : 0;
     }
 
-    // Total USD: Sale Per × tier qty + applied fees (fees ride on top of
-    // the per-unit sale price as a one-time add to the order total).
-    const saleProductTotal = (!isNaN(salePer) && salePer > 0 && tierQty > 0) ? salePer * tierQty : NaN;
-    const totalUsd = !isNaN(saleProductTotal) ? saleProductTotal + _appliedFeesTotal : NaN;
+    // Total USD: Sale Per × effective qty + applied fees. effectiveQty
+    // rolls up to the Full Container Pitch when applied so the Client
+    // Quote header + footer + line items all reflect the bumped qty.
+    const saleProductTotal = (!isNaN(salePer) && salePer > 0 && effectiveQty > 0) ? _msCeil2(salePer * effectiveQty) : NaN;
+    const totalUsd = !isNaN(saleProductTotal) ? _msCeil2(saleProductTotal + _appliedFeesTotal) : NaN;
 
     // Order Profit: Sale Total − Landed Total (only when Total USD is real).
     // Fees cancel out (they're in both sides), so this equals the product
