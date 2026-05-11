@@ -8660,22 +8660,52 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   async function handleImages(e) {
     const files = Array.from(e.target.files);
-    if (!files.length || !currentWorkbookId) return;
+    // Visible bail-out reasons instead of silent return — every reason
+    // this drop "did nothing" should surface in the UI + console so the
+    // operator (and we) know exactly which gate tripped.
+    if (!files.length) {
+      console.warn('[handleImages] No files in event');
+      return;
+    }
+    if (!currentWorkbookId) {
+      alert('Open a workbook first, then drop the image into the gallery.');
+      console.warn('[handleImages] currentWorkbookId is not set');
+      return;
+    }
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    const failures = [];
+    let uploaded = 0;
     for (const file of files) {
-      if (!file.type.startsWith('image/')) continue;
+      if (!file.type.startsWith('image/')) {
+        failures.push(`${file.name}: not an image (got "${file.type || 'unknown type'}")`);
+        continue;
+      }
       const formData = new FormData();
       formData.append('image', file);
       formData.append('workbook_id', dbId);
       try {
         const res = await fetch('api.php?action=upload_image', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.success) {
+        const data = await res.json().catch(() => ({}));
+        if (data && data.success) {
           _productImages.push({ url: data.url });
-          renderImageGallery();
-          saveImageList();
+          uploaded++;
+        } else {
+          const msg = (data && data.error) ? data.error : `HTTP ${res.status}`;
+          failures.push(`${file.name}: ${msg}`);
+          console.warn('[handleImages] upload failed', file.name, data);
         }
-      } catch (err) { console.warn('Upload failed:', err); }
+      } catch (err) {
+        failures.push(`${file.name}: ${err.message || 'network error'}`);
+        console.warn('[handleImages] fetch exception', err);
+      }
+    }
+    // Render + persist whatever DID land so partial successes survive.
+    if (uploaded > 0) {
+      renderImageGallery();
+      saveImageList();
+    }
+    if (failures.length) {
+      alert(`Couldn't upload ${failures.length} of ${files.length} file${files.length === 1 ? '' : 's'}:\n\n• ` + failures.join('\n• ') + `\n\nTip: max 10 MB per image; allowed types: jpg, jpeg, png, gif, webp.`);
     }
     e.target.value = '';
   }
@@ -8740,7 +8770,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const galleryEl = document.getElementById('imageGallery');
   galleryEl.addEventListener('dragover', e => { e.preventDefault(); galleryEl.style.outline = '2px solid var(--accent)'; });
   galleryEl.addEventListener('dragleave', e => { if (!galleryEl.contains(e.relatedTarget)) galleryEl.style.outline = ''; });
-  galleryEl.addEventListener('drop', e => {
+  galleryEl.addEventListener('drop', async e => {
     e.preventDefault();
     galleryEl.style.outline = '';
     const allFiles = Array.from(e.dataTransfer.files);
@@ -8748,6 +8778,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const videoFiles = allFiles.filter(f => !f.type.startsWith('image/') && isVideoFile(f));
     if (imageFiles.length) handleImages({ target: { files: imageFiles } });
     if (videoFiles.length) handleVideoFiles(videoFiles);
+    // Cross-tab drag — when the user drags an image from another
+    // browser tab (or a Google image search), the drop event delivers a
+    // text/uri-list (or text/html) entry instead of a File. Fetch the
+    // URL, wrap it in a Blob, and route through handleImages so the
+    // same upload + persist pipeline runs.
+    if (imageFiles.length === 0 && videoFiles.length === 0) {
+      const uriList = e.dataTransfer.getData('text/uri-list')
+                   || e.dataTransfer.getData('text/plain') || '';
+      const urls = uriList.split(/\r?\n/).map(s => s.trim()).filter(s => /^https?:\/\//i.test(s));
+      if (urls.length === 0) {
+        if (!currentWorkbookId) {
+          alert('Open a workbook first, then drop the image into the gallery.');
+        } else {
+          console.warn('[gallery drop] No files or URLs in dataTransfer', e.dataTransfer.types);
+        }
+        return;
+      }
+      const fetched = [];
+      const fetchFails = [];
+      for (const u of urls) {
+        try {
+          const r = await fetch(u, { mode: 'cors' });
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const blob = await r.blob();
+          if (!blob.type.startsWith('image/')) throw new Error('not an image (' + (blob.type || 'unknown') + ')');
+          // Pick a sensible filename — last URL path segment, falling
+          // back to a generic stamped name when the URL is opaque.
+          let name = (new URL(u)).pathname.split('/').pop() || ('image-' + Date.now());
+          if (!/\.[a-z0-9]{2,4}$/i.test(name)) name += '.' + (blob.type.split('/')[1] || 'jpg');
+          fetched.push(new File([blob], name, { type: blob.type }));
+        } catch (err) {
+          fetchFails.push(`${u}: ${err.message || err}`);
+        }
+      }
+      if (fetched.length) handleImages({ target: { files: fetched } });
+      if (fetchFails.length) {
+        alert("Couldn't fetch " + fetchFails.length + " dragged image" + (fetchFails.length === 1 ? '' : 's') + ' (the source may block cross-origin downloads):\n\n• ' + fetchFails.join('\n• ') + '\n\nTip: save the image to your computer first, then drag it into the gallery.');
+      }
+    }
   });
 
   // Drag and drop support for the Art Files gallery — images only.
