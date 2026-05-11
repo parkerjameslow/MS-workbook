@@ -9949,9 +9949,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // when looseUnitsCount happened to land on 0 the looseTopOff flag
   // would clear and rebloat the palletized count further).
   window._fullContainerPitchSnap = null;
+  // Full-container freight default — what a typical 40' HC ocean
+  // freight runs in USD. Used as the override value when the operator
+  // applies the Full Container Pitch so the shipping tab + Landed Cost
+  // block + Hypothetical scenarios all reflect a real-world quote.
+  const FULL_CONTAINER_FREIGHT_USD = 16500;
   function applyFullContainerPitch(fullQty, looseProducts, appliedFlag) {
     const el = document.getElementById('pallet-total-cartons');
     if (!el) return;
+    const overrideEl     = document.getElementById('freight-cost-override');
+    const overrideToggle = document.getElementById('freight-cost-override-toggle');
     // Snapshot the CURRENT state so revert returns to exactly here.
     // Skip re-snapshotting if a snapshot already exists (consecutive
     // applies without a revert in between keep the original baseline).
@@ -9960,16 +9967,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         totalUnits:   el.value || '',
         looseTopOff:  el.dataset.looseTopOff || '',
         lastRfqSync:  el.dataset.lastRfqSync || '',
+        // Capture the freight-override state too so revert can put it
+        // back exactly the way it was — including the checkbox state
+        // (was it on? off?) and the raw value text the operator had
+        // typed (commas and all).
+        overrideOn:   !!(overrideToggle && overrideToggle.checked),
+        overrideVal:  overrideEl ? (overrideEl.value || '') : '',
         appliedQty:   String(parseInt(fullQty) || 0),
         appliedLoose: String(parseInt(looseProducts) || 0)
       };
     } else {
-      // Update the "what we applied" pointer so the rendered Hypothetical
-      // panel can detect the applied state even if dims changed since.
       window._fullContainerPitchSnap.appliedQty   = String(parseInt(fullQty) || 0);
       window._fullContainerPitchSnap.appliedLoose = String(parseInt(looseProducts) || 0);
     }
     applyTotalUnitsSuggestion(fullQty, looseProducts);
+    // Auto-flip the shipping-tab override to the full-container rate
+    // so Estimated Shipping Cost + Total Landed Cost + the Hypothetical
+    // freight rows all reflect the real-world ocean-freight quote
+    // ($FULL_CONTAINER_FREIGHT_USD) instead of the per-kg computation.
+    if (overrideToggle && overrideEl) {
+      overrideToggle.checked = true;
+      overrideEl.value = String(FULL_CONTAINER_FREIGHT_USD);
+      if (typeof onShippingCostOverrideToggle === 'function') onShippingCostOverrideToggle();
+    }
   }
   function revertFullContainerPitch() {
     const el = document.getElementById('pallet-total-cartons');
@@ -9978,6 +9998,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     el.value = snap.totalUnits || '';
     el.dataset.looseTopOff = snap.looseTopOff || '';
     el.dataset.lastRfqSync = snap.lastRfqSync || '';
+    // Restore the shipping-tab freight override to whatever the
+    // operator had configured before they applied the Full Container
+    // Pitch (might have been off entirely, or set to a different
+    // override value).
+    const overrideEl     = document.getElementById('freight-cost-override');
+    const overrideToggle = document.getElementById('freight-cost-override-toggle');
+    if (overrideToggle && overrideEl) {
+      overrideToggle.checked = !!snap.overrideOn;
+      overrideEl.value = snap.overrideVal || '';
+      if (typeof onShippingCostOverrideToggle === 'function') onShippingCostOverrideToggle();
+    }
     window._fullContainerPitchSnap = null;
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof syncShippingDims === 'function') syncShippingDims();
