@@ -928,8 +928,29 @@ function ms_record_commissions_for_workbook(
     return $written;
 }
 
+// Pull the latest USD↔CNY rate the client cached in app_state. Falls back
+// to the legacy 7.24 when nothing's been stashed yet. promote_to_sku writes
+// the live rate on every promote so this value is normally fresh.
+function ms_current_fx_rate(PDO $pdo): float {
+    try {
+        $s = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ? LIMIT 1");
+        $s->execute(['fx_usd_cny']);
+        $row = $s->fetchColumn();
+        if ($row) {
+            $blob = json_decode($row, true);
+            $rate = isset($blob['rate']) ? (float)$blob['rate'] : 0;
+            if ($rate > 0) return $rate;
+        }
+    } catch (Exception $_) {}
+    return 7.24;
+}
+
 // Sum a workbook's rfqItems into a single USD total. Mirrors the front-end's
-// USD = priceRmb / 7.24 conversion so totals match what users see on Pricing.
+// USD = priceRmb / USD_TO_RMB conversion so totals match what users see on
+// Pricing. The default rate is the LEGACY 7.24 for callers that don't pass
+// the live rate explicitly — every commission path now resolves the rate
+// via ms_current_fx_rate() before calling in so the recompute matches the
+// live workbook UI.
 function ms_workbook_total_usd_from_detail(?string $detailJson, float $usdRmbRate = 7.24): float {
     if (!$detailJson) return 0;
     $details = json_decode($detailJson, true);
@@ -2189,14 +2210,28 @@ switch ($action) {
     case 'promote_to_sku':
         // input: array of items [{sku, product_name, variant_name, client_name,
         //   workbook_id, qty?, unit_price_usd?}]
-        // qty + unit_price_usd are optional; when present they get summed per
-        // workbook to seed commission rows for AM/SP. Backfill via
-        // recompute_commissions reconciles totals later if AM/SP changes
-        // or if the workbook's rfqItems get edited.
+        // Optional top-level: workbook_total_usd (the RFQ Grand Total — Total
+        //   USD — as displayed on the Workbook tab) and usd_to_rmb (the live
+        //   FX rate the client used). When workbook_total_usd is present,
+        //   the server uses it VERBATIM as the commission basis so AM /
+        //   Salesperson / Operations rows mirror what the operator sees on
+        //   the Workbook tab. usd_to_rmb is persisted to app_state so
+        //   recompute_commissions has a fresher rate than the legacy 7.24.
         if (empty($input['items']) || !is_array($input['items'])) {
             echo json_encode(['success' => false, 'error' => 'Items array required']);
             break;
         }
+        // Persist the live FX rate (best-effort) so recompute paths can
+        // pick it up later when the client isn't open.
+        if (isset($input['usd_to_rmb']) && (float)$input['usd_to_rmb'] > 0) {
+            try {
+                $rateBlob = json_encode(['rate' => (float)$input['usd_to_rmb'], 'ts' => time()]);
+                $up = $pdo->prepare("INSERT INTO app_state (key_name, value_json) VALUES (?, ?)
+                                      ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = NOW()");
+                $up->execute(['fx_usd_cny', $rateBlob]);
+            } catch (Exception $_) { /* app_state may not exist on some installs */ }
+        }
+        $clientWorkbookTotalUsd = isset($input['workbook_total_usd']) ? (float)$input['workbook_total_usd'] : 0;
         $inserted = 0;
         $skipped = 0;
         $invStmt = $pdo->prepare("INSERT IGNORE INTO inventory (sku, product_name, variant_name, client_name, workbook_id) VALUES (?, ?, ?, ?, ?)");
@@ -2253,13 +2288,26 @@ switch ($action) {
             $client = $clientCache[$cName];
             if (!$client) continue;
 
-            $totalUsd = (float)$agg['total_usd'];
-            if ($totalUsd <= 0) {
+            // Priority order for the commission basis:
+            //   1. workbook_total_usd from the client (RFQ Grand Total)
+            //   2. per-item aggregate (qty × unit_price_usd, summed) the
+            //      client also sends today
+            //   3. server-side detail_json computation using whatever FX
+            //      rate is cached in app_state
+            $totalUsd = 0;
+            if ($clientWorkbookTotalUsd > 0 && count($wbAgg) === 1) {
+                // Single-workbook promote — trust the client's grand total
+                // verbatim. (Multi-workbook batch promotes still aggregate
+                // per workbook since we can't split one number across two.)
+                $totalUsd = $clientWorkbookTotalUsd;
+            } else if ((float)$agg['total_usd'] > 0) {
+                $totalUsd = (float)$agg['total_usd'];
+            } else {
                 // Fall back to recomputing from the workbook's stored rfqItems.
                 $ws = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ? LIMIT 1");
                 $ws->execute([$agg['workbook_id']]);
                 $detail = $ws->fetchColumn();
-                $totalUsd = ms_workbook_total_usd_from_detail($detail);
+                $totalUsd = ms_workbook_total_usd_from_detail($detail, ms_current_fx_rate($pdo));
             }
             if ($totalUsd <= 0) continue;
 
@@ -2360,7 +2408,12 @@ switch ($action) {
             }
         }
 
-        // 3. Walk pairs, write commission rows.
+        // 3. Walk pairs, write commission rows. Resolve the FX rate once
+        //    up-front so every workbook's RFQ Grand Total is converted at
+        //    the same live rate the client most recently published via
+        //    promote_to_sku — keeping recompute consistent with what the
+        //    operator actually saw on the Workbook tab.
+        $fxRate        = ms_current_fx_rate($pdo);
         $written       = 0;
         $clientCache   = [];
         $workbookCache = [];
@@ -2390,7 +2443,7 @@ switch ($action) {
             $wbRow = $workbookCache[$wb];
             if (!$wbRow) continue;
 
-            $totalUsd = ms_workbook_total_usd_from_detail($wbRow['detail_json'] ?? null);
+            $totalUsd = ms_workbook_total_usd_from_detail($wbRow['detail_json'] ?? null, $fxRate);
             if ($totalUsd <= 0) continue;
 
             $written += ms_record_commissions_for_workbook(

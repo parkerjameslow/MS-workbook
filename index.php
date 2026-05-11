@@ -23677,13 +23677,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rfqItems.forEach(item => {
       if (!item.sku) return;
       // qty + unit_price_usd are sent so the server can record commission rows
-      // (20% of qty × unit_price_usd) for the AM / Salesperson on this client.
-      // unit_price_usd is derived from the RFQ row's RMB price using the live
-      // FX rate. Until "Client Cost" is wired on the Pricing tab, this is
-      // Our Cost — commission rows are flagged is_estimate=1 server-side.
+      // for the AM / Salesperson / Operations on this client. unit_price_usd
+      // is derived from the RFQ row's RMB price using the live FX rate and
+      // the ceil-to-cent helper so the per-line USD matches whatever the
+      // operator sees in the workbook UI.
       const qtyNum   = parseFloat(String(item.qty || '').replace(/,/g, '')) || 0;
       const rmbNum   = parseFloat(String(item.priceRmb || '').replace(/,/g, '')) || 0;
-      const usdNum   = (rmbNum > 0 && USD_TO_RMB > 0) ? +(rmbNum / USD_TO_RMB).toFixed(4) : 0;
+      const usdNum   = (rmbNum > 0 && USD_TO_RMB > 0) ? _fxUsdFromRmb(rmbNum) : 0;
       toPromote.push({
         sku: item.sku,
         product_name: item.item || item.sku,
@@ -23698,7 +23698,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       alert('No SKUs found on this workbook\'s RFQ items. Add SKUs to line items first.');
       return;
     }
-    const res = await apiCall('promote_to_sku', { items: toPromote });
+    // Commission gross — read straight off the RFQ Grand Total row (the
+    // "Total USD" on the Workbook tab). The server uses this verbatim as
+    // the basis for AM / Salesperson / Operations commission so the row
+    // amounts always match what the operator sees. Falls back to the
+    // server's per-item aggregate when blank (legacy clients).
+    const _ps = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary) || null;
+    const workbookTotalUsd = (_ps && _ps.grandUsd > 0) ? _ps.grandUsd : 0;
+    const res = await apiCall('promote_to_sku', {
+      items: toPromote,
+      workbook_total_usd: workbookTotalUsd,
+      usd_to_rmb: USD_TO_RMB || 0
+    });
     if (res.success) {
       await loadInventory();
       // Server may have recorded commission rows for the AM/SP on this
