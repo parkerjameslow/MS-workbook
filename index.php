@@ -6223,6 +6223,80 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <svg id="viz-inner" class="specs-box-viz" viewBox="0 0 240 180" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
           </div>
+          <!-- ── Case Only Override ──────────────────────────────────
+               Mirrors the Weight Only Override on the Product Dimensions
+               column. When ticked, the operator skips Product Dimensions
+               + Outer Carton entirely and types case-level inputs:
+                 • products per case
+                 • cases per order
+                 • case L × W × H (the case footprint that lands on the
+                   pallet — or floor-loads when the operator picks
+                   "Loose load" on the Pallet View card)
+                 • case weight (kg / lb)
+               Lives OUTSIDE .specs-dim-grid so the gray-out treatment
+               applied to the Inner-Carton dim grid won't catch the
+               override controls themselves. -->
+          <div id="case-only-block" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+            <label class="weight-only-toggle" style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:12px; font-weight:700; color:var(--text); white-space:nowrap;">
+              <input type="checkbox" id="case-only-override" onchange="onCaseOnlyToggle()"
+                style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;" />
+              Case Only Override
+            </label>
+            <div id="case-only-fields" style="margin-top:10px; opacity:0.45; pointer-events:none;">
+              <!-- Qty + cases on order row -->
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div>
+                  <div class="specs-row-label" style="margin-bottom:5px;">Products / Case</div>
+                  <input type="text" inputmode="numeric" placeholder="—" id="case-only-products-per" disabled data-num-int="1"
+                    oninput="onCaseOnlyChanged()"
+                    onfocus="_msStripCommasOnFocus(this)"
+                    onblur="_msFmtIntOnBlur(this); onCaseOnlyChanged()"
+                    style="width:100%; box-sizing:border-box;" />
+                </div>
+                <div>
+                  <div class="specs-row-label" style="margin-bottom:5px;">Cases / Order</div>
+                  <input type="text" inputmode="numeric" placeholder="—" id="case-only-cases-order" disabled data-num-int="1"
+                    oninput="onCaseOnlyChanged()"
+                    onfocus="_msStripCommasOnFocus(this)"
+                    onblur="_msFmtIntOnBlur(this); onCaseOnlyChanged()"
+                    style="width:100%; box-sizing:border-box;" />
+                </div>
+              </div>
+              <!-- Case dim grid (L/W/H in cm + in) -->
+              <div class="specs-dim-grid" style="margin-top:10px;">
+                <div></div>
+                <div class="specs-unit-header">cm</div>
+                <div class="specs-unit-header">in</div>
+                <div class="specs-row-label">Length</div>
+                <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="case-only-l-cm" disabled
+                  oninput="convertDim('case-only-l-cm','case-only-l-in','cm'); onCaseOnlyChanged()" /><span class="specs-unit-tag">cm</span></div>
+                <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="case-only-l-in" disabled
+                  oninput="convertDim('case-only-l-in','case-only-l-cm','in'); onCaseOnlyChanged()" /><span class="specs-unit-tag">in</span></div>
+                <div class="specs-row-label">Width</div>
+                <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="case-only-w-cm" disabled
+                  oninput="convertDim('case-only-w-cm','case-only-w-in','cm'); onCaseOnlyChanged()" /><span class="specs-unit-tag">cm</span></div>
+                <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="case-only-w-in" disabled
+                  oninput="convertDim('case-only-w-in','case-only-w-cm','in'); onCaseOnlyChanged()" /><span class="specs-unit-tag">in</span></div>
+                <div class="specs-row-label">Height</div>
+                <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="case-only-h-cm" disabled
+                  oninput="convertDim('case-only-h-cm','case-only-h-in','cm'); onCaseOnlyChanged()" /><span class="specs-unit-tag">cm</span></div>
+                <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="case-only-h-in" disabled
+                  oninput="convertDim('case-only-h-in','case-only-h-cm','in'); onCaseOnlyChanged()" /><span class="specs-unit-tag">in</span></div>
+                <hr class="specs-dim-divider" />
+                <div></div>
+                <div class="specs-unit-header">kg</div>
+                <div class="specs-unit-header">lb</div>
+                <div class="specs-row-label">Weight</div>
+                <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="case-only-weight-kg" disabled
+                  oninput="convertWeight('case-only-weight-kg','case-only-weight-lbs','kg'); onCaseOnlyChanged()" /><span class="specs-unit-tag">kg</span></div>
+                <div class="specs-input-wrap"><input type="text" placeholder="—" id="case-only-weight-lbs" disabled
+                  oninput="convertWeight('case-only-weight-lbs','case-only-weight-kg','lbs'); onCaseOnlyChanged()" /><span class="specs-unit-tag">lb</span></div>
+              </div>
+              <div id="case-only-hint" style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
+                Enter Products/Case + Cases/Order + case L × W × H to drive the pallet view.
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Column 3: Outer Carton -->
@@ -6326,6 +6400,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="section-chevron">›</span>
     </div>
     <div class="section-body">
+      <!-- ── Pallet vs Loose-Load mode toggle ────────────────────────
+           Lets the operator pick whether the shipment rides on
+           pallets (default) or floor-loads straight onto the
+           container. Loose-load skips the 45 lb wood-pallet tare
+           weight + the deck-height penalty in the container viz, and
+           hides the 4 mm divider option by default (operator can
+           still tick it manually). -->
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap;">
+        <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Load Mode</span>
+        <label class="pallet-manual-toggle" style="margin:0; padding:6px 12px;">
+          <input type="radio" name="pallet-load-mode" id="pallet-load-pallet" value="pallet" checked onchange="onPalletLoadModeChange()" />
+          <span>On Pallet</span>
+        </label>
+        <label class="pallet-manual-toggle" style="margin:0; padding:6px 12px;">
+          <input type="radio" name="pallet-load-mode" id="pallet-load-loose" value="loose" onchange="onPalletLoadModeChange()" />
+          <span>Loose Load (no pallet)</span>
+        </label>
+      </div>
       <!-- Manual mode checkbox — when ON, the pallet calc skips the
            inner/outer carton dims and computes how many products fit
            directly on a 40 × 48 pallet base using just the product
@@ -10009,6 +10101,106 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
+  // ── Case Only Override ──────────────────────────────────────────────
+  // Mirrors Weight Only Override but with case-level inputs (products
+  // per case, cases per order, case L × W × H × weight). When ticked:
+  //   • Product Dimensions + Outer Carton columns gray out (Inner
+  //     dim grid stays grayed too — only the override block stays
+  //     interactive)
+  //   • Weight-only + pallet-manual modes lock OFF since the three
+  //     overrides are mutually exclusive
+  //   • Pallet view + container view treat each CASE as the ship
+  //     unit (case footprint on the pallet base, case stack height
+  //     drives layers, case weight × case count drives the totals)
+  //   • Shipping freight reads case dims/weight × case count
+  function onCaseOnlyToggle() {
+    const cb = document.getElementById('case-only-override');
+    if (!cb) return;
+    const on = !!cb.checked;
+    // Toggle visuals on the override fields themselves.
+    const fields = document.getElementById('case-only-fields');
+    if (fields) {
+      fields.style.opacity = on ? '' : '0.45';
+      fields.style.pointerEvents = on ? '' : 'none';
+    }
+    ['case-only-products-per', 'case-only-cases-order',
+     'case-only-l-cm', 'case-only-l-in', 'case-only-w-cm', 'case-only-w-in',
+     'case-only-h-cm', 'case-only-h-in',
+     'case-only-weight-kg', 'case-only-weight-lbs'
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !on;
+    });
+    // Gray out the Product + Outer columns. Inner dim grid grays too
+    // (matches the weight-only treatment) — only the case override
+    // controls stay interactive.
+    const productCol = document.querySelector('.specs-col:not([data-carton-col])');
+    if (productCol) productCol.classList.toggle('weight-only-locked', on);
+    document.querySelectorAll('.specs-col[data-carton-col="outer"]').forEach(col => {
+      col.classList.toggle('weight-only-disabled', on);
+    });
+    // Inner dim grid (sibling of the override block) — gray out via
+    // the same locked class on the inner column.
+    const innerCol = document.querySelector('.specs-col[data-carton-col="inner"]');
+    if (innerCol) innerCol.classList.toggle('weight-only-locked', on);
+    // Mutually exclusive with the other override modes.
+    const weightOnlyEl   = document.getElementById('weight-only-override');
+    const palletManualEl = document.getElementById('pallet-manual');
+    if (on) {
+      if (weightOnlyEl   && weightOnlyEl.checked)   { weightOnlyEl.checked   = false; if (typeof onWeightOnlyToggle === 'function') onWeightOnlyToggle(); }
+      if (palletManualEl && palletManualEl.checked) { palletManualEl.checked = false; if (typeof onPalletManualToggle === 'function') onPalletManualToggle(); }
+    }
+    if (weightOnlyEl)   weightOnlyEl.disabled   = on;
+    if (palletManualEl) palletManualEl.disabled = on;
+    onCaseOnlyChanged();
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  function onCaseOnlyChanged() {
+    const pc  = _msIntFromInput(document.getElementById('case-only-products-per'));
+    const co  = _msIntFromInput(document.getElementById('case-only-cases-order'));
+    const wt  = parseFloat(document.getElementById('case-only-weight-kg')?.value) || 0;
+    const hint = document.getElementById('case-only-hint');
+    if (hint) {
+      if (pc > 0 && co > 0) {
+        const totalProducts = pc * co;
+        const totalKg = wt > 0 ? wt * co : 0;
+        const totalLb = totalKg * 2.20462;
+        const fmt = (n) => n < 10 ? n.toFixed(2) : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+        const wPart = totalKg > 0
+          ? ` &nbsp;·&nbsp; <strong>${fmt(totalKg)} kg</strong> <span style="opacity:0.7;">/ ${fmt(totalLb)} lb</span> total weight`
+          : '';
+        hint.innerHTML = `↳ <strong>${totalProducts.toLocaleString()}</strong> products across <strong>${co.toLocaleString()}</strong> case${co === 1 ? '' : 's'}${wPart}`;
+      } else {
+        hint.innerHTML = 'Enter Products/Case + Cases/Order + case L × W × H to drive the pallet view.';
+      }
+    }
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  // Returns whether Case Only Override is currently active.
+  function _caseOnlyActive() {
+    return !!document.getElementById('case-only-override')?.checked;
+  }
+  // Pallet vs Loose-Load — when the operator picks Loose Load, the
+  // pallet tare weight and the deck height penalty drop out of every
+  // total, and the divider option is hidden by default. renderPalletViz
+  // + renderContainerViz both check _palletLoadMode() to branch.
+  function _palletLoadMode() {
+    const looseEl = document.getElementById('pallet-load-loose');
+    return (looseEl && looseEl.checked) ? 'loose' : 'pallet';
+  }
+  function onPalletLoadModeChange() {
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof syncShippingDims === 'function') syncShippingDims();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   // ── Apply-suggestion helpers ────────────────────────────────────────
   // The optimization tip + container side-panel surface concrete
   // suggestions ("reduce max height to 47", "set total units to
@@ -10971,12 +11163,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const CW = canvas.width, CH = canvas.height;
     ctx.clearRect(0, 0, CW, CH);
 
-    // Manual mode: build pallet stats from PRODUCT dims directly,
-    // bypassing inner/outer carton math entirely. Useful for crates
-    // or unboxed items where the cartonization pipeline doesn't fit.
-    const manualOn = !!document.getElementById('pallet-manual')?.checked;
+    // Mode resolution — three mutually-exclusive overrides plus the
+    // default carton-driven path:
+    //   • caseOn    → use Case Only Override dims (case L × W × H,
+    //     cases-per-order, products-per-case). Each CASE lands on the
+    //     pallet, drives the freight + container math.
+    //   • manualOn  → use PRODUCT dims directly on the pallet base
+    //     (existing manual mode).
+    //   • default   → carton mode (outer carton dims).
+    const caseOn   = !!document.getElementById('case-only-override')?.checked;
+    const manualOn = !caseOn && !!document.getElementById('pallet-manual')?.checked;
     let bL, bW, bH;
-    if (manualOn) {
+    if (caseOn) {
+      bL = parseFloat(document.getElementById('case-only-l-cm').value);
+      bW = parseFloat(document.getElementById('case-only-w-cm').value);
+      bH = parseFloat(document.getElementById('case-only-h-cm').value);
+    } else if (manualOn) {
       bL = parseFloat(document.getElementById('dim-cm-l').value);
       bW = parseFloat(document.getElementById('dim-cm-w').value);
       bH = parseFloat(document.getElementById('dim-cm-h').value);
@@ -10990,7 +11192,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ctx.fillStyle = '#aaa';
       ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.textAlign = 'center';
-      const need = manualOn ? 'product' : 'outer carton';
+      const need = caseOn ? 'case' : (manualOn ? 'product' : 'outer carton');
       ctx.fillText(`Enter ${need} dimensions`, CW/2, CH/2 - 8);
       ctx.fillText('to see pallet visualization', CW/2, CH/2 + 10);
       document.getElementById('pallet-stats').innerHTML = `<span style="color:var(--text-muted); font-size:13px;">Enter ${need} dimensions to calculate.</span>`;
@@ -11246,11 +11448,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const unitWord  = manualOn ? 'unit' : 'outer carton';
     const unitWordP = manualOn ? 'units' : 'outer cartons';
 
-    // The "Total Units to Ship" input is now ALWAYS interpreted as
-    // PRODUCT count, regardless of mode. The pallet view derives
-    // outer cartons + pallets needed from that. (The id is kept as
-    // pallet-total-cartons for backward-compat with saved data.)
-    const totalUnits   = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+    // The "Total Units to Ship" input is normally interpreted as
+    // PRODUCT count, regardless of mode. In CASE ONLY override mode
+    // it auto-derives from Cases/Order × Products/Case so the pallet
+    // view always reflects the case-level inputs without making the
+    // operator double-enter the total.
+    const _caseProductsPer = _msIntFromInput(document.getElementById('case-only-products-per'));
+    const _caseCasesOrder  = _msIntFromInput(document.getElementById('case-only-cases-order'));
+    const _caseTotalProducts = (_caseProductsPer > 0 && _caseCasesOrder > 0)
+      ? (_caseProductsPer * _caseCasesOrder) : 0;
+    const totalUnits   = caseOn
+      ? _caseTotalProducts
+      : _msIntFromInput(document.getElementById('pallet-total-cartons'));
     // Loose top-off count (in PRODUCTS) — stashed by "↻ Top Off" so the
     // last container's leftover CBM gets blue cardboard boxes in the
     // viz. The loose units must be SUBTRACTED before computing
@@ -11260,15 +11469,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _looseTopOffStr  = document.getElementById('pallet-total-cartons')?.dataset.looseTopOff || '';
     const _looseTopOffNum  = parseInt(_looseTopOffStr) || 0;
     const palletizedUnits  = Math.max(0, totalUnits - _looseTopOffNum);
-    // Carton-driven product counts only apply outside manual mode
-    const innerQtyVal  = manualOn ? 0 : (parseInt(document.getElementById('carton-inner-count').value) || 0);
-    const outerQtyVal  = manualOn ? 0 : (parseInt(document.getElementById('carton-outer-count').value) || 0);
-    const productsPerOuter = (innerQtyVal > 0 && outerQtyVal > 0) ? innerQtyVal * outerQtyVal : 0;
-    // In manual mode, items-on-pallet = products. In carton mode,
-    // items-on-pallet = outer cartons, derived from units / products-
-    // per-outer (round up — partial cartons need a full slot). Use the
-    // PALLETIZED count here so the loose top-off doesn't get billed as
-    // palletized.
+    // Carton-driven product counts only apply in default carton mode.
+    // Case Only Override treats each case AS the ship unit (so the
+    // "products per outer carton" concept doesn't apply — instead
+    // products-per-case + cases-per-order drive the totals).
+    const innerQtyVal  = (manualOn || caseOn) ? 0 : (parseInt(document.getElementById('carton-inner-count').value) || 0);
+    const outerQtyVal  = (manualOn || caseOn) ? 0 : (parseInt(document.getElementById('carton-outer-count').value) || 0);
+    const productsPerOuter = caseOn
+      ? _caseProductsPer
+      : ((innerQtyVal > 0 && outerQtyVal > 0) ? innerQtyVal * outerQtyVal : 0);
+    // In manual mode, items-on-pallet = products. In case-only or
+    // carton mode, items-on-pallet = cases / outer cartons, derived
+    // from units / products-per-ship-unit. Use the PALLETIZED count so
+    // the loose top-off doesn't get billed as palletized.
     const totalCartons = manualOn
       ? palletizedUnits
       : (productsPerOuter > 0 ? Math.ceil(palletizedUnits / productsPerOuter) : 0);
@@ -11282,12 +11495,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rfqGrandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
 
     // Per-unit weight: in manual mode this is the product weight,
-    // in carton mode it's the outer carton weight. Used to surface
-    // weight/pallet so the operator can sanity-check pallets against
-    // truck/container weight limits without leaving the page.
-    const unitWeightKg = manualOn
-      ? (parseFloat(document.getElementById('dim-weight-kg').value) || 0)
-      : (parseFloat(document.getElementById('carton-outer-weight').value) || 0);
+    // in case-only mode the case weight, otherwise the outer-carton
+    // weight. Used to surface weight/pallet so the operator can
+    // sanity-check pallets against truck/container weight limits
+    // without leaving the page.
+    const unitWeightKg = caseOn
+      ? (parseFloat(document.getElementById('case-only-weight-kg').value) || 0)
+      : (manualOn
+        ? (parseFloat(document.getElementById('dim-weight-kg').value) || 0)
+        : (parseFloat(document.getElementById('carton-outer-weight').value) || 0));
     // Divider material weight — when the 4 mm divider option is on,
     // approximate the cardboard / foam separator weight added per
     // pallet so the shipment weight stays honest. Model:
@@ -11313,11 +11529,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const verticalArea_m2 = (maxLayers * verticalAreaPerLayer_cm2) / 10000;
       dividerWeightPerPalletKg = (horizontalArea_m2 + verticalArea_m2) * DIVIDER_KG_PER_M2;
     }
-    // Standard wood pallet tare weight ≈ 45 lb (≈ 20.41 kg). Always
-    // included in weight/pallet — it's part of the load every truck/
-    // container has to carry.
-    const PALLET_TARE_LB = 45;
-    const PALLET_TARE_KG = PALLET_TARE_LB * 0.453592; // ≈ 20.41
+    // Standard wood pallet tare weight ≈ 45 lb (≈ 20.41 kg). Dropped
+    // out of every total when the operator has picked Loose Load on
+    // the Pallet View card — the cargo floor-loads straight onto the
+    // container, no pallet underneath.
+    const _loadMode = (typeof _palletLoadMode === 'function') ? _palletLoadMode() : 'pallet';
+    const _looseLoad = _loadMode === 'loose';
+    const PALLET_TARE_LB = _looseLoad ? 0 : 45;
+    const PALLET_TARE_KG = PALLET_TARE_LB * 0.453592; // ≈ 20.41 (0 when loose)
     const palletWeightKg = unitWeightKg > 0
       ? (unitWeightKg * totalPerPallet) + dividerWeightPerPalletKg + PALLET_TARE_KG
       : 0;
@@ -17399,6 +17618,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         count: caseQty
       };
     }
+    // Case Only Override: ship unit is the CASE — case dims feed the
+    // volumetric / freight math, cases-per-order drives the count.
+    const caseOnly = !!document.getElementById('case-only-override')?.checked;
+    if (caseOnly) {
+      return {
+        mode: 'case-only',
+        unitLabel: 'case', unitLabelP: 'cases',
+        lCm: get('case-only-l-cm'),
+        wCm: get('case-only-w-cm'),
+        hCm: get('case-only-h-cm'),
+        wtKg: get('case-only-weight-kg'),
+        count: _msIntFromInput(document.getElementById('case-only-cases-order'))
+      };
+    }
     if (manualOn) {
       return {
         mode: 'manual',
@@ -21154,6 +21387,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         weightOnlyEl.checked = !!data.weightOnlyOverride;
         if (typeof onWeightOnlyToggle === 'function') onWeightOnlyToggle();
       }
+      // Case Only Override — restore every field then flip the toggle
+      // so the gray-out + enable state on the surrounding columns
+      // (Product + Outer) matches the saved state.
+      _s('case-only-products-per', data.caseOnlyProductsPer);
+      _s('case-only-cases-order',  data.caseOnlyCasesOrder);
+      _s('case-only-l-cm',         data.caseOnlyLCm);
+      _s('case-only-l-in',         data.caseOnlyLIn);
+      _s('case-only-w-cm',         data.caseOnlyWCm);
+      _s('case-only-w-in',         data.caseOnlyWIn);
+      _s('case-only-h-cm',         data.caseOnlyHCm);
+      _s('case-only-h-in',         data.caseOnlyHIn);
+      _s('case-only-weight-kg',    data.caseOnlyWeightKg);
+      _s('case-only-weight-lbs',   data.caseOnlyWeightLbs);
+      const caseOnlyEl = document.getElementById('case-only-override');
+      if (caseOnlyEl) {
+        caseOnlyEl.checked = !!data.caseOnlyOverride;
+        if (typeof onCaseOnlyToggle === 'function') onCaseOnlyToggle();
+      }
+      // Pallet load mode — pallet | loose. Pick the radio that matches
+      // the saved value (defaults to "pallet" when blank / legacy).
+      const _loadModeSaved = data.palletLoadMode === 'loose' ? 'loose' : 'pallet';
+      const _loadModeEl = document.getElementById('pallet-load-' + _loadModeSaved);
+      if (_loadModeEl) _loadModeEl.checked = true;
       // Free-form pallet notes
       _s('pallet-notes',       data.palletNotes);
       _s('pallet-stack-notes', data.palletStackNotes);
@@ -22327,6 +22583,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Weight. Persists the checkbox + the two numbers so a hard
       // refresh keeps everything where the operator left it.
       weightOnlyOverride: !!document.getElementById('weight-only-override')?.checked,
+      // Case Only Override — case dims + counts drive the pallet /
+      // container math when active. Persists every field individually
+      // so a partial entry survives a refresh.
+      caseOnlyOverride:    !!document.getElementById('case-only-override')?.checked,
+      caseOnlyProductsPer: _v('case-only-products-per'),
+      caseOnlyCasesOrder:  _v('case-only-cases-order'),
+      caseOnlyLCm:         _v('case-only-l-cm'),
+      caseOnlyLIn:         _v('case-only-l-in'),
+      caseOnlyWCm:         _v('case-only-w-cm'),
+      caseOnlyWIn:         _v('case-only-w-in'),
+      caseOnlyHCm:         _v('case-only-h-cm'),
+      caseOnlyHIn:         _v('case-only-h-in'),
+      caseOnlyWeightKg:    _v('case-only-weight-kg'),
+      caseOnlyWeightLbs:   _v('case-only-weight-lbs'),
+      // Pallet vs Loose Load — radio selection on the Pallet View card.
+      palletLoadMode:      (typeof _palletLoadMode === 'function') ? _palletLoadMode() : 'pallet',
       weightOnlyCaseQty:  _v('weight-only-qty'),
       weightOnlyKg:       _v('weight-only-kg'),
       weightOnlyLbs:      _v('weight-only-lbs'),
