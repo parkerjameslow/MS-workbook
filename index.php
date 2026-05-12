@@ -14832,8 +14832,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           let first = null, filledCount = 0;
           rows.forEach(r => {
             const qInput = r.querySelector('input');
-            const q = parseFloat(qInput?.value) || 0;
-            const p = parseFloat(r.dataset.price) || 0;
+            // Tier qty inputs show "110,000" after blur formatting — bare
+            // parseFloat stops at the comma and yields 110, so the
+            // collapsed header reads "Tier 1: 110" instead of "110,000".
+            // Strip commas first, like _msNumFromInput does elsewhere.
+            const q = parseFloat(_msStripCommasStr(qInput?.value)) || 0;
+            const p = parseFloat(_msStripCommasStr(r.dataset.price)) || 0;
             if (q > 0 && p > 0) {
               filledCount++;
               if (!first) first = { q, rmb: p };
