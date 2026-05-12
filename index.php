@@ -10556,12 +10556,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const ox = (CW + (HC_W - HC_L) * ISO_COS30 * s) / 2;
     const oy = totalPalletsHeight * s + PAD_TOP;
 
-    // ── Draw pallets (solid) inside the container ─────────────────────
+    // ── Draw pallets / cargo blocks (solid) inside the container ──────
     // Layer 0 = bottom, layer 1 = top (when stacked). Each layer is
     // drawn back-to-front in painter's order. Top layer is drawn after
-    // the bottom one so it overlaps correctly.
+    // the bottom one so it overlaps correctly. In LOOSE-LOAD mode the
+    // wood pallet deck is skipped — cargo blocks sit straight on the
+    // container floor, freeing the 15 cm of deck height for product.
+    const _ctxLoadMode = (typeof _palletLoadMode === 'function') ? _palletLoadMode() : 'pallet';
+    const _ctxLoose    = _ctxLoadMode === 'loose';
+    const palletDeckHere = _ctxLoose ? 0 : PALLET_DECK;
     let drawn = 0;
-    const stackOnly = Math.max(0, palletStack - PALLET_DECK);
+    const stackOnly = Math.max(0, palletStack - palletDeckHere);
     for (let layerIdx = 0; layerIdx < verticalLayers && drawn < palletsToShow; layerIdx++) {
       const layerY = layerIdx * palletStack;
       for (let diag = 0; diag <= palletLayout.cols + palletLayout.rows - 2 && drawn < palletsToShow; diag++) {
@@ -10570,11 +10575,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const row = diag - col;
           const x = col * palletLayout.pL;
           const z = row * palletLayout.pW;
-          // Pallet deck (gray)
-          drawIsoBox(ctx, x, layerY, z, palletLayout.pL, PALLET_DECK, palletLayout.pW, s, ox, oy, '#a8a8a8');
-          // Product stack (orange) on top of the deck
+          // Pallet deck (gray) — pallet mode only
+          if (palletDeckHere > 0) {
+            drawIsoBox(ctx, x, layerY, z, palletLayout.pL, palletDeckHere, palletLayout.pW, s, ox, oy, '#a8a8a8');
+          }
+          // Product stack (orange) on top of the deck (or directly on
+          // the floor in loose-load mode).
           if (stackOnly > 0) {
-            drawIsoBox(ctx, x, layerY + PALLET_DECK, z, palletLayout.pL, stackOnly, palletLayout.pW, s, ox, oy, '#E8751A');
+            drawIsoBox(ctx, x, layerY + palletDeckHere, z, palletLayout.pL, stackOnly, palletLayout.pW, s, ox, oy, '#E8751A');
           }
           drawn++;
         }
@@ -11309,8 +11317,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // 16px), tight right edge for the W label tail. The iso shape
     // shifts well into the right half of the canvas so the L and W
     // labels at the bottom corners separate cleanly.
+    // In loose-load mode every reference to the wood-pallet deck drops
+    // out — the cargo sits straight on the container floor, so the
+    // ~15 cm of deck height becomes additional vertical room for
+    // product. palletDeckCm shadows the global PALLET_DECK constant
+    // through the rest of this function (drawing + stack-height math +
+    // dim-label totals + optimization-tip thresholds).
+    const palletDeckCm = _looseLoad ? 0 : PALLET_DECK;
     const footprintSpan = PALLET_L + PALLET_W;
-    const stackH = PALLET_DECK + showLayers * stackPitchH;
+    const stackH = palletDeckCm + showLayers * stackPitchH;
     const LABEL_PAD_LEFT  = 190; // room for the full H bracket + label
     const LABEL_PAD_RIGHT = 40;  // tight right edge — W label tail clears
     const LABEL_PAD_Y     = 110; // px reserved below for L bracket
@@ -11326,8 +11341,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const ox = LABEL_PAD_LEFT + PALLET_W * ISO_COS30 * s;
     const oy = stackH * s + LABEL_PAD_TOP; // top-right badge sits above
 
-    // Draw pallet deck
-    drawIsoBox(ctx, 0, 0, 0, PALLET_L, PALLET_DECK, PALLET_W, s, ox, oy, '#a8a8a8');
+    // Draw pallet deck — only in pallet-load mode. Loose load skips
+    // the wood deck entirely so the viz shows cargo sitting directly
+    // on the floor (matching the real-world floor-load geometry).
+    if (palletDeckCm > 0) {
+      drawIsoBox(ctx, 0, 0, 0, PALLET_L, palletDeckCm, PALLET_W, s, ox, oy, '#a8a8a8');
+    }
 
     // Draw boxes back-to-front: diag 0 (back corner) → max (front corner)
     // Each cell occupies layout.bL × layout.bW (including the divider
@@ -11348,7 +11367,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         for (let col = Math.max(0, diag - layout.rows + 1); col <= Math.min(diag, layout.cols - 1); col++) {
           const row = diag - col;
           drawIsoBox(ctx,
-            offsetX + col * layout.bL, PALLET_DECK + layer * stackPitchH, offsetZ + row * layout.bW,
+            offsetX + col * layout.bL, palletDeckCm + layer * stackPitchH, offsetZ + row * layout.bW,
             drawL, bH, drawW, s, ox, oy, '#E8751A');
         }
       }
@@ -11359,7 +11378,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // ticks, labels read horizontally past the bar. Pull all vertices
     // into screen space so we can find the outward perpendicular for
     // each face automatically (works regardless of stack height).
-    const totalH_cm = PALLET_DECK + showLayers * stackPitchH;
+    const totalH_cm = palletDeckCm + showLayers * stackPitchH;
     const v3 = {
       bbl: isoProj(0,        0,         0,        s, ox, oy),
       bbr: isoProj(PALLET_L, 0,         0,        s, ox, oy),
@@ -11579,11 +11598,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         Math.floor(HC_INTERIOR_L / PALLET_L) * Math.floor(HC_INTERIOR_W_CM / PALLET_W),
         Math.floor(HC_INTERIOR_L / PALLET_W) * Math.floor(HC_INTERIOR_W_CM / PALLET_L)
       );
-      // Current pallet stack height (deck + product stack including pad)
-      const currentPalletStackCm = PALLET_DECK + maxLayers * stackPitchH;
+      // Current stack height. Pallet mode includes the 15 cm deck;
+      // loose-load mode floor-loads so the stack is just cargo.
+      const currentPalletStackCm = palletDeckCm + maxLayers * stackPitchH;
       const currentVerticalLayers = Math.max(1, Math.min(2, Math.floor(HC_INTERIOR_H / currentPalletStackCm)));
-      // Threshold: max product-stack height for 2-pallet vertical stack
-      const maxStackForDoubleCm = (HC_INTERIOR_H - 2 * PALLET_DECK) / 2;
+      // Threshold: max cargo-stack height for 2-pallet vertical stack.
+      // Loose-load mode has no deck so the cargo-only allowance grows
+      // by the deck's 15 cm × 2 = 30 cm of freed vertical room.
+      const maxStackForDoubleCm = (HC_INTERIOR_H - 2 * palletDeckCm) / 2;
       const maxStackForDoubleIn = Math.floor(maxStackForDoubleCm / 2.54);
       const currentMaxHeightIn = parseFloat(document.getElementById('pallet-max-height')?.value) || 60;
       if (currentVerticalLayers === 1 && bH > 0 &&
@@ -11594,7 +11616,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const newUnitsPerPallet = perLayer * newLayersInPallet;
         const newPalletsPerContainer = palletsPerLayerInContainer * 2;
         const newUnitsPerContainer = newUnitsPerPallet * newPalletsPerContainer;
-        const newPalletStackCm = PALLET_DECK + newLayersInPallet * stackPitchH;
+        const newPalletStackCm = palletDeckCm + newLayersInPallet * stackPitchH;
         const newPalletCbm = (PALLET_L * PALLET_W * newPalletStackCm) / 1_000_000;
         // Container after FULLY loading with 2-stacked pallets
         const fullContainerCbmUsed = newPalletCbm * newPalletsPerContainer;
