@@ -10162,17 +10162,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pc  = _msIntFromInput(document.getElementById('case-only-products-per'));
     const co  = _msIntFromInput(document.getElementById('case-only-cases-order'));
     const wt  = parseFloat(document.getElementById('case-only-weight-kg')?.value) || 0;
+    const lCm = parseFloat(document.getElementById('case-only-l-cm')?.value) || 0;
+    const wCm = parseFloat(document.getElementById('case-only-w-cm')?.value) || 0;
+    const hCm = parseFloat(document.getElementById('case-only-h-cm')?.value) || 0;
     const hint = document.getElementById('case-only-hint');
     if (hint) {
       if (pc > 0 && co > 0) {
         const totalProducts = pc * co;
         const totalKg = wt > 0 ? wt * co : 0;
         const totalLb = totalKg * 2.20462;
+        // CBM per case = L × W × H (cm) / 1,000,000 → m³. Total CBM
+        // scales linearly with case count. Shown as N.NN m³ at high
+        // volumes, N.NNN m³ when the per-case volume is sub-litre.
+        const cbmPer   = (lCm > 0 && wCm > 0 && hCm > 0) ? (lCm * wCm * hCm) / 1_000_000 : 0;
+        const cbmTotal = cbmPer * co;
         const fmt = (n) => n < 10 ? n.toFixed(2) : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+        const fmtCbm = (m3) => m3 < 0.01
+          ? m3.toFixed(4) + ' m³'
+          : (m3 < 1 ? m3.toFixed(3) + ' m³' : m3.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' m³');
         const wPart = totalKg > 0
           ? ` &nbsp;·&nbsp; <strong>${fmt(totalKg)} kg</strong> <span style="opacity:0.7;">/ ${fmt(totalLb)} lb</span> total weight`
           : '';
-        hint.innerHTML = `↳ <strong>${totalProducts.toLocaleString()}</strong> products across <strong>${co.toLocaleString()}</strong> case${co === 1 ? '' : 's'}${wPart}`;
+        const cbmPart = cbmPer > 0
+          ? `<br>↳ Volume: <strong>${fmtCbm(cbmPer)}</strong> per case &nbsp;·&nbsp; <strong>${fmtCbm(cbmTotal)}</strong> total (${co.toLocaleString()} case${co === 1 ? '' : 's'})`
+          : '';
+        hint.innerHTML = `↳ <strong>${totalProducts.toLocaleString()}</strong> products across <strong>${co.toLocaleString()}</strong> case${co === 1 ? '' : 's'}${wPart}${cbmPart}`;
       } else {
         hint.innerHTML = 'Enter Products/Case + Cases/Order + case L × W × H to drive the pallet view.';
       }
