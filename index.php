@@ -13509,19 +13509,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const price = perUnitRmb > 0 ? perUnitRmb.toFixed(2) : '';
     // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
     rows.forEach(row => { row.dataset.price = price; });
-    // Sync qty into first tier row:
-    //   • Variants present → use grand total qty (sum of all variants)
-    //   • Insert-only mode → use first RFQ row's qty (legacy behavior)
+    // Sync qty into first tier row from the RFQ Grand Total qty
+    // (sum across every line item + every variant). This is the single
+    // source of truth — never just "the first row's qty," which was an
+    // accidental legacy: a workbook with two RFQ rows summing to 110,000
+    // would otherwise paint tier 1 with just the first row's qty.
+    // Fallback to first row only when ps hasn't been computed yet.
     let rfqQty = '';
-    if (ps && ps.hasVariants && ps.grandQty > 0) {
+    if (ps && ps.grandQty > 0) {
       rfqQty = String(ps.grandQty);
     } else {
       const rfqFirstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):first-child');
       const rfqInputs = rfqFirstRow ? rfqFirstRow.querySelectorAll('input:not([type="checkbox"])') : [];
       rfqQty = rfqInputs[2]?.value || '';
     }
-    const firstTierQtyInput = rows[0].querySelector('input[type="number"]');
-    if (firstTierQtyInput && rfqQty) firstTierQtyInput.value = rfqQty;
+    // Tier 1 qty input is type="text" with inputmode="numeric" (so it can
+    // hold thousands-separator commas). Grab the first <input> in the row
+    // — that's always the qty cell. Setting .value on a readonly input
+    // from JS is fine; readonly only blocks user typing.
+    const firstTierQtyInput = rows[0].querySelector('input');
+    if (firstTierQtyInput && rfqQty) {
+      const rawQty = parseInt(_msStripCommasStr(rfqQty), 10);
+      firstTierQtyInput.value = rawQty > 0 ? rawQty.toLocaleString('en-US') : '';
+    }
     // Recalc all rows
     _syncing = true;
     rows.forEach(row => {
