@@ -2070,6 +2070,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       filter: grayscale(0.4);
       transition: opacity 0.2s, filter 0.2s;
     }
+    /* Total Units to Ship input goes read-only + visually muted when
+       Case Only Override auto-derives the total from
+       products-per-case × cases-per-order. Operator can see the
+       value is locked without us having to bake disabled styling
+       into the input element. */
+    input[data-case-locked="1"] {
+      background: var(--surface2) !important;
+      color: var(--text-muted) !important;
+      cursor: not-allowed;
+    }
     /* Whole Pallet View card grays out — dim-driven pallet + container
        math is meaningless when the operator is shipping by case weight
        only. Header stays interactive so the section can still be
@@ -10152,6 +10162,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     if (weightOnlyEl)   weightOnlyEl.disabled   = on;
     if (palletManualEl) palletManualEl.disabled = on;
+    // Restore the Total Units input + hint when turning OFF so the
+    // operator can type freely / re-sync from RFQ. onCaseOnlyChanged
+    // will re-lock + re-derive when ON.
+    if (!on) {
+      const palletTotalEl = document.getElementById('pallet-total-cartons');
+      if (palletTotalEl) {
+        palletTotalEl.readOnly = false;
+        delete palletTotalEl.dataset.caseLocked;
+      }
+      if (typeof _refreshPalletTotalHint === 'function') _refreshPalletTotalHint();
+    }
     onCaseOnlyChanged();
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof syncShippingDims === 'function') syncShippingDims();
@@ -10165,6 +10186,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const lCm = parseFloat(document.getElementById('case-only-l-cm')?.value) || 0;
     const wCm = parseFloat(document.getElementById('case-only-w-cm')?.value) || 0;
     const hCm = parseFloat(document.getElementById('case-only-h-cm')?.value) || 0;
+    // Auto-mirror products-per-case × cases-per-order into the Total
+    // Units to Ship input so the pallet view + container math + Last
+    // Container Room-to-Fill all read the case-derived total instead
+    // of a stale RFQ Grand Total qty. The input is also flagged
+    // read-only via data-case-locked so the field visibly grays out
+    // (handled in CSS) and any typed override gets ignored.
+    const palletTotalEl = document.getElementById('pallet-total-cartons');
+    if (palletTotalEl) {
+      const caseOn = !!document.getElementById('case-only-override')?.checked;
+      if (caseOn && pc > 0 && co > 0) {
+        const total = pc * co;
+        palletTotalEl.value = total.toLocaleString('en-US');
+        palletTotalEl.readOnly = true;
+        palletTotalEl.dataset.caseLocked = '1';
+        palletTotalEl.dataset.looseTopOff = '';   // clear any stale loose flag
+        palletTotalEl.dataset.lastRfqSync  = '';  // case-only overrides the RFQ sync
+        // Update the hint under the input so it stops promising an
+        // RFQ Grand Total auto-fill that doesn't apply in case mode.
+        const palletTotalHint = document.getElementById('pallet-total-hint');
+        if (palletTotalHint) {
+          palletTotalHint.innerHTML = `Auto-derived from <strong>Case Only Override</strong>: ${pc.toLocaleString()} products/case × ${co.toLocaleString()} cases = <strong>${total.toLocaleString()}</strong> products.`;
+        }
+      } else if (caseOn) {
+        // Case mode is on but Products/Case or Cases/Order isn't filled
+        // in yet — clear the input + lock so we don't carry a stale RFQ
+        // qty forward.
+        palletTotalEl.value = '';
+        palletTotalEl.readOnly = true;
+        palletTotalEl.dataset.caseLocked = '1';
+      } else {
+        palletTotalEl.readOnly = false;
+        delete palletTotalEl.dataset.caseLocked;
+      }
+    }
     const hint = document.getElementById('case-only-hint');
     if (hint) {
       if (pc > 0 && co > 0) {
@@ -10605,14 +10660,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const looseTopOffUnits = parseInt(looseTopOffStr) || 0;
     if (looseTopOffUnits > 0 && palletsToShow > 0) {
       const _manualOn = !!document.getElementById('pallet-manual')?.checked;
+      const _caseOnly = !!document.getElementById('case-only-override')?.checked;
       const get = id => parseFloat(document.getElementById(id)?.value) || 0;
-      const boxL = _manualOn ? get('dim-cm-l') : get('carton-outer-l-cm');
-      const boxW = _manualOn ? get('dim-cm-w') : get('carton-outer-w-cm');
-      const boxH = _manualOn ? get('dim-cm-h') : get('carton-outer-h-cm');
+      // Pick the right box dims for the BLUE loose-load draw based on
+      // which override is active. case-only ships cases, so the loose
+      // boxes use case dims; manual mode ships products direct;
+      // default carton mode uses outer-carton dims.
+      const boxL = _caseOnly ? get('case-only-l-cm') : (_manualOn ? get('dim-cm-l') : get('carton-outer-l-cm'));
+      const boxW = _caseOnly ? get('case-only-w-cm') : (_manualOn ? get('dim-cm-w') : get('carton-outer-w-cm'));
+      const boxH = _caseOnly ? get('case-only-h-cm') : (_manualOn ? get('dim-cm-h') : get('carton-outer-h-cm'));
       const _innerQty = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
       const _outerQty = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
       const _ppo = (_innerQty > 0 && _outerQty > 0) ? _innerQty * _outerQty : 0;
-      const productsPerBox = _manualOn ? 1 : (_ppo || 1);
+      const _casePer = _msIntFromInput(document.getElementById('case-only-products-per'));
+      // products-per-box = 1 for manual mode (each loose unit is a
+      // product), the case's products-per-case count in case-only
+      // mode, and inner × outer for default carton mode.
+      const productsPerBox = _caseOnly ? (_casePer || 1) : (_manualOn ? 1 : (_ppo || 1));
       const looseBoxesToDraw = Math.max(0, Math.ceil(looseTopOffUnits / productsPerBox));
       if (boxL > 0 && boxW > 0 && boxH > 0 && looseBoxesToDraw > 0) {
         // Door-end strip = the x-range between the last pallet column
@@ -11509,9 +11573,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _caseCasesOrder  = _msIntFromInput(document.getElementById('case-only-cases-order'));
     const _caseTotalProducts = (_caseProductsPer > 0 && _caseCasesOrder > 0)
       ? (_caseProductsPer * _caseCasesOrder) : 0;
+    // In case-only mode the base shipment qty comes from Cases/Order ×
+    // Products/Case. When the operator presses Top Off / Fill the
+    // pallet-total-cartons input gets bumped ABOVE that base and the
+    // extra products land as loose top-off — so totalUnits picks the
+    // LARGER of the two so Top Off survives even though the input
+    // re-fills automatically on every case-field change.
+    const _palletTotalInput = _msIntFromInput(document.getElementById('pallet-total-cartons'));
     const totalUnits   = caseOn
-      ? _caseTotalProducts
-      : _msIntFromInput(document.getElementById('pallet-total-cartons'));
+      ? Math.max(_caseTotalProducts, _palletTotalInput)
+      : _palletTotalInput;
     // Loose top-off count (in PRODUCTS) — stashed by "↻ Top Off" so the
     // last container's leftover CBM gets blue cardboard boxes in the
     // viz. The loose units must be SUBTRACTED before computing
