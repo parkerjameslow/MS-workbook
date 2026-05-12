@@ -10181,12 +10181,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ? m3.toFixed(4) + ' m³'
           : (m3 < 1 ? m3.toFixed(3) + ' m³' : m3.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' m³');
         const wPart = totalKg > 0
-          ? ` &nbsp;·&nbsp; <strong>${fmt(totalKg)} kg</strong> <span style="opacity:0.7;">/ ${fmt(totalLb)} lb</span> total weight`
+          ? `<br>↳ Weight: <strong>${fmt(totalKg)} kg</strong> <span style="opacity:0.7;">/ ${fmt(totalLb)} lb</span> total (${fmt(wt)} kg × ${co.toLocaleString()})`
           : '';
         const cbmPart = cbmPer > 0
           ? `<br>↳ Volume: <strong>${fmtCbm(cbmPer)}</strong> per case &nbsp;·&nbsp; <strong>${fmtCbm(cbmTotal)}</strong> total (${co.toLocaleString()} case${co === 1 ? '' : 's'})`
           : '';
-        hint.innerHTML = `↳ <strong>${totalProducts.toLocaleString()}</strong> products across <strong>${co.toLocaleString()}</strong> case${co === 1 ? '' : 's'}${wPart}${cbmPart}`;
+        // Lead with the explicit multiplication so the operator can
+        // read the total at a glance: "2,500 × 40 = 100,000 products"
+        hint.innerHTML = `↳ <strong>${pc.toLocaleString()}</strong> × <strong>${co.toLocaleString()}</strong> = <strong style="color:var(--accent);">${totalProducts.toLocaleString()}</strong> products${wPart}${cbmPart}`;
       } else {
         hint.innerHTML = 'Enter Products/Case + Cases/Order + case L × W × H to drive the pallet view.';
       }
