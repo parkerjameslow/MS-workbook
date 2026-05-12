@@ -11178,12 +11178,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       })()}`;
   }
 
+  // Safety wrapper — any uncaught exception inside the pallet render
+  // used to bubble all the way up to _fillWorkbookInner and bork the
+  // "Could not load this workbook" path. Log + swallow so the rest of
+  // the workbook stays loadable even if a future edit introduces a
+  // TDZ / null-ref in this huge function.
   function renderPalletViz() {
+    try { _renderPalletVizInner(); }
+    catch (e) { try { console.error('[MS renderPalletViz]', e); } catch (_) {} }
+  }
+  function _renderPalletVizInner() {
     const canvas = document.getElementById('pallet-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const CW = canvas.width, CH = canvas.height;
     ctx.clearRect(0, 0, CW, CH);
+    // ── Load-mode resolution (HOISTED) ────────────────────────────────
+    // Pallet vs Loose-Load radio on the Pallet View card. Declared at
+    // the top of the function so every downstream block can reference
+    // _looseLoad without tripping the const-TDZ — earlier the deck-
+    // height path used _looseLoad before it was declared further down,
+    // which threw a ReferenceError and killed workbook loading.
+    const _loadMode = (typeof _palletLoadMode === 'function') ? _palletLoadMode() : 'pallet';
+    const _looseLoad = _loadMode === 'loose';
 
     // Mode resolution — three mutually-exclusive overrides plus the
     // default carton-driven path:
@@ -11565,9 +11582,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Standard wood pallet tare weight ≈ 45 lb (≈ 20.41 kg). Dropped
     // out of every total when the operator has picked Loose Load on
     // the Pallet View card — the cargo floor-loads straight onto the
-    // container, no pallet underneath.
-    const _loadMode = (typeof _palletLoadMode === 'function') ? _palletLoadMode() : 'pallet';
-    const _looseLoad = _loadMode === 'loose';
+    // container, no pallet underneath. _looseLoad is resolved at the
+    // top of the function (hoisted) so this stays a one-line check.
     const PALLET_TARE_LB = _looseLoad ? 0 : 45;
     const PALLET_TARE_KG = PALLET_TARE_LB * 0.453592; // ≈ 20.41 (0 when loose)
     const palletWeightKg = unitWeightKg > 0
