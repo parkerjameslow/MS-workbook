@@ -11108,7 +11108,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _renderContainerHypotheticals(ctx) {
     const host = document.getElementById('container-hypothetical');
     if (!host) return;
-    const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
     const caseOn     = !!document.getElementById('case-only-override')?.checked;
     const manualOn   = !caseOn && !!document.getElementById('pallet-manual')?.checked;
     const innerQty   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
@@ -11125,8 +11124,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _caseProductsPer = caseOn
       ? _msIntFromInput(document.getElementById('case-only-products-per'))
       : 0;
+    const _caseCasesOrder  = caseOn
+      ? _msIntFromInput(document.getElementById('case-only-cases-order'))
+      : 0;
     const productsPerItem  = caseOn ? (_caseProductsPer || 1)
                            : (manualOn ? 1 : (productsPerOuter || 0));
+    // totalUnits — match renderPalletViz's resolution. In Case Only
+    // mode, pallet-total-cartons may briefly be empty (auto-fill via
+    // onCaseOnlyChanged hasn't fired yet, or a transient state during
+    // load), but products/case × cases/order is the authoritative
+    // total. Without this fallback the panel bailed with "Enter Total
+    // Units to Ship" while the rest of the pallet/container math
+    // already had palletsNeeded > 0 from the same case-derived total.
+    const _palletTotalInput = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+    const _caseTotalProducts = (caseOn && _caseProductsPer > 0 && _caseCasesOrder > 0)
+      ? (_caseProductsPer * _caseCasesOrder) : 0;
+    const totalUnits = caseOn
+      ? Math.max(_caseTotalProducts, _palletTotalInput)
+      : _palletTotalInput;
     // Per-unit USD product price — required for cost math. If the
     // shared _lastRfqPriceSummary hasn't been computed yet (load-time
     // race when fillWorkbook calls renderPalletViz before its later
