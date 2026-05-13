@@ -13,6 +13,23 @@ $_msBuildId = @filemtime(__FILE__) ?: time();
 $_msBuildIso = date('Y-m-d H:i', $_msBuildId);
 header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $_msBuildId) . ' GMT');
 header('ETag: "' . dechex($_msBuildId) . '"');
+// Server-side cache bust: if the URL doesn't carry ?v=<current build>,
+// send a 302 to the same URL with the correct ?v=. This fires BEFORE
+// any HTML body, so Bluehost edge caching / browser-disk caching
+// can't serve a "200 with stale body" — the redirect itself is a
+// brand-new resource keyed on the new query string, and intermediate
+// caches treat the destination URL as unseen.
+$_msReqV   = isset($_GET['v']) ? (string)$_GET['v'] : '';
+$_msWantV  = (string)$_msBuildId;
+if ($_msReqV !== $_msWantV) {
+  $_msUri = $_SERVER['REQUEST_URI'] ?? '/index.php';
+  // Strip any existing v= so we don't end up with v=old&v=new.
+  $_msUri = preg_replace('/([?&])v=[^&]*(&|$)/', '$1', $_msUri);
+  $_msUri = rtrim($_msUri, '?&');
+  $_msUri .= (strpos($_msUri, '?') === false ? '?' : '&') . 'v=' . urlencode($_msWantV);
+  header('Location: ' . $_msUri, true, 302);
+  exit;
+}
 $_msUser     = htmlspecialchars($_SESSION['display_name'] ?? $_SESSION['username'] ?? '', ENT_QUOTES);
 $_msRole     = $_SESSION['role'] ?? 'user';
 $_msUserId   = (int)($_SESSION['user_id'] ?? 0);
