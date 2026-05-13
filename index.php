@@ -11091,11 +11091,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const host = document.getElementById('container-hypothetical');
     if (!host) return;
     const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
-    const manualOn   = !!document.getElementById('pallet-manual')?.checked;
+    const caseOn     = !!document.getElementById('case-only-override')?.checked;
+    const manualOn   = !caseOn && !!document.getElementById('pallet-manual')?.checked;
     const innerQty   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
     const outerQty   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
     const productsPerOuter = (innerQty > 0 && outerQty > 0) ? innerQty * outerQty : 0;
-    const productsPerItem  = manualOn ? 1 : (productsPerOuter || 0);
+    // In case-only mode the ship unit is the CASE, and the products-per-
+    // item ratio = products/case from the Case Only block. Without this
+    // branch the panel falls back to productsPerOuter (which is 0 in
+    // case-only mode because the inner/outer carton fields are empty),
+    // so palletProducts = palletItems × 0 = 0 — the "Full Container
+    // Pitch" then only counts the loose top-off (× 1 via the || 1
+    // fallback below), producing absurd totals like "+1,388" instead
+    // of the real "+1.2M products to fill ~33 empty pallet slots."
+    const _caseProductsPer = caseOn
+      ? _msIntFromInput(document.getElementById('case-only-products-per'))
+      : 0;
+    const productsPerItem  = caseOn ? (_caseProductsPer || 1)
+                           : (manualOn ? 1 : (productsPerOuter || 0));
     // Per-unit USD product price — required for any pricing math.
     const ps = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary) || null;
     let usdPerUnit = 0;
@@ -11326,18 +11339,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // 220 cm meant 22 cm) or accept this is a corner case for ops to
     // handle off-system.
     if (perLayer === 0) {
-      const noun     = manualOn ? 'Product' : 'Outer carton';
-      const lcNoun   = manualOn ? 'product' : 'outer carton';
-      const remedy   = manualOn
-        ? 'Double-check the product dimensions — a 40 × 48 in (101.6 × 121.9 cm) pallet base can\'t hold this footprint. If this is intentional (oversized crate), it must be handled outside the pallet calculator.'
-        : 'Try reducing the <strong>inner cartons / outer</strong> qty so the outer carton fits on the pallet.';
+      const noun     = caseOn ? 'Case'  : (manualOn ? 'Product' : 'Outer carton');
+      const lcNoun   = caseOn ? 'case'  : (manualOn ? 'product' : 'outer carton');
+      const remedy   = caseOn
+        ? 'Double-check the case dimensions in the Case Only Override block — a 40 × 48 in (101.6 × 121.9 cm) pallet base can\'t hold this footprint.'
+        : (manualOn
+          ? 'Double-check the product dimensions — a 40 × 48 in (101.6 × 121.9 cm) pallet base can\'t hold this footprint. If this is intentional (oversized crate), it must be handled outside the pallet calculator.'
+          : 'Try reducing the <strong>inner cartons / outer</strong> qty so the outer carton fits on the pallet.');
       ctx.fillStyle = '#aaa';
       ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`${noun} is too large for a 40 × 48 pallet.`, CW/2, CH/2 - 10);
       ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillText(`${noun}: ${bL.toFixed(1)} × ${bW.toFixed(1)} cm — Pallet: ${PALLET_L} × ${PALLET_W} cm`, CW/2, CH/2 + 10);
-      if (!manualOn) ctx.fillText('Try reducing the number of inner cartons per outer.', CW/2, CH/2 + 28);
+      if (!manualOn && !caseOn) ctx.fillText('Try reducing the number of inner cartons per outer.', CW/2, CH/2 + 28);
       document.getElementById('pallet-stats').innerHTML = `
         <div style="color:#f59e0b; font-size:13px; font-weight:600; margin-bottom:8px;">⚠ ${noun} exceeds pallet dimensions</div>
         <div style="font-size:12px; color:var(--text-muted); line-height:1.6;">
@@ -11347,9 +11362,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const inlineEl = document.getElementById('pallet-inline-stats');
       if (inlineEl) {
         inlineEl.style.display = '';
-        inlineEl.innerHTML = manualOn
-          ? `<span style="color:#f59e0b;">⚠ Product too large for pallet base — check dimensions</span>`
-          : `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`;
+        inlineEl.innerHTML = caseOn
+          ? `<span style="color:#f59e0b;">⚠ Case too large for pallet base — check case dimensions</span>`
+          : (manualOn
+            ? `<span style="color:#f59e0b;">⚠ Product too large for pallet base — check dimensions</span>`
+            : `<span style="color:#f59e0b;">⚠ Outer carton too large for pallet — reduce inner cartons / outer</span>`);
       }
       // Even when the current box overhangs, surface a fit suggestion
       // if an outer carton is filled in and shrinking it lands a clean
@@ -11387,7 +11404,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (layerHintEl) {
       if (bH > 0) {
         const layerInRound = Math.ceil(stackPitchH / 2.54);
-        const noun = manualOn ? 'product' : 'carton';
+        const noun = caseOn ? 'case' : (manualOn ? 'product' : 'carton');
         layerHintEl.innerHTML = `Each ${noun} row: <strong>~${layerInRound}"</strong> <span style="opacity:0.7;">(${stackPitchH.toFixed(1)} cm${dividerOn ? ' incl. 4mm pad' : ''})</span>`;
       } else {
         layerHintEl.textContent = '';
@@ -11559,10 +11576,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // divider gap so 100% means the items themselves cover the pallet).
     const surfaceUse = Math.round((layout.cols * drawL * layout.rows * drawW) / (PALLET_L * PALLET_W) * 100);
     // totalPerPallet always means "items (products in manual mode /
-    // outer cartons in carton mode) per pallet"
+    // outer cartons in carton mode / cases in case-only mode) per pallet"
     const totalPerPallet = perLayer * maxLayers;
-    const unitWord  = manualOn ? 'unit' : 'outer carton';
-    const unitWordP = manualOn ? 'units' : 'outer cartons';
+    const unitWord  = caseOn ? 'case'  : (manualOn ? 'unit'  : 'outer carton');
+    const unitWordP = caseOn ? 'cases' : (manualOn ? 'units' : 'outer cartons');
 
     // The "Total Units to Ship" input is normally interpreted as
     // PRODUCT count, regardless of mode. In CASE ONLY override mode
@@ -11786,17 +11803,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         </div>` : `
         <div style="grid-column:span 2; font-size:11px; color:var(--text-muted); padding:6px 0; line-height:1.5;">
-          Enter ${manualOn ? 'product' : 'outer carton'} weight in the dimensions section to see weight per ${unitWord} and per pallet.
+          Enter ${caseOn ? 'case' : (manualOn ? 'product' : 'outer carton')} weight in the ${caseOn ? 'Case Only Override block' : 'dimensions section'} to see weight per ${unitWord} and per pallet.
         </div>`}
         ${productsPerOuter > 0 ? `
-        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${outerQtyVal}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">inner cartons / outer</div></div>
-        <div><div style="font-size:22px; font-weight:700; color:var(--text);">${productsPerOuter}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">products / outer carton</div></div>` : ''}
+        ${caseOn
+          ? `<div style="grid-column:span 2;"><div style="font-size:22px; font-weight:700; color:var(--text);">${productsPerOuter.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">products / case</div></div>`
+          : `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${outerQtyVal}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">inner cartons / outer</div></div>
+             <div><div style="font-size:22px; font-weight:700; color:var(--text);">${productsPerOuter}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">products / outer carton</div></div>`}` : ''}
       </div>
       ${totalUnits > 0 ? `
       <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:10px;">Shipment of ${totalUnits.toLocaleString()} units</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-          ${!manualOn && totalCartons > 0 ? `<div style="grid-column:span 2;"><div style="font-size:18px; font-weight:700; color:var(--text);">${totalCartons.toLocaleString()} <span style="font-size:11px; font-weight:500; color:var(--text-muted);">outer cartons</span></div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${productsPerOuter > 0 ? `${productsPerOuter} products / outer carton` : ''}</div></div>` : ''}
+          ${!manualOn && totalCartons > 0 ? `<div style="grid-column:span 2;"><div style="font-size:18px; font-weight:700; color:var(--text);">${totalCartons.toLocaleString()} <span style="font-size:11px; font-weight:500; color:var(--text-muted);">${unitWordP}</span></div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${productsPerOuter > 0 ? `${productsPerOuter} products / ${unitWord}` : ''}</div></div>` : ''}
           <div><div style="font-size:22px; font-weight:700; color:var(--accent);">${palletsNeeded || 0}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">pallets needed</div></div>
           ${unitWeightKg > 0 ? `<div>
             <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg * totalCartons + dividerWeightPerPalletKg * (palletsNeeded || 0) + PALLET_TARE_KG * (palletsNeeded || 0))}</div>
@@ -11816,17 +11835,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               // (productsPerOuter > 0). Uses the OUTER CARTON dims so
               // the operator can sanity-check carton count + size at
               // a glance, even when in manual mode.
-              const outerL = parseFloat(document.getElementById('carton-outer-l-cm')?.value);
-              const outerW = parseFloat(document.getElementById('carton-outer-w-cm')?.value);
-              const outerH = parseFloat(document.getElementById('carton-outer-h-cm')?.value);
+              // In case-only mode the ship unit is the case (its dims
+              // come from the Case Only block), so read those instead of
+              // the outer carton fields (which are grayed out + empty).
+              const dimL = caseOn
+                ? parseFloat(document.getElementById('case-only-l-cm')?.value)
+                : parseFloat(document.getElementById('carton-outer-l-cm')?.value);
+              const dimW = caseOn
+                ? parseFloat(document.getElementById('case-only-w-cm')?.value)
+                : parseFloat(document.getElementById('carton-outer-w-cm')?.value);
+              const dimH = caseOn
+                ? parseFloat(document.getElementById('case-only-h-cm')?.value)
+                : parseFloat(document.getElementById('carton-outer-h-cm')?.value);
               if (productsPerOuter > 0) {
                 const cartonsNeeded = Math.ceil(totalProducts / productsPerOuter);
-                const dimStr = (outerL && outerW && outerH)
-                  ? ` at <strong>${outerL.toFixed(1)} × ${outerW.toFixed(1)} × ${outerH.toFixed(1)} cm</strong>`
+                const dimStr = (dimL && dimW && dimH)
+                  ? ` at <strong>${dimL.toFixed(1)} × ${dimW.toFixed(1)} × ${dimH.toFixed(1)} cm</strong>`
                   : '';
+                const noun = caseOn ? 'case' : 'outer carton';
+                const perSuffix = caseOn ? '/ case' : '/ outer';
                 return `<div style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4; opacity:0.85;">
-                  &nbsp;↳ fills <strong>${cartonsNeeded.toLocaleString()}</strong> outer carton${cartonsNeeded === 1 ? '' : 's'}${dimStr}
-                  <span style="opacity:0.7;">(${productsPerOuter.toLocaleString()} / outer)</span>
+                  &nbsp;↳ fills <strong>${cartonsNeeded.toLocaleString()}</strong> ${noun}${cartonsNeeded === 1 ? '' : 's'}${dimStr}
+                  <span style="opacity:0.7;">(${productsPerOuter.toLocaleString()} ${perSuffix})</span>
                 </div>`;
               }
               return '';
@@ -11835,7 +11865,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>` : ''}
       <div style="margin-top:14px; font-size:11px; color:var(--text-muted); padding-top:12px; border-top:1px solid var(--border);">
-        ${manualOn ? 'Product' : 'Box'} orientation: ${drawL.toFixed(1)} × ${drawW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer${dividerOn ? ` &nbsp;·&nbsp; <span style="color:var(--accent); font-weight:600;">+ 4 mm dividers</span>` : ''}${manualOn ? '<br><span style="color:var(--accent); font-weight:600;">Manual mode — fitting products directly on pallet base.</span>' : ''}
+        ${caseOn ? 'Case' : (manualOn ? 'Product' : 'Box')} orientation: ${drawL.toFixed(1)} × ${drawW.toFixed(1)} cm &nbsp;·&nbsp; ${layout.cols} × ${layout.rows} per layer${dividerOn ? ` &nbsp;·&nbsp; <span style="color:var(--accent); font-weight:600;">+ 4 mm dividers</span>` : ''}${manualOn ? '<br><span style="color:var(--accent); font-weight:600;">Manual mode — fitting products directly on pallet base.</span>' : ''}${caseOn ? '<br><span style="color:var(--accent); font-weight:600;">Case Only Override — fitting cases directly on pallet base.</span>' : ''}
       </div>
       ${optimizationTipHTML}`;
 
@@ -14902,17 +14932,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
         case 'pallet': {
           // Pallet stats are computed by the existing pallet renderer
-          // and stashed on window._palletStats. Show cartons/pallet +
+          // and stashed on window._palletStats. Show items/pallet +
           // layer count + total pallets needed if all are available.
+          // Label varies by mode: cases (case-only), units (manual),
+          // cartons (default).
           const ps = window._palletStats;
           if (!ps) { _setSectionSummary('pallet', ''); break; }
           const perPallet  = parseInt(ps.totalPerPallet || 0);
           const layers     = parseInt(ps.maxLayers || 0);
           const palletsNeeded = parseInt(ps.palletsNeeded || 0);
           if (!perPallet) { _setSectionSummary('pallet', ''); break; }
+          const _caseOn   = !!document.getElementById('case-only-override')?.checked;
+          const _manualOn = !_caseOn && !!document.getElementById('pallet-manual')?.checked;
+          const perPalletLabel = _caseOn ? 'Cases / Pallet' : (_manualOn ? 'Units / Pallet' : 'Cartons / Pallet');
           _setSectionSummary('pallet',
             `<div class="ss-row">` +
-              `<span class="ss-label">Cartons / Pallet</span>` +
+              `<span class="ss-label">${perPalletLabel}</span>` +
               `<span class="ss-value ss-value--accent">${_ssFmtInt(perPallet)}</span>` +
               (layers > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${layers} layer${layers === 1 ? '' : 's'}</span>` : '') +
               (palletsNeeded > 0 ? `<span class="ss-divider">·</span><span class="ss-value">${palletsNeeded} pallet${palletsNeeded === 1 ? '' : 's'} needed</span>` : '') +
