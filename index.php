@@ -4,6 +4,15 @@ requireAuth();
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
+// Server build identifier — file mtime of index.php. Used as a
+// cache-busting suffix on the document so any intermediate caches
+// (bfcache, proxies, browser disk cache) can't serve a stale snapshot
+// without us noticing — the operator can read the badge bottom-right
+// to confirm what build they're actually on.
+$_msBuildId = @filemtime(__FILE__) ?: time();
+$_msBuildIso = date('Y-m-d H:i', $_msBuildId);
+header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $_msBuildId) . ' GMT');
+header('ETag: "' . dechex($_msBuildId) . '"');
 $_msUser     = htmlspecialchars($_SESSION['display_name'] ?? $_SESSION['username'] ?? '', ENT_QUOTES);
 $_msRole     = $_SESSION['role'] ?? 'user';
 $_msUserId   = (int)($_SESSION['user_id'] ?? 0);
@@ -27537,5 +27546,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
 </script>
+<!-- Build badge — bottom-right, shows the server file mtime so the
+     operator can confirm a hard refresh actually picked up the latest
+     deploy. If a fix doesn't appear to land, the timestamp here tells
+     us instantly whether the browser is on stale JS. -->
+<div id="ms-build-badge"
+     style="position:fixed; bottom:6px; right:8px; z-index:9999; font: 10px/1 -apple-system,BlinkMacSystemFont,sans-serif; color:#9ca3af; background:rgba(255,255,255,0.7); padding:3px 6px; border-radius:4px; pointer-events:none; user-select:none;">
+  build <?= htmlspecialchars($_msBuildIso, ENT_QUOTES) ?>
+</div>
 </body>
 </html>
