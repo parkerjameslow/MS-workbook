@@ -10869,12 +10869,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _looseUnitsCV = parseInt(_looseStrCV) || 0;
     // Convert loose products → loose-cardboard-cartons via the same
     // products-per-item ratio used when stashing (1 in manual mode,
-    // products-per-outer-carton in carton mode).
-    const _innerCV   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
-    const _outerCV   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-    const _ppoCV     = (_innerCV > 0 && _outerCV > 0) ? _innerCV * _outerCV : 0;
-    const _manualCV  = !!document.getElementById('pallet-manual')?.checked;
-    const _ppiCV     = _manualCV ? 1 : (_ppoCV || 1);
+    // products-per-outer-carton in carton mode, products-per-case in
+    // case-only mode). Without the case-only branch, _ppiCV falls
+    // through to 1 and the loose top-off (stored as PRODUCTS) gets
+    // treated as raw cases — multiplying its CBM by 44× and
+    // collapsing cbmRoomLeft → looseItems → +0 in the Hypothetical
+    // Scenarios.
+    const _caseOnCV   = !!document.getElementById('case-only-override')?.checked;
+    const _innerCV    = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    const _outerCV    = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    const _ppoCV      = (_innerCV > 0 && _outerCV > 0) ? _innerCV * _outerCV : 0;
+    const _caseProdCV = _caseOnCV ? (_msIntFromInput(document.getElementById('case-only-products-per')) || 0) : 0;
+    const _manualCV   = !_caseOnCV && !!document.getElementById('pallet-manual')?.checked;
+    const _ppiCV      = _caseOnCV ? (_caseProdCV || 1)
+                       : (_manualCV ? 1 : (_ppoCV || 1));
     const _looseCartonCountCV = _ppiCV > 0 ? (_looseUnitsCV / _ppiCV) : 0;
     const _unitCbmCV = (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0;
     const _unitWtCV  = (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0;
@@ -11243,8 +11251,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // tens of thousands as previously seen).
         const snap = window._fullContainerPitchSnap;
         const isApplied = !!snap;
+        // snap.totalUnits was captured straight off the input's .value,
+        // which is comma-formatted ("110,000"). parseInt stops at the
+        // comma → 110, so the button used to read "Revert to 110 units"
+        // when the real pre-apply qty was 110,000. Strip commas first.
+        const snapRawUnits = parseInt((snap.totalUnits || '').replace(/,/g, ''), 10);
         const action = isApplied
-          ? { label: `Revert to ${parseInt(snap.totalUnits) ? parseInt(snap.totalUnits).toLocaleString() : '—'} units`,
+          ? { label: `Revert to ${snapRawUnits > 0 ? snapRawUnits.toLocaleString() : '—'} units`,
               title: 'Revert Total Units to the pre-apply value',
               call:  `revertFullContainerPitch()` }
           : { label: `Apply Full Container Pitch (${fullQty.toLocaleString()} units)`,
