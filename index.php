@@ -10692,6 +10692,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const inlineEl = document.getElementById('container-stats-inline');
     const sideEl   = document.getElementById('container-side-stats');
     const fillEl   = document.getElementById('container-fill-room');
+    // Hard-clear the room-to-fill slot upfront. Anything that wants to
+    // populate it later in this function MUST reach the if (fillEl)
+    // assignment below — otherwise we'd rather show an empty slot than
+    // leave behind stale numbers from a prior render with different
+    // shipment qty / mode. Previously a path that returned early
+    // (canvas missing, exception inside the side-stats block) would
+    // leave the panel reading e.g. "+528 more cases" long after the
+    // operator cleared the inputs that produced it.
+    if (fillEl) fillEl.innerHTML = '';
 
     // Fit pallets on the container floor — try both orientations.
     const optA = { cols: Math.floor(HC_L / PALLET_L), rows: Math.floor(HC_W / PALLET_W), pL: PALLET_L, pW: PALLET_W };
