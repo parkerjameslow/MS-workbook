@@ -11136,16 +11136,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       else if (ps.usdMin && ps.usdMin > 0)         usdPerUnit = ps.usdMin;
     }
     // Bail conditions — show a friendly stub instead of a half-baked
-    // panel when we lack the inputs needed for either scenario.
-    if (!totalUnits || !ps || !usdPerUnit || ctx.palletsNeeded <= 0) {
+    // panel when we lack the *structural* inputs (qty, pallet count).
+    // Price (usdPerUnit) is treated as soft: if it's missing we still
+    // render the A/B comparison so the operator can see the qty/pallet
+    // delta, and the cost rows show a "Add RFQ price" prompt instead
+    // of bogus $0.00 numbers.
+    if (!totalUnits || ctx.palletsNeeded <= 0) {
       const _dimReason = caseOn
         ? 'Fill in the Case Only Override block (products/case, cases/order, case L × W × H × weight) so the pallet count is known.'
         : (manualOn
           ? 'Set product dimensions so the pallet count is known.'
           : 'Set outer carton dimensions so the pallet count is known.');
       const reason = !totalUnits      ? 'Enter Total Units to Ship.'
-                   : !ps              ? 'Add an RFQ line item to enable price math.'
-                   : !usdPerUnit      ? 'Set an RFQ price so we can compute scenario cost.'
                    : _dimReason;
       host.innerHTML = `
         <div style="padding:12px 14px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.55;">
@@ -11253,30 +11255,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const labelOverride = `Freight (override)`;
     const freightLabelA = (_snapApplied && overrideUsd !== null) ? labelOverride : labelMethod;
     const freightLabelB = (overrideUsd !== null)                  ? labelOverride : labelMethod;
+    // When usdPerUnit is missing, swap every cost row for an inline
+    // prompt so the operator sees the qty/pallet delta but isn't
+    // misled by bogus $0.00 totals. The Per-unit landed row still
+    // shows the freight-per-unit (which is independent of product
+    // price) so they get a real partial-vs-full freight comparison.
+    const _needsPrice = !ps || !usdPerUnit;
+    const priceMissing = `<span style="color:var(--text-muted); font-style:italic;">Add RFQ price →</span>`;
+    const freightPerUnitA = totalUnits > 0 ? freightUsdA / totalUnits : 0;
+    const freightPerUnitB = fullQty    > 0 ? freightUsdB / fullQty    : 0;
     const linesA = [
       ['Units shipped',  totalUnits.toLocaleString()],
       ['Pallets needed', ctx.palletsNeeded.toLocaleString()],
-      ['Product cost',   fmt$(productUsdA)],
+      ['Product cost',   _needsPrice ? priceMissing : fmt$(productUsdA)],
       [freightLabelA,    fmt$(freightUsdA)],
-      ['Total landed',   `<strong style="font-size:14px;">${fmt$(totalUsdA)}</strong>`],
-      ['Per-unit landed', fmt$(landedA)]
+      ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px;">${fmt$(totalUsdA)}</strong>`],
+      [_needsPrice ? 'Freight / unit' : 'Per-unit landed', fmt$(_needsPrice ? freightPerUnitA : landedA)]
     ];
     const linesB = [
       ['Units shipped',  `${fullQty.toLocaleString()} <span style="color:#10b981; font-weight:700;">(+${additionalProducts.toLocaleString()})</span>`],
       ['Pallets needed', `${(ctx.palletsNeeded + (ctx.palletsRoomLeft || 0)).toLocaleString()}`],
-      ['Product cost',   fmt$(productUsdB)],
+      ['Product cost',   _needsPrice ? priceMissing : fmt$(productUsdB)],
       [freightLabelB,    fmt$(freightUsdB)],
-      ['Total landed',   `<strong style="font-size:14px; color:#10b981;">${fmt$(totalUsdB)}</strong>`],
-      ['Per-unit landed', `<strong style="color:#10b981;">${fmt$(landedB)}</strong>`]
+      ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px; color:#10b981;">${fmt$(totalUsdB)}</strong>`],
+      [_needsPrice ? 'Freight / unit' : 'Per-unit landed', `<strong style="color:#10b981;">${fmt$(_needsPrice ? freightPerUnitB : landedB)}</strong>`]
     ];
-    const footerB = savings > 0
-      ? `↓ <strong style="color:#10b981;">${fmt$(savings)}/unit (${savingsPct}%)</strong> lower than the partial-container scenario — filling the container with ${additionalProducts.toLocaleString()} more units spreads freight across the full load.`
-      : `Filling the container doesn't lower the per-unit landed cost at the current price point.`;
+    // Footer message: when there's a real price, show landed-cost
+    // savings. When the price is missing, show freight-per-unit
+    // savings (still meaningful — that's the whole point of filling
+    // the container) and prompt to add a price for the full landed
+    // delta.
+    const freightSavings = freightPerUnitA - freightPerUnitB;
+    const freightSavingsPct = freightPerUnitA > 0 ? Math.round((freightSavings / freightPerUnitA) * 100) : 0;
+    const footerB = _needsPrice
+      ? (freightSavings > 0
+        ? `↓ <strong style="color:#10b981;">${fmt$(freightSavings)}/unit (${freightSavingsPct}%)</strong> lower freight per unit — filling the container with ${additionalProducts.toLocaleString()} more units spreads the freight across the full load. Add an RFQ price to see the full landed-cost delta.`
+        : `Add an RFQ price to see the landed-cost savings from filling the container.`)
+      : (savings > 0
+        ? `↓ <strong style="color:#10b981;">${fmt$(savings)}/unit (${savingsPct}%)</strong> lower than the partial-container scenario — filling the container with ${additionalProducts.toLocaleString()} more units spreads freight across the full load.`
+        : `Filling the container doesn't lower the per-unit landed cost at the current price point.`);
     const footerA = `${ctx.palletsRoomLeft || 0} pallet slot${(ctx.palletsRoomLeft || 0) === 1 ? '' : 's'} unused in the last container.`;
     host.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px;">
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Hypothetical Scenarios</div>
-        <div style="font-size:11px; color:var(--text-muted);">Method: <strong style="color:var(--text);">${methodLabel}</strong> · Per-unit: ${fmt$(usdPerUnit)}</div>
+        <div style="font-size:11px; color:var(--text-muted);">Method: <strong style="color:var(--text);">${methodLabel}</strong> · Per-unit: ${_needsPrice ? '<span style="font-style:italic;">—</span>' : fmt$(usdPerUnit)}</div>
       </div>
       ${(() => {
         // Apply / Revert toggle: once the Full Container Pitch has
