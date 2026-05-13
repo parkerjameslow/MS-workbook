@@ -11216,8 +11216,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // price = _lastRfqPriceSummary.grandUsdUnit (single price) or
   // grandUsd / grandQty (weighted across variants).
   function _renderContainerHypotheticals(ctx) {
+    try { return _renderContainerHypotheticalsInner(ctx); }
+    catch (e) {
+      try {
+        console.error('[MS hypothetical] threw', e);
+        const host = document.getElementById('container-hypothetical');
+        if (host) {
+          host.innerHTML = `
+            <div style="padding:12px 14px; border:1px dashed #ef4444; border-radius:8px; font-size:12px; color:#ef4444; line-height:1.55; font-family:monospace;">
+              <strong>Hypothetical threw:</strong> ${String(e && e.message || e)} —
+              this means a silent exception was eating the re-render, leaving stale content.
+              Screenshot this; the message names the broken function.
+            </div>`;
+        }
+      } catch (_) {}
+    }
+  }
+  function _renderContainerHypotheticalsInner(ctx) {
     const host = document.getElementById('container-hypothetical');
     if (!host) return;
+    // Stamp every render with a timestamp so it's instantly visible
+    // whether the panel is fresh or stale. If the operator types in a
+    // case-only field and this timestamp doesn't update, the render
+    // chain is broken upstream (renderPalletViz threw, or oninput
+    // isn't firing) — not a bug in this function.
+    const _renderTs = new Date().toLocaleTimeString();
+    try { console.debug('[MS hypothetical] render', _renderTs, 'mode=' + (typeof _msShipMode === 'function' ? _msShipMode() : '?'), 'palletsNeeded=' + (ctx && ctx.palletsNeeded)); } catch (_) {}
     // Resolve ship-mode + counts through the canonical helpers so any
     // bug in the case-only cascade fixes itself everywhere at once.
     const mode             = _msShipMode();
@@ -11280,7 +11304,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const _ptDbg = _msIntFromInput(document.getElementById('pallet-total-cartons'));
       const _cbDbg = !!document.getElementById('case-only-override')?.checked;
       const _mnDbg = !!document.getElementById('pallet-manual')?.checked;
-      const _diag = `<span style="display:block; margin-top:6px; font-size:11px; color:var(--text-muted); font-family:monospace;">[diag: mode=${mode} · case-checkbox=${_cbDbg} · manual-checkbox=${_mnDbg} · pc=${_pcDbg} · co=${_coDbg} · pallet-total=${_ptDbg} · totalUnits=${totalUnits} · palletsNeeded=${ctx.palletsNeeded}]</span>`;
+      const _diag = `<span style="display:block; margin-top:6px; font-size:11px; color:var(--text-muted); font-family:monospace;">[diag @${_renderTs}: mode=${mode} · case-checkbox=${_cbDbg} · manual-checkbox=${_mnDbg} · pc=${_pcDbg} · co=${_coDbg} · pallet-total=${_ptDbg} · totalUnits=${totalUnits} · palletsNeeded=${ctx.palletsNeeded}]</span>`;
       let reason;
       if (!totalUnits) {
         if (caseOn) {
