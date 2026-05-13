@@ -11470,12 +11470,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const overrideUsd = (typeof _getShippingCostOverrideUsd === 'function')
       ? _getShippingCostOverrideUsd() : null;
     const parseUsd = (s) => s ? parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0 : 0;
-    const _calcAraw = (typeof calcSplitCost === 'function') ? calcSplitCost(method, baseQty)  : null;
-    const _calcBraw = (typeof calcSplitCost === 'function') ? calcSplitCost(method, halfQty)  : null;
-    const _calcCraw = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)  : null;
-    const _calcAUsd = _calcAraw ? parseUsd(_calcAraw.usdStr) : 0;
-    const _calcBUsd = _calcBraw ? parseUsd(_calcBraw.usdStr) : 0;
-    const _calcCUsd = _calcCraw ? parseUsd(_calcCraw.usdStr) : 0;
+    // Mode-aware freight per qty. calcSplitCost reads only the outer-
+    // carton fields, which are EMPTY in Case Only and Manual mode, so
+    // it returned null and the freight rendered as $0.00. Compute
+    // freight here against the active mode's ship-unit dims + weight
+    // so A and B show a real Slow Boat rate instead of zero.
+    //
+    //   freight (USD) = max(actual_kg, volumetric_kg) × rate × cartons / USD_TO_RMB
+    //     - cartons         = ceil(qty / products-per-ship-item)
+    //     - rate            = freightMethodRates[method]   (¥/kg)
+    //     - volumetric_kg   = L × W × H (cm) / divisor
+    //     - actual_kg       = ship-unit weight (case / product / outer)
+    const _modeForFreight = _msShipMode();
+    const _ppiForFreight  = _msProductsPerShipItem() || 1;
+    let _fL = 0, _fW = 0, _fH = 0, _fKg = 0;
+    if (_modeForFreight === 'case') {
+      _fL  = parseFloat(document.getElementById('case-only-l-cm')?.value) || 0;
+      _fW  = parseFloat(document.getElementById('case-only-w-cm')?.value) || 0;
+      _fH  = parseFloat(document.getElementById('case-only-h-cm')?.value) || 0;
+      _fKg = parseFloat(document.getElementById('case-only-weight-kg')?.value) || 0;
+    } else if (_modeForFreight === 'manual') {
+      _fL  = parseFloat(document.getElementById('dim-cm-l')?.value) || 0;
+      _fW  = parseFloat(document.getElementById('dim-cm-w')?.value) || 0;
+      _fH  = parseFloat(document.getElementById('dim-cm-h')?.value) || 0;
+      _fKg = parseFloat(document.getElementById('dim-weight-kg')?.value) || 0;
+    } else {
+      _fL  = parseFloat(document.getElementById('carton-outer-l-cm')?.value) || 0;
+      _fW  = parseFloat(document.getElementById('carton-outer-w-cm')?.value) || 0;
+      _fH  = parseFloat(document.getElementById('carton-outer-h-cm')?.value) || 0;
+      _fKg = parseFloat(document.getElementById('carton-outer-weight')?.value) || 0;
+    }
+    const _fRate    = (typeof freightMethodRates    !== 'undefined' && freightMethodRates[method])    || (freightMethodRates && freightMethodRates.slow)    || 12;
+    const _fDivisor = (typeof freightMethodDivisors !== 'undefined' && freightMethodDivisors[method]) || (freightMethodDivisors && freightMethodDivisors.slow) || 6000;
+    const _fxRate   = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+    const _calcFreightUsdForQty = (qty) => {
+      const q = parseInt(qty) || 0;
+      if (q <= 0 || !_fL || !_fW || !_fH || !_fKg) return 0;
+      const cartons = Math.ceil(q / _ppiForFreight);
+      const volKg   = (_fL * _fW * _fH) / _fDivisor;
+      const charge  = Math.max(_fKg, volKg);
+      const rmb     = charge * cartons * _fRate;
+      return rmb / _fxRate;
+    };
+    const _calcAUsd = _calcFreightUsdForQty(baseQty);
+    const _calcBUsd = _calcFreightUsdForQty(halfQty);
+    const _calcCUsd = _calcFreightUsdForQty(fullQty);
     // A always shows the calc rate (the baseline reality). B (half /
     // LCL) also uses the calc rate. C is the FULL container booking,
     // which in the real world is a flat per-container fee — pin it to
