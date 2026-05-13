@@ -11630,22 +11630,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         //     the full pitch is currently applied, and "Apply Full"
         //     when the half pitch is applied (clicking switches to
         //     full, also flips the freight override to $16,500).
-        const revertLabel = baseQty > 0 ? `Revert to ${baseQty.toLocaleString()} units` : 'Revert';
+        // Short button labels — keep the column from wrapping the
+        // button onto two lines. Full context (qty + behavior) lives
+        // in the title attribute / tooltip.
+        const revertTooltip = baseQty > 0
+          ? `Revert Total Units back to ${baseQty.toLocaleString()}`
+          : 'Revert Total Units to the pre-apply value';
         const actionB = (appliedKind === 'half')
-          ? { label: revertLabel,
-              title: 'Revert Total Units to the pre-apply value',
+          ? { label: 'Revert',
+              title: revertTooltip,
               call:  `revertFullContainerPitch()` }
           : (_halfAddProducts > 0
-            ? { label: `Apply Half Container Pitch (${halfQty.toLocaleString()} units)`,
+            ? { label: 'Apply Half',
                 title: `Set Total Units to ${halfQty.toLocaleString()} (LCL, ~50% container fill)`,
                 call:  `applyHalfContainerPitch(${halfQty})` }
             : null);
         const actionC = (appliedKind === 'full')
-          ? { label: revertLabel,
-              title: 'Revert Total Units to the pre-apply value',
+          ? { label: 'Revert',
+              title: revertTooltip,
               call:  `revertFullContainerPitch()` }
           : (additionalProducts > 0
-            ? { label: `Apply Full Container Pitch (${fullQty.toLocaleString()} units)`,
+            ? { label: 'Apply Full',
                 title: `Set Total Units to ${fullQty.toLocaleString()} and flip freight to the full-container rate`,
                 call:  `applyFullContainerPitch(${fullQty}, ${looseProducts})` }
             : null);
