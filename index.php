@@ -22301,6 +22301,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('carton-outer-stack', data.cartonOuterStack);
       _s('carton-outer-wall',  data.cartonOuterWall || '2');
       _s('pallet-total-cartons', data.palletTotalCartons);
+      // Restore the Full / Half Container Pitch snapshot so the
+      // "applied" state survives reload. Validate the persisted shape
+      // before trusting it — defensive against old workbooks saved
+      // before this field existed (data.fullContainerPitchSnap is
+      // undefined → leave window snap null).
+      if (data.fullContainerPitchSnap
+          && typeof data.fullContainerPitchSnap === 'object'
+          && data.fullContainerPitchSnap.pitchKind
+          && data.fullContainerPitchSnap.appliedQty) {
+        window._fullContainerPitchSnap = {
+          totalUnits:   String(data.fullContainerPitchSnap.totalUnits   || ''),
+          looseTopOff:  String(data.fullContainerPitchSnap.looseTopOff  || ''),
+          lastRfqSync:  String(data.fullContainerPitchSnap.lastRfqSync  || ''),
+          overrideOn:   !!data.fullContainerPitchSnap.overrideOn,
+          overrideVal:  String(data.fullContainerPitchSnap.overrideVal  || ''),
+          appliedQty:   String(data.fullContainerPitchSnap.appliedQty   || '0'),
+          appliedLoose: String(data.fullContainerPitchSnap.appliedLoose || '0'),
+          pitchKind:    String(data.fullContainerPitchSnap.pitchKind)
+        };
+      } else {
+        window._fullContainerPitchSnap = null;
+      }
       if (data.cartonUnitWeight) convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg');
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
@@ -22409,6 +22431,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       addTierRow(250); addWbTierRow(250);
       addTierRow(500); addWbTierRow(500);
       _selectedTierId = null;
+      // Brand-new workbook: clear any stale pitch snap left over from
+      // whatever workbook was open before. Without this, the dropdown
+      // would still show the synthetic pitch option on the fresh page.
+      window._fullContainerPitchSnap = null;
       populateTierDropdown();
       // Seed RFQ with product name only; SKU is entered manually
       document.getElementById('rfq-body').innerHTML = '';
@@ -23424,6 +23450,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cartonOuterWeight: _v('carton-outer-weight'),
       cartonOuterCount: _v('carton-outer-count'),
       palletTotalCartons: _v('pallet-total-cartons'),
+      // Persist the Full / Half Container Pitch snapshot so the
+      // "applied" state survives reload. Without this, the bumped qty
+      // stays in pallet-total-cartons (e.g. 710,000 after Apply Half)
+      // but the pre-apply baseline (110,000) is lost — the operator
+      // can't revert and the Hypothetical card layout shows ✓ on the
+      // wrong card. snap is a plain object so JSON-serializes cleanly.
+      fullContainerPitchSnap: window._fullContainerPitchSnap || null,
       freightMode: _v('freight-mode'),
       freightHsCode: _v('freight-hs-code'),
       // Quote for Client tab
