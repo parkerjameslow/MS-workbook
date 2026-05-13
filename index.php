@@ -10492,7 +10492,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     // Refresh the Pricing tab's Delivered Cost Summary so Product
     // Cost + Shipping Per + Total Landed Cost all roll up to the
-    // bumped qty in real time.
+    // bumped qty in real time. Also rebuild the Shipping tab's
+    // tier dropdown so the synthetic "★ Full Container Pitch" option
+    // appears + auto-selects, mirroring the applied state.
+    if (typeof populateTierDropdown === 'function') populateTierDropdown();
     if (typeof renderPricingTab === 'function') renderPricingTab();
   }
   // Half-container Apply — sets Total Units to halfQty but DOESN'T
@@ -10535,6 +10538,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       overrideEl.value = window._fullContainerPitchSnap.overrideVal || '';
       if (typeof onShippingCostOverrideToggle === 'function') onShippingCostOverrideToggle();
     }
+    // Rebuild the Shipping tab's tier dropdown so the synthetic
+    // "★ Half Container Pitch" option shows up and auto-selects.
+    if (typeof populateTierDropdown === 'function') populateTierDropdown();
     if (typeof renderPricingTab === 'function') renderPricingTab();
   }
   function revertFullContainerPitch() {
@@ -10556,9 +10562,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (typeof onShippingCostOverrideToggle === 'function') onShippingCostOverrideToggle();
     }
     window._fullContainerPitchSnap = null;
+    // Drop the stale pitch sentinel + rebuild the dropdown without
+    // the synthetic option. Default back to tier 1 so the Shipping
+    // tab keeps a real selection after Revert.
+    if (typeof _selectedTierId === 'string' && _selectedTierId.indexOf('pitch-') === 0) {
+      _selectedTierId = 1;
+    }
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
+    if (typeof populateTierDropdown === 'function') populateTierDropdown();
     if (typeof renderPricingTab === 'function') renderPricingTab();
     if (typeof _refreshPalletTotalHint === 'function') _refreshPalletTotalHint();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
@@ -14465,11 +14478,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     autoSaveWorkbook();
   }
 
+  // Maps the dropdown's currently-selected value to the underlying
+  // tier id for wb-tier-${id} lookups. When a pitch is selected
+  // (value "pitch-half" / "pitch-full"), fall back to tier 1 for the
+  // per-unit price source — qty comes from pallet-total-cartons via
+  // the existing effectiveQty path.
+  function _msTierIdForLookup(id) {
+    if (typeof id === 'string' && id.indexOf('pitch-') === 0) return 1;
+    return id;
+  }
   function populateTierDropdown() {
     const sel = document.getElementById('sh-tier-select');
     if (!sel) return;
     const prev = _selectedTierId;
     sel.innerHTML = '<option value="">— Select a tier —</option>';
+    // ── Applied-pitch synthetic option ─────────────────────────────
+    // When the operator has pressed Apply Half / Apply Full in the
+    // Hypothetical Scenarios panel, surface that as the active
+    // selection in the Shipping tab so the dropdown reflects what's
+    // being quoted instead of staying locked to a stale tier number.
+    const snap = window._fullContainerPitchSnap;
+    if (snap && snap.pitchKind) {
+      const pitchLabel = snap.pitchKind === 'half' ? 'Half Container Pitch (LCL)' : 'Full Container Pitch';
+      const pitchQty = parseInt(snap.appliedQty) || 0;
+      const opt = document.createElement('option');
+      opt.value = 'pitch-' + snap.pitchKind;
+      opt.textContent = `★ ${pitchLabel} — ${pitchQty.toLocaleString('en-US')} units (applied)`;
+      opt.dataset.qty = pitchQty;
+      opt.dataset.pitchKind = snap.pitchKind;
+      sel.appendChild(opt);
+    }
     document.querySelectorAll('#wb-tier-body tr').forEach(row => {
       const id = parseInt(row.id.replace('wb-tier-', ''));
       const inputs = row.querySelectorAll('input');
@@ -14489,10 +14527,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       opt.dataset.qty = qtyRaw;
       sel.appendChild(opt);
     });
-    // Restore previous selection if still valid
-    if (prev && sel.querySelector(`option[value="${prev}"]`)) {
-      sel.value = prev;
-      renderShippingTierDetails(prev);
+    // Auto-select the pitch option whenever a pitch is applied —
+    // the operator wants the Shipping tab to reflect the committed
+    // pitch without needing to manually click the dropdown.
+    if (snap && snap.pitchKind) {
+      sel.value = 'pitch-' + snap.pitchKind;
+      _selectedTierId = sel.value;
+      renderShippingTierDetails(sel.value);
+    } else if (prev && sel.querySelector(`option[value="${prev}"]`)) {
+      // Restore previous selection if still valid (regular tier).
+      // Strip stale pitch-* prefixes left over from a pre-revert state.
+      const restoreVal = (typeof prev === 'string' && prev.indexOf('pitch-') === 0) ? null : prev;
+      if (restoreVal && sel.querySelector(`option[value="${restoreVal}"]`)) {
+        sel.value = restoreVal;
+        renderShippingTierDetails(restoreVal);
+      } else {
+        _selectedTierId = null;
+        document.getElementById('sh-tier-details')?.classList.remove('visible');
+      }
     } else {
       _selectedTierId = null;
       document.getElementById('sh-tier-details')?.classList.remove('visible');
@@ -14501,14 +14553,69 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function onShippingTierSelect() {
     const sel = document.getElementById('sh-tier-select');
-    const id = sel ? parseInt(sel.value) : null;
-    _selectedTierId = id || null;
-    renderShippingTierDetails(id);
+    if (!sel) return;
+    const val = sel.value;
+    // Pitch sentinel ("pitch-half" / "pitch-full") is stored as a
+    // string. Regular tier ids are stored as integers. Downstream
+    // wb-tier-${id} lookups go through _msTierIdForLookup() which
+    // maps the sentinel back to tier 1 for the per-unit price.
+    if (typeof val === 'string' && val.indexOf('pitch-') === 0) {
+      _selectedTierId = val;
+      renderShippingTierDetails(val);
+    } else {
+      const id = val ? parseInt(val) : null;
+      _selectedTierId = id || null;
+      renderShippingTierDetails(id);
+    }
     if (_appReady) autoSaveWorkbook();
   }
 
   function renderShippingTierDetails(id) {
     const detailBar = document.getElementById('sh-tier-details');
+    // ── Pitch-applied path ────────────────────────────────────
+    // When the synthetic pitch option is selected, source qty from
+    // the applied pitch snapshot and per-unit price from tier 1
+    // (the baseline RFQ-driven price). Total Product Cost = pitch
+    // qty × tier-1 per-unit.
+    if (typeof id === 'string' && id.indexOf('pitch-') === 0) {
+      const snap = window._fullContainerPitchSnap;
+      const tier1 = document.getElementById('wb-tier-1');
+      if (!snap || !tier1) {
+        if (detailBar) detailBar.classList.remove('visible');
+        return;
+      }
+      const qtyP = parseInt(snap.appliedQty) || 0;
+      const rmbP = parseFloat(_msStripCommasStr(tier1.dataset.price)) || 0;
+      const usdP = rmbP > 0 ? _fxUsdFromRmb(rmbP) : 0;
+      const fmt2P = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      const psP = _lastRfqPriceSummary;
+      const useRangeP = psP && psP.hasVariants && psP.rmbMin > 0;
+      let rmbTextP, usdTextP, totalTextP;
+      if (useRangeP) {
+        rmbTextP = psP.isRange ? '¥ ' + fmt2P(psP.rmbMin) + '–¥ ' + fmt2P(psP.rmbMax) : '¥ ' + fmt2P(psP.rmbMin);
+        usdTextP = psP.isRange ? '$' + fmt2P(psP.usdMin) + '–$' + fmt2P(psP.usdMax) : '$' + fmt2P(psP.usdMin);
+      } else {
+        rmbTextP = rmbP > 0 ? '¥ ' + fmt2P(rmbP) : '—';
+        usdTextP = usdP > 0 ? '$' + fmt2P(usdP) : '—';
+      }
+      if (useRangeP && qtyP > 0 && psP.grandQty > 0 && psP.grandUsd > 0) {
+        totalTextP = '$' + fmt2P(qtyP * (psP.grandUsd / psP.grandQty));
+      } else if (qtyP > 0 && usdP > 0) {
+        totalTextP = '$' + fmt2P(qtyP * usdP);
+      } else {
+        totalTextP = '—';
+      }
+      const rmbEl = document.getElementById('sh-td-rmb-full');
+      const usdEl = document.getElementById('sh-td-usd-full');
+      const totEl = document.getElementById('sh-td-total');
+      if (rmbEl) rmbEl.textContent = rmbTextP;
+      if (usdEl) usdEl.textContent = usdTextP;
+      if (totEl) totEl.textContent = totalTextP;
+      if (detailBar) detailBar.classList.add('visible');
+      if (typeof renderPricingTab === 'function') renderPricingTab();
+      if (typeof calcFreight === 'function') calcFreight();
+      return;
+    }
     const row = id ? document.getElementById(`wb-tier-${id}`) : null;
     if (!row) {
       if (detailBar) detailBar.classList.remove('visible');
@@ -17164,7 +17271,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // need shipPerUnit + wbMarginMul + shipLeadMax. Hoisting them here
     // lets the table render even when no tier is selected (values fall
     // back to 0 / defaults gracefully).
-    const _ctxTierRow   = _selectedTierId ? document.getElementById(`wb-tier-${_selectedTierId}`) : null;
+    // Map the pitch sentinel ("pitch-half" / "pitch-full") back to
+    // tier 1 for the underlying per-unit price lookup. The qty
+    // override flows through effectiveQty below.
+    const _ctxTierIdLookup = (typeof _msTierIdForLookup === 'function') ? _msTierIdForLookup(_selectedTierId) : _selectedTierId;
+    const _ctxTierRow   = _ctxTierIdLookup ? document.getElementById(`wb-tier-${_ctxTierIdLookup}`) : null;
     const _ctxTierQty   = parseInt(_ctxTierRow?.querySelectorAll('input')[0]?.value) || 0;
     const _ctxFreightMode = document.getElementById('freight-mode')?.value || 'slow';
     const _ctxRateRmb     = freightMethodRates[_ctxFreightMode] || 0;
@@ -17409,8 +17520,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Tier data from Workbook tab — strip commas before parseInt so
     // "110,000" doesn't truncate to 110 and tank every downstream
-    // Pricing tab figure.
-    const tierRow    = document.getElementById(`wb-tier-${_selectedTierId}`);
+    // Pricing tab figure. When the pitch sentinel is selected,
+    // _msTierIdForLookup remaps it to tier 1 so the per-unit price
+    // still resolves; qty is overridden via effectiveQty below.
+    const _tierIdForLookup = (typeof _msTierIdForLookup === 'function') ? _msTierIdForLookup(_selectedTierId) : _selectedTierId;
+    const tierRow    = document.getElementById(`wb-tier-${_tierIdForLookup}`);
     const tierInputs = tierRow?.querySelectorAll('input');
     const tierQty    = parseInt(_msStripCommasStr(tierInputs?.[0]?.value), 10) || 0;
     const tierRmb    = parseFloat(_msStripCommasStr(tierRow?.dataset.price)) || 0;
