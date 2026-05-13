@@ -10953,11 +10953,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // product (1:1). In carton mode each ship item is an outer
       // carton holding `productsPerOuter` products, so we multiply by
       // that to reach the products figure the input expects.
+      const _caseOnFill      = !!document.getElementById('case-only-override')?.checked;
       const _innerQtyForFill = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
       const _outerQtyForFill = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
       const _ppoForFill      = (_innerQtyForFill > 0 && _outerQtyForFill > 0) ? _innerQtyForFill * _outerQtyForFill : 0;
-      const _manualOnFill    = !!document.getElementById('pallet-manual')?.checked;
-      const productsPerItem  = _manualOnFill ? 1 : (_ppoForFill || 1);
+      const _caseProdForFill = _caseOnFill ? (_msIntFromInput(document.getElementById('case-only-products-per')) || 0) : 0;
+      const _manualOnFill    = !_caseOnFill && !!document.getElementById('pallet-manual')?.checked;
+      // products-per-ship-item — case-only uses products/case, manual
+      // uses 1, default uses products/outer. Without the case-only
+      // branch the Fill button collapsed to × 1 and the target landed
+      // on the cases count (e.g. 576) instead of the products count
+      // (e.g. 25,344), so clicking Fill on a 110,000-unit workbook
+      // looked like it did nothing — the new "target" was below the
+      // current qty and applyTotalUnitsSuggestion never bumped.
+      const productsPerItem  = _caseOnFill ? (_caseProdForFill || 1)
+                              : (_manualOnFill ? 1 : (_ppoForFill || 1));
       // ── Fill / Top-Off target — absolute, NOT additive ────────────────
       // Earlier versions did `current + roomLeft × productsPerItem`, but
       // ceil() rounding meant clicking again kept inflating the qty
@@ -11128,10 +11138,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Bail conditions — show a friendly stub instead of a half-baked
     // panel when we lack the inputs needed for either scenario.
     if (!totalUnits || !ps || !usdPerUnit || ctx.palletsNeeded <= 0) {
+      const _dimReason = caseOn
+        ? 'Fill in the Case Only Override block (products/case, cases/order, case L × W × H × weight) so the pallet count is known.'
+        : (manualOn
+          ? 'Set product dimensions so the pallet count is known.'
+          : 'Set outer carton dimensions so the pallet count is known.');
       const reason = !totalUnits      ? 'Enter Total Units to Ship.'
                    : !ps              ? 'Add an RFQ line item to enable price math.'
                    : !usdPerUnit      ? 'Set an RFQ price so we can compute scenario cost.'
-                   : 'Set outer carton dimensions so the pallet count is known.';
+                   : _dimReason;
       host.innerHTML = `
         <div style="padding:12px 14px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.55;">
           <strong style="color:var(--text);">Hypothetical scenarios:</strong> ${reason}
@@ -11171,15 +11186,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const overrideUsd = (typeof _getShippingCostOverrideUsd === 'function')
       ? _getShippingCostOverrideUsd() : null;
     const parseUsd = (s) => s ? parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0 : 0;
+    // Snap exists once the operator has actually pressed Apply Full
+    // Container Pitch (commits the workbook to the full-container qty +
+    // override). Until then, Scenario A is the as-shipped reality (still
+    // a partial container, freight should reflect the partial-load
+    // calc — not the $16,500 full-container override that Scenario B
+    // is *projecting*). Scenario B always uses the override if set,
+    // else falls back to the calc.
+    const _snapApplied = !!window._fullContainerPitchSnap;
     let freightUsdA, freightUsdB;
-    if (overrideUsd !== null) {
+    const _calcA = (typeof calcSplitCost === 'function') ? calcSplitCost(method, totalUnits) : null;
+    const _calcB = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)    : null;
+    const _calcAUsd = _calcA ? parseUsd(_calcA.usdStr) : 0;
+    const _calcBUsd = _calcB ? parseUsd(_calcB.usdStr) : 0;
+    if (_snapApplied && overrideUsd !== null) {
+      // Apply has been pressed — both scenarios reflect the committed
+      // full-container freight.
       freightUsdA = overrideUsd;
       freightUsdB = overrideUsd;
     } else {
-      const freightA = (typeof calcSplitCost === 'function') ? calcSplitCost(method, totalUnits) : null;
-      const freightB = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)    : null;
-      freightUsdA = freightA ? parseUsd(freightA.usdStr) : 0;
-      freightUsdB = freightB ? parseUsd(freightB.usdStr) : 0;
+      // Pre-Apply: A = realistic partial freight from the method calc.
+      // B = override if the operator has set one (a quote they got),
+      // else the partial-method calc projected onto fullQty.
+      freightUsdA = _calcAUsd;
+      freightUsdB = (overrideUsd !== null) ? overrideUsd : _calcBUsd;
     }
     const productUsdA = totalUnits * usdPerUnit;
     const productUsdB = fullQty    * usdPerUnit;
@@ -11215,14 +11245,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ${actionHtml}
       </div>`;
     };
-    const freightLabel = overrideUsd !== null
-      ? `Freight (override)`
-      : `Freight (${methodLabel})`;
+    // Per-scenario labels. Pre-Apply, A reflects calc-method partial
+    // freight (so the label names the method), while B reflects
+    // either the operator's override quote OR the same calc method
+    // projected onto fullQty. Post-Apply both lock to the override.
+    const labelMethod   = `Freight (${methodLabel})`;
+    const labelOverride = `Freight (override)`;
+    const freightLabelA = (_snapApplied && overrideUsd !== null) ? labelOverride : labelMethod;
+    const freightLabelB = (overrideUsd !== null)                  ? labelOverride : labelMethod;
     const linesA = [
       ['Units shipped',  totalUnits.toLocaleString()],
       ['Pallets needed', ctx.palletsNeeded.toLocaleString()],
       ['Product cost',   fmt$(productUsdA)],
-      [freightLabel,     fmt$(freightUsdA)],
+      [freightLabelA,    fmt$(freightUsdA)],
       ['Total landed',   `<strong style="font-size:14px;">${fmt$(totalUsdA)}</strong>`],
       ['Per-unit landed', fmt$(landedA)]
     ];
@@ -11230,7 +11265,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ['Units shipped',  `${fullQty.toLocaleString()} <span style="color:#10b981; font-weight:700;">(+${additionalProducts.toLocaleString()})</span>`],
       ['Pallets needed', `${(ctx.palletsNeeded + (ctx.palletsRoomLeft || 0)).toLocaleString()}`],
       ['Product cost',   fmt$(productUsdB)],
-      [freightLabel,     fmt$(freightUsdB)],
+      [freightLabelB,    fmt$(freightUsdB)],
       ['Total landed',   `<strong style="font-size:14px; color:#10b981;">${fmt$(totalUsdB)}</strong>`],
       ['Per-unit landed', `<strong style="color:#10b981;">${fmt$(landedB)}</strong>`]
     ];
