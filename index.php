@@ -11196,8 +11196,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : (manualOn
           ? 'Set product dimensions so the pallet count is known.'
           : 'Set outer carton dimensions so the pallet count is known.');
-      const reason = !totalUnits      ? 'Enter Total Units to Ship.'
-                   : _dimReason;
+      // Diagnostic — when totalUnits is 0 even though the room-to-fill
+      // panel is rendering pallet math, the helpers see something the
+      // operator doesn't expect. Surface the inputs the helpers read
+      // so they can diff against what's typed in.
+      let reason;
+      if (!totalUnits) {
+        if (caseOn) {
+          const _pcDbg = _msIntFromInput(document.getElementById('case-only-products-per'));
+          const _coDbg = _msIntFromInput(document.getElementById('case-only-cases-order'));
+          const _ptDbg = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+          if (_pcDbg === 0 && _coDbg === 0 && _ptDbg === 0) {
+            reason = 'Enter Products/Case + Cases/Order in the Case Only Override block (or Total Units to Ship on the Pallet section).';
+          } else if (_pcDbg === 0) {
+            reason = 'Enter Products/Case in the Case Only Override block.';
+          } else if (_coDbg === 0) {
+            reason = 'Enter Cases/Order in the Case Only Override block.';
+          } else {
+            // Should be unreachable — both case fields > 0 means the
+            // helper would have produced a positive total. Surface the
+            // raw values so it's debuggable.
+            reason = `Case math reads pc=${_pcDbg} · co=${_coDbg} · pallet-total=${_ptDbg} — refresh the page; if it persists, screenshot this message.`;
+          }
+        } else {
+          reason = 'Enter Total Units to Ship.';
+        }
+      } else {
+        reason = _dimReason;
+      }
       host.innerHTML = `
         <div style="padding:12px 14px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.55;">
           <strong style="color:var(--text);">Hypothetical scenarios:</strong> ${reason}
