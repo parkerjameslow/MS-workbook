@@ -10472,11 +10472,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         overrideOn:   !!(overrideToggle && overrideToggle.checked),
         overrideVal:  overrideEl ? (overrideEl.value || '') : '',
         appliedQty:   String(parseInt(fullQty) || 0),
-        appliedLoose: String(parseInt(looseProducts) || 0)
+        appliedLoose: String(parseInt(looseProducts) || 0),
+        pitchKind:    'full'
       };
     } else {
       window._fullContainerPitchSnap.appliedQty   = String(parseInt(fullQty) || 0);
       window._fullContainerPitchSnap.appliedLoose = String(parseInt(looseProducts) || 0);
+      window._fullContainerPitchSnap.pitchKind    = 'full';
     }
     applyTotalUnitsSuggestion(fullQty, looseProducts);
     // Auto-flip the shipping-tab override to the full-container rate
@@ -10520,6 +10522,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       window._fullContainerPitchSnap.pitchKind    = 'half';
     }
     applyTotalUnitsSuggestion(halfQty, 0);
+    // If the Full Container Pitch was previously applied, it set the
+    // freight override to the $16,500 full-container rate. Switching
+    // to Half (LCL) means we're no longer booking a full container, so
+    // unset the override and fall back to the calc-method rate. snap
+    // stays so Revert still returns to the pre-Apply state.
+    if (overrideToggle && overrideEl) {
+      // Only restore the pre-Apply override state if the snap remembers
+      // one. (snap.overrideOn === false means the operator had no
+      // override before Apply, so we keep it off here.)
+      overrideToggle.checked = !!window._fullContainerPitchSnap.overrideOn;
+      overrideEl.value = window._fullContainerPitchSnap.overrideVal || '';
+      if (typeof onShippingCostOverrideToggle === 'function') onShippingCostOverrideToggle();
+    }
     if (typeof renderPricingTab === 'function') renderPricingTab();
   }
   function revertFullContainerPitch() {
@@ -11364,43 +11379,80 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const method  = (modeSel && modeSel.value && freightMethodRates[modeSel.value]) ? modeSel.value : 'fast';
     const methodLabel = (typeof SPLIT_METHOD_LABELS !== 'undefined' && SPLIT_METHOD_LABELS[method]) || method;
     const usingUserMethod = (modeSel && modeSel.value && modeSel.value === method && method !== 'fast') || (modeSel && modeSel.value === 'fast');
-    // Scenario B math — fill remaining container space.
-    //   • palletsRoomLeft → additional palletized items (cartons or
-    //     products) = roomLeft × unitsPerPallet
-    //   • Convert items → products via productsPerItem
-    //   • Loose top-off (in items) via cbmRoomLeft / unitCbm × 0.80 efficiency
-    //     capped by remaining weight allowance.
-    const palletItems     = (ctx.palletsRoomLeft || 0) * (ctx.unitsPerPallet || 0);
-    const palletProducts  = palletItems * (productsPerItem || 1);
+    // ── Compute the pre-Apply baseline ──────────────────────────────────
+    // When a pitch is applied, totalUnits + ctx.palletsNeeded reflect
+    // the BUMPED state (e.g. 36 pallets after Full Apply). To keep
+    // Card A always showing the original 110,000 / 3-pallet state for
+    // comparison, recover the baseline from the snapshot.
+    //
+    //   - snap.totalUnits     → string with commas → baseQty (products)
+    //   - basePalletsNeeded   → ceil(baseQty / productsPerItem / cases-per-pallet)
+    //   - basePalletsInLast   → pallets in the LAST container at baseline
+    //   - basePalletsRoomLeft → empty slots in that last container
+    //
+    // All three scenario cards (A/B/C) then compute against THIS baseline,
+    // not against the currently-applied state. The "currently applied"
+    // card just gets the Revert affordance.
+    const snap = window._fullContainerPitchSnap;
+    const isApplied = !!snap;
+    const appliedKind = isApplied ? (snap.pitchKind || 'full') : null;
+    const baseQty = isApplied
+      ? (parseInt((snap.totalUnits || '').replace(/,/g, ''), 10) || totalUnits)
+      : totalUnits;
+    const _ppi = productsPerItem || 1;
+    const _upp = ctx.unitsPerPallet || 0;
+    const _palletsPerContainer = ctx.palletsPerContainer || 0;
+    // basePalletsNeeded: ceil(baseQty / products-per-case / cases-per-pallet)
+    const baseTotalItems     = _ppi > 0 ? Math.ceil(baseQty / _ppi) : 0;
+    const basePalletsNeeded  = (_upp > 0 && baseTotalItems > 0)
+      ? Math.ceil(baseTotalItems / _upp)
+      : (ctx.palletsNeeded || 0);
+    const baseContainersNeeded = (_palletsPerContainer > 0 && basePalletsNeeded > 0)
+      ? Math.ceil(basePalletsNeeded / _palletsPerContainer) : 0;
+    const basePalletsInLast    = (baseContainersNeeded > 0)
+      ? (basePalletsNeeded - (baseContainersNeeded - 1) * _palletsPerContainer)
+      : (ctx.palletsInLast || 0);
+    const basePalletsRoomLeft  = Math.max(0, _palletsPerContainer - basePalletsInLast);
+
+    // ── Scenario C (full container) math — against the baseline ────────
+    const palletItems     = basePalletsRoomLeft * _upp;
+    const palletProducts  = palletItems * _ppi;
     const PACK_EFF = 0.80;
+    // Loose top-off based on baseline's leftover CBM/weight. Approximate
+    // by computing remaining capacity in the last container after the
+    // baseline pallets, not relying on ctx.cbmRoomLeft (which reflects
+    // the CURRENT applied state).
+    const HC_USABLE_CBM_LOCAL = 67;
+    const HC_MAX_KG_LOCAL     = 26000;
+    const palletCbmLocal = ctx.palletWeightKg && _upp > 0 && ctx.unitCbm > 0
+      ? (ctx.unitCbm * _upp + 0.05 /* deck approx */)
+      : 0;
+    // Simpler: cbm/weight room left at baseline = full container minus
+    // baseline pallets' CBM/weight. Use ctx.palletWeightKg as per-pallet
+    // weight (caller passes the same value regardless of applied state).
+    const _palletWtKg = ctx.palletWeightKg || 0;
+    const _basePalletCbm = (ctx.unitCbm > 0 && _upp > 0) ? ctx.unitCbm * _upp : 0;
+    const baseCbmRoomLeft = Math.max(0, HC_USABLE_CBM_LOCAL - _basePalletCbm * basePalletsInLast);
+    const baseWtRoomLeft  = Math.max(0, HC_MAX_KG_LOCAL - _palletWtKg * basePalletsInLast);
     let looseItems = 0;
     if (ctx.unitCbm > 0) {
-      const byCbm    = Math.floor((ctx.cbmRoomLeft * PACK_EFF) / ctx.unitCbm);
-      const byWeight = ctx.unitWtKg > 0 ? Math.floor(ctx.weightRoomLeftKg / ctx.unitWtKg) : byCbm;
+      const byCbm    = Math.floor((baseCbmRoomLeft * PACK_EFF) / ctx.unitCbm);
+      const byWeight = ctx.unitWtKg > 0 ? Math.floor(baseWtRoomLeft / ctx.unitWtKg) : byCbm;
       looseItems = Math.max(0, Math.min(byCbm, byWeight));
     }
-    const looseProducts = looseItems * (productsPerItem || 1);
+    const looseProducts = looseItems * _ppi;
     const additionalProducts = palletProducts + looseProducts;
-    const fullQty = totalUnits + additionalProducts;
-    // ── Half-container scenario (LCL pitch) ─────────────────────────────
-    // Quote target for customers who don't want a full container — fill
-    // the LAST container to half its pallet capacity (no loose top-off
-    // since the goal is LCL-style 50%, not maximizing the space). Sit
-    // between A and B in the card row.
-    const _palletsPerContainer = ctx.palletsPerContainer || 0;
-    const _palletsInLast       = ctx.palletsInLast || 0;
-    const _halfPalletsTarget   = Math.floor(_palletsPerContainer / 2);
-    const _halfAddPallets      = Math.max(0, _halfPalletsTarget - _palletsInLast);
-    const _halfAddItems        = _halfAddPallets * (ctx.unitsPerPallet || 0);
-    const _halfAddProducts     = _halfAddItems * (productsPerItem || 1);
-    const halfQty              = totalUnits + _halfAddProducts;
-    const _halfPalletsTotal    = (ctx.palletsNeeded || 0) + _halfAddPallets;
-    // Show the half card only when filling to half is BETWEEN where we
-    // are now and the full pitch — otherwise it's not a meaningful
-    // intermediate option (e.g. operator already past half → card
-    // collapses to "already past half container," still informative
-    // but with a calmer tint).
-    const _halfMakesSense = _halfAddPallets > 0 && _halfAddProducts > 0;
+    const fullQty = baseQty + additionalProducts;
+
+    // ── Scenario B (half container LCL) math — against the baseline ────
+    // Half = fill the last container to floor(palletsPerContainer / 2)
+    // pallets, no loose top-off (LCL doesn't maximize leftover space).
+    const _halfPalletsTarget = Math.floor(_palletsPerContainer / 2);
+    const _halfAddPallets    = Math.max(0, _halfPalletsTarget - basePalletsInLast);
+    const _halfAddItems      = _halfAddPallets * _upp;
+    const _halfAddProducts   = _halfAddItems * _ppi;
+    const halfQty            = baseQty + _halfAddProducts;
+    const _halfPalletsTotal  = basePalletsNeeded + _halfAddPallets;
     // Freight costs — calcSplitCost takes qty in PRODUCTS and bakes in
     // outer-carton conversion + per-mode rate/divisor for us. Manual
     // shipping-cost override (if active) replaces BOTH scenarios with
@@ -11408,55 +11460,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // regardless of fill rate. Per-unit cost then differs between A
     // and B purely from the division by qty — which IS the whole
     // point of the "fill the container" pitch.
+    // Freight computation — three scenarios, each at its own qty.
+    // - A (Actual) ALWAYS uses the calc-method at baseQty (no override),
+    //   because the override represents the projected full-container
+    //   freight, not the actual partial-load rate.
+    // - B (Half) uses the calc-method at halfQty (LCL, no override).
+    // - C (Full) uses the override if set ($16,500 typical), else the
+    //   calc-method projected onto fullQty.
     const overrideUsd = (typeof _getShippingCostOverrideUsd === 'function')
       ? _getShippingCostOverrideUsd() : null;
     const parseUsd = (s) => s ? parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0 : 0;
-    // Snap exists once the operator has actually pressed Apply Full
-    // Container Pitch (commits the workbook to the full-container qty +
-    // override). Until then, Scenario A is the as-shipped reality (still
-    // a partial container, freight should reflect the partial-load
-    // calc — not the $16,500 full-container override that Scenario B
-    // is *projecting*). Scenario B always uses the override if set,
-    // else falls back to the calc.
-    const _snapApplied = !!window._fullContainerPitchSnap;
-    let freightUsdA, freightUsdB;
-    const _calcA = (typeof calcSplitCost === 'function') ? calcSplitCost(method, totalUnits) : null;
-    const _calcB = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)    : null;
-    const _calcC = (typeof calcSplitCost === 'function') ? calcSplitCost(method, halfQty)    : null;
-    const _calcAUsd = _calcA ? parseUsd(_calcA.usdStr) : 0;
-    const _calcBUsd = _calcB ? parseUsd(_calcB.usdStr) : 0;
-    const _calcCUsd = _calcC ? parseUsd(_calcC.usdStr) : 0;
-    // Half-container freight — LCL-style. The shipping-cost override
-    // (typically $16,500 for a full container) doesn't apply because a
-    // half-load wouldn't book a full container; use the calculated rate
-    // for the half qty instead.
-    let freightUsdC;
-    if (_snapApplied && overrideUsd !== null) {
-      // Apply has been pressed — both scenarios reflect the committed
-      // full-container freight.
-      freightUsdA = overrideUsd;
-      freightUsdB = overrideUsd;
-      freightUsdC = _calcCUsd; // half stays LCL even when full is committed
-    } else {
-      // Pre-Apply: A = realistic partial freight from the method calc.
-      // B = override if the operator has set one (a quote they got),
-      // else the partial-method calc projected onto fullQty.
-      freightUsdA = _calcAUsd;
-      freightUsdB = (overrideUsd !== null) ? overrideUsd : _calcBUsd;
-      freightUsdC = _calcCUsd;
-    }
-    const productUsdA = totalUnits * usdPerUnit;
-    const productUsdB = fullQty    * usdPerUnit;
-    const productUsdC = halfQty    * usdPerUnit;
+    const _calcAraw = (typeof calcSplitCost === 'function') ? calcSplitCost(method, baseQty)  : null;
+    const _calcBraw = (typeof calcSplitCost === 'function') ? calcSplitCost(method, halfQty)  : null;
+    const _calcCraw = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)  : null;
+    const _calcAUsd = _calcAraw ? parseUsd(_calcAraw.usdStr) : 0;
+    const _calcBUsd = _calcBraw ? parseUsd(_calcBraw.usdStr) : 0;
+    const _calcCUsd = _calcCraw ? parseUsd(_calcCraw.usdStr) : 0;
+    // A always shows the calc rate (the baseline reality). The override
+    // is reserved for C (the full-container projection).
+    const freightUsdA = _calcAUsd;
+    const freightUsdB = _calcBUsd;
+    const freightUsdC = (overrideUsd !== null && overrideUsd > 0) ? overrideUsd : _calcCUsd;
+    const productUsdA = baseQty * usdPerUnit;
+    const productUsdB = halfQty * usdPerUnit;
+    const productUsdC = fullQty * usdPerUnit;
     const totalUsdA   = productUsdA + freightUsdA;
     const totalUsdB   = productUsdB + freightUsdB;
     const totalUsdC   = productUsdC + freightUsdC;
-    const landedA = totalUnits > 0 ? totalUsdA / totalUnits : 0;
-    const landedB = fullQty    > 0 ? totalUsdB / fullQty    : 0;
-    const landedC = halfQty    > 0 ? totalUsdC / halfQty    : 0;
-    const savings = landedA - landedB;
-    const savingsPct = landedA > 0 ? Math.round((savings / landedA) * 100) : 0;
-    const savingsC = landedA - landedC;
+    const landedA = baseQty > 0 ? totalUsdA / baseQty : 0;
+    const landedB = halfQty > 0 ? totalUsdB / halfQty : 0;
+    const landedC = fullQty > 0 ? totalUsdC / fullQty : 0;
+    // Savings vs baseline (A) for each upsell card
+    const savingsB    = landedA - landedB;
+    const savingsBPct = landedA > 0 ? Math.round((savingsB / landedA) * 100) : 0;
+    const savingsC    = landedA - landedC;
     const savingsCPct = landedA > 0 ? Math.round((savingsC / landedA) * 100) : 0;
     const fmt$ = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const card = (kind, title, lines, footer, action) => {
@@ -11487,16 +11524,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ${actionHtml}
       </div>`;
     };
-    // Per-scenario labels. Pre-Apply, A reflects calc-method partial
-    // freight (so the label names the method), while B reflects
-    // either the operator's override quote OR the same calc method
-    // projected onto fullQty. Post-Apply both lock to the override.
+    // Per-scenario freight labels. A and B are always calc-method (LCL
+    // / partial-load reality). C reflects the override when set,
+    // otherwise the projected calc-method rate.
     const labelMethod   = `Freight (${methodLabel})`;
     const labelOverride = `Freight (override)`;
-    const freightLabelA = (_snapApplied && overrideUsd !== null) ? labelOverride : labelMethod;
-    const freightLabelB = (overrideUsd !== null)                  ? labelOverride : labelMethod;
-    // Half-container = LCL pitch, always calc-method (no override).
-    const freightLabelC = labelMethod;
+    const freightLabelA = labelMethod;
+    const freightLabelB = labelMethod;
+    const freightLabelC = (overrideUsd !== null && overrideUsd > 0) ? labelOverride : labelMethod;
     // When usdPerUnit is missing, swap every cost row for an inline
     // prompt so the operator sees the qty/pallet delta but isn't
     // misled by bogus $0.00 totals. The Per-unit landed row still
@@ -11504,105 +11539,110 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // price) so they get a real partial-vs-full freight comparison.
     const _needsPrice = !ps || !usdPerUnit;
     const priceMissing = `<span style="color:var(--text-muted); font-style:italic;">Add RFQ price →</span>`;
-    const freightPerUnitA = totalUnits > 0 ? freightUsdA / totalUnits : 0;
-    const freightPerUnitB = fullQty    > 0 ? freightUsdB / fullQty    : 0;
-    const freightPerUnitC = halfQty    > 0 ? freightUsdC / halfQty    : 0;
+    const freightPerUnitA = baseQty > 0 ? freightUsdA / baseQty : 0;
+    const freightPerUnitB = halfQty > 0 ? freightUsdB / halfQty : 0;
+    const freightPerUnitC = fullQty > 0 ? freightUsdC / fullQty : 0;
+    // A = baseline / pre-Apply state. Always shown with neutral styling
+    // for comparison, regardless of which (if any) pitch is applied.
     const linesA = [
-      ['Units shipped',  totalUnits.toLocaleString()],
-      ['Pallets needed', ctx.palletsNeeded.toLocaleString()],
+      ['Units shipped',  baseQty.toLocaleString()],
+      ['Pallets needed', basePalletsNeeded.toLocaleString()],
       ['Product cost',   _needsPrice ? priceMissing : fmt$(productUsdA)],
       [freightLabelA,    fmt$(freightUsdA)],
       ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px;">${fmt$(totalUsdA)}</strong>`],
       [_needsPrice ? 'Freight / unit' : 'Per-unit landed', fmt$(_needsPrice ? freightPerUnitA : landedA)]
     ];
+    // B = Half Container Pitch (LCL), blue accent.
     const linesB = [
-      ['Units shipped',  `${fullQty.toLocaleString()} <span style="color:#10b981; font-weight:700;">(+${additionalProducts.toLocaleString()})</span>`],
-      ['Pallets needed', `${(ctx.palletsNeeded + (ctx.palletsRoomLeft || 0)).toLocaleString()}`],
-      ['Product cost',   _needsPrice ? priceMissing : fmt$(productUsdB)],
-      [freightLabelB,    fmt$(freightUsdB)],
-      ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px; color:#10b981;">${fmt$(totalUsdB)}</strong>`],
-      [_needsPrice ? 'Freight / unit' : 'Per-unit landed', `<strong style="color:#10b981;">${fmt$(_needsPrice ? freightPerUnitB : landedB)}</strong>`]
-    ];
-    const linesC = [
       ['Units shipped',  `${halfQty.toLocaleString()} <span style="color:#3b82f6; font-weight:700;">(+${_halfAddProducts.toLocaleString()})</span>`],
       ['Pallets needed', `${_halfPalletsTotal.toLocaleString()}`],
+      ['Product cost',   _needsPrice ? priceMissing : fmt$(productUsdB)],
+      [freightLabelB,    fmt$(freightUsdB)],
+      ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px; color:#3b82f6;">${fmt$(totalUsdB)}</strong>`],
+      [_needsPrice ? 'Freight / unit' : 'Per-unit landed', `<strong style="color:#3b82f6;">${fmt$(_needsPrice ? freightPerUnitB : landedB)}</strong>`]
+    ];
+    // C = Full Container Pitch, green accent.
+    const linesC = [
+      ['Units shipped',  `${fullQty.toLocaleString()} <span style="color:#10b981; font-weight:700;">(+${additionalProducts.toLocaleString()})</span>`],
+      ['Pallets needed', `${(basePalletsNeeded + basePalletsRoomLeft).toLocaleString()}`],
       ['Product cost',   _needsPrice ? priceMissing : fmt$(productUsdC)],
       [freightLabelC,    fmt$(freightUsdC)],
-      ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px; color:#3b82f6;">${fmt$(totalUsdC)}</strong>`],
-      [_needsPrice ? 'Freight / unit' : 'Per-unit landed', `<strong style="color:#3b82f6;">${fmt$(_needsPrice ? freightPerUnitC : landedC)}</strong>`]
+      ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px; color:#10b981;">${fmt$(totalUsdC)}</strong>`],
+      [_needsPrice ? 'Freight / unit' : 'Per-unit landed', `<strong style="color:#10b981;">${fmt$(_needsPrice ? freightPerUnitC : landedC)}</strong>`]
     ];
-    // Footer message: when there's a real price, show landed-cost
-    // savings. When the price is missing, show freight-per-unit
-    // savings (still meaningful — that's the whole point of filling
-    // the container) and prompt to add a price for the full landed
-    // delta.
-    const freightSavings = freightPerUnitA - freightPerUnitB;
-    const freightSavingsPct = freightPerUnitA > 0 ? Math.round((freightSavings / freightPerUnitA) * 100) : 0;
+    // Footer for A — baseline. Just notes the pallet slots unused at
+    // the BASELINE qty (not whatever's currently applied).
+    const footerA = `${basePalletsRoomLeft} pallet slot${basePalletsRoomLeft === 1 ? '' : 's'} unused in the last container at the baseline qty.`;
+    // Footer for B (half / blue) — landed savings vs A, or freight-
+    // savings if no product price yet.
+    const _freightSavB    = freightPerUnitA - freightPerUnitB;
+    const _freightSavBPct = freightPerUnitA > 0 ? Math.round((_freightSavB / freightPerUnitA) * 100) : 0;
     const footerB = _needsPrice
-      ? (freightSavings > 0
-        ? `↓ <strong style="color:#10b981;">${fmt$(freightSavings)}/unit (${freightSavingsPct}%)</strong> lower freight per unit — filling the container with ${additionalProducts.toLocaleString()} more units spreads the freight across the full load. Add an RFQ price to see the full landed-cost delta.`
-        : `Add an RFQ price to see the landed-cost savings from filling the container.`)
-      : (savings > 0
-        ? `↓ <strong style="color:#10b981;">${fmt$(savings)}/unit (${savingsPct}%)</strong> lower than the partial-container scenario — filling the container with ${additionalProducts.toLocaleString()} more units spreads freight across the full load.`
-        : `Filling the container doesn't lower the per-unit landed cost at the current price point.`);
-    const footerA = `${ctx.palletsRoomLeft || 0} pallet slot${(ctx.palletsRoomLeft || 0) === 1 ? '' : 's'} unused in the last container.`;
-    // Footer for the half-container card — mirrors B but anchored to
-    // the half qty so the customer-facing pitch reads "here's the
-    // smaller commitment, here's the freight-per-unit benefit." If
-    // there's no real product price yet, fall back to freight-per-unit
-    // savings (still useful for sales conversations).
-    const footerC = _needsPrice
-      ? (freightPerUnitA - freightPerUnitC > 0
-        ? `↓ <strong style="color:#3b82f6;">${fmt$(freightPerUnitA - freightPerUnitC)}/unit</strong> lower freight per unit at ~50% container fill. Add an RFQ price to see the full landed-cost delta.`
+      ? (_freightSavB > 0
+        ? `↓ <strong style="color:#3b82f6;">${fmt$(_freightSavB)}/unit (${_freightSavBPct}%)</strong> lower freight per unit at ~50% container fill (LCL). Add an RFQ price to see the full landed-cost delta.`
         : `Add an RFQ price to see the landed-cost savings at half-container fill.`)
-      : (savingsC > 0
-        ? `↓ <strong style="color:#3b82f6;">${fmt$(savingsC)}/unit (${savingsCPct}%)</strong> lower than the partial-container scenario — half-container fill (LCL) using the calculated method rate.`
+      : (savingsB > 0
+        ? `↓ <strong style="color:#3b82f6;">${fmt$(savingsB)}/unit (${savingsBPct}%)</strong> lower than the baseline — half-container fill (LCL) at the calculated method rate.`
         : `Half-container fill (LCL) at the current price point.`);
+    // Footer for C (full / green) — landed savings vs A, or freight-
+    // savings if no product price yet.
+    const _freightSavC    = freightPerUnitA - freightPerUnitC;
+    const _freightSavCPct = freightPerUnitA > 0 ? Math.round((_freightSavC / freightPerUnitA) * 100) : 0;
+    const footerC = _needsPrice
+      ? (_freightSavC > 0
+        ? `↓ <strong style="color:#10b981;">${fmt$(_freightSavC)}/unit (${_freightSavCPct}%)</strong> lower freight per unit — filling the container with ${additionalProducts.toLocaleString()} more units spreads the freight across the full load. Add an RFQ price to see the full landed-cost delta.`
+        : `Add an RFQ price to see the landed-cost savings from filling the container.`)
+      : (savingsC > 0
+        ? `↓ <strong style="color:#10b981;">${fmt$(savingsC)}/unit (${savingsCPct}%)</strong> lower than the baseline — filling the container with ${additionalProducts.toLocaleString()} more units spreads freight across the full load.`
+        : `Filling the container doesn't lower the per-unit landed cost at the current price point.`);
     host.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px;">
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Hypothetical Scenarios</div>
         <div style="font-size:11px; color:var(--text-muted);">Method: <strong style="color:var(--text);">${methodLabel}</strong> · Per-unit: ${_needsPrice ? '<span style="font-style:italic;">—</span>' : fmt$(usdPerUnit)}</div>
       </div>
       ${(() => {
-        // Apply / Revert toggle: once the Full Container Pitch has
-        // been applied to the workbook, the button on Scenario B
-        // turns into "↺ Revert" so the operator can flip back without
-        // re-clicking Apply (which would compound the qty into the
-        // tens of thousands as previously seen).
-        const snap = window._fullContainerPitchSnap;
-        const isApplied = !!snap;
-        // snap.totalUnits was captured straight off the input's .value,
-        // which is comma-formatted ("110,000"). parseInt stops at the
-        // comma → 110, so the button used to read "Revert to 110 units"
-        // when the real pre-apply qty was 110,000. Strip commas first.
-        // GATE THIS ON isApplied — snap is null in the normal pre-Apply
-        // state, and a bare snap.totalUnits read would throw and silently
-        // abort the entire hypothetical re-render, leaving stale bail
-        // content from earlier in the session masquerading as a current
-        // bail message.
-        const snapRawUnits = isApplied
-          ? parseInt((snap.totalUnits || '').replace(/,/g, ''), 10)
-          : 0;
-        const action = isApplied
-          ? { label: `Revert to ${snapRawUnits > 0 ? snapRawUnits.toLocaleString() : '—'} units`,
+        // Card actions:
+        //   - A (baseline) never has an action; it's a pure comparison
+        //     card that stays the same regardless of which pitch is
+        //     currently applied.
+        //   - B (half) shows "Apply Half" by default, "Revert" when
+        //     the half pitch is currently applied, and "Apply Half"
+        //     when the full pitch is applied (clicking switches to
+        //     half without losing the baseline snap).
+        //   - C (full) shows "Apply Full" by default, "Revert" when
+        //     the full pitch is currently applied, and "Apply Full"
+        //     when the half pitch is applied (clicking switches to
+        //     full, also flips the freight override to $16,500).
+        const revertLabel = baseQty > 0 ? `Revert to ${baseQty.toLocaleString()} units` : 'Revert';
+        const actionB = (appliedKind === 'half')
+          ? { label: revertLabel,
               title: 'Revert Total Units to the pre-apply value',
               call:  `revertFullContainerPitch()` }
-          : { label: `Apply Full Container Pitch (${fullQty.toLocaleString()} units)`,
-              title: `Set Total Units to ${fullQty.toLocaleString()} and load the loose top-off`,
-              call:  `applyFullContainerPitch(${fullQty}, ${looseProducts})` };
-        // Half-container Apply button — sets Total Units to halfQty
-        // WITHOUT flipping the freight override (LCL stays calc-method).
-        // The snapshot mechanism is shared with the full pitch so Revert
-        // works regardless of which one was applied last.
-        const halfAction = (_halfMakesSense && !isApplied)
-          ? { label: `Apply Half Container Pitch (${halfQty.toLocaleString()} units)`,
-              title: `Set Total Units to ${halfQty.toLocaleString()} (LCL, ~50% container fill)`,
-              call:  `applyHalfContainerPitch(${halfQty})` }
-          : null;
+          : (_halfAddProducts > 0
+            ? { label: `Apply Half Container Pitch (${halfQty.toLocaleString()} units)`,
+                title: `Set Total Units to ${halfQty.toLocaleString()} (LCL, ~50% container fill)`,
+                call:  `applyHalfContainerPitch(${halfQty})` }
+            : null);
+        const actionC = (appliedKind === 'full')
+          ? { label: revertLabel,
+              title: 'Revert Total Units to the pre-apply value',
+              call:  `revertFullContainerPitch()` }
+          : (additionalProducts > 0
+            ? { label: `Apply Full Container Pitch (${fullQty.toLocaleString()} units)`,
+                title: `Set Total Units to ${fullQty.toLocaleString()} and flip freight to the full-container rate`,
+                call:  `applyFullContainerPitch(${fullQty}, ${looseProducts})` }
+            : null);
+        // Which scenario is currently live on the workbook?
+        // - No snap → A (baseline)
+        // - snap.pitchKind === 'half' → B
+        // - snap.pitchKind === 'full' → C
+        const liveKind = appliedKind || 'actual';
+        const liveTag  = ' <span style="font-size:9px; padding:1px 6px; border-radius:3px; background:currentColor; color:#fff; vertical-align:middle; margin-left:6px; opacity:0.85;">LIVE</span>';
+        const tagFor   = (k) => (k === liveKind ? liveTag : '');
         return `<div style="display:flex; gap:12px; flex-wrap:wrap;">
-          ${card('actual', 'A · Actual (Partial)',          linesA, footerA)}
-          ${_halfMakesSense ? card('half', 'C · Half Container Pitch (LCL)', linesC, footerC, halfAction) : ''}
-          ${card('full',   'B · Full Container Pitch',      linesB, footerB, action)}
+          ${card('actual', 'A · Actual (Partial)' + tagFor('actual'),         linesA, footerA)}
+          ${card('half',   'B · Half Container Pitch (LCL)' + tagFor('half'), linesB, footerB, actionB)}
+          ${card('full',   'C · Full Container Pitch' + tagFor('full'),       linesC, footerC, actionC)}
         </div>`;
       })()}`;
   }
