@@ -11514,7 +11514,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                title="${action.title || action.label}">↻ ${action.label}</button>
            </div>`
         : '';
-      return `<div style="padding:14px; border:1px solid ${c.bd}; border-radius:8px; background:${c.bg}; flex:1 1 280px; min-width:240px;">
+      return `<div style="padding:14px; border:1px solid ${c.bd}; border-radius:8px; background:${c.bg}; min-width:0;">
         <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:${c.accent}; margin-bottom:10px;">${title}</div>
         ${lines.map(l => `<div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; line-height:1.8;">
           <span style="color:var(--text-muted);">${l[0]}</span>
@@ -11639,7 +11639,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const liveKind = appliedKind || 'actual';
         const liveTag  = ' <span style="font-size:9px; padding:1px 6px; border-radius:3px; background:currentColor; color:#fff; vertical-align:middle; margin-left:6px; opacity:0.85;">LIVE</span>';
         const tagFor   = (k) => (k === liveKind ? liveTag : '');
-        return `<div style="display:flex; gap:12px; flex-wrap:wrap;">
+        // Three-column grid so A/B/C stay on the same row across the
+        // full panel width. The cards' own min-width was previously
+        // dictating wrap behavior; with grid the columns share the
+        // available width equally and only wrap on genuinely narrow
+        // viewports (below ~720px).
+        return `<div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px;">
           ${card('actual', 'A · Actual (Partial)' + tagFor('actual'),         linesA, footerA)}
           ${card('half',   'B · Half Container Pitch (LCL)' + tagFor('half'), linesB, footerB, actionB)}
           ${card('full',   'C · Full Container Pitch' + tagFor('full'),       linesC, footerC, actionC)}
