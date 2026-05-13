@@ -19,15 +19,27 @@ header('ETag: "' . dechex($_msBuildId) . '"');
 // can't serve a "200 with stale body" — the redirect itself is a
 // brand-new resource keyed on the new query string, and intermediate
 // caches treat the destination URL as unseen.
-$_msReqV   = isset($_GET['v']) ? (string)$_GET['v'] : '';
-$_msWantV  = (string)$_msBuildId;
+$_msReqV  = isset($_GET['v']) ? (string)$_GET['v'] : '';
+$_msWantV = (string)$_msBuildId;
 if ($_msReqV !== $_msWantV) {
   $_msUri = $_SERVER['REQUEST_URI'] ?? '/index.php';
-  // Strip any existing v= so we don't end up with v=old&v=new.
-  $_msUri = preg_replace('/([?&])v=[^&]*(&|$)/', '$1', $_msUri);
-  $_msUri = rtrim($_msUri, '?&');
-  $_msUri .= (strpos($_msUri, '?') === false ? '?' : '&') . 'v=' . urlencode($_msWantV);
-  header('Location: ' . $_msUri, true, 302);
+  // Split path from query, rebuild query without any v= entries, then
+  // append the correct v=. Parsing via parse_str round-trip handles
+  // duplicate v= keys cleanly (which a naive preg_replace did not).
+  $_msQs   = '';
+  $_msPath = $_msUri;
+  $_msQPos = strpos($_msUri, '?');
+  if ($_msQPos !== false) {
+    $_msPath = substr($_msUri, 0, $_msQPos);
+    $_msQs   = substr($_msUri, $_msQPos + 1);
+  }
+  $_msParams = [];
+  if ($_msQs !== '') parse_str($_msQs, $_msParams);
+  unset($_msParams['v']);
+  $_msParams['v'] = $_msWantV;
+  $_msNewQs = http_build_query($_msParams);
+  $_msDest  = $_msPath . ($_msNewQs !== '' ? '?' . $_msNewQs : '');
+  header('Location: ' . $_msDest, true, 302);
   exit;
 }
 $_msUser     = htmlspecialchars($_SESSION['display_name'] ?? $_SESSION['username'] ?? '', ENT_QUOTES);
