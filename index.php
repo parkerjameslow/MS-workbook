@@ -10493,6 +10493,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // bumped qty in real time.
     if (typeof renderPricingTab === 'function') renderPricingTab();
   }
+  // Half-container Apply — sets Total Units to halfQty but DOESN'T
+  // touch the freight override (half-container ships LCL, not at the
+  // full $16,500 ocean rate). Snapshot is shared with the full pitch
+  // so Revert works for either one. No loose top-off either —
+  // half-container by design isn't maximizing the leftover CBM.
+  function applyHalfContainerPitch(halfQty) {
+    const el = document.getElementById('pallet-total-cartons');
+    if (!el) return;
+    const overrideEl     = document.getElementById('freight-cost-override');
+    const overrideToggle = document.getElementById('freight-cost-override-toggle');
+    if (!window._fullContainerPitchSnap) {
+      window._fullContainerPitchSnap = {
+        totalUnits:   el.value || '',
+        looseTopOff:  el.dataset.looseTopOff || '',
+        lastRfqSync:  el.dataset.lastRfqSync || '',
+        overrideOn:   !!(overrideToggle && overrideToggle.checked),
+        overrideVal:  overrideEl ? (overrideEl.value || '') : '',
+        appliedQty:   String(parseInt(halfQty) || 0),
+        appliedLoose: '0',
+        pitchKind:    'half'
+      };
+    } else {
+      window._fullContainerPitchSnap.appliedQty   = String(parseInt(halfQty) || 0);
+      window._fullContainerPitchSnap.appliedLoose = '0';
+      window._fullContainerPitchSnap.pitchKind    = 'half';
+    }
+    applyTotalUnitsSuggestion(halfQty, 0);
+    if (typeof renderPricingTab === 'function') renderPricingTab();
+  }
   function revertFullContainerPitch() {
     const el = document.getElementById('pallet-total-cartons');
     if (!el || !window._fullContainerPitchSnap) return;
@@ -11353,6 +11382,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const looseProducts = looseItems * (productsPerItem || 1);
     const additionalProducts = palletProducts + looseProducts;
     const fullQty = totalUnits + additionalProducts;
+    // ── Half-container scenario (LCL pitch) ─────────────────────────────
+    // Quote target for customers who don't want a full container — fill
+    // the LAST container to half its pallet capacity (no loose top-off
+    // since the goal is LCL-style 50%, not maximizing the space). Sit
+    // between A and B in the card row.
+    const _palletsPerContainer = ctx.palletsPerContainer || 0;
+    const _palletsInLast       = ctx.palletsInLast || 0;
+    const _halfPalletsTarget   = Math.floor(_palletsPerContainer / 2);
+    const _halfAddPallets      = Math.max(0, _halfPalletsTarget - _palletsInLast);
+    const _halfAddItems        = _halfAddPallets * (ctx.unitsPerPallet || 0);
+    const _halfAddProducts     = _halfAddItems * (productsPerItem || 1);
+    const halfQty              = totalUnits + _halfAddProducts;
+    const _halfPalletsTotal    = (ctx.palletsNeeded || 0) + _halfAddPallets;
+    // Show the half card only when filling to half is BETWEEN where we
+    // are now and the full pitch — otherwise it's not a meaningful
+    // intermediate option (e.g. operator already past half → card
+    // collapses to "already past half container," still informative
+    // but with a calmer tint).
+    const _halfMakesSense = _halfAddPallets > 0 && _halfAddProducts > 0;
     // Freight costs — calcSplitCost takes qty in PRODUCTS and bakes in
     // outer-carton conversion + per-mode rate/divisor for us. Manual
     // shipping-cost override (if active) replaces BOTH scenarios with
@@ -11374,32 +11422,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let freightUsdA, freightUsdB;
     const _calcA = (typeof calcSplitCost === 'function') ? calcSplitCost(method, totalUnits) : null;
     const _calcB = (typeof calcSplitCost === 'function') ? calcSplitCost(method, fullQty)    : null;
+    const _calcC = (typeof calcSplitCost === 'function') ? calcSplitCost(method, halfQty)    : null;
     const _calcAUsd = _calcA ? parseUsd(_calcA.usdStr) : 0;
     const _calcBUsd = _calcB ? parseUsd(_calcB.usdStr) : 0;
+    const _calcCUsd = _calcC ? parseUsd(_calcC.usdStr) : 0;
+    // Half-container freight — LCL-style. The shipping-cost override
+    // (typically $16,500 for a full container) doesn't apply because a
+    // half-load wouldn't book a full container; use the calculated rate
+    // for the half qty instead.
+    let freightUsdC;
     if (_snapApplied && overrideUsd !== null) {
       // Apply has been pressed — both scenarios reflect the committed
       // full-container freight.
       freightUsdA = overrideUsd;
       freightUsdB = overrideUsd;
+      freightUsdC = _calcCUsd; // half stays LCL even when full is committed
     } else {
       // Pre-Apply: A = realistic partial freight from the method calc.
       // B = override if the operator has set one (a quote they got),
       // else the partial-method calc projected onto fullQty.
       freightUsdA = _calcAUsd;
       freightUsdB = (overrideUsd !== null) ? overrideUsd : _calcBUsd;
+      freightUsdC = _calcCUsd;
     }
     const productUsdA = totalUnits * usdPerUnit;
     const productUsdB = fullQty    * usdPerUnit;
+    const productUsdC = halfQty    * usdPerUnit;
     const totalUsdA   = productUsdA + freightUsdA;
     const totalUsdB   = productUsdB + freightUsdB;
+    const totalUsdC   = productUsdC + freightUsdC;
     const landedA = totalUnits > 0 ? totalUsdA / totalUnits : 0;
     const landedB = fullQty    > 0 ? totalUsdB / fullQty    : 0;
+    const landedC = halfQty    > 0 ? totalUsdC / halfQty    : 0;
     const savings = landedA - landedB;
     const savingsPct = landedA > 0 ? Math.round((savings / landedA) * 100) : 0;
+    const savingsC = landedA - landedC;
+    const savingsCPct = landedA > 0 ? Math.round((savingsC / landedA) * 100) : 0;
     const fmt$ = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const card = (kind, title, lines, footer, action) => {
       const colors = {
         actual: { bd:'var(--border)', bg:'var(--surface2)', accent:'var(--text)' },
+        // Half-container = sales-pitch blue (calmer than the full-
+        // container green so the upsell hierarchy still reads B > C).
+        half:   { bd:'#3b82f6',        bg:'rgba(59,130,246,0.08)', accent:'#3b82f6' },
         full:   { bd:'#10b981',        bg:'rgba(16,185,129,0.08)', accent:'#10b981' }
       };
       const c = colors[kind] || colors.actual;
@@ -11430,6 +11495,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const labelOverride = `Freight (override)`;
     const freightLabelA = (_snapApplied && overrideUsd !== null) ? labelOverride : labelMethod;
     const freightLabelB = (overrideUsd !== null)                  ? labelOverride : labelMethod;
+    // Half-container = LCL pitch, always calc-method (no override).
+    const freightLabelC = labelMethod;
     // When usdPerUnit is missing, swap every cost row for an inline
     // prompt so the operator sees the qty/pallet delta but isn't
     // misled by bogus $0.00 totals. The Per-unit landed row still
@@ -11439,6 +11506,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const priceMissing = `<span style="color:var(--text-muted); font-style:italic;">Add RFQ price →</span>`;
     const freightPerUnitA = totalUnits > 0 ? freightUsdA / totalUnits : 0;
     const freightPerUnitB = fullQty    > 0 ? freightUsdB / fullQty    : 0;
+    const freightPerUnitC = halfQty    > 0 ? freightUsdC / halfQty    : 0;
     const linesA = [
       ['Units shipped',  totalUnits.toLocaleString()],
       ['Pallets needed', ctx.palletsNeeded.toLocaleString()],
@@ -11455,6 +11523,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px; color:#10b981;">${fmt$(totalUsdB)}</strong>`],
       [_needsPrice ? 'Freight / unit' : 'Per-unit landed', `<strong style="color:#10b981;">${fmt$(_needsPrice ? freightPerUnitB : landedB)}</strong>`]
     ];
+    const linesC = [
+      ['Units shipped',  `${halfQty.toLocaleString()} <span style="color:#3b82f6; font-weight:700;">(+${_halfAddProducts.toLocaleString()})</span>`],
+      ['Pallets needed', `${_halfPalletsTotal.toLocaleString()}`],
+      ['Product cost',   _needsPrice ? priceMissing : fmt$(productUsdC)],
+      [freightLabelC,    fmt$(freightUsdC)],
+      ['Total landed',   _needsPrice ? priceMissing : `<strong style="font-size:14px; color:#3b82f6;">${fmt$(totalUsdC)}</strong>`],
+      [_needsPrice ? 'Freight / unit' : 'Per-unit landed', `<strong style="color:#3b82f6;">${fmt$(_needsPrice ? freightPerUnitC : landedC)}</strong>`]
+    ];
     // Footer message: when there's a real price, show landed-cost
     // savings. When the price is missing, show freight-per-unit
     // savings (still meaningful — that's the whole point of filling
@@ -11470,6 +11546,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ? `↓ <strong style="color:#10b981;">${fmt$(savings)}/unit (${savingsPct}%)</strong> lower than the partial-container scenario — filling the container with ${additionalProducts.toLocaleString()} more units spreads freight across the full load.`
         : `Filling the container doesn't lower the per-unit landed cost at the current price point.`);
     const footerA = `${ctx.palletsRoomLeft || 0} pallet slot${(ctx.palletsRoomLeft || 0) === 1 ? '' : 's'} unused in the last container.`;
+    // Footer for the half-container card — mirrors B but anchored to
+    // the half qty so the customer-facing pitch reads "here's the
+    // smaller commitment, here's the freight-per-unit benefit." If
+    // there's no real product price yet, fall back to freight-per-unit
+    // savings (still useful for sales conversations).
+    const footerC = _needsPrice
+      ? (freightPerUnitA - freightPerUnitC > 0
+        ? `↓ <strong style="color:#3b82f6;">${fmt$(freightPerUnitA - freightPerUnitC)}/unit</strong> lower freight per unit at ~50% container fill. Add an RFQ price to see the full landed-cost delta.`
+        : `Add an RFQ price to see the landed-cost savings at half-container fill.`)
+      : (savingsC > 0
+        ? `↓ <strong style="color:#3b82f6;">${fmt$(savingsC)}/unit (${savingsCPct}%)</strong> lower than the partial-container scenario — half-container fill (LCL) using the calculated method rate.`
+        : `Half-container fill (LCL) at the current price point.`);
     host.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:10px;">
         <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Hypothetical Scenarios</div>
@@ -11502,9 +11590,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           : { label: `Apply Full Container Pitch (${fullQty.toLocaleString()} units)`,
               title: `Set Total Units to ${fullQty.toLocaleString()} and load the loose top-off`,
               call:  `applyFullContainerPitch(${fullQty}, ${looseProducts})` };
+        // Half-container Apply button — sets Total Units to halfQty
+        // WITHOUT flipping the freight override (LCL stays calc-method).
+        // The snapshot mechanism is shared with the full pitch so Revert
+        // works regardless of which one was applied last.
+        const halfAction = (_halfMakesSense && !isApplied)
+          ? { label: `Apply Half Container Pitch (${halfQty.toLocaleString()} units)`,
+              title: `Set Total Units to ${halfQty.toLocaleString()} (LCL, ~50% container fill)`,
+              call:  `applyHalfContainerPitch(${halfQty})` }
+          : null;
         return `<div style="display:flex; gap:12px; flex-wrap:wrap;">
-          ${card('actual', 'A · Actual (Partial)',      linesA, footerA)}
-          ${card('full',   'B · Full Container Pitch',  linesB, footerB, action)}
+          ${card('actual', 'A · Actual (Partial)',          linesA, footerA)}
+          ${_halfMakesSense ? card('half', 'C · Half Container Pitch (LCL)', linesC, footerC, halfAction) : ''}
+          ${card('full',   'B · Full Container Pitch',      linesB, footerB, action)}
         </div>`;
       })()}`;
   }
