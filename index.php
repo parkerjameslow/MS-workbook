@@ -11487,7 +11487,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // which is comma-formatted ("110,000"). parseInt stops at the
         // comma → 110, so the button used to read "Revert to 110 units"
         // when the real pre-apply qty was 110,000. Strip commas first.
-        const snapRawUnits = parseInt((snap.totalUnits || '').replace(/,/g, ''), 10);
+        // GATE THIS ON isApplied — snap is null in the normal pre-Apply
+        // state, and a bare snap.totalUnits read would throw and silently
+        // abort the entire hypothetical re-render, leaving stale bail
+        // content from earlier in the session masquerading as a current
+        // bail message.
+        const snapRawUnits = isApplied
+          ? parseInt((snap.totalUnits || '').replace(/,/g, ''), 10)
+          : 0;
         const action = isApplied
           ? { label: `Revert to ${snapRawUnits > 0 ? snapRawUnits.toLocaleString() : '—'} units`,
               title: 'Revert Total Units to the pre-apply value',
