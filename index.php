@@ -11543,27 +11543,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fmt$ = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const card = (kind, title, lines, footer, action, isLive) => {
       const colors = {
-        actual: { bd:'var(--border)', bg:'var(--surface2)', accent:'var(--text)', accentRgb:'107,114,128' },
+        actual: { bd:'var(--border)', bg:'var(--surface2)', accent:'var(--text)' },
         // Half-container = sales-pitch blue (calmer than the full-
         // container green so the upsell hierarchy still reads B > C).
-        half:   { bd:'#3b82f6',       bg:'rgba(59,130,246,0.08)', accent:'#3b82f6', accentRgb:'59,130,246' },
-        full:   { bd:'#10b981',       bg:'rgba(16,185,129,0.08)', accent:'#10b981', accentRgb:'16,185,129' }
+        half:   { bd:'#3b82f6',       bg:'rgba(59,130,246,0.08)', accent:'#3b82f6' },
+        full:   { bd:'#10b981',       bg:'rgba(16,185,129,0.08)', accent:'#10b981' }
       };
       const c = colors[kind] || colors.actual;
-      // Strong "LIVE" treatment for whichever card is the currently-
-      // applied workbook state. Multiple stacking cues so the operator
-      // can't miss it: thick accent border, accent-tinted shadow,
-      // accent-tinted body background, slight scale lift, and a big
-      // pill badge in the title row.
-      const liveBorder = isLive ? `3px solid ${c.accent}`                              : `1px solid ${c.bd}`;
-      const liveBg     = isLive ? `rgba(${c.accentRgb}, 0.16)`                          : c.bg;
-      const liveShadow = isLive ? `box-shadow:0 0 0 1px rgba(${c.accentRgb},0.25), 0 8px 24px rgba(${c.accentRgb},0.22);` : '';
-      const liveLift   = isLive ? `transform:translateY(-2px);`                         : '';
-      const liveBadge  = isLive
-        ? `<span style="display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:800; padding:3px 8px; border-radius:12px; background:${c.accent}; color:#fff; vertical-align:middle; margin-left:8px; letter-spacing:0.08em; box-shadow:0 1px 2px rgba(0,0,0,0.15);">
-             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><polyline points="20 6 9 17 4 12"></polyline></svg>
-             APPLIED
-           </span>`
+      // Static cards — same dimensions / border / shadow / position
+      // regardless of which scenario is currently applied. The only
+      // visual cue for "this one is applied" is a small inline ✓ next
+      // to the letter in the title row, so layout never shifts when
+      // the operator clicks Apply / Revert.
+      const liveCheck = isLive
+        ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${c.accent}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:-2px; margin-right:4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>`
         : '';
       const actionHtml = action
         ? `<div style="margin-top:10px;">
@@ -11574,10 +11567,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                title="${action.title || action.label}">↻ ${action.label}</button>
            </div>`
         : '';
-      return `<div style="padding:14px; border:${liveBorder}; border-radius:8px; background:${liveBg}; min-width:0; ${liveLift} transition:transform 120ms ease, box-shadow 120ms ease; ${liveShadow}">
-        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:${c.accent}; margin-bottom:10px; display:flex; align-items:center; flex-wrap:wrap; gap:4px;">
-          <span>${title}</span>${liveBadge}
-        </div>
+      return `<div style="padding:14px; border:1px solid ${c.bd}; border-radius:8px; background:${c.bg}; min-width:0;">
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:${c.accent}; margin-bottom:10px;">${liveCheck}${title}</div>
         ${lines.map(l => `<div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; line-height:1.8;">
           <span style="color:var(--text-muted);">${l[0]}</span>
           <span style="color:var(--text); font-weight:600; white-space:nowrap;">${l[1]}</span>
