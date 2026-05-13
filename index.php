@@ -11234,14 +11234,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           : 'Set outer carton dimensions so the pallet count is known.');
       // Diagnostic — when totalUnits is 0 even though the room-to-fill
       // panel is rendering pallet math, the helpers see something the
-      // operator doesn't expect. Surface the inputs the helpers read
-      // so they can diff against what's typed in.
+      // operator doesn't expect. Surface every input the helper reads
+      // + the mode it resolved so the next screenshot tells us the
+      // exact disagreement.
+      const _pcDbg = _msIntFromInput(document.getElementById('case-only-products-per'));
+      const _coDbg = _msIntFromInput(document.getElementById('case-only-cases-order'));
+      const _ptDbg = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+      const _cbDbg = !!document.getElementById('case-only-override')?.checked;
+      const _mnDbg = !!document.getElementById('pallet-manual')?.checked;
+      const _diag = `<span style="display:block; margin-top:6px; font-size:11px; color:var(--text-muted); font-family:monospace;">[diag: mode=${mode} · case-checkbox=${_cbDbg} · manual-checkbox=${_mnDbg} · pc=${_pcDbg} · co=${_coDbg} · pallet-total=${_ptDbg} · totalUnits=${totalUnits} · palletsNeeded=${ctx.palletsNeeded}]</span>`;
       let reason;
       if (!totalUnits) {
         if (caseOn) {
-          const _pcDbg = _msIntFromInput(document.getElementById('case-only-products-per'));
-          const _coDbg = _msIntFromInput(document.getElementById('case-only-cases-order'));
-          const _ptDbg = _msIntFromInput(document.getElementById('pallet-total-cartons'));
           if (_pcDbg === 0 && _coDbg === 0 && _ptDbg === 0) {
             reason = 'Enter Products/Case + Cases/Order in the Case Only Override block (or Total Units to Ship on the Pallet section).';
           } else if (_pcDbg === 0) {
@@ -11249,10 +11253,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           } else if (_coDbg === 0) {
             reason = 'Enter Cases/Order in the Case Only Override block.';
           } else {
-            // Should be unreachable — both case fields > 0 means the
-            // helper would have produced a positive total. Surface the
-            // raw values so it's debuggable.
-            reason = `Case math reads pc=${_pcDbg} · co=${_coDbg} · pallet-total=${_ptDbg} — refresh the page; if it persists, screenshot this message.`;
+            reason = 'Case math should have produced a positive total — see diag below.';
           }
         } else {
           reason = 'Enter Total Units to Ship.';
@@ -11260,6 +11261,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       } else {
         reason = _dimReason;
       }
+      reason = reason + _diag;
       host.innerHTML = `
         <div style="padding:12px 14px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.55;">
           <strong style="color:var(--text);">Hypothetical scenarios:</strong> ${reason}
