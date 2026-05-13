@@ -11476,11 +11476,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _calcAUsd = _calcAraw ? parseUsd(_calcAraw.usdStr) : 0;
     const _calcBUsd = _calcBraw ? parseUsd(_calcBraw.usdStr) : 0;
     const _calcCUsd = _calcCraw ? parseUsd(_calcCraw.usdStr) : 0;
-    // A always shows the calc rate (the baseline reality). The override
-    // is reserved for C (the full-container projection).
+    // A always shows the calc rate (the baseline reality). B (half /
+    // LCL) also uses the calc rate. C is the FULL container booking,
+    // which in the real world is a flat per-container fee — pin it to
+    // FULL_CONTAINER_FREIGHT_USD ($16,500 by default) so the operator
+    // can always see "this is what a full container costs." If the
+    // operator has set an override quote (e.g. a freight broker quoted
+    // them a different number), honor that override instead.
+    const _fullFreightDefault = (typeof FULL_CONTAINER_FREIGHT_USD === 'number') ? FULL_CONTAINER_FREIGHT_USD : 16500;
     const freightUsdA = _calcAUsd;
     const freightUsdB = _calcBUsd;
-    const freightUsdC = (overrideUsd !== null && overrideUsd > 0) ? overrideUsd : _calcCUsd;
+    const freightUsdC = (overrideUsd !== null && overrideUsd > 0) ? overrideUsd : _fullFreightDefault;
     const productUsdA = baseQty * usdPerUnit;
     const productUsdB = halfQty * usdPerUnit;
     const productUsdC = fullQty * usdPerUnit;
@@ -11541,14 +11547,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ${actionHtml}
       </div>`;
     };
-    // Per-scenario freight labels. A and B are always calc-method (LCL
-    // / partial-load reality). C reflects the override when set,
-    // otherwise the projected calc-method rate.
+    // Per-scenario freight labels. A and B are always calc-method
+    // (LCL / partial-load reality). C is pinned to the full-container
+    // booking rate ($16,500 by default, or the operator's override
+    // quote if set) — the label reflects which source produced it.
     const labelMethod   = `Freight (${methodLabel})`;
     const labelOverride = `Freight (override)`;
+    const labelFullCnt  = `Freight (full container)`;
     const freightLabelA = labelMethod;
     const freightLabelB = labelMethod;
-    const freightLabelC = (overrideUsd !== null && overrideUsd > 0) ? labelOverride : labelMethod;
+    const freightLabelC = (overrideUsd !== null && overrideUsd > 0) ? labelOverride : labelFullCnt;
     // When usdPerUnit is missing, swap every cost row for an inline
     // prompt so the operator sees the qty/pallet delta but isn't
     // misled by bogus $0.00 totals. The Per-unit landed row still
