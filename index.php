@@ -11127,13 +11127,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       : 0;
     const productsPerItem  = caseOn ? (_caseProductsPer || 1)
                            : (manualOn ? 1 : (productsPerOuter || 0));
-    // Per-unit USD product price — required for any pricing math.
-    const ps = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary) || null;
+    // Per-unit USD product price — required for cost math. If the
+    // shared _lastRfqPriceSummary hasn't been computed yet (load-time
+    // race when fillWorkbook calls renderPalletViz before its later
+    // recalcRfqTotals), force a recalc on the spot so the panel reads
+    // the price the operator actually entered instead of stalling on a
+    // stale null.
+    let ps = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary) || null;
+    if (!ps && typeof recalcRfqTotals === 'function') {
+      try { recalcRfqTotals(); } catch (_) {}
+      ps = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary) || null;
+    }
     let usdPerUnit = 0;
     if (ps) {
       if (ps.grandUsdUnit && ps.grandUsdUnit > 0) usdPerUnit = ps.grandUsdUnit;
       else if (ps.grandUsd && ps.grandQty)         usdPerUnit = ps.grandUsd / ps.grandQty;
       else if (ps.usdMin && ps.usdMin > 0)         usdPerUnit = ps.usdMin;
+    }
+    // Final fallback: scrape the first priced RFQ row directly. Handles
+    // edge cases where _lastRfqPriceSummary exists but grandUsdUnit=0
+    // (e.g. summary was built from a row whose price was cleared, then
+    // a new priced row was added but the recalc bookkeeping missed the
+    // unit price for some reason).
+    if (!usdPerUnit) {
+      const rfqRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+      for (const r of rfqRows) {
+        const inputs = r.querySelectorAll('input:not([type="checkbox"])');
+        const rmb = _msNumFromInput(inputs[3]);
+        if (rmb > 0) {
+          usdPerUnit = (typeof _fxUsdFromRmb === 'function') ? _fxUsdFromRmb(rmb) : (rmb / 7.2);
+          break;
+        }
+      }
     }
     // Bail conditions — show a friendly stub instead of a half-baked
     // panel when we lack the *structural* inputs (qty, pallet count).
