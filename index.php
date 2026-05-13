@@ -14,6 +14,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- HTTP headers (set above) already disable caching, but some browsers
+       (older Safari especially) honor the meta hint more reliably for
+       back/forward navigation and offline-mode revalidation. Keep both. -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <title>Market Sculpt — Product Workbook</title>
   <style>
@@ -10257,6 +10263,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _caseOnlyActive() {
     return !!document.getElementById('case-only-override')?.checked;
   }
+
+  // ── Ship-mode helpers — SINGLE SOURCE OF TRUTH ───────────────────────
+  // Every pallet/container/freight consumer needs to know three things:
+  //
+  //   1. Which mode is active (case-only / manual / default carton)
+  //   2. How many products are inside each ship-item (44 for cases,
+  //      1 for manual, inner×outer for carton mode)
+  //   3. The canonical "Total Units to Ship" — in case-only mode this
+  //      is products/case × cases/order, and falls back to the
+  //      pallet-total-cartons input when case fields are blank
+  //
+  // Historically every consumer duplicated this cascade inline, and
+  // each one had its own way of forgetting the Case Only branch — the
+  // Fill button, the Hypothetical Scenarios bail, the loose-CBM
+  // accounting, etc. all had the same class of bug. These helpers
+  // centralize the logic so future readers see one place to look.
+  //
+  // RULE: any new code that branches on shipping mode MUST call these
+  // helpers instead of re-deriving the booleans / counts inline.
+  function _msShipMode() {
+    if (_caseOnlyActive()) return 'case';
+    if (document.getElementById('pallet-manual')?.checked) return 'manual';
+    return 'carton';
+  }
+  function _msProductsPerShipItem() {
+    const mode = _msShipMode();
+    if (mode === 'case') {
+      const pc = _msIntFromInput(document.getElementById('case-only-products-per'));
+      return pc > 0 ? pc : 1;
+    }
+    if (mode === 'manual') return 1;
+    const inner = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+    const outer = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+    const ppo = (inner > 0 && outer > 0) ? inner * outer : 0;
+    return ppo > 0 ? ppo : 0;  // 0 here means "carton mode but not configured yet"
+  }
+  function _msEffectiveTotalUnits() {
+    const palletInput = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+    if (_msShipMode() !== 'case') return palletInput;
+    const pc = _msIntFromInput(document.getElementById('case-only-products-per'));
+    const co = _msIntFromInput(document.getElementById('case-only-cases-order'));
+    const caseTotal = (pc > 0 && co > 0) ? pc * co : 0;
+    // Case math wins when the pallet-total input is empty (load-time
+    // race) OR when the operator has bumped the input ABOVE the case
+    // math via Apply Full Container Pitch — Math.max picks whichever
+    // is larger, so both behaviors are preserved.
+    return Math.max(caseTotal, palletInput);
+  }
   // Pallet vs Loose-Load — when the operator picks Loose Load, the
   // pallet tare weight and the deck height penalty drop out of every
   // total, and the divider option is hidden by default. renderPalletViz
@@ -10870,19 +10924,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Convert loose products → loose-cardboard-cartons via the same
     // products-per-item ratio used when stashing (1 in manual mode,
     // products-per-outer-carton in carton mode, products-per-case in
-    // case-only mode). Without the case-only branch, _ppiCV falls
-    // through to 1 and the loose top-off (stored as PRODUCTS) gets
-    // treated as raw cases — multiplying its CBM by 44× and
-    // collapsing cbmRoomLeft → looseItems → +0 in the Hypothetical
-    // Scenarios.
-    const _caseOnCV   = !!document.getElementById('case-only-override')?.checked;
-    const _innerCV    = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
-    const _outerCV    = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-    const _ppoCV      = (_innerCV > 0 && _outerCV > 0) ? _innerCV * _outerCV : 0;
-    const _caseProdCV = _caseOnCV ? (_msIntFromInput(document.getElementById('case-only-products-per')) || 0) : 0;
-    const _manualCV   = !_caseOnCV && !!document.getElementById('pallet-manual')?.checked;
-    const _ppiCV      = _caseOnCV ? (_caseProdCV || 1)
-                       : (_manualCV ? 1 : (_ppoCV || 1));
+    // case-only mode). Routed through the canonical helper so this
+    // function can't drift from the rest of the pallet/container math
+    // when the case-only branch grows new edge cases.
+    const _ppiCV = _msProductsPerShipItem() || 1;
     const _looseCartonCountCV = _ppiCV > 0 ? (_looseUnitsCV / _ppiCV) : 0;
     const _unitCbmCV = (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0;
     const _unitWtCV  = (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0;
@@ -10953,21 +10998,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // product (1:1). In carton mode each ship item is an outer
       // carton holding `productsPerOuter` products, so we multiply by
       // that to reach the products figure the input expects.
-      const _caseOnFill      = !!document.getElementById('case-only-override')?.checked;
-      const _innerQtyForFill = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
-      const _outerQtyForFill = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-      const _ppoForFill      = (_innerQtyForFill > 0 && _outerQtyForFill > 0) ? _innerQtyForFill * _outerQtyForFill : 0;
-      const _caseProdForFill = _caseOnFill ? (_msIntFromInput(document.getElementById('case-only-products-per')) || 0) : 0;
-      const _manualOnFill    = !_caseOnFill && !!document.getElementById('pallet-manual')?.checked;
-      // products-per-ship-item — case-only uses products/case, manual
-      // uses 1, default uses products/outer. Without the case-only
-      // branch the Fill button collapsed to × 1 and the target landed
-      // on the cases count (e.g. 576) instead of the products count
-      // (e.g. 25,344), so clicking Fill on a 110,000-unit workbook
-      // looked like it did nothing — the new "target" was below the
-      // current qty and applyTotalUnitsSuggestion never bumped.
-      const productsPerItem  = _caseOnFill ? (_caseProdForFill || 1)
-                              : (_manualOnFill ? 1 : (_ppoForFill || 1));
+      // products-per-ship-item — routed through the canonical helper
+      // so the case-only branch can't be accidentally omitted (which
+      // is what previously made the Fill button collapse to × 1 and
+      // suggest the cases-count target instead of the products-count
+      // target, so clicking Fill looked silent).
+      const productsPerItem = _msProductsPerShipItem() || 1;
       // ── Fill / Top-Off target — absolute, NOT additive ────────────────
       // Earlier versions did `current + roomLeft × productsPerItem`, but
       // ceil() rounding meant clicking again kept inflating the qty
@@ -11108,40 +11144,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _renderContainerHypotheticals(ctx) {
     const host = document.getElementById('container-hypothetical');
     if (!host) return;
-    const caseOn     = !!document.getElementById('case-only-override')?.checked;
-    const manualOn   = !caseOn && !!document.getElementById('pallet-manual')?.checked;
-    const innerQty   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
-    const outerQty   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-    const productsPerOuter = (innerQty > 0 && outerQty > 0) ? innerQty * outerQty : 0;
-    // In case-only mode the ship unit is the CASE, and the products-per-
-    // item ratio = products/case from the Case Only block. Without this
-    // branch the panel falls back to productsPerOuter (which is 0 in
-    // case-only mode because the inner/outer carton fields are empty),
-    // so palletProducts = palletItems × 0 = 0 — the "Full Container
-    // Pitch" then only counts the loose top-off (× 1 via the || 1
-    // fallback below), producing absurd totals like "+1,388" instead
-    // of the real "+1.2M products to fill ~33 empty pallet slots."
-    const _caseProductsPer = caseOn
-      ? _msIntFromInput(document.getElementById('case-only-products-per'))
-      : 0;
-    const _caseCasesOrder  = caseOn
-      ? _msIntFromInput(document.getElementById('case-only-cases-order'))
-      : 0;
-    const productsPerItem  = caseOn ? (_caseProductsPer || 1)
-                           : (manualOn ? 1 : (productsPerOuter || 0));
-    // totalUnits — match renderPalletViz's resolution. In Case Only
-    // mode, pallet-total-cartons may briefly be empty (auto-fill via
-    // onCaseOnlyChanged hasn't fired yet, or a transient state during
-    // load), but products/case × cases/order is the authoritative
-    // total. Without this fallback the panel bailed with "Enter Total
-    // Units to Ship" while the rest of the pallet/container math
-    // already had palletsNeeded > 0 from the same case-derived total.
-    const _palletTotalInput = _msIntFromInput(document.getElementById('pallet-total-cartons'));
-    const _caseTotalProducts = (caseOn && _caseProductsPer > 0 && _caseCasesOrder > 0)
-      ? (_caseProductsPer * _caseCasesOrder) : 0;
-    const totalUnits = caseOn
-      ? Math.max(_caseTotalProducts, _palletTotalInput)
-      : _palletTotalInput;
+    // Resolve ship-mode + counts through the canonical helpers so any
+    // bug in the case-only cascade fixes itself everywhere at once.
+    const mode             = _msShipMode();
+    const caseOn           = mode === 'case';
+    const manualOn         = mode === 'manual';
+    const productsPerItem  = _msProductsPerShipItem() || 0;
+    const totalUnits       = _msEffectiveTotalUnits();
     // Per-unit USD product price — required for cost math. If the
     // shared _lastRfqPriceSummary hasn't been computed yet (load-time
     // race when fillWorkbook calls renderPalletViz before its later
@@ -11691,25 +11700,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const unitWord  = caseOn ? 'case'  : (manualOn ? 'unit'  : 'outer carton');
     const unitWordP = caseOn ? 'cases' : (manualOn ? 'units' : 'outer cartons');
 
-    // The "Total Units to Ship" input is normally interpreted as
-    // PRODUCT count, regardless of mode. In CASE ONLY override mode
-    // it auto-derives from Cases/Order × Products/Case so the pallet
-    // view always reflects the case-level inputs without making the
-    // operator double-enter the total.
-    const _caseProductsPer = _msIntFromInput(document.getElementById('case-only-products-per'));
-    const _caseCasesOrder  = _msIntFromInput(document.getElementById('case-only-cases-order'));
-    const _caseTotalProducts = (_caseProductsPer > 0 && _caseCasesOrder > 0)
-      ? (_caseProductsPer * _caseCasesOrder) : 0;
-    // In case-only mode the base shipment qty comes from Cases/Order ×
-    // Products/Case. When the operator presses Top Off / Fill the
-    // pallet-total-cartons input gets bumped ABOVE that base and the
-    // extra products land as loose top-off — so totalUnits picks the
-    // LARGER of the two so Top Off survives even though the input
-    // re-fills automatically on every case-field change.
-    const _palletTotalInput = _msIntFromInput(document.getElementById('pallet-total-cartons'));
-    const totalUnits   = caseOn
-      ? Math.max(_caseTotalProducts, _palletTotalInput)
-      : _palletTotalInput;
+    // "Total Units to Ship" — routed through the canonical helper so
+    // case-only auto-derive (products/case × cases/order, with Top-Off
+    // bumping the pallet-total input above the base) stays in sync
+    // with every other consumer (Hypothetical Scenarios, Fill button,
+    // freight calc).
+    const totalUnits = _msEffectiveTotalUnits();
     // Loose top-off count (in PRODUCTS) — stashed by "↻ Top Off" so the
     // last container's leftover CBM gets blue cardboard boxes in the
     // viz. The loose units must be SUBTRACTED before computing
@@ -11725,8 +11721,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // products-per-case + cases-per-order drive the totals).
     const innerQtyVal  = (manualOn || caseOn) ? 0 : (parseInt(document.getElementById('carton-inner-count').value) || 0);
     const outerQtyVal  = (manualOn || caseOn) ? 0 : (parseInt(document.getElementById('carton-outer-count').value) || 0);
+    // productsPerOuter here is BOTH the math conversion and the
+    // display gate (stats render only when this is > 0). Manual mode
+    // intentionally returns 0 so the carton-specific stats hide.
+    // Don't route through _msProductsPerShipItem() — it returns 1 in
+    // manual mode (correct for math elsewhere, wrong for the gate
+    // here).
     const productsPerOuter = caseOn
-      ? _caseProductsPer
+      ? _msIntFromInput(document.getElementById('case-only-products-per'))
       : ((innerQtyVal > 0 && outerQtyVal > 0) ? innerQtyVal * outerQtyVal : 0);
     // In manual mode, items-on-pallet = products. In case-only or
     // carton mode, items-on-pallet = cases / outer cartons, derived
