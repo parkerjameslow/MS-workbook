@@ -14366,14 +14366,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const id = parseInt(row.id.replace('wb-tier-', ''));
       const inputs = row.querySelectorAll('input');
       const qty = inputs[0]?.value;
-      const rmb = parseFloat(row.dataset.price);
+      const rmb = parseFloat(_msStripCommasStr(row.dataset.price));
       const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
+      // Tier qty inputs hold "110,000" after the blur formatter runs.
+      // parseInt stops at the comma → 110, which makes the dropdown
+      // read "Tier 1 — 110 units" when the real value is 110,000.
+      // Strip commas first (same fix that hit the section summary).
+      const qtyRaw = qty ? (parseInt(_msStripCommasStr(qty), 10) || 0) : 0;
       let label = `Tier ${id}`;
-      if (qty) label += ` — ${parseInt(qty).toLocaleString('en-US')} units`;
+      if (qtyRaw > 0) label += ` — ${qtyRaw.toLocaleString('en-US')} units`;
       const opt = document.createElement('option');
       opt.value = id;
       opt.textContent = label;
-      opt.dataset.qty = qty ? (parseInt(qty) || 0) : 0;
+      opt.dataset.qty = qtyRaw;
       sel.appendChild(opt);
     });
     // Restore previous selection if still valid
@@ -14403,16 +14408,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const inputs = row.querySelectorAll('input');
     const qty = inputs[0]?.value || '';
-    const rmb = parseFloat(row.dataset.price);
+    const rmb = parseFloat(_msStripCommasStr(row.dataset.price));
     const usd = !isNaN(rmb) && rmb > 0 ? rmb / USD_TO_RMB : NaN;
 
     // Variant-aware unit price + total — mirrors RFQ Grand Total + tier rows.
     // Range on the unit price columns when variants vary; total stays a
     // single exact value via the weighted-avg path (tier qty × grandUsd/grandQty).
+    // Strip commas before parsing — qty input holds "110,000" after blur
+    // formatting, and parseFloat would stop at the comma → 110, making
+    // every downstream tier total off by 1000×.
     const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     const ps   = _lastRfqPriceSummary;
     const useRange = ps && ps.hasVariants && ps.rmbMin > 0;
-    const qtyNum   = parseFloat(qty);
+    const qtyNum   = parseFloat(_msStripCommasStr(qty));
 
     let rmbText, usdText, totalText;
     if (useRange) {
@@ -14437,7 +14445,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderPricingTab();
 
     // Recalculate total outer cartons for this tier qty and refresh freight
-    const tierQty        = parseInt(qty) || 0;
+    const tierQty        = parseInt(_msStripCommasStr(qty), 10) || 0;
     const unitsPerInner  = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
     const innersPerOuter = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
     const unitsPerOuter  = unitsPerInner * innersPerOuter;
@@ -17291,11 +17299,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
     const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
 
-    // Tier data from Workbook tab
+    // Tier data from Workbook tab — strip commas before parseInt so
+    // "110,000" doesn't truncate to 110 and tank every downstream
+    // Pricing tab figure.
     const tierRow    = document.getElementById(`wb-tier-${_selectedTierId}`);
     const tierInputs = tierRow?.querySelectorAll('input');
-    const tierQty    = parseInt(tierInputs?.[0]?.value) || 0;
-    const tierRmb    = parseFloat(tierRow?.dataset.price) || 0;
+    const tierQty    = parseInt(_msStripCommasStr(tierInputs?.[0]?.value), 10) || 0;
+    const tierRmb    = parseFloat(_msStripCommasStr(tierRow?.dataset.price)) || 0;
     const tierUsd    = tierRmb > 0 ? _fxUsdFromRmb(tierRmb) : 0;
     // Full Container Pitch override — when the operator has pressed
     // Apply Full Container Pitch on the workbook, the snapshot lives
