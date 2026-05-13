@@ -31,6 +31,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <meta http-equiv="Expires" content="0" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <title>Market Sculpt — Product Workbook</title>
+  <!-- Hard cache bust — every deploy bumps the file's mtime, so the
+       URL we navigate to includes that as ?v=… and any intermediate
+       cache (browser, bfcache, edge) is forced to treat each build
+       as a brand-new resource. Also unregisters any service worker
+       that might be intercepting the response — the workbook has no
+       PWA install path, so any sw.* registered here is stale. -->
+  <script>
+    (function () {
+      var build = "<?= (int)$_msBuildId ?>";
+      try {
+        var u = new URL(window.location.href);
+        if (u.searchParams.get('v') !== build) {
+          u.searchParams.set('v', build);
+          window.location.replace(u.toString());
+          return;
+        }
+      } catch (_) {}
+      // Drop any straggling service worker — we don't ship one, so
+      // anything registered is from a prior experiment / dev pivot
+      // and would silently serve stale responses forever.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        }).catch(function () {});
+      }
+    })();
+  </script>
   <style>
     /* ── Reset & Variables ───────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
