@@ -6951,6 +6951,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         </div><!-- /.pricing-summary-grid -->
 
+        <!-- Grand Total Cost — internal "what does it cost us to land this
+             order" number = Total Product Cost (USD) + Total Shipping Cost
+             (USD). Sits above Additional Fees because fees are extras on
+             top of the base acquisition cost. Populated by renderPricingTab. -->
+        <div class="pricing-grand-total-bar" id="ps-grand-total-bar" style="margin:14px 0;">
+          <span class="pricing-grand-total-label">Grand Total Cost (USD)</span>
+          <span class="pricing-grand-total-value" id="ps-grand-total">—</span>
+        </div>
+
         <!-- Apply Additional Fees — checkbox list of every fee entered on
              the Workbook tab. Tick the boxes to add those fees to the
              Total Landed Cost and as separate line items in the Client
@@ -17658,6 +17667,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-sh-per'))     e('ps-sh-per').textContent    = shipPerUsd > 0 ? '$' + shipPerUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
     if (e('ps-sh-total-rmb')) e('ps-sh-total-rmb').textContent = shippingRmb > 0 ? fmtRmb(shippingRmb) : '—';
     if (e('ps-sh-total'))     e('ps-sh-total').textContent     = shippingUsd > 0 ? fmtUsd(shippingUsd) : '—';
+
+    // Grand Total Cost (USD) = Total Product Cost + Total Shipping. This
+    // is OUR cost to land the order — internal view, no margin, no fees.
+    // Additional Fees (below) are extras layered on top of this number;
+    // Sale Per (Landed Cost card) is what we charge the client. Both are
+    // intentionally separate from this base acquisition cost.
+    const grandTotalCostUsd = (productTotal || 0) + (shippingUsd || 0);
+    if (e('ps-grand-total')) e('ps-grand-total').textContent = grandTotalCostUsd > 0 ? fmtUsd(grandTotalCostUsd) : '—';
 
     // ── Total Landed Cost card ──────────────────────────────────────────
     // qty   ← selected pricing tier (tierQty, already resolved above)
