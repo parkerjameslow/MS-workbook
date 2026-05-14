@@ -14419,7 +14419,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // before saving so it stays raw on disk.
     const qty = _msNumFromInput(inputs[0]);
     const rmb = parseFloat(_msStripCommasStr(row.dataset.price));
-    const usd = rmb / USD_TO_RMB;
+    // USD per-unit ceil-rounded to the cent (consistent with how the
+    // Pricing tab Product Cost block displays the same tier).
+    const usd = !isNaN(rmb) && rmb > 0 ? _fxUsdFromRmb(rmb) : NaN;
     const rmbValEl = document.getElementById(`wb-tier-rmb-val-${id}`);
     const usdEl = document.getElementById(`wb-tier-usd-${id}`);
     const totalEl = document.getElementById(`wb-tier-total-${id}`);
@@ -14453,15 +14455,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
     if (totalEl) {
-      // Total stays a single exact value even when unit price shows a range —
-      // the breakdown gives us an exact weighted-average per-unit cost
-      // (grandUsd / grandQty), so qty × that is the deterministic total.
-      // Tier 1 with qty == grandQty lands exactly on grandUsd.
+      // Total ceil-rounded to the cent so it ties to the ceil per-unit
+      // displayed above (and to the Pricing tab Product Cost total).
       if (useRange && !isNaN(qty) && qty > 0 && ps.grandQty > 0 && ps.grandUsd > 0) {
         const avgUsd = ps.grandUsd / ps.grandQty;
-        totalEl.textContent = '$' + fmt2(qty * avgUsd);
+        totalEl.textContent = '$' + fmt2(_msCeil2(qty * avgUsd));
       } else if (!isNaN(qty) && !isNaN(rmb) && rmb > 0) {
-        totalEl.textContent = '$' + fmt2(qty * usd);
+        totalEl.textContent = '$' + fmt2(_msCeil2(qty * (rmb / USD_TO_RMB)));
       } else {
         totalEl.textContent = '—';
       }
@@ -17592,15 +17592,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // workbook-internal view. Unit Price Per (RMB/USD) and Total
     // Product Cost mirror the Shipping tab's selected pricing tier
     // header exactly (variant range when RFQ prices are variable,
-    // single-tier RMB otherwise). To match the Shipping tab tier
-    // USD display 1:1, use plain `rmb / USD_TO_RMB` here — not
-    // _fxUsdFromRmb (which ceil-rounds and can disagree by a cent).
-    // Sale Per is a manual Client Quote override and intentionally
-    // does NOT bleed into this block — it only flows through to the
-    // Client Quote line items + summary.
+    // single-tier RMB otherwise). USD per-unit is ceil-rounded to
+    // the cent (_fxUsdFromRmb), matching the Shipping tab tier USD
+    // cell — both round UP so any margin nudge moves the displayed
+    // price by at least a cent. Sale Per is a manual Client Quote
+    // override and intentionally does NOT bleed into this block.
     const fmt2 = v => v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     const psSummary = _lastRfqPriceSummary;
+    // tierUsdPlain kept as the raw (un-ceiled) per-unit USD for the
+    // Grand Total Cost per-unit math below. Display paths use
+    // _fxUsdFromRmb(tierRmb) so the operator sees the ceil-rounded
+    // value, but raw is what feeds the Grand Total Cost computation.
     const tierUsdPlain = tierRmb > 0 ? (tierRmb / USD_TO_RMB) : 0;
+    const tierUsdCeil  = tierRmb > 0 ? _fxUsdFromRmb(tierRmb) : 0;
     let productTotal;
     let unitRmbText = '—', unitUsdText = '—';
 
@@ -17609,18 +17613,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       unitUsdText = psSummary.isRange ? '$' + fmt2(psSummary.usdMin) + '–$' + fmt2(psSummary.usdMax) : '$' + fmt2(psSummary.usdMin);
     } else if (tierRmb > 0) {
       unitRmbText = '¥' + fmt2(tierRmb);
-      unitUsdText = '$' + fmt2(tierUsdPlain);
+      unitUsdText = '$' + fmt2(tierUsdCeil);
     }
 
     if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && effectiveQty > 0) {
       // Variants: weighted-average per-unit USD (grandUsd / grandQty),
-      // not tierUsd (which is the sum of variant unit prices). Tier 1
-      // with qty == grandQty lands exactly on grandUsd.
-      productTotal = effectiveQty * (psSummary.grandUsd / psSummary.grandQty);
+      // ceiled to the cent so the total ties to the displayed unit price.
+      productTotal = _msCeil2(effectiveQty * (psSummary.grandUsd / psSummary.grandQty));
     } else {
-      // Single-tier total = qty × (rmb / USD_TO_RMB), matching the
-      // Shipping tab tier-total cell at index.php:14449.
-      productTotal = (effectiveQty > 0 && tierRmb > 0) ? effectiveQty * tierUsdPlain : 0;
+      // Single-tier total = ceil(qty × rmb / USD_TO_RMB), matching the
+      // Shipping tab tier-total cell.
+      productTotal = (effectiveQty > 0 && tierRmb > 0) ? _msCeil2(effectiveQty * tierUsdPlain) : 0;
     }
 
     // Pitch badge on the Quantity row — surfaces the delta vs the
@@ -17679,7 +17682,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Additional Fees (below) are extras layered on top of this number;
     // Sale Per (Landed Cost card) is what we charge the client. Both are
     // intentionally separate from this base acquisition cost.
-    const grandTotalCostUsd = (productTotal || 0) + (shippingUsd || 0);
+    // Sum is ceil-rounded to the cent so the bar's headline total
+    // matches the ceil-rounded per-unit math below it.
+    const grandTotalCostUsd = _msCeil2((productTotal || 0) + (shippingUsd || 0));
     if (e('ps-grand-total')) e('ps-grand-total').textContent = grandTotalCostUsd > 0 ? fmtUsd(grandTotalCostUsd) : '—';
 
     // Per-unit breakdown line beneath the label — shows the math the
@@ -17688,17 +17693,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // in the Product Cost block (tierUsdPlain) and the Shipping block
     // (shipPerUsd) so the numbers tie out exactly. For variants, shows
     // the weighted-average per-unit USD (mirrors the Landed Per math).
-    let _gtPerProductUsd = 0;
+    let _gtPerProductRaw = 0;
     if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0) {
-      _gtPerProductUsd = psSummary.grandUsd / psSummary.grandQty;
+      _gtPerProductRaw = psSummary.grandUsd / psSummary.grandQty;
     } else if (tierUsdPlain > 0) {
-      _gtPerProductUsd = tierUsdPlain;
+      _gtPerProductRaw = tierUsdPlain;
     }
-    const _gtPerTotalUsd = _gtPerProductUsd + (shipPerUsd || 0);
+    // Round UP to the cent on each component, then display the sum of
+    // the ceiled parts so the visible math always adds up exactly
+    // ($0.05 + $0.02 = $0.07). shipPerUsd is already ceiled upstream.
+    const _gtPerProductCeil = _msCeil2(_gtPerProductRaw);
+    const _gtPerShipCeil    = shipPerUsd || 0;
+    const _gtPerTotalCeil   = _gtPerProductCeil + _gtPerShipCeil;
     const _fmt2Per = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     if (e('ps-grand-total-per')) {
-      e('ps-grand-total-per').textContent = _gtPerTotalUsd > 0
-        ? `$${_fmt2Per(_gtPerProductUsd)} + $${_fmt2Per(shipPerUsd || 0)} = $${_fmt2Per(_gtPerTotalUsd)} per unit`
+      e('ps-grand-total-per').textContent = _gtPerTotalCeil > 0
+        ? `$${_fmt2Per(_gtPerProductCeil)} + $${_fmt2Per(_gtPerShipCeil)} = $${_fmt2Per(_gtPerTotalCeil)} per unit`
         : '—';
     }
 
@@ -17803,7 +17813,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? '$' + fmt2(lo) + '–$' + fmt2(hi)
       : '$' + fmt2(lo);
 
-    if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(landedMin, landedMax, landedIsRange) : '—';
+    // Per-unit prices on the Pricing tab round UP to the cent so a small
+    // bump in margin always nudges the displayed price (otherwise default
+    // banker's rounding can leave 30% and 35% both showing the same cent).
+    if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(_msCeil2(landedMin), _msCeil2(landedMax), landedIsRange) : '—';
 
     // ── Per-variant landed breakdown ─────────────────────────────────
     // When variants on the RFQ carry distinct RMB prices, expose a
@@ -17912,7 +17925,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (landedChev) landedChev.style.transform = expanded ? 'rotate(90deg)' : '';
     }
 
-    if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(suggestedMin, suggestedMax, suggestedIsRange) : '—';
+    if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(_msCeil2(suggestedMin), _msCeil2(suggestedMax), suggestedIsRange) : '—';
     if (e('ps-landed-total'))  e('ps-landed-total').textContent  = landedTotal > 0 ? '$' + fmt2(landedTotal) : '—';
     // Additional Fees row: only shown when at least one fee is applied.
     const feesRow = e('ps-fees-row');
