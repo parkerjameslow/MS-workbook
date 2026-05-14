@@ -17319,6 +17319,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _cqQtyScale = (_pitchOnCq && _pitchTotalUnitsCq > 0 && _rfqGrandQty > 0 && _pitchTotalUnitsCq !== _rfqGrandQty)
       ? (_pitchTotalUnitsCq / _rfqGrandQty) : 1;
     const _scaleQty = (q) => _cqQtyScale === 1 ? q : Math.round(q * _cqQtyScale);
+
+    // Sale Per is the operator's "ultimate say" for what the client
+    // sees. When typed, every Client Quote line item displays it as
+    // the per-unit Sale Price and uses it for the row total. No range
+    // collapse, no "Variable" pill — one number across the table that
+    // exactly matches the Sale Price (USD) in the header summary bar
+    // and the Sale Per input on the Landed Cost card. When Sale Per
+    // is blank, fall back to the landed×margin per-row formula so
+    // the table still has sensible values during the build-out phase.
+    const _cqSalePerRaw = (document.getElementById('ps-sale-per')?.value || '').trim();
+    const _cqSalePer    = _cqSalePerRaw === '' ? NaN : parseFloat(_cqSalePerRaw);
+    const _cqHaveSalePer = !isNaN(_cqSalePer) && _cqSalePer > 0;
     const refEl = document.getElementById('pricing-quote-ref-body');
     if (refEl) {
       const allRows = document.querySelectorAll('#rfq-body tr');
@@ -17374,11 +17386,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             // Single-line item (no variants) — non-expandable row.
             const pRawQty = _msIntFromInput(pInputs[2]);
             const pQty   = _scaleQty(pRawQty);
-            const pRmb   = _msNumFromInput(pInputs[3]);
-            const pUsd   = _fxUsdFromRmb(pRmb);
-            const pLanded = pUsd + _ctxShipPerUnit;
-            const pSale   = pLanded * _ctxWbMarginMul;
-            const pTotal  = _msCeil2(pQty * pSale);
+            // When Sale Per is typed, mirror it directly so the line
+            // matches the header. Otherwise fall back to the computed
+            // landed×margin path.
+            let pSale, pTotal;
+            if (_cqHaveSalePer) {
+              pSale  = _cqSalePer;
+              pTotal = pQty > 0 ? _msCeil2(pQty * pSale) : 0;
+            } else {
+              const pRmb    = _msNumFromInput(pInputs[3]);
+              const pUsd    = _fxUsdFromRmb(pRmb);
+              const pLanded = pUsd + _ctxShipPerUnit;
+              pSale  = pLanded * _ctxWbMarginMul;
+              pTotal = _msCeil2(pQty * pSale);
+            }
             const pitchBadge = (_cqQtyScale !== 1 && pQty > pRawQty)
               ? ` <span style="color:#10b981; font-weight:700; font-size:10px;">(+${(pQty - pRawQty).toLocaleString('en-US')})</span>`
               : '';
@@ -17402,12 +17423,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               const vi = vr.querySelectorAll('input:not([type="checkbox"])');
               const vName = (vi[0]?.value || '').trim();
               const vQty  = _scaleQty(_msIntFromInput(vi[1]));
-              const vRmb  = _msNumFromInput(vi[2]);
               const vLead = parseInt(_msStripCommasStr(vi[3]?.value)) || 0;
-              const vUsd  = _fxUsdFromRmb(vRmb);
-              const vLanded = vUsd + _ctxShipPerUnit;
-              const vSale   = vLanded * _ctxWbMarginMul;
-              const vTotal  = _msCeil2(vQty * vSale);
+              // When Sale Per is typed, every variant uses it as the
+              // per-unit price. Otherwise fall back to the per-row
+              // landed×margin computation.
+              let vSale;
+              if (_cqHaveSalePer) {
+                vSale = _cqSalePer;
+              } else {
+                const vRmb    = _msNumFromInput(vi[2]);
+                const vUsd    = _fxUsdFromRmb(vRmb);
+                const vLanded = vUsd + _ctxShipPerUnit;
+                vSale         = vLanded * _ctxWbMarginMul;
+              }
+              const vTotal  = vQty > 0 && vSale > 0 ? _msCeil2(vQty * vSale) : 0;
 
               totalQty += vQty;
               totalSale += vTotal;
@@ -17420,7 +17449,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               variantData.push({ name: vName, qty: vQty, sale: vSale, total: vTotal, lead: vLead });
             });
 
-            const isRange = saleMin !== Infinity && (saleMax - saleMin > 0.005);
+            // When Sale Per is typed, every variant shares the same
+            // price so there's no range to display — force isRange
+            // off regardless of any rounding-derived spread.
+            const isRange = !_cqHaveSalePer && saleMin !== Infinity && (saleMax - saleMin > 0.005);
             // Sale Price column: when variants share one price, just
             // show that price. When they differ, show a min–max range
             // AND prefix it with a "Variable" pill so the operator can
