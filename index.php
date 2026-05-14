@@ -17561,33 +17561,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let productTotal;
     let unitRmbText = '—', unitUsdText = '—';
 
-    // effectiveQty drives Product Cost. When Full Container Pitch is
-    // applied this rolls up to the bumped qty (pallet-total-cartons);
-    // otherwise it stays on the tier qty as before.
+    // Unit Price Per (USD) — when the operator has typed a Sale Per,
+    // mirror it here so the per-unit display in the Product Cost
+    // section matches the per-unit Sale Per in the Total Landed Cost
+    // card. The per-unit display is INDEPENDENT of qty (it's a price,
+    // not a sum), so don't gate it on effectiveQty > 0 — a missing or
+    // zero qty shouldn't make the per-unit value snap back to the tier
+    // cost. The Total Product Cost row below still requires
+    // effectiveQty > 0 since that IS a sum.
+    if (haveSalePer) {
+      unitUsdText = '$' + fmt2(_salePerTop);
+      unitRmbText = '¥' + fmt2(_fxRmbFromUsd(_salePerTop));
+    } else if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0) {
+      unitRmbText = psSummary.isRange ? '¥' + fmt2(psSummary.rmbMin) + '–¥' + fmt2(psSummary.rmbMax) : '¥' + fmt2(psSummary.rmbMin);
+      unitUsdText = psSummary.isRange ? '$' + fmt2(psSummary.usdMin) + '–$' + fmt2(psSummary.usdMax) : '$' + fmt2(psSummary.usdMin);
+    } else if (tierRmb > 0) {
+      unitRmbText = '¥' + fmt2(tierRmb);
+      unitUsdText = '$' + fmt2(tierUsd);
+    }
+
+    // Total Product Cost (RMB/USD) — still requires a qty. When Sale
+    // Per is set, Total = Sale Per × effectiveQty. Otherwise fall back
+    // to RFQ tier math (weighted-average across variants when present).
     if (haveSalePer && effectiveQty > 0) {
-      // Sale Per drives everything in this block when set.
       productTotal = _msCeil2(_salePerTop * effectiveQty);
-      unitUsdText  = '$' + fmt2(_salePerTop);
-      unitRmbText  = '¥' + fmt2(_fxRmbFromUsd(_salePerTop));
+    } else if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && effectiveQty > 0) {
+      // Variants: weighted-average per-unit USD (grandUsd / grandQty),
+      // not tierUsd (which is the sum of variant unit prices). Tier 1
+      // with qty == grandQty lands exactly on grandUsd.
+      productTotal = _msCeil2(effectiveQty * (psSummary.grandUsd / psSummary.grandQty));
     } else {
-      // RFQ-based fallback (cost side). When variants have variable
-      // pricing, the deterministic Total Product Cost uses the
-      // weighted-average per-unit USD (grandUsd / grandQty), not tierUsd
-      // (which is the sum of variant unit prices). Tier 1 with
-      // qty == grandQty lands exactly on grandUsd.
-      if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && effectiveQty > 0) {
-        productTotal = _msCeil2(effectiveQty * (psSummary.grandUsd / psSummary.grandQty));
-      } else {
-        productTotal = effectiveQty > 0 && tierUsd > 0 ? _msCeil2(effectiveQty * tierUsd) : 0;
-      }
-      // Unit price text: range when variants differ, single otherwise.
-      if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0) {
-        unitRmbText = psSummary.isRange ? '¥' + fmt2(psSummary.rmbMin) + '–¥' + fmt2(psSummary.rmbMax) : '¥' + fmt2(psSummary.rmbMin);
-        unitUsdText = psSummary.isRange ? '$' + fmt2(psSummary.usdMin) + '–$' + fmt2(psSummary.usdMax) : '$' + fmt2(psSummary.usdMin);
-      } else if (tierRmb > 0) {
-        unitRmbText = '¥' + fmt2(tierRmb);
-        unitUsdText = '$' + fmt2(tierUsd);
-      }
+      productTotal = (effectiveQty > 0 && tierUsd > 0) ? _msCeil2(effectiveQty * tierUsd) : 0;
     }
 
     // Pitch badge on the Quantity row — surfaces the delta vs the
