@@ -6953,10 +6953,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         <!-- Grand Total Cost — internal "what does it cost us to land this
              order" number = Total Product Cost (USD) + Total Shipping Cost
-             (USD). Sits above Additional Fees because fees are extras on
-             top of the base acquisition cost. Populated by renderPricingTab. -->
+             (USD). Per-unit breakdown shows the price-per + shipping-per
+             math beneath the label so the operator can read both the order
+             total and the per-product cost without doing arithmetic. Sits
+             above Additional Fees because fees are extras on top of the
+             base acquisition cost. Populated by renderPricingTab. -->
         <div class="pricing-grand-total-bar" id="ps-grand-total-bar" style="margin:14px 0;">
-          <span class="pricing-grand-total-label">Grand Total Cost (USD)</span>
+          <div style="display:flex; flex-direction:column; gap:4px;">
+            <span class="pricing-grand-total-label">Grand Total Cost (USD)</span>
+            <span id="ps-grand-total-per" style="font-size:12px; font-weight:600; opacity:0.85;">—</span>
+          </div>
           <span class="pricing-grand-total-value" id="ps-grand-total">—</span>
         </div>
 
@@ -17675,6 +17681,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // intentionally separate from this base acquisition cost.
     const grandTotalCostUsd = (productTotal || 0) + (shippingUsd || 0);
     if (e('ps-grand-total')) e('ps-grand-total').textContent = grandTotalCostUsd > 0 ? fmtUsd(grandTotalCostUsd) : '—';
+
+    // Per-unit breakdown line beneath the label — shows the math the
+    // grand total derives from: product per-unit USD + shipping per-unit
+    // USD = total per-unit USD. Uses the same per-unit values displayed
+    // in the Product Cost block (tierUsdPlain) and the Shipping block
+    // (shipPerUsd) so the numbers tie out exactly. For variants, shows
+    // the weighted-average per-unit USD (mirrors the Landed Per math).
+    let _gtPerProductUsd = 0;
+    if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0) {
+      _gtPerProductUsd = psSummary.grandUsd / psSummary.grandQty;
+    } else if (tierUsdPlain > 0) {
+      _gtPerProductUsd = tierUsdPlain;
+    }
+    const _gtPerTotalUsd = _gtPerProductUsd + (shipPerUsd || 0);
+    const _fmt2Per = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    if (e('ps-grand-total-per')) {
+      e('ps-grand-total-per').textContent = _gtPerTotalUsd > 0
+        ? `$${_fmt2Per(_gtPerProductUsd)} + $${_fmt2Per(shipPerUsd || 0)} = $${_fmt2Per(_gtPerTotalUsd)} per unit`
+        : '—';
+    }
 
     // ── Total Landed Cost card ──────────────────────────────────────────
     // qty   ← selected pricing tier (tierQty, already resolved above)
