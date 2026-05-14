@@ -17541,57 +17541,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const effectiveQty = (_pitchOn && _pitchQty > tierQty) ? _pitchQty : tierQty;
     const _pitchDelta  = effectiveQty - tierQty;
 
-    // Sale Per — read once up-here so the Product Cost block (next)
-    // and the Total/Profit calcs (further down) all see the same
-    // value. The full Total Landed Cost block re-reads the input
-    // directly later for clarity, but they'll resolve to the same
-    // number since this is a synchronous render.
-    const _salePerRawTop = (e('ps-sale-per')?.value || '').trim();
-    const _salePerTop    = _salePerRawTop === '' ? NaN : parseFloat(_salePerRawTop);
-
-    // Product Cost block: when the operator has typed a Sale Per
-    // (the "ultimate say"), Unit Price Per + Total Product Cost mirror
-    // it directly so the totals stay consistent across the whole tab.
-    // When Sale Per is blank, fall back to RFQ-derived unit cost so
-    // the block still has a sensible value during the early build-out
-    // phase before the operator commits to a price.
+    // Product Cost block represents COST, not SALE — it's the
+    // workbook-internal view. Unit Price Per (RMB/USD) and Total
+    // Product Cost mirror the Shipping tab's selected pricing tier
+    // header exactly (variant range when RFQ prices are variable,
+    // single-tier RMB otherwise). To match the Shipping tab tier
+    // USD display 1:1, use plain `rmb / USD_TO_RMB` here — not
+    // _fxUsdFromRmb (which ceil-rounds and can disagree by a cent).
+    // Sale Per is a manual Client Quote override and intentionally
+    // does NOT bleed into this block — it only flows through to the
+    // Client Quote line items + summary.
     const fmt2 = v => v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     const psSummary = _lastRfqPriceSummary;
-    const haveSalePer = !isNaN(_salePerTop) && _salePerTop > 0;
+    const tierUsdPlain = tierRmb > 0 ? (tierRmb / USD_TO_RMB) : 0;
     let productTotal;
     let unitRmbText = '—', unitUsdText = '—';
 
-    // Unit Price Per (USD) — when the operator has typed a Sale Per,
-    // mirror it here so the per-unit display in the Product Cost
-    // section matches the per-unit Sale Per in the Total Landed Cost
-    // card. The per-unit display is INDEPENDENT of qty (it's a price,
-    // not a sum), so don't gate it on effectiveQty > 0 — a missing or
-    // zero qty shouldn't make the per-unit value snap back to the tier
-    // cost. The Total Product Cost row below still requires
-    // effectiveQty > 0 since that IS a sum.
-    if (haveSalePer) {
-      unitUsdText = '$' + fmt2(_salePerTop);
-      unitRmbText = '¥' + fmt2(_fxRmbFromUsd(_salePerTop));
-    } else if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0) {
+    if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0) {
       unitRmbText = psSummary.isRange ? '¥' + fmt2(psSummary.rmbMin) + '–¥' + fmt2(psSummary.rmbMax) : '¥' + fmt2(psSummary.rmbMin);
       unitUsdText = psSummary.isRange ? '$' + fmt2(psSummary.usdMin) + '–$' + fmt2(psSummary.usdMax) : '$' + fmt2(psSummary.usdMin);
     } else if (tierRmb > 0) {
       unitRmbText = '¥' + fmt2(tierRmb);
-      unitUsdText = '$' + fmt2(tierUsd);
+      unitUsdText = '$' + fmt2(tierUsdPlain);
     }
 
-    // Total Product Cost (RMB/USD) — still requires a qty. When Sale
-    // Per is set, Total = Sale Per × effectiveQty. Otherwise fall back
-    // to RFQ tier math (weighted-average across variants when present).
-    if (haveSalePer && effectiveQty > 0) {
-      productTotal = _msCeil2(_salePerTop * effectiveQty);
-    } else if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && effectiveQty > 0) {
+    if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && effectiveQty > 0) {
       // Variants: weighted-average per-unit USD (grandUsd / grandQty),
       // not tierUsd (which is the sum of variant unit prices). Tier 1
       // with qty == grandQty lands exactly on grandUsd.
-      productTotal = _msCeil2(effectiveQty * (psSummary.grandUsd / psSummary.grandQty));
+      productTotal = effectiveQty * (psSummary.grandUsd / psSummary.grandQty);
     } else {
-      productTotal = (effectiveQty > 0 && tierUsd > 0) ? _msCeil2(effectiveQty * tierUsd) : 0;
+      // Single-tier total = qty × (rmb / USD_TO_RMB), matching the
+      // Shipping tab tier-total cell at index.php:14449.
+      productTotal = (effectiveQty > 0 && tierRmb > 0) ? effectiveQty * tierUsdPlain : 0;
     }
 
     // Pitch badge on the Quantity row — surfaces the delta vs the
@@ -17601,7 +17583,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       : '';
     if (e('ps-qty'))          e('ps-qty').innerHTML          = effectiveQty > 0 ? effectiveQty.toLocaleString('en-US') + ' units' + pitchSuffix : '—';
     if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
-    const productTotalRmb = _fxRmbFromUsd(productTotal);
+    // Total Product Cost (RMB) = qty × tier RMB directly. Going through
+    // _fxRmbFromUsd(productTotal) would round-trip through USD and
+    // disagree with the tier-source RMB by a cent or two.
+    let productTotalRmb;
+    if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandRmb > 0 && effectiveQty > 0) {
+      productTotalRmb = effectiveQty * (psSummary.grandUsd / psSummary.grandQty) * USD_TO_RMB;
+    } else {
+      productTotalRmb = (effectiveQty > 0 && tierRmb > 0) ? effectiveQty * tierRmb : 0;
+    }
     if (e('ps-product-total-rmb')) e('ps-product-total-rmb').textContent = productTotalRmb > 0 ? fmtRmb(productTotalRmb) : '—';
     if (e('ps-unit-rmb')) e('ps-unit-rmb').textContent = unitRmbText;
     if (e('ps-unit-usd')) e('ps-unit-usd').textContent = unitUsdText;
