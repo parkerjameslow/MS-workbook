@@ -11556,7 +11556,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // All three scenario cards (A/B/C) then compute against THIS baseline,
     // not against the currently-applied state. The "currently applied"
     // card just gets the Revert affordance.
-    const snap = window._fullContainerPitchSnap;
+    // Snap sanity check — if the operator typed over the Total Units
+    // input (or RFQ resync ran) without going through Revert, snap.
+    // appliedQty no longer matches what's in the input. The "Apply"
+    // / "Revert" buttons would then lie about state. Safer to drop a
+    // diverged snap here so the panel re-derives from the live qty.
+    // Logged so we can spot which paths leak. The Math.max guard on
+    // appliedQty is so legacy snaps without that field don't trip.
+    let _snap = window._fullContainerPitchSnap;
+    if (_snap && _snap.appliedQty) {
+      const _snapAppliedQty = parseInt(String(_snap.appliedQty).replace(/,/g, ''), 10) || 0;
+      if (_snapAppliedQty > 0 && Math.abs(totalUnits - _snapAppliedQty) > 0) {
+        try { console.warn('[MS hypotheticals] snap.appliedQty (' + _snapAppliedQty + ') diverges from input (' + totalUnits + ') — clearing stale snap'); } catch(_) {}
+        window._fullContainerPitchSnap = null;
+        _snap = null;
+      }
+    }
+    const snap = _snap;
     const isApplied = !!snap;
     const appliedKind = isApplied ? (snap.pitchKind || 'full') : null;
     const baseQty = isApplied
@@ -11837,13 +11853,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const revertTooltip = baseQty > 0
           ? `Revert Total Units back to ${baseQty.toLocaleString()}`
           : 'Revert Total Units to the pre-apply value';
+        // Apply Half is always offered when halfQty is valid so the
+        // operator can always toggle / re-lock the half-container
+        // state. When _halfAddProducts > 0 it adds units; when it's
+        // 0 (current qty already at-or-past the half-fill threshold)
+        // it's a no-op snap that just records "Half" as the state so
+        // Revert / scenario badges read correctly. Without this the
+        // button used to disappear entirely after Apply→Revert
+        // sequences left the operator past the threshold, with no
+        // way to get the button back without typing into the input.
         const actionB = (appliedKind === 'half')
           ? { label: 'Revert',
               title: revertTooltip,
               call:  `revertFullContainerPitch()` }
-          : (_halfAddProducts > 0
-            ? { label: 'Apply Half',
-                title: `Set Total Units to ${halfQty.toLocaleString()} (LCL, ~50% container fill)`,
+          : (halfQty > 0
+            ? { label: _halfAddProducts > 0 ? 'Apply Half' : 'Lock Half',
+                title: _halfAddProducts > 0
+                  ? `Set Total Units to ${halfQty.toLocaleString()} (LCL, ~50% container fill)`
+                  : `Already at the half-container fill threshold (${halfQty.toLocaleString()} units). Click to lock this state in so the panel labels Half as the applied scenario.`,
                 call:  `applyHalfContainerPitch(${halfQty})` }
             : null);
         const actionC = (appliedKind === 'full')
