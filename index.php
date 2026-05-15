@@ -26286,13 +26286,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         });
         _shipPickerOrderData[id] = { units, weightKg, cost, price, cbm };
 
-        // Per-row stat line: units · weight · our cost. Mirrors the
-        // Add Workbook to Order picker; falls back to "—" individually
-        // when the workbook caches haven't been populated yet.
+        // Per-row stat line: units · weight (CBM) · our cost. CBM is
+        // tucked in next to weight so the operator can read both
+        // shipment dimensions inline. Mirrors the Add Workbook to
+        // Order picker; falls back to "—" individually when caches
+        // haven't been populated yet.
         const partsSummary = [];
-        partsSummary.push(units    > 0 ? `${units.toLocaleString('en-US')} units` : '— units');
-        partsSummary.push(weightKg > 0 ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
-        partsSummary.push(cost     > 0 ? `$${fmt2(cost)}` : '—');
+        partsSummary.push(units > 0 ? `${units.toLocaleString('en-US')} units` : '— units');
+        const weightCbmStr = weightKg > 0
+          ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${cbm > 0 ? ` (${cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : ''}`
+          : (cbm > 0 ? `— kg (${cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : '— kg');
+        partsSummary.push(weightCbmStr);
+        partsSummary.push(cost > 0 ? `$${fmt2(cost)}` : '—');
         const statStr = partsSummary.join(' · ');
 
         html += `<div class="wb-picker-item${isChecked ? ' selected' : ''}"
@@ -26357,10 +26362,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     set('ship-picker-gt-cost',   cost     > 0 ? fmtUsd(cost)    : '—');
     set('ship-picker-gt-price',  price    > 0 ? fmtUsd(price)   : '—');
     const cbmCap = 67;
-    const fillPct = Math.min(100, cbm > 0 ? (cbm / cbmCap) * 100 : 0);
-    set('ship-picker-gt-cbm-label', cbm > 0 ? `${fmtCbm(cbm)} / ${cbmCap} CBM` : `— / ${cbmCap} CBM`);
-    const bar = document.getElementById('ship-picker-gt-cbm-bar');
-    if (bar) bar.style.width = fillPct + '%';
+    const cbmOver = cbm > cbmCap ? cbm - cbmCap : 0;
+    _renderCbmFillIndicator('ship-picker-gt-cbm-label', 'ship-picker-gt-cbm-bar', cbm, cbmCap, cbmOver, fmtCbm);
+  }
+
+  // Shared CBM fill indicator: paints the label + progress bar and
+  // surfaces an amber overflow badge when total CBM exceeds the
+  // single-container cap (67 m³). Used by every picker / card so the
+  // overflow signal looks identical across the app. labelId targets
+  // a span whose innerHTML we control; barId targets the fill div.
+  function _renderCbmFillIndicator(labelId, barId, cbm, cbmCap, cbmOver, fmtCbm) {
+    const labelEl = document.getElementById(labelId);
+    if (labelEl) {
+      if (cbm <= 0) {
+        labelEl.innerHTML = `— / ${cbmCap} CBM`;
+      } else if (cbmOver > 0) {
+        // Amber + warning glyph + "+X.X over" so the operator knows
+        // they've spilled into a 2nd container.
+        labelEl.innerHTML = `<span style="color:#fde047;">⚠</span> ${fmtCbm(cbm)} / ${cbmCap} CBM <span style="color:#fde047; font-weight:800; margin-left:4px;">+${fmtCbm(cbmOver)} over</span>`;
+      } else {
+        labelEl.innerHTML = `${fmtCbm(cbm)} / ${cbmCap} CBM`;
+      }
+    }
+    const bar = document.getElementById(barId);
+    if (bar) {
+      const fillPct = Math.min(100, cbm > 0 ? (cbm / cbmCap) * 100 : 0);
+      bar.style.width = fillPct + '%';
+      bar.style.background = cbmOver > 0 ? '#fde047' : '#fff';
+    }
   }
 
   function filterShipOrderPicker(query) {
@@ -27746,10 +27775,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // pickers / cards stay aligned with the Pricing tab.
       const w = _wbStatsForPicker(detail);
       _orderPickerItemData[key] = { units: w.units, weightKg: w.weightKg, cost: w.cost, price: w.price, cbm: w.cbm };
+      // CBM tucked in next to weight so both shipment dimensions
+      // read inline.
       const partsSummary = [];
-      partsSummary.push(w.units    > 0 ? `${w.units.toLocaleString('en-US')} units` : '— units');
-      partsSummary.push(w.weightKg > 0 ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
-      partsSummary.push(w.cost     > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
+      partsSummary.push(w.units > 0 ? `${w.units.toLocaleString('en-US')} units` : '— units');
+      const weightCbmStr = w.weightKg > 0
+        ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${w.cbm > 0 ? ` (${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : ''}`
+        : (w.cbm > 0 ? `— kg (${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : '— kg');
+      partsSummary.push(weightCbmStr);
+      partsSummary.push(w.cost > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
       const tierStr = partsSummary.join(' · ');
       const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
@@ -27833,10 +27867,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     set('order-picker-gt-cost',   cost     > 0 ? fmtUsd(cost)    : '—');
     set('order-picker-gt-price',  price    > 0 ? fmtUsd(price)   : '—');
     const cbmCap = 67;
-    const fillPct = Math.min(100, cbm > 0 ? (cbm / cbmCap) * 100 : 0);
-    set('order-picker-gt-cbm-label', cbm > 0 ? `${fmtCbm(cbm)} / ${cbmCap} CBM` : `— / ${cbmCap} CBM`);
-    const bar = document.getElementById('order-picker-gt-cbm-bar');
-    if (bar) bar.style.width = fillPct + '%';
+    const cbmOver = cbm > cbmCap ? cbm - cbmCap : 0;
+    _renderCbmFillIndicator('order-picker-gt-cbm-label', 'order-picker-gt-cbm-bar', cbm, cbmCap, cbmOver, fmtCbm);
   }
 
   function filterOrderPicker(query) {
@@ -28060,7 +28092,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1}) : '—';
       const fmtNumT = n => n > 0 ? n.toLocaleString('en-US') : '—';
       const cbmCapT = 67;
-      const fillPctT = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
+      const fillPctT  = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
+      const cbmOverT  = agCbm > cbmCapT ? agCbm - cbmCapT : 0;
+      // Overflow indicator: amber bar + "+X.X over" pill when total
+      // CBM exceeds the single 40' HC container cap (67 m³).
+      const cbmValHtml = agCbm > 0
+        ? (cbmOverT > 0
+            ? `<span style="color:#d97706;">⚠</span> ${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span> <span style="color:#d97706; font-weight:800; margin-left:4px;">+${fmtCbmT(cbmOverT)} over</span>`
+            : `${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`)
+        : '—';
+      const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
@@ -28068,8 +28109,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
-          <span class="oc-stat-val">${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span></span>
-          <div class="oc-cbm-bar"><div class="oc-cbm-bar-fill" style="width:${fillPctT}%;"></div></div>
+          <span class="oc-stat-val">${cbmValHtml}</span>
+          <div class="oc-cbm-bar"><div class="oc-cbm-bar-fill" style="width:${fillPctT}%; background:${cbmBarColor};"></div></div>
         </div>
       </div>`;
 
@@ -28330,7 +28371,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
     const cbmCap = 67;
     const fillPct = totalCbm > 0 ? Math.min(100, (totalCbm / cbmCap) * 100) : 0;
-    const cbmStr  = totalCbm > 0 ? `${fmtCbm(totalCbm)} / ${cbmCap} CBM` : '—';
+    const cbmOver = totalCbm > cbmCap ? totalCbm - cbmCap : 0;
+    // Overflow indicator: amber bar + "+X.X over" pill when total
+    // CBM exceeds the single 40' HC container cap.
+    const cbmHtml = totalCbm > 0
+      ? (cbmOver > 0
+          ? `<span style="color:#d97706;">⚠</span> ${fmtCbm(totalCbm)} / ${cbmCap} CBM <span style="color:#d97706; font-weight:800; margin-left:4px;">+${fmtCbm(cbmOver)} over</span>`
+          : `${fmtCbm(totalCbm)} / ${cbmCap} CBM`)
+      : '—';
+    const cbmBarColor = cbmOver > 0 ? '#f59e0b' : 'var(--accent)';
     const wtStr   = totalWeightKg > 0 ? fmtKg(totalWeightKg) : '—';
     const showShipRow = totalCbm > 0 || totalWeightKg > 0;
     const shipRow = showShipRow
@@ -28338,9 +28387,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td colspan="4" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
           <td colspan="2" style="text-align:right; font-size:12px; padding-top:4px;">
             <span style="color:var(--text-muted); margin-right:14px;">Weight: <strong style="color:var(--text);">${wtStr}</strong></span>
-            <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmStr}</strong></span>
+            <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmHtml}</strong></span>
             <div style="margin-top:5px; height:4px; background:var(--surface2); border-radius:99px; overflow:hidden; max-width:260px; margin-left:auto;">
-              <div style="height:100%; width:${fillPct}%; background:var(--accent); border-radius:99px; transition:width 0.2s;"></div>
+              <div style="height:100%; width:${fillPct}%; background:${cbmBarColor}; border-radius:99px; transition:width 0.2s;"></div>
             </div>
           </td>
           <td></td>
@@ -28461,10 +28510,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // tab + every other order surface.
         const w = _wbStatsForPicker(detail);
         _orderAddPickerItemData[key] = { units: w.units, weightKg: w.weightKg, cost: w.cost, price: w.price, cbm: w.cbm };
+        // CBM tucked in next to weight so both shipment dimensions
+        // read inline.
         const partsSummary = [];
-        partsSummary.push(w.units    > 0 ? `${w.units.toLocaleString('en-US')} units` : '— units');
-        partsSummary.push(w.weightKg > 0 ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
-        partsSummary.push(w.cost     > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
+        partsSummary.push(w.units > 0 ? `${w.units.toLocaleString('en-US')} units` : '— units');
+        const weightCbmStr = w.weightKg > 0
+          ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${w.cbm > 0 ? ` (${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : ''}`
+          : (w.cbm > 0 ? `— kg (${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : '— kg');
+        partsSummary.push(weightCbmStr);
+        partsSummary.push(w.cost > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
         const tierStr = partsSummary.join(' · ');
         const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
@@ -28553,10 +28607,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     set('order-add-gt-cost',   cost     > 0 ? fmtUsd(cost)           : '—');
     set('order-add-gt-price',  price    > 0 ? fmtUsd(price)          : '—');
     const cbmCap = 67;
-    const fillPct = Math.min(100, cbm > 0 ? (cbm / cbmCap) * 100 : 0);
-    set('order-add-gt-cbm-label', cbm > 0 ? `${fmtCbm(cbm)} / ${cbmCap} CBM` : `— / ${cbmCap} CBM`);
-    const bar = document.getElementById('order-add-gt-cbm-bar');
-    if (bar) bar.style.width = fillPct + '%';
+    const cbmOver = cbm > cbmCap ? cbm - cbmCap : 0;
+    _renderCbmFillIndicator('order-add-gt-cbm-label', 'order-add-gt-cbm-bar', cbm, cbmCap, cbmOver, fmtCbm);
   }
 
   function filterOrderAddPicker(query) {
