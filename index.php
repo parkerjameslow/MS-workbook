@@ -10221,6 +10221,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+    if (typeof _updateSectionSummary === 'function') _updateSectionSummary('dimensions');
   }
 
   // ── Case Only Override ──────────────────────────────────────────────
@@ -10364,6 +10365,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof syncShippingDims === 'function') syncShippingDims();
     if (typeof calcFreight === 'function') calcFreight();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+    if (typeof _updateSectionSummary === 'function') _updateSectionSummary('dimensions');
   }
   // Returns whether Case Only Override is currently active.
   function _caseOnlyActive() {
@@ -15533,23 +15535,61 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           break;
         }
         case 'dimensions': {
-          // Show ALL three dim sets the operator might have filled in:
-          // product / inner carton / outer carton — each as L × W × H.
-          // Items render only when they have all three axes set so the
-          // summary doesn't show partial / nonsense dims like "0 × 5 × 0".
+          // The summary line bends to the operator's input mode:
+          //   - Case Only Override active → case dims + total units
+          //     (products/case × cases/order) + total weight
+          //   - Weight Only Override active → case qty + per-case
+          //     weight + total weight (qty × per-case)
+          //   - Default → product / inner carton / outer carton dims
+          // Each branch renders only the values that are actually
+          // filled in so a partial workbook doesn't surface noise.
           const v = id => parseFloat(document.getElementById(id)?.value) || 0;
-          const fmt = n => (Math.round(n * 10) / 10).toString();
+          const vInt = id => {
+            const raw = document.getElementById(id)?.value;
+            if (raw == null) return 0;
+            return parseInt(String(raw).replace(/,/g, ''), 10) || 0;
+          };
+          const fmt    = n => (Math.round(n * 10) / 10).toString();
+          const fmtInt = n => (n || 0).toLocaleString('en-US');
+          const fmtKg  = n => (n || 0).toLocaleString('en-US', {maximumFractionDigits: 1}) + ' kg';
           const dim = (lid, wid, hid) => {
             const L = v(lid), W = v(wid), H = v(hid);
             return (L > 0 && W > 0 && H > 0) ? `${fmt(L)} × ${fmt(W)} × ${fmt(H)} cm` : '';
           };
-          const product = dim('dim-cm-l',          'dim-cm-w',          'dim-cm-h');
-          const inner   = dim('carton-inner-l-cm', 'carton-inner-w-cm', 'carton-inner-h-cm');
-          const outer   = dim('carton-outer-l-cm', 'carton-outer-w-cm', 'carton-outer-h-cm');
+
+          const caseOnOn   = !!document.getElementById('case-only-override')?.checked;
+          const weightOnOn = !!document.getElementById('weight-only-override')?.checked;
           const parts = [];
-          if (product) parts.push(`<span class="ss-label">Product</span><span class="ss-value">${product}</span>`);
-          if (inner)   parts.push(`<span class="ss-label">Inner</span><span class="ss-value">${inner}</span>`);
-          if (outer)   parts.push(`<span class="ss-label">Outer</span><span class="ss-value">${outer}</span>`);
+
+          if (caseOnOn) {
+            parts.push(`<span class="ss-label">Case Only</span>`);
+            const caseDim = dim('case-only-l-cm', 'case-only-w-cm', 'case-only-h-cm');
+            if (caseDim) parts.push(`<span class="ss-value">${caseDim}</span>`);
+            const productsPer = vInt('case-only-products-per');
+            const casesOrder  = vInt('case-only-cases-order');
+            const caseWeight  = v('case-only-weight-kg');
+            const totalUnits  = productsPer > 0 && casesOrder > 0 ? productsPer * casesOrder : 0;
+            const totalWeight = caseWeight  > 0 && casesOrder > 0 ? caseWeight  * casesOrder : 0;
+            if (totalUnits  > 0) parts.push(`<span class="ss-value ss-value--accent">${fmtInt(totalUnits)} units</span>`);
+            if (casesOrder  > 0) parts.push(`<span class="ss-value">${fmtInt(casesOrder)} cases</span>`);
+            if (totalWeight > 0) parts.push(`<span class="ss-value">${fmtKg(totalWeight)}</span>`);
+          } else if (weightOnOn) {
+            parts.push(`<span class="ss-label">Weight Only</span>`);
+            const cases       = vInt('weight-only-qty');
+            const perCaseKg   = v('weight-only-kg');
+            const totalWeight = cases > 0 && perCaseKg > 0 ? cases * perCaseKg : 0;
+            if (cases       > 0) parts.push(`<span class="ss-value">${fmtInt(cases)} cases</span>`);
+            if (perCaseKg   > 0) parts.push(`<span class="ss-value">${fmtKg(perCaseKg)}/case</span>`);
+            if (totalWeight > 0) parts.push(`<span class="ss-value ss-value--accent">${fmtKg(totalWeight)} total</span>`);
+          } else {
+            const product = dim('dim-cm-l',          'dim-cm-w',          'dim-cm-h');
+            const inner   = dim('carton-inner-l-cm', 'carton-inner-w-cm', 'carton-inner-h-cm');
+            const outer   = dim('carton-outer-l-cm', 'carton-outer-w-cm', 'carton-outer-h-cm');
+            if (product) parts.push(`<span class="ss-label">Product</span><span class="ss-value">${product}</span>`);
+            if (inner)   parts.push(`<span class="ss-label">Inner</span><span class="ss-value">${inner}</span>`);
+            if (outer)   parts.push(`<span class="ss-label">Outer</span><span class="ss-value">${outer}</span>`);
+          }
+
           if (parts.length === 0) { _setSectionSummary('dimensions', ''); break; }
           _setSectionSummary('dimensions',
             `<div class="ss-row">` + parts.join('<span class="ss-divider">·</span>') + `</div>`
