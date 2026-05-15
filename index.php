@@ -14599,6 +14599,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // workbook left the USD frozen at the variant min/max range
     // because the range-display branch ignored the tier's own price.
     const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    // Per-unit prices show three decimals here (matches the Pricing
+    // tab Product Cost block) so qty × per-unit reconciles to the
+    // Tier Total without ceil-to-cent drift on big orders.
+    const fmt3 = v => v.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3});
     const ps   = _lastRfqPriceSummary;
     // Be tolerant of either numeric or string id — the tier counter
     // is always a number, but a future caller passing the row id as
@@ -14613,19 +14617,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // controls directly), so skip painting.
       if (useRange) {
         rmbValEl.textContent = ps.isRange
-          ? '¥ ' + fmt2(ps.rmbMin) + '–¥ ' + fmt2(ps.rmbMax)
-          : '¥ ' + fmt2(ps.rmbMin);
+          ? '¥ ' + fmt3(ps.rmbMin) + '–¥ ' + fmt3(ps.rmbMax)
+          : '¥ ' + fmt3(ps.rmbMin);
       } else {
-        rmbValEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + fmt2(rmb) : '—';
+        rmbValEl.textContent = (!isNaN(rmb) && rmb > 0) ? '¥ ' + fmt3(rmb) : '—';
       }
     }
     if (usdEl) {
       if (useRange) {
+        // Variant USD range — convert from raw RMB so the displayed
+        // value reflects the actual per-unit cost at three decimals.
+        const rateUsd = USD_TO_RMB > 0 ? USD_TO_RMB : 7.2;
+        const _vUsdMin = ps.rmbMin / rateUsd;
+        const _vUsdMax = ps.rmbMax / rateUsd;
         usdEl.textContent = ps.isRange
-          ? '$' + fmt2(ps.usdMin) + '–$' + fmt2(ps.usdMax)
-          : '$' + fmt2(ps.usdMin);
+          ? '$' + fmt3(_vUsdMin) + '–$' + fmt3(_vUsdMax)
+          : '$' + fmt3(_vUsdMin);
       } else {
-        usdEl.textContent = (!isNaN(rmb) && rmb > 0) ? '$' + fmt2(usd) : '—';
+        // Single-tier USD — use the raw division so the per-unit
+        // display tracks RMB exactly. (`usd` declared above as
+        // `_fxUsdFromRmb(rmb)` ceils to cents — bypass it here.)
+        const rateUsd = USD_TO_RMB > 0 ? USD_TO_RMB : 7.2;
+        usdEl.textContent = (!isNaN(rmb) && rmb > 0) ? '$' + fmt3(rmb / rateUsd) : '—';
       }
     }
     if (totalEl) {
@@ -17810,6 +17823,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // price by at least a cent. Sale Per is a manual Client Quote
     // override and intentionally does NOT bleed into this block.
     const fmt2 = v => v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    // Per-unit prices on the Pricing tab show three decimal places
+    // (the "thousandth") because ceiling to the cent on a per-unit
+    // value can drift the displayed × qty math from the actual total
+    // by hundreds of dollars on big orders. Raw value, rounds-
+    // nearest, so per-unit × qty ≈ total within fractional cents.
+    // Totals (Product, Shipping, Grand Total, Total USD, Profit)
+    // stay at fmt2 because cents are settled money — no need for an
+    // illusory third-decimal precision there.
+    const fmt3 = v => v.toLocaleString('en-US',{minimumFractionDigits:3,maximumFractionDigits:3});
     const psSummary = _lastRfqPriceSummary;
     // tierUsdPlain kept as the raw (un-ceiled) per-unit USD for the
     // Grand Total Cost per-unit math below. Display paths use
@@ -17821,11 +17843,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let unitRmbText = '—', unitUsdText = '—';
 
     if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0) {
-      unitRmbText = psSummary.isRange ? '¥' + fmt2(psSummary.rmbMin) + '–¥' + fmt2(psSummary.rmbMax) : '¥' + fmt2(psSummary.rmbMin);
-      unitUsdText = psSummary.isRange ? '$' + fmt2(psSummary.usdMin) + '–$' + fmt2(psSummary.usdMax) : '$' + fmt2(psSummary.usdMin);
+      // Variant range — render at 3 decimals from raw RMB and convert
+      // RMB→USD on the fly (raw division) so the per-unit displayed
+      // value reflects the actual cost, not the ceil-to-cent version
+      // that the totals back out from on big orders.
+      const _vUsdMinRaw = psSummary.rmbMin / USD_TO_RMB;
+      const _vUsdMaxRaw = psSummary.rmbMax / USD_TO_RMB;
+      unitRmbText = psSummary.isRange ? '¥' + fmt3(psSummary.rmbMin) + '–¥' + fmt3(psSummary.rmbMax) : '¥' + fmt3(psSummary.rmbMin);
+      unitUsdText = psSummary.isRange ? '$' + fmt3(_vUsdMinRaw) + '–$' + fmt3(_vUsdMaxRaw) : '$' + fmt3(_vUsdMinRaw);
     } else if (tierRmb > 0) {
-      unitRmbText = '¥' + fmt2(tierRmb);
-      unitUsdText = '$' + fmt2(tierUsdCeil);
+      unitRmbText = '¥' + fmt3(tierRmb);
+      unitUsdText = '$' + fmt3(tierUsdPlain);
     }
 
     if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && effectiveQty > 0) {
@@ -17882,10 +17910,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (e('ps-sh-rate'))    e('ps-sh-rate').textContent    = rateRmb > 0 ? `¥${rateRmb} / kg  ($${rateUsd.toFixed(2)}/kg)` : '—';
     // Shipping per unit (USD) — total shipping ÷ effective qty (the
     // qty we're quoting on, which rolls up to the Full Container Pitch
-    // when it's been applied from the workbook). Mirrors what feeds
-    // Landed Per below.
-    const shipPerUsd = (effectiveQty > 0 && shippingUsd > 0) ? _msCeil2(shippingUsd / effectiveQty) : 0;
-    if (e('ps-sh-per'))     e('ps-sh-per').textContent    = shipPerUsd > 0 ? '$' + shipPerUsd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    // when it's been applied from the workbook). Displayed at three
+    // decimals from the raw division so per-unit × qty reconciles to
+    // the Total Shipping shown above. shipPerUsd kept as a raw value
+    // for downstream landed-cost math (was ceiled to cents before,
+    // which inflated the per-unit display vs the actual total).
+    const shipPerUsd = (effectiveQty > 0 && shippingUsd > 0) ? (shippingUsd / effectiveQty) : 0;
+    if (e('ps-sh-per'))     e('ps-sh-per').textContent    = shipPerUsd > 0 ? '$' + fmt3(shipPerUsd) : '—';
     if (e('ps-sh-total-rmb')) e('ps-sh-total-rmb').textContent = shippingRmb > 0 ? fmtRmb(shippingRmb) : '—';
     if (e('ps-sh-total'))     e('ps-sh-total').textContent     = shippingUsd > 0 ? fmtUsd(shippingUsd) : '—';
 
@@ -17922,16 +17953,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } else if (tierUsdPlain > 0) {
       _gtPerProductRaw = tierUsdPlain;
     }
-    // Round UP to the cent on each component, then display the sum of
-    // the ceiled parts so the visible math always adds up exactly
-    // ($0.05 + $0.02 = $0.07). shipPerUsd is already ceiled upstream.
-    const _gtPerProductCeil = _msCeil2(_gtPerProductRaw);
-    const _gtPerShipCeil    = shipPerUsd || 0;
-    const _gtPerTotalCeil   = _gtPerProductCeil + _gtPerShipCeil;
-    const _fmt2Per = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    // Display each component at three decimals (raw, rounds-nearest)
+    // and the displayed total = sum of the displayed components — so
+    // the math always ties exactly. shipPerUsd is raw upstream so
+    // both summands and the sum stay consistent at the thousandth.
+    const _gtPerShipRaw  = shipPerUsd || 0;
+    const _gtPerTotalRaw = _gtPerProductRaw + _gtPerShipRaw;
     if (e('ps-grand-total-per')) {
-      e('ps-grand-total-per').textContent = _gtPerTotalCeil > 0
-        ? `$${_fmt2Per(_gtPerProductCeil)} + $${_fmt2Per(_gtPerShipCeil)} = $${_fmt2Per(_gtPerTotalCeil)} per unit`
+      e('ps-grand-total-per').textContent = _gtPerTotalRaw > 0
+        ? `$${fmt3(_gtPerProductRaw)} + $${fmt3(_gtPerShipRaw)} = $${fmt3(_gtPerTotalRaw)} per unit`
         : '—';
     }
 
@@ -18041,14 +18071,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const orderProfit = !isNaN(totalUsd) ? totalUsd - landedTotal : NaN;
 
     // ─── Render cells ────────────────────────────────────────────────
+    // fmtRange formats per-unit prices at three decimals (raw value,
+    // rounds-nearest) so the per-unit × qty math reconciles to the
+    // settled total without the per-cent ceil drift that becomes
+    // visible on big orders. Used by both Landed Per and Suggested
+    // Price Per below.
     const fmtRange = (lo, hi, isRange) => isRange
-      ? '$' + fmt2(lo) + '–$' + fmt2(hi)
-      : '$' + fmt2(lo);
+      ? '$' + fmt3(lo) + '–$' + fmt3(hi)
+      : '$' + fmt3(lo);
 
-    // Per-unit prices on the Pricing tab round UP to the cent so a small
-    // bump in margin always nudges the displayed price (otherwise default
-    // banker's rounding can leave 30% and 35% both showing the same cent).
-    if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(_msCeil2(landedMin), _msCeil2(landedMax), landedIsRange) : '—';
+    if (e('ps-landed-per'))    e('ps-landed-per').textContent    = landedMin > 0 ? fmtRange(landedMin, landedMax, landedIsRange) : '—';
 
     // ── Per-variant landed breakdown ─────────────────────────────────
     // When variants on the RFQ carry distinct RMB prices, expose a
@@ -18157,7 +18189,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (landedChev) landedChev.style.transform = expanded ? 'rotate(90deg)' : '';
     }
 
-    if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(_msCeil2(suggestedMin), _msCeil2(suggestedMax), suggestedIsRange) : '—';
+    if (e('ps-suggested-per')) e('ps-suggested-per').textContent = suggestedMin > 0 ? fmtRange(suggestedMin, suggestedMax, suggestedIsRange) : '—';
     if (e('ps-landed-total'))  e('ps-landed-total').textContent  = landedTotal > 0 ? '$' + fmt2(landedTotal) : '—';
     // Additional Fees row: only shown when at least one fee is applied.
     const feesRow = e('ps-fees-row');
