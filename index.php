@@ -24374,6 +24374,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Which employees have their per-client / per-workbook breakdown expanded
   // on the scoreboard. Survives re-renders triggered by filter changes.
   const _commExpandedEmployees = new Set();
+  // Per-employee toggle for the "Archived (prior months)" sub-section
+  // of the breakdown. Independent of _commExpandedEmployees so the
+  // operator can keep an employee's active section open while the
+  // older-months drawer stays closed.
+  const _commArchiveExpanded = new Set();
+  function toggleCommissionArchive(name) {
+    if (_commArchiveExpanded.has(name)) _commArchiveExpanded.delete(name);
+    else _commArchiveExpanded.add(name);
+    renderCommissionsDashboard();
+  }
   function toggleEmployeeExpand(name) {
     if (_commExpandedEmployees.has(name)) _commExpandedEmployees.delete(name);
     else _commExpandedEmployees.add(name);
@@ -24573,13 +24583,86 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const pct = (parseFloat(frac) || 0) * 100;
       return (pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(2)) + '%';
     };
+    // Status pill: maps the workbook's flow (or absence) to a colored
+    // tag rendered next to the workbook product link in each
+    // commission row. Handles three buckets:
+    //   - Live workbook: pill from flowLabels (Quote / Submitted /
+    //     Approved / Ordered / Complete)
+    //   - Workbook missing from clientData (deleted or archived):
+    //     muted "Archived" pill
+    //   - No flow info at all: blank string (don't show a misleading pill)
+    const _statusPillStyles = {
+      quoteChina:        { bg: 'rgba(150,150,150,0.14)', fg: '#6b7280', bd: 'rgba(150,150,150,0.35)', label: 'Quote' },
+      quoteSubmitted:    { bg: 'rgba(107,147,255,0.12)', fg: '#6b93ff', bd: 'rgba(107,147,255,0.35)', label: 'Submitted' },
+      quoteClient:       { bg: 'rgba(107,147,255,0.18)', fg: '#6b93ff', bd: 'rgba(107,147,255,0.45)', label: 'Quote Sent' },
+      clientApproved:    { bg: 'rgba(232,117,26,0.12)',  fg: 'var(--accent)', bd: 'rgba(232,117,26,0.35)', label: 'Approved' },
+      officeInvoice:     { bg: 'rgba(232,117,26,0.18)',  fg: 'var(--accent)', bd: 'rgba(232,117,26,0.45)', label: 'Invoiced' },
+      confirmedPayment:  { bg: 'rgba(22,163,74,0.12)',   fg: '#16a34a', bd: 'rgba(22,163,74,0.35)', label: 'Paid' },
+      orderChina:        { bg: 'rgba(22,163,74,0.20)',   fg: '#16a34a', bd: 'rgba(22,163,74,0.55)', label: 'Ordered' },
+      complete:          { bg: 'rgba(22,163,74,0.20)',   fg: '#16a34a', bd: 'rgba(22,163,74,0.55)', label: 'Complete' },
+      archived:          { bg: 'rgba(150,150,150,0.10)', fg: '#9ca3af', bd: 'rgba(150,150,150,0.30)', label: 'Archived' },
+    };
+    const statusPillFor = (clientName, workbookId) => {
+      const wbs = clientData[clientName] || [];
+      const wb  = wbs.find(x => parseInt(x.id) === parseInt(workbookId));
+      if (!wb) return _statusPillStyles.archived;
+      const flow = wb.flow || {};
+      if (typeof isFlowComplete === 'function' && isFlowComplete(flow)) return _statusPillStyles.complete;
+      let lastKey = null;
+      for (let i = flowSteps.length - 1; i >= 0; i--) {
+        if (flow[flowSteps[i]]) { lastKey = flowSteps[i]; break; }
+      }
+      return lastKey ? _statusPillStyles[lastKey] : null;
+    };
+    const renderStatusPill = (clientName, workbookId) => {
+      const s = statusPillFor(clientName, workbookId);
+      if (!s) return '';
+      return `<span style="background:${s.bg}; color:${s.fg}; border:1px solid ${s.bd}; padding:1px 7px; border-radius:9px; font-size:10px; font-weight:700; white-space:nowrap; text-transform:uppercase; letter-spacing:0.04em;">${s.label}</span>`;
+    };
+
+    // Relative-age helper: '3d ago' / '2w ago' / '4mo ago' / 'today'.
+    // Used both for row age (since created_at) and "paid X ago" hover
+    // copy on archived rows.
+    const _ageAgo = (iso) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      const ms = Date.now() - d.getTime();
+      const day = Math.floor(ms / 86400000);
+      if (day <= 0) return 'today';
+      if (day < 7)  return `${day}d ago`;
+      if (day < 30) return `${Math.floor(day / 7)}w ago`;
+      if (day < 365) return `${Math.floor(day / 30)}mo ago`;
+      return `${Math.floor(day / 365)}y ago`;
+    };
+
+    // "Archived" = paid AND paid_at is in a calendar month BEFORE the
+    // current one. Active rows include all pending + this-month-paid
+    // rows. Lets the operator close out a month visually without losing
+    // the history.
+    const _now = new Date();
+    const _curYear  = _now.getFullYear();
+    const _curMonth = _now.getMonth();
+    const _isArchivedRow = (r) => {
+      if (r.status !== 'paid' || !r.paid_at) return false;
+      const p = new Date(r.paid_at);
+      if (isNaN(p.getTime())) return false;
+      return (p.getFullYear() < _curYear) ||
+             (p.getFullYear() === _curYear && p.getMonth() < _curMonth);
+    };
+
     const buildEmployeeBreakdown = (empName) => {
       const myRows = rows.filter(r => r.employee === empName);
       if (!myRows.length) {
         return `<div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border); font-size:12px; color:var(--text-muted);">No commissions match the current filters.</div>`;
       }
+      // Split into active (pending + this-month paid) and archived
+      // (paid in a previous calendar month). Both halves group by
+      // client; archived sits inside a collapsible section below.
+      const activeRows   = myRows.filter(r => !_isArchivedRow(r));
+      const archivedRows = myRows.filter(r =>  _isArchivedRow(r));
       const byClient = {};
-      myRows.forEach(r => {
+      activeRows.forEach(r => {
         const c = r.client_name || '—';
         if (!byClient[c]) byClient[c] = [];
         byClient[c].push(r);
@@ -24610,11 +24693,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const paidTitle = isPaid && r.paid_at
             ? `Paid ${new Date(r.paid_at).toLocaleDateString()} — click to mark pending`
             : 'Click to mark this commission as paid';
-          // Compact 5-column row: workbook | role+rate | client total | commission $ | paid toggle
+          // Status pill (Quote / Approved / Ordered / Archived) +
+          // relative age — both inline next to the workbook link so
+          // the operator can read "what stage is this in?" at a
+          // glance without leaving the dashboard.
+          const statusPillHtml = renderStatusPill(r.client_name, r.workbook_id);
+          const ageStr  = _ageAgo(r.created_at);
+          const ageHtml = ageStr
+            ? `<span style="font-size:10px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="Commission row created ${r.created_at ? new Date(r.created_at).toLocaleString() : ''}">${ageStr}</span>`
+            : '';
+          // Compact 5-column row: workbook+status | role+rate | client total | commission $ | paid toggle
           return `
             <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:${rowBg}; border:${rowBorder}; border-left-width:${isPaid ? '3px' : '1px'};">
-              <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="max-width:100%; min-width:0;">
-                <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
+              <span style="display:inline-flex; align-items:center; gap:8px; min-width:0;">
+                <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="max-width:100%; min-width:0;">
+                  <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
+                </span>
+                ${statusPillHtml}
+                ${ageHtml}
               </span>
               <span style="display:inline-flex; align-items:center; gap:6px;">
                 ${rolePill(r.role)}
@@ -24653,10 +24749,87 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
         `;
       }).join('');
+      // Archived (paid in a previous calendar month) — collapsed by
+      // default behind a count-bearing toggle so the recent month
+      // stays the focus, but the operator can still audit / un-pay
+      // older rows on demand. Per-row markup mirrors the active
+      // section, just rendered inside the collapsed block.
+      let archivedHtml = '';
+      if (archivedRows.length) {
+        const archByClient = {};
+        archivedRows.forEach(r => {
+          const c = r.client_name || '—';
+          if (!archByClient[c]) archByClient[c] = [];
+          archByClient[c].push(r);
+        });
+        const archClientNames = Object.keys(archByClient).sort((a, b) => {
+          const sa = archByClient[a].reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+          const sb = archByClient[b].reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+          return sb - sa;
+        });
+        const archSubtotal = archivedRows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+        const archExpanded = _commArchiveExpanded.has(empName);
+        const archBlocks = archClientNames.map(c => {
+          const cRows = archByClient[c];
+          const cSubtotal = cRows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+          const wbRowsArch = cRows.map(r => {
+            const wbHash  = `/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`;
+            const wbClick = `event.stopPropagation(); location.hash='${wbHash}'`;
+            const product = esc(r.product_name) || '—';
+            const isEst   = +r.is_estimate === 1;
+            const statusPillHtml = renderStatusPill(r.client_name, r.workbook_id);
+            const paidAgo = _ageAgo(r.paid_at);
+            const ageHtml = paidAgo
+              ? `<span style="font-size:10px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="Paid ${r.paid_at ? new Date(r.paid_at).toLocaleString() : ''}">paid ${paidAgo}</span>`
+              : '';
+            return `
+              <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:rgba(150,150,150,0.06); border:1px solid var(--border); border-left:3px solid rgba(22,163,74,0.35); opacity:0.85;">
+                <span style="display:inline-flex; align-items:center; gap:8px; min-width:0;">
+                  <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="max-width:100%; min-width:0;">
+                    <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
+                  </span>
+                  ${statusPillHtml}
+                  ${ageHtml}
+                </span>
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                  ${rolePill(r.role)}
+                  <span style="font-size:11px; color:var(--text-muted); font-weight:600; font-variant-numeric:tabular-nums;">${fmtRate(r.commission_rate)}</span>
+                </span>
+                <span style="font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtUsd0(r.client_total_usd)}</span>
+                <span style="font-size:13px; color:var(--success, #16a34a); font-weight:600; font-variant-numeric:tabular-nums; text-align:right; min-width:74px; white-space:nowrap;">${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;">est</span>' : ''}</span>
+                <button type="button"
+                  onclick="event.stopPropagation(); setCommissionPaid(${r.id}, false)"
+                  title="Mark this commission as pending again (e.g. paid in error)"
+                  style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; background:#16a34a; color:#fff; border:1px solid #16a34a;">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Paid
+                </button>
+              </div>`;
+          }).join('');
+          return `
+            <div style="margin-bottom:10px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; gap:10px;">
+                <span style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">${esc(c)}</span>
+                <span style="font-size:11px; color:var(--text-muted); font-weight:600; white-space:nowrap;">${cRows.length} row${cRows.length !== 1 ? 's' : ''} · ${fmtUsd(cSubtotal)}</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">${wbRowsArch}</div>
+            </div>`;
+        }).join('');
+        const chevronArch = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s; transform:rotate(${archExpanded ? 90 : 0}deg);"><polyline points="9 18 15 12 9 6"/></svg>`;
+        archivedHtml = `
+          <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border);">
+            <div onclick="event.stopPropagation(); toggleCommissionArchive(${JSON.stringify(empName)})" style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; padding:6px 4px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">
+              ${chevronArch}
+              <span>Archived (prior months)</span>
+              <span style="margin-left:auto; font-weight:700; color:var(--text);">${archivedRows.length} row${archivedRows.length !== 1 ? 's' : ''} · ${fmtUsd(archSubtotal)}</span>
+            </div>
+            ${archExpanded ? `<div style="margin-top:8px;">${archBlocks}</div>` : ''}
+          </div>`;
+      }
       return `
         <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border);">
-          ${clientBlocks}
+          ${clientBlocks || '<div style="font-size:12px; color:var(--text-muted); padding:8px 0;">No active commissions this month.</div>'}
         </div>
+        ${archivedHtml}
       `;
     };
 
@@ -25315,16 +25488,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       alert('No SKUs found on this workbook\'s RFQ items. Add SKUs to line items first.');
       return;
     }
-    // Commission gross — read straight off the RFQ Grand Total row (the
-    // "Total USD" on the Workbook tab). The server uses this verbatim as
-    // the basis for AM / Salesperson / Operations commission so the row
-    // amounts always match what the operator sees. Falls back to the
-    // server's per-item aggregate when blank (legacy clients).
-    const _ps = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary) || null;
-    const workbookTotalUsd = (_ps && _ps.grandUsd > 0) ? _ps.grandUsd : 0;
+    // Commission gross — prefer the customer-facing Client Quote
+    // "Total Order" line (Sale Per × qty + applied fees). That's the
+    // dollar amount the customer pays and what AM / SP / Ops should
+    // be commissioned on. Falls back to the cost-side RFQ Grand Total
+    // when Sale Per hasn't been typed yet, so commission rows still
+    // land for workbooks promoted before pricing is finalized.
+    const _ps   = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary) || null;
+    const _wbDetail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
+    const workbookTotalUsd    = (_ps && _ps.grandUsd > 0) ? _ps.grandUsd : 0;
+    const clientQuoteTotalUsd = parseFloat(_wbDetail.pricingClientQuoteTotal) || 0;
     const res = await apiCall('promote_to_sku', {
       items: toPromote,
-      workbook_total_usd: workbookTotalUsd,
+      workbook_total_usd:    workbookTotalUsd,
+      client_quote_total_usd: clientQuoteTotalUsd,
       usd_to_rmb: USD_TO_RMB || 0
     });
     if (res.success) {

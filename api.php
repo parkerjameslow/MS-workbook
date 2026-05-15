@@ -968,6 +968,21 @@ function ms_workbook_total_usd_from_detail(?string $detailJson, float $usdRmbRat
     return $total;
 }
 
+// Customer-facing Client Quote total (Sale Per × qty + applied fees)
+// cached on the workbook detail by the JS Pricing-tab renderer. This
+// is what the customer is actually charged. Returned as 0 when the
+// operator hasn't typed Sale Per yet, so callers can fall back to the
+// RFQ-derived (cost-side) total above. Decoupling the two is the whole
+// point — old behavior commissioned against our COST, which under-pays
+// the AM/SP/Ops on every workbook with margin.
+function ms_workbook_client_quote_total_from_detail(?string $detailJson): float {
+    if (!$detailJson) return 0;
+    $details = json_decode($detailJson, true);
+    if (!is_array($details)) return 0;
+    $v = (float)($details['pricingClientQuoteTotal'] ?? 0);
+    return $v > 0 ? $v : 0;
+}
+
 switch ($action) {
 
     // ─── CLIENTS ───────────────────────────────────────
@@ -2232,6 +2247,12 @@ switch ($action) {
             } catch (Exception $_) { /* app_state may not exist on some installs */ }
         }
         $clientWorkbookTotalUsd = isset($input['workbook_total_usd']) ? (float)$input['workbook_total_usd'] : 0;
+        // Customer-facing total from the Pricing tab's "Total Order"
+        // line (Sale Per × qty + fees). When > 0 this wins over
+        // workbook_total_usd / per-item aggregates because it's what
+        // the customer actually pays — and that's what the AM / SP /
+        // Ops should be commissioned against.
+        $clientQuoteTotalUsd = isset($input['client_quote_total_usd']) ? (float)$input['client_quote_total_usd'] : 0;
         $inserted = 0;
         $skipped = 0;
         $invStmt = $pdo->prepare("INSERT IGNORE INTO inventory (sku, product_name, variant_name, client_name, workbook_id) VALUES (?, ?, ?, ?, ?)");
@@ -2289,13 +2310,22 @@ switch ($action) {
             if (!$client) continue;
 
             // Priority order for the commission basis:
-            //   1. workbook_total_usd from the client (RFQ Grand Total)
-            //   2. per-item aggregate (qty × unit_price_usd, summed) the
-            //      client also sends today
-            //   3. server-side detail_json computation using whatever FX
-            //      rate is cached in app_state
+            //   1. client_quote_total_usd — the Pricing tab's "Total
+            //      Order" line (Sale Per × qty + fees). Wins because
+            //      it's the CUSTOMER-facing total and that's what we
+            //      should be paying commission against.
+            //   2. workbook_total_usd from the client (RFQ Grand Total)
+            //      — the cost-side fallback when Sale Per hasn't been
+            //      typed yet.
+            //   3. per-item aggregate (qty × unit_price_usd, summed)
+            //      the client also sends today.
+            //   4. server-side detail_json computation: prefer the
+            //      cached pricingClientQuoteTotal field; else recompute
+            //      from rfqItems using the cached FX rate.
             $totalUsd = 0;
-            if ($clientWorkbookTotalUsd > 0 && count($wbAgg) === 1) {
+            if ($clientQuoteTotalUsd > 0 && count($wbAgg) === 1) {
+                $totalUsd = $clientQuoteTotalUsd;
+            } else if ($clientWorkbookTotalUsd > 0 && count($wbAgg) === 1) {
                 // Single-workbook promote — trust the client's grand total
                 // verbatim. (Multi-workbook batch promotes still aggregate
                 // per workbook since we can't split one number across two.)
@@ -2303,20 +2333,30 @@ switch ($action) {
             } else if ((float)$agg['total_usd'] > 0) {
                 $totalUsd = (float)$agg['total_usd'];
             } else {
-                // Fall back to recomputing from the workbook's stored rfqItems.
+                // Fall back to the workbook's stored detail_json.
+                // Prefer the cached client-quote total; otherwise
+                // recompute from rfqItems (cost-side estimate).
                 $ws = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ? LIMIT 1");
                 $ws->execute([$agg['workbook_id']]);
                 $detail = $ws->fetchColumn();
-                $totalUsd = ms_workbook_total_usd_from_detail($detail, ms_current_fx_rate($pdo));
+                $cqt = ms_workbook_client_quote_total_from_detail($detail);
+                $totalUsd = $cqt > 0
+                    ? $cqt
+                    : ms_workbook_total_usd_from_detail($detail, ms_current_fx_rate($pdo));
             }
             if ($totalUsd <= 0) continue;
 
+            // is_estimate flips off when Sale Per is real (we sourced
+            // the basis from the Client Quote total). Cost-side
+            // fallbacks keep the estimate flag so the dashboard's
+            // "est" badge remains accurate.
+            $sourcedFromClientQuote = ($clientQuoteTotalUsd > 0 && count($wbAgg) === 1);
             $commissionsRecorded += ms_record_commissions_for_workbook(
                 $pdo, $client, $agg['workbook_id'],
                 $agg['first_sku'] ?: null,
                 $agg['first_product'] ?: null,
                 $totalUsd,
-                1 // is_estimate (until real Client Cost is wired on Pricing)
+                $sourcedFromClientQuote ? 0 : 1
             );
         }
         echo json_encode([
@@ -2473,7 +2513,15 @@ switch ($action) {
             $wbRow = $workbookCache[$wb];
             if (!$wbRow) continue;
 
-            $totalUsd = ms_workbook_total_usd_from_detail($wbRow['detail_json'] ?? null, $fxRate);
+            // Prefer the customer-facing Client Quote total (Sale Per
+            // × qty + fees) cached on the workbook detail by the JS
+            // Pricing tab. Fall back to the cost-side RFQ-derived
+            // total when Sale Per hasn't been typed yet, so older
+            // workbooks still produce a non-zero commission row.
+            $cqt = ms_workbook_client_quote_total_from_detail($wbRow['detail_json'] ?? null);
+            $totalUsd = $cqt > 0
+                ? $cqt
+                : ms_workbook_total_usd_from_detail($wbRow['detail_json'] ?? null, $fxRate);
             if ($totalUsd <= 0) continue;
 
             $written += ms_record_commissions_for_workbook(
@@ -2481,7 +2529,7 @@ switch ($action) {
                 null, // no single SKU at workbook level
                 $wbRow['product_name'] ?? null,
                 $totalUsd,
-                1 // is_estimate
+                $cqt > 0 ? 0 : 1 // estimate flag flips off once Sale Per is real
             );
         }
 
