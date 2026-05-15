@@ -7952,10 +7952,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <tr>
               <th>Item</th>
               <th style="text-align:right;">Qty</th>
-              <th style="text-align:right;">Unit (RMB)</th>
-              <th style="text-align:right;">Unit (USD)</th>
-              <th style="text-align:right;">Total (RMB)</th>
               <th style="text-align:right;">Total (USD)</th>
+              <th style="text-align:right;">Lead</th>
               <th></th>
             </tr>
           </thead>
@@ -28638,15 +28636,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (table) table.style.display = '';
     if (empty) empty.style.display = 'none';
 
-    const exchange = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
-    let grandUsd = 0, grandRmb = 0;
+    let grandUsd = 0, grandMaxLead = 0;
     // Sum cached shipment metrics across the order's workbooks. These
     // come from renderContainerViz / renderPricingTab caches written
     // when the operator visits each workbook's Shipping / Pricing tab,
     // so older / never-opened workbooks contribute 0 until visited.
     let totalWeightKg = 0, totalCbm = 0;
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmt3 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
     tbody.innerHTML = entries.map((entry, idx) => {
       const key     = `${entry.clientName}|${entry.workbookId}`;
@@ -28662,9 +28658,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return `<span class="split-badge">${s.qty.toLocaleString('en-US')} ${label}</span>`;
       }).join('');
 
-      // Workbook header row
+      // Lead time (production + shipping) for this workbook, via the
+      // shared helper so it matches the order-card badge + pickers.
+      const wbStats  = _wbStatsForPicker(detail);
+      const wbLead   = wbStats.leadDays || 0;
+      if (wbLead > grandMaxLead) grandMaxLead = wbLead;
+      const leadStr  = wbLead > 0 ? `${wbLead} days` : '—';
+
+      // Workbook header row (5-col layout: Item | Qty | Total | Lead | ×)
       let rows = `<tr class="order-sheet-wb-header">
-        <td colspan="6">
+        <td colspan="4">
           <a class="order-sheet-product-link" href="${wbHref}"
             onclick="_wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
             ${product} <span style="font-size:11px; opacity:0.5;">→</span>
@@ -28676,62 +28679,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </td>
       </tr>`;
 
-      // Per-line totals are pro-rated from the workbook's Grand
-      // Total Cost (product + shipping) cached by the Pricing tab —
-      // so the displayed "Total" actually reflects what the order
-      // costs us to land, not the cost-only RFQ math. Per-unit shown
-      // at three decimals (Pricing tab convention) since shipping is
-      // amortized across units, not actually paid per item.
-      // Falls back to the RFQ × qty math when the workbook hasn't
-      // been Pricing-tab rendered yet so partially-set-up orders
-      // still show something instead of dashes.
-      const wbGrandUsd = parseFloat(detail.pricingGrandTotalCost) || 0;
-      const wbTotalQty = rfqItems.reduce((s, it) => s + (parseFloat(it.qty) || 0), 0);
-      const useGrand   = wbGrandUsd > 0 && wbTotalQty > 0;
-      const wbUnitUsd  = useGrand ? wbGrandUsd / wbTotalQty : 0;
-      const wbUnitRmb  = useGrand ? wbUnitUsd * exchange : 0;
+      // Per-line "Total (USD)" comes straight from the Client Quote
+      // Total Order (Sale Per × qty + applied fees) — what the
+      // customer actually pays. Split across the workbook's RFQ
+      // items by qty share so multi-item workbooks still itemize.
+      // Falls back to the cost-side RFQ × qty math only when the
+      // workbook has no Client Quote cached yet (Sale Per not typed),
+      // so partially-priced orders still show a number.
+      const wbClientQuote = parseFloat(detail.pricingClientQuoteTotal) || 0;
+      const wbTotalQty    = rfqItems.reduce((s, it) => s + (parseFloat(it.qty) || 0), 0);
+      const useQuote      = wbClientQuote > 0 && wbTotalQty > 0;
+      const _fxRate       = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
 
       if (rfqItems.length === 0) {
         rows += `<tr>
-          <td colspan="7" style="padding:8px 12px 12px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
+          <td colspan="5" style="padding:8px 12px 12px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
-        rows += rfqItems.map(item => {
+        rows += rfqItems.map((item, lineIdx) => {
           const priceRmb = parseFloat(item.priceRmb) || 0;
           const qty      = parseFloat(item.qty) || 0;
-          // Total path: when we have a Grand Total Cost from the
-          // Pricing tab, use a qty-weighted slice of it (per-line
-          // share = lineQty / wbTotalQty). Per-unit is the SAME
-          // across the workbook's lines because shipping is
-          // amortized over the whole workbook, not per item.
-          let lineUnitRmb, lineUnitUsd, lineTotalRmb, lineTotalUsd;
-          if (useGrand) {
-            lineUnitUsd  = wbUnitUsd;
-            lineUnitRmb  = wbUnitRmb;
-            lineTotalUsd = qty > 0 ? wbUnitUsd * qty : 0;
-            lineTotalRmb = qty > 0 ? wbUnitRmb * qty : 0;
-          } else {
-            lineUnitRmb  = priceRmb;
-            lineUnitUsd  = priceRmb > 0 ? priceRmb / exchange : 0;
-            lineTotalRmb = priceRmb * qty;
-            lineTotalUsd = lineTotalRmb > 0 ? lineTotalRmb / exchange : 0;
-          }
-          grandRmb += lineTotalRmb;
+          const lineTotalUsd = useQuote
+            ? (wbTotalQty > 0 ? wbClientQuote * (qty / wbTotalQty) : 0)
+            : (priceRmb > 0 ? (priceRmb * qty) / _fxRate : 0);
           grandUsd += lineTotalUsd;
 
-          const qtyStr     = qty           > 0 ? qty.toLocaleString('en-US') : '—';
-          const unitRmbStr = lineUnitRmb   > 0 ? `¥${fmt3(lineUnitRmb)}` : '—';
-          const unitUsdStr = lineUnitUsd   > 0 ? `$${fmt3(lineUnitUsd)}` : '—';
-          const totRmbStr  = lineTotalRmb  > 0 ? `¥${fmt2(lineTotalRmb)}` : '—';
-          const totUsdStr  = lineTotalUsd  > 0 ? `$${fmt2(lineTotalUsd)}` : '—';
+          const qtyStr    = qty          > 0 ? qty.toLocaleString('en-US') : '—';
+          const totUsdStr = lineTotalUsd > 0 ? `$${fmt2(lineTotalUsd)}` : '—';
+          // Lead shown once per workbook (on its first line) — it's a
+          // workbook-level property, not per-item.
+          const leadCell  = (lineIdx === 0)
+            ? `<td style="text-align:right; color:var(--text-muted);">${leadStr}</td>`
+            : `<td></td>`;
 
           return `<tr class="order-sheet-line-row">
             <td style="padding-left:24px;">${item.item || '—'}</td>
             <td style="text-align:right;">${qtyStr}</td>
-            <td style="text-align:right; color:var(--text-muted);">${unitRmbStr}</td>
-            <td style="text-align:right; color:var(--text-muted);">${unitUsdStr}</td>
-            <td style="text-align:right; font-weight:600;">${totRmbStr}</td>
             <td style="text-align:right; font-weight:600;">${totUsdStr}</td>
+            ${leadCell}
             <td></td>
           </tr>`;
         }).join('');
@@ -28741,8 +28726,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }).join('');
 
     // Grand total footer
-    const grandUsdStr = grandUsd > 0 ? `$${fmt2(grandUsd)}` : '—';
-    const grandRmbStr = grandRmb > 0 ? `¥${fmt2(grandRmb)}` : '—';
+    const grandUsdStr     = grandUsd > 0 ? `$${fmt2(grandUsd)}` : '—';
+    const grandLeadStr    = grandMaxLead > 0 ? `${grandMaxLead} days` : '—';
     // Shipment line: weight + CBM (out of one 40' HC container's 67 m³)
     // with a small fill indicator so the operator can spot a near-full
     // container at a glance. Hidden when neither metric is populated.
@@ -28763,21 +28748,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const showShipRow = totalCbm > 0 || totalWeightKg > 0;
     const shipRow = showShipRow
       ? `<tr>
-          <td colspan="4" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
-          <td colspan="2" style="text-align:right; font-size:12px; padding-top:4px;">
+          <td colspan="2" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
+          <td colspan="3" style="text-align:right; font-size:12px; padding-top:4px;">
             <span style="color:var(--text-muted); margin-right:14px;">Weight: <strong style="color:var(--text);">${wtStr}</strong></span>
             <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmHtml}</strong></span>
             <div style="margin-top:5px; height:4px; background:var(--surface2); border-radius:99px; overflow:hidden; max-width:260px; margin-left:auto;">
               <div style="height:100%; width:${fillPct}%; background:${cbmBarColor}; border-radius:99px; transition:width 0.2s;"></div>
             </div>
           </td>
-          <td></td>
         </tr>`
       : '';
     tfoot.innerHTML = `<tr>
-      <td colspan="4" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
-      <td style="text-align:right; font-weight:700; color:var(--text-muted);">${grandRmbStr}</td>
+      <td colspan="2" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
       <td style="text-align:right; font-size:15px; font-weight:800;">${grandUsdStr}</td>
+      <td style="text-align:right; font-weight:700; color:var(--text-muted);">${grandLeadStr}</td>
       <td></td>
     </tr>${shipRow}`;
   }
