@@ -27882,11 +27882,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const exchange = 7.2;
     let grandUsd = 0, grandRmb = 0;
+    // Sum cached shipment metrics across the order's workbooks. These
+    // come from renderContainerViz / renderPricingTab caches written
+    // when the operator visits each workbook's Shipping / Pricing tab,
+    // so older / never-opened workbooks contribute 0 until visited.
+    let totalWeightKg = 0, totalCbm = 0;
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     tbody.innerHTML = entries.map((entry, idx) => {
       const key     = `${entry.clientName}|${entry.workbookId}`;
       const detail  = workbookDetail[key] || {};
+      totalWeightKg += parseFloat(detail.pricingShipmentWeightKg) || 0;
+      totalCbm      += parseFloat(detail.pricingShipmentCbm)      || 0;
       const product = detail.product || entry.workbookId;
       const wbHref  = `#/client/${encodeURIComponent(entry.clientName)}/workbook/${entry.workbookId}`;
       const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
@@ -27947,12 +27954,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Grand total footer
     const grandUsdStr = grandUsd > 0 ? `$${fmt2(grandUsd)}` : '—';
     const grandRmbStr = grandRmb > 0 ? `¥${fmt2(grandRmb)}` : '—';
+    // Shipment line: weight + CBM (out of one 40' HC container's 67 m³)
+    // with a small fill indicator so the operator can spot a near-full
+    // container at a glance. Hidden when neither metric is populated.
+    const fmtKg  = n => n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg';
+    const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    const cbmCap = 67;
+    const fillPct = totalCbm > 0 ? Math.min(100, (totalCbm / cbmCap) * 100) : 0;
+    const cbmStr  = totalCbm > 0 ? `${fmtCbm(totalCbm)} / ${cbmCap} CBM` : '—';
+    const wtStr   = totalWeightKg > 0 ? fmtKg(totalWeightKg) : '—';
+    const showShipRow = totalCbm > 0 || totalWeightKg > 0;
+    const shipRow = showShipRow
+      ? `<tr>
+          <td colspan="4" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
+          <td colspan="2" style="text-align:right; font-size:12px; padding-top:4px;">
+            <span style="color:var(--text-muted); margin-right:14px;">Weight: <strong style="color:var(--text);">${wtStr}</strong></span>
+            <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmStr}</strong></span>
+            <div style="margin-top:5px; height:4px; background:var(--surface2); border-radius:99px; overflow:hidden; max-width:260px; margin-left:auto;">
+              <div style="height:100%; width:${fillPct}%; background:var(--accent); border-radius:99px; transition:width 0.2s;"></div>
+            </div>
+          </td>
+          <td></td>
+        </tr>`
+      : '';
     tfoot.innerHTML = `<tr>
       <td colspan="4" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
       <td style="text-align:right; font-weight:700; color:var(--text-muted);">${grandRmbStr}</td>
       <td style="text-align:right; font-size:15px; font-weight:800;">${grandUsdStr}</td>
       <td></td>
-    </tr>`;
+    </tr>${shipRow}`;
   }
 
   function renderOrderDepositTracking() {
