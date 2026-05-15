@@ -14590,12 +14590,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const usdEl = document.getElementById(`wb-tier-usd-${id}`);
     const totalEl = document.getElementById(`wb-tier-total-${id}`);
 
-    // Variant-aware price + total: when variants have variable pricing,
-    // mirror the RFQ Grand Total range (¥min–¥max / $min–$max). Tier-row
-    // total becomes a corresponding range (qty × usdMin – qty × usdMax).
+    // Variant-aware display: when the RFQ has variants at different
+    // prices, tier 1 mirrors the RFQ Grand Total range so the auto-
+    // populated row reads consistently with the Workbook tab. Tiers
+    // 2+ are operator-controlled — the RMB input drives the row's
+    // own RMB / USD / total even on variant workbooks. Without this
+    // bypass, typing a manual RMB into tier 2/3/4 on a variant
+    // workbook left the USD frozen at the variant min/max range
+    // because the range-display branch ignored the tier's own price.
     const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     const ps   = _lastRfqPriceSummary;
-    const useRange = ps && ps.hasVariants && ps.rmbMin > 0;
+    const isFirstTier = (id === 1);
+    const useRange = isFirstTier && ps && ps.hasVariants && ps.rmbMin > 0;
 
     if (rmbValEl) {
       // Only tier 1 has a label-style RMB cell (rmbValEl exists). For
