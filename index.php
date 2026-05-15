@@ -25841,27 +25841,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const key    = `${wbEntry.clientName}|${wbEntry.workbookId}`;
       const detail = workbookDetail[key];
       if (!detail) return;
-      const tiers  = Array.isArray(detail.tiers) ? detail.tiers : [];
-      const tier   = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
-      const wbQty  = tier ? (parseFloat(tier.qty)   || 0) : 0;
-      const price  = tier ? (parseFloat(tier.price) || 0) : 0;
-      qty        += wbQty;
-      totalRmb   += price * wbQty;
-      totalUsd   += (price / exchange) * wbQty;
-      const s = calcWorkbookShipStats(detail, wbQty);
+
+      // Units / weight / CBM: source-of-truth via the shared helper
+      // so the shipment view shows the SAME numbers as the Add to
+      // Shipment modal + the Orders list card. Previously this
+      // function pulled qty from the selected pricing tier (often a
+      // production tier larger than what's actually being shipped),
+      // which inflated cartons/CBM/weight by 3-5× when the ship qty
+      // (palletTotalCartons) differed from the tier qty.
+      const w = _wbStatsForPicker(detail);
+      qty           += w.units;
+      totalWeightKg += w.weightKg;
+      totalCbm      += w.cbm;
+
+      // Cartons + pallets are derived from carton specs (no
+      // dedicated cache). Use the helper's qty so the carton count
+      // matches the units shown above. When carton specs are missing
+      // both stay 0 and the row displays "—" for those cells.
+      const s = calcWorkbookShipStats(detail, w.units);
       totalCartons  += s.totalCartons;
-      // Weight + CBM: prefer the carton-derived value (more accurate
-      // when outer dims are filled in), but fall back to the cached
-      // pricingShipmentWeightKg / pricingShipmentCbm written by
-      // renderContainerViz so we don't dash out when the workbook
-      // has been freight-rendered but lacks outer carton dims.
-      totalWeightKg += s.totalWeightKg > 0
-        ? s.totalWeightKg
-        : (parseFloat(detail.pricingShipmentWeightKg) || 0);
-      totalCbm      += s.totalCbm > 0
-        ? s.totalCbm
-        : (parseFloat(detail.pricingShipmentCbm) || 0);
       palletsNeeded += s.palletsNeeded;
+
+      // USD / RMB monetary totals — keep the legacy tier × qty math
+      // (this is what the Order list + shipment chip have always
+      // shown). The customer-facing Client Quote total and our Grand
+      // Total Cost are surfaced via the picker / order-card stat
+      // strip instead.
+      const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
+      const tier  = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+      const tQty  = tier ? (parseFloat(tier.qty)   || 0) : 0;
+      const price = tier ? (parseFloat(tier.price) || 0) : 0;
+      totalRmb += price * tQty;
+      totalUsd += (price / exchange) * tQty;
     });
     return {
       wbCount:      (order.entries || []).length,
