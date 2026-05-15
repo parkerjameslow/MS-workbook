@@ -28660,10 +28660,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const container = document.getElementById('order-deposit-rows');
     if (!container) return;
 
-    const tot = orderTotals(o);
+    // Deposit base is the CUSTOMER-facing total (sum of each
+    // workbook's Client Quote Total Order across the order's
+    // entries). The deposit is collected against what the client
+    // actually wires, not against our internal tier-cost math.
+    // Falls back to the legacy orderTotals.totalUsd (tier × qty)
+    // when no workbook has Sale Per typed yet so a brand-new
+    // order still shows a non-zero deposit.
     const pct = o.depositPct != null ? o.depositPct : 30;
-    const depositAmt = Math.round(tot.totalUsd * (pct / 100) * 100) / 100;
-    const balanceAmt = Math.round((tot.totalUsd - depositAmt) * 100) / 100;
+    let baseUsd = 0;
+    (o.entries || []).forEach(e => {
+      const w = _wbStatsForPicker(workbookDetail[`${e.clientName}|${e.workbookId}`]);
+      baseUsd += w.price || 0;
+    });
+    if (baseUsd <= 0) {
+      // Fallback so partially-set-up orders still surface a number.
+      baseUsd = orderTotals(o).totalUsd || 0;
+    }
+    const depositAmt = Math.round(baseUsd * (pct / 100) * 100) / 100;
+    const balanceAmt = Math.round((baseUsd - depositAmt) * 100) / 100;
 
     const depositPaid = o.depositPaid || false;
     const balancePaid = o.balancePaid || false;
