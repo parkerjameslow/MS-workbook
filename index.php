@@ -25529,8 +25529,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       totalUsd   += (price / exchange) * wbQty;
       const s = calcWorkbookShipStats(detail, wbQty);
       totalCartons  += s.totalCartons;
-      totalCbm      += s.totalCbm;
-      totalWeightKg += s.totalWeightKg;
+      // Weight + CBM: prefer the carton-derived value (more accurate
+      // when outer dims are filled in), but fall back to the cached
+      // pricingShipmentWeightKg / pricingShipmentCbm written by
+      // renderContainerViz so we don't dash out when the workbook
+      // has been freight-rendered but lacks outer carton dims.
+      totalWeightKg += s.totalWeightKg > 0
+        ? s.totalWeightKg
+        : (parseFloat(detail.pricingShipmentWeightKg) || 0);
+      totalCbm      += s.totalCbm > 0
+        ? s.totalCbm
+        : (parseFloat(detail.pricingShipmentCbm) || 0);
       palletsNeeded += s.palletsNeeded;
     });
     return {
@@ -25921,14 +25930,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const stats  = orderShipStats(entry.orderId);
       const orderHref = `#/order/${entry.orderId}`;
 
-      const hasDims = stats.totalCartons > 0;
-      const qtyStr     = stats.qty > 0 ? stats.qty.toLocaleString('en-US') : '—';
-      const cartonStr  = hasDims ? stats.totalCartons.toLocaleString('en-US') : '—';
-      const palletStr  = hasDims ? stats.palletsNeeded : '—';
-      const cbmStr     = hasDims ? stats.totalCbm + ' m³' : '—';
-      const weightStr  = hasDims ? stats.totalWeightKg.toLocaleString('en-US') + ' kg' : '—';
-      const usdStr     = stats.totalUsd > 0 ? `$${fmt2(stats.totalUsd)}` : '—';
-      const rmbStr     = stats.totalRmb > 0 ? `¥${fmt2(stats.totalRmb)}` : '';
+      // Each stat is gated independently — Weight + CBM fall back to
+      // the cached values from renderContainerViz when outer carton
+      // dims aren't filled in (so we surface what we have instead of
+      // dashing the whole row when one input is missing).
+      const qtyStr     = stats.qty           > 0 ? stats.qty.toLocaleString('en-US') : '—';
+      const cartonStr  = stats.totalCartons  > 0 ? stats.totalCartons.toLocaleString('en-US') : '—';
+      const palletStr  = stats.palletsNeeded > 0 ? stats.palletsNeeded : '—';
+      const cbmStr     = stats.totalCbm      > 0 ? stats.totalCbm + ' m³' : '—';
+      const weightStr  = stats.totalWeightKg > 0 ? stats.totalWeightKg.toLocaleString('en-US') + ' kg' : '—';
+      const usdStr     = stats.totalUsd      > 0 ? `$${fmt2(stats.totalUsd)}` : '—';
+      const rmbStr     = stats.totalRmb      > 0 ? `¥${fmt2(stats.totalRmb)}` : '';
 
       // Workbook pills
       const wbPills = (order.entries || []).map(wbEntry => {
