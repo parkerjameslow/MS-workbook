@@ -24651,6 +24651,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              (p.getFullYear() === _curYear && p.getMonth() < _curMonth);
     };
 
+    // Stable role order: AM → Sales → Ops → anything else. Hoisted
+    // to buildEmployeeBreakdown scope so both the active and the
+    // archived role-grouping use the same ordering.
+    const roleOrder = ['account_manager', 'salesperson', 'operations'];
+
     const buildEmployeeBreakdown = (empName) => {
       const myRows = rows.filter(r => r.employee === empName);
       if (!myRows.length) {
@@ -24672,68 +24677,117 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const sb = byClient[b].reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
         return sb - sa;
       });
+      // Single-row renderer: workbook + status + age | client total |
+      // commission $ | paid toggle. Role + rate live in the role-group
+      // header above so they're not repeated on every row — gives the
+      // workbook pill the horizontal room it needs to actually show
+      // the product name instead of "Med…" / "Lar…".
+      // `archived=true` switches the row to a muted treatment + pulls
+      // its age from paid_at instead of created_at, so the same
+      // function powers both the active section and the prior-months
+      // drawer below it.
+      const renderCommissionRow = (r, archived = false) => {
+        const wbHash = `/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`;
+        const wbClick = `event.stopPropagation(); location.hash='${wbHash}'`;
+        const product = esc(r.product_name) || '—';
+        const isEst = +r.is_estimate === 1;
+        const isPaid = r.status === 'paid';
+        const rowBg = archived
+          ? 'rgba(150,150,150,0.06)'
+          : (isPaid ? 'rgba(22,163,74,0.12)' : 'var(--surface)');
+        const rowBorder = archived
+          ? '1px solid var(--border)'
+          : (isPaid ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent');
+        const leftAccent = archived
+          ? '3px solid rgba(22,163,74,0.35)'
+          : (isPaid ? '3px solid rgba(22,163,74,0.35)' : '1px solid transparent');
+        const opacity = archived ? '0.85' : '1';
+        const paidTitle = archived
+          ? 'Mark this commission as pending again (e.g. paid in error)'
+          : (isPaid && r.paid_at
+              ? `Paid ${new Date(r.paid_at).toLocaleDateString()} — click to mark pending`
+              : 'Click to mark this commission as paid');
+        const statusPillHtml = renderStatusPill(r.client_name, r.workbook_id);
+        const ageSrc = archived ? r.paid_at : r.created_at;
+        const ageStr = _ageAgo(ageSrc);
+        const ageLabel = archived ? `paid ${ageStr}` : ageStr;
+        const ageHtml = ageStr
+          ? `<span style="font-size:10px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="${archived ? 'Paid' : 'Commission row created'} ${ageSrc ? new Date(ageSrc).toLocaleString() : ''}">${ageLabel}</span>`
+          : '';
+        // Archived rows always show the green Paid pill (since they
+        // wouldn't be archived otherwise) but clicking still flips to
+        // pending — same behaviour as the active section's paid rows.
+        const buttonHtml = (archived || isPaid)
+          ? `<button type="button"
+              onclick="event.stopPropagation(); setCommissionPaid(${r.id}, false)"
+              title="${paidTitle}"
+              style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; background:#16a34a; color:#fff; border:1px solid #16a34a;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Paid
+            </button>`
+          : `<button type="button"
+              onclick="event.stopPropagation(); setCommissionPaid(${r.id}, true)"
+              title="${paidTitle}"
+              style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; background:transparent; color:var(--text-muted); border:1px solid var(--border);">
+              Mark paid
+            </button>`;
+        return `
+          <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:${rowBg}; border:${rowBorder}; border-left:${leftAccent}; opacity:${opacity};">
+            <span style="display:flex; align-items:center; gap:8px; min-width:0;">
+              <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="flex:1 1 auto; min-width:0; max-width:100%;">
+                <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
+              </span>
+              ${statusPillHtml}
+              ${ageHtml}
+            </span>
+            <span style="font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="Client total this commission was rated against">
+              ${fmtUsd0(r.client_total_usd)}
+            </span>
+            <span style="font-size:13px; color:var(--success, #16a34a); font-weight:600; font-variant-numeric:tabular-nums; text-align:right; min-width:74px; white-space:nowrap;">
+              ${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate — Client Cost not yet wired">est</span>' : ''}
+            </span>
+            ${buttonHtml}
+          </div>`;
+      };
+
       const clientBlocks = clientNames.map(c => {
         const cRows = byClient[c];
         const cSubtotal = cRows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
         const clientHash = `/client/${encodeURIComponent(c)}`;
         const clientChipClick = `event.stopPropagation(); location.hash='${clientHash}'`;
-        const wbRows = cRows.map(r => {
-          const wbHash = `/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`;
-          const wbClick = `event.stopPropagation(); location.hash='${wbHash}'`;
-          const product = esc(r.product_name) || '—';
-          const isEst = +r.is_estimate === 1;
-          const isPaid = r.status === 'paid';
-          // Paid state styling: green-tinted background, green left-edge
-          // accent, and a "✓ Paid" badge replacing the "Mark paid" button.
-          // Pending rows show the Mark Paid action so the operator can flip
-          // a row right where they're already looking. Clicking the badge
-          // (when paid) reverts to pending — handy for fixing miss-clicks.
-          const rowBg     = isPaid ? 'rgba(22,163,74,0.12)'     : 'var(--surface)';
-          const rowBorder = isPaid ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent';
-          const paidTitle = isPaid && r.paid_at
-            ? `Paid ${new Date(r.paid_at).toLocaleDateString()} — click to mark pending`
-            : 'Click to mark this commission as paid';
-          // Status pill (Quote / Approved / Ordered / Archived) +
-          // relative age — both inline next to the workbook link so
-          // the operator can read "what stage is this in?" at a
-          // glance without leaving the dashboard.
-          const statusPillHtml = renderStatusPill(r.client_name, r.workbook_id);
-          const ageStr  = _ageAgo(r.created_at);
-          const ageHtml = ageStr
-            ? `<span style="font-size:10px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="Commission row created ${r.created_at ? new Date(r.created_at).toLocaleString() : ''}">${ageStr}</span>`
-            : '';
-          // Compact 5-column row: workbook+status | role+rate | client total | commission $ | paid toggle
+
+        // Group this client's rows by role so the role pill + rate
+        // appear once as a section header instead of repeating on
+        // every row. When all rows in a role group share the same
+        // rate the header reads "AM · 5%"; if they differ (rare —
+        // workbook-level overrides) the header reads "AM · varies"
+        // and the per-row rate is shown inline next to the amount.
+        const byRole = {};
+        cRows.forEach(r => {
+          const k = r.role || '—';
+          if (!byRole[k]) byRole[k] = [];
+          byRole[k].push(r);
+        });
+        const roleKeys = Object.keys(byRole).sort((a, b) => {
+          const ai = roleOrder.indexOf(a); const bi = roleOrder.indexOf(b);
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        });
+        const roleGroups = roleKeys.map(roleKey => {
+          const rows = byRole[roleKey];
+          const rates = [...new Set(rows.map(r => parseFloat(r.commission_rate) || 0))];
+          const rateLabel = rates.length === 1 ? fmtRate(rates[0]) : 'varies';
+          const groupTotal = rows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+          const wbRows = rows.map(renderCommissionRow).join('');
           return `
-            <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:${rowBg}; border:${rowBorder}; border-left-width:${isPaid ? '3px' : '1px'};">
-              <span style="display:inline-flex; align-items:center; gap:8px; min-width:0;">
-                <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="max-width:100%; min-width:0;">
-                  <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
-                </span>
-                ${statusPillHtml}
-                ${ageHtml}
-              </span>
-              <span style="display:inline-flex; align-items:center; gap:6px;">
-                ${rolePill(r.role)}
-                <span style="font-size:11px; color:var(--text-muted); font-weight:600; font-variant-numeric:tabular-nums;">${fmtRate(r.commission_rate)}</span>
-              </span>
-              <span style="font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="Client total this commission was rated against">
-                ${fmtUsd0(r.client_total_usd)}
-              </span>
-              <span style="font-size:13px; color:var(--success, #16a34a); font-weight:600; font-variant-numeric:tabular-nums; text-align:right; min-width:74px; white-space:nowrap;">
-                ${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate — Client Cost not yet wired">est</span>' : ''}
-              </span>
-              <button type="button"
-                onclick="event.stopPropagation(); setCommissionPaid(${r.id}, ${isPaid ? 'false' : 'true'})"
-                title="${paidTitle}"
-                style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; ${isPaid
-                  ? 'background:#16a34a; color:#fff; border:1px solid #16a34a;'
-                  : 'background:transparent; color:var(--text-muted); border:1px solid var(--border);'}">
-                ${isPaid
-                  ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Paid'
-                  : 'Mark paid'}
-              </button>
+            <div style="margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:8px; padding:4px 4px 6px; font-size:11px; color:var(--text-muted); font-weight:600;">
+                ${rolePill(roleKey)}
+                <span style="font-variant-numeric:tabular-nums;">${rateLabel}</span>
+                <span style="margin-left:auto; color:var(--text); font-weight:700; font-variant-numeric:tabular-nums;">${fmtUsd(groupTotal)}</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">${wbRows}</div>
             </div>`;
         }).join('');
+
         return `
           <div style="margin-bottom:14px;">
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:10px;">
@@ -24743,9 +24797,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <span style="color:var(--text); font-weight:700;">${fmtUsd(cSubtotal)}</span>
               </span>
             </div>
-            <div style="display:flex; flex-direction:column; gap:5px;">
-              ${wbRows}
-            </div>
+            ${roleGroups}
           </div>
         `;
       }).join('');
@@ -24772,37 +24824,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const archBlocks = archClientNames.map(c => {
           const cRows = archByClient[c];
           const cSubtotal = cRows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
-          const wbRowsArch = cRows.map(r => {
-            const wbHash  = `/client/${encodeURIComponent(r.client_name)}/workbook/${r.workbook_id}`;
-            const wbClick = `event.stopPropagation(); location.hash='${wbHash}'`;
-            const product = esc(r.product_name) || '—';
-            const isEst   = +r.is_estimate === 1;
-            const statusPillHtml = renderStatusPill(r.client_name, r.workbook_id);
-            const paidAgo = _ageAgo(r.paid_at);
-            const ageHtml = paidAgo
-              ? `<span style="font-size:10px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="Paid ${r.paid_at ? new Date(r.paid_at).toLocaleString() : ''}">paid ${paidAgo}</span>`
-              : '';
+          // Same role-grouping as the active section so the archive
+          // reads with the same rhythm — no per-row AM/Sales/Ops pill
+          // repetition, more space for the workbook name.
+          const archByRole = {};
+          cRows.forEach(r => {
+            const k = r.role || '—';
+            if (!archByRole[k]) archByRole[k] = [];
+            archByRole[k].push(r);
+          });
+          const archRoleKeys = Object.keys(archByRole).sort((a, b) => {
+            const ai = roleOrder.indexOf(a); const bi = roleOrder.indexOf(b);
+            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+          });
+          const archRoleGroups = archRoleKeys.map(roleKey => {
+            const rows = archByRole[roleKey];
+            const rates = [...new Set(rows.map(r => parseFloat(r.commission_rate) || 0))];
+            const rateLabel = rates.length === 1 ? fmtRate(rates[0]) : 'varies';
+            const groupTotal = rows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+            const wbRowsArch = rows.map(r => renderCommissionRow(r, true)).join('');
             return `
-              <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:rgba(150,150,150,0.06); border:1px solid var(--border); border-left:3px solid rgba(22,163,74,0.35); opacity:0.85;">
-                <span style="display:inline-flex; align-items:center; gap:8px; min-width:0;">
-                  <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="max-width:100%; min-width:0;">
-                    <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
-                  </span>
-                  ${statusPillHtml}
-                  ${ageHtml}
-                </span>
-                <span style="display:inline-flex; align-items:center; gap:6px;">
-                  ${rolePill(r.role)}
-                  <span style="font-size:11px; color:var(--text-muted); font-weight:600; font-variant-numeric:tabular-nums;">${fmtRate(r.commission_rate)}</span>
-                </span>
-                <span style="font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtUsd0(r.client_total_usd)}</span>
-                <span style="font-size:13px; color:var(--success, #16a34a); font-weight:600; font-variant-numeric:tabular-nums; text-align:right; min-width:74px; white-space:nowrap;">${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;">est</span>' : ''}</span>
-                <button type="button"
-                  onclick="event.stopPropagation(); setCommissionPaid(${r.id}, false)"
-                  title="Mark this commission as pending again (e.g. paid in error)"
-                  style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; background:#16a34a; color:#fff; border:1px solid #16a34a;">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Paid
-                </button>
+              <div style="margin-bottom:6px;">
+                <div style="display:flex; align-items:center; gap:8px; padding:4px 4px 5px; font-size:11px; color:var(--text-muted); font-weight:600;">
+                  ${rolePill(roleKey)}
+                  <span style="font-variant-numeric:tabular-nums;">${rateLabel}</span>
+                  <span style="margin-left:auto; color:var(--text); font-weight:700; font-variant-numeric:tabular-nums;">${fmtUsd(groupTotal)}</span>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:5px;">${wbRowsArch}</div>
               </div>`;
           }).join('');
           return `
@@ -24811,7 +24859,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <span style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">${esc(c)}</span>
                 <span style="font-size:11px; color:var(--text-muted); font-weight:600; white-space:nowrap;">${cRows.length} row${cRows.length !== 1 ? 's' : ''} · ${fmtUsd(cSubtotal)}</span>
               </div>
-              <div style="display:flex; flex-direction:column; gap:5px;">${wbRowsArch}</div>
+              ${archRoleGroups}
             </div>`;
         }).join('');
         const chevronArch = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s; transform:rotate(${archExpanded ? 90 : 0}deg);"><polyline points="9 18 15 12 9 6"/></svg>`;
