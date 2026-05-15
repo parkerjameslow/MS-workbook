@@ -17859,6 +17859,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // matches the ceil-rounded per-unit math below it.
     const grandTotalCostUsd = _msCeil2((productTotal || 0) + (shippingUsd || 0));
     if (e('ps-grand-total')) e('ps-grand-total').textContent = grandTotalCostUsd > 0 ? fmtUsd(grandTotalCostUsd) : '—';
+    // Cache the Grand Total Cost (USD) bar value so the Add to Order
+    // / Add to Shipment / Orders list cards can display "Cost (ours)"
+    // as exactly what the operator sees on the Pricing tab here.
+    // This is product cost + shipping cost only — no fees, no margin,
+    // no Sale Per. Distinct from pricingLandedTotal (which adds fees
+    // and is read by the Financial Summary / legacy paths).
+    if (currentClient && currentWorkbookId) {
+      const _wbKeyG = `${currentClient}|${currentWorkbookId}`;
+      if (!workbookDetail[_wbKeyG]) workbookDetail[_wbKeyG] = {};
+      workbookDetail[_wbKeyG].pricingGrandTotalCost = grandTotalCostUsd > 0 ? grandTotalCostUsd : 0;
+    }
 
     // Per-unit breakdown line beneath the label — shows the math the
     // grand total derives from: product per-unit USD + shipping per-unit
@@ -23760,6 +23771,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // don't have to re-run the freight calc per workbook there.
       // Updated whenever renderPricingTab runs for this workbook.
       pricingLandedTotal: (existing && typeof existing.pricingLandedTotal === 'number') ? existing.pricingLandedTotal : 0,
+      // Cached Grand Total Cost (USD) bar from the Pricing tab —
+      // product cost + shipping cost (no fees, no margin). Used as
+      // "Cost (ours)" everywhere the order pickers / order list /
+      // shipment views aggregate per-workbook costs. Distinct from
+      // pricingLandedTotal which adds fees and powers older views.
+      pricingGrandTotalCost: (existing && typeof existing.pricingGrandTotalCost === 'number') ? existing.pricingGrandTotalCost : 0,
       // Cached Client Quote total (Sale Per × qty + applied fees) —
       // written by renderPricingTab. Customer-facing total; pairs with
       // pricingLandedTotal (our cost) in the Add to Order picker grand
@@ -25481,6 +25498,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Calculations ─────────────────────────────────────────────────────
+  // Shared per-workbook stat helper used by every order / shipment
+  // picker + card. Centralizes the source-of-truth selection so all
+  // surfaces show the same numbers as the Pricing / Shipping tabs.
+  //
+  // Returns { units, weightKg, cost, price, cbm }:
+  //   - units:    palletTotalCartons (Total Units to Ship) when set,
+  //               else the selected pricing tier qty.
+  //   - weightKg: cached pricingShipmentWeightKg (from
+  //               renderContainerViz).
+  //   - cost:     cached pricingGrandTotalCost (the Pricing tab's
+  //               "Grand Total Cost (USD)" bar = product + shipping,
+  //               no fees, no margin). Falls back to pricingLandedTotal
+  //               for workbooks not yet re-rendered with the new cache.
+  //   - price:    cached pricingClientQuoteTotal (the Client Quote
+  //               "Total Order" line = Sale Per × qty + applied fees).
+  //   - cbm:      cached pricingShipmentCbm. When that's 0 (no carton
+  //               specs to drive the freight calc), fall back to
+  //               product L × W × H × units / 1,000,000 so the CBM
+  //               surfaces regardless of carton-spec completion.
+  function _wbStatsForPicker(detail) {
+    const d = detail || {};
+    const tiers     = Array.isArray(d.tiers) ? d.tiers : [];
+    const selTier   = tiers.find(t => t.id == d.selectedTierIdx) || tiers[0];
+    const palletTot = parseInt(String(d.palletTotalCartons || '').replace(/,/g, ''), 10);
+    const units = (!isNaN(palletTot) && palletTot > 0)
+      ? palletTot
+      : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
+    const weightKg = parseFloat(d.pricingShipmentWeightKg) || 0;
+    // Prefer the new Grand Total Cost bar value; fall back to the
+    // older landed-total cache so existing workbooks aren't stuck on 0
+    // until they're re-opened on the Pricing tab.
+    const cost = parseFloat(d.pricingGrandTotalCost) || parseFloat(d.pricingLandedTotal) || 0;
+    const price = parseFloat(d.pricingClientQuoteTotal) || 0;
+    let cbm = parseFloat(d.pricingShipmentCbm) || 0;
+    if (cbm === 0 && units > 0) {
+      const pl = parseFloat(d.dimCmL) || 0;
+      const pw = parseFloat(d.dimCmW) || 0;
+      const ph = parseFloat(d.dimCmH) || 0;
+      if (pl > 0 && pw > 0 && ph > 0) {
+        cbm = (pl * pw * ph * units) / 1_000_000;
+      }
+    }
+    return { units, weightKg, cost, price, cbm };
+  }
+
   function calcWorkbookShipStats(detail, qty) {
     qty = parseInt(qty) || 0;
     const outerLCm     = parseFloat(detail.cartonOuterLCm)    || 0;
@@ -26181,24 +26243,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const inShip    = alreadyIn.has(id);
         const wbCount   = (order.entries || []).length;
 
-        // Sum the per-workbook caches across this order so we can show
+        // Sum the per-workbook stats across this order so we can show
         // total units / weight / cost / price / CBM as the order's
-        // shape — same surface as the other pickers.
+        // shape. Helper centralizes the source-of-truth selection +
+        // CBM fallback so every picker / card stays aligned.
         let units = 0, weightKg = 0, cost = 0, price = 0, cbm = 0;
         (order.entries || []).forEach(entry => {
           const key = `${entry.clientName}|${entry.workbookId}`;
-          const detail = workbookDetail[key] || {};
-          const tiers      = Array.isArray(detail.tiers) ? detail.tiers : [];
-          const selTier    = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
-          const palletTot  = parseInt(String(detail.palletTotalCartons || '').replace(/,/g, ''), 10);
-          const wbUnits = (!isNaN(palletTot) && palletTot > 0)
-            ? palletTot
-            : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
-          units    += wbUnits;
-          weightKg += parseFloat(detail.pricingShipmentWeightKg) || 0;
-          cost     += parseFloat(detail.pricingLandedTotal)      || 0;
-          price    += parseFloat(detail.pricingClientQuoteTotal) || 0;
-          cbm      += parseFloat(detail.pricingShipmentCbm)      || 0;
+          const w = _wbStatsForPicker(workbookDetail[key]);
+          units    += w.units;
+          weightKg += w.weightKg;
+          cost     += w.cost;
+          price    += w.price;
+          cbm      += w.cbm;
         });
         _shipPickerOrderData[id] = { units, weightKg, cost, price, cbm };
 
@@ -27658,22 +27715,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const product = detail.product || wb.product || '—';
       if (query && !product.toLowerCase().includes(query)) return;
       // Per-workbook stat line: total units · total weight · total cost.
-      // Sources mirror the Add Workbook to Order picker.
-      const tiers      = Array.isArray(detail.tiers) ? detail.tiers : [];
-      const selTier    = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
-      const palletTot  = parseInt(String(detail.palletTotalCartons || '').replace(/,/g, ''), 10);
-      const totalUnits = (!isNaN(palletTot) && palletTot > 0)
-        ? palletTot
-        : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
-      const weightKg   = parseFloat(detail.pricingShipmentWeightKg) || 0;
-      const cost       = parseFloat(detail.pricingLandedTotal)      || 0;
-      const price      = parseFloat(detail.pricingClientQuoteTotal) || 0;
-      const cbm        = parseFloat(detail.pricingShipmentCbm)      || 0;
-      _orderPickerItemData[key] = { units: totalUnits, weightKg, cost, price, cbm };
+      // Helper centralizes the source-of-truth selection so all
+      // pickers / cards stay aligned with the Pricing tab.
+      const w = _wbStatsForPicker(detail);
+      _orderPickerItemData[key] = { units: w.units, weightKg: w.weightKg, cost: w.cost, price: w.price, cbm: w.cbm };
       const partsSummary = [];
-      partsSummary.push(totalUnits > 0 ? `${totalUnits.toLocaleString('en-US')} units` : '— units');
-      partsSummary.push(weightKg   > 0 ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
-      partsSummary.push(cost       > 0 ? `$${cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
+      partsSummary.push(w.units    > 0 ? `${w.units.toLocaleString('en-US')} units` : '— units');
+      partsSummary.push(w.weightKg > 0 ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
+      partsSummary.push(w.cost     > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
       const tierStr = partsSummary.join(' · ');
       const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
@@ -27923,26 +27972,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const entries = o.entries || [];
       const wbCount = entries.length;
 
-      // Aggregate per-workbook caches across this order so the card
+      // Aggregate per-workbook stats across this order so the card
       // can show Units / Weight / Cost (ours) / Price (customer) / CBM.
-      // Sources: pricingShipmentWeightKg, pricingLandedTotal,
-      // pricingClientQuoteTotal, pricingShipmentCbm — all cached when
-      // each workbook's Pricing / Shipping tab renders.
+      // Helper centralizes the source-of-truth selection so this card
+      // reads the same numbers as the Pricing tab and every picker.
       let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0;
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
-        const detail = workbookDetail[key] || {};
-        const tiers      = Array.isArray(detail.tiers) ? detail.tiers : [];
-        const selTier    = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
-        const palletTot  = parseInt(String(detail.palletTotalCartons || '').replace(/,/g, ''), 10);
-        const wbUnits = (!isNaN(palletTot) && palletTot > 0)
-          ? palletTot
-          : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
-        agUnits    += wbUnits;
-        agWeightKg += parseFloat(detail.pricingShipmentWeightKg) || 0;
-        agCost     += parseFloat(detail.pricingLandedTotal)      || 0;
-        agPrice    += parseFloat(detail.pricingClientQuoteTotal) || 0;
-        agCbm      += parseFloat(detail.pricingShipmentCbm)      || 0;
+        const w = _wbStatsForPicker(workbookDetail[key]);
+        agUnits    += w.units;
+        agWeightKg += w.weightKg;
+        agCost     += w.cost;
+        agPrice    += w.price;
+        agCbm      += w.cbm;
       });
 
       const wbPills = wbCount === 0
@@ -28387,29 +28429,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const detail  = workbookDetail[key] || {};
         const product = detail.product || wb.product || '—';
         if (query && !product.toLowerCase().includes(query) && !clientName.toLowerCase().includes(query)) return;
-        // Order summary line: total units + total weight + total cost.
-        // - Units: palletTotalCartons (Total Units to Ship) when present,
-        //   otherwise the selected pricing tier qty (or first tier).
-        // - Weight: cached pricingShipmentWeightKg from renderContainerViz.
-        // - Cost: cached pricingLandedTotal from renderPricingTab.
-        // Each piece falls back to "—" individually so a partially-filled
-        // workbook still shows the values it does have.
-        const tiers      = Array.isArray(detail.tiers) ? detail.tiers : [];
-        const selTier    = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
-        const palletTot  = parseInt(String(detail.palletTotalCartons || '').replace(/,/g, ''), 10);
-        const totalUnits = (!isNaN(palletTot) && palletTot > 0)
-          ? palletTot
-          : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
-        const weightKg   = parseFloat(detail.pricingShipmentWeightKg) || 0;
-        const cost       = parseFloat(detail.pricingLandedTotal) || 0;
-        const price      = parseFloat(detail.pricingClientQuoteTotal) || 0;
-        const cbm        = parseFloat(detail.pricingShipmentCbm) || 0;
-        // Stash for the grand total renderer.
-        _orderAddPickerItemData[key] = { units: totalUnits, weightKg, cost, price, cbm };
+        // Order summary line: units · weight · cost. Helper centralizes
+        // source-of-truth selection so this picker matches the Pricing
+        // tab + every other order surface.
+        const w = _wbStatsForPicker(detail);
+        _orderAddPickerItemData[key] = { units: w.units, weightKg: w.weightKg, cost: w.cost, price: w.price, cbm: w.cbm };
         const partsSummary = [];
-        partsSummary.push(totalUnits > 0 ? `${totalUnits.toLocaleString('en-US')} units` : '— units');
-        partsSummary.push(weightKg > 0 ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
-        partsSummary.push(cost > 0 ? `$${cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
+        partsSummary.push(w.units    > 0 ? `${w.units.toLocaleString('en-US')} units` : '— units');
+        partsSummary.push(w.weightKg > 0 ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
+        partsSummary.push(w.cost     > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
         const tierStr = partsSummary.join(' · ');
         const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
