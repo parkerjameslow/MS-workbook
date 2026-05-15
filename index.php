@@ -4992,7 +4992,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        full-width inside the card border. */
     .oc-stat-strip {
       display: grid;
-      grid-template-columns: repeat(6, 1fr);
+      grid-template-columns: repeat(7, 1fr);
       gap: 8px 14px;
       padding: 10px 16px 8px;
       margin: 0 -16px -12px;
@@ -28437,11 +28437,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // matches the dollar amount the client would actually wire.
       const depositPctT = (o.depositPct != null) ? parseInt(o.depositPct) : 30;
       const depositAmtT = agPrice > 0 ? agPrice * (depositPctT / 100) : 0;
+      // Profit cell — Price (cust) minus Cost (ours). Only meaningful
+      // when both are populated, so blanks out when no workbook in
+      // the order has Sale Per typed yet. Red when negative (selling
+      // below cost — flags a pricing mistake) and green otherwise.
+      const profitT       = (agPrice > 0 && agCost > 0) ? (agPrice - agCost) : 0;
+      const profitHasData = (agPrice > 0 && agCost > 0);
+      const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
+      const profitHtml    = profitHasData
+        ? `<span style="color:${profitColor}; font-weight:700;">${fmtUsdT(profitT)}</span>`
+        : '—';
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCost)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
+        <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Down (${depositPctT}%)</span><span class="oc-stat-val">${fmtUsdT(depositAmtT)}</span></div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
