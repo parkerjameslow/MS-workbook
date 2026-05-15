@@ -8179,40 +8179,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <!-- ── Add Workbook to Order Modal ───────────────────────────────────── -->
+<!-- The modal is a fixed-height flex column: title, search, grand total
+     card, and actions take their natural size; the picker list flexes
+     to fill what's left and scrolls internally. This keeps the modal
+     anchored on screen even when many workbooks are listed. -->
 <div class="modal-overlay" id="modal-add-wb-to-order" onclick="if(event.target===this)closeAddWorkbookToOrderModal()" style="z-index:1000;">
-  <div class="modal" style="max-width:560px;">
-    <div class="modal-title">Add Workbook to Order</div>
-    <input type="text" class="wb-picker-search" id="order-add-wb-search" placeholder="Search products…" oninput="filterOrderAddPicker(this.value)" />
-    <div class="modal-wb-picker" id="order-add-wb-list">
+  <div class="modal" style="max-width:560px; max-height:calc(100vh - 32px); display:flex; flex-direction:column;">
+    <div class="modal-title" style="flex-shrink:0;">Add Workbook to Order</div>
+    <input type="text" class="wb-picker-search" id="order-add-wb-search" placeholder="Search products…" oninput="filterOrderAddPicker(this.value)" style="flex-shrink:0;" />
+    <div class="modal-wb-picker" id="order-add-wb-list" style="flex:1 1 auto; min-height:120px; max-height:none;">
       <!-- populated by JS -->
     </div>
-    <!-- Grand Total card — appears the moment ≥1 workbook is checked.
-         Sums total weight, our cost, customer price, units, and CBM
-         across every selected row so the operator can size the order
-         and judge container fill before clicking Add to Order. Hidden
-         when nothing is checked. Populated by buildOrderAddPickerList. -->
-    <div id="order-add-grand-total" style="display:none; margin:14px 0 0; padding:14px 16px; background:linear-gradient(135deg, var(--accent), #4f46e5); color:#fff; border-radius:10px;">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.08em; opacity:0.92;">
+    <!-- Grand Total card — compact so it doesn't push the modal off
+         screen. Appears the moment ≥1 workbook is checked. Sums total
+         weight, our cost, customer price, units, and CBM across every
+         selected row. Hidden when nothing is checked. -->
+    <div id="order-add-grand-total" style="display:none; flex-shrink:0; margin:10px 0 0; padding:10px 12px; background:linear-gradient(135deg, var(--accent), #4f46e5); color:#fff; border-radius:8px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; opacity:0.92;">
         <span>Order Grand Total</span>
         <span id="order-add-gt-count" style="opacity:0.85;">0 selected</span>
       </div>
-      <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px 18px; font-size:12px;">
-        <div><div style="opacity:0.78; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Total Units</div><div id="order-add-gt-units" style="font-size:16px; font-weight:700;">—</div></div>
-        <div><div style="opacity:0.78; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Total Weight</div><div id="order-add-gt-weight" style="font-size:16px; font-weight:700;">—</div></div>
-        <div><div style="opacity:0.78; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Total Cost (ours)</div><div id="order-add-gt-cost" style="font-size:16px; font-weight:700;">—</div></div>
-        <div><div style="opacity:0.78; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Total Price (customer)</div><div id="order-add-gt-price" style="font-size:16px; font-weight:700;">—</div></div>
+      <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px 10px; font-size:11px;">
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Units</div><div id="order-add-gt-units" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Weight</div><div id="order-add-gt-weight" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Cost (ours)</div><div id="order-add-gt-cost" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Price (cust)</div><div id="order-add-gt-price" style="font-size:13px; font-weight:700;">—</div></div>
       </div>
-      <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.18);">
-        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
-          <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; opacity:0.85;">Container Fill</span>
-          <span id="order-add-gt-cbm-label" style="font-size:13px; font-weight:700;">— / 67 CBM</span>
+      <div style="margin-top:8px; padding-top:7px; border-top:1px solid rgba(255,255,255,0.18);">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; opacity:0.85;">Container Fill</span>
+          <span id="order-add-gt-cbm-label" style="font-size:11px; font-weight:700;">— / 67 CBM</span>
         </div>
-        <div style="height:8px; background:rgba(255,255,255,0.18); border-radius:99px; overflow:hidden;">
+        <div style="height:5px; background:rgba(255,255,255,0.18); border-radius:99px; overflow:hidden;">
           <div id="order-add-gt-cbm-bar" style="height:100%; width:0%; background:#fff; border-radius:99px; transition:width 0.2s;"></div>
         </div>
       </div>
     </div>
-    <div class="modal-actions" style="margin-top:14px;">
+    <div class="modal-actions" style="margin-top:12px; flex-shrink:0;">
       <button type="button" class="btn btn-ghost" onclick="closeAddWorkbookToOrderModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="confirmAddWorkbookToOrder()">Add to Order</button>
     </div>
