@@ -8156,22 +8156,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <div class="modal-overlay" id="modal-new-order" onclick="if(event.target===this)closeNewOrderModal()" style="z-index:1000;">
-  <div class="modal" style="max-width:560px;">
-    <div class="modal-title">Create Order</div>
-    <div class="modal-field" style="margin-bottom:12px;">
+  <div class="modal" style="max-width:560px; max-height:calc(100vh - 32px); display:flex; flex-direction:column;">
+    <div class="modal-title" style="flex-shrink:0;">Create Order</div>
+    <div class="modal-field" style="margin-bottom:12px; flex-shrink:0;">
       <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Client</label>
       <select id="order-picker-client" onchange="onOrderPickerClientChange()"
         style="width:100%; height:38px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;">
         <option value="">Select a client…</option>
       </select>
     </div>
-    <div id="order-picker-wb-section" style="display:none;">
-      <input type="text" class="wb-picker-search" id="order-picker-search" placeholder="Search workbooks…" oninput="filterOrderPicker(this.value)" />
-      <div class="modal-wb-picker" id="order-picker-list">
+    <div id="order-picker-wb-section" style="display:none; flex:1 1 auto; min-height:120px; flex-direction:column; overflow:hidden;">
+      <input type="text" class="wb-picker-search" id="order-picker-search" placeholder="Search workbooks…" oninput="filterOrderPicker(this.value)" style="flex-shrink:0;" />
+      <div class="modal-wb-picker" id="order-picker-list" style="flex:1 1 auto; min-height:120px; max-height:none;">
         <!-- populated by JS -->
       </div>
     </div>
-    <div class="modal-actions" style="margin-top:14px;">
+    <!-- Grand Total card — same shape as the Add Workbook to Order
+         picker. Hidden until ≥1 workbook is checked. -->
+    <div id="order-picker-grand-total" style="display:none; flex-shrink:0; margin:10px 0 0; padding:10px 12px; background:linear-gradient(135deg, var(--accent), #4f46e5); color:#fff; border-radius:8px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; opacity:0.92;">
+        <span>Order Grand Total</span>
+        <span id="order-picker-gt-count" style="opacity:0.85;">0 selected</span>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px 10px; font-size:11px;">
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Units</div><div id="order-picker-gt-units" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Weight</div><div id="order-picker-gt-weight" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Cost (ours)</div><div id="order-picker-gt-cost" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Price (cust)</div><div id="order-picker-gt-price" style="font-size:13px; font-weight:700;">—</div></div>
+      </div>
+      <div style="margin-top:8px; padding-top:7px; border-top:1px solid rgba(255,255,255,0.18);">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; opacity:0.85;">Container Fill</span>
+          <span id="order-picker-gt-cbm-label" style="font-size:11px; font-weight:700;">— / 67 CBM</span>
+        </div>
+        <div style="height:5px; background:rgba(255,255,255,0.18); border-radius:99px; overflow:hidden;">
+          <div id="order-picker-gt-cbm-bar" style="height:100%; width:0%; background:#fff; border-radius:99px; transition:width 0.2s;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:12px; flex-shrink:0;">
       <button type="button" class="btn btn-ghost" onclick="closeNewOrderModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="createOrder()">Create Order</button>
     </div>
@@ -23787,6 +23810,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _currentOrderId = null;
   let _orderFilter = 'all';
   let _orderPickerSelected = new Set();
+  // Per-item numeric snapshot (units / weight / cost / price / cbm)
+  // for the Create Order picker. Built fresh each buildOrderPickerList
+  // call. Keyed by `${clientName}|${wb.id}` so the grand total card
+  // can sum without re-walking clientData / workbookDetail.
+  let _orderPickerItemData = {};
   let _orderAddPickerSelected = new Set();
   // Snapshot of per-item numbers (units / weight / cost / price / cbm)
   // built fresh on every buildOrderAddPickerList call. Keyed by
@@ -27408,12 +27436,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('order-picker-wb-section').style.display = 'none';
     document.getElementById('order-picker-search').value = '';
     document.getElementById('order-picker-list').innerHTML = '';
+    // Hide the grand total card on open in case it was left visible
+    // from a previous Cancel without a re-render.
+    const gt = document.getElementById('order-picker-grand-total');
+    if (gt) gt.style.display = 'none';
     document.getElementById('modal-new-order').classList.add('open');
   }
 
   function closeNewOrderModal() {
     document.getElementById('modal-new-order').classList.remove('open');
     _orderPickerSelected = new Set();
+    const gt = document.getElementById('order-picker-grand-total');
+    if (gt) gt.style.display = 'none';
   }
 
   function onOrderPickerClientChange() {
@@ -27422,11 +27456,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!client) {
       section.style.display = 'none';
       _orderPickerSelected = new Set();
+      _renderOrderPickerGrandTotal();
       return;
     }
     _orderPickerSelected = new Set();
     document.getElementById('order-picker-search').value = '';
-    section.style.display = '';
+    // Match the inline `display:flex; flex-direction:column` set in
+    // the modal HTML — using '' here would resolve to block and break
+    // the flex sizing of the inner search + list.
+    section.style.display = 'flex';
     buildOrderPickerList('');
   }
 
@@ -27456,15 +27494,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const buckets = {};
     statusGroups.forEach(g => { buckets[g.key] = []; });
 
+    // Reset the per-item snapshot for this render so removed / filtered
+    // workbooks don't linger in the grand total sums.
+    _orderPickerItemData = {};
+
     (clientData[clientName] || []).forEach(wb => {
       const key     = `${clientName}|${wb.id}`;
       const detail  = workbookDetail[key] || {};
       const product = detail.product || wb.product || '—';
       if (query && !product.toLowerCase().includes(query)) return;
-      const tiers   = (detail.tiers || []);
-      const tierStr = tiers.length > 0
-        ? tiers.map(t => `${parseInt(t.qty || 0).toLocaleString('en-US')} units`).join(' · ')
-        : 'No tiers set';
+      // Per-workbook stat line: total units · total weight · total cost.
+      // Sources mirror the Add Workbook to Order picker.
+      const tiers      = Array.isArray(detail.tiers) ? detail.tiers : [];
+      const selTier    = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+      const palletTot  = parseInt(String(detail.palletTotalCartons || '').replace(/,/g, ''), 10);
+      const totalUnits = (!isNaN(palletTot) && palletTot > 0)
+        ? palletTot
+        : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
+      const weightKg   = parseFloat(detail.pricingShipmentWeightKg) || 0;
+      const cost       = parseFloat(detail.pricingLandedTotal)      || 0;
+      const price      = parseFloat(detail.pricingClientQuoteTotal) || 0;
+      const cbm        = parseFloat(detail.pricingShipmentCbm)      || 0;
+      _orderPickerItemData[key] = { units: totalUnits, weightKg, cost, price, cbm };
+      const partsSummary = [];
+      partsSummary.push(totalUnits > 0 ? `${totalUnits.toLocaleString('en-US')} units` : '— units');
+      partsSummary.push(weightKg   > 0 ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
+      partsSummary.push(cost       > 0 ? `$${cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
+      const tierStr = partsSummary.join(' · ');
       const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
       const flow = wb.flow || {};
@@ -27506,9 +27562,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">
         ${query ? 'No workbooks match your search.' : 'No workbooks found for this client.'}
       </div>`;
+      _renderOrderPickerGrandTotal();
       return;
     }
     list.innerHTML = html;
+    _renderOrderPickerGrandTotal();
+  }
+
+  // Mirrors _renderOrderAddGrandTotal but reads from the Create Order
+  // picker's selected set + per-item snapshot. Hidden when nothing is
+  // checked. CBM bar caps visually at 100% but the numeric label keeps
+  // climbing past 67 to signal overflow into a 2nd container.
+  function _renderOrderPickerGrandTotal() {
+    const card = document.getElementById('order-picker-grand-total');
+    if (!card) return;
+    const sel = _orderPickerSelected;
+    if (!sel || sel.size === 0) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+    let units = 0, weightKg = 0, cost = 0, price = 0, cbm = 0;
+    sel.forEach(key => {
+      const d = (_orderPickerItemData && _orderPickerItemData[key]) || null;
+      if (!d) return;
+      units    += d.units    || 0;
+      weightKg += d.weightKg || 0;
+      cost     += d.cost     || 0;
+      price    += d.price    || 0;
+      cbm      += d.cbm      || 0;
+    });
+    const fmtNum = n => n.toLocaleString('en-US');
+    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const fmtKg  = n => n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg';
+    const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    set('order-picker-gt-count',  `${sel.size} selected`);
+    set('order-picker-gt-units',  units    > 0 ? fmtNum(units)  : '—');
+    set('order-picker-gt-weight', weightKg > 0 ? fmtKg(weightKg) : '—');
+    set('order-picker-gt-cost',   cost     > 0 ? fmtUsd(cost)    : '—');
+    set('order-picker-gt-price',  price    > 0 ? fmtUsd(price)   : '—');
+    const cbmCap = 67;
+    const fillPct = Math.min(100, cbm > 0 ? (cbm / cbmCap) * 100 : 0);
+    set('order-picker-gt-cbm-label', cbm > 0 ? `${fmtCbm(cbm)} / ${cbmCap} CBM` : `— / ${cbmCap} CBM`);
+    const bar = document.getElementById('order-picker-gt-cbm-bar');
+    if (bar) bar.style.width = fillPct + '%';
   }
 
   function filterOrderPicker(query) {
