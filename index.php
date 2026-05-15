@@ -8186,6 +8186,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-wb-picker" id="order-add-wb-list">
       <!-- populated by JS -->
     </div>
+    <!-- Grand Total card — appears the moment ≥1 workbook is checked.
+         Sums total weight, our cost, customer price, units, and CBM
+         across every selected row so the operator can size the order
+         and judge container fill before clicking Add to Order. Hidden
+         when nothing is checked. Populated by buildOrderAddPickerList. -->
+    <div id="order-add-grand-total" style="display:none; margin:14px 0 0; padding:14px 16px; background:linear-gradient(135deg, var(--accent), #4f46e5); color:#fff; border-radius:10px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.08em; opacity:0.92;">
+        <span>Order Grand Total</span>
+        <span id="order-add-gt-count" style="opacity:0.85;">0 selected</span>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:10px 18px; font-size:12px;">
+        <div><div style="opacity:0.78; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Total Units</div><div id="order-add-gt-units" style="font-size:16px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Total Weight</div><div id="order-add-gt-weight" style="font-size:16px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Total Cost (ours)</div><div id="order-add-gt-cost" style="font-size:16px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px;">Total Price (customer)</div><div id="order-add-gt-price" style="font-size:16px; font-weight:700;">—</div></div>
+      </div>
+      <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.18);">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
+          <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; opacity:0.85;">Container Fill</span>
+          <span id="order-add-gt-cbm-label" style="font-size:13px; font-weight:700;">— / 67 CBM</span>
+        </div>
+        <div style="height:8px; background:rgba(255,255,255,0.18); border-radius:99px; overflow:hidden;">
+          <div id="order-add-gt-cbm-bar" style="height:100%; width:0%; background:#fff; border-radius:99px; transition:width 0.2s;"></div>
+        </div>
+      </div>
+    </div>
     <div class="modal-actions" style="margin-top:14px;">
       <button type="button" class="btn btn-ghost" onclick="closeAddWorkbookToOrderModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="confirmAddWorkbookToOrder()">Add to Order</button>
@@ -11050,11 +11076,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Cache total shipment weight on the workbook so the Add Workbook
     // to Order picker (and other dashboards) can show the order weight
     // without re-running the freight calc. Mirrors how
-    // renderPricingTab caches pricingLandedTotal.
+    // renderPricingTab caches pricingLandedTotal. CBM is cached
+    // alongside so the picker can show "X / 67 CBM" container fill.
     if (typeof currentClient === 'string' && currentWorkbookId) {
       const _wbWtKey = `${currentClient}|${currentWorkbookId}`;
       if (!workbookDetail[_wbWtKey]) workbookDetail[_wbWtKey] = {};
       workbookDetail[_wbWtKey].pricingShipmentWeightKg = totalShipmentWeightKg > 0 ? totalShipmentWeightKg : 0;
+      // Note: totalShipmentCbm is computed below; we patch the cache
+      // again after it's available.
     }
     // Units math — how many products fit per pallet, how many more
     // products would fill the empty pallet slots in the last container.
@@ -11067,6 +11096,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const palletCbm = (PALLET_L * PALLET_W * palletStack) / 1_000_000; // m³
     const lastContainerCbm = palletCbm * palletsInLast;
     const totalShipmentCbm = palletCbm * palletsNeeded;
+    // Cache CBM alongside the weight cache above. The picker uses this
+    // to roll up "X / 67 CBM" container fill across selected workbooks.
+    if (typeof currentClient === 'string' && currentWorkbookId) {
+      const _wbCbmKey = `${currentClient}|${currentWorkbookId}`;
+      if (!workbookDetail[_wbCbmKey]) workbookDetail[_wbCbmKey] = {};
+      workbookDetail[_wbCbmKey].pricingShipmentCbm = totalShipmentCbm > 0 ? totalShipmentCbm : 0;
+    }
     // ── Loose top-off accounting ─────────────────────────────────────
     // When the operator clicks "↻ Top Off", we stash the loose unit
     // count (in PRODUCTS) on the input's dataset. Those loose cardboard
@@ -17812,6 +17848,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const saleProductTotal = (!isNaN(salePer) && salePer > 0 && effectiveQty > 0) ? _msCeil2(salePer * effectiveQty) : NaN;
     const totalUsd = !isNaN(saleProductTotal) ? _msCeil2(saleProductTotal + _appliedFeesTotal) : NaN;
 
+    // Cache the Client Quote Total (sale × qty + fees) so the Add to
+    // Order picker can sum customer-facing totals across selected
+    // workbooks without re-running the Pricing render per workbook.
+    if (currentClient && currentWorkbookId) {
+      const _wbKey2 = `${currentClient}|${currentWorkbookId}`;
+      if (!workbookDetail[_wbKey2]) workbookDetail[_wbKey2] = {};
+      workbookDetail[_wbKey2].pricingClientQuoteTotal = !isNaN(totalUsd) && totalUsd > 0 ? totalUsd : 0;
+    }
+
     // Order Profit: Sale Total − Landed Total (only when Total USD is real).
     // Fees cancel out (they're in both sides), so this equals the product
     // margin alone.
@@ -23587,10 +23632,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // don't have to re-run the freight calc per workbook there.
       // Updated whenever renderPricingTab runs for this workbook.
       pricingLandedTotal: (existing && typeof existing.pricingLandedTotal === 'number') ? existing.pricingLandedTotal : 0,
-      // Cached total shipment weight (kg) — written by renderContainerViz.
-      // Feeds the Add Workbook to Order picker so we can show order weight
+      // Cached Client Quote total (Sale Per × qty + applied fees) —
+      // written by renderPricingTab. Customer-facing total; pairs with
+      // pricingLandedTotal (our cost) in the Add to Order picker grand
+      // total card.
+      pricingClientQuoteTotal: (existing && typeof existing.pricingClientQuoteTotal === 'number') ? existing.pricingClientQuoteTotal : 0,
+      // Cached total shipment weight (kg) and CBM — written by
+      // renderContainerViz. Feed the Add Workbook to Order picker
+      // so we can show per-workbook size + the grand total card
       // without re-running the freight calc per workbook there.
       pricingShipmentWeightKg: (existing && typeof existing.pricingShipmentWeightKg === 'number') ? existing.pricingShipmentWeightKg : 0,
+      pricingShipmentCbm: (existing && typeof existing.pricingShipmentCbm === 'number') ? existing.pricingShipmentCbm : 0,
       // Per-method shipping lead times (days) — feed Client Quote summary
       shipLeadSlow:      _v('ship-lead-slow'),
       shipLeadFast:      _v('ship-lead-fast'),
@@ -23693,6 +23745,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _orderFilter = 'all';
   let _orderPickerSelected = new Set();
   let _orderAddPickerSelected = new Set();
+  // Snapshot of per-item numbers (units / weight / cost / price / cbm)
+  // built fresh on every buildOrderAddPickerList call. Keyed by
+  // `${clientName}|${wb.id}` so the grand total card can sum without
+  // re-walking clientData / workbookDetail.
+  let _orderAddPickerItemData = {};
   let _shipOrderPickerSelected = new Set();
 
   /* ── Shipments module state (must be declared before init) ─────────────── */
@@ -27945,6 +28002,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const buckets = {};
     statusGroups.forEach(g => { buckets[g.key] = []; });
 
+    // Per-item numeric snapshot — keyed by `${clientName}|${wb.id}`.
+    // The grand total card consumes this map to sum across selected
+    // rows without re-walking clientData / workbookDetail.
+    _orderAddPickerItemData = {};
+
     allowedClients.forEach(clientName => {
       (clientData[clientName] || []).forEach(wb => {
         const key     = `${clientName}|${wb.id}`;
@@ -27967,6 +28029,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
         const weightKg   = parseFloat(detail.pricingShipmentWeightKg) || 0;
         const cost       = parseFloat(detail.pricingLandedTotal) || 0;
+        const price      = parseFloat(detail.pricingClientQuoteTotal) || 0;
+        const cbm        = parseFloat(detail.pricingShipmentCbm) || 0;
+        // Stash for the grand total renderer.
+        _orderAddPickerItemData[key] = { units: totalUnits, weightKg, cost, price, cbm };
         const partsSummary = [];
         partsSummary.push(totalUnits > 0 ? `${totalUnits.toLocaleString('en-US')} units` : '— units');
         partsSummary.push(weightKg > 0 ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
@@ -28016,9 +28082,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">
         ${query ? 'No workbooks match your search.' : 'All workbooks are already in this order.'}
       </div>`;
+      _renderOrderAddGrandTotal();
       return;
     }
     list.innerHTML = html;
+    _renderOrderAddGrandTotal();
+  }
+
+  // Sums the per-item snapshots (units / weight / cost / price / cbm)
+  // across selected keys and paints the grand total card. Hidden when
+  // nothing is checked. CBM bar is capped visually at 100% but the
+  // numeric label can exceed 67 — that signals overflow into a 2nd
+  // container, which is useful information rather than something to
+  // hide.
+  function _renderOrderAddGrandTotal() {
+    const card = document.getElementById('order-add-grand-total');
+    if (!card) return;
+    const sel = _orderAddPickerSelected;
+    if (!sel || sel.size === 0) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+    let units = 0, weightKg = 0, cost = 0, price = 0, cbm = 0;
+    sel.forEach(key => {
+      const d = (_orderAddPickerItemData && _orderAddPickerItemData[key]) || null;
+      if (!d) return;
+      units    += d.units    || 0;
+      weightKg += d.weightKg || 0;
+      cost     += d.cost     || 0;
+      price    += d.price    || 0;
+      cbm      += d.cbm      || 0;
+    });
+    const fmtNum = n => n.toLocaleString('en-US');
+    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const fmtKg  = n => n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg';
+    const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    set('order-add-gt-count',  `${sel.size} selected`);
+    set('order-add-gt-units',  units    > 0 ? fmtNum(units)         : '—');
+    set('order-add-gt-weight', weightKg > 0 ? fmtKg(weightKg)        : '—');
+    set('order-add-gt-cost',   cost     > 0 ? fmtUsd(cost)           : '—');
+    set('order-add-gt-price',  price    > 0 ? fmtUsd(price)          : '—');
+    const cbmCap = 67;
+    const fillPct = Math.min(100, cbm > 0 ? (cbm / cbmCap) * 100 : 0);
+    set('order-add-gt-cbm-label', cbm > 0 ? `${fmtCbm(cbm)} / ${cbmCap} CBM` : `— / ${cbmCap} CBM`);
+    const bar = document.getElementById('order-add-gt-cbm-bar');
+    if (bar) bar.style.width = fillPct + '%';
   }
 
   function filterOrderAddPicker(query) {
