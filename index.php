@@ -4984,14 +4984,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        sit beneath without disturbing the column borders. */
     .oc-card-main { display: flex; align-items: stretch; gap: 0; min-width: 0; }
     /* Compact 5-up stat strip (Units / Weight / Cost / Price / CBM)
-       rendered as a footer row inside the order card. The CBM cell
-       gets its own thin progress bar against the 67 m³ container cap. */
+       rendered as a footer row inside the order card. Sits on a
+       slightly darker tinted background so the boundary between the
+       (workbook-list) top half and the (aggregate-stats) bottom half
+       reads at a glance. The negative inline margin pulls the strip
+       flush to the card's left/right/bottom edges so the tint runs
+       full-width inside the card border. */
     .oc-stat-strip {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
       gap: 8px 14px;
-      padding: 8px 12px 4px;
-      border-top: 1px dashed var(--border);
+      padding: 10px 16px 8px;
+      margin: 0 -16px -12px;
+      background: rgba(107,147,255,0.06);
+      border-top: 1px solid var(--border);
+      border-radius: 0 0 var(--radius) var(--radius);
     }
     .oc-stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
     .oc-stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
