@@ -28638,7 +28638,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (table) table.style.display = '';
     if (empty) empty.style.display = 'none';
 
-    const exchange = 7.2;
+    const exchange = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
     let grandUsd = 0, grandRmb = 0;
     // Sum cached shipment metrics across the order's workbooks. These
     // come from renderContainerViz / renderPricingTab caches written
@@ -28646,6 +28646,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // so older / never-opened workbooks contribute 0 until visited.
     let totalWeightKg = 0, totalCbm = 0;
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt3 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
     tbody.innerHTML = entries.map((entry, idx) => {
       const key     = `${entry.clientName}|${entry.workbookId}`;
@@ -28675,24 +28676,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </td>
       </tr>`;
 
+      // Per-line totals are pro-rated from the workbook's Grand
+      // Total Cost (product + shipping) cached by the Pricing tab —
+      // so the displayed "Total" actually reflects what the order
+      // costs us to land, not the cost-only RFQ math. Per-unit shown
+      // at three decimals (Pricing tab convention) since shipping is
+      // amortized across units, not actually paid per item.
+      // Falls back to the RFQ × qty math when the workbook hasn't
+      // been Pricing-tab rendered yet so partially-set-up orders
+      // still show something instead of dashes.
+      const wbGrandUsd = parseFloat(detail.pricingGrandTotalCost) || 0;
+      const wbTotalQty = rfqItems.reduce((s, it) => s + (parseFloat(it.qty) || 0), 0);
+      const useGrand   = wbGrandUsd > 0 && wbTotalQty > 0;
+      const wbUnitUsd  = useGrand ? wbGrandUsd / wbTotalQty : 0;
+      const wbUnitRmb  = useGrand ? wbUnitUsd * exchange : 0;
+
       if (rfqItems.length === 0) {
         rows += `<tr>
           <td colspan="7" style="padding:8px 12px 12px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
         rows += rfqItems.map(item => {
-          const priceRmb   = parseFloat(item.priceRmb) || 0;
-          const qty        = parseFloat(item.qty) || 0;
-          const subtotalRmb = priceRmb * qty;
-          const subtotalUsd = subtotalRmb / exchange;
-          grandRmb += subtotalRmb;
-          grandUsd += subtotalUsd;
+          const priceRmb = parseFloat(item.priceRmb) || 0;
+          const qty      = parseFloat(item.qty) || 0;
+          // Total path: when we have a Grand Total Cost from the
+          // Pricing tab, use a qty-weighted slice of it (per-line
+          // share = lineQty / wbTotalQty). Per-unit is the SAME
+          // across the workbook's lines because shipping is
+          // amortized over the whole workbook, not per item.
+          let lineUnitRmb, lineUnitUsd, lineTotalRmb, lineTotalUsd;
+          if (useGrand) {
+            lineUnitUsd  = wbUnitUsd;
+            lineUnitRmb  = wbUnitRmb;
+            lineTotalUsd = qty > 0 ? wbUnitUsd * qty : 0;
+            lineTotalRmb = qty > 0 ? wbUnitRmb * qty : 0;
+          } else {
+            lineUnitRmb  = priceRmb;
+            lineUnitUsd  = priceRmb > 0 ? priceRmb / exchange : 0;
+            lineTotalRmb = priceRmb * qty;
+            lineTotalUsd = lineTotalRmb > 0 ? lineTotalRmb / exchange : 0;
+          }
+          grandRmb += lineTotalRmb;
+          grandUsd += lineTotalUsd;
 
-          const qtyStr      = qty      > 0 ? qty.toLocaleString('en-US') : '—';
-          const unitRmbStr  = priceRmb > 0 ? `¥${fmt2(priceRmb)}`           : '—';
-          const unitUsdStr  = priceRmb > 0 ? `$${fmt2(priceRmb / exchange)}` : '—';
-          const totRmbStr   = subtotalRmb > 0 ? `¥${fmt2(subtotalRmb)}` : '—';
-          const totUsdStr   = subtotalUsd > 0 ? `$${fmt2(subtotalUsd)}` : '—';
+          const qtyStr     = qty           > 0 ? qty.toLocaleString('en-US') : '—';
+          const unitRmbStr = lineUnitRmb   > 0 ? `¥${fmt3(lineUnitRmb)}` : '—';
+          const unitUsdStr = lineUnitUsd   > 0 ? `$${fmt3(lineUnitUsd)}` : '—';
+          const totRmbStr  = lineTotalRmb  > 0 ? `¥${fmt2(lineTotalRmb)}` : '—';
+          const totUsdStr  = lineTotalUsd  > 0 ? `$${fmt2(lineTotalUsd)}` : '—';
 
           return `<tr class="order-sheet-line-row">
             <td style="padding-left:24px;">${item.item || '—'}</td>
