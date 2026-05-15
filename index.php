@@ -26287,15 +26287,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _shipPickerOrderData[id] = { units, weightKg, cost, price, cbm };
 
         // Per-row stat line: units · weight (CBM) · our cost. CBM is
-        // tucked in next to weight so the operator can read both
-        // shipment dimensions inline. Mirrors the Add Workbook to
-        // Order picker; falls back to "—" individually when caches
-        // haven't been populated yet.
+        // tucked in next to weight (colored so it reads as one
+        // shipment-dimensions phrase) so the operator can scan both
+        // numbers without hunting. Mirrors the Add Workbook to Order
+        // picker; falls back to "—" individually when caches haven't
+        // been populated yet.
         const partsSummary = [];
         partsSummary.push(units > 0 ? `${units.toLocaleString('en-US')} units` : '— units');
+        const cbmPill = cbm > 0
+          ? ` <span style="color:var(--accent); font-weight:600;">(${cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)</span>`
+          : '';
         const weightCbmStr = weightKg > 0
-          ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${cbm > 0 ? ` (${cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : ''}`
-          : (cbm > 0 ? `— kg (${cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : '— kg');
+          ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${cbmPill}`
+          : (cbm > 0 ? `— kg${cbmPill}` : '— kg');
         partsSummary.push(weightCbmStr);
         partsSummary.push(cost > 0 ? `$${fmt2(cost)}` : '—');
         const statStr = partsSummary.join(' · ');
@@ -27775,13 +27779,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // pickers / cards stay aligned with the Pricing tab.
       const w = _wbStatsForPicker(detail);
       _orderPickerItemData[key] = { units: w.units, weightKg: w.weightKg, cost: w.cost, price: w.price, cbm: w.cbm };
-      // CBM tucked in next to weight so both shipment dimensions
-      // read inline.
+      // CBM tucked in next to weight, colored so it reads as one
+      // shipment-dimensions phrase.
       const partsSummary = [];
       partsSummary.push(w.units > 0 ? `${w.units.toLocaleString('en-US')} units` : '— units');
+      const cbmPill = w.cbm > 0
+        ? ` <span style="color:var(--accent); font-weight:600;">(${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)</span>`
+        : '';
       const weightCbmStr = w.weightKg > 0
-        ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${w.cbm > 0 ? ` (${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : ''}`
-        : (w.cbm > 0 ? `— kg (${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : '— kg');
+        ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${cbmPill}`
+        : (w.cbm > 0 ? `— kg${cbmPill}` : '— kg');
       partsSummary.push(weightCbmStr);
       partsSummary.push(w.cost > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
       const tierStr = partsSummary.join(' · ');
@@ -28510,13 +28517,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // tab + every other order surface.
         const w = _wbStatsForPicker(detail);
         _orderAddPickerItemData[key] = { units: w.units, weightKg: w.weightKg, cost: w.cost, price: w.price, cbm: w.cbm };
-        // CBM tucked in next to weight so both shipment dimensions
-        // read inline.
+        // CBM tucked in next to weight, colored so it reads as one
+        // shipment-dimensions phrase.
         const partsSummary = [];
         partsSummary.push(w.units > 0 ? `${w.units.toLocaleString('en-US')} units` : '— units');
+        const cbmPill = w.cbm > 0
+          ? ` <span style="color:var(--accent); font-weight:600;">(${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)</span>`
+          : '';
         const weightCbmStr = w.weightKg > 0
-          ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${w.cbm > 0 ? ` (${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : ''}`
-          : (w.cbm > 0 ? `— kg (${w.cbm.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1})} CBM)` : '— kg');
+          ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${cbmPill}`
+          : (w.cbm > 0 ? `— kg${cbmPill}` : '— kg');
         partsSummary.push(weightCbmStr);
         partsSummary.push(w.cost > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
         const tierStr = partsSummary.join(' · ');
