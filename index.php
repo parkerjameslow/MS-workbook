@@ -4992,7 +4992,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        full-width inside the card border. */
     .oc-stat-strip {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 8px 14px;
       padding: 10px 16px 8px;
       margin: 0 -16px -12px;
@@ -28345,11 +28345,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             : `${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`)
         : '—';
       const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
+      // Down payment cell — uses the order's depositPct (default 30%).
+      // Computed against agPrice (customer-facing total) so the deposit
+      // matches the dollar amount the client would actually wire.
+      const depositPctT = (o.depositPct != null) ? parseInt(o.depositPct) : 30;
+      const depositAmtT = agPrice > 0 ? agPrice * (depositPctT / 100) : 0;
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCost)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
+        <div class="oc-stat"><span class="oc-stat-label">Down (${depositPctT}%)</span><span class="oc-stat-val">${fmtUsdT(depositAmtT)}</span></div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
           <span class="oc-stat-val">${cbmValHtml}</span>
