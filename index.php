@@ -14600,7 +14600,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // because the range-display branch ignored the tier's own price.
     const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     const ps   = _lastRfqPriceSummary;
-    const isFirstTier = (id === 1);
+    // Be tolerant of either numeric or string id — the tier counter
+    // is always a number, but a future caller passing the row id as
+    // a string would otherwise silently fall back to the variant-
+    // range branch.
+    const isFirstTier = (parseInt(id, 10) === 1);
     const useRange = isFirstTier && ps && ps.hasVariants && ps.rmbMin > 0;
 
     if (rmbValEl) {
