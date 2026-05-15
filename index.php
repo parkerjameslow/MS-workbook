@@ -4973,12 +4973,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 12px 16px;
       cursor: pointer;
       display: flex;
-      align-items: stretch;
-      gap: 0;
+      flex-direction: column;
+      gap: 10px;
       transition: box-shadow 0.15s, border-color 0.15s;
       min-width: 0;
     }
     .order-card:hover { box-shadow: var(--shadow); border-color: var(--accent); }
+    /* Top row: client/title — workbooks — grand total. Mirrors the
+       previous flex layout; added wrapper so the new stat strip can
+       sit beneath without disturbing the column borders. */
+    .oc-card-main { display: flex; align-items: stretch; gap: 0; min-width: 0; }
+    /* Compact 5-up stat strip (Units / Weight / Cost / Price / CBM)
+       rendered as a footer row inside the order card. The CBM cell
+       gets its own thin progress bar against the 67 m³ container cap. */
+    .oc-stat-strip {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px 14px;
+      padding: 8px 12px 4px;
+      border-top: 1px dashed var(--border);
+    }
+    .oc-stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .oc-stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    .oc-stat-val   { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .oc-stat-cbm-cap { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .oc-cbm-bar      { height: 3px; margin-top: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .oc-cbm-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.2s; }
     .oc-left { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 130px; flex: 0 0 180px; padding-right: 16px; }
     .oc-client { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
     .oc-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
@@ -27884,6 +27904,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const entries = o.entries || [];
       const wbCount = entries.length;
 
+      // Aggregate per-workbook caches across this order so the card
+      // can show Units / Weight / Cost (ours) / Price (customer) / CBM.
+      // Sources: pricingShipmentWeightKg, pricingLandedTotal,
+      // pricingClientQuoteTotal, pricingShipmentCbm — all cached when
+      // each workbook's Pricing / Shipping tab renders.
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0;
+      entries.forEach(e => {
+        const key = `${e.clientName}|${e.workbookId}`;
+        const detail = workbookDetail[key] || {};
+        const tiers      = Array.isArray(detail.tiers) ? detail.tiers : [];
+        const selTier    = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+        const palletTot  = parseInt(String(detail.palletTotalCartons || '').replace(/,/g, ''), 10);
+        const wbUnits = (!isNaN(palletTot) && palletTot > 0)
+          ? palletTot
+          : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
+        agUnits    += wbUnits;
+        agWeightKg += parseFloat(detail.pricingShipmentWeightKg) || 0;
+        agCost     += parseFloat(detail.pricingLandedTotal)      || 0;
+        agPrice    += parseFloat(detail.pricingClientQuoteTotal) || 0;
+        agCbm      += parseFloat(detail.pricingShipmentCbm)      || 0;
+      });
+
       const wbPills = wbCount === 0
         ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No workbooks</span>`
         : entries.map(e => {
@@ -27920,24 +27962,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ? `<span class="oc-change-badge"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Change Requested</span>`
         : '';
 
+      // Compact stat strip rendered as a footer row inside the card —
+      // shows the 5 aggregate metrics + a container-fill bar so the
+      // operator can size the order at a glance from the list. Each
+      // stat falls back to "—" individually so a partial order still
+      // surfaces what it has.
+      const fmtUsdT = n => n > 0 ? '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—';
+      const fmtKgT  = n => n > 0 ? n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg' : '—';
+      const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1}) : '—';
+      const fmtNumT = n => n > 0 ? n.toLocaleString('en-US') : '—';
+      const cbmCapT = 67;
+      const fillPctT = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
+      const statStrip = `<div class="oc-stat-strip">
+        <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
+        <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
+        <div class="oc-stat"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCost)}</span></div>
+        <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
+        <div class="oc-stat oc-stat--cbm">
+          <span class="oc-stat-label">CBM</span>
+          <span class="oc-stat-val">${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span></span>
+          <div class="oc-cbm-bar"><div class="oc-cbm-bar-fill" style="width:${fillPctT}%;"></div></div>
+        </div>
+      </div>`;
+
       return `<div class="order-card${o.changeRequested ? ' has-change-request' : ''}" onclick="location.hash='#/order/${id}'">
-        <div class="oc-left">
-          <span class="oc-client">${o.clientName}</span>
-          <span class="oc-title">${o.name}</span>
-          <span class="oc-date">${o.dateCreated}</span>
-          ${changeBadge}
-        </div>
-        <div class="oc-wb-list">
-          <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
-          ${wbPills}
-        </div>
-        <div class="oc-right-wrap">
-          <div class="oc-grand-total">
-            <span class="oc-grand-label">Total</span>
-            <span class="oc-grand-usd">${usdStr}</span>
-            ${rmbStr ? `<span class="oc-grand-rmb">${rmbStr}</span>` : ''}
+        <div class="oc-card-main">
+          <div class="oc-left">
+            <span class="oc-client">${o.clientName}</span>
+            <span class="oc-title">${o.name}</span>
+            <span class="oc-date">${o.dateCreated}</span>
+            ${changeBadge}
+          </div>
+          <div class="oc-wb-list">
+            <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
+            ${wbPills}
+          </div>
+          <div class="oc-right-wrap">
+            <div class="oc-grand-total">
+              <span class="oc-grand-label">Total</span>
+              <span class="oc-grand-usd">${usdStr}</span>
+              ${rmbStr ? `<span class="oc-grand-rmb">${rmbStr}</span>` : ''}
+            </div>
           </div>
         </div>
+        ${statStrip}
       </div>`;
     }
 
