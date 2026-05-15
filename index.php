@@ -7982,10 +7982,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <!-- ── Add Order to Shipment Modal ────────────────────────────────────── -->
+<!-- Modal is a fixed-height flex column: title / filter / search are
+     pinned at the top, the Orders + Samples lists scroll inside the
+     middle, and the Grand Total + actions stay pinned at the bottom
+     so the operator always sees the running totals while picking. -->
 <div class="modal-overlay" id="modal-add-order-to-shipment" onclick="if(event.target===this)closeAddOrderToShipmentModal()" style="z-index:1000;">
-  <div class="modal modal-add-to-shipment" style="max-width:560px;">
-    <div class="modal-title">Add to Shipment</div>
-    <div class="modal-field" style="margin-bottom:10px;">
+  <div class="modal modal-add-to-shipment" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden;">
+    <div class="modal-title" style="flex-shrink:0;">Add to Shipment</div>
+    <div class="modal-field" style="margin-bottom:10px; flex-shrink:0;">
       <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); display:block; margin-bottom:6px;">Filter by Client</label>
       <div class="ship-select-wrap" style="width:100%;">
         <select id="ship-order-picker-client" onchange="onShipOrderClientChange()"
@@ -7994,33 +7998,64 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </select>
       </div>
     </div>
-    <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders &amp; samples…" oninput="filterShipOrderPicker(this.value)" />
+    <input type="text" class="wb-picker-search" id="ship-order-picker-search" placeholder="Search orders &amp; samples…" oninput="filterShipOrderPicker(this.value)" style="flex-shrink:0;" />
 
-    <!-- Orders section card — accent-blue themed -->
-    <div style="margin-top:12px; border:1.5px solid rgba(107,147,255,0.45); background:rgba(107,147,255,0.06); border-radius:10px; overflow:hidden;">
-      <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(107,147,255,0.18); border-bottom:1.5px solid rgba(107,147,255,0.45); color:#6b93ff;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-        <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Orders</span>
-        <span id="ship-picker-orders-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#6b93ff; opacity:0.8;"></span>
+    <!-- Scroll container holding Orders + Samples — flexes to fill the
+         remaining vertical space so the modal stays pinned and only
+         the lists scroll. -->
+    <div style="flex:1 1 auto; overflow-y:auto; min-height:140px; margin-top:12px;">
+      <!-- Orders section card — accent-blue themed -->
+      <div style="border:1.5px solid rgba(107,147,255,0.45); background:rgba(107,147,255,0.06); border-radius:10px; overflow:hidden;">
+        <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(107,147,255,0.18); border-bottom:1.5px solid rgba(107,147,255,0.45); color:#6b93ff;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Orders</span>
+          <span id="ship-picker-orders-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#6b93ff; opacity:0.8;"></span>
+        </div>
+        <div class="modal-wb-picker ship-picker-list-inset" id="ship-order-picker-list" style="max-height:none;">
+          <!-- populated by JS -->
+        </div>
       </div>
-      <div class="modal-wb-picker ship-picker-list-inset" id="ship-order-picker-list" style="max-height:240px;">
-        <!-- populated by JS -->
+
+      <!-- Samples section card — orange themed (matches the workbook's sample branding) -->
+      <div style="margin-top:14px; border:1.5px solid rgba(232,117,26,0.55); background:rgba(232,117,26,0.07); border-radius:10px; overflow:hidden;">
+        <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(232,117,26,0.20); border-bottom:1.5px solid rgba(232,117,26,0.55); color:#E8751A;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Samples</span>
+          <span id="ship-picker-samples-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#E8751A; opacity:0.8;"></span>
+        </div>
+        <div class="modal-wb-picker ship-picker-list-inset" id="ship-sample-picker-list" style="max-height:none;">
+          <!-- populated by JS -->
+        </div>
       </div>
     </div>
 
-    <!-- Samples section card — orange themed (matches the workbook's sample branding) -->
-    <div style="margin-top:14px; border:1.5px solid rgba(232,117,26,0.55); background:rgba(232,117,26,0.07); border-radius:10px; overflow:hidden;">
-      <div style="display:flex; align-items:center; gap:8px; padding:11px 16px; background:rgba(232,117,26,0.20); border-bottom:1.5px solid rgba(232,117,26,0.55); color:#E8751A;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span style="font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em;">Samples</span>
-        <span id="ship-picker-samples-count" style="margin-left:auto; font-size:11px; font-weight:700; color:#E8751A; opacity:0.8;"></span>
+    <!-- Grand Total card — sums across every selected order's
+         workbooks (units / weight / our cost / customer price / CBM).
+         Hidden until ≥1 order is checked. Compact 4-col layout matches
+         the Add Workbook to Order picker. -->
+    <div id="ship-picker-grand-total" style="display:none; flex-shrink:0; margin:10px 0 0; padding:10px 12px; background:linear-gradient(135deg, var(--accent), #4f46e5); color:#fff; border-radius:8px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; opacity:0.92;">
+        <span>Shipment Grand Total</span>
+        <span id="ship-picker-gt-count" style="opacity:0.85;">0 selected</span>
       </div>
-      <div class="modal-wb-picker ship-picker-list-inset" id="ship-sample-picker-list" style="max-height:240px;">
-        <!-- populated by JS -->
+      <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px 10px; font-size:11px;">
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Units</div><div id="ship-picker-gt-units" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Weight</div><div id="ship-picker-gt-weight" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Cost (ours)</div><div id="ship-picker-gt-cost" style="font-size:13px; font-weight:700;">—</div></div>
+        <div><div style="opacity:0.78; font-size:9px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:1px;">Price (cust)</div><div id="ship-picker-gt-price" style="font-size:13px; font-weight:700;">—</div></div>
+      </div>
+      <div style="margin-top:8px; padding-top:7px; border-top:1px solid rgba(255,255,255,0.18);">
+        <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:4px;">
+          <span style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; opacity:0.85;">Container Fill</span>
+          <span id="ship-picker-gt-cbm-label" style="font-size:11px; font-weight:700;">— / 67 CBM</span>
+        </div>
+        <div style="height:5px; background:rgba(255,255,255,0.18); border-radius:99px; overflow:hidden;">
+          <div id="ship-picker-gt-cbm-bar" style="height:100%; width:0%; background:#fff; border-radius:99px; transition:width 0.2s;"></div>
+        </div>
       </div>
     </div>
 
-    <div class="modal-actions" style="margin-top:14px;">
+    <div class="modal-actions" style="margin-top:12px; flex-shrink:0;">
       <button type="button" class="btn btn-ghost" onclick="closeAddOrderToShipmentModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="confirmAddOrderToShipment()">Add to Shipment</button>
     </div>
@@ -23822,6 +23857,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // re-walking clientData / workbookDetail.
   let _orderAddPickerItemData = {};
   let _shipOrderPickerSelected = new Set();
+  // Per-order numeric snapshot (units / weight / cost / price / cbm)
+  // for the Add to Shipment picker. Built fresh on each
+  // buildShipOrderPickerList call. Keyed by orderId so the grand
+  // total card can sum across selected orders without re-walking
+  // every workbook in workbookDetail.
+  let _shipPickerOrderData = {};
 
   /* ── Shipments module state (must be declared before init) ─────────────── */
   let shipmentData = {};
@@ -26046,6 +26087,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('modal-add-order-to-shipment').classList.remove('open');
     _shipOrderPickerSelected = new Set();
     _shipSamplePickerSelected = new Set();
+    const gt = document.getElementById('ship-picker-grand-total');
+    if (gt) gt.style.display = 'none';
   }
 
   function onShipOrderClientChange() {
@@ -26073,6 +26116,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let html = '';
     let totalShown = 0;
 
+    // Reset the per-order snapshot for this render so removed /
+    // filtered orders don't linger in the grand total sums.
+    _shipPickerOrderData = {};
+
     clients.forEach(clientName => {
       const orders = Object.values(orderData).filter(o => o.clientName === clientName);
       const color    = palette[sortedClients.indexOf(clientName) % palette.length];
@@ -26093,10 +26140,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const id        = String(order.id);
         const isChecked = _shipOrderPickerSelected.has(id);
         const inShip    = alreadyIn.has(id);
-        const tot       = orderTotals(order);
-        const usdStr    = tot.totalUsd > 0 ? `$${fmt2(tot.totalUsd)}` : '—';
-        const rmbStr    = tot.totalRmb > 0 ? `¥${fmt2(tot.totalRmb)}` : '';
         const wbCount   = (order.entries || []).length;
+
+        // Sum the per-workbook caches across this order so we can show
+        // total units / weight / cost / price / CBM as the order's
+        // shape — same surface as the other pickers.
+        let units = 0, weightKg = 0, cost = 0, price = 0, cbm = 0;
+        (order.entries || []).forEach(entry => {
+          const key = `${entry.clientName}|${entry.workbookId}`;
+          const detail = workbookDetail[key] || {};
+          const tiers      = Array.isArray(detail.tiers) ? detail.tiers : [];
+          const selTier    = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+          const palletTot  = parseInt(String(detail.palletTotalCartons || '').replace(/,/g, ''), 10);
+          const wbUnits = (!isNaN(palletTot) && palletTot > 0)
+            ? palletTot
+            : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
+          units    += wbUnits;
+          weightKg += parseFloat(detail.pricingShipmentWeightKg) || 0;
+          cost     += parseFloat(detail.pricingLandedTotal)      || 0;
+          price    += parseFloat(detail.pricingClientQuoteTotal) || 0;
+          cbm      += parseFloat(detail.pricingShipmentCbm)      || 0;
+        });
+        _shipPickerOrderData[id] = { units, weightKg, cost, price, cbm };
+
+        // Per-row stat line: units · weight · our cost. Mirrors the
+        // Add Workbook to Order picker; falls back to "—" individually
+        // when the workbook caches haven't been populated yet.
+        const partsSummary = [];
+        partsSummary.push(units    > 0 ? `${units.toLocaleString('en-US')} units` : '— units');
+        partsSummary.push(weightKg > 0 ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
+        partsSummary.push(cost     > 0 ? `$${fmt2(cost)}` : '—');
+        const statStr = partsSummary.join(' · ');
 
         html += `<div class="wb-picker-item${isChecked ? ' selected' : ''}"
             style="${inShip ? 'opacity:0.4; pointer-events:none;' : ''}"
@@ -26107,7 +26181,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="wb-picker-info">
             <div class="wb-picker-product">${order.name}</div>
             <div class="wb-picker-client">${clientName} &nbsp;·&nbsp; ${wbCount} workbook${wbCount !== 1 ? 's' : ''}${inShip ? ' · Already in shipment' : ''}</div>
-            <div class="wb-picker-tiers">${usdStr}${rmbStr ? ' &nbsp;·&nbsp; ' + rmbStr : ''}</div>
+            <div class="wb-picker-tiers">${statStr}</div>
           </div>
           <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
             ${isChecked ? '<svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4L4 7.5L10 1" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
@@ -26120,9 +26194,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       list.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted); font-size:13px;">
         ${query ? 'No orders match your search.' : 'No orders found.'}
       </div>`;
+      _renderShipPickerGrandTotal();
       return;
     }
     list.innerHTML = html;
+    _renderShipPickerGrandTotal();
+  }
+
+  // Sums the per-order snapshot across selected orders and paints the
+  // Grand Total card. Hidden when nothing is selected. Mirrors
+  // _renderOrderAddGrandTotal / _renderOrderPickerGrandTotal.
+  function _renderShipPickerGrandTotal() {
+    const card = document.getElementById('ship-picker-grand-total');
+    if (!card) return;
+    const sel = _shipOrderPickerSelected;
+    if (!sel || sel.size === 0) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = '';
+    let units = 0, weightKg = 0, cost = 0, price = 0, cbm = 0;
+    sel.forEach(id => {
+      const d = (_shipPickerOrderData && _shipPickerOrderData[id]) || null;
+      if (!d) return;
+      units    += d.units    || 0;
+      weightKg += d.weightKg || 0;
+      cost     += d.cost     || 0;
+      price    += d.price    || 0;
+      cbm      += d.cbm      || 0;
+    });
+    const fmtNum = n => n.toLocaleString('en-US');
+    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const fmtKg  = n => n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg';
+    const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    set('ship-picker-gt-count',  `${sel.size} order${sel.size === 1 ? '' : 's'} selected`);
+    set('ship-picker-gt-units',  units    > 0 ? fmtNum(units)  : '—');
+    set('ship-picker-gt-weight', weightKg > 0 ? fmtKg(weightKg) : '—');
+    set('ship-picker-gt-cost',   cost     > 0 ? fmtUsd(cost)    : '—');
+    set('ship-picker-gt-price',  price    > 0 ? fmtUsd(price)   : '—');
+    const cbmCap = 67;
+    const fillPct = Math.min(100, cbm > 0 ? (cbm / cbmCap) * 100 : 0);
+    set('ship-picker-gt-cbm-label', cbm > 0 ? `${fmtCbm(cbm)} / ${cbmCap} CBM` : `— / ${cbmCap} CBM`);
+    const bar = document.getElementById('ship-picker-gt-cbm-bar');
+    if (bar) bar.style.width = fillPct + '%';
   }
 
   function filterShipOrderPicker(query) {
