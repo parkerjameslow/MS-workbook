@@ -11047,6 +11047,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const palletWeightKg = palletWeightKgArg && palletWeightKgArg > 0 ? palletWeightKgArg : 0;
     const lastContainerWeightKg = palletWeightKg * palletsInLast;
     const totalShipmentWeightKg = palletWeightKg * palletsNeeded;
+    // Cache total shipment weight on the workbook so the Add Workbook
+    // to Order picker (and other dashboards) can show the order weight
+    // without re-running the freight calc. Mirrors how
+    // renderPricingTab caches pricingLandedTotal.
+    if (typeof currentClient === 'string' && currentWorkbookId) {
+      const _wbWtKey = `${currentClient}|${currentWorkbookId}`;
+      if (!workbookDetail[_wbWtKey]) workbookDetail[_wbWtKey] = {};
+      workbookDetail[_wbWtKey].pricingShipmentWeightKg = totalShipmentWeightKg > 0 ? totalShipmentWeightKg : 0;
+    }
     // Units math — how many products fit per pallet, how many more
     // products would fill the empty pallet slots in the last container.
     const unitsPerPallet = (unitsPerPalletArg && unitsPerPalletArg > 0) ? unitsPerPalletArg : 0;
@@ -23578,6 +23587,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // don't have to re-run the freight calc per workbook there.
       // Updated whenever renderPricingTab runs for this workbook.
       pricingLandedTotal: (existing && typeof existing.pricingLandedTotal === 'number') ? existing.pricingLandedTotal : 0,
+      // Cached total shipment weight (kg) — written by renderContainerViz.
+      // Feeds the Add Workbook to Order picker so we can show order weight
+      // without re-running the freight calc per workbook there.
+      pricingShipmentWeightKg: (existing && typeof existing.pricingShipmentWeightKg === 'number') ? existing.pricingShipmentWeightKg : 0,
       // Per-method shipping lead times (days) — feed Client Quote summary
       shipLeadSlow:      _v('ship-lead-slow'),
       shipLeadFast:      _v('ship-lead-fast'),
@@ -27939,10 +27952,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const detail  = workbookDetail[key] || {};
         const product = detail.product || wb.product || '—';
         if (query && !product.toLowerCase().includes(query) && !clientName.toLowerCase().includes(query)) return;
-        const tiers   = (detail.tiers || []);
-        const tierStr = tiers.length > 0
-          ? tiers.map(t => `${parseInt(t.qty || 0).toLocaleString('en-US')} units`).join(' · ')
-          : 'No tiers set';
+        // Order summary line: total units + total weight + total cost.
+        // - Units: palletTotalCartons (Total Units to Ship) when present,
+        //   otherwise the selected pricing tier qty (or first tier).
+        // - Weight: cached pricingShipmentWeightKg from renderContainerViz.
+        // - Cost: cached pricingLandedTotal from renderPricingTab.
+        // Each piece falls back to "—" individually so a partially-filled
+        // workbook still shows the values it does have.
+        const tiers      = Array.isArray(detail.tiers) ? detail.tiers : [];
+        const selTier    = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+        const palletTot  = parseInt(String(detail.palletTotalCartons || '').replace(/,/g, ''), 10);
+        const totalUnits = (!isNaN(palletTot) && palletTot > 0)
+          ? palletTot
+          : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
+        const weightKg   = parseFloat(detail.pricingShipmentWeightKg) || 0;
+        const cost       = parseFloat(detail.pricingLandedTotal) || 0;
+        const partsSummary = [];
+        partsSummary.push(totalUnits > 0 ? `${totalUnits.toLocaleString('en-US')} units` : '— units');
+        partsSummary.push(weightKg > 0 ? `${weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg` : '— kg');
+        partsSummary.push(cost > 0 ? `$${cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
+        const tierStr = partsSummary.join(' · ');
         const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
         const flow = wb.flow || {};
