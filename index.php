@@ -25794,7 +25794,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         cbm = (pl * pw * ph * units) / 1_000_000;
       }
     }
-    return { units, weightKg, cost, price, cbm };
+    // Total lead = max(production lead across rfqItems) + max
+    // shipping lead from the selected freight mode's input (parses
+    // "20-30" as 30; falls back to 0 when the lead field is blank).
+    // Mirrors the Client Quote header's "Total Lead" computation so
+    // downstream surfaces show the same number the operator sees on
+    // the workbook itself.
+    const rfqItems = Array.isArray(d.rfqItems) ? d.rfqItems : [];
+    let prodLead = 0;
+    rfqItems.forEach(it => {
+      const n = parseInt(String(it.leadTime || '').match(/\d+/g)?.pop() || '', 10);
+      if (!isNaN(n) && n > prodLead) prodLead = n;
+    });
+    const mode = d.freightMode || 'slow';
+    const shipLeadKey = ({slow:'shipLeadSlow', fast:'shipLeadFast', airupp:'shipLeadAirupp', directair:'shipLeadDirectair'})[mode] || 'shipLeadSlow';
+    const shipLeadStr = String(d[shipLeadKey] || '').trim();
+    let shipLead = 0;
+    if (shipLeadStr) {
+      const m = shipLeadStr.match(/^(\d+)\s*[-–—]\s*(\d+)$/);
+      if (m) shipLead = Math.max(parseInt(m[1], 10), parseInt(m[2], 10));
+      else { const n = parseInt(shipLeadStr, 10); if (!isNaN(n)) shipLead = n; }
+    }
+    const leadDays = (prodLead || 0) + (shipLead || 0);
+    return { units, weightKg, cost, price, cbm, leadDays };
   }
 
   function calcWorkbookShipStats(detail, qty) {
@@ -28277,20 +28299,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const wbCount = entries.length;
 
       // Aggregate per-workbook stats across this order so the card
-      // can show Units / Weight / Cost (ours) / Price (customer) / CBM.
-      // Helper centralizes the source-of-truth selection so this card
-      // reads the same numbers as the Pricing tab and every picker.
-      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0;
+      // can show Units / Weight / Cost (ours) / Price (customer) /
+      // CBM / Lead. Helper centralizes the source-of-truth selection
+      // so this card reads the same numbers as the Pricing tab and
+      // every picker. Per-workbook lead time = max(production lead,
+      // selected freight mode's shipping lead); order lead = max
+      // across the order's workbooks (a 30-day workbook sets the
+      // floor for the whole shipment).
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0;
+      const wbStatsByEntry = new Map();
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
         const w = _wbStatsForPicker(workbookDetail[key]);
+        wbStatsByEntry.set(key, w);
         agUnits    += w.units;
         agWeightKg += w.weightKg;
         agCost     += w.cost;
         agPrice    += w.price;
         agCbm      += w.cbm;
+        if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
       });
 
+      const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
       const wbPills = wbCount === 0
         ? `<span style="font-size:12px;color:var(--text-muted);font-style:italic;">No workbooks</span>`
         : entries.map(e => {
@@ -28298,18 +28328,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const detail = workbookDetail[key];
             const prod = detail ? (detail.product || 'Untitled') : 'Untitled';
             const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
-            // Per-workbook pricing
-            const tiers = detail && Array.isArray(detail.tiers) ? detail.tiers : [];
-            const tier = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+            // Per-workbook pricing — Client Quote Total Order (Sale
+            // Per × qty + applied fees) so the per-row number matches
+            // what the customer is charged. RMB is the USD value
+            // back-converted at the live FX rate.
+            const w = wbStatsByEntry.get(key) || { price: 0 };
             let wbRmb = '', wbUsd = '';
-            if (tier && tier.price) {
-              const priceRmb = parseFloat(tier.price) || 0;
-              const qty = parseFloat(tier.qty) || 0;
-              const exchange = 7.2;
-              const totalRmb = priceRmb * qty;
-              const totalUsd = (priceRmb / exchange) * qty;
-              if (totalRmb > 0) wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-              if (totalUsd > 0) wbUsd = `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            if (w.price > 0) {
+              const totalUsd = w.price;
+              const totalRmb = totalUsd * _fxRate;
+              wbUsd = `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             }
             const priceStr = (wbRmb || wbUsd)
               ? `<span class="oc-wb-prices">${[wbRmb, wbUsd].filter(Boolean).join('&nbsp;&nbsp;')}</span>`
@@ -28321,8 +28350,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           }).join('');
 
       const statusLabel = o.status.replace('_', ' ');
-      const usdStr = tot.totalUsd > 0 ? `$${tot.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-      const rmbStr = tot.totalRmb > 0 ? `¥${tot.totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+      // Right-side TOTAL — the Client Quote Total Order summed
+      // across the order's workbooks (matches the per-workbook pills
+      // above and the Price (cust) cell in the stat strip below).
+      // Falls back to the legacy tier-cost total when no workbook
+      // has Sale Per typed yet so a brand-new order still renders
+      // a non-zero header total.
+      const headerUsd = agPrice > 0 ? agPrice : (tot.totalUsd || 0);
+      const headerRmb = agPrice > 0 ? (agPrice * _fxRate) : (tot.totalRmb || 0);
+      const usdStr = headerUsd > 0 ? `$${headerUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
+      const rmbStr = headerRmb > 0 ? `¥${headerRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+      // Lead-time badge: max across all workbooks in the order. A
+      // 30-day production workbook drives the whole order's earliest
+      // possible ship date. Hidden when no workbook contributes a lead.
+      const leadBadge = agMaxLead > 0
+        ? `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;" title="Longest workbook lead time in this order — production + shipping">${agMaxLead} day lead</span>`
+        : '';
       const changeBadge = o.changeRequested
         ? `<span class="oc-change-badge"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Change Requested</span>`
         : '';
@@ -28371,6 +28414,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="oc-client">${o.clientName}</span>
             <span class="oc-title">${o.name}</span>
             <span class="oc-date">${o.dateCreated}</span>
+            ${leadBadge ? `<div style="margin-top:4px;">${leadBadge}</div>` : ''}
             ${changeBadge}
           </div>
           <div class="oc-wb-list">
