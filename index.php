@@ -7922,6 +7922,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
+    <!-- Payment Tracking — moved above the Order Sheet so the
+         operator can see deposit / balance state at the top of the
+         order without scrolling past the workbook list. -->
+    <div class="section-card" style="margin-bottom:16px;" id="order-deposit-card">
+      <div class="section-header">
+        <span class="section-title">Payment Tracking</span>
+      </div>
+      <div class="section-body">
+        <div id="order-deposit-rows"></div>
+      </div>
+    </div>
+
     <!-- Order Sheet -->
     <div class="section-card" style="margin-bottom:16px;">
       <div class="section-header">
@@ -7950,16 +7962,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tbody id="order-sheet-tbody"></tbody>
           <tfoot id="order-sheet-tfoot"></tfoot>
         </table>
-      </div>
-    </div>
-
-    <!-- Deposit Tracking -->
-    <div class="section-card" style="margin-bottom:16px;" id="order-deposit-card">
-      <div class="section-header">
-        <span class="section-title">Payment Tracking</span>
-      </div>
-      <div class="section-body">
-        <div id="order-deposit-rows"></div>
       </div>
     </div>
 
