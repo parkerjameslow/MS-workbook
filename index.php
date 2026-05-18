@@ -7653,12 +7653,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="section-title">Container View</span>
           <span id="ship-cv-cbm-summary" style="font-size:12px; color:var(--text-muted);"></span>
         </div>
-        <div id="ship-cv-style-toggle" style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
-          <button type="button" id="ship-cv-btn-seg" class="ship-cv-style-btn active" onclick="setShipContainerVizStyle('seg')"
-            style="font-size:12px; font-weight:600; padding:5px 12px; border:none; background:var(--accent); color:#fff; cursor:pointer; font-family:inherit;">Segments</button>
-          <button type="button" id="ship-cv-btn-3d" class="ship-cv-style-btn" onclick="setShipContainerVizStyle('3d')"
-            style="font-size:12px; font-weight:600; padding:5px 12px; border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-family:inherit;">3D Blocks</button>
-        </div>
       </div>
       <div class="section-body" style="padding:16px;">
         <div id="ship-cv-empty" style="padding:24px 0; text-align:center; color:var(--text-muted); font-size:13px;">
@@ -26470,29 +26464,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── Container View ─────────────────────────────────────────────────
   // Each order in the shipment is one colored volume inside a 40' HC
   // container (67 m³ usable). Two styles the operator can toggle:
-  //   'seg' — proportional horizontal segments
-  //   '3d'  — pseudo-isometric stacked blocks
-  // The container graphic is a FIXED 67 m³ scale; volume beyond that
-  // spills into an amber overflow bar (one container + overflow bar,
-  // per the operator's choice). Per-order color reuses the shared
-  // client palette so the same order keeps a stable hue across views.
-  let _shipCvStyle = 'seg';
+  // The container graphic is a 3D cabinet-projection 40' HC drawn at
+  // a FIXED 67 m³ scale: a straight-on readable side wall of
+  // proportional colored segments (one per order, width ∝ CBM), a
+  // lightened roof face and a darkened receding end wall to sell the
+  // depth, all wrapped in a steel frame with corner posts. Volume
+  // beyond 67 m³ spills into an amber overflow bar below (one
+  // container + overflow bar, per the operator's choice). Per-order
+  // color reuses the shared client palette so an order keeps a
+  // stable hue.
   const _SHIP_CV_PALETTE = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8','#e879f9','#facc15'];
   const _SHIP_CV_CAP = 67; // usable m³ in a 40' HC
-
-  function setShipContainerVizStyle(style) {
-    _shipCvStyle = (style === '3d') ? '3d' : 'seg';
-    const segBtn = document.getElementById('ship-cv-btn-seg');
-    const tdBtn  = document.getElementById('ship-cv-btn-3d');
-    [['seg', segBtn], ['3d', tdBtn]].forEach(([k, b]) => {
-      if (!b) return;
-      const on = (_shipCvStyle === k);
-      b.style.background = on ? 'var(--accent)' : 'transparent';
-      b.style.color      = on ? '#fff' : 'var(--text-muted)';
-      b.classList.toggle('active', on);
-    });
-    renderShipmentContainerViz();
-  }
 
   function renderShipmentContainerViz() {
     const card  = document.getElementById('ship-container-viz-card');
@@ -26532,7 +26514,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const overflow  = Math.max(0, totalCbm - _SHIP_CV_CAP);
     const freeCbm   = Math.max(0, _SHIP_CV_CAP - totalCbm);
     const fmtCbm    = n => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    const fillPct   = Math.min(100, (totalCbm / _SHIP_CV_CAP) * 100);
 
     if (summ) {
       summ.innerHTML = overflow > 0
@@ -26560,67 +26541,81 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>`).join('')}
       </div>`;
 
-    let vizHtml = '';
-    if (_shipCvStyle === 'seg') {
-      // Flat proportional container: a 40' box whose full width = 67
-      // m³. Segments are laid left→right at cbm/67 of the width; the
-      // unused tail is a hatched "free space" zone.
-      const segs = placed.filter(p => p.inC > 0).map(p => `
-        <div title="${p.name} — ${fmtCbm(p.inC)} m³"
-             style="width:${(p.inC / _SHIP_CV_CAP) * 100}%; background:${p.color}; display:flex; align-items:center; justify-content:center; overflow:hidden; border-right:1px solid rgba(255,255,255,0.35);">
-          <span style="font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.35); white-space:nowrap; padding:0 4px;">${(p.inC / _SHIP_CV_CAP) * 100 > 7 ? fmtCbm(p.inC) + ' m³' : ''}</span>
-        </div>`).join('');
-      const freePct = (freeCbm / _SHIP_CV_CAP) * 100;
-      const freeZone = freePct > 0.5 ? `
-        <div style="width:${freePct}%; background:repeating-linear-gradient(45deg, var(--surface2), var(--surface2) 6px, var(--surface) 6px, var(--surface) 12px); display:flex; align-items:center; justify-content:center;">
-          <span style="font-size:10px; color:var(--text-muted); white-space:nowrap;">${freePct > 8 ? fmtCbm(freeCbm) + ' m³ free' : ''}</span>
-        </div>` : '';
-      vizHtml = `
-        <div style="position:relative;">
-          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
-            <span>40' HC Container</span><span style="opacity:0.6;">${_SHIP_CV_CAP} m³ usable</span>
-          </div>
-          <div style="display:flex; height:90px; border:2px solid var(--text); border-radius:6px; overflow:hidden; background:var(--surface);
-                      box-shadow:inset 0 0 0 4px var(--surface), inset 0 0 0 5px rgba(0,0,0,0.06);">
-            ${segs}${freeZone}
-          </div>
-          <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:3px;">
-            <span>0</span><span>${(_SHIP_CV_CAP/2).toFixed(0)} m³</span><span>${_SHIP_CV_CAP} m³</span>
-          </div>
-        </div>`;
-    } else {
-      // Pseudo-isometric: a skewed container "floor" with colored
-      // slabs stacked along its length, each slab depth ∝ cbm. Top
-      // + right faces faked with lighten/darken for a 3D read.
-      const shade = (hex, amt) => {
-        const n = parseInt(hex.slice(1), 16);
-        let r = (n>>16)+amt, g = ((n>>8)&255)+amt, b = (n&255)+amt;
-        r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
-        return `rgb(${r},${g},${b})`;
-      };
-      const slabs = placed.filter(p => p.inC > 0).map(p => {
-        const w = (p.inC / _SHIP_CV_CAP) * 100;
-        return `
-          <div title="${p.name} — ${fmtCbm(p.inC)} m³" style="position:relative; width:${w}%; height:64px; background:${p.color};">
-            <div style="position:absolute; left:0; right:0; top:-12px; height:12px; background:${shade(p.color,28)}; transform:skewX(-45deg); transform-origin:bottom left;"></div>
-            <div style="position:absolute; top:-12px; bottom:0; right:-12px; width:12px; background:${shade(p.color,-30)}; transform:skewY(-45deg); transform-origin:top left;"></div>
-            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
-              <span style="font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.4); white-space:nowrap;">${w > 9 ? fmtCbm(p.inC)+' m³' : ''}</span>
-            </div>
-          </div>`;
+    // ── 3D cabinet-projection container ────────────────────────────
+    // The straight-on side wall (full color, readable) is the base.
+    // A lightened parallelogram roof + a darkened receding end wall
+    // sell the depth. Segments are shared between the wall and the
+    // roof so the cargo reads as continuous 3D volume.
+    const shade = (hex, amt) => {
+      const n = parseInt(hex.slice(1), 16);
+      let r = (n>>16)+amt, g = ((n>>8)&255)+amt, b = (n&255)+amt;
+      r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+      return `rgb(${r},${g},${b})`;
+    };
+    const H = 130;          // side-wall height (px)
+    const D = 34;           // projected depth (px)
+    const STEEL = '#3f4654', STEEL_LT = '#5a6275', STEEL_DK = '#2b303b';
+    const segWidthPct = c => (c / _SHIP_CV_CAP) * 100;
+
+    // Shared builder: one flex row of proportional bands. `face` is
+    // 'wall' (full color) or 'roof' (lightened, looking down at the
+    // tops of the cargo).
+    const buildBands = face => {
+      let html = placed.filter(p => p.inC > 0).map(p => {
+        const w = segWidthPct(p.inC);
+        const bg = face === 'roof' ? shade(p.color, 34) : p.color;
+        const label = (face === 'wall' && w > 7)
+          ? `<span style="font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.4); white-space:nowrap; padding:0 4px;">${fmtCbm(p.inC)} m³</span>`
+          : '';
+        return `<div title="${p.name} — ${fmtCbm(p.inC)} m³"
+          style="width:${w}%; background:${bg}; display:flex; align-items:center; justify-content:center; overflow:hidden; border-right:1px solid rgba(0,0,0,0.12);">${label}</div>`;
       }).join('');
       const freePct = (freeCbm / _SHIP_CV_CAP) * 100;
-      const freeSlab = freePct > 0.5 ? `<div style="width:${freePct}%; height:64px; background:repeating-linear-gradient(45deg, var(--surface2), var(--surface2) 6px, var(--surface) 6px, var(--surface) 12px); border-left:1px dashed var(--border);"></div>` : '';
-      vizHtml = `
-        <div style="padding:18px 18px 8px;">
-          <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
-            <span>40' HC Container</span><span style="opacity:0.6;">${_SHIP_CV_CAP} m³ usable</span>
-          </div>
-          <div style="display:flex; align-items:flex-end; height:76px; padding-right:12px; border-left:2px solid var(--text); border-bottom:2px solid var(--text);">
-            ${slabs}${freeSlab}
-          </div>
-        </div>`;
-    }
+      if (freePct > 0.5) {
+        // Empty cargo space — corrugated steel interior so you can
+        // "see into" the unused length of the container.
+        const stripeBase = face === 'roof' ? '#cfd4df' : '#aeb4c2';
+        const stripeAlt  = face === 'roof' ? '#dde1ea' : '#c2c7d4';
+        const freeLbl = (face === 'wall' && freePct > 8)
+          ? `<span style="font-size:10px; font-weight:600; color:#5b6170; white-space:nowrap;">${fmtCbm(freeCbm)} m³ free</span>` : '';
+        html += `<div style="width:${freePct}%; background:repeating-linear-gradient(90deg, ${stripeBase}, ${stripeBase} 7px, ${stripeAlt} 7px, ${stripeAlt} 14px); display:flex; align-items:center; justify-content:center;">${freeLbl}</div>`;
+      }
+      return html;
+    };
+
+    const vizHtml = `
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
+        <span>40' HC Container</span><span style="opacity:0.6;">${_SHIP_CV_CAP} m³ usable</span>
+      </div>
+      <div style="position:relative; padding:${D}px ${D}px 0 0; overflow:hidden;">
+        <!-- ROOF: parallelogram skewed back-right, lightened bands -->
+        <div style="position:absolute; top:0; left:0; right:0; height:${D}px;
+                    transform:skewX(-45deg); transform-origin:bottom left; margin-left:${D}px;
+                    display:flex; box-shadow:inset 0 2px 4px rgba(0,0,0,0.12);">
+          ${buildBands('roof')}
+        </div>
+        <!-- END WALL: receding right cap, dark steel -->
+        <div style="position:absolute; top:0; right:0; width:${D}px; height:${H}px;
+                    transform:skewY(-45deg); transform-origin:top left;
+                    background:linear-gradient(90deg, ${STEEL_DK}, ${STEEL});
+                    border-left:2px solid ${STEEL_DK};"></div>
+        <!-- SIDE WALL: straight-on readable face -->
+        <div style="position:relative; height:${H}px; display:flex; overflow:hidden;
+                    border:3px solid ${STEEL}; border-radius:3px; background:#aeb4c2;
+                    box-shadow:0 6px 14px rgba(0,0,0,0.18);">
+          ${buildBands('wall')}
+          <!-- corner posts -->
+          <div style="position:absolute; top:0; bottom:0; left:0; width:7px; background:linear-gradient(90deg, ${STEEL_DK}, ${STEEL_LT});"></div>
+          <div style="position:absolute; top:0; bottom:0; right:0; width:7px; background:linear-gradient(90deg, ${STEEL_LT}, ${STEEL_DK});"></div>
+          <!-- subtle floor + ceiling rails -->
+          <div style="position:absolute; left:7px; right:7px; top:0; height:5px; background:rgba(0,0,0,0.16);"></div>
+          <div style="position:absolute; left:7px; right:7px; bottom:0; height:6px; background:rgba(0,0,0,0.22);"></div>
+        </div>
+        <!-- length ruler -->
+        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:4px; padding-right:${D}px;">
+          <span>0</span><span>${(_SHIP_CV_CAP/2).toFixed(0)} m³</span><span>${_SHIP_CV_CAP} m³</span>
+        </div>
+      </div>`;
 
     const overflowBar = overflow > 0 ? `
       <div style="margin-top:14px; padding:10px 14px; background:rgba(217,119,6,0.10); border:1px solid rgba(217,119,6,0.35); border-radius:8px;">
