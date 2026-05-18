@@ -26541,80 +26541,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>`).join('')}
       </div>`;
 
-    // ── 3D cabinet-projection container ────────────────────────────
-    // The straight-on side wall (full color, readable) is the base.
-    // A lightened parallelogram roof + a darkened receding end wall
-    // sell the depth. Segments are shared between the wall and the
-    // roof so the cargo reads as continuous 3D volume.
-    const shade = (hex, amt) => {
-      const n = parseInt(hex.slice(1), 16);
-      let r = (n>>16)+amt, g = ((n>>8)&255)+amt, b = (n&255)+amt;
-      r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
-      return `rgb(${r},${g},${b})`;
-    };
-    const H = 130;          // side-wall height (px)
-    const D = 34;           // projected depth (px)
-    const STEEL = '#3f4654', STEEL_LT = '#5a6275', STEEL_DK = '#2b303b';
+    // ── Flat container outline ─────────────────────────────────────
+    // Just a bordered rectangle = the 40' HC. Orders sit inside as
+    // proportional colored blocks (width ∝ CBM), each divided by a
+    // white separator and labeled with name + CBM. Unused length is
+    // a plain light "free space" zone. No 3D, no theatrics.
     const segWidthPct = c => (c / _SHIP_CV_CAP) * 100;
-
-    // Shared builder: one flex row of proportional bands. `face` is
-    // 'wall' (full color) or 'roof' (lightened, looking down at the
-    // tops of the cargo).
-    const buildBands = face => {
-      let html = placed.filter(p => p.inC > 0).map(p => {
-        const w = segWidthPct(p.inC);
-        const bg = face === 'roof' ? shade(p.color, 34) : p.color;
-        const label = (face === 'wall' && w > 7)
-          ? `<span style="font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.4); white-space:nowrap; padding:0 4px;">${fmtCbm(p.inC)} m³</span>`
-          : '';
-        return `<div title="${p.name} — ${fmtCbm(p.inC)} m³"
-          style="width:${w}%; background:${bg}; display:flex; align-items:center; justify-content:center; overflow:hidden; border-right:1px solid rgba(0,0,0,0.12);">${label}</div>`;
-      }).join('');
-      const freePct = (freeCbm / _SHIP_CV_CAP) * 100;
-      if (freePct > 0.5) {
-        // Empty cargo space — corrugated steel interior so you can
-        // "see into" the unused length of the container.
-        const stripeBase = face === 'roof' ? '#cfd4df' : '#aeb4c2';
-        const stripeAlt  = face === 'roof' ? '#dde1ea' : '#c2c7d4';
-        const freeLbl = (face === 'wall' && freePct > 8)
-          ? `<span style="font-size:10px; font-weight:600; color:#5b6170; white-space:nowrap;">${fmtCbm(freeCbm)} m³ free</span>` : '';
-        html += `<div style="width:${freePct}%; background:repeating-linear-gradient(90deg, ${stripeBase}, ${stripeBase} 7px, ${stripeAlt} 7px, ${stripeAlt} 14px); display:flex; align-items:center; justify-content:center;">${freeLbl}</div>`;
-      }
-      return html;
-    };
+    const blocks = placed.filter(p => p.inC > 0).map(p => {
+      const w = segWidthPct(p.inC);
+      const showName = w > 12;
+      const showCbm  = w > 6;
+      return `<div title="${p.name} — ${fmtCbm(p.inC)} m³"
+        style="width:${w}%; background:${p.color}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; overflow:hidden; padding:0 4px; box-sizing:border-box; border-right:2px solid #fff;">
+        ${showName ? `<span style="font-size:11px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.35); white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis;">${p.name}</span>` : ''}
+        ${showCbm  ? `<span style="font-size:10px; font-weight:600; color:rgba(255,255,255,0.92); text-shadow:0 1px 2px rgba(0,0,0,0.3); white-space:nowrap;">${fmtCbm(p.inC)} m³</span>` : ''}
+      </div>`;
+    }).join('');
+    const freePct  = (freeCbm / _SHIP_CV_CAP) * 100;
+    const freeZone = freePct > 0.5
+      ? `<div style="width:${freePct}%; display:flex; align-items:center; justify-content:center; background:var(--surface2); color:var(--text-muted);">
+           ${freePct > 8 ? `<span style="font-size:11px; font-weight:600;">${fmtCbm(freeCbm)} m³ free</span>` : ''}
+         </div>`
+      : '';
 
     const vizHtml = `
-      <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
         <span>40' HC Container</span><span style="opacity:0.6;">${_SHIP_CV_CAP} m³ usable</span>
       </div>
-      <div style="position:relative; padding:${D}px ${D}px 0 0; overflow:hidden;">
-        <!-- ROOF: parallelogram skewed back-right, lightened bands -->
-        <div style="position:absolute; top:0; left:0; right:0; height:${D}px;
-                    transform:skewX(-45deg); transform-origin:bottom left; margin-left:${D}px;
-                    display:flex; box-shadow:inset 0 2px 4px rgba(0,0,0,0.12);">
-          ${buildBands('roof')}
-        </div>
-        <!-- END WALL: receding right cap, dark steel -->
-        <div style="position:absolute; top:0; right:0; width:${D}px; height:${H}px;
-                    transform:skewY(-45deg); transform-origin:top left;
-                    background:linear-gradient(90deg, ${STEEL_DK}, ${STEEL});
-                    border-left:2px solid ${STEEL_DK};"></div>
-        <!-- SIDE WALL: straight-on readable face -->
-        <div style="position:relative; height:${H}px; display:flex; overflow:hidden;
-                    border:3px solid ${STEEL}; border-radius:3px; background:#aeb4c2;
-                    box-shadow:0 6px 14px rgba(0,0,0,0.18);">
-          ${buildBands('wall')}
-          <!-- corner posts -->
-          <div style="position:absolute; top:0; bottom:0; left:0; width:7px; background:linear-gradient(90deg, ${STEEL_DK}, ${STEEL_LT});"></div>
-          <div style="position:absolute; top:0; bottom:0; right:0; width:7px; background:linear-gradient(90deg, ${STEEL_LT}, ${STEEL_DK});"></div>
-          <!-- subtle floor + ceiling rails -->
-          <div style="position:absolute; left:7px; right:7px; top:0; height:5px; background:rgba(0,0,0,0.16);"></div>
-          <div style="position:absolute; left:7px; right:7px; bottom:0; height:6px; background:rgba(0,0,0,0.22);"></div>
-        </div>
-        <!-- length ruler -->
-        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:4px; padding-right:${D}px;">
-          <span>0</span><span>${(_SHIP_CV_CAP/2).toFixed(0)} m³</span><span>${_SHIP_CV_CAP} m³</span>
-        </div>
+      <div style="display:flex; height:84px; border:3px solid var(--text); border-radius:8px; overflow:hidden; background:var(--surface);">
+        ${blocks}${freeZone}
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:4px;">
+        <span>0</span><span>${(_SHIP_CV_CAP/2).toFixed(0)} m³</span><span>${_SHIP_CV_CAP} m³</span>
       </div>`;
 
     const overflowBar = overflow > 0 ? `
