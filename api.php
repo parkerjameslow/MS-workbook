@@ -731,8 +731,13 @@ function ms_order_table_client(array $items, float $rate): string {
         $totFmt  = $totUsd > 0 ? '$' . number_format($totUsd, 2) : '—';
         $qtyFmt  = $qty > 0 ? number_format($qty) : '—';
         $grandTotal += $totUsd;
+        // Variant rows indent + ↳ marker under the product group.
+        $isVar    = !empty($itm['isVariant']);
+        $itemPad  = $isVar ? 'padding:9px 12px 9px 34px;' : 'padding:10px 12px;';
+        $itemCol  = $isVar ? '#6b7280' : '#1a1d2e';
+        $itemMark = $isVar ? '<span style="color:#c0c5d4;">&#8627;</span> ' : '';
         $rows .= '<tr style="border-top:1px solid #f0f2f5;">'
-               . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;">' . htmlspecialchars($itemName) . '</td>'
+               . '<td style="' . $itemPad . 'font-size:14px;color:' . $itemCol . ';">' . $itemMark . htmlspecialchars($itemName) . '</td>'
                . '<td style="padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;">' . htmlspecialchars($sku) . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;">' . $qtyFmt . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;">' . $unitUsd . '</td>'
@@ -784,8 +789,15 @@ function ms_order_table_internal(array $items, float $rate): string {
         $leadFmt  = $leadTime ? htmlspecialchars($leadTime) . 'd' : '—';
         $grandUsd += $totUsd;
         $grandRmb += $totRmb;
+        // Variant rows sit visually under their product group with a
+        // deeper indent + a ↳ marker so the parent → variant
+        // hierarchy reads at a glance.
+        $isVar    = !empty($itm['isVariant']);
+        $itemPad  = $isVar ? 'padding:9px 12px 9px 34px;' : 'padding:10px 12px;';
+        $itemCol  = $isVar ? '#6b7280' : '#1a1d2e';
+        $itemMark = $isVar ? '<span style="color:#c0c5d4;">&#8627;</span> ' : '';
         $rows .= '<tr style="border-top:1px solid #f0f2f5;">'
-               . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;">' . htmlspecialchars($itemName) . '</td>'
+               . '<td style="' . $itemPad . 'font-size:14px;color:' . $itemCol . ';">' . $itemMark . htmlspecialchars($itemName) . '</td>'
                . '<td style="padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;">' . htmlspecialchars($sku) . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;">' . $qtyFmt . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;">' . $unitUsd . '</td>'
@@ -2698,24 +2710,31 @@ switch ($action) {
                             $vq = $stripNum($v['qty'] ?? 0);
                             if ($vq <= 0 && ($v['variant'] ?? '') === '') continue;
                             $vCostRmb = $stripNum($v['priceRmb'] ?? 0) ?: $stripNum($rfqItem['priceRmb'] ?? 0);
+                            // Label is the variant name only — the
+                            // product group header above already names
+                            // the item, so "Medium Bag — Blue" would
+                            // just be noise. isVariant drives the extra
+                            // indent in the table / portal renderers.
                             $orderItems[] = [
-                                'product'  => $prod,
-                                'item'     => trim($itemName . ' — ' . ($v['variant'] ?? 'Variant'), ' —'),
-                                'sku'      => $sku,
-                                'qty'      => $vq,
-                                'priceRmb' => $saleU > 0 ? ($saleU * $rate) : $vCostRmb,
-                                'leadTime' => (string)($v['leadTime'] ?? $lead),
+                                'product'   => $prod,
+                                'item'      => ($v['variant'] ?? 'Variant') !== '' ? $v['variant'] : 'Variant',
+                                'sku'       => $sku,
+                                'qty'       => $vq,
+                                'priceRmb'  => $saleU > 0 ? ($saleU * $rate) : $vCostRmb,
+                                'leadTime'  => (string)($v['leadTime'] ?? $lead),
+                                'isVariant' => true,
                             ];
                         }
                     } else {
                         $iq = $stripNum($rfqItem['qty'] ?? 0);
                         $orderItems[] = [
-                            'product'  => $prod,
-                            'item'     => $itemName,
-                            'sku'      => $sku,
-                            'qty'      => $iq,
-                            'priceRmb' => $saleU > 0 ? ($saleU * $rate) : $stripNum($rfqItem['priceRmb'] ?? 0),
-                            'leadTime' => $lead,
+                            'product'   => $prod,
+                            'item'      => $itemName,
+                            'sku'       => $sku,
+                            'qty'       => $iq,
+                            'priceRmb'  => $saleU > 0 ? ($saleU * $rate) : $stripNum($rfqItem['priceRmb'] ?? 0),
+                            'leadTime'  => $lead,
+                            'isVariant' => false,
                         ];
                     }
                 }

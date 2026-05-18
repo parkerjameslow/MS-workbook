@@ -202,9 +202,13 @@ function portalNotify(array $order, array $items, float $rate, string $clName, s
                                . htmlspecialchars($product) . '</td></tr>';
                 $prevProd = $product;
             }
+            $isVarA    = !empty($itm['isVariant']);
+            $itemPadA  = $isVarA ? 'padding:9px 12px 9px 30px;' : 'padding:10px 12px;';
+            $itemColA  = $isVarA ? '#6b7280' : '#1a1d2e';
+            $itemMarkA = $isVarA ? "<span style='color:#c0c5d4;'>&#8627;</span> " : '';
             $approvedRows .= '<tr style="border-top:1px solid #f5f6f8;">'
                            . "<td style='padding:10px 10px;text-align:center;width:32px;'><span style='display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:#dcfce7;color:#16a34a;'><svg width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M20 6L9 17l-5-5'/></svg></span></td>"
-                           . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;'>" . htmlspecialchars($itemName) . "</td>"
+                           . "<td style='{$itemPadA}font-size:14px;color:{$itemColA};'>" . $itemMarkA . htmlspecialchars($itemName) . "</td>"
                            . "<td style='padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;'>" . htmlspecialchars($sku) . "</td>"
                            . "<td style='padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;'>" . $qtyFmt . "</td>"
                            . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;'>" . $unitUsd . "</td>"
@@ -284,9 +288,15 @@ function portalNotify(array $order, array $items, float $rate, string $clName, s
                             . "</span></td>";
             }
 
+            // Variant rows indent deeper + ↳ marker so the client
+            // sees the product → variant hierarchy at a glance.
+            $isVar    = !empty($itm['isVariant']);
+            $itemPad  = $isVar ? 'padding:9px 12px 9px 30px;' : 'padding:10px 12px;';
+            $itemCol  = $isVar ? '#6b7280' : '#1a1d2e';
+            $itemMark = $isVar ? "<span style='color:#c0c5d4;'>&#8627;</span> " : '';
             $fullTableRows .= "<tr style='background:{$rowBg};border-top:1px solid #f5f6f8;'>"
                            . $statusCell
-                           . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;'>" . htmlspecialchars($itemName) . "</td>"
+                           . "<td style='{$itemPad}font-size:14px;color:{$itemCol};'>" . $itemMark . htmlspecialchars($itemName) . "</td>"
                            . "<td style='padding:10px 12px;font-size:13px;color:#6b7280;font-family:monospace;'>" . htmlspecialchars($sku) . "</td>"
                            . "<td style='padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;'>" . $qtyFmt . "</td>"
                            . "<td style='padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;'>" . $unitUsd . "</td>"
