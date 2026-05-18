@@ -2668,20 +2668,56 @@ switch ($action) {
             [$title, $subtitle, $color] = $meta;
             $subject = "{$title} — {$order_name}";
 
-            // Build flat items list from entries
+            // Build flat items list from entries. Each variant
+            // becomes its OWN line ("Item — Variant") so the client
+            // email + portal show the full breakdown the operator
+            // sees in the collapsed Order Sheet. When the workbook
+            // carries a Client Quote sale-per-unit, we stuff
+            // priceRmb = saleUsdPerUnit × rate so every existing
+            // `priceRmb / rate` consumer (email tables, portal)
+            // renders the SALE price with zero further changes.
+            // Falls back to the raw RFQ priceRmb (cost) when Sale
+            // Per hasn't been typed yet.
             $orderItems = [];
+            $stripNum = function ($v) { return (float)str_replace(',', '', (string)$v); };
             foreach (($details['entries'] ?? []) as $entry) {
-                $prod = $entry['product'] ?? '';
+                $prod  = $entry['product'] ?? '';
+                $saleU = (float)($entry['saleUsdPerUnit'] ?? 0);
                 foreach (($entry['rfqItems'] ?? []) as $rfqItem) {
                     if (!($rfqItem['item'] ?? '') && !($rfqItem['qty'] ?? 0) && !($rfqItem['priceRmb'] ?? 0)) continue;
-                    $orderItems[] = [
-                        'product'   => $prod,
-                        'item'      => $rfqItem['item']     ?? '',
-                        'sku'       => $rfqItem['sku']      ?? '',
-                        'qty'       => (float)($rfqItem['qty']      ?? 0),
-                        'priceRmb'  => (float)($rfqItem['priceRmb'] ?? 0),
-                        'leadTime'  => (string)($rfqItem['leadTime'] ?? ''),
-                    ];
+                    $itemName = $rfqItem['item'] ?? '';
+                    $sku      = $rfqItem['sku']  ?? '';
+                    $lead     = (string)($rfqItem['leadTime'] ?? '');
+                    $variants = is_array($rfqItem['variants'] ?? null)
+                        ? array_filter($rfqItem['variants'], function ($v) {
+                            return is_array($v) && (($v['variant'] ?? '') !== '' || ($v['qty'] ?? '') !== '');
+                          })
+                        : [];
+                    if (!empty($variants)) {
+                        foreach ($variants as $v) {
+                            $vq = $stripNum($v['qty'] ?? 0);
+                            if ($vq <= 0 && ($v['variant'] ?? '') === '') continue;
+                            $vCostRmb = $stripNum($v['priceRmb'] ?? 0) ?: $stripNum($rfqItem['priceRmb'] ?? 0);
+                            $orderItems[] = [
+                                'product'  => $prod,
+                                'item'     => trim($itemName . ' — ' . ($v['variant'] ?? 'Variant'), ' —'),
+                                'sku'      => $sku,
+                                'qty'      => $vq,
+                                'priceRmb' => $saleU > 0 ? ($saleU * $rate) : $vCostRmb,
+                                'leadTime' => (string)($v['leadTime'] ?? $lead),
+                            ];
+                        }
+                    } else {
+                        $iq = $stripNum($rfqItem['qty'] ?? 0);
+                        $orderItems[] = [
+                            'product'  => $prod,
+                            'item'     => $itemName,
+                            'sku'      => $sku,
+                            'qty'      => $iq,
+                            'priceRmb' => $saleU > 0 ? ($saleU * $rate) : $stripNum($rfqItem['priceRmb'] ?? 0),
+                            'leadTime' => $lead,
+                        ];
+                    }
                 }
             }
 

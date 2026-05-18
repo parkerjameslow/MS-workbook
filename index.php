@@ -16962,15 +16962,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const label       = labelMap[notifType];
       const tot         = orderTotals(o);
 
-      // Build full entries with rfqItems for detailed emails and portal
+      // Build full entries with rfqItems for detailed emails and
+      // portal. saleUsdPerUnit = the workbook's Client Quote Total
+      // Order ÷ total qty (variant qtys summed) — what the customer
+      // is actually charged per unit. The server uses it to render
+      // every variant as its own line at the SALE price (not the
+      // RMB-cost-derived one). 0 when Sale Per hasn't been typed
+      // yet, in which case the server falls back to priceRmb/rate.
       const entriesWithDetail = (o.entries || []).map(e => {
         const key    = `${e.clientName}|${e.workbookId}`;
         const detail = workbookDetail[key] || {};
         const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
+        const _vQty = it => {
+          const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+          if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty||'').replace(/,/g,'')) || 0), 0);
+          return parseFloat(String(it.qty||'').replace(/,/g,'')) || 0;
+        };
+        const wbQty   = rfqItems.reduce((s, it) => s + _vQty(it), 0);
+        const wbQuote = parseFloat(detail.pricingClientQuoteTotal) || 0;
+        const saleUsdPerUnit = (wbQuote > 0 && wbQty > 0) ? (wbQuote / wbQty) : 0;
         return {
           clientName: e.clientName,
           workbookId: e.workbookId,
           product:    detail.product || `Workbook #${e.workbookId}`,
+          saleUsdPerUnit,
           rfqItems
         };
       });
@@ -28619,6 +28634,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     body.innerHTML = html;
   }
 
+  // Which workbooks in the Order Sheet are expanded to show their
+  // variant breakdown. Collapsed by default (empty set). Keyed by
+  // `${clientName}|${workbookId}`. Survives re-renders so editing
+  // elsewhere doesn't snap an open workbook shut.
+  const _orderSheetExpanded = new Set();
+  function toggleOrderSheetWb(key) {
+    if (_orderSheetExpanded.has(key)) _orderSheetExpanded.delete(key);
+    else _orderSheetExpanded.add(key);
+    const safe = key.replace(/"/g, '\\"');
+    const expanded = _orderSheetExpanded.has(key);
+    document.querySelectorAll(`tr[data-osh-wb="${safe}"]`).forEach(r => {
+      r.style.display = expanded ? '' : 'none';
+    });
+    const chev = document.querySelector(`.osh-chevron[data-osh-chev="${safe}"]`);
+    if (chev) chev.style.transform = expanded ? 'rotate(90deg)' : '';
+  }
+
   function renderOrderSheet() {
     const o = orderData[_currentOrderId];
     if (!o) return;
@@ -28669,72 +28701,116 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (wbLead > grandMaxLead) grandMaxLead = wbLead;
       const leadStr  = wbLead > 0 ? `${wbLead} days` : '—';
 
-      // Workbook header row (6-col: Item | Qty | Sale/Unit | Total | Lead | ×)
-      let rows = `<tr class="order-sheet-wb-header">
-        <td colspan="5">
-          <a class="order-sheet-product-link" href="${wbHref}"
-            onclick="_wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
-            ${product} <span style="font-size:11px; opacity:0.5;">→</span>
+      const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+      const fmt3 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+      // Effective qty per item = sum of variant qtys when the item
+      // has variants (the parent's own qty is a placeholder in that
+      // case, mirroring the Client Quote), else the item's own qty.
+      const itemEffQty = it => {
+        const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+        if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g,'')) || 0), 0);
+        return parseFloat(String(it.qty || '').replace(/,/g,'')) || 0;
+      };
+      const wbClientQuote = parseFloat(detail.pricingClientQuoteTotal) || 0;
+      const wbTotalQty    = rfqItems.reduce((s, it) => s + itemEffQty(it), 0);
+      const useQuote      = wbClientQuote > 0 && wbTotalQty > 0;
+      // Per-unit sale price from the Client Quote = total ÷ total qty
+      // (fees amortized; constant across the workbook's variants since
+      // Sale Per is one workbook-level value).
+      const wbSaleUnit    = (useQuote && wbTotalQty > 0) ? (wbClientQuote / wbTotalQty) : 0;
+      // Cost-side fallback per-unit USD when no Client Quote yet —
+      // qty-weighted blend so the workbook total still ≈ Σ rfq cost.
+      const wbCostUnit = (() => {
+        if (useQuote || wbTotalQty <= 0) return 0;
+        let costSum = 0;
+        rfqItems.forEach(it => {
+          const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+          if (vs.length) {
+            vs.forEach(v => {
+              const vq = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
+              const vr = parseFloat(String(v.priceRmb || '').replace(/,/g,'')) || parseFloat(it.priceRmb) || 0;
+              costSum += (vr / _fxRate) * vq;
+            });
+          } else {
+            const iq = parseFloat(String(it.qty || '').replace(/,/g,'')) || 0;
+            const ir = parseFloat(it.priceRmb) || 0;
+            costSum += (ir / _fxRate) * iq;
+          }
+        });
+        return wbTotalQty > 0 ? costSum / wbTotalQty : 0;
+      })();
+      const perUnit  = useQuote ? wbSaleUnit : wbCostUnit;
+      const wbTotal  = perUnit > 0 ? perUnit * wbTotalQty : 0;
+      grandUsd += wbTotal;
+
+      const isExpanded = _orderSheetExpanded.has(key);
+      const chevron = `<span class="osh-chevron" data-osh-chev="${esc(key)}" style="display:inline-block; margin-right:6px; opacity:0.6; transition:transform 0.15s; transform:${isExpanded ? 'rotate(90deg)' : 'none'};">▶</span>`;
+
+      // Workbook header row — click anywhere on it (except the link
+      // or the × button) to expand/collapse the variant breakdown.
+      // Shows the workbook-level summary so the row is useful even
+      // while collapsed.
+      let rows = `<tr class="order-sheet-wb-header" style="cursor:pointer;" onclick="toggleOrderSheetWb('${esc(key).replace(/'/g,"\\'")}')">
+        <td>
+          ${chevron}<a class="order-sheet-product-link" href="${wbHref}"
+            onclick="event.stopPropagation(); _wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
+            ${esc(product)} <span style="font-size:11px; opacity:0.5;">→</span>
           </a>
           ${splitBadges}
         </td>
+        <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>
+        <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+        <td style="text-align:right; font-weight:700;">${wbTotal > 0 ? '$' + fmt2(wbTotal) : '—'}</td>
+        <td style="text-align:right; color:var(--text-muted);">${leadStr}</td>
         <td style="text-align:right;">
-          <button class="order-sheet-remove" onclick="removeWorkbookFromOrder(${idx})" title="Remove">×</button>
+          <button class="order-sheet-remove" onclick="event.stopPropagation(); removeWorkbookFromOrder(${idx})" title="Remove">×</button>
         </td>
       </tr>`;
 
-      // Per-line "Total (USD)" comes straight from the Client Quote
-      // Total Order (Sale Per × qty + applied fees) — what the
-      // customer actually pays. Split across the workbook's RFQ
-      // items by qty share so multi-item workbooks still itemize.
-      // Falls back to the cost-side RFQ × qty math only when the
-      // workbook has no Client Quote cached yet (Sale Per not typed),
-      // so partially-priced orders still show a number.
-      const wbClientQuote = parseFloat(detail.pricingClientQuoteTotal) || 0;
-      const wbTotalQty    = rfqItems.reduce((s, it) => s + (parseFloat(it.qty) || 0), 0);
-      const useQuote      = wbClientQuote > 0 && wbTotalQty > 0;
-      const _fxRate       = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
-
-      // Per-unit sale price from the Client Quote = the workbook's
-      // Client Quote Total Order ÷ total qty (fees amortized over
-      // units, so sale/unit × qty reconciles to the line total).
-      // Constant across the workbook's RFQ lines since Sale Per is a
-      // single workbook-level value. fmt3 (thousandths) so the
-      // per-unit × qty math ties without per-cent rounding drift.
-      const fmt3 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-      const wbSaleUnit = (useQuote && wbTotalQty > 0) ? (wbClientQuote / wbTotalQty) : 0;
-
+      // Detail rows — one per variant (or per item when no variants).
+      // Hidden unless this workbook is expanded; toggled in-place by
+      // toggleOrderSheetWb without a full re-render.
+      const detailStyle = isExpanded ? '' : 'display:none;';
       if (rfqItems.length === 0) {
-        rows += `<tr>
-          <td colspan="6" style="padding:8px 12px 12px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
+        rows += `<tr data-osh-wb="${esc(key)}" style="${detailStyle}">
+          <td colspan="6" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
-        rows += rfqItems.map((item, lineIdx) => {
-          const priceRmb = parseFloat(item.priceRmb) || 0;
-          const qty      = parseFloat(item.qty) || 0;
-          const lineTotalUsd = useQuote
-            ? (wbTotalQty > 0 ? wbClientQuote * (qty / wbTotalQty) : 0)
-            : (priceRmb > 0 ? (priceRmb * qty) / _fxRate : 0);
-          grandUsd += lineTotalUsd;
-
-          const qtyStr    = qty          > 0 ? qty.toLocaleString('en-US') : '—';
-          const saleStr   = wbSaleUnit   > 0 ? `$${fmt3(wbSaleUnit)}` : '—';
-          const totUsdStr = lineTotalUsd > 0 ? `$${fmt2(lineTotalUsd)}` : '—';
-          // Lead shown once per workbook (on its first line) — it's a
-          // workbook-level property, not per-item.
-          const leadCell  = (lineIdx === 0)
-            ? `<td style="text-align:right; color:var(--text-muted);">${leadStr}</td>`
-            : `<td></td>`;
-
-          return `<tr class="order-sheet-line-row">
-            <td style="padding-left:24px;">${item.item || '—'}</td>
-            <td style="text-align:right;">${qtyStr}</td>
-            <td style="text-align:right; color:var(--text-muted);">${saleStr}</td>
-            <td style="text-align:right; font-weight:600;">${totUsdStr}</td>
-            ${leadCell}
-            <td></td>
-          </tr>`;
-        }).join('');
+        rfqItems.forEach(item => {
+          const vs = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
+          if (vs.length) {
+            // Item sub-header (no numbers — it's just a grouping
+            // label; the variants below carry the qty/sale/total).
+            rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
+              <td colspan="6" style="padding:6px 12px 4px 36px; font-size:12px; font-weight:600; color:var(--text);">${esc(item.item || 'Item')}</td>
+            </tr>`;
+            vs.forEach(v => {
+              const vq = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
+              const vTot = perUnit > 0 ? perUnit * vq : 0;
+              rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
+                <td style="padding-left:52px; color:var(--text-muted);">${esc(v.variant || 'Variant')}</td>
+                <td style="text-align:right;">${vq > 0 ? vq.toLocaleString('en-US') : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+                <td style="text-align:right; font-weight:600;">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
+                <td></td>
+                <td></td>
+              </tr>`;
+            });
+          } else {
+            const iq = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
+            const iTot = perUnit > 0 ? perUnit * iq : 0;
+            rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
+              <td style="padding-left:36px;">${esc(item.item || '—')}</td>
+              <td style="text-align:right;">${iq > 0 ? iq.toLocaleString('en-US') : '—'}</td>
+              <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+              <td style="text-align:right; font-weight:600;">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
+              <td></td>
+              <td></td>
+            </tr>`;
+          }
+        });
       }
 
       return rows;
