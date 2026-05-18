@@ -7952,6 +7952,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <tr>
               <th>Item</th>
               <th style="text-align:right;">Qty</th>
+              <th style="text-align:right;">Sale / Unit (USD)</th>
               <th style="text-align:right;">Total (USD)</th>
               <th style="text-align:right;">Lead</th>
               <th></th>
@@ -28665,9 +28666,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (wbLead > grandMaxLead) grandMaxLead = wbLead;
       const leadStr  = wbLead > 0 ? `${wbLead} days` : '—';
 
-      // Workbook header row (5-col layout: Item | Qty | Total | Lead | ×)
+      // Workbook header row (6-col: Item | Qty | Sale/Unit | Total | Lead | ×)
       let rows = `<tr class="order-sheet-wb-header">
-        <td colspan="4">
+        <td colspan="5">
           <a class="order-sheet-product-link" href="${wbHref}"
             onclick="_wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
             ${product} <span style="font-size:11px; opacity:0.5;">→</span>
@@ -28691,9 +28692,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const useQuote      = wbClientQuote > 0 && wbTotalQty > 0;
       const _fxRate       = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
 
+      // Per-unit sale price from the Client Quote = the workbook's
+      // Client Quote Total Order ÷ total qty (fees amortized over
+      // units, so sale/unit × qty reconciles to the line total).
+      // Constant across the workbook's RFQ lines since Sale Per is a
+      // single workbook-level value. fmt3 (thousandths) so the
+      // per-unit × qty math ties without per-cent rounding drift.
+      const fmt3 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      const wbSaleUnit = (useQuote && wbTotalQty > 0) ? (wbClientQuote / wbTotalQty) : 0;
+
       if (rfqItems.length === 0) {
         rows += `<tr>
-          <td colspan="5" style="padding:8px 12px 12px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
+          <td colspan="6" style="padding:8px 12px 12px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
         rows += rfqItems.map((item, lineIdx) => {
@@ -28705,6 +28715,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           grandUsd += lineTotalUsd;
 
           const qtyStr    = qty          > 0 ? qty.toLocaleString('en-US') : '—';
+          const saleStr   = wbSaleUnit   > 0 ? `$${fmt3(wbSaleUnit)}` : '—';
           const totUsdStr = lineTotalUsd > 0 ? `$${fmt2(lineTotalUsd)}` : '—';
           // Lead shown once per workbook (on its first line) — it's a
           // workbook-level property, not per-item.
@@ -28715,6 +28726,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           return `<tr class="order-sheet-line-row">
             <td style="padding-left:24px;">${item.item || '—'}</td>
             <td style="text-align:right;">${qtyStr}</td>
+            <td style="text-align:right; color:var(--text-muted);">${saleStr}</td>
             <td style="text-align:right; font-weight:600;">${totUsdStr}</td>
             ${leadCell}
             <td></td>
@@ -28748,7 +28760,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const showShipRow = totalCbm > 0 || totalWeightKg > 0;
     const shipRow = showShipRow
       ? `<tr>
-          <td colspan="2" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
+          <td colspan="3" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
           <td colspan="3" style="text-align:right; font-size:12px; padding-top:4px;">
             <span style="color:var(--text-muted); margin-right:14px;">Weight: <strong style="color:var(--text);">${wtStr}</strong></span>
             <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmHtml}</strong></span>
@@ -28759,7 +28771,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </tr>`
       : '';
     tfoot.innerHTML = `<tr>
-      <td colspan="2" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
+      <td colspan="3" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
       <td style="text-align:right; font-size:15px; font-weight:800;">${grandUsdStr}</td>
       <td style="text-align:right; font-weight:700; color:var(--text-muted);">${grandLeadStr}</td>
       <td></td>
