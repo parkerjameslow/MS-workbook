@@ -5327,6 +5327,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cursor: pointer; transition: background 0.15s, border-color 0.15s;
     }
     .btn-danger:hover { background: rgba(239,68,68,0.08); border-color: #ef4444; }
+    /* Orders-screen Delete: a touch more solid than the shared ghost style */
+    #order-delete-btn { background: rgba(239,68,68,0.10); border-color: rgba(239,68,68,0.65); }
+    #order-delete-btn:hover { background: rgba(239,68,68,0.18); border-color: #ef4444; }
     /* Shipment order cards */
     .ship-order-card {
       border: 1px solid var(--border); border-radius: var(--radius);
@@ -7904,7 +7907,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export CSV
         </button>
-        <button class="btn-danger" onclick="deleteOrder(_currentOrderId)">Delete</button>
+        <button class="btn-danger" id="order-delete-btn" onclick="deleteOrder(_currentOrderId)">Delete</button>
       </div>
     </div>
 
