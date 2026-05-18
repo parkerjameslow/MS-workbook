@@ -7641,6 +7641,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
+    <!-- Container View — each order rendered as its own colored
+         volume inside a 40' HC container (67 m³). Two styles the
+         operator can toggle between (Segments / 3D Blocks); a
+         legend maps color → order + CBM. Overflow beyond one
+         container shows as an amber bar. Populated by
+         renderShipmentContainerViz(). -->
+    <div class="section-card" style="margin:16px 0 0;" id="ship-container-viz-card">
+      <div class="section-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="section-title">Container View</span>
+          <span id="ship-cv-cbm-summary" style="font-size:12px; color:var(--text-muted);"></span>
+        </div>
+        <div id="ship-cv-style-toggle" style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+          <button type="button" id="ship-cv-btn-seg" class="ship-cv-style-btn active" onclick="setShipContainerVizStyle('seg')"
+            style="font-size:12px; font-weight:600; padding:5px 12px; border:none; background:var(--accent); color:#fff; cursor:pointer; font-family:inherit;">Segments</button>
+          <button type="button" id="ship-cv-btn-3d" class="ship-cv-style-btn" onclick="setShipContainerVizStyle('3d')"
+            style="font-size:12px; font-weight:600; padding:5px 12px; border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-family:inherit;">3D Blocks</button>
+        </div>
+      </div>
+      <div class="section-body" style="padding:16px;">
+        <div id="ship-cv-empty" style="padding:24px 0; text-align:center; color:var(--text-muted); font-size:13px;">
+          Add orders to see the container fill.
+        </div>
+        <div id="ship-cv-body" style="display:none;"></div>
+      </div>
+    </div>
+
   </main>
 </div><!-- /#view-shipment-detail -->
 
@@ -26406,6 +26433,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }).join('');
 
     listEl.innerHTML = orderCardsHtml + sampleCardsHtml;
+    // Keep the Container View in lockstep with the order list —
+    // every add/remove/detail-load path funnels through here.
+    if (typeof renderShipmentContainerViz === 'function') renderShipmentContainerViz();
   }
 
   function deleteShipment(id) {
@@ -26435,6 +26465,179 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveShipments();
     renderShipmentOrders();
     renderShipmentUtilization();
+  }
+
+  // ── Container View ─────────────────────────────────────────────────
+  // Each order in the shipment is one colored volume inside a 40' HC
+  // container (67 m³ usable). Two styles the operator can toggle:
+  //   'seg' — proportional horizontal segments
+  //   '3d'  — pseudo-isometric stacked blocks
+  // The container graphic is a FIXED 67 m³ scale; volume beyond that
+  // spills into an amber overflow bar (one container + overflow bar,
+  // per the operator's choice). Per-order color reuses the shared
+  // client palette so the same order keeps a stable hue across views.
+  let _shipCvStyle = 'seg';
+  const _SHIP_CV_PALETTE = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8','#e879f9','#facc15'];
+  const _SHIP_CV_CAP = 67; // usable m³ in a 40' HC
+
+  function setShipContainerVizStyle(style) {
+    _shipCvStyle = (style === '3d') ? '3d' : 'seg';
+    const segBtn = document.getElementById('ship-cv-btn-seg');
+    const tdBtn  = document.getElementById('ship-cv-btn-3d');
+    [['seg', segBtn], ['3d', tdBtn]].forEach(([k, b]) => {
+      if (!b) return;
+      const on = (_shipCvStyle === k);
+      b.style.background = on ? 'var(--accent)' : 'transparent';
+      b.style.color      = on ? '#fff' : 'var(--text-muted)';
+      b.classList.toggle('active', on);
+    });
+    renderShipmentContainerViz();
+  }
+
+  function renderShipmentContainerViz() {
+    const card  = document.getElementById('ship-container-viz-card');
+    const empty = document.getElementById('ship-cv-empty');
+    const body  = document.getElementById('ship-cv-body');
+    const summ  = document.getElementById('ship-cv-cbm-summary');
+    if (!card || !body) return;
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+
+    // One volume per order (orders only — samples have no CBM model).
+    const orders = (s.entries || [])
+      .filter(e => e.orderId && orderData[e.orderId])
+      .map((e, i) => {
+        const o  = orderData[e.orderId];
+        const st = (typeof orderShipStats === 'function') ? orderShipStats(e.orderId) : { totalCbm: 0 };
+        return {
+          id:    e.orderId,
+          name:  o.name || `Order #${e.orderId}`,
+          cbm:   parseFloat(st.totalCbm) || 0,
+          color: _SHIP_CV_PALETTE[i % _SHIP_CV_PALETTE.length],
+        };
+      })
+      .filter(x => x.cbm > 0);
+
+    if (orders.length === 0) {
+      if (empty) { empty.style.display = ''; empty.textContent =
+        (s.entries || []).some(e => e.orderId) ? 'Orders have no CBM yet — open each workbook\'s Shipping tab to populate it.' : 'Add orders to see the container fill.'; }
+      body.style.display = 'none';
+      if (summ) summ.textContent = '';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    body.style.display = '';
+
+    const totalCbm  = orders.reduce((a, x) => a + x.cbm, 0);
+    const overflow  = Math.max(0, totalCbm - _SHIP_CV_CAP);
+    const freeCbm   = Math.max(0, _SHIP_CV_CAP - totalCbm);
+    const fmtCbm    = n => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const fillPct   = Math.min(100, (totalCbm / _SHIP_CV_CAP) * 100);
+
+    if (summ) {
+      summ.innerHTML = overflow > 0
+        ? `<span style="color:#d97706; font-weight:700;">${fmtCbm(totalCbm)} / ${_SHIP_CV_CAP} m³ · over by ${fmtCbm(overflow)}</span>`
+        : `${fmtCbm(totalCbm)} / ${_SHIP_CV_CAP} m³ · ${fmtCbm(freeCbm)} free`;
+    }
+
+    // Split each order into the portion that fits in the single
+    // container vs. the portion that spills to the overflow bar.
+    let cum = 0;
+    const placed = orders.map(o => {
+      const inC  = Math.max(0, Math.min(o.cbm, _SHIP_CV_CAP - cum));
+      const over = o.cbm - inC;
+      cum += o.cbm;
+      return { ...o, inC, over };
+    });
+
+    const legend = `
+      <div style="display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:16px;">
+        ${orders.map(o => `
+          <div style="display:flex; align-items:center; gap:7px; font-size:12px;">
+            <span style="width:12px; height:12px; border-radius:3px; background:${o.color}; flex-shrink:0; box-shadow:0 0 0 1px rgba(0,0,0,0.08);"></span>
+            <span style="font-weight:600; color:var(--text);">${o.name}</span>
+            <span style="color:var(--text-muted);">${fmtCbm(o.cbm)} m³</span>
+          </div>`).join('')}
+      </div>`;
+
+    let vizHtml = '';
+    if (_shipCvStyle === 'seg') {
+      // Flat proportional container: a 40' box whose full width = 67
+      // m³. Segments are laid left→right at cbm/67 of the width; the
+      // unused tail is a hatched "free space" zone.
+      const segs = placed.filter(p => p.inC > 0).map(p => `
+        <div title="${p.name} — ${fmtCbm(p.inC)} m³"
+             style="width:${(p.inC / _SHIP_CV_CAP) * 100}%; background:${p.color}; display:flex; align-items:center; justify-content:center; overflow:hidden; border-right:1px solid rgba(255,255,255,0.35);">
+          <span style="font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.35); white-space:nowrap; padding:0 4px;">${(p.inC / _SHIP_CV_CAP) * 100 > 7 ? fmtCbm(p.inC) + ' m³' : ''}</span>
+        </div>`).join('');
+      const freePct = (freeCbm / _SHIP_CV_CAP) * 100;
+      const freeZone = freePct > 0.5 ? `
+        <div style="width:${freePct}%; background:repeating-linear-gradient(45deg, var(--surface2), var(--surface2) 6px, var(--surface) 6px, var(--surface) 12px); display:flex; align-items:center; justify-content:center;">
+          <span style="font-size:10px; color:var(--text-muted); white-space:nowrap;">${freePct > 8 ? fmtCbm(freeCbm) + ' m³ free' : ''}</span>
+        </div>` : '';
+      vizHtml = `
+        <div style="position:relative;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
+            <span>40' HC Container</span><span style="opacity:0.6;">${_SHIP_CV_CAP} m³ usable</span>
+          </div>
+          <div style="display:flex; height:90px; border:2px solid var(--text); border-radius:6px; overflow:hidden; background:var(--surface);
+                      box-shadow:inset 0 0 0 4px var(--surface), inset 0 0 0 5px rgba(0,0,0,0.06);">
+            ${segs}${freeZone}
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:3px;">
+            <span>0</span><span>${(_SHIP_CV_CAP/2).toFixed(0)} m³</span><span>${_SHIP_CV_CAP} m³</span>
+          </div>
+        </div>`;
+    } else {
+      // Pseudo-isometric: a skewed container "floor" with colored
+      // slabs stacked along its length, each slab depth ∝ cbm. Top
+      // + right faces faked with lighten/darken for a 3D read.
+      const shade = (hex, amt) => {
+        const n = parseInt(hex.slice(1), 16);
+        let r = (n>>16)+amt, g = ((n>>8)&255)+amt, b = (n&255)+amt;
+        r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b));
+        return `rgb(${r},${g},${b})`;
+      };
+      const slabs = placed.filter(p => p.inC > 0).map(p => {
+        const w = (p.inC / _SHIP_CV_CAP) * 100;
+        return `
+          <div title="${p.name} — ${fmtCbm(p.inC)} m³" style="position:relative; width:${w}%; height:64px; background:${p.color};">
+            <div style="position:absolute; left:0; right:0; top:-12px; height:12px; background:${shade(p.color,28)}; transform:skewX(-45deg); transform-origin:bottom left;"></div>
+            <div style="position:absolute; top:-12px; bottom:0; right:-12px; width:12px; background:${shade(p.color,-30)}; transform:skewY(-45deg); transform-origin:top left;"></div>
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">
+              <span style="font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.4); white-space:nowrap;">${w > 9 ? fmtCbm(p.inC)+' m³' : ''}</span>
+            </div>
+          </div>`;
+      }).join('');
+      const freePct = (freeCbm / _SHIP_CV_CAP) * 100;
+      const freeSlab = freePct > 0.5 ? `<div style="width:${freePct}%; height:64px; background:repeating-linear-gradient(45deg, var(--surface2), var(--surface2) 6px, var(--surface) 6px, var(--surface) 12px); border-left:1px dashed var(--border);"></div>` : '';
+      vizHtml = `
+        <div style="padding:18px 18px 8px;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
+            <span>40' HC Container</span><span style="opacity:0.6;">${_SHIP_CV_CAP} m³ usable</span>
+          </div>
+          <div style="display:flex; align-items:flex-end; height:76px; padding-right:12px; border-left:2px solid var(--text); border-bottom:2px solid var(--text);">
+            ${slabs}${freeSlab}
+          </div>
+        </div>`;
+    }
+
+    const overflowBar = overflow > 0 ? `
+      <div style="margin-top:14px; padding:10px 14px; background:rgba(217,119,6,0.10); border:1px solid rgba(217,119,6,0.35); border-radius:8px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px;">
+          <span style="font-weight:700; color:#d97706;">⚠ Over one container by ${fmtCbm(overflow)} m³</span>
+          <span style="color:var(--text-muted);">Needs a 2nd container (or trim the load)</span>
+        </div>
+        <div style="margin-top:8px; display:flex; height:22px; border-radius:5px; overflow:hidden; border:1px dashed rgba(217,119,6,0.5);">
+          ${placed.filter(p => p.over > 0).map(p => `
+            <div title="${p.name} overflow — ${fmtCbm(p.over)} m³"
+                 style="width:${(p.over / overflow) * 100}%; background:${p.color}; opacity:0.65; display:flex; align-items:center; justify-content:center;">
+              <span style="font-size:9px; font-weight:700; color:#fff; text-shadow:0 1px 1px rgba(0,0,0,0.4); white-space:nowrap;">${(p.over/overflow)*100 > 12 ? fmtCbm(p.over) : ''}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : '';
+
+    body.innerHTML = vizHtml + overflowBar + legend;
   }
 
   function renderShipmentUtilization() {
