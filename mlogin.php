@@ -24,9 +24,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+// Read the request body once (reused for credentials below).
+$rawBody  = file_get_contents('php://input');
+$jsonBody = json_decode($rawBody, true);
+if (!is_array($jsonBody)) $jsonBody = [];
+
+// The iOS app can't reliably send a session cookie (Expo Go fetch fails on
+// credentialed/Cookie-header requests), so it passes its session id as a
+// plain "sid" parameter instead. Adopt it before the session starts. Falls
+// back to the cookie if no sid is supplied (charset-restricted for safety).
+$msid = $_GET['sid'] ?? $_POST['sid'] ?? $jsonBody['sid'] ?? '';
+if ($msid !== '' && preg_match('/^[A-Za-z0-9,\-]{8,64}$/', $msid)) {
+    session_id($msid);
+}
+
 if (session_status() === PHP_SESSION_NONE) {
-    // Adopts the PHPSESSID the mobile client supplies (same session the app
-    // then uses against api.php). Matches login.php's session behaviour.
     session_start();
 }
 
@@ -36,12 +48,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// Accept a JSON body or form-encoded fields.
-$raw  = file_get_contents('php://input');
-$body = json_decode($raw, true);
-if (!is_array($body)) $body = [];
-$username = trim($body['username'] ?? $_POST['username'] ?? '');
-$password = $body['password'] ?? $_POST['password'] ?? '';
+// Accept a JSON body or form-encoded fields (body already read above).
+$username = trim($jsonBody['username'] ?? $_POST['username'] ?? '');
+$password = $jsonBody['password'] ?? $_POST['password'] ?? '';
 
 if ($username === '' || $password === '') {
     http_response_code(400);

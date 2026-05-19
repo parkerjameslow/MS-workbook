@@ -25,6 +25,14 @@ try {
     exit;
 }
 
+// Mobile clients (iOS Expo Go) can't reliably send a session cookie, so they
+// pass their session id as ?msid=. Adopt it before auth.php starts the
+// session. No-op when absent — the website never sends it, so its behaviour
+// is unchanged. Charset-restricted to a valid session-id pattern.
+if (!empty($_GET['msid']) && preg_match('/^[A-Za-z0-9,\-]{8,64}$/', $_GET['msid'])) {
+    session_id($_GET['msid']);
+}
+
 require_once __DIR__ . '/auth.php';
 requireAuth();
 $sessionUser = getSessionUser();
