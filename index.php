@@ -15020,30 +15020,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const effectiveUnitWt = unitWeightKg > 0 ? unitWeightKg :
       (innerWeightKg > 0 && unitsPerInner > 0 ? innerWeightKg / unitsPerInner : 0);
 
-    if (tierQty > 0 && palletEl) {
-      let totalCartons = null;
-      if (unitsPerOuter > 0) {
-        // Best path: carton counts are fully configured
-        totalCartons = Math.ceil(tierQty / unitsPerOuter);
-      } else if (effectiveUnitWt > 0 && outerWeightKg > 0 && outerWeightKg >= effectiveUnitWt) {
-        // Fallback: estimate units-per-outer from weight ratio
-        const estimatedUnitsPerOuter = Math.max(1, Math.round(outerWeightKg / effectiveUnitWt));
-        totalCartons = Math.ceil(tierQty / estimatedUnitsPerOuter);
-      } else if (effectiveUnitWt > 0) {
-        // Last resort: treat each unit as its own carton so total weight = unit_weight × tier_qty
-        const outerWtEl = document.getElementById('carton-outer-weight');
-        if (outerWtEl) {
-          outerWtEl.value = effectiveUnitWt.toFixed(3);
-          convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
-        }
-        totalCartons = tierQty;
-      }
-      if (totalCartons !== null) {
-        palletEl.value = totalCartons;
-        renderPalletViz();
-        calcFreight();
+    // The input #pallet-total-cartons is now the "Total Units to
+    // Ship" field — the operator's authoritative unit count. This
+    // function used to also stomp it with the DERIVED CARTON COUNT
+    // (ceil(tierQty / unitsPerOuter)) whenever a tier was picked,
+    // which is why the field kept reverting to e.g. "30" instead of
+    // the 5,925-unit RFQ Grand Total after a hard refresh.
+    // The write is gone; downstream freight / pallet code derives
+    // carton count from the units field directly, so nothing else
+    // breaks. The unit-weight backfill below is preserved — that's
+    // a real ergonomic fill that only writes to carton-outer-weight
+    // when both inner_count and a usable outer weight are missing.
+    if (tierQty > 0
+        && unitsPerOuter <= 0
+        && !(effectiveUnitWt > 0 && outerWeightKg > 0 && outerWeightKg >= effectiveUnitWt)
+        && effectiveUnitWt > 0) {
+      const outerWtEl = document.getElementById('carton-outer-weight');
+      if (outerWtEl) {
+        outerWtEl.value = effectiveUnitWt.toFixed(3);
+        convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
       }
     }
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof calcFreight === 'function')      calcFreight();
   }
 
   function collectTiersFrom(tbodyId) {
