@@ -4828,6 +4828,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       gap: 16px; margin-bottom: 24px;
     }
     @media (max-width: 600px) { .ship-util-grid { grid-template-columns: 1fr; } }
+
+    /* ── Phone-width hardening (≤768px) ───────────────────────────
+       Targeted overrides for components added recently that didn't
+       have explicit phone treatment. Pairs with the main mobile
+       block earlier that handles the sidebar drawer + structural
+       containment. */
+    @media (max-width: 768px) {
+      /* Order card stat strip — 7-up grid collapses to 2-up so the
+         numbers stay readable instead of cramming into 50px slivers.
+         CBM cell spans the full row since the fill bar reads better
+         at width. */
+      .oc-stat-strip {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 10px 12px;
+        padding: 12px;
+      }
+      .oc-stat--cbm { grid-column: 1 / -1; }
+      .oc-stat-val   { font-size: 14px; }
+      .oc-stat-label { font-size: 10px; }
+
+      /* Order card top row stacks: client / workbooks / total flow
+         vertically. Borders flip from left-of-section to top-of-
+         section so the dividers still read. */
+      .oc-card-main      { flex-direction: column; gap: 12px; }
+      .oc-left           { flex: 0 0 auto; min-width: 0; padding: 0; }
+      .oc-wb-list        { border-left: none; border-top: 1px solid var(--border); padding: 12px 0 0; }
+      .oc-right-wrap     { border-left: none; border-top: 1px solid var(--border); padding: 12px 0 0; justify-content: flex-start; flex: 0 0 auto; }
+      .oc-grand-total    { align-items: flex-start; }
+
+      /* Order detail header — drop the controls into a wrapping row
+         instead of a single line that would overflow the viewport. */
+      .order-detail-controls { flex-wrap: wrap; gap: 8px; }
+
+      /* Tap targets — bump form controls + buttons up to ~40px so
+         they're easy to hit on iOS without zooming. Also nudges
+         input font-size to 16px to suppress iOS auto-zoom on focus. */
+      input[type="text"],
+      input[type="number"],
+      input[type="date"],
+      input[type="email"],
+      select,
+      textarea {
+        font-size: 16px !important;
+        min-height: 38px;
+      }
+      .btn { min-height: 38px; }
+    }
     .ship-util-block {
       background: var(--surface2); border: 1px solid var(--border);
       border-radius: var(--radius); padding: 14px 16px;
@@ -5291,7 +5338,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     /* Order sheet table */
-    .order-sheet-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .order-sheet-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
     .order-sheet-table th {
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
       color: var(--text-muted); padding: 8px 12px; text-align: left;
@@ -11930,7 +11977,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const liveKind = appliedKind || 'actual';
         // Three-column grid so A/B/C stay on the same row across the
         // full panel width.
-        return `<div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px;">
+        // auto-fit keeps the three-up layout on desktop but stacks
+        // (or 2-ups) when the viewport narrows past ~720px — phone
+        // operators can still read the comparison without horizontal
+        // scrolling.
+        return `<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
           ${card('actual', 'A · Actual (Partial)',           linesA, footerA, null,    liveKind === 'actual')}
           ${card('half',   'B · Half Container Pitch (LCL)', linesB, footerB, actionB, liveKind === 'half')}
           ${card('full',   'C · Full Container Pitch',       linesC, footerC, actionC, liveKind === 'full')}
@@ -29277,7 +29328,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       const addFormHtml = isAddOpen ? `
         <div style="margin-top:8px; padding:10px; border:1px dashed var(--accent); border-radius:6px; background:rgba(107,147,255,0.05);">
-          <div style="display:grid; grid-template-columns:1fr 1fr 2fr; gap:8px; margin-bottom:8px;">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-bottom:8px;">
             <div>
               <label style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:3px;">Amount (USD)</label>
               <input type="number" id="pay-new-amt" step="0.01" min="0" placeholder="${remaining > 0 ? remaining.toFixed(2) : '0.00'}" autofocus
