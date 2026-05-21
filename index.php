@@ -26571,35 +26571,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     body.style.display = '';
 
     const totalCbm  = orders.reduce((a, x) => a + x.cbm, 0);
-    const overflow  = Math.max(0, totalCbm - _SHIP_CV_CAP);
-    const freeCbm   = Math.max(0, _SHIP_CV_CAP - totalCbm);
     const totalWtKg = orders.reduce((a, x) => a + (x.weightKg || 0), 0);
-    const wtOver    = Math.max(0, totalWtKg - _SHIP_CV_WT_CAP);
-    const wtFree    = Math.max(0, _SHIP_CV_WT_CAP - totalWtKg);
     const fmtCbm    = n => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     const fmtKg     = n => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
 
-    if (summ) {
-      const cbmTxt = overflow > 0
-        ? `<span style="color:#d97706; font-weight:700;">${fmtCbm(totalCbm)} / ${_SHIP_CV_CAP} m³ · over by ${fmtCbm(overflow)}</span>`
-        : `${fmtCbm(totalCbm)} / ${_SHIP_CV_CAP} m³ · ${fmtCbm(freeCbm)} free`;
-      const wtTxt = totalWtKg > 0
-        ? (wtOver > 0
-          ? ` · <span style="color:#d97706; font-weight:700;">${fmtKg(totalWtKg)} / ${fmtKg(_SHIP_CV_WT_CAP)} kg · over by ${fmtKg(wtOver)}</span>`
-          : ` · ${fmtKg(totalWtKg)} / ${fmtKg(_SHIP_CV_WT_CAP)} kg`)
-        : '';
-      summ.innerHTML = cbmTxt + wtTxt;
-    }
-
-    // Split each order into the portion that fits in the single
-    // container vs. the portion that spills to the overflow bar.
-    let cum = 0;
-    const placed = orders.map(o => {
-      const inC  = Math.max(0, Math.min(o.cbm, _SHIP_CV_CAP - cum));
-      const over = o.cbm - inC;
-      cum += o.cbm;
-      return { ...o, inC, over };
+    // Distribute orders across as many 67 m³ containers as needed.
+    // Orders that don't fit in the current container roll into the
+    // next; if a single order is itself larger than 67 m³ it splits
+    // across containers (same color carries continuity). Each
+    // container is rendered as its own outline below.
+    const containers = [];
+    let active = { fills: [], used: 0 };
+    orders.forEach(o => {
+      let remaining = o.cbm;
+      while (remaining > 0) {
+        if (active.used >= _SHIP_CV_CAP - 0.0001) {
+          containers.push(active);
+          active = { fills: [], used: 0 };
+        }
+        const take = Math.min(remaining, _SHIP_CV_CAP - active.used);
+        active.fills.push({ id: o.id, name: o.name, color: o.color, cbm: take });
+        active.used += take;
+        remaining   -= take;
+      }
     });
+    if (active.used > 0 || containers.length === 0) containers.push(active);
+    const containerCount = containers.length;
+
+    // Header summary — now multi-container aware: when more than one
+    // container is in use, the cap labels show the COMBINED capacity
+    // so "over by" only fires when total exceeds N × 67 m³ (or
+    // N × 26,000 kg) rather than the single-container limit.
+    if (summ) {
+      const cbmCapTot = _SHIP_CV_CAP * containerCount;
+      const cbmOver   = Math.max(0, totalCbm - cbmCapTot);
+      const cbmFree   = Math.max(0, cbmCapTot - totalCbm);
+      const wtCapTot  = _SHIP_CV_WT_CAP * containerCount;
+      const wtOverAll = Math.max(0, totalWtKg - wtCapTot);
+      const cnt       = containerCount > 1 ? ` · ${containerCount} containers` : '';
+      const cbmTxt = cbmOver > 0
+        ? `<span style="color:#d97706; font-weight:700;">${fmtCbm(totalCbm)} / ${fmtCbm(cbmCapTot)} m³ · over by ${fmtCbm(cbmOver)}</span>`
+        : `${fmtCbm(totalCbm)} / ${fmtCbm(cbmCapTot)} m³ · ${fmtCbm(cbmFree)} free`;
+      const wtTxt = totalWtKg > 0
+        ? (wtOverAll > 0
+          ? ` · <span style="color:#d97706; font-weight:700;">${fmtKg(totalWtKg)} / ${fmtKg(wtCapTot)} kg · over by ${fmtKg(wtOverAll)}</span>`
+          : ` · ${fmtKg(totalWtKg)} / ${fmtKg(wtCapTot)} kg`)
+        : '';
+      summ.innerHTML = cbmTxt + wtTxt + cnt;
+    }
 
     const legend = `
       <div style="display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:16px;">
@@ -26607,56 +26626,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div style="display:flex; align-items:center; gap:7px; font-size:12px;">
             <span style="width:12px; height:12px; border-radius:3px; background:${o.color}; flex-shrink:0; box-shadow:0 0 0 1px rgba(0,0,0,0.08);"></span>
             <span style="font-weight:600; color:var(--text);">${o.name}</span>
-            <span style="color:var(--text-muted);">${fmtCbm(o.cbm)} m³</span>
+            <span style="color:var(--text-muted);">${fmtCbm(o.cbm)} m³${o.weightKg > 0 ? ` · ${fmtKg(o.weightKg)} kg` : ''}</span>
           </div>`).join('')}
       </div>`;
 
-    // ── Flat container outline ─────────────────────────────────────
-    // Just a bordered rectangle = the 40' HC. Orders sit inside as
-    // proportional colored blocks (width ∝ CBM), each divided by a
-    // white separator and labeled with name + CBM. Unused length is
-    // a plain light "free space" zone. No 3D, no theatrics.
-    const segWidthPct = c => (c / _SHIP_CV_CAP) * 100;
-    const blocks = placed.filter(p => p.inC > 0).map(p => {
-      const w = segWidthPct(p.inC);
-      const showName = w > 12;
-      const showCbm  = w > 6;
-      return `<div title="${p.name} — ${fmtCbm(p.inC)} m³"
-        style="width:${w}%; background:${p.color}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; overflow:hidden; padding:0 4px; box-sizing:border-box; border-right:2px solid #fff;">
-        ${showName ? `<span style="font-size:11px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.35); white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis;">${p.name}</span>` : ''}
-        ${showCbm  ? `<span style="font-size:10px; font-weight:600; color:rgba(255,255,255,0.92); text-shadow:0 1px 2px rgba(0,0,0,0.3); white-space:nowrap;">${fmtCbm(p.inC)} m³</span>` : ''}
-      </div>`;
-    }).join('');
-    const freePct  = (freeCbm / _SHIP_CV_CAP) * 100;
-    const freeZone = freePct > 0.5
-      ? `<div style="width:${freePct}%; display:flex; align-items:center; justify-content:center; background:var(--surface2); color:var(--text-muted);">
-           ${freePct > 8 ? `<span style="font-size:11px; font-weight:600;">${fmtCbm(freeCbm)} m³ free</span>` : ''}
-         </div>`
-      : '';
+    // ── Container outlines (one per 67 m³ slice) ───────────────────
+    // Each container = a bordered rectangle. Orders inside as
+    // proportional colored blocks (width ∝ CBM share of 67), each
+    // divided by a white separator and labeled with name + CBM.
+    // Unused length renders as a plain "X m³ free" zone. Orders
+    // that span multiple containers carry the same color so the
+    // operator can trace one shipment across the row.
+    const renderContainer = (c, idx) => {
+      const used     = c.used;
+      const freeC    = Math.max(0, _SHIP_CV_CAP - used);
+      const fillsHtml = c.fills.map(f => {
+        const w = (f.cbm / _SHIP_CV_CAP) * 100;
+        const showName = w > 12;
+        const showCbm  = w > 6;
+        return `<div title="${f.name} — ${fmtCbm(f.cbm)} m³"
+          style="width:${w}%; background:${f.color}; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; overflow:hidden; padding:0 4px; box-sizing:border-box; border-right:2px solid #fff;">
+          ${showName ? `<span style="font-size:11px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.35); white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis;">${f.name}</span>` : ''}
+          ${showCbm  ? `<span style="font-size:10px; font-weight:600; color:rgba(255,255,255,0.92); text-shadow:0 1px 2px rgba(0,0,0,0.3); white-space:nowrap;">${fmtCbm(f.cbm)} m³</span>` : ''}
+        </div>`;
+      }).join('');
+      const freePct = (freeC / _SHIP_CV_CAP) * 100;
+      const freeZone = freePct > 0.5
+        ? `<div style="width:${freePct}%; display:flex; align-items:center; justify-content:center; background:var(--surface2); color:var(--text-muted);">
+             ${freePct > 8 ? `<span style="font-size:11px; font-weight:600;">${fmtCbm(freeC)} m³ free</span>` : ''}
+           </div>`
+        : '';
+      const label = containerCount > 1
+        ? `Container ${idx + 1} of ${containerCount}`
+        : `40' HC Container`;
+      return `
+        <div style="margin-bottom:${idx < containerCount - 1 ? 12 : 0}px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
+            <span>${label}</span><span style="opacity:0.6;">${fmtCbm(used)} / ${_SHIP_CV_CAP} m³</span>
+          </div>
+          <div style="display:flex; height:84px; border:3px solid var(--text); border-radius:8px; overflow:hidden; background:var(--surface);">
+            ${fillsHtml}${freeZone}
+          </div>
+        </div>`;
+    };
 
-    const vizHtml = `
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
-        <span>40' HC Container</span><span style="opacity:0.6;">${_SHIP_CV_CAP} m³ usable</span>
-      </div>
-      <div style="display:flex; height:84px; border:3px solid var(--text); border-radius:8px; overflow:hidden; background:var(--surface);">
-        ${blocks}${freeZone}
-      </div>
-      <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:4px;">
-        <span>0</span><span>${(_SHIP_CV_CAP/2).toFixed(0)} m³</span><span>${_SHIP_CV_CAP} m³</span>
-      </div>` + buildWeightBar();
+    const vizHtml = containers.map(renderContainer).join('') + buildWeightBar();
 
-    // Weight cap bar — proportional per-order weight contribution
-    // against the 26,000 kg truck axle limit. Same per-order colors
-    // as the container, so the operator can map "this color is
-    // heavy" vs "this color is bulky" at a glance. Hidden when no
-    // order has weight cached.
+    // Weight cap bar — scales against (N containers × 26,000 kg).
+    // When the cargo spans multiple containers via CBM, the weight
+    // cap likewise scales since each truck-axle limit is per
+    // container. Per-order colors match the container blocks above
+    // so the operator can map "this color is heavy" vs "bulky".
+    // Hidden when no order has weight cached.
     function buildWeightBar() {
       if (totalWtKg <= 0) return '';
-      const cap = _SHIP_CV_WT_CAP;
-      // Each order's bar width = its weight / max(total, cap) so
-      // overflow visibly squeezes everything tighter and the
-      // amber over-bar shows the excess.
-      const scaleMax = Math.max(totalWtKg, cap);
+      const perCap = _SHIP_CV_WT_CAP;
+      const wtCap  = perCap * containerCount;
+      const wtOverAll = Math.max(0, totalWtKg - wtCap);
+      const wtFreeAll = Math.max(0, wtCap - totalWtKg);
+      const scaleMax  = Math.max(totalWtKg, wtCap);
       const wtBlocks = orders.filter(o => o.weightKg > 0).map(o => {
         const w = (o.weightKg / scaleMax) * 100;
         const showLbl = w > 10;
@@ -26665,43 +26693,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${showLbl ? `<span style="font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.35); white-space:nowrap;">${fmtKg(o.weightKg)} kg</span>` : ''}
         </div>`;
       }).join('');
-      const wtFreePct = wtOver > 0 ? 0 : (wtFree / cap) * 100 * (cap / scaleMax);
+      const wtFreePct = wtOverAll > 0 ? 0 : (wtFreeAll / wtCap) * 100 * (wtCap / scaleMax);
       const wtFreeZone = wtFreePct > 0.5
         ? `<div style="width:${wtFreePct}%; display:flex; align-items:center; justify-content:center; background:var(--surface2); color:var(--text-muted);">
-             ${wtFreePct > 8 ? `<span style="font-size:10px; font-weight:600;">${fmtKg(wtFree)} kg free</span>` : ''}
+             ${wtFreePct > 8 ? `<span style="font-size:10px; font-weight:600;">${fmtKg(wtFreeAll)} kg free</span>` : ''}
            </div>` : '';
-      // Cap marker — vertical dashed line at the 26,000 kg position
-      // (only shown when scale extends past the cap due to overflow).
-      const capMarker = totalWtKg > cap
-        ? `<div style="position:absolute; top:-4px; bottom:-4px; left:${(cap / scaleMax) * 100}%; width:2px; background:repeating-linear-gradient(180deg, #d97706 0 4px, transparent 4px 8px); z-index:2;"></div>`
+      const capMarker = totalWtKg > wtCap
+        ? `<div style="position:absolute; top:-4px; bottom:-4px; left:${(wtCap / scaleMax) * 100}%; width:2px; background:repeating-linear-gradient(180deg, #d97706 0 4px, transparent 4px 8px); z-index:2;"></div>`
         : '';
+      const capLabel = containerCount > 1
+        ? `${fmtKg(wtCap)} kg max (${containerCount} × ${fmtKg(perCap)})`
+        : `${fmtKg(perCap)} kg max (truck axle limit)`;
       return `
         <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin:14px 0 6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
-          <span>Weight</span><span style="opacity:0.6;">${fmtKg(cap)} kg max (truck axle limit)</span>
+          <span>Weight</span><span style="opacity:0.6;">${capLabel}</span>
         </div>
         <div style="position:relative; display:flex; height:32px; border:2px solid var(--text); border-radius:6px; overflow:hidden; background:var(--surface);">
           ${wtBlocks}${wtFreeZone}
           ${capMarker}
         </div>
-        ${wtOver > 0 ? `<div style="margin-top:6px; font-size:11px; color:#d97706; font-weight:700;">⚠ Over weight cap by ${fmtKg(wtOver)} kg — split the load or downgauge cartons.</div>` : ''}`;
+        ${wtOverAll > 0 ? `<div style="margin-top:6px; font-size:11px; color:#d97706; font-weight:700;">⚠ Over weight cap by ${fmtKg(wtOverAll)} kg — split the load, downgauge cartons, or add another container.</div>` : ''}`;
     }
 
-    const overflowBar = overflow > 0 ? `
-      <div style="margin-top:14px; padding:10px 14px; background:rgba(217,119,6,0.10); border:1px solid rgba(217,119,6,0.35); border-radius:8px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px;">
-          <span style="font-weight:700; color:#d97706;">⚠ Over one container by ${fmtCbm(overflow)} m³</span>
-          <span style="color:var(--text-muted);">Needs a 2nd container (or trim the load)</span>
-        </div>
-        <div style="margin-top:8px; display:flex; height:22px; border-radius:5px; overflow:hidden; border:1px dashed rgba(217,119,6,0.5);">
-          ${placed.filter(p => p.over > 0).map(p => `
-            <div title="${p.name} overflow — ${fmtCbm(p.over)} m³"
-                 style="width:${(p.over / overflow) * 100}%; background:${p.color}; opacity:0.65; display:flex; align-items:center; justify-content:center;">
-              <span style="font-size:9px; font-weight:700; color:#fff; text-shadow:0 1px 1px rgba(0,0,0,0.4); white-space:nowrap;">${(p.over/overflow)*100 > 12 ? fmtCbm(p.over) : ''}</span>
-            </div>`).join('')}
-        </div>
-      </div>` : '';
-
-    body.innerHTML = vizHtml + overflowBar + legend;
+    body.innerHTML = vizHtml + legend;
   }
 
   function renderShipmentUtilization() {
@@ -28952,7 +28966,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const detail  = workbookDetail[key] || {};
       totalWeightKg += parseFloat(detail.pricingShipmentWeightKg) || 0;
       totalCbm      += parseFloat(detail.pricingShipmentCbm)      || 0;
-      const product = detail.product || entry.workbookId;
+
+      // Detect a stale entry — the workbook the order references no
+      // longer exists in clientData (archived / deleted on the
+      // Clients view). Render a distinct "Missing" row with a clear
+      // remove action so the operator can reconcile the order
+      // without hunting through Settings.
+      const wbList   = (typeof clientData === 'object' && clientData) ? (clientData[entry.clientName] || []) : [];
+      const liveWb   = wbList.find(wb => parseInt(wb.id) === parseInt(entry.workbookId));
+      const isMissing = !liveWb && !detail.product;
+      if (isMissing) {
+        return `<tr class="order-sheet-wb-header" style="background:rgba(220,38,38,0.06);">
+          <td colspan="5" style="border-top:1px dashed var(--danger, #dc2626); border-bottom:1px dashed var(--danger, #dc2626); padding:12px 14px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="font-size:14px;">⚠</span>
+              <div style="flex:1; min-width:0;">
+                <div style="font-weight:700; color:var(--danger, #dc2626); font-size:13px;">Missing workbook — was archived or deleted</div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${entry.clientName} · workbook #${entry.workbookId} · no live data to render</div>
+              </div>
+            </div>
+          </td>
+          <td style="text-align:right; vertical-align:middle;">
+            <button class="order-sheet-remove" onclick="removeWorkbookFromOrder(${idx})" title="Remove this stale entry from the order"
+              style="border-color:var(--danger, #dc2626); color:var(--danger, #dc2626);">×</button>
+          </td>
+        </tr>`;
+      }
+
+      const product = detail.product || (liveWb && liveWb.product) || entry.workbookId;
       const wbHref  = `#/client/${encodeURIComponent(entry.clientName)}/workbook/${entry.workbookId}`;
       const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
       const splits   = Array.isArray(detail.shipmentSplits) ? detail.shipmentSplits.filter(s => s.qty > 0) : [];
@@ -29124,6 +29165,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </tr>${shipRow}`;
   }
 
+  // Per-section "Add payment" inline form state. Resets on render.
+  let _addingPaymentFor = null;
+  function openAddPaymentForm(type) { _addingPaymentFor = type; renderOrderDepositTracking(); }
+  function closeAddPaymentForm()    { _addingPaymentFor = null; renderOrderDepositTracking(); }
+
+  function saveNewPayment(type) {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    const amtEl  = document.getElementById('pay-new-amt');
+    const dateEl = document.getElementById('pay-new-date');
+    const noteEl = document.getElementById('pay-new-note');
+    const amt = parseFloat(amtEl?.value || '0');
+    if (!(amt > 0)) { alert('Enter a payment amount > 0.'); amtEl?.focus(); return; }
+    if (!Array.isArray(o.payments)) o.payments = [];
+    o.payments.push({
+      id: 'p' + Date.now() + Math.floor(Math.random() * 1000),
+      type,
+      amountUsd: Math.round(amt * 100) / 100,
+      dateIso: dateEl?.value || new Date().toISOString().slice(0, 10),
+      note:    (noteEl?.value || '').trim(),
+    });
+    _addingPaymentFor = null;
+    saveOrders();
+    renderOrderDepositTracking();
+    renderOrdersList(); // refresh the dashboard cards too
+  }
+
+  function removeOrderPayment(idx) {
+    const o = orderData[_currentOrderId];
+    if (!o || !Array.isArray(o.payments) || !o.payments[idx]) return;
+    if (!confirm('Remove this payment?')) return;
+    o.payments.splice(idx, 1);
+    saveOrders();
+    renderOrderDepositTracking();
+    renderOrdersList();
+  }
+
   function renderOrderDepositTracking() {
     const o = orderData[_currentOrderId];
     if (!o) return;
@@ -29144,34 +29222,108 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       baseUsd += w.price || 0;
     });
     if (baseUsd <= 0) {
-      // Fallback so partially-set-up orders still surface a number.
       baseUsd = orderTotals(o).totalUsd || 0;
     }
     const depositAmt = Math.round(baseUsd * (pct / 100) * 100) / 100;
     const balanceAmt = Math.round((baseUsd - depositAmt) * 100) / 100;
 
-    const depositPaid = o.depositPaid || false;
-    const balancePaid = o.balancePaid || false;
+    // Payments array drives the new behavior. Legacy depositPaid /
+    // balancePaid booleans on older orders are honored as "fully
+    // paid" defaults when no payments array exists yet — so existing
+    // orders don't lose state. Once the operator adds a payment, the
+    // payments array becomes authoritative and the booleans are
+    // ignored (no destructive migration).
+    if (!Array.isArray(o.payments)) o.payments = [];
+    const payments = o.payments;
+    const sumFor = (type) => payments
+      .filter(p => p && p.type === type)
+      .reduce((s, p) => s + (parseFloat(p.amountUsd) || 0), 0);
 
-    const fmtUsd = v => v > 0 ? `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00';
+    const fmtUsd  = v => `$${(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const fmtDate = iso => {
+      if (!iso) return '—';
+      const d = new Date(iso); if (isNaN(d.getTime())) return iso;
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
 
-    container.innerHTML = `
-      <div class="order-deposit-row">
-        <span class="order-deposit-label">${pct}% Deposit</span>
-        <span class="order-deposit-amount">${fmtUsd(depositAmt)}</span>
-        <label class="order-deposit-check">
-          <input type="checkbox" ${depositPaid ? 'checked' : ''} onchange="onOrderDepositPaidChange('deposit', this.checked)" />
-          Paid
-        </label>
-      </div>
-      <div class="order-deposit-row">
-        <span class="order-deposit-label">${100 - pct}% Balance</span>
-        <span class="order-deposit-amount">${fmtUsd(balanceAmt)}</span>
-        <label class="order-deposit-check">
-          <input type="checkbox" ${balancePaid ? 'checked' : ''} onchange="onOrderDepositPaidChange('balance', this.checked)" />
-          Paid
-        </label>
-      </div>`;
+    // Build one section ("Deposit" or "Balance") with its target
+    // amount, list of partial-payment rows, progress, and either an
+    // Add Payment button or the inline new-payment form.
+    const sectionHtml = (type, label, target) => {
+      const sectionPayments = payments
+        .map((p, idx) => ({ p, idx }))
+        .filter(({ p }) => p && p.type === type);
+      const paidSum = sumFor(type);
+      const legacyFull = (type === 'deposit' && o.depositPaid && sectionPayments.length === 0)
+                     || (type === 'balance' && o.balancePaid && sectionPayments.length === 0);
+      const fullyPaid = legacyFull || (target > 0 && paidSum >= target - 0.005);
+      const remaining = Math.max(0, target - paidSum);
+      const pctPaid   = target > 0 ? Math.min(100, (paidSum / target) * 100) : 0;
+      const headerColor = fullyPaid ? 'var(--success, #16a34a)' : 'var(--text)';
+      const isAddOpen = _addingPaymentFor === type;
+
+      const rowsHtml = sectionPayments.length
+        ? sectionPayments.map(({ p, idx }) => `
+            <div style="display:grid; grid-template-columns:auto 1fr auto auto; gap:10px; align-items:center; padding:6px 10px; border-radius:6px; background:var(--surface2); margin-top:6px;">
+              <span style="font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtDate(p.dateIso)}</span>
+              <span style="font-size:12px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${(p.note || '').replace(/"/g,'&quot;')}">${p.note || '<span style="color:var(--text-muted); font-style:italic;">—</span>'}</span>
+              <span style="font-size:13px; font-weight:700; color:var(--success, #16a34a); font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtUsd(p.amountUsd)}</span>
+              <button type="button" onclick="removeOrderPayment(${idx})" title="Remove this payment"
+                style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; line-height:1; padding:2px 6px; font-family:inherit;">×</button>
+            </div>`).join('')
+        : (fullyPaid
+          ? `<div style="margin-top:6px; padding:6px 10px; font-size:11px; color:var(--text-muted); font-style:italic;">Marked fully paid (legacy flag) — add a payment to record the wire details.</div>`
+          : '');
+
+      const addFormHtml = isAddOpen ? `
+        <div style="margin-top:8px; padding:10px; border:1px dashed var(--accent); border-radius:6px; background:rgba(107,147,255,0.05);">
+          <div style="display:grid; grid-template-columns:1fr 1fr 2fr; gap:8px; margin-bottom:8px;">
+            <div>
+              <label style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:3px;">Amount (USD)</label>
+              <input type="number" id="pay-new-amt" step="0.01" min="0" placeholder="${remaining > 0 ? remaining.toFixed(2) : '0.00'}" autofocus
+                style="width:100%; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--text); font-size:13px; font-family:inherit; box-sizing:border-box;" />
+            </div>
+            <div>
+              <label style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:3px;">Date</label>
+              <input type="date" id="pay-new-date" value="${new Date().toISOString().slice(0,10)}"
+                style="width:100%; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--text); font-size:13px; font-family:inherit; box-sizing:border-box;" />
+            </div>
+            <div>
+              <label style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:3px;">Note (optional)</label>
+              <input type="text" id="pay-new-note" placeholder="Wire ref, who paid, etc."
+                style="width:100%; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:4px; background:var(--surface); color:var(--text); font-size:13px; font-family:inherit; box-sizing:border-box;" />
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; justify-content:flex-end;">
+            <button type="button" onclick="closeAddPaymentForm()" style="font-size:12px; padding:5px 12px; border:1px solid var(--border); background:transparent; color:var(--text-muted); border-radius:4px; cursor:pointer; font-family:inherit;">Cancel</button>
+            <button type="button" onclick="saveNewPayment('${type}')" style="font-size:12px; padding:5px 12px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:4px; cursor:pointer; font-family:inherit; font-weight:600;">Save Payment</button>
+          </div>
+        </div>` : `
+        <div style="margin-top:6px;">
+          <button type="button" onclick="openAddPaymentForm('${type}')"
+            style="font-size:11px; padding:4px 10px; border:1px dashed var(--border); background:transparent; color:var(--text-muted); border-radius:4px; cursor:pointer; font-family:inherit;">+ Add payment</button>
+        </div>`;
+
+      return `
+        <div style="padding:10px 0; border-bottom:1px solid var(--border);">
+          <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+            <span style="font-weight:700; color:${headerColor}; font-size:13px;">${label}</span>
+            <span style="color:var(--text-muted); font-size:12px;">target ${fmtUsd(target)}</span>
+            ${fullyPaid
+              ? `<span style="margin-left:auto; font-size:12px; font-weight:700; color:var(--success, #16a34a);">✓ Fully paid</span>`
+              : `<span style="margin-left:auto; font-size:12px; color:var(--text-muted);"><strong style="color:var(--success, #16a34a);">${fmtUsd(paidSum)}</strong> of ${fmtUsd(target)} paid · <strong style="color:var(--text);">${fmtUsd(remaining)}</strong> remaining</span>`}
+          </div>
+          <div style="margin-top:6px; height:5px; background:var(--surface2); border-radius:99px; overflow:hidden;">
+            <div style="height:100%; width:${pctPaid}%; background:var(--success, #16a34a); border-radius:99px; transition:width 0.2s;"></div>
+          </div>
+          ${rowsHtml}
+          ${addFormHtml}
+        </div>`;
+    };
+
+    container.innerHTML =
+      sectionHtml('deposit', `${pct}% Deposit`, depositAmt) +
+      sectionHtml('balance', `${100 - pct}% Balance`, balanceAmt);
   }
 
   // ── Add Workbook to Order modal ──────────────────────────────────────
