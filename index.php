@@ -24769,13 +24769,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const statCard = (label, value, subtext, accent) => `
       <div class="section-card" style="padding:16px 18px; min-width:0;">
-        <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">${label}</div>
-        <div style="font-size:24px; font-weight:700; color:${accent || 'var(--text)'}; margin-top:6px; line-height:1.2;">${value}</div>
-        ${subtext ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${subtext}</div>` : ''}
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; line-height:1.3;">${label}</div>
+        <div style="font-size:22px; font-weight:700; color:${accent || 'var(--text)'}; margin-top:6px; line-height:1.15; overflow-wrap:anywhere; word-break:break-word;">${value}</div>
+        ${subtext ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.3;">${subtext}</div>` : ''}
       </div>`;
 
+    // auto-fit grid: 4-up on desktop, naturally re-flows to 2-up at
+    // tablet width and 1-up on phones so the $50k values don't truncate.
     const kpiHtml = `
-      <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px; margin-bottom:18px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:18px;">
         ${statCard('Total Earned', fmtUsd(totalEarned), `${rows.length} commission row${rows.length !== 1 ? 's' : ''}`)}
         ${statCard('Pending Payout', fmtUsd(pending), 'Not yet marked paid', 'var(--accent)')}
         ${statCard('Paid Out', fmtUsd(paid), 'Marked paid', 'var(--success, #16a34a)')}
@@ -25133,7 +25135,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="section-card" style="padding:18px 20px; margin-bottom:18px;">
         <div class="inv-dash-row-title">Per-employee scoreboard</div>
         <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Click a card to see which clients and workbooks are paying out.</div>
-        <div style="display:grid; grid-template-columns:repeat(${Math.min(employees.length, 2)}, minmax(0, 1fr)); gap:14px; margin-top:10px;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:10px;">
           ${employees.map(([name, t]) => {
             const expanded   = _commExpandedEmployees.has(name);
             const toggleAttr = `onclick='toggleEmployeeExpand(${JSON.stringify(name)})'`;
@@ -25153,15 +25155,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const allPaid = t.total > 0 && t.pending <= 0.005; // float fuzz
             return `
               <div style="border:1px solid var(--border); border-radius:12px; padding:16px; background:var(--surface2); min-width:0; ${expanded ? 'box-shadow: 0 0 0 1px var(--accent-glow) inset;' : ''}">
-                <div ${toggleAttr} style="display:flex; align-items:center; gap:10px; margin-bottom:10px; cursor:pointer; user-select:none;" title="Click to ${expanded ? 'collapse' : 'expand'} breakdown">
-                  <div style="width:36px; height:36px; border-radius:50%; background:var(--accent-glow); color:var(--accent); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;">
+                <div ${toggleAttr} style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; cursor:pointer; user-select:none;" title="Click to ${expanded ? 'collapse' : 'expand'} breakdown">
+                  <div style="width:36px; height:36px; flex-shrink:0; border-radius:50%; background:var(--accent-glow); color:var(--accent); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px;">
                     ${esc((name || '?').split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase())}
                   </div>
-                  <div style="min-width:0;">
-                    <div style="font-weight:600; color:var(--text); font-size:14px;">${esc(name)}</div>
+                  <div style="flex:1 1 100px; min-width:0;">
+                    <div style="font-weight:600; color:var(--text); font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(name)}</div>
                     <div style="font-size:11px; color:var(--text-muted);">${t.count} row${t.count !== 1 ? 's' : ''}</div>
                   </div>
-                  <div style="margin-left:auto; font-size:20px; font-weight:700; color:var(--text);">${fmtUsd(t.total)}</div>
+                  <div style="margin-left:auto; font-size:20px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; white-space:nowrap;">${fmtUsd(t.total)}</div>
                   ${chevron}
                 </div>
 
@@ -25184,7 +25186,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   ${allPaid ? '<div style="font-size:10px; color:#16a34a; font-weight:700; margin-top:5px; text-transform:uppercase; letter-spacing:0.05em;">All settled</div>' : ''}
                 </div>
 
-                <div style="display:grid; grid-template-columns:repeat(${t.op > 0 ? 3 : 2}, minmax(0, 1fr)); gap:10px;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:10px;">
                   <div style="padding:8px 10px; border-radius:8px; background:rgba(107,147,255,0.1); border:1px solid rgba(107,147,255,0.2);">
                     <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Account Mgr</div>
                     <div style="font-size:15px; font-weight:600; color:var(--text); margin-top:2px;">${fmtUsd(t.am)}</div>
