@@ -7077,6 +7077,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="pricing-cost-row-label">Shipping Per (USD)</span>
               <span class="pricing-cost-row-value" id="ps-sh-per">—</span>
             </div>
+            <!-- Shipment splits breakdown — populated by renderPricingTab
+                 when the Shipping tab has one or more splits with qty > 0.
+                 Each row shows: <qty> units · <Method> ¥<rmb> / $<usd>.
+                 When splits exist they are the source of truth for Total
+                 Shipping Cost (the Method label above flips to "Mixed").
+                 Hidden when no splits are defined. -->
+            <div id="ps-sh-splits-wrap" style="display:none; margin:6px 0 0; padding:8px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:6px;">
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Shipment Splits</div>
+              <div id="ps-sh-splits"></div>
+            </div>
             <div class="pricing-cost-subtotal">
               <div class="pricing-cost-row">
                 <span class="pricing-cost-row-label">Total Shipping Cost (RMB)</span>
@@ -15110,19 +15120,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rmb = totalCharge * rate;
     const usd = rmb / USD_TO_RMB;
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return { rmbStr: `¥${fmt2(rmb)}`, usdStr: `$${fmt2(usd)}` };
+    // Raw rmb / usd are exposed alongside the formatted strings so the
+    // Pricing tab's Shipping Cost block can sum across splits and
+    // display a breakdown without having to re-derive the math.
+    // chargeableKg is what the Pricing tab calls "Total Weight"; we
+    // expose it per split so the Mixed-method breakdown can show
+    // weight per split for visual reconciliation with the freight
+    // comparison table on the Shipping tab.
+    const chargeableKg = chargePerCarton * cartons;
+    return {
+      rmb, usd, cartons, chargeableKg, rate,
+      rmbStr: `¥${fmt2(rmb)}`,
+      usdStr: `$${fmt2(usd)}`,
+    };
   }
 
   function addShipmentSplit() {
     _splitCounter++;
     _shipmentSplits.push({ id: _splitCounter, method: 'slow', qty: '' });
     renderShipmentSplits();
+    _refreshPricingForSplits();
     autoSaveWorkbook();
   }
 
   function removeShipmentSplit(id) {
     _shipmentSplits = _shipmentSplits.filter(r => r.id !== id);
     renderShipmentSplits();
+    _refreshPricingForSplits();
     autoSaveWorkbook();
   }
 
@@ -15137,7 +15161,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       costEl.innerHTML = cost ? `${cost.rmbStr} &nbsp;·&nbsp; ${cost.usdStr}` : '';
     }
     renderShipmentSplitSummary();
+    _refreshPricingForSplits();
     autoSaveWorkbook();
+  }
+
+  // Splits feed the Pricing tab's Shipping Cost block (Method flips to
+  // "Mixed", total uses the sum of per-split costs, breakdown rows
+  // render under #ps-sh-splits). Re-render on every split mutation so
+  // the operator sees the Pricing tab update live without switching
+  // tabs. Guarded so we don't crash before the Pricing tab is wired.
+  function _refreshPricingForSplits() {
+    if (typeof renderPricingTab === 'function') {
+      try { renderPricingTab(); } catch (_) {}
+    }
   }
 
   function renderShipmentSplits() {
@@ -18105,16 +18141,92 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // chargeable-weight × rate math here.
     const _shipOverrideUsd = (typeof _getShippingCostOverrideUsd === 'function')
       ? _getShippingCostOverrideUsd() : null;
-    const shippingRmb  = (_shipOverrideUsd !== null)
-      ? _shipOverrideUsd * USD_TO_RMB
-      : (chargeableKg > 0 ? chargeableKg * rateRmb : 0);
-    const shippingUsd  = (_shipOverrideUsd !== null)
-      ? _shipOverrideUsd
-      : (shippingRmb > 0 ? shippingRmb / USD_TO_RMB : 0);
 
-    if (e('ps-sh-method'))  e('ps-sh-method').textContent  = modeNames[mode] || '—';
+    // ── Shipment Splits → Shipping Cost ────────────────────────────────
+    // When the operator has set up one or more shipment splits on the
+    // Shipping tab (e.g. half the order via Slow Boat, half via Air),
+    // those splits become the authoritative source for Total Shipping
+    // Cost — the single-mode chargeableKg × rate math doesn't reflect
+    // the mixed reality. We compute each split's cost via calcSplitCost
+    // (same function the Shipping-tab split row uses) and sum them.
+    // A manual override still wins over splits (operator intent trumps
+    // computed math, same as before). Each split's per-line cost is
+    // pushed into the #ps-sh-splits breakdown so the Pricing tab
+    // shows the same split-by-split detail the Shipping tab does.
+    let _splitRmbTotal = 0, _splitUsdTotal = 0, _splitQtyTotal = 0;
+    let _splitRows = [];
+    if (typeof _shipmentSplits !== 'undefined' && Array.isArray(_shipmentSplits)) {
+      _shipmentSplits.forEach(r => {
+        const q = parseInt(r.qty) || 0;
+        if (q <= 0) return;
+        const cost = calcSplitCost(r.method, q);
+        if (!cost) {
+          // Carton specs missing — still record the row so the operator
+          // can see which split is incomplete instead of silently
+          // dropping it from the breakdown.
+          _splitRows.push({ method: r.method, qty: q, missing: true });
+          _splitQtyTotal += q;
+          return;
+        }
+        _splitRmbTotal += cost.rmb;
+        _splitUsdTotal += cost.usd;
+        _splitQtyTotal += q;
+        _splitRows.push({ method: r.method, qty: q, rmb: cost.rmb, usd: cost.usd, missing: false });
+      });
+    }
+    const hasSplits = _splitRows.length > 0;
+
+    let shippingRmb, shippingUsd;
+    if (_shipOverrideUsd !== null) {
+      shippingRmb = _shipOverrideUsd * USD_TO_RMB;
+      shippingUsd = _shipOverrideUsd;
+    } else if (hasSplits && _splitUsdTotal > 0) {
+      shippingRmb = _splitRmbTotal;
+      shippingUsd = _splitUsdTotal;
+    } else {
+      shippingRmb = chargeableKg > 0 ? chargeableKg * rateRmb : 0;
+      shippingUsd = shippingRmb > 0 ? shippingRmb / USD_TO_RMB : 0;
+    }
+
+    // Render the splits breakdown card (or hide it). When splits exist
+    // the Method label flips to "Mixed (N splits)" so it's obvious the
+    // headline total isn't the single dropdown mode anymore. The Rate
+    // and Weight rows show the dominant split for context (the one
+    // carrying the most units), with a "· mixed" hint to clarify.
+    const _splitsWrap = e('ps-sh-splits-wrap');
+    const _splitsBody = e('ps-sh-splits');
+    if (hasSplits && _splitsWrap && _splitsBody) {
+      const _fmt2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      _splitsBody.innerHTML = _splitRows.map(r => {
+        const label = modeNames[r.method] || r.method;
+        const qtyStr = r.qty.toLocaleString('en-US');
+        if (r.missing) {
+          return `<div style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px;">
+            <span style="color:var(--text); font-weight:600; min-width:70px;">${qtyStr}</span>
+            <span style="color:var(--text-muted); flex:1;">${label}</span>
+            <span style="color:#dc2626; font-style:italic;">carton specs missing</span>
+          </div>`;
+        }
+        return `<div style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px;">
+          <span style="color:var(--text); font-weight:600; min-width:70px;">${qtyStr}</span>
+          <span style="color:var(--text-muted); flex:1;">${label}</span>
+          <span style="color:var(--text); font-family:'SF Mono','Consolas',monospace;">¥${_fmt2(r.rmb)}</span>
+          <span style="color:var(--text); font-family:'SF Mono','Consolas',monospace; min-width:80px; text-align:right;">$${_fmt2(r.usd)}</span>
+        </div>`;
+      }).join('');
+      _splitsWrap.style.display = '';
+    } else if (_splitsWrap) {
+      _splitsWrap.style.display = 'none';
+      if (_splitsBody) _splitsBody.innerHTML = '';
+    }
+
+    if (e('ps-sh-method')) {
+      e('ps-sh-method').textContent = hasSplits
+        ? `Mixed (${_splitRows.length} split${_splitRows.length === 1 ? '' : 's'})`
+        : (modeNames[mode] || '—');
+    }
     if (e('ps-sh-weight'))  e('ps-sh-weight').textContent  = chargeableKg > 0 ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg' : '—';
-    if (e('ps-sh-rate'))    e('ps-sh-rate').textContent    = rateRmb > 0 ? `¥${rateRmb} / kg  ($${rateUsd.toFixed(2)}/kg)` : '—';
+    if (e('ps-sh-rate'))    e('ps-sh-rate').textContent    = rateRmb > 0 ? `¥${rateRmb} / kg  ($${rateUsd.toFixed(2)}/kg)${hasSplits ? '  · mixed' : ''}` : '—';
     // Shipping per unit (USD) — total shipping ÷ effective qty (the
     // qty we're quoting on, which rolls up to the Full Container Pitch
     // when it's been applied from the workbook). Displayed at three
