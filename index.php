@@ -4617,54 +4617,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     /* Narrow phone (≤520px): the client workbooks table can't fit
        Product · Date · Order · Status · Actions in a row without
-       truncating the Status pill. Reflow each row into a stacked
-       card so every cell gets the width it needs. The thead is
-       hidden since the labels go inline with each value chip. */
+       truncating the Status pill. Switch the TR to a wrapping
+       flex row so the title + chips live on the same line when
+       there's room, and only wrap when they actually run out. The
+       Actions button is pinned to the top-right corner. */
     @media (max-width: 520px) {
       .dash-table,
       .dash-table thead,
-      .dash-table tbody,
-      .dash-table tr,
-      .dash-table td,
-      .dash-table th { display: block; width: 100%; box-sizing: border-box; }
+      .dash-table tbody { display: block; width: 100%; box-sizing: border-box; }
       .dash-table thead { display: none; }
       .dash-table tr {
+        display: flex !important;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 12px;
         position: relative;
-        padding: 14px 14px 12px;
+        padding: 14px 52px 14px 14px;  /* right pad leaves room for the absolute Actions button */
         border-bottom: 1px solid var(--border);
+        box-sizing: border-box;
       }
       .dash-table tr:last-child { border-bottom: none; }
       .dash-table td {
-        padding: 4px 0 !important;
-        border: none !important;
-        text-align: left !important;
-        width: auto !important;
-      }
-      /* Product cell becomes the card title (full row, big text) */
-      .dash-table td:first-child {
-        padding: 0 0 8px !important;
-        font-size: 15px;
-        font-weight: 700;
-      }
-      /* Date / Order / Status flow into a horizontal wrapping row
-         below the title — each chip readable at full width */
-      .dash-table td.col-date-created,
-      .dash-table td.col-order,
-      .dash-table td.col-mobile-status {
         display: inline-flex !important;
         align-items: center;
-        margin: 0 8px 4px 0;
+        padding: 0 !important;
+        border: none !important;
+        width: auto !important;
+        text-align: left !important;
         font-size: 12px;
       }
-      .dash-table td.col-date-created::before { content: ''; }
+      /* Product cell is the title — bigger, bolder, on the same line */
+      .dash-table td:first-child {
+        font-size: 15px;
+        font-weight: 700;
+        flex: 0 1 auto;
+      }
       .dash-table td.col-mobile-status { text-align: right !important; }
-      /* Actions cell pinned top-right of the card */
+      /* Actions cell pinned top-right of the card row */
       .dash-table td:last-child {
         position: absolute;
         top: 12px;
         right: 12px;
         padding: 0 !important;
-        width: auto !important;
       }
     }
 

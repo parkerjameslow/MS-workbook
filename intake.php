@@ -453,6 +453,35 @@ table.rfq-table .num-col { text-align: center; color: #9ba3c0; font-weight: 600;
 .add-row-btn { background: none; border: 1px dashed #d1d5db; border-radius: 8px; color: #6b7280; font-size: 13px; font-weight: 600; padding: 11px 16px; cursor: pointer; font-family: inherit; transition: all 0.15s; display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; }
 .add-row-btn:hover { border-color: #E8751A; color: #E8751A; background: #fff8f5; }
 
+/* Import SKUs — button next to RFQ section title + modal */
+.import-skus-btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; color: #1a1d2e; font-size: 13px; font-weight: 600; padding: 8px 12px; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+.import-skus-btn:hover { border-color: #6b93ff; color: #6b93ff; background: #f5f8ff; }
+.import-modal-overlay { position: fixed; inset: 0; background: rgba(15,20,40,0.55); display: none; align-items: flex-start; justify-content: center; padding: 32px 16px; z-index: 100; overflow-y: auto; }
+.import-modal-overlay.open { display: flex; }
+.import-modal { background: #fff; border-radius: 14px; max-width: 640px; width: 100%; padding: 22px 22px 18px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+.import-modal h3 { margin: 0 0 6px; font-size: 18px; font-weight: 700; color: #1a1d2e; }
+.import-modal .help { margin: 0 0 14px; font-size: 13px; color: #6b7280; line-height: 1.5; }
+.import-modal .file-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.import-modal .file-label { display: inline-flex; align-items: center; gap: 6px; background: #f8f9fb; border: 1px solid #e5e7eb; border-radius: 7px; padding: 8px 12px; font-size: 13px; font-weight: 600; color: #1a1d2e; cursor: pointer; }
+.import-modal .file-label:hover { border-color: #6b93ff; color: #6b93ff; }
+.import-modal .file-label input { display: none; }
+.import-modal textarea { width: 100%; min-height: 180px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #1a1d2e; outline: none; box-sizing: border-box; resize: vertical; }
+.import-modal textarea:focus { border-color: #6b93ff; box-shadow: 0 0 0 2px rgba(107,147,255,0.12); }
+.import-preview { margin-top: 10px; max-height: 220px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #f8f9fb; padding: 8px 10px; font-size: 12px; }
+.import-preview table { width: 100%; border-collapse: collapse; }
+.import-preview th { text-align: left; padding: 4px 8px; color: #6b7280; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.import-preview td { padding: 3px 8px; color: #1a1d2e; border-top: 1px solid #eef0f5; vertical-align: top; }
+.import-error { margin-top: 8px; font-size: 12px; color: #dc2626; }
+.import-modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+.import-modal .btn-secondary { background: #fff; border: 1px solid #d1d5db; border-radius: 8px; color: #1a1d2e; font-size: 13px; font-weight: 600; padding: 9px 14px; cursor: pointer; font-family: inherit; }
+.import-modal .btn-secondary:hover { border-color: #9ca3af; }
+.import-modal .btn-primary { background: #E8751A; border: 1px solid #E8751A; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 700; padding: 9px 16px; cursor: pointer; font-family: inherit; }
+.import-modal .btn-primary[disabled] { opacity: 0.4; cursor: not-allowed; }
+.import-modal .btn-primary:not([disabled]):hover { background: #d56214; border-color: #d56214; }
+.import-modal .mode-toggle { display: inline-flex; gap: 4px; margin-bottom: 10px; padding: 3px; background: #f8f9fb; border-radius: 8px; }
+.import-modal .mode-btn { background: transparent; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; font-family: inherit; }
+.import-modal .mode-btn.active { background: #fff; color: #1a1d2e; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
 /* Variant section — sub-rows under each parent line item. Indented
    so they read as nested under the parent; smaller font + lighter
    styling to keep visual weight below the parent row. */
@@ -671,12 +700,18 @@ function formContent(string $clientName, string $contactName, string $token): st
 
       <!-- ── RFQ LINE ITEMS ──────────────────────────────────────────────── -->
       <div class="card">
-        <div class="card-head">
-          <div class="section-title">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-            RFQ Line Items
+        <div class="card-head" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <div style="min-width:0; flex:1 1 280px;">
+            <div class="section-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              RFQ Line Items
+            </div>
+            <p class="page-sub" style="margin-top:6px;">List each item you&rsquo;d like priced. Use the <strong>+ Add variant</strong> link under any item to break down qtys by size, color, or finish — those will land as proper variants on our side.</p>
           </div>
-          <p class="page-sub" style="margin-top:6px;">List each item you&rsquo;d like priced. Use the <strong>+ Add variant</strong> link under any item to break down qtys by size, color, or finish — those will land as proper variants on our side.</p>
+          <button type="button" class="import-skus-btn" onclick="openImportSkus()" title="Paste from Excel or upload a CSV to bulk-populate these rows">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import SKUs
+          </button>
         </div>
         <div class="card-body" style="padding:0;">
           <table class="rfq-table" id="rfq-table">
@@ -725,6 +760,52 @@ function formContent(string $clientName, string $contactName, string $token): st
         </div>
       </div>
     </form>
+
+    <!-- Import SKUs modal — opens via the Import SKUs button on the
+         RFQ section header. Two input modes (Paste or Upload), live
+         preview of the parsed rows, then Import appends each parsed
+         row to the RFQ table via the existing addRfqRow + name="…"
+         input contract so the PHP submit handler doesn't change. -->
+    <div class="import-modal-overlay" id="import-modal-overlay" onclick="if(event.target===this)closeImportSkus()">
+      <div class="import-modal" role="dialog" aria-labelledby="import-modal-title">
+        <h3 id="import-modal-title">Import SKUs</h3>
+        <p class="help">
+          Bulk-add line items from a spreadsheet. <strong>Paste</strong> directly from Excel / Google Sheets (just select cells and copy), or <strong>upload</strong> a CSV file. We expect columns in this order: <strong>Item · SKU · Quantity · Notes</strong> (a header row is auto-detected and skipped). <em>Tip: if you have an .xlsx, use File → Download → Comma-separated values first.</em>
+        </p>
+        <div class="mode-toggle" role="tablist">
+          <button type="button" class="mode-btn active" id="import-mode-paste" onclick="setImportMode('paste')">Paste from spreadsheet</button>
+          <button type="button" class="mode-btn" id="import-mode-file" onclick="setImportMode('file')">Upload CSV</button>
+        </div>
+        <div id="import-paste-pane">
+          <textarea id="import-textarea" placeholder="Paste rows here…&#10;Item	SKU	Qty	Notes&#10;Tote Bag	TB-001	500	natural canvas&#10;Polo Shirt	POL-23	250	embroidered logo" oninput="renderImportPreview()"></textarea>
+        </div>
+        <div id="import-file-pane" style="display:none;">
+          <div class="file-row">
+            <label class="file-label">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose CSV file…
+              <input type="file" id="import-file" accept=".csv,text/csv" onchange="onImportFile(event)" />
+            </label>
+            <span id="import-file-name" style="font-size:12px; color:#6b7280;">No file selected</span>
+          </div>
+        </div>
+        <div id="import-preview-wrap" style="display:none;">
+          <div style="margin-top:10px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#6b7280;">
+            Preview — <span id="import-preview-count">0</span> row<span id="import-preview-s">s</span> to add
+          </div>
+          <div class="import-preview" id="import-preview-body"></div>
+        </div>
+        <div class="import-error" id="import-error" style="display:none;"></div>
+        <div class="actions">
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#6b7280; margin-right:auto;">
+            <input type="checkbox" id="import-replace" />
+            Replace existing rows (otherwise we append)
+          </label>
+          <button type="button" class="btn-secondary" onclick="closeImportSkus()">Cancel</button>
+          <button type="button" class="btn-primary" id="import-apply-btn" onclick="applyImport()" disabled>Import 0</button>
+        </div>
+      </div>
+    </div>
 
     <script>
       // Each parent line item gets a unique numeric index. Variant input
@@ -829,6 +910,197 @@ function formContent(string $clientName, string $contactName, string $token): st
         btn.disabled = true;
         btn.textContent = 'Submitting…';
       });
+
+      // ── Import SKUs flow ────────────────────────────────────────
+      // Parses TSV (Excel-paste default) or CSV pasted/uploaded by
+      // the client, previews the rows, and on Import calls the
+      // existing addRfqRow for each parsed row + writes the values
+      // into the rendered inputs. No new server contract needed —
+      // the PHP submit handler reads the same items[<idx>][...]
+      // input names it always has.
+      let _importParsed = [];
+
+      function openImportSkus() {
+        document.getElementById('import-modal-overlay').classList.add('open');
+        renderImportPreview();
+      }
+      function closeImportSkus() {
+        document.getElementById('import-modal-overlay').classList.remove('open');
+      }
+      function setImportMode(mode) {
+        document.getElementById('import-mode-paste').classList.toggle('active', mode === 'paste');
+        document.getElementById('import-mode-file').classList.toggle('active',  mode === 'file');
+        document.getElementById('import-paste-pane').style.display = mode === 'paste' ? '' : 'none';
+        document.getElementById('import-file-pane').style.display  = mode === 'file'  ? '' : 'none';
+      }
+
+      function onImportFile(ev) {
+        const file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        document.getElementById('import-file-name').textContent = file.name;
+        const reader = new FileReader();
+        reader.onload = e => {
+          const text = String(e.target.result || '');
+          // Pipe file content through the same parser as paste —
+          // ditch the textarea contents so the operator doesn't
+          // accidentally import both at once.
+          document.getElementById('import-textarea').value = text;
+          renderImportPreview();
+        };
+        reader.onerror = () => showImportError('Could not read that file. Try saving as CSV again.');
+        reader.readAsText(file);
+      }
+
+      function showImportError(msg) {
+        const el = document.getElementById('import-error');
+        el.textContent = msg;
+        el.style.display = msg ? '' : 'none';
+      }
+
+      // Detect the separator (tab beats comma since Excel paste is
+      // tab-delimited, but fall back to comma for true CSV files).
+      // Then a tiny RFC4180-ish parser handles quoted commas/newlines
+      // inside cells — covers the realistic spreadsheet cases without
+      // pulling in a full CSV library.
+      function _detectSep(text) {
+        const firstLine = text.split(/\r?\n/, 1)[0] || '';
+        if (firstLine.indexOf('\t') !== -1) return '\t';
+        return ',';
+      }
+      function _parseDelimited(text, sep) {
+        const rows = [];
+        let field = '', row = [], inQuotes = false;
+        for (let i = 0; i < text.length; i++) {
+          const c = text[i];
+          if (inQuotes) {
+            if (c === '"') {
+              if (text[i + 1] === '"') { field += '"'; i++; }
+              else inQuotes = false;
+            } else field += c;
+            continue;
+          }
+          if (c === '"') { inQuotes = true; continue; }
+          if (c === sep) { row.push(field); field = ''; continue; }
+          if (c === '\n' || c === '\r') {
+            if (c === '\r' && text[i + 1] === '\n') i++;
+            row.push(field); field = '';
+            if (row.some(v => String(v).trim() !== '')) rows.push(row);
+            row = [];
+            continue;
+          }
+          field += c;
+        }
+        if (field !== '' || row.length) {
+          row.push(field);
+          if (row.some(v => String(v).trim() !== '')) rows.push(row);
+        }
+        return rows;
+      }
+      function _looksLikeHeader(cells) {
+        const hay = cells.map(c => String(c).toLowerCase().trim()).join('|');
+        return /(item|product|sku|qty|quantity|note)/.test(hay);
+      }
+      // Column-name → field heuristic for header-row mapping; falls
+      // back to positional [item, sku, qty, notes] when no header.
+      function _mapColumns(headerCells) {
+        const map = { item: -1, sku: -1, qty: -1, notes: -1 };
+        headerCells.forEach((h, i) => {
+          const k = String(h).toLowerCase().trim();
+          if (map.item  < 0 && /^(item|product|product\s*name|description|name)/.test(k)) map.item  = i;
+          if (map.sku   < 0 && /^(sku|code|item\s*#|item\s*number)/.test(k))             map.sku   = i;
+          if (map.qty   < 0 && /^(qty|quantity|units|count)/.test(k))                    map.qty   = i;
+          if (map.notes < 0 && /^(notes?|comment|remark)/.test(k))                       map.notes = i;
+        });
+        return map;
+      }
+      function parseImportInput() {
+        const text = document.getElementById('import-textarea').value || '';
+        if (!text.trim()) return [];
+        const sep = _detectSep(text);
+        const all = _parseDelimited(text, sep);
+        if (all.length === 0) return [];
+        let map = { item: 0, sku: 1, qty: 2, notes: 3 };
+        let body = all;
+        if (_looksLikeHeader(all[0])) {
+          const mapped = _mapColumns(all[0]);
+          // Use the mapped columns when at least item OR sku came back
+          if (mapped.item >= 0 || mapped.sku >= 0) map = mapped;
+          body = all.slice(1);
+        }
+        const out = [];
+        body.forEach(cells => {
+          const item  = (map.item  >= 0 && cells[map.item]  != null) ? String(cells[map.item]).trim()  : '';
+          const sku   = (map.sku   >= 0 && cells[map.sku]   != null) ? String(cells[map.sku]).trim()   : '';
+          const qty   = (map.qty   >= 0 && cells[map.qty]   != null) ? String(cells[map.qty]).trim()   : '';
+          const notes = (map.notes >= 0 && cells[map.notes] != null) ? String(cells[map.notes]).trim() : '';
+          if (!item && !sku && !qty && !notes) return;
+          out.push({ item, sku, qty, notes });
+        });
+        return out;
+      }
+
+      function renderImportPreview() {
+        showImportError('');
+        _importParsed = parseImportInput();
+        const wrap   = document.getElementById('import-preview-wrap');
+        const body   = document.getElementById('import-preview-body');
+        const count  = document.getElementById('import-preview-count');
+        const plural = document.getElementById('import-preview-s');
+        const apply  = document.getElementById('import-apply-btn');
+        if (_importParsed.length === 0) {
+          wrap.style.display = 'none';
+          apply.disabled = true;
+          apply.textContent = 'Import 0';
+          return;
+        }
+        wrap.style.display = '';
+        count.textContent  = _importParsed.length;
+        plural.textContent = _importParsed.length === 1 ? '' : 's';
+        const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const head = '<table><thead><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Notes</th></tr></thead><tbody>';
+        const rows = _importParsed.slice(0, 50).map(r =>
+          `<tr><td>${esc(r.item) || '<em style="color:#9ba3c0">—</em>'}</td><td>${esc(r.sku) || '<em style="color:#9ba3c0">—</em>'}</td><td>${esc(r.qty) || '<em style="color:#9ba3c0">—</em>'}</td><td>${esc(r.notes) || '<em style="color:#9ba3c0">—</em>'}</td></tr>`
+        ).join('');
+        const tail = _importParsed.length > 50
+          ? `<tr><td colspan="4" style="text-align:center; color:#9ba3c0; font-style:italic;">+${_importParsed.length - 50} more not shown</td></tr></tbody></table>`
+          : '</tbody></table>';
+        body.innerHTML = head + rows + tail;
+        apply.disabled = false;
+        apply.textContent = `Import ${_importParsed.length}`;
+      }
+
+      function applyImport() {
+        if (_importParsed.length === 0) return;
+        const replace = document.getElementById('import-replace').checked;
+        const tbody = document.getElementById('rfq-body');
+        if (replace) {
+          // Clear all parent rows + their variant sections, then add
+          // back a single seed parent that addRfqRow will replace
+          // (avoids the "last row can't be removed" guard).
+          tbody.querySelectorAll('tr').forEach(tr => tr.remove());
+          _rfqRows = 0;
+          for (const k of Object.keys(_variantCounters)) delete _variantCounters[k];
+        }
+        _importParsed.forEach(r => {
+          addRfqRow();
+          // The row just added is the last parent — populate its inputs.
+          const last = tbody.querySelectorAll('tr[data-row-type="parent"]');
+          const parent = last[last.length - 1];
+          if (!parent) return;
+          const setVal = (sel, v) => { const i = parent.querySelector(sel); if (i && v) i.value = v; };
+          setVal('input[name$="[item]"]',  r.item);
+          setVal('input[name$="[sku]"]',   r.sku);
+          setVal('input[name$="[qty]"]',   r.qty);
+          setVal('input[name$="[notes]"]', r.notes);
+        });
+        closeImportSkus();
+        // Reset modal state for next open
+        document.getElementById('import-textarea').value = '';
+        document.getElementById('import-file').value = '';
+        document.getElementById('import-file-name').textContent = 'No file selected';
+        document.getElementById('import-replace').checked = false;
+        renderImportPreview();
+      }
     </script>
     <?php
     return ob_get_clean();
