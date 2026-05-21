@@ -4098,6 +4098,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .freight-lead-cell input:focus { border-color: var(--accent); }
     .freight-lead-suffix { font-size: 11px; color: var(--text-muted); }
+    /* Editable per-mode rate cell (¥ / kg). Same compact treatment as
+       the lead-time input so the row stays one consistent height. */
+    .freight-rate-cell {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0 6px 0 8px;
+    }
+    .freight-rate-cell:focus-within { border-color: var(--accent); }
+    .freight-rate-prefix { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+    .freight-rate-input {
+      width: 64px; border: none; background: transparent; outline: none;
+      padding: 6px 0; font-size: 13px; color: var(--text); font-family: inherit;
+      font-variant-numeric: tabular-nums; text-align: right;
+    }
+    .freight-rate-input::-webkit-outer-spin-button,
+    .freight-rate-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
     /* Collapsible shipping sub-section */
     .freight-subsection-header {
@@ -6826,10 +6842,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr><th>Method</th><th>Lead Time</th><th>Total Weight</th><th>¥ / kg</th><th>Cost (¥)</th><th>Cost ($)</th></tr>
         </thead>
         <tbody>
-          <tr><td>Slow Boat</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-slow" placeholder="30-40" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-slow">—</td><td>12.00</td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
-          <tr><td>Fast Boat</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-fast" placeholder="20-30" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-fast">—</td><td>14.00</td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
-          <tr><td>Air + UPS</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-airupp" placeholder="7-10" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-airupp">—</td><td>44.00</td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
-          <tr><td>Direct Air</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-directair" placeholder="3-5" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-directair">—</td><td>65.00</td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
+          <tr><td>Slow Boat</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-slow" placeholder="30-40" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-slow">—</td><td><div class="freight-rate-cell"><span class="freight-rate-prefix">¥</span><input type="number" class="freight-rate-input" id="freight-rate-input-slow" value="12.00" min="0" step="0.01" oninput="onFreightRateInput('slow')" /></div></td><td id="freight-rmb-slow">—</td><td id="freight-usd-slow">—</td></tr>
+          <tr><td>Fast Boat</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-fast" placeholder="20-30" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-fast">—</td><td><div class="freight-rate-cell"><span class="freight-rate-prefix">¥</span><input type="number" class="freight-rate-input" id="freight-rate-input-fast" value="14.00" min="0" step="0.01" oninput="onFreightRateInput('fast')" /></div></td><td id="freight-rmb-fast">—</td><td id="freight-usd-fast">—</td></tr>
+          <tr><td>Air + UPS</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-airupp" placeholder="7-10" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-airupp">—</td><td><div class="freight-rate-cell"><span class="freight-rate-prefix">¥</span><input type="number" class="freight-rate-input" id="freight-rate-input-airupp" value="44.00" min="0" step="0.01" oninput="onFreightRateInput('airupp')" /></div></td><td id="freight-rmb-airupp">—</td><td id="freight-usd-airupp">—</td></tr>
+          <tr><td>Direct Air</td><td><div class="freight-lead-cell"><input type="text" id="ship-lead-directair" placeholder="3-5" oninput="onShipLeadInput()" /><span class="freight-lead-suffix">days</span></div></td><td id="freight-wt-directair">—</td><td><div class="freight-rate-cell"><span class="freight-rate-prefix">¥</span><input type="number" class="freight-rate-input" id="freight-rate-input-directair" value="65.00" min="0" step="0.01" oninput="onFreightRateInput('directair')" /></div></td><td id="freight-rmb-directair">—</td><td id="freight-usd-directair">—</td></tr>
         </tbody>
       </table>
       <!-- Shipment Split -->
@@ -17599,7 +17615,55 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   /* ── Shipping Calculator ─────────────────────────────────────────────────── */
-  const freightMethodRates    = { slow: 12, fast: 14, airupp: 44, directair: 65 };
+  // Per-mode ¥/kg rates. `freightMethodRates` is the LIVE object
+  // mutated in place when the operator edits the rate inputs on the
+  // Shipping tab — every freight / pricing reader (calcFreight,
+  // renderPricingTab, the Client Quote, Hypothetical Scenarios)
+  // reads from this object so a single edit ripples everywhere.
+  // _FREIGHT_DEFAULT_RATES is the seed for new workbooks AND the
+  // restore target when an empty input is left behind.
+  const _FREIGHT_DEFAULT_RATES = { slow: 12, fast: 14, airupp: 44, directair: 65 };
+  const freightMethodRates     = { ..._FREIGHT_DEFAULT_RATES };
+
+  // Apply a per-workbook saved overrides object onto the live rates
+  // and (optionally) re-paint the rate inputs to match. Empty/zero
+  // values revert to defaults so a saved {fast: 0} doesn't zero out
+  // the freight on load.
+  function _applyFreightRates(overrides, paintInputs) {
+    Object.assign(freightMethodRates, _FREIGHT_DEFAULT_RATES);
+    if (overrides && typeof overrides === 'object') {
+      Object.keys(_FREIGHT_DEFAULT_RATES).forEach(k => {
+        const v = parseFloat(overrides[k]);
+        if (!isNaN(v) && v > 0) freightMethodRates[k] = v;
+      });
+    }
+    if (paintInputs !== false) {
+      Object.keys(_FREIGHT_DEFAULT_RATES).forEach(k => {
+        const el = document.getElementById('freight-rate-input-' + k);
+        if (el && el !== document.activeElement) el.value = freightMethodRates[k].toFixed(2);
+      });
+    }
+  }
+
+  // Edit handler: parses the input, writes back to the live rate
+  // object, then re-runs the freight panel + pricing tab so every
+  // dependent display (the ¥/$ rate chip beside the dropdown, the
+  // per-mode comparison cells, the Pricing tab's Total Shipping,
+  // the Client Quote header) updates in lockstep. Autosaves.
+  function onFreightRateInput(mode) {
+    if (!_FREIGHT_DEFAULT_RATES.hasOwnProperty(mode)) return;
+    const el = document.getElementById('freight-rate-input-' + mode);
+    if (!el) return;
+    const raw = (el.value || '').trim();
+    const v = parseFloat(raw);
+    freightMethodRates[mode] = (raw === '' || isNaN(v) || v <= 0)
+      ? _FREIGHT_DEFAULT_RATES[mode]
+      : v;
+    if (typeof updateFreightRate === 'function') updateFreightRate();
+    if (typeof calcFreight       === 'function') calcFreight();
+    if (typeof renderPricingTab  === 'function') renderPricingTab();
+    if (typeof autoSaveWorkbook  === 'function' && !_filling) autoSaveWorkbook();
+  }
   const freightMethodDivisors = { slow: 6000, fast: 6000, airupp: 5000, directair: 5000 };
 
   // The shipping side used to ship through a hardcoded
@@ -23026,6 +23090,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _setLead('ship-lead-airupp',    data?.shipLeadAirupp,    '7-10');
     _setLead('ship-lead-directair', data?.shipLeadDirectair, '3-5');
 
+    // Per-workbook freight rate overrides. Reset to defaults first
+    // so a previous workbook's edits don't leak into this one, then
+    // paint the saved values back into the inputs.
+    if (typeof _applyFreightRates === 'function') {
+      _applyFreightRates(data?.freightRates, true);
+    }
+
     // Render the 3D box previews from the just-loaded dims
     if (typeof renderBoxViz === 'function') {
       renderBoxViz('product');
@@ -24085,6 +24156,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       shipLeadFast:      _v('ship-lead-fast'),
       shipLeadAirupp:    _v('ship-lead-airupp'),
       shipLeadDirectair: _v('ship-lead-directair'),
+      // Per-workbook ¥/kg rate overrides. Snapshot of the live
+      // freightMethodRates object so a re-open repaints the same
+      // values the operator left behind.
+      freightRates: {
+        slow:      freightMethodRates.slow,
+        fast:      freightMethodRates.fast,
+        airupp:    freightMethodRates.airupp,
+        directair: freightMethodRates.directair,
+      },
       // Shipment split
       shipmentSplits: collectShipmentSplits(),
       // RFQ queue flags (managed via toggleSendToRfq, not DOM-driven — preserve from existing)
