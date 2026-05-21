@@ -2424,6 +2424,20 @@ switch ($action) {
     //   • workbooks whose rfqItems totals changed since the original write
     //     (UPSERT refreshes pending rows; paid rows stay frozen)
     case 'recompute_commissions':
+        // Optional live overrides from the JS workbookDetail cache —
+        // a map of "$clientName|$wbId" => pricingClientQuoteTotal (USD).
+        // Lets the Commissions dashboard reflect Sale Per typed by the
+        // operator since the last autosave round-trip, instead of
+        // waiting on the saved detail_json to catch up. Numbers are
+        // applied below in the per-workbook write loop.
+        $liveQuoteTotals = [];
+        if (isset($input['client_quote_totals']) && is_array($input['client_quote_totals'])) {
+            foreach ($input['client_quote_totals'] as $k => $v) {
+                $f = (float)$v;
+                if ($f > 0) $liveQuoteTotals[(string)$k] = $f;
+            }
+        }
+
         $pairs = []; // map "$clientName|$wbId" => ['client_name', 'workbook_id']
 
         // 1. Pairs from inventory (anything ever promoted)
@@ -2468,6 +2482,22 @@ switch ($action) {
         } catch (Exception $_) {
             // Older installs may not have w.deleted_at or c.deleted_at.
             // Fall through to whatever we already have in $pairs.
+        }
+
+        // 1c. Pairs from the live Client Quote total payload — every
+        //     workbook the dashboard knows has a Client Quote $ value
+        //     gets a pair, so a freshly-typed Sale Per produces a
+        //     commission row even if paths 1/1b haven't picked the
+        //     workbook up yet (e.g. brand-new workbook never promoted
+        //     and never added to an order).
+        foreach ($liveQuoteTotals as $k => $_v) {
+            if (isset($pairs[$k])) continue;
+            $pipe = strrpos($k, '|');
+            if ($pipe === false) continue;
+            $cn = substr($k, 0, $pipe);
+            $wbId = (int)substr($k, $pipe + 1);
+            if (!$cn || $wbId <= 0) continue;
+            $pairs[$k] = ['client_name' => $cn, 'workbook_id' => $wbId];
         }
 
         // 2. Pairs from active orders. Orders live as JSON under
@@ -2533,12 +2563,17 @@ switch ($action) {
             $wbRow = $workbookCache[$wb];
             if (!$wbRow) continue;
 
-            // Prefer the customer-facing Client Quote total (Sale Per
-            // × qty + fees) cached on the workbook detail by the JS
-            // Pricing tab. Fall back to the cost-side RFQ-derived
-            // total when Sale Per hasn't been typed yet, so older
-            // workbooks still produce a non-zero commission row.
-            $cqt = ms_workbook_client_quote_total_from_detail($wbRow['detail_json'] ?? null);
+            // Priority for the commission basis:
+            //   1. Live Client Quote total sent by the dashboard (the
+            //      JS workbookDetail cache may be ahead of the saved
+            //      detail_json by an autosave debounce window).
+            //   2. Saved pricingClientQuoteTotal in detail_json.
+            //   3. Cost-side RFQ-derived total (fallback so workbooks
+            //      without Sale Per yet still produce a non-zero row).
+            $liveKey  = $cn . '|' . $wb;
+            $liveCqt  = $liveQuoteTotals[$liveKey] ?? 0;
+            $savedCqt = ms_workbook_client_quote_total_from_detail($wbRow['detail_json'] ?? null);
+            $cqt      = $liveCqt > 0 ? $liveCqt : $savedCqt;
             $totalUsd = $cqt > 0
                 ? $cqt
                 : ms_workbook_total_usd_from_detail($wbRow['detail_json'] ?? null, $fxRate);
@@ -2703,6 +2738,16 @@ switch ($action) {
             foreach (($details['entries'] ?? []) as $entry) {
                 $prod  = $entry['product'] ?? '';
                 $saleU = (float)($entry['saleUsdPerUnit'] ?? 0);
+                // Count distinct named RFQ items in this workbook. When
+                // there's >1, variant labels need to be prefixed with
+                // their parent item name ("Large Bag · Blue") so the
+                // client can tell which line they're approving. Single-
+                // item workbooks just show "Blue" since the product
+                // group header already names the parent.
+                $namedItems = array_filter(($entry['rfqItems'] ?? []), function ($it) {
+                    return is_array($it) && trim((string)($it['item'] ?? '')) !== '';
+                });
+                $multiItem = count($namedItems) > 1;
                 foreach (($entry['rfqItems'] ?? []) as $rfqItem) {
                     if (!($rfqItem['item'] ?? '') && !($rfqItem['qty'] ?? 0) && !($rfqItem['priceRmb'] ?? 0)) continue;
                     $itemName = $rfqItem['item'] ?? '';
@@ -2718,14 +2763,17 @@ switch ($action) {
                             $vq = $stripNum($v['qty'] ?? 0);
                             if ($vq <= 0 && ($v['variant'] ?? '') === '') continue;
                             $vCostRmb = $stripNum($v['priceRmb'] ?? 0) ?: $stripNum($rfqItem['priceRmb'] ?? 0);
-                            // Label is the variant name only — the
-                            // product group header above already names
-                            // the item, so "Medium Bag — Blue" would
-                            // just be noise. isVariant drives the extra
-                            // indent in the table / portal renderers.
+                            // Label: single-item workbook → variant
+                            // name only; multi-item → "Item · Variant"
+                            // so the client never has to guess which
+                            // parent row this variant belongs to.
+                            $vName = ($v['variant'] ?? '') !== '' ? $v['variant'] : 'Variant';
+                            $label = ($multiItem && trim((string)$itemName) !== '')
+                                ? (trim((string)$itemName) . ' · ' . $vName)
+                                : $vName;
                             $orderItems[] = [
                                 'product'   => $prod,
-                                'item'      => ($v['variant'] ?? 'Variant') !== '' ? $v['variant'] : 'Variant',
+                                'item'      => $label,
                                 'sku'       => $sku,
                                 'qty'       => $vq,
                                 'priceRmb'  => $saleU > 0 ? ($saleU * $rate) : $vCostRmb,

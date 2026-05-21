@@ -7064,6 +7064,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                        oninput="onPricingSalePerInput()" />
               </div>
             </div>
+            <!-- Margin drift warning — appears only when the typed
+                 Sale Per implies a margin meaningfully different from
+                 the configured Margin %, e.g. RFQ price moved but
+                 Sale Per wasn't re-typed. Painted by _renderPricingTabInner. -->
+            <div class="pricing-landed-row" id="ps-sale-drift-row" style="display:none;">
+              <span class="label"></span>
+              <span id="ps-sale-drift" style="font-size:11px; font-weight:600;"></span>
+            </div>
             <div class="pricing-landed-row">
               <span class="label">Total USD</span>
               <span class="value" id="ps-total-usd">—</span>
@@ -18074,6 +18082,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const salePerRaw = (saleInput?.value || '').trim();
     const salePer    = salePerRaw === '' ? NaN : parseFloat(salePerRaw);
 
+    // Margin drift detection — when the typed Sale Per implies a
+    // margin that's meaningfully different from the configured
+    // Margin %, surface a small warning beneath the input. The most
+    // common cause is the RFQ price moved (or shipping changed) but
+    // Sale Per wasn't re-typed. Thresholds: ≥ 2 pp drift = amber
+    // "target X% vs actual Y%"; Sale Per ≤ landed = red "Below cost
+    // by $Z" (a real money loss the operator needs to see).
+    const driftEl     = e('ps-sale-drift');
+    const driftRowEl  = e('ps-sale-drift-row');
+    if (driftEl && driftRowEl) {
+      if (!isNaN(salePer) && salePer > 0 && landedAvg > 0) {
+        const impliedPct = ((salePer - landedAvg) / landedAvg) * 100;
+        const driftPp    = impliedPct - wbMarginPct;
+        if (salePer <= landedAvg) {
+          driftRowEl.style.display = '';
+          driftEl.style.color      = 'var(--danger, #dc2626)';
+          driftEl.textContent      = `⚠ Below cost by $${(landedAvg - salePer).toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3})}/unit — you're losing money on every unit sold.`;
+        } else if (Math.abs(driftPp) >= 2) {
+          driftRowEl.style.display = '';
+          driftEl.style.color      = '#d97706';
+          const fmtPct = v => (Math.round(v * 10) / 10).toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1});
+          driftEl.textContent      = `⚠ Margin drift — Sale Per implies ${fmtPct(impliedPct)}% margin vs target ${fmtPct(wbMarginPct)}% (off by ${driftPp > 0 ? '+' : ''}${fmtPct(driftPp)} pp). Re-type Sale Per to realign.`;
+        } else {
+          driftRowEl.style.display = 'none';
+        }
+      } else {
+        driftRowEl.style.display = 'none';
+      }
+    }
+
     // Landed Total (deterministic): tier qty × weighted-avg landed,
     // plus any one-time Additional Fees the operator has applied above.
     const landedTotalBase = tierQty > 0 ? tierQty * landedAvg : 0;
@@ -24434,7 +24472,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // assigned later, or the workbook's rfqItems totals changed). The
       // server is idempotent and refreshes pending rows in place; paid rows
       // stay frozen. Failures here shouldn't block the read of existing rows.
-      try { await apiCall('recompute_commissions'); }
+      //
+      // Send the live Client Quote totals from workbookDetail so any
+      // Sale Per typed since the last autosave round-trip ALSO shows
+      // up as a commission row — guarantees "Client Quote entered →
+      // commission shows" without waiting on the saved detail_json.
+      // Server-side path 1c uses this to create pairs for workbooks
+      // that haven't been promoted / aren't in an order yet too.
+      const liveQuoteTotals = {};
+      try {
+        Object.entries(workbookDetail || {}).forEach(([key, d]) => {
+          const v = parseFloat(d && d.pricingClientQuoteTotal);
+          if (!isNaN(v) && v > 0) {
+            // Map JS key (clientName|localId) to DB key (clientName|dbId).
+            // dbWorkbookMap is populated by loadFromDatabase; keys that
+            // aren't in it fall back to the local id (which IS the DB
+            // id for workbooks loaded from the DB).
+            const dbKey = (typeof dbWorkbookMap === 'object' && dbWorkbookMap && dbWorkbookMap[key])
+              ? `${key.split('|')[0]}|${dbWorkbookMap[key]}`
+              : key;
+            liveQuoteTotals[dbKey] = v;
+          }
+        });
+      } catch (_) { /* missing workbookDetail / dbWorkbookMap — server falls back to saved detail_json */ }
+
+      try { await apiCall('recompute_commissions', { client_quote_totals: liveQuoteTotals }); }
       catch (e) { console.warn('[commissions] recompute_commissions failed', e); }
 
       const res = await apiCall('get_commissions');
@@ -26462,19 +26524,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Container View ─────────────────────────────────────────────────
-  // Each order in the shipment is one colored volume inside a 40' HC
-  // container (67 m³ usable). Two styles the operator can toggle:
-  // The container graphic is a 3D cabinet-projection 40' HC drawn at
-  // a FIXED 67 m³ scale: a straight-on readable side wall of
-  // proportional colored segments (one per order, width ∝ CBM), a
-  // lightened roof face and a darkened receding end wall to sell the
-  // depth, all wrapped in a steel frame with corner posts. Volume
-  // beyond 67 m³ spills into an amber overflow bar below (one
-  // container + overflow bar, per the operator's choice). Per-order
-  // color reuses the shared client palette so an order keeps a
-  // stable hue.
+  // A bordered 40' HC outline at a FIXED 67 m³ scale. Each order
+  // is a proportional colored block (width ∝ CBM) sitting inside,
+  // labeled with name + CBM. Below it: a weight cap bar against
+  // 26,000 kg (the truck axle limit — many shipments hit this
+  // before they hit volume). Overflow on EITHER axis triggers an
+  // amber bar. Per-order color reuses the shared client palette so
+  // an order keeps a stable hue across views.
   const _SHIP_CV_PALETTE = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8','#e879f9','#facc15'];
-  const _SHIP_CV_CAP = 67; // usable m³ in a 40' HC
+  const _SHIP_CV_CAP    = 67;     // usable m³ in a 40' HC
+  const _SHIP_CV_WT_CAP = 26000;  // max payload kg for a 40' HC (truck axle limit)
 
   function renderShipmentContainerViz() {
     const card  = document.getElementById('ship-container-viz-card');
@@ -26490,15 +26549,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       .filter(e => e.orderId && orderData[e.orderId])
       .map((e, i) => {
         const o  = orderData[e.orderId];
-        const st = (typeof orderShipStats === 'function') ? orderShipStats(e.orderId) : { totalCbm: 0 };
+        const st = (typeof orderShipStats === 'function') ? orderShipStats(e.orderId) : { totalCbm: 0, totalWeightKg: 0 };
         return {
-          id:    e.orderId,
-          name:  o.name || `Order #${e.orderId}`,
-          cbm:   parseFloat(st.totalCbm) || 0,
-          color: _SHIP_CV_PALETTE[i % _SHIP_CV_PALETTE.length],
+          id:       e.orderId,
+          name:     o.name || `Order #${e.orderId}`,
+          cbm:      parseFloat(st.totalCbm) || 0,
+          weightKg: parseFloat(st.totalWeightKg) || 0,
+          color:    _SHIP_CV_PALETTE[i % _SHIP_CV_PALETTE.length],
         };
       })
-      .filter(x => x.cbm > 0);
+      .filter(x => x.cbm > 0 || x.weightKg > 0);
 
     if (orders.length === 0) {
       if (empty) { empty.style.display = ''; empty.textContent =
@@ -26513,12 +26573,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalCbm  = orders.reduce((a, x) => a + x.cbm, 0);
     const overflow  = Math.max(0, totalCbm - _SHIP_CV_CAP);
     const freeCbm   = Math.max(0, _SHIP_CV_CAP - totalCbm);
+    const totalWtKg = orders.reduce((a, x) => a + (x.weightKg || 0), 0);
+    const wtOver    = Math.max(0, totalWtKg - _SHIP_CV_WT_CAP);
+    const wtFree    = Math.max(0, _SHIP_CV_WT_CAP - totalWtKg);
     const fmtCbm    = n => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const fmtKg     = n => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
 
     if (summ) {
-      summ.innerHTML = overflow > 0
+      const cbmTxt = overflow > 0
         ? `<span style="color:#d97706; font-weight:700;">${fmtCbm(totalCbm)} / ${_SHIP_CV_CAP} m³ · over by ${fmtCbm(overflow)}</span>`
         : `${fmtCbm(totalCbm)} / ${_SHIP_CV_CAP} m³ · ${fmtCbm(freeCbm)} free`;
+      const wtTxt = totalWtKg > 0
+        ? (wtOver > 0
+          ? ` · <span style="color:#d97706; font-weight:700;">${fmtKg(totalWtKg)} / ${fmtKg(_SHIP_CV_WT_CAP)} kg · over by ${fmtKg(wtOver)}</span>`
+          : ` · ${fmtKg(totalWtKg)} / ${fmtKg(_SHIP_CV_WT_CAP)} kg`)
+        : '';
+      summ.innerHTML = cbmTxt + wtTxt;
     }
 
     // Split each order into the portion that fits in the single
@@ -26573,7 +26643,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:4px;">
         <span>0</span><span>${(_SHIP_CV_CAP/2).toFixed(0)} m³</span><span>${_SHIP_CV_CAP} m³</span>
-      </div>`;
+      </div>` + buildWeightBar();
+
+    // Weight cap bar — proportional per-order weight contribution
+    // against the 26,000 kg truck axle limit. Same per-order colors
+    // as the container, so the operator can map "this color is
+    // heavy" vs "this color is bulky" at a glance. Hidden when no
+    // order has weight cached.
+    function buildWeightBar() {
+      if (totalWtKg <= 0) return '';
+      const cap = _SHIP_CV_WT_CAP;
+      // Each order's bar width = its weight / max(total, cap) so
+      // overflow visibly squeezes everything tighter and the
+      // amber over-bar shows the excess.
+      const scaleMax = Math.max(totalWtKg, cap);
+      const wtBlocks = orders.filter(o => o.weightKg > 0).map(o => {
+        const w = (o.weightKg / scaleMax) * 100;
+        const showLbl = w > 10;
+        return `<div title="${o.name} — ${fmtKg(o.weightKg)} kg"
+          style="width:${w}%; background:${o.color}; display:flex; align-items:center; justify-content:center; overflow:hidden; border-right:2px solid #fff;">
+          ${showLbl ? `<span style="font-size:10px; font-weight:700; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,0.35); white-space:nowrap;">${fmtKg(o.weightKg)} kg</span>` : ''}
+        </div>`;
+      }).join('');
+      const wtFreePct = wtOver > 0 ? 0 : (wtFree / cap) * 100 * (cap / scaleMax);
+      const wtFreeZone = wtFreePct > 0.5
+        ? `<div style="width:${wtFreePct}%; display:flex; align-items:center; justify-content:center; background:var(--surface2); color:var(--text-muted);">
+             ${wtFreePct > 8 ? `<span style="font-size:10px; font-weight:600;">${fmtKg(wtFree)} kg free</span>` : ''}
+           </div>` : '';
+      // Cap marker — vertical dashed line at the 26,000 kg position
+      // (only shown when scale extends past the cap due to overflow).
+      const capMarker = totalWtKg > cap
+        ? `<div style="position:absolute; top:-4px; bottom:-4px; left:${(cap / scaleMax) * 100}%; width:2px; background:repeating-linear-gradient(180deg, #d97706 0 4px, transparent 4px 8px); z-index:2;"></div>`
+        : '';
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; margin:14px 0 6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
+          <span>Weight</span><span style="opacity:0.6;">${fmtKg(cap)} kg max (truck axle limit)</span>
+        </div>
+        <div style="position:relative; display:flex; height:32px; border:2px solid var(--text); border-radius:6px; overflow:hidden; background:var(--surface);">
+          ${wtBlocks}${wtFreeZone}
+          ${capMarker}
+        </div>
+        ${wtOver > 0 ? `<div style="margin-top:6px; font-size:11px; color:#d97706; font-weight:700;">⚠ Over weight cap by ${fmtKg(wtOver)} kg — split the load or downgauge cartons.</div>` : ''}`;
+    }
 
     const overflowBar = overflow > 0 ? `
       <div style="margin-top:14px; padding:10px 14px; background:rgba(217,119,6,0.10); border:1px solid rgba(217,119,6,0.35); border-radius:8px;">
