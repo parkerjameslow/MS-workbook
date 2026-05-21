@@ -4615,6 +4615,59 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       .legend { flex-wrap: wrap; padding: 10px 12px; }
     }
 
+    /* Narrow phone (≤520px): the client workbooks table can't fit
+       Product · Date · Order · Status · Actions in a row without
+       truncating the Status pill. Reflow each row into a stacked
+       card so every cell gets the width it needs. The thead is
+       hidden since the labels go inline with each value chip. */
+    @media (max-width: 520px) {
+      .dash-table,
+      .dash-table thead,
+      .dash-table tbody,
+      .dash-table tr,
+      .dash-table td,
+      .dash-table th { display: block; width: 100%; box-sizing: border-box; }
+      .dash-table thead { display: none; }
+      .dash-table tr {
+        position: relative;
+        padding: 14px 14px 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .dash-table tr:last-child { border-bottom: none; }
+      .dash-table td {
+        padding: 4px 0 !important;
+        border: none !important;
+        text-align: left !important;
+        width: auto !important;
+      }
+      /* Product cell becomes the card title (full row, big text) */
+      .dash-table td:first-child {
+        padding: 0 0 8px !important;
+        font-size: 15px;
+        font-weight: 700;
+      }
+      /* Date / Order / Status flow into a horizontal wrapping row
+         below the title — each chip readable at full width */
+      .dash-table td.col-date-created,
+      .dash-table td.col-order,
+      .dash-table td.col-mobile-status {
+        display: inline-flex !important;
+        align-items: center;
+        margin: 0 8px 4px 0;
+        font-size: 12px;
+      }
+      .dash-table td.col-date-created::before { content: ''; }
+      .dash-table td.col-mobile-status { text-align: right !important; }
+      /* Actions cell pinned top-right of the card */
+      .dash-table td:last-child {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        padding: 0 !important;
+        width: auto !important;
+      }
+    }
+
     @media (max-width: 640px) {
       .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
       .col-span-2, .col-span-3 { grid-column: span 1; }
