@@ -6836,7 +6836,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- Comparison table — full width.
            Lead Time column is editable per workbook (defaults reflect rough
            China→US transit times); the highest of these days flows into the
-           Client Quote header as Shipping Lead Time. -->
+           Client Quote header as Shipping Lead Time.
+           When the operator has added one or more Shipment Splits below,
+           the table's qty drops to the REMAINDER (totalUnits − splitUnits)
+           — the hint just above tells the operator exactly which slice
+           of the shipment the comparison numbers reflect. -->
+      <div id="freight-remainder-hint" style="display:none; font-size:11px; color:var(--text-muted); margin:0 0 6px;"></div>
       <table class="freight-ref-table freight-cmp-table">
         <thead>
           <tr><th>Method</th><th>Lead Time</th><th>Total Weight</th><th>¥ / kg</th><th>Cost (¥)</th><th>Cost ($)</th></tr>
@@ -15157,8 +15162,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Update the cost span in-place so the qty input doesn't lose focus
     const costEl = document.getElementById(`split-cost-${id}`);
     if (costEl) {
-      const cost = calcSplitCost(row.method, row.qty);
-      costEl.innerHTML = cost ? `${cost.rmbStr} &nbsp;·&nbsp; ${cost.usdStr}` : '';
+      costEl.innerHTML = _buildSplitCostInline(row, calcSplitCost(row.method, row.qty));
     }
     renderShipmentSplitSummary();
     _refreshPricingForSplits();
@@ -15167,10 +15171,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // Splits feed the Pricing tab's Shipping Cost block (Method flips to
   // "Mixed", total uses the sum of per-split costs, breakdown rows
-  // render under #ps-sh-splits). Re-render on every split mutation so
-  // the operator sees the Pricing tab update live without switching
-  // tabs. Guarded so we don't crash before the Pricing tab is wired.
+  // render under #ps-sh-splits) AND the Shipping tab's comparison
+  // table (which now reflects the remainder after splits, not the
+  // full tier qty). Re-render both on every split mutation so the
+  // operator sees them update live without switching tabs. Guarded
+  // so we don't crash before the renderers are wired.
   function _refreshPricingForSplits() {
+    if (typeof calcFreight === 'function') {
+      try { calcFreight(); } catch (_) {}
+    }
     if (typeof renderPricingTab === 'function') {
       try { renderPricingTab(); } catch (_) {}
     }
@@ -15186,8 +15195,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     body.innerHTML = _shipmentSplits.map(row => {
       const cost = calcSplitCost(row.method, row.qty);
-      const costStr = `<span id="split-cost-${row.id}" style="font-size:12px; font-weight:600; color:var(--text-muted); white-space:nowrap;">${cost ? `${cost.rmbStr} &nbsp;·&nbsp; ${cost.usdStr}` : ''}</span>`;
-      return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+      // _buildSplitCostInline renders the per-split math breakdown
+      // (cartons × kg × ¥/kg = ¥total / $total) when the carton specs
+      // are complete; falls back to "needs carton specs" when they
+      // aren't so the operator can see WHY the cost is blank.
+      const costHtml = _buildSplitCostInline(row, cost);
+      return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
         <input type="number" min="0" step="1" value="${row.qty}"
           style="width:80px; height:32px; padding:0 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; flex-shrink:0;"
           oninput="onSplitChange(${row.id}, 'qty', this.value)" placeholder="Qty" />
@@ -15198,14 +15211,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${Object.entries(SPLIT_METHOD_LABELS).map(([k,v]) => `<option value="${k}"${row.method===k?' selected':''}>${v}</option>`).join('')}
           </select>
         </div>
-        <span style="flex:1;"></span>
-        ${costStr}
+        <span id="split-cost-${row.id}" style="flex:1; min-width:160px; text-align:right; font-size:12px;">${costHtml}</span>
         <button onclick="removeShipmentSplit(${row.id})"
           style="background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:16px; padding:2px 6px; border-radius:var(--radius-sm); transition:color 0.15s; flex-shrink:0;"
           onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='var(--text-muted)'">×</button>
       </div>`;
     }).join('');
     renderShipmentSplitSummary();
+  }
+
+  // Build the inline cost cell for a split row. When calcSplitCost
+  // returned a value, show the actual math the cost derives from —
+  // "6 ctn × 0.60 kg × ¥48/kg = ¥172.80 / $25.32" — so the operator
+  // can sanity-check the number against the comparison table above
+  // without doing arithmetic in their head. The math expression is
+  // muted; the ¥ + $ totals stay bold and full-color so the eye
+  // lands on the headline value first.
+  function _buildSplitCostInline(row, cost) {
+    if (!cost) {
+      const q = parseInt(row.qty) || 0;
+      if (q <= 0) return '<span style="color:var(--text-muted); font-style:italic;">enter a qty</span>';
+      return '<span style="color:#dc2626; font-style:italic;">add carton specs to compute cost</span>';
+    }
+    const fmt2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const perCarton = cost.cartons > 0 ? (cost.chargeableKg / cost.cartons) : 0;
+    const mathStr = `${cost.cartons} ctn × ${fmt2(perCarton)} kg × ¥${fmt2(cost.rate)}/kg`;
+    return `<span style="color:var(--text-muted); margin-right:6px; font-family:'SF Mono','Consolas',monospace; font-size:11px;">${mathStr} =</span>`
+         + `<span style="color:var(--text); font-weight:700; font-family:'SF Mono','Consolas',monospace;">¥${fmt2(cost.rmb)}</span>`
+         + `<span style="color:var(--text-muted); margin:0 6px;">·</span>`
+         + `<span style="color:var(--text); font-weight:700; font-family:'SF Mono','Consolas',monospace;">$${fmt2(cost.usd)}</span>`;
   }
 
   function renderShipmentSplitSummary() {
@@ -15230,7 +15264,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const isOver = tierQty > 0 && total > tierQty;
     const totalStyle = isOver ? 'font-weight:600; color:#ef4444;' : 'font-weight:600;';
     const overMsg = isOver ? ` <span style="color:#ef4444; font-weight:600;">⚠ exceeds tier qty of ${tierQty.toLocaleString('en-US')}</span>` : '';
-    el.innerHTML = `<span style="${totalStyle}">${total.toLocaleString('en-US')} total</span> &nbsp;·&nbsp; ${parts}${overMsg}`;
+
+    // Grand total cost across all splits — sum the per-split rmb/usd
+    // figures (calcSplitCost is the same function each row uses to
+    // render its inline cost so the headline always ties out).
+    let _gtRmb = 0, _gtUsd = 0, _anyMissing = false;
+    _shipmentSplits.forEach(r => {
+      const q = parseInt(r.qty) || 0;
+      if (q <= 0) return;
+      const c = calcSplitCost(r.method, q);
+      if (!c) { _anyMissing = true; return; }
+      _gtRmb += c.rmb;
+      _gtUsd += c.usd;
+    });
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const gtRmbStr = _gtUsd > 0 ? `¥${fmt2(_gtRmb)}` : '';
+    const gtUsdStr = _gtUsd > 0 ? `$${fmt2(_gtUsd)}` : '';
+    const gtHtml = _gtUsd > 0
+      ? `<div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:6px; padding-top:6px; border-top:1px solid var(--border); font-size:13px;">
+           <span style="font-weight:700;">Splits Grand Total</span>
+           <span style="display:flex; gap:12px; align-items:baseline;">
+             <span style="font-family:'SF Mono','Consolas',monospace; font-weight:700;">${gtRmbStr}</span>
+             <span style="color:var(--text-muted);">·</span>
+             <span style="font-family:'SF Mono','Consolas',monospace; font-weight:700;">${gtUsdStr}</span>
+           </span>
+         </div>`
+      : (_anyMissing
+          ? `<div style="margin-top:6px; padding-top:6px; border-top:1px solid var(--border); font-size:12px; color:#dc2626;">Carton specs missing on one or more splits — grand total can't be computed yet.</div>`
+          : '');
+
+    el.innerHTML = `<div><span style="${totalStyle}">${total.toLocaleString('en-US')} total</span> &nbsp;·&nbsp; ${parts}${overMsg}</div>${gtHtml}`;
     el.style.color = isOver ? '#ef4444' : '';
   }
 
@@ -19241,7 +19304,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // $36.99 instead of the real ~$200+). Honest behavior: cartons=0
     // when specs are missing, freight totals collapse to 0, and the
     // panel surfaces a banner telling the operator what's missing.
-    const cartons   = ship.count > 0 ? ship.count : 0;
+    // Reduce the comparison-table qty by whatever the operator has
+    // already split off. The intent: the upper "Method" comparison
+    // shows what it would cost to ship the REMAINING qty via the
+    // selected mode, with each split's cost already broken out in
+    // its own row below. If splits cover the full tier, cartons here
+    // collapses to 0 and the table renders "—" everywhere (correct —
+    // nothing's left to ship at the top-line rate).
+    let _splitUnitsTotal = 0;
+    if (typeof _shipmentSplits !== 'undefined' && Array.isArray(_shipmentSplits)) {
+      _splitUnitsTotal = _shipmentSplits.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
+    }
+    let cartons = ship.count > 0 ? ship.count : 0;
+    let _remainderUnits = 0;       // for the "x of y units" hint
+    let _totalUnitsForFreight = 0; // for the same hint
+    if (ship.mode === 'carton' && _splitUnitsTotal > 0) {
+      const innerQty   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+      const outerQty   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+      const productsPerOuter = (innerQty > 0 && outerQty > 0) ? innerQty * outerQty : 0;
+      const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+      _totalUnitsForFreight = totalUnits;
+      if (productsPerOuter > 0 && totalUnits > 0) {
+        _remainderUnits = Math.max(0, totalUnits - _splitUnitsTotal);
+        cartons = _remainderUnits > 0 ? Math.ceil(_remainderUnits / productsPerOuter) : 0;
+      }
+    } else if (ship.mode === 'manual' && _splitUnitsTotal > 0) {
+      // Manual mode treats each unit as its own ship-item; just subtract.
+      const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+      _totalUnitsForFreight = totalUnits;
+      _remainderUnits = Math.max(0, totalUnits - _splitUnitsTotal);
+      cartons = _remainderUnits;
+    }
     const exchange  = USD_TO_RMB;
     // Why carton count is 0 (if it is) — drives the warning banner.
     let missingMsg = '';
@@ -19280,6 +19373,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const usdEl = document.getElementById('freight-rate-usd-display');
     if (rmbEl) rmbEl.textContent = rate.toFixed(2);
     if (usdEl) usdEl.textContent = (rate / exchange).toFixed(2);
+
+    // "x of y units (z split off)" hint above the comparison table —
+    // makes it unambiguous that the table reflects the remainder, not
+    // the full tier qty, when splits are active.
+    const _hintEl = document.getElementById('freight-remainder-hint');
+    if (_hintEl) {
+      if (_splitUnitsTotal > 0 && _totalUnitsForFreight > 0) {
+        _hintEl.innerHTML = `Showing cost for <strong>${_remainderUnits.toLocaleString('en-US')}</strong> of `
+                          + `${_totalUnitsForFreight.toLocaleString('en-US')} units `
+                          + `(${_splitUnitsTotal.toLocaleString('en-US')} split off below).`;
+        _hintEl.style.display = '';
+      } else {
+        _hintEl.style.display = 'none';
+        _hintEl.textContent = '';
+      }
+    }
 
     if (!lCm || !wCm || !hCm) {
       // Weight-only override: freight is driven by Actual Weight alone
