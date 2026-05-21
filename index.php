@@ -19057,8 +19057,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rawMode  = document.getElementById('freight-mode').value;
     const mode     = freightMethodRates[rawMode] ? rawMode : 'slow'; // fallback to slow if mode unknown/empty
     const rate     = freightMethodRates[mode];
-    const cartons  = ship.count > 0 ? ship.count : 1;
-    const exchange = USD_TO_RMB;
+    // Carton count comes from _shipUnit(). In carton mode it's
+    // computed as ceil(totalUnits / (innerCount × outerCount)) — when
+    // either count is missing the helper returns 0. We used to fall
+    // back to "1 carton" here, which silently produced a single-
+    // carton freight quote even when the operator was shipping
+    // thousands of units (e.g. Tank workbook → 5,925 units showed
+    // $36.99 instead of the real ~$200+). Honest behavior: cartons=0
+    // when specs are missing, freight totals collapse to 0, and the
+    // panel surfaces a banner telling the operator what's missing.
+    const cartons   = ship.count > 0 ? ship.count : 0;
+    const exchange  = USD_TO_RMB;
+    // Why carton count is 0 (if it is) — drives the warning banner.
+    let missingMsg = '';
+    if (cartons === 0 && ship.mode === 'carton') {
+      const innerQty   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
+      const outerQty   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
+      const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+      const missing = [];
+      if (innerQty <= 0)   missing.push('Inner Carton qty');
+      if (outerQty <= 0)   missing.push('Outer Carton qty');
+      if (totalUnits <= 0) missing.push('Total Units to Ship');
+      missingMsg = missing.length
+        ? `Add ${missing.join(' + ')} on the Workbook tab to compute freight for the full shipment.`
+        : '';
+    }
+    // Paint or clear the warning banner. Lives in a single <div>
+    // injected just above the freight results, so the operator sees
+    // it without scrolling.
+    (function paintFreightWarning() {
+      const host = document.getElementById('freight-out-actual')?.closest('.freight-results, .section-card, .section-body, .freight-panel')
+                ?? document.getElementById('freight-out-actual')?.parentElement;
+      if (!host) return;
+      let warn = document.getElementById('freight-missing-specs-warning');
+      if (!missingMsg) { if (warn) warn.remove(); return; }
+      if (!warn) {
+        warn = document.createElement('div');
+        warn.id = 'freight-missing-specs-warning';
+        warn.style.cssText = 'margin:0 0 12px; padding:10px 14px; border-radius:8px; background:rgba(217,119,6,0.10); border:1px solid rgba(217,119,6,0.35); color:#d97706; font-size:12px; font-weight:600;';
+        host.parentNode.insertBefore(warn, host);
+      }
+      warn.textContent = '⚠ ' + missingMsg;
+    })();
 
     // Update rate chip displays
     const rmbEl = document.getElementById('freight-rate-rmb-display');
@@ -19154,7 +19194,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       extraEl.style.display = 'none';
     }
 
-    // Method comparison — 5-column table + results panel
+    // Method comparison — 5-column table + results panel. When
+    // cartons is 0 (carton specs missing) every cell renders "—"
+    // instead of "0.00 kg / $ 0.00", which would mislead the
+    // operator into thinking the freight quote was successfully
+    // computed and just happened to be zero.
     [
       { key: 'slow',      div: 6000, r: freightMethodRates.slow },
       { key: 'fast',      div: 6000, r: freightMethodRates.fast },
@@ -19165,14 +19209,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const cw = Math.max(actualKg, vw) * cartons;  // total chargeable kg
       const cr = cw * m.r;
       const cu = cr / exchange;
-      const combinedVal = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      const haveData = cartons > 0 && cw > 0;
+      const combinedVal = haveData
+        ? ('¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}))
+        : '—';
       // 5-column breakdown table
       const wtEl  = document.getElementById('freight-wt-'  + m.key);
       const rmbEl = document.getElementById('freight-rmb-' + m.key);
       const usdEl = document.getElementById('freight-usd-' + m.key);
-      if (wtEl)  wtEl.textContent  = cw.toFixed(2) + ' kg';
-      if (rmbEl) rmbEl.textContent = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-      if (usdEl) usdEl.textContent = '$ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      if (wtEl)  wtEl.textContent  = haveData ? (cw.toFixed(2) + ' kg') : '—';
+      if (rmbEl) rmbEl.textContent = haveData ? ('¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})) : '—';
+      if (usdEl) usdEl.textContent = haveData ? ('$ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})) : '—';
       // Results panel comparison
       const resEl = document.getElementById('freight-res-' + m.key);
       if (resEl) resEl.textContent = combinedVal;
