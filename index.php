@@ -15342,6 +15342,64 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // 'die','plate','design'); extra fees by 'extra:<id>'. Persisted as
   // an array on workbookDetail.appliedFees.
   let _appliedFees = new Set();
+  // Synthetic "shipment upgrade" fees — the premium of shipping a split
+  // via a faster method vs. the base/dropdown method. These aren't
+  // entered on the Workbook tab; _renderPricingTabInner recomputes them
+  // every render and parks them here so appliedFeesTotalUsd /
+  // appliedFeesList can fold them into the Total Landed Cost + Client
+  // Quote when their checkbox is ticked. IDs are '__shipup_<methodKey>'
+  // (e.g. '__shipup_airupp'); they persist in _appliedFees like any
+  // other applied fee but are excluded from the prune step in
+  // renderPricingFeesCard (they have no Workbook-tab counterpart).
+  let _shipUpgradeFeeCache = [];
+  function _shipmentUpgradeFees() { return Array.isArray(_shipUpgradeFeeCache) ? _shipUpgradeFeeCache : []; }
+  // Compute the shipment-upgrade premium for every split that ships via
+  // a costlier method than the base/dropdown method. One synthetic fee
+  // per upgraded method, aggregated across same-method splits:
+  //   premium = cost(splitMethod, qty) − cost(baseMethod, qty)
+  // Returns [] when there are no splits, a manual shipping override is
+  // active, or carton specs are missing (cost can't be derived). Reads
+  // only globals (_shipmentSplits, freight-mode, calcSplitCost) so it
+  // can run early in _renderPricingTabInner, before the applied-fee
+  // totals are read.
+  function _computeShipUpgradeFeeCache() {
+    const cache = [];
+    if (typeof _shipmentSplits === 'undefined' || !Array.isArray(_shipmentSplits)) return cache;
+    const overrideUsd = (typeof _getShippingCostOverrideUsd === 'function') ? _getShippingCostOverrideUsd() : null;
+    if (overrideUsd !== null) return cache; // override masks computed shipping math
+    const baseMethod = document.getElementById('freight-mode')?.value || 'slow';
+    const labels = { slow: 'Slow Boat', fast: 'Fast Boat', airupp: 'Air + UPS', directair: 'Direct Air' };
+    const byMethod = {};
+    _shipmentSplits.forEach(s => {
+      const q = parseInt(s.qty) || 0;
+      if (q <= 0 || s.method === baseMethod) return;
+      const upCost   = calcSplitCost(s.method,  q);
+      const baseCost = calcSplitCost(baseMethod, q);
+      if (!upCost || !baseCost) return;
+      const premUsd = upCost.usd - baseCost.usd;
+      const premRmb = upCost.rmb - baseCost.rmb;
+      if (premUsd <= 0) return; // base same/cheaper — nothing to upgrade
+      const agg = byMethod[s.method] || { qty: 0, premUsd: 0, premRmb: 0, baseUsd: 0, upUsd: 0 };
+      agg.qty += q; agg.premUsd += premUsd; agg.premRmb += premRmb;
+      agg.baseUsd += baseCost.usd; agg.upUsd += upCost.usd;
+      byMethod[s.method] = agg;
+    });
+    Object.keys(byMethod).forEach(mk => {
+      const agg = byMethod[mk];
+      cache.push({
+        id: '__shipup_' + mk,
+        method: mk,
+        baseMethod,
+        label: 'Added Shipping Cost for ' + (labels[mk] || mk),
+        desc: agg.qty.toLocaleString('en-US') + ' units · ' + (labels[baseMethod] || baseMethod) + ' → ' + (labels[mk] || mk),
+        rmb: agg.premRmb,
+        usd: agg.premUsd,
+        baseUsd: agg.baseUsd,
+        upUsd: agg.upUsd,
+      });
+    });
+    return cache;
+  }
   // Sticky expand-state for the Total Landed Cost card's per-variant
   // breakdown section. Persists across re-renders within a session so
   // clicking expand once doesn't snap closed on the next renderPricingTab.
@@ -16095,16 +16153,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // Sum of every applied fee's USD amount. Drives both the Total Landed
-  // Cost addition and the Client Quote line items.
+  // Cost addition and the Client Quote line items. Includes synthetic
+  // shipment-upgrade fees (see _shipmentUpgradeFees) when ticked.
   function appliedFeesTotalUsd() {
     const fees = collectWorkbookFees();
-    return fees.reduce((s, f) => s + (_appliedFees.has(f.id) ? f.usd : 0), 0);
+    let t = fees.reduce((s, f) => s + (_appliedFees.has(f.id) ? f.usd : 0), 0);
+    _shipmentUpgradeFees().forEach(f => { if (_appliedFees.has(f.id)) t += (f.usd || 0); });
+    return t;
   }
 
   // List of currently-applied fees (filtered + ordered the way they
-  // appear in the picker). Used by the Client Quote renderer.
+  // appear in the picker). Used by the Client Quote renderer. Synthetic
+  // shipment-upgrade fees are appended so they show as their own line
+  // item in the client quote when ticked.
   function appliedFeesList() {
-    return collectWorkbookFees().filter(f => _appliedFees.has(f.id));
+    const list = collectWorkbookFees().filter(f => _appliedFees.has(f.id));
+    _shipmentUpgradeFees().forEach(f => { if (_appliedFees.has(f.id)) list.push(f); });
+    return list;
   }
 
   // Build the Apply Additional Fees picker on the Pricing tab. One row
@@ -16120,14 +16185,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // (e.g. user deleted an extra row on the Workbook tab).
     const validIds = new Set(fees.map(f => f.id));
     let pruned = false;
-    [..._appliedFees].forEach(id => { if (!validIds.has(id)) { _appliedFees.delete(id); pruned = true; } });
+    // '__shipup_*' are synthetic shipment-upgrade fees with no Workbook-
+    // tab row — never prune them here (they're managed by renderPricingTab).
+    [..._appliedFees].forEach(id => { if (!validIds.has(id) && !String(id).startsWith('__shipup_')) { _appliedFees.delete(id); pruned = true; } });
 
     const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
 
     if (fees.length === 0) {
       body.innerHTML = `<div style="padding:14px 4px; font-size:12px; color:var(--text-muted); font-style:italic;">No fees entered on the Workbook tab. Add Sample / Tooling / Die / Plate / Design or custom fees there to make them available here.</div>`;
-      if (totalEl) totalEl.textContent = '';
+      // Even with no Workbook-tab fees, a shipment-upgrade fee may be
+      // applied — reflect it in the header chip so the total isn't blank.
+      const upTot = appliedFeesTotalUsd();
+      if (totalEl) totalEl.textContent = upTot > 0 ? `+ ${fmtUsd(upTot)} applied` : '';
+      if (pruned && !_filling) autoSaveWorkbook();
       return;
     }
 
@@ -17838,6 +17909,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // cost on Margin / Sale Per / Ship Lead inputs roughly in half.
     if (!_lastRfqPriceSummary) recalcRfqTotals();
 
+    // Rebuild the synthetic shipment-upgrade fee cache BEFORE we read the
+    // applied-fee totals/list below — otherwise the Client Quote line
+    // items + Total Landed Cost would lag one render behind whenever an
+    // upgrade fee is ticked. The premium depends only on each split's
+    // qty + method (not the tier total), so it can be computed here from
+    // globals without the shipping-section locals.
+    _shipUpgradeFeeCache = _computeShipUpgradeFeeCache();
+
     // Refresh the Apply Additional Fees picker every render so values /
     // descriptions stay in sync with the Workbook tab inputs.
     renderPricingFeesCard();
@@ -18307,15 +18386,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Split rows first…
       if (hasSplits) {
         _splitRows.forEach(r => {
-          _methodRows.push({
-            qty: r.qty,
-            method: modeNames[r.method] || r.method,
-            rateRmb: freightMethodRates[r.method] || 0,
-            rmb: r.missing ? 0 : r.rmb,
-            usd: r.missing ? 0 : r.usd,
-            chargeableKg: r.missing ? 0 : r.chargeableKg,
-            missing: r.missing,
-          });
+          // Re-baseline when this split's upgrade fee is ticked: the row
+          // ships (for shipping-cost purposes) at the BASE method, and
+          // the upgrade premium is billed separately as an Additional
+          // Fee. This keeps the landed total identical — it's just
+          // itemized as base-shipping + upgrade-fee instead of blended
+          // shipping. _appliedFees holds the synthetic '__shipup_<m>' id.
+          const _upFeeApplied = !r.missing
+            && r.method !== mode
+            && _appliedFees.has('__shipup_' + r.method);
+          if (_upFeeApplied) {
+            const baseCost = calcSplitCost(mode, r.qty);
+            _methodRows.push({
+              qty: r.qty,
+              method: modeNames[mode] || mode,
+              rateRmb: freightMethodRates[mode] || 0,
+              rmb: baseCost ? baseCost.rmb : 0,
+              usd: baseCost ? baseCost.usd : 0,
+              chargeableKg: baseCost ? baseCost.chargeableKg : 0,
+              missing: !baseCost,
+              rebaselinedFrom: modeNames[r.method] || r.method,
+            });
+          } else {
+            _methodRows.push({
+              qty: r.qty,
+              method: modeNames[r.method] || r.method,
+              rateRmb: freightMethodRates[r.method] || 0,
+              rmb: r.missing ? 0 : r.rmb,
+              usd: r.missing ? 0 : r.usd,
+              chargeableKg: r.missing ? 0 : r.chargeableKg,
+              missing: r.missing,
+            });
+          }
         });
       }
       // …then the remainder (or, when there are no splits, the whole
@@ -18354,62 +18456,47 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // of that upgrade vs. shipping the same qty on the base method:
     //   premium = cost(splitMethod, qty) − cost(baseMethod, qty)
     // e.g. 1,200 units Air + UPS vs. those same 1,200 on Fast Boat.
-    // This is the "what does expediting cost me?" number. It's already
-    // included in Total Shipping Cost, so we render it as an
-    // informational line (not a toggled fee) to avoid double-counting.
+    // This is the "what does expediting cost me?" number. Each row has a
+    // checkbox: tick it to bill the premium as a separate Additional Fee
+    // (and re-baseline that split's shipping to the base method above —
+    // see the re-baseline logic in the method-rows loop). Untouched, the
+    // premium stays folded into Total Shipping Cost as a blended cost.
+    // The cache (_shipUpgradeFeeCache) was already computed at the top of
+    // this render, so the checkbox state + landed totals stay in sync.
     (function renderShipmentUpgradePremium() {
       const host = e('pricing-shipping-upgrade-body');
       if (!host) return;
-      const baseMethod = mode; // dropdown method = what the remainder ships via
-      // Only meaningful when there are splits on a method other than base
-      // and an override isn't masking the computed shipping math.
-      const upgrades = [];
-      if (_shipOverrideUsd === null && hasSplits) {
-        _splitRows.forEach(r => {
-          if (r.missing || r.method === baseMethod) return;
-          const upCost   = calcSplitCost(r.method,  r.qty);
-          const baseCost = calcSplitCost(baseMethod, r.qty);
-          if (!upCost || !baseCost) return;
-          const premRmb = upCost.rmb - baseCost.rmb;
-          const premUsd = upCost.usd - baseCost.usd;
-          if (premUsd <= 0) return; // base is same/cheaper — no premium to show
-          upgrades.push({
-            method: modeNames[r.method] || r.method,
-            baseLabel: modeNames[baseMethod] || baseMethod,
-            qty: r.qty,
-            premRmb, premUsd,
-            upUsd: upCost.usd, baseUsd: baseCost.usd,
-          });
-        });
-      }
-      if (upgrades.length === 0) { host.style.display = 'none'; host.innerHTML = ''; return; }
+      const cache = _shipmentUpgradeFees();
+      if (!cache.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
       const f2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const totalPremUsd = upgrades.reduce((s, u) => s + u.premUsd, 0);
-      const rows = upgrades.map(u => `
-        <div style="display:flex; align-items:flex-start; gap:12px; padding:8px 0; border-bottom:1px solid var(--border);">
+      const baseLabelOf = bm => ({ slow:'Slow Boat', fast:'Fast Boat', airupp:'Air + UPS', directair:'Direct Air' }[bm] || bm);
+      let anyApplied = false;
+      const rows = cache.map(f => {
+        const applied = _appliedFees.has(f.id);
+        if (applied) anyApplied = true;
+        const idAttr = String(f.id).replace(/'/g, "\\'");
+        return `<label style="display:flex; align-items:flex-start; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); cursor:pointer;">
+          <input type="checkbox" ${applied ? 'checked' : ''} onchange="toggleFeeApplied('${idAttr}', this.checked)"
+                 style="width:16px; height:16px; accent-color:#E8751A; cursor:pointer; flex-shrink:0; margin-top:1px;" />
           <div style="flex:1; min-width:0;">
-            <div style="font-size:13px; font-weight:600; color:var(--text);">Added Shipping Cost for ${u.method}</div>
+            <div style="font-size:13px; font-weight:600; color:var(--text);">${f.label}</div>
             <div style="font-size:11px; color:var(--text-muted); margin-top:1px;">
-              ${u.qty.toLocaleString('en-US')} units upgraded from ${u.baseLabel} ($${f2(u.baseUsd)}) → ${u.method} ($${f2(u.upUsd)})
+              ${f.desc} &nbsp;·&nbsp; $${f2(f.baseUsd)} → $${f2(f.upUsd)}
             </div>
           </div>
           <div style="text-align:right; flex-shrink:0;">
-            <div style="font-size:13px; font-weight:700; color:#E8751A;">+ $${f2(u.premUsd)}</div>
-            <div style="font-size:11px; color:var(--text-muted);">+ ¥${f2(u.premRmb)}</div>
+            <div style="font-size:13px; font-weight:700; color:#E8751A;">+ $${f2(f.usd)}</div>
+            <div style="font-size:11px; color:var(--text-muted);">+ ¥${f2(f.rmb)}</div>
           </div>
-        </div>`).join('');
-      const totalLine = upgrades.length > 1
-        ? `<div style="display:flex; justify-content:space-between; align-items:baseline; padding:8px 0 2px; font-size:12px;">
-             <span style="font-weight:700; color:var(--text);">Total upgrade premium</span>
-             <span style="font-weight:700; color:#E8751A;">+ $${f2(totalPremUsd)}</span>
-           </div>`
-        : '';
-      host.innerHTML = `<div style="padding:8px 14px 4px;">
+        </label>`;
+      }).join('');
+      const note = anyApplied
+        ? `Billed as a separate Additional Fee — shipping above is re-baselined to ${baseLabelOf(cache[0].baseMethod)} for the upgraded units, so the landed total isn't double-counted.`
+        : `Currently folded into Total Shipping Cost above. Tick a box to pull it out as a separate Additional Fee (shipping re-baselines to ${baseLabelOf(cache[0].baseMethod)}).`;
+      host.innerHTML = `<div style="padding:8px 14px 10px; border-bottom:1px solid var(--border); background:rgba(232,117,26,0.04);">
+        <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:2px;">Shipment Upgrades</div>
         ${rows}
-        ${totalLine}
-        <div style="font-size:10px; color:var(--text-muted); font-style:italic; margin-top:6px;">
-          Already included in Total Shipping Cost above — shown here so you can see the cost of expediting.
-        </div>
+        <div style="font-size:10px; color:var(--text-muted); font-style:italic; margin-top:6px;">${note}</div>
       </div>`;
       host.style.display = '';
     })();
