@@ -7154,6 +7154,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em;">Additional Fees</span>
             <span id="pricing-fees-applied-total" style="margin-left:auto; font-size:12px; font-weight:700; color:#E8751A;"></span>
           </div>
+          <!-- Shipment-upgrade premium — when a split ships via a faster
+               (costlier) method than the remainder/base method, this shows
+               the EXTRA cost of that upgrade vs. shipping the same qty on
+               the base method. Informational only: the premium is already
+               baked into Total Shipping Cost above, so it is NOT a toggled
+               fee (applying it would double-count). Populated by
+               _renderPricingTabInner into #pricing-shipping-upgrade-body;
+               hidden when there are no upgraded splits. -->
+          <div id="pricing-shipping-upgrade-body" style="display:none;"></div>
           <div id="pricing-fees-body" style="padding:8px 14px 12px;">
             <!-- populated by renderPricingFeesCard() -->
           </div>
@@ -18338,6 +18347,72 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // single-mode chargeableKg only covered the remainder, so sum the
     // per-row weights for an accurate "Chargeable Weight" line.
     const _totalChargeableKg = _methodRows.reduce((s, r) => s + (r.chargeableKg || 0), 0);
+
+    // ── Shipment-upgrade premium → Additional Fees ─────────────────────
+    // For every split that ships via a method DIFFERENT from the base
+    // (the dropdown method the remainder uses), compute the EXTRA cost
+    // of that upgrade vs. shipping the same qty on the base method:
+    //   premium = cost(splitMethod, qty) − cost(baseMethod, qty)
+    // e.g. 1,200 units Air + UPS vs. those same 1,200 on Fast Boat.
+    // This is the "what does expediting cost me?" number. It's already
+    // included in Total Shipping Cost, so we render it as an
+    // informational line (not a toggled fee) to avoid double-counting.
+    (function renderShipmentUpgradePremium() {
+      const host = e('pricing-shipping-upgrade-body');
+      if (!host) return;
+      const baseMethod = mode; // dropdown method = what the remainder ships via
+      // Only meaningful when there are splits on a method other than base
+      // and an override isn't masking the computed shipping math.
+      const upgrades = [];
+      if (_shipOverrideUsd === null && hasSplits) {
+        _splitRows.forEach(r => {
+          if (r.missing || r.method === baseMethod) return;
+          const upCost   = calcSplitCost(r.method,  r.qty);
+          const baseCost = calcSplitCost(baseMethod, r.qty);
+          if (!upCost || !baseCost) return;
+          const premRmb = upCost.rmb - baseCost.rmb;
+          const premUsd = upCost.usd - baseCost.usd;
+          if (premUsd <= 0) return; // base is same/cheaper — no premium to show
+          upgrades.push({
+            method: modeNames[r.method] || r.method,
+            baseLabel: modeNames[baseMethod] || baseMethod,
+            qty: r.qty,
+            premRmb, premUsd,
+            upUsd: upCost.usd, baseUsd: baseCost.usd,
+          });
+        });
+      }
+      if (upgrades.length === 0) { host.style.display = 'none'; host.innerHTML = ''; return; }
+      const f2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const totalPremUsd = upgrades.reduce((s, u) => s + u.premUsd, 0);
+      const rows = upgrades.map(u => `
+        <div style="display:flex; align-items:flex-start; gap:12px; padding:8px 0; border-bottom:1px solid var(--border);">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:600; color:var(--text);">Added Shipping Cost for ${u.method}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:1px;">
+              ${u.qty.toLocaleString('en-US')} units upgraded from ${u.baseLabel} ($${f2(u.baseUsd)}) → ${u.method} ($${f2(u.upUsd)})
+            </div>
+          </div>
+          <div style="text-align:right; flex-shrink:0;">
+            <div style="font-size:13px; font-weight:700; color:#E8751A;">+ $${f2(u.premUsd)}</div>
+            <div style="font-size:11px; color:var(--text-muted);">+ ¥${f2(u.premRmb)}</div>
+          </div>
+        </div>`).join('');
+      const totalLine = upgrades.length > 1
+        ? `<div style="display:flex; justify-content:space-between; align-items:baseline; padding:8px 0 2px; font-size:12px;">
+             <span style="font-weight:700; color:var(--text);">Total upgrade premium</span>
+             <span style="font-weight:700; color:#E8751A;">+ $${f2(totalPremUsd)}</span>
+           </div>`
+        : '';
+      host.innerHTML = `<div style="padding:8px 14px 4px;">
+        ${rows}
+        ${totalLine}
+        <div style="font-size:10px; color:var(--text-muted); font-style:italic; margin-top:6px;">
+          Already included in Total Shipping Cost above — shown here so you can see the cost of expediting.
+        </div>
+      </div>`;
+      host.style.display = '';
+    })();
 
     const _methodBody = e('ps-sh-method-body');
     if (_methodBody) {
