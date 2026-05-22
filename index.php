@@ -18257,71 +18257,87 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _splitRmbTotal += cost.rmb;
         _splitUsdTotal += cost.usd;
         _splitQtyTotal += q;
-        _splitRows.push({ method: r.method, qty: q, rmb: cost.rmb, usd: cost.usd, missing: false });
+        _splitRows.push({ method: r.method, qty: q, rmb: cost.rmb, usd: cost.usd, chargeableKg: cost.chargeableKg || 0, missing: false });
       });
     }
     const hasSplits = _splitRows.length > 0;
 
-    let shippingRmb, shippingUsd;
+    // ── Method table rows ──────────────────────────────────────────────
+    // Build one row per split PLUS a remainder row for whatever the
+    // splits don't cover (that balance ships via the dropdown method on
+    // the Shipping tab). Example: tier = 5,925, one 1,200-unit Air + UPS
+    // split → table shows "4,725 Fast Boat" + "1,200 Air + UPS", each
+    // with its own rate / cost / per-unit. Without the remainder row the
+    // table (and the totals) would silently omit the 4,725 units, which
+    // is exactly the bug this fixes.
+    // Rate lives in the table column now (the old standalone Rate row is
+    // gone). _methodRows is also the source for the per-unit breakdown
+    // and the Total Shipping Cost below.
+    // NOTE: _fmt2 is already declared earlier in this function — reuse
+    // it. Declaring a second `const _fmt2` here throws a duplicate-const
+    // SyntaxError that breaks the entire <script> bundle. Do not
+    // reintroduce a local _fmt2.
+    let _methodRows = [];
+    let shippingRmb = 0, shippingUsd = 0;
+
     if (_shipOverrideUsd !== null) {
+      // Manual override wins over everything — single row, fixed total.
       shippingRmb = _shipOverrideUsd * USD_TO_RMB;
       shippingUsd = _shipOverrideUsd;
-    } else if (hasSplits && _splitUsdTotal > 0) {
-      shippingRmb = _splitRmbTotal;
-      shippingUsd = _splitUsdTotal;
-    } else {
-      shippingRmb = chargeableKg > 0 ? chargeableKg * rateRmb : 0;
-      shippingUsd = shippingRmb > 0 ? shippingRmb / USD_TO_RMB : 0;
-    }
-
-    // ── Method table rows ──────────────────────────────────────────────
-    // Build one row per split (or one row for the single dropdown
-    // method when no splits exist). The table replaces the old Method +
-    // Rate label rows — Rate is now a column inside the table, and
-    // each split contributes its own line so cost-by-method is visible
-    // at a glance. _methodRows is also the source for the per-unit
-    // breakdown below.
-    // NOTE: _fmt2 is already declared earlier in this function — reuse
-    // it. Declaring a second `const _fmt2` here threw a duplicate-const
-    // SyntaxError that broke the entire <script> bundle (every screen
-    // went blank). Do not reintroduce a local _fmt2.
-    let _methodRows = [];
-    if (hasSplits) {
-      _splitRows.forEach(r => {
-        const label = modeNames[r.method] || r.method;
-        const rowRate = freightMethodRates[r.method] || 0;
-        _methodRows.push({
-          qty: r.qty,
-          method: label,
-          rateRmb: rowRate,
-          rmb: r.missing ? 0 : r.rmb,
-          usd: r.missing ? 0 : r.usd,
-          missing: r.missing,
-        });
-      });
-    } else if (_shipOverrideUsd !== null) {
-      // Manual override: single row, no qty/rate detail since the
-      // operator typed a fixed number.
       _methodRows.push({
         qty: effectiveQty,
         method: (modeNames[mode] || '—') + ' (override)',
         rateRmb: rateRmb,
         rmb: shippingRmb,
         usd: shippingUsd,
+        chargeableKg: chargeableKg,
         missing: false,
         override: true,
       });
     } else {
-      // Single-mode: one row using the Shipping tab's selected dropdown.
-      _methodRows.push({
-        qty: effectiveQty,
-        method: modeNames[mode] || '—',
-        rateRmb: rateRmb,
-        rmb: shippingRmb,
-        usd: shippingUsd,
-        missing: shippingUsd <= 0,
-      });
+      // Split rows first…
+      if (hasSplits) {
+        _splitRows.forEach(r => {
+          _methodRows.push({
+            qty: r.qty,
+            method: modeNames[r.method] || r.method,
+            rateRmb: freightMethodRates[r.method] || 0,
+            rmb: r.missing ? 0 : r.rmb,
+            usd: r.missing ? 0 : r.usd,
+            chargeableKg: r.missing ? 0 : r.chargeableKg,
+            missing: r.missing,
+          });
+        });
+      }
+      // …then the remainder (or, when there are no splits, the whole
+      // tier) via the selected dropdown method. chargeableKg here is the
+      // comparison-table weight for the selected mode, which calcFreight
+      // already computes for the REMAINDER when splits exist — so the
+      // remainder cost is correct without re-deriving it.
+      const _remQty = hasSplits ? Math.max(0, effectiveQty - _splitQtyTotal) : effectiveQty;
+      if (_remQty > 0) {
+        const remRmb = chargeableKg > 0 ? chargeableKg * rateRmb : 0;
+        const remUsd = remRmb > 0 ? remRmb / USD_TO_RMB : 0;
+        _methodRows.push({
+          qty: _remQty,
+          method: modeNames[mode] || '—',
+          rateRmb: rateRmb,
+          rmb: remRmb,
+          usd: remUsd,
+          chargeableKg: chargeableKg,
+          missing: remRmb <= 0,
+        });
+      }
+      // Totals = sum across every method row (splits + remainder) so the
+      // headline Total Shipping Cost always equals the sum of the table.
+      shippingRmb = _methodRows.reduce((s, r) => s + (r.missing ? 0 : r.rmb), 0);
+      shippingUsd = _methodRows.reduce((s, r) => s + (r.missing ? 0 : r.usd), 0);
     }
+
+    // Total chargeable weight across all rows (splits + remainder) — the
+    // single-mode chargeableKg only covered the remainder, so sum the
+    // per-row weights for an accurate "Chargeable Weight" line.
+    const _totalChargeableKg = _methodRows.reduce((s, r) => s + (r.chargeableKg || 0), 0);
 
     const _methodBody = e('ps-sh-method-body');
     if (_methodBody) {
@@ -18347,8 +18363,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     if (e('ps-sh-weight')) {
-      e('ps-sh-weight').textContent = chargeableKg > 0
-        ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg'
+      e('ps-sh-weight').textContent = _totalChargeableKg > 0
+        ? _totalChargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg'
         : '—';
     }
 
