@@ -18281,7 +18281,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // each split contributes its own line so cost-by-method is visible
     // at a glance. _methodRows is also the source for the per-unit
     // breakdown below.
-    const _fmt2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // NOTE: _fmt2 is already declared earlier in this function — reuse
+    // it. Declaring a second `const _fmt2` here threw a duplicate-const
+    // SyntaxError that broke the entire <script> bundle (every screen
+    // went blank). Do not reintroduce a local _fmt2.
     let _methodRows = [];
     if (hasSplits) {
       _splitRows.forEach(r => {
