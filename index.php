@@ -7063,35 +7063,58 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>
           </div>
 
-          <!-- Shipping Cost -->
+          <!-- Shipping Cost — rewritten to surface the shipment-split
+               math when the operator has split a tier across multiple
+               methods. The Method section is now a table (qty / method
+               / rate / cost ¥ / cost $) so each split's cost is visible
+               on its own line; Shipping Per (USD) shows a per-unit
+               breakdown by method so the operator can compare cost per
+               unit between (say) Slow Boat and Air + UPS at a glance.
+               When there are no splits the table collapses to a single
+               row using the dropdown method on the Shipping tab. -->
           <div class="pricing-cost-block">
             <div class="pricing-cost-block-title">Shipping Cost</div>
-            <div class="pricing-cost-row">
-              <span class="pricing-cost-row-label">Method</span>
-              <span class="pricing-cost-row-value" id="ps-sh-method">—</span>
+
+            <!-- Method table — one row per split (or one row for the
+                 single selected mode when no splits exist). Built by
+                 renderPricingTab into #ps-sh-method-body. -->
+            <div style="margin-bottom:6px;">
+              <div class="pricing-cost-row-label" style="margin-bottom:4px;">Method</div>
+              <div style="border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--surface2);">
+                <table id="ps-sh-method-table" style="width:100%; border-collapse:collapse; font-size:12px;">
+                  <thead>
+                    <tr style="background:var(--surface); color:var(--text-muted); text-transform:uppercase; font-size:10px; letter-spacing:0.06em;">
+                      <th style="text-align:left;  padding:6px 8px; font-weight:700;">Shipment</th>
+                      <th style="text-align:left;  padding:6px 8px; font-weight:700;">Method</th>
+                      <th style="text-align:right; padding:6px 8px; font-weight:700;">Rate</th>
+                      <th style="text-align:right; padding:6px 8px; font-weight:700;">Cost (¥)</th>
+                      <th style="text-align:right; padding:6px 8px; font-weight:700;">Cost ($)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ps-sh-method-body">
+                    <tr><td colspan="5" style="padding:8px; text-align:center; color:var(--text-muted); font-style:italic;">—</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
+
             <div class="pricing-cost-row">
               <span class="pricing-cost-row-label">Chargeable Weight</span>
               <span class="pricing-cost-row-value" id="ps-sh-weight">—</span>
             </div>
-            <div class="pricing-cost-row">
-              <span class="pricing-cost-row-label">Rate</span>
-              <span class="pricing-cost-row-value" id="ps-sh-rate">—</span>
+
+            <!-- Shipping Per (USD) — per-method breakdown so the
+                 operator sees cost-per-unit by method. When two splits
+                 ship at different rates the per-unit values diverge —
+                 that's the whole point of surfacing them here. Built
+                 into #ps-sh-per-list. -->
+            <div style="margin:6px 0 0;">
+              <div class="pricing-cost-row-label" style="margin-bottom:4px;">Shipping Per (USD)</div>
+              <div id="ps-sh-per-list" style="border:1px solid var(--border); border-radius:6px; background:var(--surface2); padding:6px 10px;">
+                <div style="font-size:12px; color:var(--text-muted); font-style:italic;">—</div>
+              </div>
             </div>
-            <div class="pricing-cost-row">
-              <span class="pricing-cost-row-label">Shipping Per (USD)</span>
-              <span class="pricing-cost-row-value" id="ps-sh-per">—</span>
-            </div>
-            <!-- Shipment splits breakdown — populated by renderPricingTab
-                 when the Shipping tab has one or more splits with qty > 0.
-                 Each row shows: <qty> units · <Method> ¥<rmb> / $<usd>.
-                 When splits exist they are the source of truth for Total
-                 Shipping Cost (the Method label above flips to "Mixed").
-                 Hidden when no splits are defined. -->
-            <div id="ps-sh-splits-wrap" style="display:none; margin:6px 0 0; padding:8px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:6px;">
-              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:6px;">Shipment Splits</div>
-              <div id="ps-sh-splits"></div>
-            </div>
+
             <div class="pricing-cost-subtotal">
               <div class="pricing-cost-row">
                 <span class="pricing-cost-row-label">Total Shipping Cost (RMB)</span>
@@ -18251,54 +18274,107 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       shippingUsd = shippingRmb > 0 ? shippingRmb / USD_TO_RMB : 0;
     }
 
-    // Render the splits breakdown card (or hide it). When splits exist
-    // the Method label flips to "Mixed (N splits)" so it's obvious the
-    // headline total isn't the single dropdown mode anymore. The Rate
-    // and Weight rows show the dominant split for context (the one
-    // carrying the most units), with a "· mixed" hint to clarify.
-    const _splitsWrap = e('ps-sh-splits-wrap');
-    const _splitsBody = e('ps-sh-splits');
-    if (hasSplits && _splitsWrap && _splitsBody) {
-      const _fmt2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      _splitsBody.innerHTML = _splitRows.map(r => {
+    // ── Method table rows ──────────────────────────────────────────────
+    // Build one row per split (or one row for the single dropdown
+    // method when no splits exist). The table replaces the old Method +
+    // Rate label rows — Rate is now a column inside the table, and
+    // each split contributes its own line so cost-by-method is visible
+    // at a glance. _methodRows is also the source for the per-unit
+    // breakdown below.
+    const _fmt2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let _methodRows = [];
+    if (hasSplits) {
+      _splitRows.forEach(r => {
         const label = modeNames[r.method] || r.method;
-        const qtyStr = r.qty.toLocaleString('en-US');
-        if (r.missing) {
-          return `<div style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px;">
-            <span style="color:var(--text); font-weight:600; min-width:70px;">${qtyStr}</span>
-            <span style="color:var(--text-muted); flex:1;">${label}</span>
-            <span style="color:#dc2626; font-style:italic;">carton specs missing</span>
-          </div>`;
-        }
-        return `<div style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px;">
-          <span style="color:var(--text); font-weight:600; min-width:70px;">${qtyStr}</span>
-          <span style="color:var(--text-muted); flex:1;">${label}</span>
-          <span style="color:var(--text); font-family:'SF Mono','Consolas',monospace;">¥${_fmt2(r.rmb)}</span>
-          <span style="color:var(--text); font-family:'SF Mono','Consolas',monospace; min-width:80px; text-align:right;">$${_fmt2(r.usd)}</span>
-        </div>`;
-      }).join('');
-      _splitsWrap.style.display = '';
-    } else if (_splitsWrap) {
-      _splitsWrap.style.display = 'none';
-      if (_splitsBody) _splitsBody.innerHTML = '';
+        const rowRate = freightMethodRates[r.method] || 0;
+        _methodRows.push({
+          qty: r.qty,
+          method: label,
+          rateRmb: rowRate,
+          rmb: r.missing ? 0 : r.rmb,
+          usd: r.missing ? 0 : r.usd,
+          missing: r.missing,
+        });
+      });
+    } else if (_shipOverrideUsd !== null) {
+      // Manual override: single row, no qty/rate detail since the
+      // operator typed a fixed number.
+      _methodRows.push({
+        qty: effectiveQty,
+        method: (modeNames[mode] || '—') + ' (override)',
+        rateRmb: rateRmb,
+        rmb: shippingRmb,
+        usd: shippingUsd,
+        missing: false,
+        override: true,
+      });
+    } else {
+      // Single-mode: one row using the Shipping tab's selected dropdown.
+      _methodRows.push({
+        qty: effectiveQty,
+        method: modeNames[mode] || '—',
+        rateRmb: rateRmb,
+        rmb: shippingRmb,
+        usd: shippingUsd,
+        missing: shippingUsd <= 0,
+      });
     }
 
-    if (e('ps-sh-method')) {
-      e('ps-sh-method').textContent = hasSplits
-        ? `Mixed (${_splitRows.length} split${_splitRows.length === 1 ? '' : 's'})`
-        : (modeNames[mode] || '—');
+    const _methodBody = e('ps-sh-method-body');
+    if (_methodBody) {
+      _methodBody.innerHTML = _methodRows.map(r => {
+        const qtyCell = r.qty > 0 ? r.qty.toLocaleString('en-US') : '—';
+        const rateCell = r.rateRmb > 0 ? `¥${_fmt2(r.rateRmb)}` : '—';
+        if (r.missing) {
+          return `<tr style="border-top:1px solid var(--border);">
+            <td style="padding:6px 8px; font-weight:600;">${qtyCell}</td>
+            <td style="padding:6px 8px;">${r.method}</td>
+            <td style="padding:6px 8px; text-align:right; font-family:'SF Mono','Consolas',monospace;">${rateCell}</td>
+            <td colspan="2" style="padding:6px 8px; text-align:right; color:#dc2626; font-style:italic;">specs missing</td>
+          </tr>`;
+        }
+        return `<tr style="border-top:1px solid var(--border);">
+          <td style="padding:6px 8px; font-weight:600;">${qtyCell}</td>
+          <td style="padding:6px 8px;">${r.method}</td>
+          <td style="padding:6px 8px; text-align:right; font-family:'SF Mono','Consolas',monospace;">${rateCell}</td>
+          <td style="padding:6px 8px; text-align:right; font-family:'SF Mono','Consolas',monospace;">¥${_fmt2(r.rmb)}</td>
+          <td style="padding:6px 8px; text-align:right; font-family:'SF Mono','Consolas',monospace;">$${_fmt2(r.usd)}</td>
+        </tr>`;
+      }).join('') || `<tr><td colspan="5" style="padding:8px; text-align:center; color:var(--text-muted); font-style:italic;">—</td></tr>`;
     }
-    if (e('ps-sh-weight'))  e('ps-sh-weight').textContent  = chargeableKg > 0 ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg' : '—';
-    if (e('ps-sh-rate'))    e('ps-sh-rate').textContent    = rateRmb > 0 ? `¥${rateRmb} / kg  ($${rateUsd.toFixed(2)}/kg)${hasSplits ? '  · mixed' : ''}` : '—';
-    // Shipping per unit (USD) — total shipping ÷ effective qty (the
-    // qty we're quoting on, which rolls up to the Full Container Pitch
-    // when it's been applied from the workbook). Displayed at three
-    // decimals from the raw division so per-unit × qty reconciles to
-    // the Total Shipping shown above. shipPerUsd kept as a raw value
-    // for downstream landed-cost math (was ceiled to cents before,
-    // which inflated the per-unit display vs the actual total).
+
+    if (e('ps-sh-weight')) {
+      e('ps-sh-weight').textContent = chargeableKg > 0
+        ? chargeableKg.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' kg'
+        : '—';
+    }
+
+    // ── Shipping Per (USD) — per-method per-unit breakdown ────────────
+    // Each row: "<qty> units / ¥<rmb> = $<per-unit>". Splits with
+    // different methods produce different per-unit values — surfacing
+    // those side by side is the whole point. When there's only one row
+    // it collapses to that single per-unit number (same as before).
+    const _perList = e('ps-sh-per-list');
+    if (_perList) {
+      const _perRows = _methodRows.filter(r => !r.missing && r.qty > 0 && r.usd > 0);
+      if (_perRows.length === 0) {
+        _perList.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic;">—</div>';
+      } else {
+        _perList.innerHTML = _perRows.map(r => {
+          const perUnit = r.usd / r.qty;
+          return `<div style="display:flex; align-items:center; justify-content:space-between; padding:3px 0; font-size:12px;">
+            <span style="color:var(--text-muted); font-family:'SF Mono','Consolas',monospace;">${r.qty.toLocaleString('en-US')} units / ¥${_fmt2(r.rmb)}</span>
+            <span style="color:var(--text); font-weight:700; font-family:'SF Mono','Consolas',monospace;">$${fmt3(perUnit)} <span style="color:var(--text-muted); font-weight:500;">/ unit</span></span>
+          </div>`;
+        }).join('');
+      }
+    }
+    // shipPerUsd kept as a raw weighted-avg value for downstream
+    // landed-cost math (Total Landed Cost block reads it). When splits
+    // exist this is the blended per-unit; for single-mode it's just
+    // total ÷ qty as before.
     const shipPerUsd = (effectiveQty > 0 && shippingUsd > 0) ? (shippingUsd / effectiveQty) : 0;
-    if (e('ps-sh-per'))     e('ps-sh-per').textContent    = shipPerUsd > 0 ? '$' + fmt3(shipPerUsd) : '—';
+
     if (e('ps-sh-total-rmb')) e('ps-sh-total-rmb').textContent = shippingRmb > 0 ? fmtRmb(shippingRmb) : '—';
     if (e('ps-sh-total'))     e('ps-sh-total').textContent     = shippingUsd > 0 ? fmtUsd(shippingUsd) : '—';
 
