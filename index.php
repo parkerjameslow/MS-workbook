@@ -18439,11 +18439,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : '—';
     }
 
-    // ── Shipping Per (USD) — plain view-only row ──────────────────────
-    // Single base-method row → single per-unit value. Rendered as
-    // "<qty> units / ¥<rmb> = $<per-unit> / unit" inside the
-    // pricing-cost-row span so it matches the Chargeable Weight line's
-    // styling (label left, value right, no boxed/input look).
+    // ── Shipping Per (USD) — plain view-only row, value only ──────────
+    // Just the per-unit price ($X.XXX / unit). The qty / ¥cost math hint
+    // was dropped per UX feedback — the per-unit number stands on its
+    // own next to the "Shipping Per (USD)" label.
     const _perList = e('ps-sh-per-list');
     if (_perList) {
       const _perRows = _methodRows.filter(r => !r.missing && r.qty > 0 && r.usd > 0);
@@ -18452,8 +18451,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       } else {
         _perList.innerHTML = _perRows.map(r => {
           const perUnit = r.usd / r.qty;
-          return `<span style="color:var(--text-muted); font-weight:500; margin-right:8px;">${r.qty.toLocaleString('en-US')} units / ¥${_fmt2(r.rmb)}</span>`
-               + `<span>$${fmt3(perUnit)} / unit</span>`;
+          return `$${fmt3(perUnit)} / unit`;
         }).join('<br/>');
       }
     }
