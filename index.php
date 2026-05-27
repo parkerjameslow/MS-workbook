@@ -14198,61 +14198,69 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const varRows = variantsByParent.get(String(id)) || [];
 
       if (varRows.length > 0) {
-        // ── Has variants: group same-price variants under parent label;
-        //    only break out variants whose RMB differs from the parent. ────
+        // ── Has variants: emit ONE aggregate row for the parent. ─────────
+        // Per the operator's UX direction, variants belong on the
+        // Inventory left-nav dashboard, NOT exploded into per-line rows
+        // here in the RFQ subtotal. We aggregate every variant's qty +
+        // USD total under the parent label; the RMB / per-unit USD
+        // columns show a single value when every variant is at the same
+        // price, or a "¥min–¥max" range when prices vary.
         if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
 
-        const EPSILON = 0.005;  // treat prices within ½ cent as equal
-        let sameQty = 0;
-        const diffVariants = [];
-
+        let totQty = 0, totUsd = 0;
+        let minRmb = Infinity, maxRmb = -Infinity;
         varRows.forEach(vr => {
-          // Skip the SKU input so the existing positional access
-          // (name=0, qty=1, rmb=2, lead=3) keeps working after we
-          // added the variant SKU as the first cell input.
+          // Skip the SKU input so positional access (name=0, qty=1,
+          // rmb=2, lead=3) stays correct after the variant SKU column.
           const vi       = vr.querySelectorAll('input:not(.rfq-var-sku-input)');
-          const vName    = vi[0]?.value?.trim() || '';
           const vQty     = _msNumFromInput(vi[1]);
           const vRmb     = _msNumFromInput(vi[2]);
           const vLead    = vi[3]?.value || '';
           const vLeadNum = parseInt(vLead);
           if (!isNaN(vLeadNum) && vLeadNum > maxLead) maxLead = vLeadNum;
-
-          if (Math.abs(vRmb - rmb) < EPSILON) {
-            // Same price as original → merge into the parent group
-            sameQty += vQty;
-          } else {
-            // Different price → own breakdown line
-            diffVariants.push({ vName, vQty, vRmb, vLead });
+          if (vQty > 0) totQty += vQty;
+          if (vRmb > 0) {
+            totUsd += _msCeil2(vQty * _fxUsdFromRmb(vRmb));
+            if (vRmb < minRmb) minRmb = vRmb;
+            if (vRmb > maxRmb) maxRmb = vRmb;
           }
         });
 
-        // Combined same-price group (shown under the original item name)
-        // _fxUsdFromRmb ceil-rounds to the cent so the totals row's
-        // per-unit USD matches the per-line column ($11.06, not $11.05).
-        if (sameQty > 0) {
-          const usd   = _fxUsdFromRmb(rmb);
-          const total = _msCeil2(sameQty * usd);
-          grandQty     += sameQty;
-          grandRmb     += rmb;
-          grandUsdUnit += usd;
-          grandUsd     += total;
-          itemSummaries.push({ label: name || ('Item ' + id), qty: sameQty, rmb, usd, total, lead, isVariant: false });
+        // Skip the parent entirely if every variant is empty (no qty
+        // AND no price entered yet) — otherwise we'd inject a row of
+        // dashes.
+        if (totQty > 0 || minRmb !== Infinity) {
+          // Build display strings for RMB / USD: single value when all
+          // variants share a price, range string when they differ.
+          const EPSILON = 0.005;
+          let rmbText = '—', usdText = '—', avgUsdForGrand = 0;
+          if (minRmb !== Infinity && maxRmb !== -Infinity) {
+            if (Math.abs(maxRmb - minRmb) < EPSILON) {
+              const u = _fxUsdFromRmb(minRmb);
+              rmbText = '¥' + fmt(minRmb);
+              usdText = '$' + fmt(u);
+              avgUsdForGrand = u;
+            } else {
+              const uMin = _fxUsdFromRmb(minRmb), uMax = _fxUsdFromRmb(maxRmb);
+              rmbText = `¥${fmt(minRmb)}–¥${fmt(maxRmb)}`;
+              usdText = `$${fmt(uMin)}–$${fmt(uMax)}`;
+              avgUsdForGrand = (uMin + uMax) / 2; // rough avg; only feeds grandUsdUnit
+            }
+          }
+          grandQty     += totQty;
+          if (minRmb !== Infinity) grandRmb += minRmb; // keep prior shape
+          grandUsdUnit += avgUsdForGrand;
+          grandUsd     += totUsd;
+          itemSummaries.push({
+            label: name || ('Item ' + id),
+            qty: totQty,
+            rmb: 0, usd: 0,
+            rmbText, usdText,
+            total: totUsd,
+            lead,
+            isVariant: false,
+          });
         }
-
-        // Individually-priced variants
-        diffVariants.forEach(({ vName, vQty, vRmb, vLead }) => {
-          const vUsd   = _fxUsdFromRmb(vRmb);
-          const vTotal = _msCeil2(vQty * vUsd);
-          grandQty     += vQty;
-          grandRmb     += vRmb;
-          grandUsdUnit += vUsd;
-          grandUsd     += vTotal;
-          const label = name
-            ? `${name}<span style="color:var(--text-muted);font-weight:400;"> — ${vName || 'Variant'}</span>`
-            : (vName || 'Variant');
-          itemSummaries.push({ label, qty: vQty, rmb: vRmb, usd: vUsd, total: vTotal, lead: vLead, isVariant: true });
-        });
 
       } else {
         // ── No variants: one summary row for the parent ───────────────────
@@ -14302,10 +14310,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${item.qty ? item.qty.toLocaleString('en-US') : '—'}
           </td>
           <td style="font-size:12px;color:var(--text-muted);padding:7px 8px 7px 26px;">
-            ${item.rmb ? '¥' + fmt(item.rmb) : '—'}
+            ${item.rmbText !== undefined ? item.rmbText : (item.rmb ? '¥' + fmt(item.rmb) : '—')}
           </td>
           <td style="font-size:12px;color:var(--text-muted);text-align:right;padding:7px 12px 7px 8px;">
-            ${item.rmb ? '$' + fmt(item.usd) : '—'}
+            ${item.usdText !== undefined ? item.usdText : (item.rmb ? '$' + fmt(item.usd) : '—')}
           </td>
           <td style="font-size:12px;color:var(--text);font-weight:700;text-align:right;padding:7px 12px 7px 8px;">
             ${item.total ? '$' + fmt(item.total) : '—'}
