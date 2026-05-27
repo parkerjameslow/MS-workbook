@@ -7103,16 +7103,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="pricing-cost-row-value" id="ps-sh-weight">—</span>
             </div>
 
-            <!-- Shipping Per (USD) — per-method breakdown so the
-                 operator sees cost-per-unit by method. When two splits
-                 ship at different rates the per-unit values diverge —
-                 that's the whole point of surfacing them here. Built
-                 into #ps-sh-per-list. -->
-            <div style="margin:6px 0 0;">
-              <div class="pricing-cost-row-label" style="margin-bottom:4px;">Shipping Per (USD)</div>
-              <div id="ps-sh-per-list" style="border:1px solid var(--border); border-radius:6px; background:var(--surface2); padding:6px 10px;">
-                <div style="font-size:12px; color:var(--text-muted); font-style:italic;">—</div>
-              </div>
+            <!-- Shipping Per (USD) — plain row, view-only (matches
+                 Chargeable Weight styling). Value is "<qty> units /
+                 ¥<rmb> = $<per-unit> / unit", written by the Pricing
+                 renderer into #ps-sh-per-list. -->
+            <div class="pricing-cost-row">
+              <span class="pricing-cost-row-label">Shipping Per (USD)</span>
+              <span class="pricing-cost-row-value" id="ps-sh-per-list">—</span>
             </div>
 
             <div class="pricing-cost-subtotal">
@@ -18442,24 +18439,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : '—';
     }
 
-    // ── Shipping Per (USD) — per-method per-unit breakdown ────────────
-    // Each row: "<qty> units / ¥<rmb> = $<per-unit>". Splits with
-    // different methods produce different per-unit values — surfacing
-    // those side by side is the whole point. When there's only one row
-    // it collapses to that single per-unit number (same as before).
+    // ── Shipping Per (USD) — plain view-only row ──────────────────────
+    // Single base-method row → single per-unit value. Rendered as
+    // "<qty> units / ¥<rmb> = $<per-unit> / unit" inside the
+    // pricing-cost-row span so it matches the Chargeable Weight line's
+    // styling (label left, value right, no boxed/input look).
     const _perList = e('ps-sh-per-list');
     if (_perList) {
       const _perRows = _methodRows.filter(r => !r.missing && r.qty > 0 && r.usd > 0);
       if (_perRows.length === 0) {
-        _perList.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic;">—</div>';
+        _perList.textContent = '—';
       } else {
         _perList.innerHTML = _perRows.map(r => {
           const perUnit = r.usd / r.qty;
-          return `<div style="display:flex; align-items:center; justify-content:space-between; padding:3px 0; font-size:12px;">
-            <span style="color:var(--text-muted); font-family:'SF Mono','Consolas',monospace;">${r.qty.toLocaleString('en-US')} units / ¥${_fmt2(r.rmb)}</span>
-            <span style="color:var(--text); font-weight:700; font-family:'SF Mono','Consolas',monospace;">$${fmt3(perUnit)} <span style="color:var(--text-muted); font-weight:500;">/ unit</span></span>
-          </div>`;
-        }).join('');
+          return `<span style="color:var(--text-muted); font-weight:500; margin-right:8px;">${r.qty.toLocaleString('en-US')} units / ¥${_fmt2(r.rmb)}</span>`
+               + `<span>$${fmt3(perUnit)} / unit</span>`;
+        }).join('<br/>');
       }
     }
     // shipPerUsd kept as a raw weighted-avg value for downstream
