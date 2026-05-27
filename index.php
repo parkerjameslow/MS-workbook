@@ -7108,7 +7108,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  ¥<rmb> = $<per-unit> / unit", written by the Pricing
                  renderer into #ps-sh-per-list. -->
             <div class="pricing-cost-row">
-              <span class="pricing-cost-row-label">Shipping Per (USD)</span>
+              <span class="pricing-cost-row-label">Shipping Price Per (USD)</span>
               <span class="pricing-cost-row-value" id="ps-sh-per-list">—</span>
             </div>
 
