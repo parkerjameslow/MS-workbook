@@ -14207,7 +14207,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const diffVariants = [];
 
         varRows.forEach(vr => {
-          const vi       = vr.querySelectorAll('input');
+          // Skip the SKU input so the existing positional access
+          // (name=0, qty=1, rmb=2, lead=3) keeps working after we
+          // added the variant SKU as the first cell input.
+          const vi       = vr.querySelectorAll('input:not(.rfq-var-sku-input)');
           const vName    = vi[0]?.value?.trim() || '';
           const vQty     = _msNumFromInput(vi[1]);
           const vRmb     = _msNumFromInput(vi[2]);
@@ -15978,7 +15981,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               // Has variants — parent qty is ignored to avoid
               // double-counting against the variant qtys.
               variantRows.forEach(vr => {
-                const vIns  = vr.querySelectorAll('input');
+                // Skip the SKU input — it's the first input in each
+                // variant row but it's NOT in the positional layout
+                // (name=0, qty=1, rmb=2, lead=3) the rest of this
+                // function relies on. Without this exclusion every
+                // value reads from the wrong cell (vName → SKU,
+                // vQty → variant name → 0, vRmb → qty, vLead → price),
+                // which is exactly the "numbers don't match" bug in
+                // the collapsed RFQ summary.
+                const vIns  = vr.querySelectorAll('input:not(.rfq-var-sku-input)');
                 // Variant inputs: name(0), qty(1), rmb(2), lead(3)
                 const vName = (vIns[0]?.value || '').trim();
                 const vQty  = _msNumFromInput(vIns[1]);
@@ -18817,7 +18828,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const samePriceQty = { qty: 0, names: [] };
           const diffPrice   = []; // { name, rmb, qty }
           vRows.forEach(vr => {
-            const vIns = vr.querySelectorAll('input');
+            // Skip the SKU input so name=0, qty=1, rmb=2 keep working
+            // — the variant SKU is now the first input in the row.
+            const vIns = vr.querySelectorAll('input:not(.rfq-var-sku-input)');
             const vName = (vIns[0]?.value || '').trim();
             const vQty  = parseFloat(vIns[1]?.value) || 0;
             const vRmb  = parseFloat(vIns[2]?.value) || 0;
