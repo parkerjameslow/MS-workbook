@@ -15201,13 +15201,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     autoSaveWorkbook();
   }
 
-  // Splits feed the Pricing tab's Shipping Cost block (Method flips to
-  // "Mixed", total uses the sum of per-split costs, breakdown rows
-  // render under #ps-sh-splits) AND the Shipping tab's comparison
-  // table (which now reflects the remainder after splits, not the
-  // full tier qty). Re-render both on every split mutation so the
-  // operator sees them update live without switching tabs. Guarded
-  // so we don't crash before the renderers are wired.
+  // Splits feed the Pricing tab's "Added Shipping Cost" upgrade fee
+  // (premium = cost(splitMethod, qty) − cost(baseMethod, qty)). When
+  // a split changes, recompute calcFreight (its costs shown on the
+  // Shipping tab) AND renderPricingTab (which rebuilds the upgrade
+  // fee cache + the Additional Fees row + Shipping Cost numbers).
+  // Guarded so we don't crash before the renderers are wired.
   function _refreshPricingForSplits() {
     if (typeof calcFreight === 'function') {
       try { calcFreight(); } catch (_) {}
@@ -18316,60 +18315,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _shipOverrideUsd = (typeof _getShippingCostOverrideUsd === 'function')
       ? _getShippingCostOverrideUsd() : null;
 
-    // ── Shipment Splits → Shipping Cost ────────────────────────────────
-    // When the operator has set up one or more shipment splits on the
-    // Shipping tab (e.g. half the order via Slow Boat, half via Air),
-    // those splits become the authoritative source for Total Shipping
-    // Cost — the single-mode chargeableKg × rate math doesn't reflect
-    // the mixed reality. We compute each split's cost via calcSplitCost
-    // (same function the Shipping-tab split row uses) and sum them.
-    // A manual override still wins over splits (operator intent trumps
-    // computed math, same as before). Each split's per-line cost is
-    // pushed into the #ps-sh-splits breakdown so the Pricing tab
-    // shows the same split-by-split detail the Shipping tab does.
-    let _splitRmbTotal = 0, _splitUsdTotal = 0, _splitQtyTotal = 0;
-    let _splitRows = [];
-    if (typeof _shipmentSplits !== 'undefined' && Array.isArray(_shipmentSplits)) {
-      _shipmentSplits.forEach(r => {
-        const q = parseInt(r.qty) || 0;
-        if (q <= 0) return;
-        const cost = calcSplitCost(r.method, q);
-        if (!cost) {
-          // Carton specs missing — still record the row so the operator
-          // can see which split is incomplete instead of silently
-          // dropping it from the breakdown.
-          _splitRows.push({ method: r.method, qty: q, missing: true });
-          _splitQtyTotal += q;
-          return;
-        }
-        _splitRmbTotal += cost.rmb;
-        _splitUsdTotal += cost.usd;
-        _splitQtyTotal += q;
-        _splitRows.push({ method: r.method, qty: q, rmb: cost.rmb, usd: cost.usd, chargeableKg: cost.chargeableKg || 0, missing: false });
-      });
-    }
-    const hasSplits = _splitRows.length > 0;
-
-    // ── Method table rows ──────────────────────────────────────────────
-    // Build one row per split PLUS a remainder row for whatever the
-    // splits don't cover (that balance ships via the dropdown method on
-    // the Shipping tab). Example: tier = 5,925, one 1,200-unit Air + UPS
-    // split → table shows "4,725 Fast Boat" + "1,200 Air + UPS", each
-    // with its own rate / cost / per-unit. Without the remainder row the
-    // table (and the totals) would silently omit the 4,725 units, which
-    // is exactly the bug this fixes.
-    // Rate lives in the table column now (the old standalone Rate row is
-    // gone). _methodRows is also the source for the per-unit breakdown
-    // and the Total Shipping Cost below.
+    // ── Base shipping = full quantity via the selected method ──────────
+    // Shipping Cost ALWAYS quotes the whole tier on the dropdown method
+    // (e.g. all 5,925 units on Fast Boat). Splits to a faster method are
+    // NOT blended into this number — instead each becomes an optional
+    // "Added Shipping Cost" upgrade fee (computed in _computeShipUpgrade-
+    // FeeCache, surfaced with a checkbox in Additional Fees). This keeps
+    // the headline shipping number stable and lets the operator decide
+    // whether the air premium rides on top of the order.
     // NOTE: _fmt2 is already declared earlier in this function — reuse
-    // it. Declaring a second `const _fmt2` here throws a duplicate-const
-    // SyntaxError that breaks the entire <script> bundle. Do not
-    // reintroduce a local _fmt2.
+    // it. Do NOT declare a second `const _fmt2` here (duplicate-const
+    // SyntaxError would blank the whole bundle).
     let _methodRows = [];
     let shippingRmb = 0, shippingUsd = 0;
 
     if (_shipOverrideUsd !== null) {
-      // Manual override wins over everything — single row, fixed total.
+      // Manual override wins — single row, fixed total.
       shippingRmb = _shipOverrideUsd * USD_TO_RMB;
       shippingUsd = _shipOverrideUsd;
       _methodRows.push({
@@ -18383,86 +18344,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         override: true,
       });
     } else {
-      // Split rows first…
-      if (hasSplits) {
-        _splitRows.forEach(r => {
-          // Re-baseline when this split's upgrade fee is ticked: the row
-          // ships (for shipping-cost purposes) at the BASE method, and
-          // the upgrade premium is billed separately as an Additional
-          // Fee. This keeps the landed total identical — it's just
-          // itemized as base-shipping + upgrade-fee instead of blended
-          // shipping. _appliedFees holds the synthetic '__shipup_<m>' id.
-          const _upFeeApplied = !r.missing
-            && r.method !== mode
-            && _appliedFees.has('__shipup_' + r.method);
-          if (_upFeeApplied) {
-            const baseCost = calcSplitCost(mode, r.qty);
-            _methodRows.push({
-              qty: r.qty,
-              method: modeNames[mode] || mode,
-              rateRmb: freightMethodRates[mode] || 0,
-              rmb: baseCost ? baseCost.rmb : 0,
-              usd: baseCost ? baseCost.usd : 0,
-              chargeableKg: baseCost ? baseCost.chargeableKg : 0,
-              missing: !baseCost,
-              rebaselinedFrom: modeNames[r.method] || r.method,
-            });
-          } else {
-            _methodRows.push({
-              qty: r.qty,
-              method: modeNames[r.method] || r.method,
-              rateRmb: freightMethodRates[r.method] || 0,
-              rmb: r.missing ? 0 : r.rmb,
-              usd: r.missing ? 0 : r.usd,
-              chargeableKg: r.missing ? 0 : r.chargeableKg,
-              missing: r.missing,
-            });
-          }
-        });
-      }
-      // …then the remainder (or, when there are no splits, the whole
-      // tier) via the selected dropdown method. chargeableKg here is the
-      // comparison-table weight for the selected mode, which calcFreight
-      // already computes for the REMAINDER when splits exist — so the
-      // remainder cost is correct without re-deriving it.
-      const _remQty = hasSplits ? Math.max(0, effectiveQty - _splitQtyTotal) : effectiveQty;
-      if (_remQty > 0) {
-        const remRmb = chargeableKg > 0 ? chargeableKg * rateRmb : 0;
-        const remUsd = remRmb > 0 ? remRmb / USD_TO_RMB : 0;
-        _methodRows.push({
-          qty: _remQty,
-          method: modeNames[mode] || '—',
-          rateRmb: rateRmb,
-          rmb: remRmb,
-          usd: remUsd,
-          chargeableKg: chargeableKg,
-          missing: remRmb <= 0,
-        });
-      }
-      // Totals = sum across every method row (splits + remainder) so the
-      // headline Total Shipping Cost always equals the sum of the table.
-      shippingRmb = _methodRows.reduce((s, r) => s + (r.missing ? 0 : r.rmb), 0);
-      shippingUsd = _methodRows.reduce((s, r) => s + (r.missing ? 0 : r.usd), 0);
+      // Single base-method row for the whole tier. chargeableKg is the
+      // comparison-table weight for the selected mode (full qty, since
+      // calcFreight no longer subtracts splits).
+      shippingRmb = chargeableKg > 0 ? chargeableKg * rateRmb : 0;
+      shippingUsd = shippingRmb > 0 ? shippingRmb / USD_TO_RMB : 0;
+      _methodRows.push({
+        qty: effectiveQty,
+        method: modeNames[mode] || '—',
+        rateRmb: rateRmb,
+        rmb: shippingRmb,
+        usd: shippingUsd,
+        chargeableKg: chargeableKg,
+        missing: shippingUsd <= 0,
+      });
     }
 
-    // Total chargeable weight across all rows (splits + remainder) — the
-    // single-mode chargeableKg only covered the remainder, so sum the
-    // per-row weights for an accurate "Chargeable Weight" line.
-    const _totalChargeableKg = _methodRows.reduce((s, r) => s + (r.chargeableKg || 0), 0);
+    const _totalChargeableKg = chargeableKg;
 
     // ── Shipment-upgrade premium → Additional Fees ─────────────────────
     // For every split that ships via a method DIFFERENT from the base
-    // (the dropdown method the remainder uses), compute the EXTRA cost
-    // of that upgrade vs. shipping the same qty on the base method:
+    // (the dropdown method), compute the EXTRA cost of that upgrade vs.
+    // shipping the same qty on the base method:
     //   premium = cost(splitMethod, qty) − cost(baseMethod, qty)
     // e.g. 1,200 units Air + UPS vs. those same 1,200 on Fast Boat.
-    // This is the "what does expediting cost me?" number. Each row has a
-    // checkbox: tick it to bill the premium as a separate Additional Fee
-    // (and re-baseline that split's shipping to the base method above —
-    // see the re-baseline logic in the method-rows loop). Untouched, the
-    // premium stays folded into Total Shipping Cost as a blended cost.
-    // The cache (_shipUpgradeFeeCache) was already computed at the top of
-    // this render, so the checkbox state + landed totals stay in sync.
+    // This is the "what does expediting cost me?" number. Shipping Cost
+    // above ALWAYS stays at base (all units on the dropdown method); the
+    // premium is purely ADDITIVE — tick the checkbox to add it on top of
+    // the order (Total Landed Cost + Client Quote), leave it unchecked to
+    // ignore the upgrade. The cache (_shipUpgradeFeeCache) was computed at
+    // the top of this render, so the checkbox state + landed totals stay
+    // in sync within the same render.
     (function renderShipmentUpgradePremium() {
       const host = e('pricing-shipping-upgrade-body');
       if (!host) return;
@@ -18491,8 +18403,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </label>`;
       }).join('');
       const note = anyApplied
-        ? `Billed as a separate Additional Fee — shipping above is re-baselined to ${baseLabelOf(cache[0].baseMethod)} for the upgraded units, so the landed total isn't double-counted.`
-        : `Currently folded into Total Shipping Cost above. Tick a box to pull it out as a separate Additional Fee (shipping re-baselines to ${baseLabelOf(cache[0].baseMethod)}).`;
+        ? `Added on top of the order as an Additional Fee. Total Shipping Cost above stays at base (${baseLabelOf(cache[0].baseMethod)} for all units) — this premium is the cost to expedite, billed separately.`
+        : `Shipping Cost above is quoted at base (${baseLabelOf(cache[0].baseMethod)} for all units). Tick a box to add the upgrade premium on top of the order (Total Landed Cost + Client Quote).`;
       host.innerHTML = `<div style="padding:8px 14px 10px; border-bottom:1px solid var(--border); background:rgba(232,117,26,0.04);">
         <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:2px;">Shipment Upgrades</div>
         ${rows}
@@ -19561,37 +19473,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // $36.99 instead of the real ~$200+). Honest behavior: cartons=0
     // when specs are missing, freight totals collapse to 0, and the
     // panel surfaces a banner telling the operator what's missing.
-    // Reduce the comparison-table qty by whatever the operator has
-    // already split off. The intent: the upper "Method" comparison
-    // shows what it would cost to ship the REMAINING qty via the
-    // selected mode, with each split's cost already broken out in
-    // its own row below. If splits cover the full tier, cartons here
-    // collapses to 0 and the table renders "—" everywhere (correct —
-    // nothing's left to ship at the top-line rate).
-    let _splitUnitsTotal = 0;
-    if (typeof _shipmentSplits !== 'undefined' && Array.isArray(_shipmentSplits)) {
-      _splitUnitsTotal = _shipmentSplits.reduce((s, r) => s + (parseInt(r.qty) || 0), 0);
-    }
-    let cartons = ship.count > 0 ? ship.count : 0;
-    let _remainderUnits = 0;       // for the "x of y units" hint
-    let _totalUnitsForFreight = 0; // for the same hint
-    if (ship.mode === 'carton' && _splitUnitsTotal > 0) {
-      const innerQty   = parseInt(document.getElementById('carton-inner-count')?.value) || 0;
-      const outerQty   = parseInt(document.getElementById('carton-outer-count')?.value) || 0;
-      const productsPerOuter = (innerQty > 0 && outerQty > 0) ? innerQty * outerQty : 0;
-      const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
-      _totalUnitsForFreight = totalUnits;
-      if (productsPerOuter > 0 && totalUnits > 0) {
-        _remainderUnits = Math.max(0, totalUnits - _splitUnitsTotal);
-        cartons = _remainderUnits > 0 ? Math.ceil(_remainderUnits / productsPerOuter) : 0;
-      }
-    } else if (ship.mode === 'manual' && _splitUnitsTotal > 0) {
-      // Manual mode treats each unit as its own ship-item; just subtract.
-      const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
-      _totalUnitsForFreight = totalUnits;
-      _remainderUnits = Math.max(0, totalUnits - _splitUnitsTotal);
-      cartons = _remainderUnits;
-    }
+    // Base shipping is ALWAYS the full quantity via the selected method
+    // — splits don't reduce the comparison-table qty anymore. The model:
+    // quote everything at the base method (e.g. all 5,925 on Fast Boat),
+    // and treat any faster-method split as an OPTIONAL upgrade whose
+    // extra cost is surfaced (and optionally billed) as an Additional
+    // Fee on the Pricing tab. This keeps the headline shipping number
+    // stable and predictable; the air upgrade is a deliberate add-on.
+    const cartons   = ship.count > 0 ? ship.count : 0;
     const exchange  = USD_TO_RMB;
     // Why carton count is 0 (if it is) — drives the warning banner.
     let missingMsg = '';
@@ -19631,21 +19520,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (rmbEl) rmbEl.textContent = rate.toFixed(2);
     if (usdEl) usdEl.textContent = (rate / exchange).toFixed(2);
 
-    // "x of y units (z split off)" hint above the comparison table —
-    // makes it unambiguous that the table reflects the remainder, not
-    // the full tier qty, when splits are active.
+    // The comparison table now always reflects the full quantity at each
+    // method, so the old "x of y units split off" remainder hint no
+    // longer applies — keep it hidden.
     const _hintEl = document.getElementById('freight-remainder-hint');
-    if (_hintEl) {
-      if (_splitUnitsTotal > 0 && _totalUnitsForFreight > 0) {
-        _hintEl.innerHTML = `Showing cost for <strong>${_remainderUnits.toLocaleString('en-US')}</strong> of `
-                          + `${_totalUnitsForFreight.toLocaleString('en-US')} units `
-                          + `(${_splitUnitsTotal.toLocaleString('en-US')} split off below).`;
-        _hintEl.style.display = '';
-      } else {
-        _hintEl.style.display = 'none';
-        _hintEl.textContent = '';
-      }
-    }
+    if (_hintEl) { _hintEl.style.display = 'none'; _hintEl.textContent = ''; }
 
     if (!lCm || !wCm || !hCm) {
       // Weight-only override: freight is driven by Actual Weight alone
