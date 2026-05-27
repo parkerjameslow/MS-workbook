@@ -26243,11 +26243,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       return { ...r, _wbName: wbName, _wbHref: wbHref };
     });
-    // Apply sort
+    // Apply sort. For the Product sort, layer two secondary keys so
+    // variants always sit directly beneath their parent SKU:
+    //   1. workbook_id (groups rows promoted from the same workbook)
+    //   2. parent-first then variant_name ASC (null variant_name wins)
+    // For other sort columns variants stay interleaved (no way to
+    // group them sensibly when sorted by, say, Added date) — the
+    // ↳ indent + parent-context line below make them visually obvious.
     if (_invSort.col) {
       enriched.sort((a, b) => {
         let va, vb;
-        if (_invSort.col === 'product')  { va = (a.product_name || '').toLowerCase(); vb = (b.product_name || '').toLowerCase(); }
+        if (_invSort.col === 'product') {
+          va = (a.product_name || '').toLowerCase();
+          vb = (b.product_name || '').toLowerCase();
+          if (va !== vb) return va < vb ? -_invSort.dir : _invSort.dir;
+          // Same product → keep rows from one workbook together
+          const wa = a.workbook_id || 0, wb = b.workbook_id || 0;
+          if (wa !== wb) return wa < wb ? -1 : 1;
+          // Parent (no variant_name) above its variants
+          const av = a.variant_name || '', bv = b.variant_name || '';
+          if (!av && bv) return -1;
+          if (av && !bv) return 1;
+          return av.toLowerCase() < bv.toLowerCase() ? -1 : av.toLowerCase() > bv.toLowerCase() ? 1 : 0;
+        }
         else if (_invSort.col === 'sku') { va = (a.sku || '').toLowerCase(); vb = (b.sku || '').toLowerCase(); }
         else if (_invSort.col === 'client') { va = (a.client_name || '').toLowerCase(); vb = (b.client_name || '').toLowerCase(); }
         else if (_invSort.col === 'workbook') { va = (a._wbName || '').toLowerCase(); vb = (b._wbName || '').toLowerCase(); }
@@ -26279,17 +26297,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </tr>
         </thead>
         <tbody>
-          ${enriched.map(r => `<tr>
-            <td>
-              <div class="inv-product-name">${r.product_name || '—'}</div>
-              ${r.variant_name ? `<div><span class="inv-variant-chip">${r.variant_name}</span></div>` : ''}
-            </td>
-            <td><span class="inv-sku">${r.sku}</span></td>
-            <td>${r.client_name ? `<span class="inv-client-chip" style="${_clientChipStyle(r.client_name)}">${r.client_name}</span>` : `<span style="color:var(--text-muted); font-size:12px;">—</span>`}</td>
-            <td>${r._wbHref ? `<span class="inv-wb-pill" onclick="location.hash='${r._wbHref}'" title="${r._wbName}"><span class="inv-wb-pill-text">${r._wbName}</span><span class="inv-wb-pill-arrow">→</span></span>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
-            <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
-            <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
-          </tr>`).join('')}
+          ${enriched.map(r => {
+            // Variant rows nest visually under their parent SKU: the
+            // product cell gets a left-indent + ↳ arrow + the variant
+            // name as the main label, with the parent product_name as
+            // a small muted line above for context (so the row reads
+            // cleanly regardless of which column the user sorted by).
+            // Parent rows render unchanged (bold product name).
+            const isVariant = !!(r.variant_name && String(r.variant_name).trim());
+            const productCell = isVariant
+              ? `<div style="padding-left:24px;">
+                   <div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">${r.product_name || ''}</div>
+                   <div class="inv-product-name" style="font-weight:500; color:var(--text); display:flex; align-items:center; gap:6px;">
+                     <span style="color:var(--text-muted); font-weight:400;">↳</span>
+                     <span>${r.variant_name}</span>
+                   </div>
+                 </div>`
+              : `<div class="inv-product-name">${r.product_name || '—'}</div>`;
+            const rowStyle = isVariant ? 'style="background:rgba(0,0,0,0.015);"' : '';
+            return `<tr ${rowStyle}>
+              <td>${productCell}</td>
+              <td><span class="inv-sku">${r.sku}</span></td>
+              <td>${r.client_name ? `<span class="inv-client-chip" style="${_clientChipStyle(r.client_name)}">${r.client_name}</span>` : `<span style="color:var(--text-muted); font-size:12px;">—</span>`}</td>
+              <td>${r._wbHref ? `<span class="inv-wb-pill" onclick="location.hash='${r._wbHref}'" title="${r._wbName}"><span class="inv-wb-pill-text">${r._wbName}</span><span class="inv-wb-pill-arrow">→</span></span>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
+              <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
+              <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>`;
   }
