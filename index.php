@@ -274,6 +274,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .nav-flat-link:hover { background: var(--surface2); color: var(--text); }
     .nav-flat-link.active { color: var(--accent); }
+    /* Stacked variant — main label row on top, smaller mixed-case
+       sub-label underneath. Used by nav items that want a permanent
+       hint about what lives inside (e.g. Inventory → "SKUs & Variants"). */
+    .nav-flat-link-stacked {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+    .nav-flat-link .nav-flat-sublabel {
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0.02em;
+      color: var(--text-muted);
+      opacity: 0.8;
+    }
+    .nav-flat-link:hover .nav-flat-sublabel { color: var(--text); opacity: 0.7; }
     .nav-sample-item {
       display: flex; align-items: center; gap: 6px;
       padding: 5px 10px 5px 16px; border-radius: var(--radius-sm);
@@ -5620,10 +5639,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
 
     <!-- Orders -->
-    <!-- Permanent SKU -->
-    <a id="nav-inventory-link" href="#/inventory" onclick="event.preventDefault(); location.hash='#/inventory'" class="nav-flat-link">
-      <span>Inventory</span>
-      <span class="nav-badge" id="badge-inventory"></span>
+    <!-- Permanent SKU. The Inventory link carries a static sub-title
+         ("SKUs & Variants") to remind the operator that promoted
+         workbooks land here as both parent SKUs and per-variant SKUs.
+         Flex-column so the sub-title sits directly under the label. -->
+    <a id="nav-inventory-link" href="#/inventory" onclick="event.preventDefault(); location.hash='#/inventory'" class="nav-flat-link nav-flat-link-stacked">
+      <div style="display:flex; align-items:center; gap:8px; width:100%;">
+        <span>Inventory</span>
+        <span class="nav-badge" id="badge-inventory" style="margin-left:auto;"></span>
+      </div>
+      <span class="nav-flat-sublabel">SKUs &amp; Variants</span>
     </a>
 
     <a id="nav-rfq-link" href="#/rfq" onclick="event.preventDefault(); location.hash='#/rfq'" class="nav-flat-link">
@@ -14036,7 +14061,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
       <td style="text-align:center; padding:24px 8px 4px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
-      <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals()" style="${inputStyle}" /></td>
+      <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" /></td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
@@ -14059,7 +14084,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </td>
     `;
     tbody.appendChild(tr);
-    variants.forEach(v => addRfqVariantRow(id, v.variant, v.qty, v.priceRmb, v.leadTime));
+    variants.forEach(v => addRfqVariantRow(id, v.variant, v.qty, v.priceRmb, v.leadTime, v.sku || ''));
     _updateVarAddRow(id);   // place trailing button below last variant (or parent if none)
     recalcRfqTotals();
     if (_wbLocked) {
@@ -14405,7 +14430,83 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     populateTierDropdown();
   }
 
-  function addRfqVariantRow(parentId, variant = '', qty = '', priceRmb = '', leadTime = '') {
+  // ── Variant SKU auto-suggestion ────────────────────────────────────
+  // Builds a candidate variant SKU = parentSku + initials(variantName).
+  // Examples (parent "TW"):
+  //   "Small"      → "TWS"
+  //   "Medium"     → "TWM"
+  //   "Red Small"  → "TWRS"
+  //   "Red / Small"→ "TWRS"   (slash is a separator)
+  // Words split on whitespace and a few common variant separators;
+  // first character of each word is uppercased and concatenated. Pure
+  // formatting helper — no DOM access.
+  function _suggestVariantSku(parentSku, variantName) {
+    const base = (parentSku || '').trim().toUpperCase().replace(/\s+/g, '');
+    const initials = (variantName || '')
+      .split(/[\s,/·\-_|]+/)
+      .filter(Boolean)
+      .map(w => w.charAt(0))
+      .join('')
+      .toUpperCase();
+    return base + initials;
+  }
+
+  // Fill an auto-mode variant SKU input with the current suggestion.
+  // No-op when the row is in manual mode (data-auto-suggested="0") or
+  // when there's nothing to derive a suggestion from. Reads the parent
+  // SKU + the variant-name input live so it always reflects the
+  // current state.
+  function _autoSuggestVariantSku(vid) {
+    const row = document.getElementById(`rfq-var-${vid}`);
+    if (!row) return;
+    const skuEl = row.querySelector('.rfq-var-sku-input');
+    if (!skuEl) return;
+    if (skuEl.dataset.autoSuggested === '0') return;
+    const parentId = parseInt(row.dataset.rfqParent);
+    const parentRow = document.getElementById(`rfq-${parentId}`);
+    if (!parentRow) return;
+    const parentSkuInput = parentRow.querySelector('input:not([type="checkbox"])');
+    const parentSku = parentSkuInput ? parentSkuInput.value : '';
+    const nameInputs = row.querySelectorAll('input:not(.rfq-var-sku-input):not([type="checkbox"])');
+    const variantName = nameInputs[0]?.value || '';
+    const suggestion = _suggestVariantSku(parentSku, variantName);
+    // Don't overwrite with an empty suggestion (parent SKU + variant
+    // name both blank) — leave whatever placeholder behaviour shows.
+    if (suggestion && skuEl.value !== suggestion) {
+      skuEl.value = suggestion;
+      // Setting .value programmatically does NOT fire oninput, so we
+      // also don't trigger autoSave from here — the calling context
+      // (variant-name input, parent-SKU input) already does that.
+    }
+  }
+
+  // Re-suggest SKUs for every auto-mode variant under one parent. Used
+  // when the parent SKU changes — propagates the new prefix downward.
+  function _refreshVariantSkusForParent(parentId) {
+    document.querySelectorAll(`[data-rfq-parent="${parentId}"]`).forEach(vr => {
+      const vid = parseInt((vr.id || '').replace('rfq-var-', ''));
+      if (vid) _autoSuggestVariantSku(vid);
+    });
+  }
+
+  // oninput on the variant SKU itself: user typed → mark manual so
+  // future name / parent changes don't overwrite. If they clear the
+  // field entirely we flip back to auto and immediately re-suggest.
+  function _onVariantSkuInput(vid) {
+    const row = document.getElementById(`rfq-var-${vid}`);
+    if (!row) return;
+    const skuEl = row.querySelector('.rfq-var-sku-input');
+    if (!skuEl) return;
+    if (skuEl.value.trim() === '') {
+      skuEl.dataset.autoSuggested = '1';
+      _autoSuggestVariantSku(vid);
+    } else {
+      skuEl.dataset.autoSuggested = '0';
+    }
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  function addRfqVariantRow(parentId, variant = '', qty = '', priceRmb = '', leadTime = '', sku = '') {
     _rfqVarCount++;
     const vid = _rfqVarCount;
     const tbody = document.getElementById('rfq-body');
@@ -14439,13 +14540,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.ondrop      = function(e) { e.preventDefault(); tr.style.borderTop = ''; rfqDropVariant(vid); };
     tr.ondragstart = function()  { _draggingVarId = vid; tr.style.opacity = '0.4'; };
     tr.ondragend   = function()  { _draggingVarId = null; tr.style.opacity = '1'; tr.draggable = false; };
+    // Variant SKU input goes in cell 3 (lines up with parent's SKU
+    // column). Auto-suggested mode: data-auto-suggested="1" means a
+    // future parent-SKU or variant-name change will refresh this field;
+    // "0" means the operator typed something custom, so we leave it
+    // alone. On load, an existing non-empty SKU is treated as manual
+    // (don't surprise the user by rewriting their saved code); only
+    // empty-on-load goes into auto mode.
+    const _vSkuAuto = (sku == null || String(sku).trim() === '') ? '1' : '0';
     tr.innerHTML = `
       <td title="Drag to reorder" style="cursor:grab; color:var(--text-muted); text-align:center; padding:0 6px; user-select:none; font-size:12px;"
           onmousedown="this.closest('tr').draggable=true"
           onmouseup="this.closest('tr').draggable=false">☰</td>
       <td></td>
-      <td></td>
-      <td><input type="text" placeholder="e.g. Small / Red…" value="${variant}" oninput="recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
+      <td><input type="text" class="rfq-var-sku-input" placeholder="SKU"
+            value="${sku}" data-auto-suggested="${_vSkuAuto}"
+            oninput="_onVariantSkuInput(${vid})"
+            title="Auto-suggested from parent SKU + variant name. Type to override; clear to revert to auto."
+            style="${inputStyle}" /></td>
+      <td><input type="text" placeholder="e.g. Small / Red…" value="${variant}" oninput="_autoSuggestVariantSku(${vid}); recalcRfqVariantRow(${vid})" style="${inputStyle}" /></td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
             oninput="recalcRfqVariantRow(${vid})"
             onfocus="_msStripCommasOnFocus(this)"
@@ -14468,6 +14581,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _updateVarAddRow(parentId);   // move/create the trailing "+ Add Variant" row
     syncParentQtyFromVariants(parentId);
     recalcRfqTotals();
+    // Run the auto-suggest once so a fresh variant (or a loaded one
+    // with empty SKU) gets prefilled if there's a parent SKU + name
+    // to derive from. Manual-mode rows skip cleanly inside the helper.
+    _autoSuggestVariantSku(vid);
     if (!_filling) autoSaveWorkbook();
   }
 
@@ -14490,7 +14607,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (variantRows.length > 0) {
       let sum = 0;
       variantRows.forEach(vr => {
-        const vi = vr.querySelectorAll('input');
+        const vi = vr.querySelectorAll('input:not(.rfq-var-sku-input)');
         sum += _msNumFromInput(vi[1]);
       });
       // Write the parent qty with thousand-separator commas so the
@@ -14538,7 +14655,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function recalcRfqVariantRow(vid) {
     const row = document.getElementById(`rfq-var-${vid}`);
     if (!row) return;
-    const inputs = row.querySelectorAll('input');
+    // Exclude the SKU input so the existing index-based access (qty at
+    // [1], price at [2]) keeps working after we added SKU as the first
+    // cell input.
+    const inputs = row.querySelectorAll('input:not(.rfq-var-sku-input)');
     const qty = _msNumFromInput(inputs[1]);
     const rmb = _msNumFromInput(inputs[2]);
     const usd = _fxUsdFromRmb(rmb);     // ceil to the cent
@@ -14563,12 +14683,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const variantRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
       const variants = [];
       variantRows.forEach(vr => {
-        const vi = vr.querySelectorAll('input');
+        const vi = vr.querySelectorAll('input:not(.rfq-var-sku-input)');
+        const vSkuEl = vr.querySelector('.rfq-var-sku-input');
         // Strip the display commas before saving so detail_json holds
         // raw "1234" not "1,234" — keeps the server-side parsers and
         // the front-end recalc in agreement on values either side of
         // a refresh.
         variants.push({
+          sku: (vSkuEl && vSkuEl.value || '').trim(),
           variant: vi[0]?.value || '',
           qty: _msStripCommasStr(vi[1]?.value),
           priceRmb: _msStripCommasStr(vi[2]?.value),
@@ -26242,14 +26364,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const qtyNum   = parseFloat(String(item.qty || '').replace(/,/g, '')) || 0;
       const rmbNum   = parseFloat(String(item.priceRmb || '').replace(/,/g, '')) || 0;
       const usdNum   = (rmbNum > 0 && USD_TO_RMB > 0) ? _fxUsdFromRmb(rmbNum) : 0;
+      const wbId     = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
       toPromote.push({
         sku: item.sku,
         product_name: item.item || item.sku,
         variant_name: null,
         client_name: currentClient,
-        workbook_id: dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId,
+        workbook_id: wbId,
         qty: qtyNum,
         unit_price_usd: usdNum,
+      });
+      // Push every variant under this parent as its own inventory row,
+      // using the variant's own (auto- or manually-assigned) SKU. Each
+      // variant becomes a permanent inventory item the operator can
+      // track stock / orders against independently of the parent.
+      // Variants without a SKU are skipped (server requires sku) — the
+      // auto-suggester normally prevents that, but if the operator
+      // explicitly cleared the field and a parent SKU + variant name
+      // couldn't form a suggestion, drop it gracefully.
+      (item.variants || []).forEach(v => {
+        const vSku = String(v.sku || '').trim();
+        if (!vSku) return;
+        const vQty   = parseFloat(String(v.qty || '').replace(/,/g, '')) || 0;
+        const vRmb   = parseFloat(String(v.priceRmb || '').replace(/,/g, '')) || 0;
+        const vUsd   = (vRmb > 0 && USD_TO_RMB > 0) ? _fxUsdFromRmb(vRmb) : 0;
+        toPromote.push({
+          sku: vSku,
+          product_name: item.item || item.sku,
+          variant_name: v.variant || null,
+          client_name: currentClient,
+          workbook_id: wbId,
+          qty: vQty,
+          unit_price_usd: vUsd,
+        });
       });
     });
     if (!toPromote.length) {
