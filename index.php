@@ -18261,32 +18261,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             if (totalQty > 0)        itemDescParts.push(' = ' + totalQty.toLocaleString('en-US'));
             const itemDesc = itemDescParts.join('');
 
-            // Variable-price groups auto-expand so the per-variant rows
-            // are visible by default (the operator doesn't have to hunt
-            // for the chevron to find out why the range exists). Same-
-            // price groups stay collapsed since there's nothing extra to
-            // surface.
-            const startExpanded = isRange;
-            const parentExpandedClass = startExpanded ? ' expanded' : '';
-            const variantHiddenClass  = startExpanded ? '' : ' hidden';
-
-            html += `<tr class="cq-parent-row${parentExpandedClass}" data-cq-parent="${parentId}" onclick="toggleClientQuoteParent('${parentId}')">
-              <td style="color:var(--text-muted); width:24px;"><span class="cq-chevron">▶</span></td>
+            // Per UX direction — collapse variants into ONE parent row
+            // here. Variants live on the Inventory dashboard, not as
+            // expanded sub-rows in the Client Quote. The aggregate row
+            // still surfaces the variant names in itemDesc and shows a
+            // price range (with the Variable pill) when prices vary,
+            // so the operator can tell the parent covers a mix without
+            // having to drill into a sub-list.
+            html += `<tr class="cq-parent-row no-variants" data-cq-parent="${parentId}">
+              <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
               <td style="font-weight:500;">${itemDesc}</td>
               <td style="text-align:right;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
               <td style="text-align:right;">${saleText}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
             </tr>`;
-
-            variantData.forEach(v => {
-              html += `<tr class="cq-variant-row${variantHiddenClass}" data-cq-variant-of="${parentId}">
-                <td></td>
-                <td style="padding-left:32px; color:var(--text-muted);">${v.name || 'Variant'}</td>
-                <td style="text-align:right; color:var(--text-muted);">${v.qty > 0 ? v.qty.toLocaleString('en-US') : '—'}</td>
-                <td style="text-align:right; color:var(--text-muted);">${v.sale > 0 ? '$' + _fmt2(v.sale) : '—'}</td>
-                <td style="text-align:right; color:var(--accent);">${v.total > 0 ? '$' + _fmt2(v.total) : '—'}</td>
-              </tr>`;
-            });
           }
         });
 
@@ -24799,6 +24787,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── INVENTORY ───────────────────────────────────────────────────────────
   let inventoryData = []; // [{id, sku, product_name, variant_name, client_name, workbook_id, promoted_at}]
   let _invSort = { col: null, dir: 1 }; // current inventory sort state
+  // Which (workbook_id|product_name) groups are currently expanded so
+  // their variant SKUs are visible. Default: empty → every group starts
+  // collapsed (just the parent SKU shows, with a chevron + variant count
+  // badge indicating there's more underneath). Click the parent row to
+  // toggle. State lives in-memory only — survives re-renders within the
+  // session but resets on page reload, which is fine: the user expects
+  // a clean collapsed view by default.
+  const _invExpandedGroups = new Set();
 
   async function loadInventory() {
     const res = await apiCall('get_inventory');
@@ -26264,37 +26260,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       return { ...r, _wbName: wbName, _wbHref: wbHref };
     });
-    // Apply sort. For the Product sort, layer two secondary keys so
-    // variants always sit directly beneath their parent SKU:
-    //   1. workbook_id (groups rows promoted from the same workbook)
-    //   2. parent-first then variant_name ASC (null variant_name wins)
-    // For other sort columns variants stay interleaved (no way to
-    // group them sensibly when sorted by, say, Added date) — the
-    // ↳ indent + parent-context line below make them visually obvious.
+    // Group rows by (workbook_id, product_name) so variants always
+    // render beneath their parent SKU regardless of which column the
+    // operator sorted by. Each group has a parent (variant_name = null)
+    // and a list of variants; orphan variants (no parent in inventory)
+    // become their own one-item groups so they still appear in the list.
+    const _groups = new Map();
+    enriched.forEach(r => {
+      const key = `${r.workbook_id || ''}|${(r.product_name || '').toLowerCase()}|${r.client_name || ''}`;
+      let g = _groups.get(key);
+      if (!g) { g = { key, parent: null, variants: [], _key: key }; _groups.set(key, g); }
+      const isVariant = !!(r.variant_name && String(r.variant_name).trim());
+      if (isVariant) g.variants.push(r);
+      else g.parent = r; // last-write wins if duplicates somehow exist
+    });
+    // Each group's "representative" row drives the sort. Parents win;
+    // orphan-variant groups use their first variant.
+    const groups = [..._groups.values()].map(g => ({
+      ...g,
+      rep: g.parent || g.variants[0],
+    }));
+
+    // Sort groups (one row per group from the sort's perspective). The
+    // variant rows always follow their group's parent in render order —
+    // they no longer interleave when sorting by SKU / Added / etc.
     if (_invSort.col) {
-      enriched.sort((a, b) => {
+      groups.sort((a, b) => {
+        const ra = a.rep, rb = b.rep;
         let va, vb;
-        if (_invSort.col === 'product') {
-          va = (a.product_name || '').toLowerCase();
-          vb = (b.product_name || '').toLowerCase();
-          if (va !== vb) return va < vb ? -_invSort.dir : _invSort.dir;
-          // Same product → keep rows from one workbook together
-          const wa = a.workbook_id || 0, wb = b.workbook_id || 0;
-          if (wa !== wb) return wa < wb ? -1 : 1;
-          // Parent (no variant_name) above its variants
-          const av = a.variant_name || '', bv = b.variant_name || '';
-          if (!av && bv) return -1;
-          if (av && !bv) return 1;
-          return av.toLowerCase() < bv.toLowerCase() ? -1 : av.toLowerCase() > bv.toLowerCase() ? 1 : 0;
-        }
-        else if (_invSort.col === 'sku') { va = (a.sku || '').toLowerCase(); vb = (b.sku || '').toLowerCase(); }
-        else if (_invSort.col === 'client') { va = (a.client_name || '').toLowerCase(); vb = (b.client_name || '').toLowerCase(); }
-        else if (_invSort.col === 'workbook') { va = (a._wbName || '').toLowerCase(); vb = (b._wbName || '').toLowerCase(); }
-        else if (_invSort.col === 'added') { va = a.promoted_at || ''; vb = b.promoted_at || ''; }
+        if      (_invSort.col === 'product')  { va = (ra.product_name || '').toLowerCase(); vb = (rb.product_name || '').toLowerCase(); }
+        else if (_invSort.col === 'sku')      { va = (ra.sku || '').toLowerCase();          vb = (rb.sku || '').toLowerCase(); }
+        else if (_invSort.col === 'client')   { va = (ra.client_name || '').toLowerCase();  vb = (rb.client_name || '').toLowerCase(); }
+        else if (_invSort.col === 'workbook') { va = (ra._wbName || '').toLowerCase();      vb = (rb._wbName || '').toLowerCase(); }
+        else if (_invSort.col === 'added')    { va = ra.promoted_at || '';                  vb = rb.promoted_at || ''; }
         else { return 0; }
-        return va < vb ? -_invSort.dir : va > vb ? _invSort.dir : 0;
+        if (va !== vb) return va < vb ? -_invSort.dir : _invSort.dir;
+        // Stable secondary by workbook_id so groups with the same sort
+        // key still come out in a deterministic order.
+        return (a.rep.workbook_id || 0) - (b.rep.workbook_id || 0);
       });
     }
+    // Variants within a group always sort alphabetically — they read
+    // naturally regardless of the column the group is sorted by.
+    groups.forEach(g => {
+      g.variants.sort((a, b) =>
+        (a.variant_name || '').toLowerCase() < (b.variant_name || '').toLowerCase() ? -1 : 1
+      );
+    });
     // Sort icon helper
     const sortIco = col => {
       const active = _invSort.col === col;
@@ -26318,32 +26330,70 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </tr>
         </thead>
         <tbody>
-          ${enriched.map(r => {
-            // Variant rows nest visually under their parent SKU: the
-            // product cell gets a left-indent + ↳ arrow + the variant
-            // name as the main label, with the parent product_name as
-            // a small muted line above for context (so the row reads
-            // cleanly regardless of which column the user sorted by).
-            // Parent rows render unchanged (bold product name).
-            const isVariant = !!(r.variant_name && String(r.variant_name).trim());
-            const productCell = isVariant
-              ? `<div style="padding-left:24px;">
-                   <div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">${r.product_name || ''}</div>
-                   <div class="inv-product-name" style="font-weight:500; color:var(--text); display:flex; align-items:center; gap:6px;">
-                     <span style="color:var(--text-muted); font-weight:400;">↳</span>
-                     <span>${r.variant_name}</span>
-                   </div>
-                 </div>`
-              : `<div class="inv-product-name">${r.product_name || '—'}</div>`;
-            const rowStyle = isVariant ? 'style="background:rgba(0,0,0,0.015);"' : '';
-            return `<tr ${rowStyle}>
-              <td>${productCell}</td>
+          ${groups.map(g => {
+            // Helper cells — same shape for parent + variant rows so
+            // the columns line up; only the Product cell differs.
+            const cellsFor = (r) => `
               <td><span class="inv-sku">${r.sku}</span></td>
               <td>${r.client_name ? `<span class="inv-client-chip" style="${_clientChipStyle(r.client_name)}">${r.client_name}</span>` : `<span style="color:var(--text-muted); font-size:12px;">—</span>`}</td>
-              <td>${r._wbHref ? `<span class="inv-wb-pill" onclick="location.hash='${r._wbHref}'" title="${r._wbName}"><span class="inv-wb-pill-text">${r._wbName}</span><span class="inv-wb-pill-arrow">→</span></span>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
+              <td>${r._wbHref ? `<span class="inv-wb-pill" onclick="event.stopPropagation(); location.hash='${r._wbHref}'" title="${r._wbName}"><span class="inv-wb-pill-text">${r._wbName}</span><span class="inv-wb-pill-arrow">→</span></span>` : `<span style="color:var(--text-muted); font-size:12px;">${r._wbName || '—'}</span>`}</td>
               <td style="color:var(--text-muted); font-size:12px;">${fmtDate(r.promoted_at)}</td>
-              <td style="text-align:center;"><button class="inv-remove-btn" onclick="removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>
-            </tr>`;
+              <td style="text-align:center;"><button class="inv-remove-btn" onclick="event.stopPropagation(); removeInventorySku(${r.id})" title="Remove from inventory">&times;</button></td>`;
+
+            const variantCount = g.variants.length;
+            const isExpanded   = _invExpandedGroups.has(g.key);
+            const keyAttr      = g.key.replace(/"/g, '&quot;');
+            const keyJs        = g.key.replace(/'/g, "\\'");
+
+            let html = '';
+
+            if (g.parent) {
+              // Parent SKU header row. When there are variants, the row
+              // becomes clickable to toggle them; chevron + badge make
+              // the affordance obvious. When there are NO variants the
+              // row reads identically to before (no chevron, no badge,
+              // no click handler).
+              const chevron = variantCount > 0
+                ? `<span class="inv-chevron" style="display:inline-block; width:10px; margin-right:8px; color:var(--text-muted); transition:transform 0.15s; transform:${isExpanded ? 'rotate(90deg)' : 'none'};">▶</span>`
+                : `<span style="display:inline-block; width:18px;"></span>`;
+              const badge = variantCount > 0
+                ? `<span style="display:inline-block; margin-left:10px; padding:2px 8px; background:rgba(110,140,255,0.12); color:#5b6fcc; border-radius:10px; font-size:10px; font-weight:700; letter-spacing:0.03em;">${variantCount} variant${variantCount === 1 ? '' : 's'}</span>`
+                : '';
+              const clickAttr = variantCount > 0 ? `onclick="toggleInventoryGroup('${keyJs}')"` : '';
+              const cursorStyle = variantCount > 0 ? ' cursor:pointer;' : '';
+              html += `<tr data-inv-group-header="${keyAttr}" style="${cursorStyle}" ${clickAttr}>
+                <td>
+                  <div class="inv-product-name" style="display:flex; align-items:center;">
+                    ${chevron}<span>${g.parent.product_name || '—'}</span>${badge}
+                  </div>
+                </td>
+                ${cellsFor(g.parent)}
+              </tr>`;
+            }
+
+            // Variant sub-rows. Hidden by default; revealed by
+            // toggleInventoryGroup. When the group has NO parent (orphan
+            // variants — promoted before the parent SKU existed, or
+            // parent was deleted), the variants render unconditionally
+            // so they're still visible.
+            const variantRowsHidden = !!g.parent && !isExpanded;
+            const variantStyle = variantRowsHidden ? 'display:none; background:rgba(0,0,0,0.015);' : 'background:rgba(0,0,0,0.015);';
+            g.variants.forEach(r => {
+              html += `<tr data-inv-group="${keyAttr}" style="${variantStyle}">
+                <td>
+                  <div style="padding-left:36px;">
+                    ${g.parent ? '' : `<div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">${r.product_name || ''}</div>`}
+                    <div class="inv-product-name" style="font-weight:500; color:var(--text); display:flex; align-items:center; gap:6px;">
+                      <span style="color:var(--text-muted); font-weight:400;">↳</span>
+                      <span>${r.variant_name}</span>
+                    </div>
+                  </div>
+                </td>
+                ${cellsFor(r)}
+              </tr>`;
+            });
+
+            return html;
           }).join('')}
         </tbody>
       </table>`;
@@ -26353,6 +26403,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (_invSort.col === col) { _invSort.dir *= -1; } else { _invSort.col = col; _invSort.dir = 1; }
     const q = document.getElementById('inventory-search')?.value || '';
     filterInventory(q);
+  }
+
+  // Toggle the variant-list visibility for one Inventory group. Updates
+  // the chevron in-place + flips the display on every variant row whose
+  // data-inv-group matches the key — no full re-render, so the user's
+  // scroll position is preserved when clicking a group deep in the list.
+  function toggleInventoryGroup(key) {
+    const expand = !_invExpandedGroups.has(key);
+    if (expand) _invExpandedGroups.add(key); else _invExpandedGroups.delete(key);
+    // querySelectorAll's attribute selector handles quotes / spaces by
+    // way of CSS.escape; fall back to a literal string match if
+    // CSS.escape is missing (very old browsers).
+    const safeKey = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(key) : key.replace(/"/g, '\\"');
+    document.querySelectorAll(`tr[data-inv-group="${safeKey}"]`).forEach(r => {
+      r.style.display = expand ? '' : 'none';
+    });
+    const header = document.querySelector(`tr[data-inv-group-header="${safeKey}"]`);
+    if (header) {
+      const chev = header.querySelector('.inv-chevron');
+      if (chev) chev.style.transform = expand ? 'rotate(90deg)' : 'none';
+    }
   }
 
   function filterInventory(query) {
@@ -29864,38 +29935,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td colspan="6" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
+        // Per UX direction — collapse variants into ONE row per parent
+        // item in the Order Sheet. Variants belong on the Inventory
+        // left-nav dashboard, not exploded under each workbook here.
+        // When the item has variants, qty is the sum across them;
+        // no-variant items render the same way they always did.
         rfqItems.forEach(item => {
           const vs = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
+          let itemQty;
           if (vs.length) {
-            // Item sub-header (no numbers — it's just a grouping
-            // label; the variants below carry the qty/sale/total).
-            rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
-              <td colspan="6" style="padding:6px 12px 4px 36px; font-size:12px; font-weight:600; color:var(--text);">${esc(item.item || 'Item')}</td>
-            </tr>`;
-            vs.forEach(v => {
-              const vq = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
-              const vTot = perUnit > 0 ? perUnit * vq : 0;
-              rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
-                <td style="padding-left:52px; color:var(--text-muted);">${esc(v.variant || 'Variant')}</td>
-                <td style="text-align:right;">${vq > 0 ? vq.toLocaleString('en-US') : '—'}</td>
-                <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
-                <td style="text-align:right; font-weight:600;">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
-                <td></td>
-                <td></td>
-              </tr>`;
-            });
+            itemQty = vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g,'')) || 0), 0);
           } else {
-            const iq = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
-            const iTot = perUnit > 0 ? perUnit * iq : 0;
-            rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
-              <td style="padding-left:36px;">${esc(item.item || '—')}</td>
-              <td style="text-align:right;">${iq > 0 ? iq.toLocaleString('en-US') : '—'}</td>
-              <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
-              <td style="text-align:right; font-weight:600;">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
-              <td></td>
-              <td></td>
-            </tr>`;
+            itemQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
           }
+          const iTot = perUnit > 0 ? perUnit * itemQty : 0;
+          rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
+            <td style="padding-left:36px;">${esc(item.item || '—')}</td>
+            <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
+            <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+            <td style="text-align:right; font-weight:600;">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
+            <td></td>
+            <td></td>
+          </tr>`;
         });
       }
 
