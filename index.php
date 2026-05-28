@@ -8498,7 +8498,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <!-- ── Create Order Modal ─────────────────────────────────────────────── -->
 <!-- ── Notification Modal ──────────────────────────────────────────────────── -->
 <div class="modal-overlay" id="modal-notify" onclick="if(event.target===this)closeNotifyModal()" style="z-index:1100;">
-  <div class="modal" style="max-width:720px; max-height:calc(100vh - 32px); display:flex; flex-direction:column;">
+  <div class="modal" style="max-width:1080px; width:calc(100vw - 32px); max-height:calc(100vh - 32px); display:flex; flex-direction:column;">
     <div class="modal-title" id="notify-modal-title">Send Notification</div>
 
     <!-- Recipients -->
@@ -8526,12 +8526,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span id="notify-preview-subject"></span>
       </div>
       <iframe id="notify-preview-frame" title="Email preview"
-        style="display:none; flex:1 1 auto; min-height:320px; width:100%; border:1px solid var(--border); border-radius:6px; background:#fff;"></iframe>
+        style="display:none; flex:1 1 auto; min-height:480px; width:100%; border:1px solid var(--border); border-radius:6px; background:#fff;"></iframe>
       <div id="notify-preview-summary" style="display:none; font-size:13px; color:var(--text); line-height:1.6; padding:10px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; white-space:pre-wrap;"></div>
-    </div>
-    <!-- Portal notice (shown for quote_ready and order_confirmed) -->
-    <div id="notify-portal-notice" style="display:none; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:var(--accent); line-height:1.6;">
-      <strong>Portal link will be generated.</strong> The preview shows the CTA button — the actual secure link gets generated when you send.
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end;">
@@ -17894,10 +17890,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Render the FULL email preview in the iframe so the operator
       // sees the actual table + portal CTA + copy before confirming.
       _showNotifyIframePreview(_buildQuotePreviewHtml(_notifyPayload));
-
-      const pn = document.getElementById('notify-portal-notice');
-      if (pn) pn.style.display = rfqItems.length > 0 ? 'block' : 'none';
-
       _renderNotifyRecipients(clientEmail, contactName);
     }
 
@@ -17966,10 +17958,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           app_url: orderAppUrl
         }
       };
-
-      // Show portal notice for order_confirmed
-      const pn2 = document.getElementById('notify-portal-notice');
-      if (pn2) pn2.style.display = (notifType === 'order_confirmed') ? 'block' : 'none';
 
       _renderNotifyRecipients(clientEmail, contactName);
     }
