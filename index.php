@@ -5973,18 +5973,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
     <div class="status-actions" style="display:flex; gap:6px; align-items:center;">
-      <button id="btn-notify-quote" onclick="openNotifyModal('quote_ready')"
-        style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
-        title="Send quote notification to client">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        Notify Client
-      </button>
-      <!-- RFQ button stack: 'Sent to RFQ' on top, 'Send for Review'
-           directly below it (same column). The two actions are part of
-           the same workflow — first the operator sends the workbook
-           into the RFQ Queue, then once edits are done they send it
-           back for review. Stacking keeps them grouped and avoids
-           pushing the rest of the action row off-screen. -->
+      <!-- Workflow-stage action stack: groups stage-specific buttons
+           in a single vertical column so the status-bar row stays
+           compact. Each inner button manages its own visibility:
+             • Sent to RFQ      — stage 1 only (Quote Submitted).
+             • Send for Review  — stage 1 only (flow doesn't auto-
+                                  advance; flips to 'Sent ✓' in place).
+             • Notify Client    — stage 2 only (Quote to Client).
+           Before this stacking, Notify Client sat free in the action
+           row and visually overlapped the Ordered step label. Folding
+           it into the stack restores clean spacing in the row. -->
       <div id="rfq-btn-stack" style="display:none; flex-direction:column; gap:4px; align-items:stretch;">
         <button id="btn-send-rfq" onclick="toggleSendToRfq()"
           style="background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; justify-content:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
@@ -6016,6 +6014,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <polyline points="20 6 9 17 4 12"/>
           </svg>
           <span id="btn-submit-review-label">Send for Review</span>
+        </button>
+        <!-- Notify Client lives in the same stack as Send for Review
+             because they're sequential workflow actions for the same
+             quote. Renders only at stage 2 (Quote to Client) — the
+             existing renderStatusBar visibility rule still drives the
+             show/hide. Outlined accent style matches the sibling
+             buttons in the stack. -->
+        <button id="btn-notify-quote" onclick="openNotifyModal('quote_ready')"
+          style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; justify-content:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
+          title="Email this quote to the client">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Notify Client
         </button>
       </div>
       <button id="btn-watchers" onclick="openWatchersModal()" class="wb-watchers-btn" title="Manage milestone watchers">
@@ -17561,25 +17571,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       notifyBtn.style.display = show ? 'inline-flex' : 'none';
     }
 
-    // Show the RFQ button stack (Sent to RFQ + Send for Review)
-    // throughout the full review window — quoteSubmitted through just
-    // before clientApproved. Earlier this was tied to !flow.quoteClient,
-    // which hid the whole stack (taking Send for Review with it) the
-    // moment Karen advanced the workbook to 'Quote to Client'. That's
-    // the bug behind 'won't let me click Send for Review at Quote to
-    // Client' — the button wasn't disabled, it just wasn't on screen.
-    // Inner buttons handle their own narrower windows: Sent to RFQ
-    // only makes sense at stage 1 (quoteSubmitted, not yet quoteClient),
-    // Send for Review spans stages 1 + 2 (visibility set further down).
+    // Stack wrapper visible while we have at least one workflow-stage
+    // action to show — covers stages 1 (Sent to RFQ + Send for Review)
+    // and 2 (Notify Client). Inner buttons handle their own narrower
+    // windows so only the applicable buttons render inside.
     const sendRfqBtn   = document.getElementById('btn-send-rfq');
     const rfqStackWrap = document.getElementById('rfq-btn-stack');
     if (rfqStackWrap) {
       const showStack = !!flow.quoteSubmitted && !flow.clientApproved;
       rfqStackWrap.style.display = showStack ? 'flex' : 'none';
       if (sendRfqBtn) {
-        // Sent-to-RFQ only applies while sitting in the queue (stage 1).
-        // Hide it the moment the workbook advances past, even though
-        // the wrapper stays visible to host Send for Review.
+        // Sent-to-RFQ only applies at stage 1 (quoteSubmitted, not yet
+        // quoteClient).
         const rfqApplicable = !!flow.quoteSubmitted && !flow.quoteClient;
         sendRfqBtn.style.display = rfqApplicable ? 'inline-flex' : 'none';
         if (rfqApplicable) {
@@ -17593,13 +17596,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    // "Send for Review" — visible across the full review window:
-    // anywhere from flow.quoteSubmitted (in queue) through quoteClient
-    // (advanced past queue, awaiting Jackson + Parker). Hidden only
-    // once the order has moved past Client Approved so the action can't
-    // be re-fired late in the order lifecycle. Style flips between two
-    // states without ever hiding the button — the operator asked for
-    // 'Sent ✓' to stay visible instead of disappearing on click.
+    // "Send for Review" — visible only at stage 1 (quoteSubmitted, not
+    // yet advanced past). Because submit_for_review no longer auto-
+    // advances the flow_step, the workbook STAYS at stage 1 after Karen
+    // clicks the button — so the button stays on screen (in its filled
+    // 'Sent ✓' state) until the operator manually advances the flow.
     //   • detail.sentForReview === false  → outlined, paper-plane icon,
     //                                        label 'Send for Review'.
     //   • detail.sentForReview === true   → filled success-green, check
@@ -17609,7 +17610,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sendReviewBtn = document.getElementById('btn-submit-review');
     if (sendReviewBtn) {
       const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
-      const inReviewWindow = !!flow.quoteSubmitted && !flow.clientApproved;
+      const inReviewWindow = !!flow.quoteSubmitted && !flow.quoteClient;
       sendReviewBtn.style.display = inReviewWindow ? 'inline-flex' : 'none';
       if (inReviewWindow) {
         const alreadySent = !!detail.sentForReview;
@@ -24226,10 +24227,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // A workbook belongs in the RFQ queue when:
   //  - user clicked "RFQ" to send it (sentToRfq flag on detail)
   //  - status is still at Quote Submitted (not yet advanced to Quote to Client)
+  //  - Karen hasn't pushed it back for review yet (sentForReview === false).
+  //    Once she clicks Send for Review the workbook moves to the Ready-
+  //    for-Review queue and drops out of here, even though the flow_step
+  //    is still 1 (Karen's action doesn't auto-advance the flow per the
+  //    operator's UX direction — the reviewer advances manually).
   function collectAllRfqs() {
     const results = [];
     for (const [key, detail] of Object.entries(workbookDetail)) {
       if (!detail || !detail.sentToRfq) continue;
+      if (detail.sentForReview) continue;
       const [clientName, workbookId] = key.split('|');
       // Only include if flow is still at quoteSubmitted (not advanced past)
       const items = clientData[clientName] || [];
@@ -24534,11 +24541,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // A workbook belongs in the Ready-for-Review queue when:
   //   • Karen has pressed Send for Review (detail.sentForReview === true)
-  //   • The workbook is currently at Quote to Client (flow.quoteClient)
-  //     AND has NOT yet advanced past Client Approved.
-  // Once Jackson / Parker advance the workbook past clientApproved on
-  // the status bar, it drops out of this queue automatically (same
-  // mechanism the RFQ Queue uses for its lifecycle window).
+  //   • The reviewer hasn't manually advanced the flow past Quote
+  //     Submitted yet (flow.quoteClient === false).
+  // Send for Review does NOT auto-advance the flow_step — the reviewer
+  // advances the status bar manually after they've looked at the
+  // workbook, which is what drops it out of this queue.
   function collectAllReadyForReview() {
     const results = [];
     for (const [key, detail] of Object.entries(workbookDetail)) {
@@ -24547,10 +24554,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const items = clientData[clientName] || [];
       const item = items.find(i => String(i.id) === String(workbookId));
       if (!item || !item.flow) continue;
-      // Review window: workbook sits at Quote to Client (or earlier in
-      // the rare race where sentForReview got set before the flow
-      // advance landed) but hasn't been client-approved yet.
-      if (!item.flow.quoteClient || item.flow.clientApproved) continue;
+      // Out of queue once the reviewer has advanced past Quote
+      // Submitted (i.e. quoteClient is true) OR if anything stomped
+      // the flow further along the chain.
+      if (item.flow.quoteClient || item.flow.clientApproved) continue;
 
       // Aggregate RFQ totals — same as the RFQ Queue collector so the
       // numbers tie out across both views for the same workbook.

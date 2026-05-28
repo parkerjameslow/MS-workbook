@@ -1256,24 +1256,23 @@ switch ($action) {
         break;
 
     /*
-     * submit_for_review — Karen has finished her edits on a workbook
-     * sitting in the RFQ Queue and is sending it back to internal
-     * reviewers (Jackson + Parker).
+     * submit_for_review — Karen has finished her edits and is pinging
+     * Jackson + Parker to look. Idempotent.
      *
-     * Idempotent — safe to call multiple times. Behaviour by stage:
-     *   • flow_step === 1 (quoteSubmitted): advance to 2 (quoteClient)
-     *     so the workbook drops out of the RFQ Queue, then email the
-     *     reviewers. The 'first send' path.
-     *   • flow_step >= 2 (already past the queue): DO NOT advance —
-     *     just re-send the review email. Lets the user ping reviewers
-     *     again without the action erroring out when their UI is a tick
-     *     out of date relative to the server's flow_step.
-     *   • flow_step === 0 (not yet submitted at all): refuse — the
-     *     workbook hasn't been sent into the workflow yet, so there's
-     *     nothing to review.
+     * NEW POLICY (per UX direction): this action no longer advances
+     * the fulfillment flow_step. It ONLY:
+     *   1. Sets detail.sentForReview = true (+ sentForReviewAt).
+     *   2. Emails the internal reviewers.
+     * The user advances the flow stage manually via the status-bar
+     * advance button when they're ready. That keeps the RFQ Queue
+     * clear (it filters out sentForReview workbooks) without
+     * silently jumping the workbook into 'Quote to Client'.
      *
-     * Returns: success + flow object + a 'reSent' flag the frontend can
-     * use to show 'Re-sent ✓' vs 'Sent ✓' feedback.
+     * Refuses only when the workbook has been archived. Stage 0 used
+     * to be rejected too, but since flow isn't touched there's no
+     * harm in pinging reviewers even before the queue submit — kept
+     * an explicit guard anyway because there's nothing to review
+     * pre-submit.
      */
     case 'submit_for_review': {
         if (empty($input['workbook_id'])) {
@@ -1282,8 +1281,6 @@ switch ($action) {
         }
         $wbId = (int)$input['workbook_id'];
 
-        // Look up the workbook + current flow_step. Guard against
-        // operating on a deleted workbook.
         $stmt = $pdo->prepare("SELECT id, flow_step, deleted_at FROM workbooks WHERE id = ?");
         $stmt->execute([$wbId]);
         $wb = $stmt->fetch();
@@ -1304,26 +1301,23 @@ switch ($action) {
             break;
         }
 
-        // Advance only when sitting AT the RFQ Queue stage (1). For any
-        // later stage we just re-send the email — no need to roll the
-        // flow forward / backward.
+        // No flow advance. The 're_sent' flag tells the frontend
+        // whether this is the first ping (false) or a follow-up
+        // (true — i.e. sentForReview was already set on the detail).
         $reSent  = false;
         $newStep = $curStep;
-        if ($curStep === 1) {
-            $newStep = 2; // quoteClient — "Quote to Client" / ready-for-review
-            $up = $pdo->prepare("UPDATE workbooks SET flow_step = ? WHERE id = ?");
-            $up->execute([$newStep, $wbId]);
-        } else {
-            $reSent = true;
-        }
+        try {
+            $check = $pdo->prepare("SELECT JSON_EXTRACT(detail_json, '$.sentForReview') AS sf FROM workbooks WHERE id = ?");
+            $check->execute([$wbId]);
+            $row = $check->fetch();
+            $reSent = $row && ($row['sf'] === 'true' || $row['sf'] === true || $row['sf'] === 1 || $row['sf'] === '1');
+        } catch (Throwable $_e) { /* JSON_EXTRACT unsupported → treat as first send */ }
 
         // Persist the 'sent for review' flag into detail_json so the
         // in-workbook 'Send for Review' button stays in its filled
-        // 'Sent ✓' state across reloads (the operator asked for it to
-        // not disappear after click). Covers the RFQ Queue per-row
-        // path too — the queue button doesn't otherwise touch the
-        // workbook's detail. JSON_SET is safe to call even when the
-        // keys don't exist yet; it just creates them.
+        // 'Sent ✓' state across reloads, AND so the RFQ Queue +
+        // Ready-for-Review queue agree on which side this workbook
+        // belongs on (sentForReview is the divider).
         try {
             $pdo->prepare(
                 "UPDATE workbooks
@@ -1335,10 +1329,6 @@ switch ($action) {
                  WHERE id = ?"
             )->execute([gmdate('c'), $wbId]);
         } catch (Throwable $_e) {
-            // If JSON_SET isn't supported (very old MySQL) the in-
-            // workbook click path still writes the flag via its
-            // follow-up save_workbook_detail call, so we don't bail
-            // the whole action — just log and continue.
             error_log('[submit_for_review] JSON_SET failed: ' . $_e->getMessage());
         }
 
@@ -1373,8 +1363,8 @@ switch ($action) {
               . '</table>'
               . '<p><a href="' . $esc($wbUrl) . '" style="display:inline-block; background:#5b6fcc; color:#fff; padding:9px 18px; border-radius:6px; text-decoration:none; font-weight:600;">Open Workbook</a></p>'
               . ($reSent
-                  ? '<p style="color:#666; font-size:12px; margin-top:20px;">(Reminder — this workbook is already at <strong>Quote to Client</strong>; the reviewer requested another look.)</p>'
-                  : '<p style="color:#666; font-size:12px; margin-top:20px;">The workbook has been advanced out of the RFQ Queue (now at <strong>Quote to Client</strong>).</p>')
+                  ? '<p style="color:#666; font-size:12px; margin-top:20px;">(Reminder — Karen already pinged you on this workbook; she\'s asking for another look.)</p>'
+                  : '<p style="color:#666; font-size:12px; margin-top:20px;">Open the workbook and advance the status when you\'re ready to push it to the client.</p>')
               . '</body></html>';
 
         $mail = ms_smtp_send($internal, $subject, $html);
