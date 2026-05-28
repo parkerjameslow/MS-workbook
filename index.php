@@ -6104,7 +6104,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- ── Card: RFQ ── -->
   <div class="section-card" data-section="rfq">
     <div class="section-header section-header-collapsible" onclick="toggleSection(this.closest('.section-card'))">
-      <span class="section-title">RFQ</span>
+      <span class="section-title" style="display:inline-flex; align-items:center; gap:8px;">
+        <!-- Send / paper-plane icon — same shape as the 'Send to Client'
+             button on the Client Quote so the RFQ section visually reads
+             as 'outbound quote'. currentColor follows the section-title
+             text color, so it stays consistent across themes. -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+        RFQ
+      </span>
       <div id="rfq-presence-bar" onclick="event.stopPropagation()" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:12px;"></div>
       <span class="section-summary" data-section-summary="rfq"></span>
       <span class="section-chevron">›</span>
