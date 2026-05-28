@@ -24241,14 +24241,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         product_name: productName || '',
       });
       if (res && res.success) {
-        if (btn) { btn.textContent = 'Sent ✓'; btn.style.background = 'var(--success, #10b981)'; }
+        if (btn) {
+          btn.textContent = res.re_sent ? 'Re-sent ✓' : 'Sent ✓';
+          btn.style.background = 'var(--success, #10b981)';
+          btn.style.color = '#fff';
+        }
         // Refresh the queue so the row drops out (workbook advanced
         // past quoteSubmitted → no longer qualifies).
         if (typeof renderRfqDashboard === 'function') {
           setTimeout(renderRfqDashboard, 600);
         }
       } else {
-        alert('Couldn\'t submit for review: ' + (res && res.error ? res.error : 'unknown error'));
+        alert((res && res.error) ? res.error : 'Couldn\'t send for review — try again.');
         if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
       }
     } catch (e) {
@@ -24319,14 +24323,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         product_name: productName,
       });
       if (res && res.success) {
-        if (btn) { btn.textContent = 'Sent ✓'; btn.style.background = 'var(--success, #10b981)'; }
+        if (btn) {
+          btn.textContent = res.re_sent ? 'Re-sent ✓' : 'Sent ✓';
+          btn.style.background = 'var(--success, #10b981)';
+          btn.style.color = '#fff';
+          btn.style.borderColor = 'var(--success, #10b981)';
+        }
         // Refresh the status bar so the advance applies + the button hides.
         const items = clientData[currentClient];
         const itemRow = items ? items.find(i => i.id === parseInt(currentWorkbookId)) : null;
         if (itemRow && res.flow) { itemRow.flow = res.flow; renderStatusBar(itemRow.flow); }
         try { rebuildRfqNav(); } catch (_) {}
       } else {
-        alert('Couldn\'t submit for review: ' + (res && res.error ? res.error : 'unknown error'));
+        alert((res && res.error) ? res.error : 'Couldn\'t send for review — try again.');
         if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
       }
     } catch (e) {

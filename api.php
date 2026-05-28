@@ -1258,16 +1258,22 @@ switch ($action) {
     /*
      * submit_for_review — Karen has finished her edits on a workbook
      * sitting in the RFQ Queue and is sending it back to internal
-     * reviewers (Jackson + Parker). Atomically:
-     *   1. Advances the workbook's flow_step from 1 (quoteSubmitted) to
-     *      2 (quoteClient) so it drops out of the RFQ Queue. Other
-     *      stages are rejected so the action can't accidentally
-     *      re-fire after the order has moved on.
-     *   2. Emails the internal review list with a link back to the
-     *      workbook so they can open it directly from the inbox.
+     * reviewers (Jackson + Parker).
      *
-     * Returns the new flow object the frontend can use to re-render
-     * the status bar without a round-trip refresh.
+     * Idempotent — safe to call multiple times. Behaviour by stage:
+     *   • flow_step === 1 (quoteSubmitted): advance to 2 (quoteClient)
+     *     so the workbook drops out of the RFQ Queue, then email the
+     *     reviewers. The 'first send' path.
+     *   • flow_step >= 2 (already past the queue): DO NOT advance —
+     *     just re-send the review email. Lets the user ping reviewers
+     *     again without the action erroring out when their UI is a tick
+     *     out of date relative to the server's flow_step.
+     *   • flow_step === 0 (not yet submitted at all): refuse — the
+     *     workbook hasn't been sent into the workflow yet, so there's
+     *     nothing to review.
+     *
+     * Returns: success + flow object + a 'reSent' flag the frontend can
+     * use to show 'Re-sent ✓' vs 'Sent ✓' feedback.
      */
     case 'submit_for_review': {
         if (empty($input['workbook_id'])) {
@@ -1277,8 +1283,7 @@ switch ($action) {
         $wbId = (int)$input['workbook_id'];
 
         // Look up the workbook + current flow_step. Guard against
-        // operating on a deleted workbook or one already past the
-        // RFQ-queue stage.
+        // operating on a deleted workbook.
         $stmt = $pdo->prepare("SELECT id, flow_step, deleted_at FROM workbooks WHERE id = ?");
         $stmt->execute([$wbId]);
         $wb = $stmt->fetch();
@@ -1287,23 +1292,30 @@ switch ($action) {
             break;
         }
         if (!empty($wb['deleted_at'])) {
-            echo json_encode(['success' => false, 'error' => 'Workbook is archived']);
+            echo json_encode(['success' => false, 'error' => 'This workbook has been archived.']);
             break;
         }
         $curStep = (int)$wb['flow_step'];
-        // Allow only when currently at quoteSubmitted (1). Anywhere
-        // else would mean the workbook isn't actually in the queue.
-        if ($curStep !== 1) {
+        if ($curStep < 1) {
             echo json_encode([
                 'success' => false,
-                'error'   => 'Workbook is not in the RFQ Queue stage (current flow_step=' . $curStep . ').'
+                'error'   => 'This workbook hasn\'t been submitted yet. Send it to the RFQ Queue first.'
             ]);
             break;
         }
 
-        $newStep = 2; // quoteClient — "Quote to Client" / ready-for-review
-        $up = $pdo->prepare("UPDATE workbooks SET flow_step = ? WHERE id = ?");
-        $up->execute([$newStep, $wbId]);
+        // Advance only when sitting AT the RFQ Queue stage (1). For any
+        // later stage we just re-send the email — no need to roll the
+        // flow forward / backward.
+        $reSent  = false;
+        $newStep = $curStep;
+        if ($curStep === 1) {
+            $newStep = 2; // quoteClient — "Quote to Client" / ready-for-review
+            $up = $pdo->prepare("UPDATE workbooks SET flow_step = ? WHERE id = ?");
+            $up->execute([$newStep, $wbId]);
+        } else {
+            $reSent = true;
+        }
 
         // Build the flow object the frontend status-bar renderer expects:
         // cumulative booleans up to + including the current step.
@@ -1335,7 +1347,9 @@ switch ($action) {
               . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Workbook&nbsp;ID</td><td style="padding:4px 0;">#' . (int)$wbId . '</td></tr>'
               . '</table>'
               . '<p><a href="' . $esc($wbUrl) . '" style="display:inline-block; background:#5b6fcc; color:#fff; padding:9px 18px; border-radius:6px; text-decoration:none; font-weight:600;">Open Workbook</a></p>'
-              . '<p style="color:#666; font-size:12px; margin-top:20px;">The workbook has been advanced out of the RFQ Queue (now at <strong>Quote to Client</strong>).</p>'
+              . ($reSent
+                  ? '<p style="color:#666; font-size:12px; margin-top:20px;">(Reminder — this workbook is already at <strong>Quote to Client</strong>; the reviewer requested another look.)</p>'
+                  : '<p style="color:#666; font-size:12px; margin-top:20px;">The workbook has been advanced out of the RFQ Queue (now at <strong>Quote to Client</strong>).</p>')
               . '</body></html>';
 
         $mail = ms_smtp_send($internal, $subject, $html);
@@ -1344,6 +1358,7 @@ switch ($action) {
             'success'    => true,
             'flow_step'  => $newStep,
             'flow'       => $flow,
+            're_sent'    => $reSent,
             'email_sent' => !empty($mail['ok']),
             'email_error'=> empty($mail['ok']) ? ($mail['error'] ?? 'unknown') : null,
             'reviewers'  => $internal,
