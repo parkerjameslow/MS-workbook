@@ -1536,6 +1536,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #rfq-table th:nth-child(7), #rfq-table td:nth-child(7) { width: 12%; }   /* USD */
     #rfq-table th:nth-child(8), #rfq-table td:nth-child(8) { width: 18%; }   /* Action */
     #rfq-table th, #rfq-table td { padding-left: 12px; padding-right: 12px; }
+
+    /* Ready-for-Review table — 7 columns, no per-row action (the row
+       itself opens the workbook). Widths sum to 100% so the columns
+       reflow cleanly inside the card. Same hover/cursor treatment as
+       the RFQ rows so the affordance reads the same. */
+    #review-table { table-layout: fixed; }
+    #review-table th:nth-child(1), #review-table td:nth-child(1) { width: 14%; } /* Client */
+    #review-table th:nth-child(2), #review-table td:nth-child(2) { width: 28%; } /* Workbook */
+    #review-table th:nth-child(3), #review-table td:nth-child(3) { width: 14%; } /* Sent */
+    #review-table th:nth-child(4), #review-table td:nth-child(4) { width: 8%;  } /* Lines */
+    #review-table th:nth-child(5), #review-table td:nth-child(5) { width: 10%; } /* Qty */
+    #review-table th:nth-child(6), #review-table td:nth-child(6) { width: 12%; } /* RMB */
+    #review-table th:nth-child(7), #review-table td:nth-child(7) { width: 14%; } /* USD */
+    #review-table th, #review-table td { padding-left: 12px; padding-right: 12px; }
+    #review-table .review-client-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #review-table .review-row { cursor: pointer; }
+    #review-table .review-row:hover { background: rgba(91, 111, 204, 0.05); }
     /* Client cell — plain coloured text, no pill/chip background or
        border. The whole row is the click target now; nesting the client
        name in a chip just adds visual clutter without an interaction. */
@@ -5702,6 +5726,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="nav-badge" id="badge-rfq"></span>
     </a>
 
+    <!-- Ready for Review — workbooks Karen has finished editing and
+         sent back for Jackson + Parker to look at (sentForReview=true
+         and currently sitting at Quote to Client). Mirrors the RFQ
+         nav layout. -->
+    <a id="nav-review-link" href="#/review" onclick="event.preventDefault(); location.hash='#/review'" class="nav-flat-link">
+      <span>Ready for Review</span>
+      <span class="nav-badge" id="badge-review"></span>
+    </a>
+
     <a id="nav-orders-link" href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" class="nav-flat-link">
       <span>Orders</span>
       <span class="nav-badge" id="badge-orders"></span>
@@ -7794,6 +7827,67 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   </main>
 </div><!-- /#view-rfq -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: READY FOR REVIEW
+     Workbooks Karen has finished editing and sent back for Jackson +
+     Parker to review (detail.sentForReview === true AND flow.quoteClient
+     AND !flow.clientApproved). Same shape as the RFQ Queue view —
+     hero header, stats row, clickable table that opens the workbook on
+     row-click. The row drops out automatically once the reviewer
+     advances the workbook past Client Approved on the status bar.
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="view-review" class="view">
+  <main class="container">
+
+    <!-- Hero Header -->
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
+      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, #5b6fcc, color-mix(in srgb, #5b6fcc 60%, #10b981)); flex-shrink:0;"></div>
+      <div>
+        <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">Ready for Review</h1>
+        <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Workbooks Karen has finished and pushed back for Jackson + Parker — oldest first</p>
+      </div>
+      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+        <span id="review-count-badge" style="background:rgba(91,111,204,0.10); border:1px solid rgba(91,111,204,0.40); color:#5b6fcc; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 to review</span>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div id="review-stats-row" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px;"></div>
+
+    <!-- Review Table -->
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Awaiting Review</span>
+      </div>
+      <div class="section-body" style="padding:0;">
+        <div class="table-scroll-wrapper">
+        <table class="dash-table" id="review-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>CLIENT</th>
+              <th>WORKBOOK</th>
+              <th>SENT FOR REVIEW</th>
+              <th style="text-align:right;">LINES</th>
+              <th style="text-align:right;">QTY</th>
+              <th style="text-align:right;">RMB</th>
+              <th style="text-align:right;">USD</th>
+            </tr>
+          </thead>
+          <tbody id="review-tbody">
+            <!-- populated by JS -->
+          </tbody>
+        </table>
+        </div>
+        <div id="review-empty" style="display:none; padding:60px 20px; text-align:center;">
+          <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:8px;">No workbooks awaiting review</div>
+          <div style="font-size:13px; color:var(--text-muted); max-width:380px; margin:0 auto;">Workbooks appear here once Karen clicks <strong>Send for Review</strong> from the RFQ Queue or the workbook's status bar.</div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div><!-- /#view-review -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: SHIPMENTS LIST
@@ -18050,7 +18144,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
     saveToLocalStorage();
-    rebuildRfqNav();  // status moved — may enter/leave RFQ queue
+    rebuildRfqNav();      // status moved — may enter/leave RFQ queue
+    rebuildReviewNav();   // …same for the Ready-for-Review queue
     // Refresh the Watchers button — the upcoming step has changed, so
     // the displayed initials should track the new "next" step.
     if (typeof _updateWatchersCountBadge === 'function') _updateWatchersCountBadge();
@@ -18080,7 +18175,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
     saveToLocalStorage();
-    rebuildRfqNav();  // status moved — may enter/leave RFQ queue
+    rebuildRfqNav();      // status moved — may enter/leave RFQ queue
+    rebuildReviewNav();   // …same for the Ready-for-Review queue
 
     // Fire-and-forget watcher notification for the step that just
     // completed. Failures are logged but never block the advance.
@@ -24358,6 +24454,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Reflect in nav + button state
     try { rebuildRfqNav(); } catch(e) { console.error('[RFQ] rebuildRfqNav failed', e); }
+    try { rebuildReviewNav(); } catch (_) {}
     const items = clientData[currentClient];
     const item = items ? items.find(i => i.id === parseInt(currentWorkbookId)) : null;
     if (item) renderStatusBar(item.flow);
@@ -24415,6 +24512,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const itemRow = items ? items.find(i => i.id === parseInt(currentWorkbookId)) : null;
         if (itemRow && res.flow) { itemRow.flow = res.flow; renderStatusBar(itemRow.flow); }
         try { rebuildRfqNav(); } catch (_) {}
+        try { rebuildReviewNav(); } catch (_) {}
       } else {
         alert((res && res.error) ? res.error : 'Couldn\'t send for review — try again.');
         if (btn) {
@@ -24430,6 +24528,143 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (labelEl) labelEl.textContent = btn.dataset.oldLabel || 'Send for Review';
       }
     }
+  }
+
+  /* ── Ready-for-Review Queue ──────────────────────────────────────────── */
+
+  // A workbook belongs in the Ready-for-Review queue when:
+  //   • Karen has pressed Send for Review (detail.sentForReview === true)
+  //   • The workbook is currently at Quote to Client (flow.quoteClient)
+  //     AND has NOT yet advanced past Client Approved.
+  // Once Jackson / Parker advance the workbook past clientApproved on
+  // the status bar, it drops out of this queue automatically (same
+  // mechanism the RFQ Queue uses for its lifecycle window).
+  function collectAllReadyForReview() {
+    const results = [];
+    for (const [key, detail] of Object.entries(workbookDetail)) {
+      if (!detail || !detail.sentForReview) continue;
+      const [clientName, workbookId] = key.split('|');
+      const items = clientData[clientName] || [];
+      const item = items.find(i => String(i.id) === String(workbookId));
+      if (!item || !item.flow) continue;
+      // Review window: workbook sits at Quote to Client (or earlier in
+      // the rare race where sentForReview got set before the flow
+      // advance landed) but hasn't been client-approved yet.
+      if (!item.flow.quoteClient || item.flow.clientApproved) continue;
+
+      // Aggregate RFQ totals — same as the RFQ Queue collector so the
+      // numbers tie out across both views for the same workbook.
+      const rfqItems = (detail.rfqItems || []).concat(
+        (detail.rfqItems || []).flatMap(r => r.variants || [])
+      );
+      let totalQty = 0, totalRmb = 0;
+      rfqItems.forEach(r => {
+        const q = parseFloat(r.qty) || 0;
+        const p = parseFloat(r.priceRmb) || 0;
+        totalQty += q;
+        totalRmb += q * p;
+      });
+      const totalUsd = totalRmb / USD_TO_RMB;
+
+      results.push({
+        clientName,
+        workbookId,
+        key,
+        product: detail.product || 'Untitled',
+        sentForReviewAt: detail.sentForReviewAt || null,
+        lineItems: (detail.rfqItems || []).length,
+        totalQty,
+        totalRmb,
+        totalUsd,
+      });
+    }
+    // Oldest first — reviewer addresses the longest-waiting workbook next.
+    results.sort((a, b) => {
+      const at = a.sentForReviewAt ? new Date(a.sentForReviewAt).getTime() : 0;
+      const bt = b.sentForReviewAt ? new Date(b.sentForReviewAt).getTime() : 0;
+      return at - bt;
+    });
+    return results;
+  }
+
+  function rebuildReviewNav() {
+    const all = collectAllReadyForReview();
+    _applyNavBadge(document.getElementById('badge-review'), 0, all.length);
+  }
+
+  function renderReviewDashboard() {
+    document.getElementById('header-title').textContent = 'Ready for Review';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const navLink = document.getElementById('nav-review-link');
+    if (navLink) navLink.classList.add('active');
+    showView('view-review');
+
+    const all = collectAllReadyForReview();
+
+    const countBadge = document.getElementById('review-count-badge');
+    if (countBadge) {
+      countBadge.textContent = all.length === 1 ? '1 to review' : `${all.length} to review`;
+    }
+    rebuildReviewNav();
+
+    // Stats — same shape as RFQ for visual consistency.
+    const statsRow = document.getElementById('review-stats-row');
+    if (statsRow) {
+      const totalLineItems = all.reduce((n, r) => n + r.lineItems, 0);
+      const totalQty       = all.reduce((n, r) => n + r.totalQty, 0);
+      const totalRmb       = all.reduce((n, r) => n + r.totalRmb, 0);
+      const totalUsd       = all.reduce((n, r) => n + r.totalUsd, 0);
+      const statCards = [
+        { label: 'Awaiting Review', value: all.length, color: '#5b6fcc' },
+        { label: 'Line Items', value: totalLineItems, color: '#6b93ff' },
+        { label: 'Total Qty', value: totalQty.toLocaleString('en-US'), color: '#f59e0b' },
+        { label: 'Total (RMB)', value: `¥${Math.round(totalRmb).toLocaleString('en-US')}`, color: '#ef4444' },
+        { label: 'Total (USD)', value: `$${totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`, color: '#10b981' },
+      ];
+      statsRow.innerHTML = statCards.map(c => `
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;">
+          <div style="font-size:20px; font-weight:700; color:${c.color}; line-height:1.1;">${c.value}</div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-top:3px;">${c.label}</div>
+        </div>
+      `).join('');
+    }
+
+    renderReviewTable(all);
+  }
+
+  function renderReviewTable(all) {
+    const tbody   = document.getElementById('review-tbody');
+    const emptyEl = document.getElementById('review-empty');
+    const tableEl = document.getElementById('review-table');
+    if (!tbody) return;
+
+    if (all.length === 0) {
+      tbody.innerHTML = '';
+      if (emptyEl) emptyEl.style.display = '';
+      if (tableEl) tableEl.style.display = 'none';
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (tableEl) tableEl.style.display = '';
+
+    tbody.innerHTML = all.map(r => {
+      const wbHref = `#/client/${encodeURIComponent(r.clientName)}/workbook/${r.workbookId}`;
+      const rmb = r.totalRmb > 0 ? `¥${Math.round(r.totalRmb).toLocaleString('en-US')}` : '—';
+      const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      const clientEsc = String(r.clientName || '').replace(/'/g, "\\'");
+      return `
+        <tr class="review-row" onclick="location.hash='${wbHref.substring(1)}'">
+          <td><span class="review-client-name" title="${clientEsc}">${r.clientName}</span></td>
+          <td style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.product}<span style="font-size:11px; color:var(--text-muted); margin-left:8px; font-weight:500;">→ open</span></td>
+          <td style="color:var(--text-muted); font-size:12px;" title="${r.sentForReviewAt || ''}">${_rfqTimeAgo(r.sentForReviewAt)}</td>
+          <td style="text-align:right;">${r.lineItems}</td>
+          <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
+          <td style="text-align:right; white-space:nowrap;">${rmb}</td>
+          <td style="text-align:right; white-space:nowrap; color:var(--success);">${usd}</td>
+        </tr>
+      `;
+    }).join('');
   }
 
   function router() {
@@ -24461,6 +24696,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Match: #/rfq
     if (hash === '#/rfq') {
       renderRfqDashboard();
+      return;
+    }
+
+    // Match: #/review — Ready-for-Review queue (workbooks Karen has
+    // pushed back for Jackson + Parker to review).
+    if (hash === '#/review') {
+      renderReviewDashboard();
       return;
     }
 
@@ -26854,6 +27096,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rebuildOrdersNav();
     rebuildSamplesNav();
     rebuildRfqNav();
+    rebuildReviewNav();
     restoreNavSectionStates();
     // Wrap in try/catch so a crash inside fillWorkbook never prevents loadFromDatabase() from running
     try { router(); } catch(e) { console.error('[MS Router] init render error:', e); }
@@ -26875,7 +27118,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const preKey = `${preDbClient}|${preDbWbId}`;
         workbookDetail[preKey] = collectWorkbookDetail();
       }
-      rebuildRfqNav();  // workbookDetail (incl. sentToRfq flags) now populated from DB
+      rebuildRfqNav();    // workbookDetail (incl. sentToRfq flags) now populated from DB
+      rebuildReviewNav(); // …and the Ready-for-Review badge from sentForReview flags
       router(); // Re-render with DB data (or user's edits if they were faster)
     } else if (dbLoaded === 'empty') {
       // DB reachable and confirmed empty — safe to seed, but only once per device.
