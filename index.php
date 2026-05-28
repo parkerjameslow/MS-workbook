@@ -17467,24 +17467,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       notifyBtn.style.display = show ? 'inline-flex' : 'none';
     }
 
-    // Show the RFQ button stack (Sent to RFQ + Send for Review) only
-    // while status is at Quote Submitted (not yet advanced to Quote to
-    // Client). The wrapper #rfq-btn-stack controls visibility for the
-    // whole vertical group; individual buttons inside still toggle on
-    // their own state (Sent to RFQ flips filled/outlined; Send for
-    // Review only appears once sentToRfq is true).
+    // Show the RFQ button stack (Sent to RFQ + Send for Review)
+    // throughout the full review window — quoteSubmitted through just
+    // before clientApproved. Earlier this was tied to !flow.quoteClient,
+    // which hid the whole stack (taking Send for Review with it) the
+    // moment Karen advanced the workbook to 'Quote to Client'. That's
+    // the bug behind 'won't let me click Send for Review at Quote to
+    // Client' — the button wasn't disabled, it just wasn't on screen.
+    // Inner buttons handle their own narrower windows: Sent to RFQ
+    // only makes sense at stage 1 (quoteSubmitted, not yet quoteClient),
+    // Send for Review spans stages 1 + 2 (visibility set further down).
     const sendRfqBtn   = document.getElementById('btn-send-rfq');
     const rfqStackWrap = document.getElementById('rfq-btn-stack');
     if (rfqStackWrap) {
-      const showStack = !!flow.quoteSubmitted && !flow.quoteClient;
+      const showStack = !!flow.quoteSubmitted && !flow.clientApproved;
       rfqStackWrap.style.display = showStack ? 'flex' : 'none';
-      if (showStack && sendRfqBtn) {
-        const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
-        const sent = !!detail.sentToRfq;
-        const label = document.getElementById('btn-send-rfq-label');
-        if (label) label.textContent = sent ? '✓ Sent to RFQ' : 'RFQ';
-        sendRfqBtn.style.background = sent ? 'var(--accent)' : 'none';
-        sendRfqBtn.style.color = sent ? '#fff' : 'var(--accent)';
+      if (sendRfqBtn) {
+        // Sent-to-RFQ only applies while sitting in the queue (stage 1).
+        // Hide it the moment the workbook advances past, even though
+        // the wrapper stays visible to host Send for Review.
+        const rfqApplicable = !!flow.quoteSubmitted && !flow.quoteClient;
+        sendRfqBtn.style.display = rfqApplicable ? 'inline-flex' : 'none';
+        if (rfqApplicable) {
+          const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
+          const sent = !!detail.sentToRfq;
+          const label = document.getElementById('btn-send-rfq-label');
+          if (label) label.textContent = sent ? '✓ Sent to RFQ' : 'RFQ';
+          sendRfqBtn.style.background = sent ? 'var(--accent)' : 'none';
+          sendRfqBtn.style.color = sent ? '#fff' : 'var(--accent)';
+        }
       }
     }
 
