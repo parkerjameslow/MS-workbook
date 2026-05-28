@@ -3333,6 +3333,346 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       max-width: 90vw;
       padding: 28px;
     }
+
+    /* ── Notify-Client preview modal (#modal-notify) ──────────────────
+       Replaces the older padded modal layout for the Send-to-Client
+       flow. Uses a softer surface tone + a 3-row grid (topbar / body /
+       footer) so the body can scroll without pushing the toolbar off-
+       screen on long quotes. Body is intentionally padding-free; the
+       email preview inside provides its own whitespace so it reads
+       like an actual inbox message. */
+    .nq-modal {
+      width: 880px;
+      max-width: calc(100vw - 24px);
+      max-height: calc(100vh - 24px);
+      padding: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+    .nq-topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .nq-badge {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #6b93ff;
+      background: rgba(107,147,255,0.10);
+      border: 1px solid rgba(107,147,255,0.35);
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .nq-topbar-label { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+    .nq-topbar-title { font-size: 14px; font-weight: 700; color: var(--text); }
+    .nq-topbar-sub   { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nq-close {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      line-height: 0;
+      transition: background 0.12s, color 0.12s;
+    }
+    .nq-close:hover { background: var(--surface2); color: var(--text); }
+
+    .nq-body {
+      overflow-y: auto;
+      background: var(--surface2);
+      padding: 24px 28px 28px;
+    }
+
+    /* Email "shell" card — mimics an actual email inside the preview */
+    .nq-email {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .nq-email-head {
+      padding: 22px 26px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .nq-email-subject {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.005em;
+      margin: 0 0 14px;
+      line-height: 1.3;
+    }
+    .nq-email-from {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .nq-email-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #6b6ce8 0%, #5b6fcc 100%);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .nq-email-meta { flex: 1; min-width: 0; line-height: 1.4; }
+    .nq-email-from-name { font-size: 13px; color: var(--text); }
+    .nq-email-from-name strong { font-weight: 700; }
+    .nq-email-from-name .nq-email-addr { color: var(--text-muted); font-family: 'SF Mono', Consolas, monospace; font-size: 12px; }
+    .nq-email-to { font-size: 12px; color: var(--text-muted); }
+    .nq-email-date { font-size: 12px; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
+
+    .nq-email-body {
+      padding: 22px 26px 28px;
+      position: relative;
+    }
+    .nq-editable-hint {
+      position: absolute;
+      top: 14px;
+      right: 18px;
+      font-size: 11px;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      opacity: 0.7;
+    }
+    .nq-greeting   { font-size: 14px; color: var(--text); margin: 0 0 14px; }
+    .nq-paragraph  { font-size: 14px; color: var(--text); line-height: 1.7; margin: 0 0 14px; }
+    .nq-signoff    { font-size: 14px; color: var(--text); line-height: 1.7; margin: 22px 0 0; }
+
+    /* Embedded quote card — visually matches the on-screen Client Quote */
+    .nq-quote-card {
+      margin: 22px 0 6px;
+      border: 1px solid rgba(107,147,255,0.40);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .nq-quote-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 18px;
+      background: linear-gradient(135deg, rgba(107,147,255,0.14) 0%, rgba(107,147,255,0.05) 100%);
+      border-bottom: 1px solid rgba(107,147,255,0.30);
+    }
+    .nq-quote-head-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #6b93ff;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+    .nq-quote-head-total {
+      margin-left: auto;
+      font-size: 13px;
+      font-weight: 700;
+      color: #6b93ff;
+      font-variant-numeric: tabular-nums;
+    }
+    .nq-stat-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .nq-stat {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+    .nq-stat-label {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .nq-stat-value {
+      margin-top: 3px;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .nq-stat--total .nq-stat-value { color: #6b93ff; }
+    .nq-quote-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .nq-quote-table th {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      text-align: left;
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .nq-quote-table th.nq-num   { width: 36px; }
+    .nq-quote-table th.nq-right { text-align: right; }
+    .nq-quote-table td {
+      padding: 14px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      color: var(--text);
+    }
+    .nq-quote-table td.nq-num-cell {
+      color: #6b93ff;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .nq-quote-table td.nq-right {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .nq-item-parent {
+      font-weight: 700;
+      color: var(--text);
+    }
+    .nq-item-variants {
+      color: var(--text-muted);
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 12px;
+      margin-left: 6px;
+    }
+    .nq-item-qty-suffix {
+      color: var(--text);
+      font-weight: 700;
+      margin-left: 6px;
+    }
+    .nq-total-cell { color: #6b93ff; font-weight: 800; }
+    .nq-fees-header td {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #E8751A;
+      background: rgba(232,117,26,0.06);
+      border-top: 2px solid rgba(232,117,26,0.25);
+      border-bottom: 1px solid rgba(232,117,26,0.20);
+      padding: 10px 14px;
+    }
+    .nq-fee-row td       { background: rgba(232,117,26,0.04); }
+    .nq-fee-row .nq-num-cell { color: #E8751A; }
+    .nq-fee-row .nq-total-cell { color: #E8751A; }
+
+    .nq-approve-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin: 28px 0 6px;
+    }
+    .nq-approve-btn {
+      background: #5b6fcc;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 13px 36px;
+      font-size: 14px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: inherit;
+      cursor: default; /* preview, not interactive */
+    }
+    .nq-approve-note {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Footer toolbar */
+    .nq-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 18px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+    .nq-footer-spacer { flex: 1; }
+    .nq-link-btn,
+    .nq-export-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+    }
+    .nq-link-btn { border: none; padding: 6px 4px; }
+    .nq-link-btn:hover,
+    .nq-export-btn:hover { color: var(--text); border-color: var(--accent); }
+    .nq-send-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: filter 0.12s;
+    }
+    .nq-send-btn:hover { filter: brightness(1.08); }
+    .nq-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    /* Simpler text preview for order_status — same body container, just
+       different inner layout (text summary instead of full email card). */
+    .nq-order-summary {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 22px;
+    }
+    .nq-order-summary h2 {
+      margin: 0 0 14px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .nq-order-summary .nq-body-text {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
     /* Add-to-Shipment modal — capped at viewport height with internal
        scrolling so the title and footer never clip off-canvas on short
        screens. Each Orders / Samples list keeps its own ~240px max so
@@ -8497,44 +8837,46 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
 <!-- ── Create Order Modal ─────────────────────────────────────────────── -->
 <!-- ── Notification Modal ──────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="modal-notify" onclick="if(event.target===this)closeNotifyModal()" style="z-index:1100;">
-  <div class="modal" style="max-width:1080px; width:calc(100vw - 32px); max-height:calc(100vh - 32px); display:flex; flex-direction:column;">
-    <div class="modal-title" id="notify-modal-title">Send Notification</div>
-
-    <!-- Recipients -->
-    <div style="margin-bottom:14px;">
-      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">Recipients</div>
-      <div id="notify-recipients" style="display:flex; flex-direction:column; gap:6px;"></div>
+<div class="modal-overlay nq-overlay" id="modal-notify" onclick="if(event.target===this)closeNotifyModal()" style="z-index:1100;">
+  <div class="modal nq-modal" id="notify-modal-shell">
+    <!-- ── Top bar — "PREVIEW · Email preview" + close ───────────────── -->
+    <div class="nq-topbar">
+      <span class="nq-badge">Preview</span>
+      <div class="nq-topbar-label">
+        <span class="nq-topbar-title">Email preview</span>
+        <span class="nq-topbar-sub">exactly as your client sees it</span>
+      </div>
+      <button type="button" class="nq-close" onclick="closeNotifyModal()" aria-label="Close preview">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
 
-    <!-- Email Preview — iframe shows the FULL rendered email so the
-         operator can confirm copy, line items, totals, portal CTA, etc.
-         before confirming the send. The iframe isolates the email's
-         styles from the app so the preview matches what the client
-         will actually see in their inbox.
-         For quote_ready the iframe is populated by _buildQuotePreviewHtml;
-         for order_status we fall back to the simple subject + body
-         summary (notify-preview-summary) to avoid duplicating the
-         server-side order-email template here. -->
-    <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px; flex:1 1 auto; min-height:0; display:flex; flex-direction:column;">
-      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Email Preview</div>
-        <div style="font-size:11px; color:var(--text-muted); opacity:0.7;">— what the client will see</div>
-      </div>
-      <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; padding:6px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px;">
-        <span style="color:var(--text-muted); font-weight:500; margin-right:6px;">Subject:</span>
-        <span id="notify-preview-subject"></span>
-      </div>
-      <iframe id="notify-preview-frame" title="Email preview"
-        style="display:none; flex:1 1 auto; min-height:480px; width:100%; border:1px solid var(--border); border-radius:6px; background:#fff;"></iframe>
-      <div id="notify-preview-summary" style="display:none; font-size:13px; color:var(--text); line-height:1.6; padding:10px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; white-space:pre-wrap;"></div>
-    </div>
+    <!-- ── Body — populated by _renderQuotePreviewModal for quote_ready,
+         or by _renderOrderStatusPreviewModal for order_status. Same
+         scrolling container so long quotes scroll inside the modal
+         instead of pushing the toolbar off-screen. -->
+    <div class="nq-body" id="notify-modal-body"></div>
 
-    <div style="display:flex; gap:10px; justify-content:flex-end;">
-      <button class="btn btn-ghost" onclick="closeNotifyModal()">Cancel</button>
-      <button class="btn btn-primary" id="btn-notify-send" onclick="sendNotification()" style="display:inline-flex; align-items:center; gap:6px;">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        Confirm &amp; Send
+    <!-- ── Footer toolbar — Edit (close) / CSV / PDF / Send to Client.
+         Send to Client fires the same sendNotification() that confirms
+         + emails the recipients. -->
+    <div class="nq-footer">
+      <button type="button" class="nq-link-btn" onclick="closeNotifyModal()" title="Close the preview and go back to the workbook">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Edit
+      </button>
+      <div class="nq-footer-spacer"></div>
+      <button type="button" class="nq-export-btn" id="nq-export-csv" onclick="exportClientQuoteCSV()" title="Download CSV">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        CSV
+      </button>
+      <button type="button" class="nq-export-btn" id="nq-export-pdf" onclick="exportClientQuotePDF()" title="Open print-ready PDF">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+        PDF
+      </button>
+      <button type="button" class="nq-send-btn" id="btn-notify-send" onclick="sendNotification()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Send to Client
       </button>
     </div>
   </div>
@@ -17694,180 +18036,211 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   //   • TOTAL ORDER stat read straight from qrs-total — that's the
   //     authoritative tier-qty × Sale Per + applied fees computation
   //     and is what the customer is being quoted.
-  function _buildQuotePreviewHtml(payload) {
+  // Generate a quote number like "Q-2026-0072". 4-digit year + the
+  // workbook id zero-padded to 4 digits. Stable for a given workbook,
+  // so the same quote always shows the same Q-number in the preview /
+  // emails / portal.
+  function _quoteNumberFor(year, wbId) {
+    const y = year || new Date().getFullYear();
+    const id = parseInt(wbId, 10) || 0;
+    return `Q-${y}-${String(id).padStart(4, '0')}`;
+  }
+
+  // Pull a stat value from the on-screen Client Quote header bar
+  // (#pricing-quote-ref-card). The header bar is populated by
+  // renderPricingTab so the value is always up to date. Returns
+  // '—' when the element / value isn't there.
+  function _readQuoteStat(key) {
+    const el = document.querySelector(`.cq-summary-bar--header [data-qrs="${key}"]`);
+    return el && el.textContent ? el.textContent.trim() : '—';
+  }
+
+  // Render the rich quote preview directly into the modal body (no
+  // iframe). Matches the design reference — light grey backdrop,
+  // white email card with subject + from/to/date + greeting + body
+  // copy + embedded Client Quote card + Approve quote CTA.
+  function _renderQuotePreviewModal(payload, wbId) {
+    const host = document.getElementById('notify-modal-body');
+    if (!host) return;
     const d            = payload && payload.details ? payload.details : {};
     const product      = _escHtml(d.product || 'your product');
     const contact      = _escHtml(payload.contact_name || '');
-    const greeting     = contact ? `Hi ${contact},` : 'Hi there,';
+    const clientEmail  = _escHtml(payload.client_email || '');
+    const contactFirst = (payload.contact_name || '').trim().split(/\s+/)[0] || '';
+    const greeting     = contactFirst ? `Hi ${_escHtml(contactFirst)},` : 'Hi there,';
     const items        = Array.isArray(d.rfqItems) ? d.rfqItems.filter(i => i && (i.item || i.qty || (i.variants||[]).length)) : [];
     const fmt2         = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const intFmt       = v => Number(v || 0).toLocaleString('en-US');
 
     // Pull live values from the on-screen Client Quote header — these
     // are populated by renderPricingTab so they're already correct.
-    const readStat = key => {
-      const el = document.querySelector(`.cq-summary-bar--header [data-qrs="${key}"]`);
-      return el && el.textContent ? el.textContent.trim() : '—';
-    };
     const stats = {
-      salePrice:      readStat('usd'),
-      totalOrder:     readStat('total'),
-      productionLead: readStat('lead'),
-      shippingLead:   readStat('ship-lead'),
-      totalLead:      readStat('total-lead'),
+      salePrice:      _readQuoteStat('usd'),
+      totalOrder:     _readQuoteStat('total'),
+      productionLead: _readQuoteStat('lead'),
+      shippingLead:   _readQuoteStat('ship-lead'),
+      totalLead:      _readQuoteStat('total-lead'),
     };
     // Parse Sale Per back to a number for the per-row line totals.
     const salePerUsd = parseFloat(String(stats.salePrice).replace(/[^\d.]/g, '')) || 0;
 
-    // Build one row per parent SKU. Item cell shows just the parent
-    // name plus a small 'N variants' sub-line — NO inline variant
-    // name list. Qty + Total are aggregated across every variant so
-    // the customer-facing numbers stay correct even though the
-    // breakdown is collapsed.
+    // Build one row per parent SKU. The Item cell shows the parent
+    // name (bold) with the variant SKUs listed inline in muted mono
+    // type. If a qty was entered we append ' = N' to match the on-
+    // screen design. Variant qtys roll up to the parent row's Qty cell.
     const lineRows = items.map((it, idx) => {
       const parentName = (it.item || `Item ${idx + 1}`).trim();
-      const variants   = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty || v.priceRmb)) : [];
+      const variants   = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty || v.priceRmb || v.sku)) : [];
       let qty = 0;
+      const variantSkus = [];
       if (variants.length) {
         variants.forEach(v => {
           qty += parseFloat(String(v.qty || '').replace(/,/g, '')) || 0;
+          const code = String(v.sku || v.variant || '').trim();
+          if (code) variantSkus.push(code);
         });
       } else {
         qty = parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
       }
       const lineTotal = qty > 0 && salePerUsd > 0 ? qty * salePerUsd : 0;
-      return { idx: idx + 1, parentName, variantCount: variants.length, qty, lineTotal };
+      return { idx: idx + 1, parentName, variantSkus, qty, lineTotal };
     });
 
-    // Applied additional fees (e.g. Added Shipping Cost for Air + UPS,
-    // tooling fees, etc.) — read via the same appliedFeesList helper
-    // the on-screen Client Quote uses.
+    // Applied additional fees (Added Shipping Cost for Air + UPS,
+    // tooling fees, etc.) read via the same appliedFeesList helper the
+    // on-screen Client Quote uses.
     const fees = (typeof appliedFeesList === 'function') ? appliedFeesList() : [];
 
-    // ── Render: blue header bar → table → fees → blue footer bar ──
-    const statCardsHtml = `
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
-          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Sale Price (USD)</div>
-          <div style="font-size:14px; font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.salePrice)}</div>
-        </div>
-        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
-          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Total Order</div>
-          <div style="font-size:14px; font-weight:700; color:#6b93ff; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.totalOrder)}</div>
-        </div>
-        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
-          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Production Lead</div>
-          <div style="font-size:14px; font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.productionLead)}</div>
-        </div>
-        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
-          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Shipping Lead</div>
-          <div style="font-size:14px; font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.shippingLead)}</div>
-        </div>
-        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
-          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Total Lead</div>
-          <div style="font-size:14px; font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.totalLead)}</div>
-        </div>
-      </div>`;
+    // Quote number + date for the email subject / metadata row.
+    const now = new Date();
+    const quoteNum = _quoteNumberFor(now.getFullYear(), wbId);
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const dateStr = `${monthNames[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+    const productNameRaw = d.product || 'your product';
 
-    const summaryBarHtml = `
-      <div style="display:flex; align-items:center; gap:16px; padding:14px 18px; background:linear-gradient(135deg, rgba(107,147,255,0.14) 0%, rgba(107,147,255,0.05) 100%); border:1px solid rgba(107,147,255,0.40); border-radius:10px; flex-wrap:wrap;">
-        <div style="font-size:13px; font-weight:800; color:#6b93ff; letter-spacing:0.07em; text-transform:uppercase; white-space:nowrap;">Client Quote</div>
-        <div style="flex:1; min-width:0;"></div>
-        ${statCardsHtml}
-      </div>`;
+    const subject = `Your Market Sculpt quote is ready · ${quoteNum}`;
 
-    const tableHeader = `
-      <thead>
-        <tr>
-          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:left;  padding:14px 12px 12px 14px; border-bottom:1px solid #e5e7eb; width:32px;">#</th>
-          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:left;  padding:14px 12px 12px 0; border-bottom:1px solid #e5e7eb;">Item</th>
-          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:right; padding:14px 12px 12px; border-bottom:1px solid #e5e7eb; width:80px;">Qty</th>
-          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:right; padding:14px 12px 12px; border-bottom:1px solid #e5e7eb; width:130px;">Sale Price (USD)</th>
-          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:right; padding:14px 12px 12px 14px; border-bottom:1px solid #e5e7eb; width:110px;">Total (USD)</th>
-        </tr>
-      </thead>`;
-
+    // ── Render the modal body ─────────────────────────────────────────
     const lineRowsHtml = lineRows.length === 0
       ? `<tr><td colspan="5" style="padding:18px 14px; text-align:center; color:#92400e; background:#fef3c7; font-size:13px;">⚠️ No line items entered yet — the client will receive an email with no quote table. Add RFQ items before sending.</td></tr>`
       : lineRows.map(r => {
-          const subLine = r.variantCount > 0
-            ? `<div style="font-size:11px; color:#6b7280; margin-top:2px; font-weight:500;">${r.variantCount} variant${r.variantCount === 1 ? '' : 's'}</div>`
+          const variantList = r.variantSkus.length
+            ? `<span class="nq-item-variants">: ${_escHtml(r.variantSkus.join(', '))}</span>${r.qty > 0 ? `<span class="nq-item-qty-suffix">= ${intFmt(r.qty)}</span>` : ''}`
             : '';
           return `<tr>
-            <td style="padding:14px 12px 14px 14px; color:#6b93ff; font-weight:700; font-size:13px; border-bottom:1px solid #f1f3f5; vertical-align:top;">${r.idx}</td>
-            <td style="padding:14px 12px 14px 0; color:#1f2937; font-weight:500; font-size:13px; border-bottom:1px solid #f1f3f5; vertical-align:top;">${_escHtml(r.parentName)}${subLine}</td>
-            <td style="padding:14px 12px; color:#1f2937; font-weight:600; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums; vertical-align:top;">${r.qty > 0 ? intFmt(r.qty) : '—'}</td>
-            <td style="padding:14px 12px; color:#1f2937; font-weight:500; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums; vertical-align:top;">${salePerUsd > 0 ? '$' + fmt2(salePerUsd) : '—'}</td>
-            <td style="padding:14px 12px 14px 14px; color:${r.lineTotal > 0 ? '#6b93ff' : '#9ca3af'}; font-weight:700; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums; vertical-align:top;">${r.lineTotal > 0 ? '$' + fmt2(r.lineTotal) : '—'}</td>
+            <td class="nq-num-cell">${r.idx}</td>
+            <td><span class="nq-item-parent">${_escHtml(r.parentName)}</span>${variantList}</td>
+            <td class="nq-right" style="font-weight:600;">${r.qty > 0 ? intFmt(r.qty) : '—'}</td>
+            <td class="nq-right">${salePerUsd > 0 ? '$' + fmt2(salePerUsd) : '—'}</td>
+            <td class="nq-right nq-total-cell">${r.lineTotal > 0 ? '$' + fmt2(r.lineTotal) : '—'}</td>
           </tr>`;
         }).join('');
 
-    // Additional fees — orange-tinted block matching the on-screen design.
-    const feesHtml = fees.length === 0 ? '' : `
-      <tr>
-        <td colspan="5" style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#E8751A; background:rgba(232,117,26,0.06); border-top:2px solid rgba(232,117,26,0.25); border-bottom:1px solid rgba(232,117,26,0.20);">Additional Fees</td>
-      </tr>
-      ${fees.map(f => {
-        const desc = f.desc ? ` — <span style="color:#9ca3af; font-weight:400;">${_escHtml(f.desc)}</span>` : '';
-        return `<tr style="background:rgba(232,117,26,0.04);">
-          <td style="padding:14px 12px 14px 14px; color:#E8751A; font-weight:700; font-size:13px; border-bottom:1px solid #f1f3f5;">+</td>
-          <td style="padding:14px 12px 14px 0; color:#1f2937; font-weight:500; font-size:13px; border-bottom:1px solid #f1f3f5;">${_escHtml(f.label)}${desc}</td>
-          <td style="padding:14px 12px; color:#9ca3af; text-align:right; border-bottom:1px solid #f1f3f5;">—</td>
-          <td style="padding:14px 12px; color:#9ca3af; text-align:right; border-bottom:1px solid #f1f3f5;">—</td>
-          <td style="padding:14px 12px 14px 14px; color:#6b93ff; font-weight:700; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums;">${f.usd > 0 ? '$' + fmt2(f.usd) : '—'}</td>
+    const feesRows = fees.length === 0 ? '' :
+      `<tr class="nq-fees-header"><td colspan="5">Additional Fees</td></tr>` +
+      fees.map(f => {
+        const desc = f.desc ? ` — <span style="color:var(--text-muted); font-weight:400;">${_escHtml(f.desc)}</span>` : '';
+        return `<tr class="nq-fee-row">
+          <td class="nq-num-cell">+</td>
+          <td>${_escHtml(f.label)}${desc}</td>
+          <td class="nq-right" style="color:var(--text-muted);">—</td>
+          <td class="nq-right" style="color:var(--text-muted);">—</td>
+          <td class="nq-right nq-total-cell">${f.usd > 0 ? '$' + fmt2(f.usd) : '—'}</td>
         </tr>`;
-      }).join('')}`;
+      }).join('');
 
-    return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-      <body style="margin:0; padding:20px; background:#fafbfc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#374151;">
-        <div style="max-width:780px; margin:0 auto;">
-          <p style="margin:0 0 14px; font-size:14px; color:#374151; line-height:1.6;">${_escHtml(greeting)}</p>
-          <p style="margin:0 0 18px; font-size:14px; color:#374151; line-height:1.6;">Your quote for <strong>${product}</strong> is ready. Please review the line items below.</p>
+    const statsHtml = `
+      <div class="nq-stat-row">
+        <div class="nq-stat"><div class="nq-stat-label">Sale Price (USD)</div><div class="nq-stat-value">${_escHtml(stats.salePrice)}</div></div>
+        <div class="nq-stat nq-stat--total"><div class="nq-stat-label">Total Order</div><div class="nq-stat-value">${_escHtml(stats.totalOrder)}</div></div>
+        <div class="nq-stat"><div class="nq-stat-label">Production Lead</div><div class="nq-stat-value">${_escHtml(stats.productionLead)}</div></div>
+        <div class="nq-stat"><div class="nq-stat-label">Shipping Lead</div><div class="nq-stat-value">${_escHtml(stats.shippingLead)}</div></div>
+        <div class="nq-stat"><div class="nq-stat-label">Total Lead</div><div class="nq-stat-value">${_escHtml(stats.totalLead)}</div></div>
+      </div>`;
 
-          ${summaryBarHtml}
+    const recipientHtml = clientEmail
+      ? `<strong>${contact || 'Client'}</strong> <span class="nq-email-addr">&lt;${clientEmail}&gt;</span>`
+      : `<span style="color:#fb7185;">⚠️ No client email on file — internal only.</span>`;
 
-          <table style="width:100%; border-collapse:collapse; margin-top:6px; background:#fff; font-family:inherit;">
-            ${tableHeader}
-            <tbody>
-              ${lineRowsHtml}
-              ${feesHtml}
-            </tbody>
-          </table>
+    host.innerHTML = `
+      <div class="nq-email">
+        <div class="nq-email-head">
+          <h2 class="nq-email-subject">${_escHtml(subject)}</h2>
+          <div class="nq-email-from">
+            <div class="nq-email-avatar">MS</div>
+            <div class="nq-email-meta">
+              <div class="nq-email-from-name"><strong>Market Sculpt</strong> <span class="nq-email-addr">&lt;quotes@marketsculpt.com&gt;</span></div>
+              <div class="nq-email-to">to ${recipientHtml}</div>
+            </div>
+            <div class="nq-email-date">${_escHtml(dateStr)}</div>
+          </div>
+        </div>
+        <div class="nq-email-body">
+          <p class="nq-greeting">${_escHtml(greeting)}</p>
+          <p class="nq-paragraph">Thanks for the opportunity — here's the quote for your ${_escHtml(productNameRaw)} order. Everything's itemized below with current pricing and lead times. Let me know if you'd like any adjustments and I'll get production scheduled right away.</p>
+          <p class="nq-signoff">Best,<br>The Market Sculpt Team</p>
 
-          <div style="margin-top:18px;">${summaryBarHtml}</div>
-
-          <div style="text-align:center; margin:28px 0 12px;">
-            <span style="display:inline-block; background:#E8751A; color:#fff; font-size:14px; font-weight:700; padding:13px 32px; border-radius:8px;">Review &amp; Approve Your Quote →</span>
-            <p style="margin:10px 0 0; font-size:11px; color:#9ba3c0; font-style:italic;">Portal link generated when you send.</p>
+          <div class="nq-quote-card">
+            <div class="nq-quote-head">
+              <span class="nq-quote-head-title">Client Quote</span>
+              <span class="nq-quote-head-total">Total ${_escHtml(stats.totalOrder)}</span>
+            </div>
+            ${statsHtml}
+            <table class="nq-quote-table">
+              <thead>
+                <tr>
+                  <th class="nq-num">#</th>
+                  <th>Item</th>
+                  <th class="nq-right">Qty</th>
+                  <th class="nq-right">Sale Price</th>
+                  <th class="nq-right">Total (USD)</th>
+                </tr>
+              </thead>
+              <tbody>${lineRowsHtml}${feesRows}</tbody>
+            </table>
           </div>
 
-          <p style="margin:18px 0 6px; font-size:13px; color:#374151; line-height:1.6;">Please review and don't hesitate to reach out with any questions or adjustments.</p>
-          <p style="margin:0; font-size:13px; color:#374151;">Thanks,<br><strong>Market Sculpt Team</strong></p>
+          <div class="nq-approve-wrap">
+            <button type="button" class="nq-approve-btn" aria-disabled="true" tabindex="-1">
+              Approve quote
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <div class="nq-approve-note">Questions? Just reply to this email.</div>
+          </div>
         </div>
-      </body></html>`;
+      </div>`;
   }
 
-  // Write a full HTML document into the preview iframe and show it.
-  // Hides the plain-text summary fallback used for non-quote types.
-  function _showNotifyIframePreview(html) {
-    const frame   = document.getElementById('notify-preview-frame');
-    const summary = document.getElementById('notify-preview-summary');
-    if (summary) summary.style.display = 'none';
-    if (!frame) return;
-    frame.style.display = '';
-    // srcdoc handles the document write atomically and applies the
-    // iframe's own document mode (no quirks-mode surprises).
-    frame.srcdoc = html;
-  }
-  function _showNotifyTextPreview(text) {
-    const frame   = document.getElementById('notify-preview-frame');
-    const summary = document.getElementById('notify-preview-summary');
-    if (frame)   { frame.style.display = 'none'; frame.srcdoc = ''; }
-    if (summary) { summary.style.display = ''; summary.textContent = text || ''; }
+  // Order-status preview — keeps the simpler text summary since the
+  // server-side template for orders is more complex (multi-workbook,
+  // per-variant sale-price flatten) and isn't worth duplicating
+  // client-side. Same modal body slot as the rich quote preview.
+  function _renderOrderStatusPreviewModal(payload, label, summaryText) {
+    const host = document.getElementById('notify-modal-body');
+    if (!host) return;
+    const clientEmail = _escHtml(payload.client_email || '');
+    const contact     = _escHtml(payload.contact_name || '');
+    const recipientHtml = clientEmail
+      ? `<strong>${contact || 'Client'}</strong> <span class="nq-email-addr">&lt;${clientEmail}&gt;</span>`
+      : `<span style="color:#fb7185;">⚠️ No client email on file — internal only.</span>`;
+    host.innerHTML = `
+      <div class="nq-order-summary">
+        <h2>Notify Client — ${_escHtml(label)}</h2>
+        <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">to ${recipientHtml}</div>
+        <div class="nq-body-text">${_escHtml(summaryText || '')}</div>
+      </div>`;
   }
 
   function openNotifyModal(triggerType) {
     _notifyPayload = null;
+
+    // Hide the CSV / PDF / Edit buttons by default — they only make
+    // sense for the quote_ready preview. Re-enable inside the relevant
+    // branch.
+    const exportCsv = document.getElementById('nq-export-csv');
+    const exportPdf = document.getElementById('nq-export-pdf');
+    if (exportCsv) exportCsv.style.display = 'none';
+    if (exportPdf) exportPdf.style.display = 'none';
 
     if (triggerType === 'quote_ready') {
       const detail    = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
@@ -17876,9 +18249,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const contactName = clientDet.primary_contact || '';
       const product   = detail.product || document.getElementById('product-name')?.value || 'Product';
       const rfqItems  = (detail.rfqItems || collectRfqItems()).filter(i => i.item || i.qty || i.priceRmb);
-
-      document.getElementById('notify-modal-title').textContent = 'Send Quote to Client — Preview';
-      document.getElementById('notify-preview-subject').textContent = `Your Quote is Ready — ${product}`;
 
       const wbDbId  = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
       const quoteAppUrl = `${window.location.origin}/#/client/${encodeURIComponent(currentClient)}/workbook/${wbDbId}`;
@@ -17889,10 +18259,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         details: { product, rfqItems, app_url: quoteAppUrl }
       };
 
-      // Render the FULL email preview in the iframe so the operator
-      // sees the actual table + portal CTA + copy before confirming.
-      _showNotifyIframePreview(_buildQuotePreviewHtml(_notifyPayload));
-      _renderNotifyRecipients(clientEmail, contactName);
+      if (exportCsv) exportCsv.style.display = '';
+      if (exportPdf) exportPdf.style.display = '';
+
+      _renderQuotePreviewModal(_notifyPayload, wbDbId);
     }
 
     else if (triggerType === 'order_status') {
@@ -17935,19 +18305,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         };
       });
 
-      document.getElementById('notify-modal-title').textContent = `Notify Client — ${label}`;
-      document.getElementById('notify-preview-subject').textContent = `${label} — ${o.name}`;
       const itemCount = entriesWithDetail.reduce((acc, e) => acc + e.rfqItems.length, 0);
-      // Order notifications get the plain-text preview fallback — the
-      // server-side template for orders is more complex (multi-workbook,
-      // per-variant flatten with sale prices) so we don't try to mirror
-      // it client-side. The summary still conveys the basics.
-      _showNotifyTextPreview(
+      const summaryText =
         `Hi ${contactName || clientEmail || 'Client'},\n\nUpdate on ${o.name}` +
         (o.poNumber ? ` (PO: ${o.poNumber})` : '') +
         (itemCount > 0 ? ` · ${itemCount} line item${itemCount !== 1 ? 's' : ''}` : '') +
-        (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})} USD` : '') + '.'
-      );
+        (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})} USD` : '') + '.';
 
       const orderAppUrl = `${window.location.origin}/#/order/${_currentOrderId}`;
 
@@ -17961,39 +18324,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       };
 
-      _renderNotifyRecipients(clientEmail, contactName);
+      _renderOrderStatusPreviewModal(_notifyPayload, label, summaryText);
     }
 
     document.getElementById('modal-notify').classList.add('open');
   }
 
-  function _renderNotifyRecipients(clientEmail, contactName) {
-    const wrap = document.getElementById('notify-recipients');
-    const rows = [];
-    if (clientEmail) {
-      rows.push(`<div style="display:flex;align-items:center;gap:8px;font-size:13px;">
-        <span style="background:var(--accent-glow);border:1px solid var(--accent);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--accent);">Client</span>
-        <span>${contactName ? `${contactName} &lt;${clientEmail}&gt;` : clientEmail}</span>
-      </div>`);
-    } else {
-      rows.push(`<div style="font-size:13px;color:#fb7185;">⚠️ No client email on file — internal only.</div>`);
-    }
-    rows.push(`<div style="display:flex;align-items:center;gap:8px;font-size:13px;">
-      <span style="background:var(--surface2);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;color:var(--text-muted);">Internal</span>
-      <span style="color:var(--text-muted);">jackson@marketsculpt.com, parker@marketsculpt.com</span>
-    </div>`);
-    wrap.innerHTML = rows.join('');
-  }
-
   function closeNotifyModal() {
     document.getElementById('modal-notify').classList.remove('open');
     _notifyPayload = null;
-    // Clear the iframe so re-opening for a different payload doesn't
-    // flash the previous preview before the new one writes in.
-    const frame = document.getElementById('notify-preview-frame');
-    if (frame) { frame.srcdoc = ''; frame.style.display = 'none'; }
-    const summary = document.getElementById('notify-preview-summary');
-    if (summary) summary.style.display = 'none';
+    // Clear the body so re-opening doesn't flash the previous preview
+    // before the new one renders in.
+    const body = document.getElementById('notify-modal-body');
+    if (body) body.innerHTML = '';
   }
 
   // ── Watchers (per-step subscription on a workbook) ─────────────────────
@@ -18720,6 +19063,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               // 'X-Small', to 1 for '1XL', etc.), which produced the
               // bogus 'Tank (Nude) qty = 6' the operator just flagged.
               const vi = vr.querySelectorAll('input:not(.rfq-var-sku-input):not([type="checkbox"])');
+              const vSkuInput = vr.querySelector('.rfq-var-sku-input');
+              const vSku  = (vSkuInput && vSkuInput.value || '').trim();
               const vName = (vi[0]?.value || '').trim();
               const vQty  = _scaleQty(_msIntFromInput(vi[1]));
               const vLead = parseInt(_msStripCommasStr(vi[3]?.value)) || 0;
@@ -18744,8 +19089,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 if (vSale > saleMax) saleMax = vSale;
               }
               if (vLead > maxLead) maxLead = vLead;
-              if (vName) variantNames.push(vName);
-              variantData.push({ name: vName, qty: vQty, sale: vSale, total: vTotal, lead: vLead });
+              // Prefer the variant SKU (auto-suggested or manual) for the
+              // inline list — falls back to the variant name only when no
+              // SKU was set.
+              const labelForList = vSku || vName;
+              if (labelForList) variantNames.push(labelForList);
+              variantData.push({ name: vName, sku: vSku, qty: vQty, sale: vSale, total: vTotal, lead: vLead });
             });
 
             // When Sale Per is typed, every variant shares the same
@@ -18762,23 +19111,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const saleText = saleMin === Infinity ? '—'
               : (isRange ? `${variablePill}$${_fmt2(saleMin)}–$${_fmt2(saleMax)}` : '$' + _fmt2(saleMin));
 
-            // Per UX direction — DON'T list each variant name inline
-            // in the Item cell. Show just the parent name with a small
-            // 'N variants' sub-line underneath. The full breakdown
-            // lives on the Inventory dashboard; this row stays compact.
-            // Qty + Total still aggregate across every variant under
-            // the parent, so the customer-facing numbers are accurate
-            // even though the breakdown is hidden.
-            const variantCount = group.variants.length;
-            const variantSubLine = variantCount > 0
-              ? `<div style="font-size:11px; color:var(--text-muted); margin-top:2px; font-weight:500;">${variantCount} variant${variantCount === 1 ? '' : 's'}</div>`
+            // Inline-SKU listing per the design reference — parent name
+            // bold, variant SKUs in muted mono after a colon, '= N'
+            // suffix when a qty has been entered. Qty + Total cells
+            // still aggregate across every variant.
+            const variantList = variantNames.length
+              ? `<span style="color:var(--text-muted); font-family:'SF Mono','Consolas',monospace; font-size:12px; margin-left:6px;">: ${variantNames.join(', ')}</span>${totalQty > 0 ? `<span style="color:var(--text); font-weight:700; margin-left:6px;">= ${totalQty.toLocaleString('en-US')}</span>` : ''}`
               : '';
             html += `<tr class="cq-parent-row no-variants" data-cq-parent="${parentId}">
-              <td style="color:var(--text-muted); width:24px; vertical-align:top; padding-top:10px;">${groupIdx}</td>
-              <td style="font-weight:500;">${parentName}${variantSubLine}</td>
-              <td style="text-align:right; vertical-align:top; padding-top:10px;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
-              <td style="text-align:right; vertical-align:top; padding-top:10px;">${saleText}</td>
-              <td style="text-align:right; font-weight:600; color:var(--accent); vertical-align:top; padding-top:10px;">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
+              <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
+              <td><span style="font-weight:700;">${parentName}</span>${variantList}</td>
+              <td style="text-align:right;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
+              <td style="text-align:right;">${saleText}</td>
+              <td style="text-align:right; font-weight:600; color:var(--accent);">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
             </tr>`;
           }
         });
