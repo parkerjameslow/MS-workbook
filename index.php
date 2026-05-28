@@ -2984,10 +2984,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .btn-advance {
       background: var(--accent);
       color: #fff;
-      border: none;
+      border: 1px solid var(--accent);
       border-radius: var(--radius-sm);
-      padding: 10px 20px;
-      font-size: 14px;
+      height: 32px;            /* matches the other status-bar action buttons */
+      padding: 0 18px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
@@ -2996,28 +2997,46 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       gap: 6px;
       transition: opacity 0.15s;
       white-space: nowrap;
-      min-width: 180px;
+      min-width: 160px;
+      box-sizing: border-box;
     }
 
     .btn-advance:hover { opacity: 0.85; }
 
     .btn-back-step {
       background: var(--accent);
-      border: 2px solid var(--accent);
+      border: 1px solid var(--accent);
       border-radius: var(--radius-sm);
       color: #ffffff;
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 900;
       width: 36px;
-      height: 38px;
+      height: 32px;            /* matches .btn-advance + the outlined action buttons */
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       transition: all 0.15s;
+      box-sizing: border-box;
     }
     .btn-back-step:hover { opacity: 0.85; }
     .btn-back-step:disabled { opacity: 0.3; cursor: default; }
+
+    /* Uniform height across every status-bar action button — both the
+       outlined "ready" buttons (Notify / RFQ / Send for Review /
+       Watchers) and the filled advance / back-step buttons. Inline
+       styles on the individual buttons set the colours + padding-x;
+       this rule forces the height so the row reads as one consistent
+       set of controls instead of a height jumble. The vertical RFQ
+       stack inside #rfq-btn-stack gets its own pair-of-32px rows. */
+    .status-actions > button,
+    #rfq-btn-stack > button,
+    .status-actions .wb-watchers-btn {
+      height: 32px;
+      box-sizing: border-box;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
 
     .btn-advance:disabled {
       background: var(--success);
