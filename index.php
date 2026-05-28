@@ -8498,31 +8498,47 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <!-- ── Create Order Modal ─────────────────────────────────────────────── -->
 <!-- ── Notification Modal ──────────────────────────────────────────────────── -->
 <div class="modal-overlay" id="modal-notify" onclick="if(event.target===this)closeNotifyModal()" style="z-index:1100;">
-  <div class="modal" style="max-width:480px;">
+  <div class="modal" style="max-width:720px; max-height:calc(100vh - 32px); display:flex; flex-direction:column;">
     <div class="modal-title" id="notify-modal-title">Send Notification</div>
 
     <!-- Recipients -->
-    <div style="margin-bottom:18px;">
+    <div style="margin-bottom:14px;">
       <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">Recipients</div>
       <div id="notify-recipients" style="display:flex; flex-direction:column; gap:6px;"></div>
     </div>
 
-    <!-- Preview -->
-    <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px; margin-bottom:16px;">
-      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px;">Email Preview</div>
-      <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;" id="notify-preview-subject"></div>
-      <div style="font-size:12px; color:var(--text-muted); line-height:1.5;" id="notify-preview-body"></div>
+    <!-- Email Preview — iframe shows the FULL rendered email so the
+         operator can confirm copy, line items, totals, portal CTA, etc.
+         before confirming the send. The iframe isolates the email's
+         styles from the app so the preview matches what the client
+         will actually see in their inbox.
+         For quote_ready the iframe is populated by _buildQuotePreviewHtml;
+         for order_status we fall back to the simple subject + body
+         summary (notify-preview-summary) to avoid duplicating the
+         server-side order-email template here. -->
+    <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:14px; flex:1 1 auto; min-height:0; display:flex; flex-direction:column;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Email Preview</div>
+        <div style="font-size:11px; color:var(--text-muted); opacity:0.7;">— what the client will see</div>
+      </div>
+      <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:8px; padding:6px 10px; background:var(--surface); border:1px solid var(--border); border-radius:6px;">
+        <span style="color:var(--text-muted); font-weight:500; margin-right:6px;">Subject:</span>
+        <span id="notify-preview-subject"></span>
+      </div>
+      <iframe id="notify-preview-frame" title="Email preview"
+        style="display:none; flex:1 1 auto; min-height:320px; width:100%; border:1px solid var(--border); border-radius:6px; background:#fff;"></iframe>
+      <div id="notify-preview-summary" style="display:none; font-size:13px; color:var(--text); line-height:1.6; padding:10px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; white-space:pre-wrap;"></div>
     </div>
     <!-- Portal notice (shown for quote_ready and order_confirmed) -->
-    <div id="notify-portal-notice" style="display:none; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:8px; padding:10px 14px; margin-bottom:16px; font-size:12px; color:var(--accent); line-height:1.6;">
-      <strong>Portal link will be generated.</strong> The client email will include a secure link where they can review, approve, or request changes. You'll receive the link after sending.
+    <div id="notify-portal-notice" style="display:none; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:12px; color:var(--accent); line-height:1.6;">
+      <strong>Portal link will be generated.</strong> The preview shows the CTA button — the actual secure link gets generated when you send.
     </div>
 
     <div style="display:flex; gap:10px; justify-content:flex-end;">
       <button class="btn btn-ghost" onclick="closeNotifyModal()">Cancel</button>
       <button class="btn btn-primary" id="btn-notify-send" onclick="sendNotification()" style="display:inline-flex; align-items:center; gap:6px;">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-        Send Notification
+        Confirm &amp; Send
       </button>
     </div>
   </div>
@@ -17658,6 +17674,127 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   /* ── Notification system ─────────────────────────────────────────────────── */
   let _notifyPayload = null; // stores the data ready to send
 
+  // Tiny HTML-escape helper for the email preview iframe — keeps client
+  // names / product names / item names from breaking out of attributes
+  // or injecting script tags into the preview document.
+  function _escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Build the full quote_ready email HTML for the preview iframe.
+  // Mirrors the server-side template in send_notification → the
+  // operator sees (close to) exactly what the client will get. The
+  // portal CTA renders as a static-looking button labelled 'Portal
+  // link generated at send' — the real URL is created server-side
+  // when the send actually fires.
+  function _buildQuotePreviewHtml(payload) {
+    const d            = payload && payload.details ? payload.details : {};
+    const product      = _escHtml(d.product || 'your product');
+    const contact      = _escHtml(payload.contact_name || '');
+    const greeting     = contact ? `Hi ${contact},` : 'Hi there,';
+    const rate         = parseFloat(payload.rate) || 7.24;
+    const items        = Array.isArray(d.rfqItems) ? d.rfqItems.filter(i => i && (i.item || i.qty || i.priceRmb)) : [];
+    const fmt2         = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Flatten the items: parents and their variants both appear as
+    // their own row, matching what the real email does (see
+    // ms_order_table_client server-side).
+    const flatRows = [];
+    items.forEach(it => {
+      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty || v.priceRmb)) : [];
+      if (vs.length) {
+        vs.forEach(v => {
+          const qty   = parseFloat(String(v.qty || '').replace(/,/g, '')) || 0;
+          const rmb   = parseFloat(String(v.priceRmb || '').replace(/,/g, '')) || 0;
+          const usd   = rate > 0 ? rmb / rate : 0;
+          flatRows.push({
+            name: `${it.item || product} — ${v.variant || 'Variant'}`,
+            qty, rmb, usd, total: qty * usd,
+          });
+        });
+      } else {
+        const qty = parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
+        const rmb = parseFloat(String(it.priceRmb || '').replace(/,/g, '')) || 0;
+        const usd = rate > 0 ? rmb / rate : 0;
+        flatRows.push({
+          name: it.item || product,
+          qty, rmb, usd, total: qty * usd,
+        });
+      }
+    });
+    const grandTotal = flatRows.reduce((s, r) => s + r.total, 0);
+
+    const itemsTable = flatRows.length === 0
+      ? '<p style="margin:18px 0; padding:14px; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; font-size:13px; color:#92400e;">⚠️ No line items entered yet — the client will receive an email with no quote table. Add RFQ items before sending.</p>'
+      : `<table style="width:100%; border-collapse:collapse; margin:24px 0; font-size:13px;">
+          <thead>
+            <tr style="background:#f1f3f5;">
+              <th style="text-align:left; padding:10px 12px; font-weight:700; color:#374151; border-bottom:2px solid #e5e7eb;">Item</th>
+              <th style="text-align:right; padding:10px 12px; font-weight:700; color:#374151; border-bottom:2px solid #e5e7eb;">Qty</th>
+              <th style="text-align:right; padding:10px 12px; font-weight:700; color:#374151; border-bottom:2px solid #e5e7eb;">Unit Price (USD)</th>
+              <th style="text-align:right; padding:10px 12px; font-weight:700; color:#374151; border-bottom:2px solid #e5e7eb;">Line Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${flatRows.map(r => `
+              <tr>
+                <td style="padding:10px 12px; border-bottom:1px solid #f1f3f5; color:#1f2937;">${_escHtml(r.name)}</td>
+                <td style="padding:10px 12px; border-bottom:1px solid #f1f3f5; text-align:right; color:#1f2937;">${r.qty.toLocaleString('en-US')}</td>
+                <td style="padding:10px 12px; border-bottom:1px solid #f1f3f5; text-align:right; color:#1f2937;">$${fmt2(r.usd)}</td>
+                <td style="padding:10px 12px; border-bottom:1px solid #f1f3f5; text-align:right; color:#1f2937; font-weight:600;">$${fmt2(r.total)}</td>
+              </tr>
+            `).join('')}
+            <tr>
+              <td colspan="3" style="padding:14px 12px; text-align:right; font-weight:700; color:#1a1d2e; background:#fafbfc; border-top:2px solid #e5e7eb;">Total (USD)</td>
+              <td style="padding:14px 12px; text-align:right; font-weight:800; color:#E8751A; background:#fafbfc; border-top:2px solid #e5e7eb; font-size:15px;">$${fmt2(grandTotal)}</td>
+            </tr>
+          </tbody>
+        </table>`;
+
+    const portalBtn = flatRows.length > 0
+      ? `<div style="text-align:center; margin:32px 0;">
+          <span style="display:inline-block; background:#E8751A; color:#fff; font-size:15px; font-weight:700; text-decoration:none; padding:14px 36px; border-radius:8px; letter-spacing:0.01em;">Review &amp; Approve Your Quote →</span>
+          <p style="margin:10px 0 0; font-size:12px; color:#9ba3c0; font-style:italic;">Portal link generated when you send.</p>
+        </div>`
+      : '';
+
+    return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+      <body style="margin:0; padding:24px; background:#f4f6fa; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#374151;">
+        <div style="max-width:560px; margin:0 auto; background:#fff; border-radius:12px; padding:36px 32px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+          <h1 style="margin:0 0 6px; font-size:26px; font-weight:800; color:#1a1d2e; line-height:1.2;">Your Quote is Ready</h1>
+          <p style="margin:0 0 28px; font-size:15px; color:#6b7280;">We've prepared pricing for your review.</p>
+          <p style="margin:0 0 16px; font-size:15px; color:#374151; line-height:1.7;">${_escHtml(greeting)}</p>
+          <p style="margin:0 0 4px; font-size:15px; color:#374151; line-height:1.7;">Your quote for <strong>${product}</strong> is ready. Please find the details below:</p>
+          ${itemsTable}
+          ${portalBtn}
+          <p style="margin:16px 0; font-size:15px; color:#374151; line-height:1.7;">Please review and don't hesitate to reach out with any questions or adjustments.</p>
+          <p style="margin:0; font-size:15px; color:#374151;">Thanks,<br><strong>Market Sculpt Team</strong></p>
+        </div>
+        <p style="text-align:center; margin:18px 0 0; font-size:11px; color:#9ba3c0;">Market Sculpt · This is a preview — nothing has been sent yet.</p>
+      </body></html>`;
+  }
+
+  // Write a full HTML document into the preview iframe and show it.
+  // Hides the plain-text summary fallback used for non-quote types.
+  function _showNotifyIframePreview(html) {
+    const frame   = document.getElementById('notify-preview-frame');
+    const summary = document.getElementById('notify-preview-summary');
+    if (summary) summary.style.display = 'none';
+    if (!frame) return;
+    frame.style.display = '';
+    // srcdoc handles the document write atomically and applies the
+    // iframe's own document mode (no quirks-mode surprises).
+    frame.srcdoc = html;
+  }
+  function _showNotifyTextPreview(text) {
+    const frame   = document.getElementById('notify-preview-frame');
+    const summary = document.getElementById('notify-preview-summary');
+    if (frame)   { frame.style.display = 'none'; frame.srcdoc = ''; }
+    if (summary) { summary.style.display = ''; summary.textContent = text || ''; }
+  }
+
   function openNotifyModal(triggerType) {
     _notifyPayload = null;
 
@@ -17669,11 +17806,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const product   = detail.product || document.getElementById('product-name')?.value || 'Product';
       const rfqItems  = (detail.rfqItems || collectRfqItems()).filter(i => i.item || i.qty || i.priceRmb);
 
-      document.getElementById('notify-modal-title').textContent = 'Notify Client — Quote Ready';
+      document.getElementById('notify-modal-title').textContent = 'Send Quote to Client — Preview';
       document.getElementById('notify-preview-subject').textContent = `Your Quote is Ready — ${product}`;
-      document.getElementById('notify-preview-body').textContent =
-        `Hi ${contactName || clientEmail || 'Client'},\n\nYour quote for ${product} is ready for review. ` +
-        (rfqItems.length ? `(${rfqItems.length} line item${rfqItems.length !== 1 ? 's' : ''} included)` : '');
 
       const wbDbId  = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
       const quoteAppUrl = `${window.location.origin}/#/client/${encodeURIComponent(currentClient)}/workbook/${wbDbId}`;
@@ -17683,6 +17817,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         client_name: currentClient, rate: USD_TO_RMB,
         details: { product, rfqItems, app_url: quoteAppUrl }
       };
+
+      // Render the FULL email preview in the iframe so the operator
+      // sees the actual table + portal CTA + copy before confirming.
+      _showNotifyIframePreview(_buildQuotePreviewHtml(_notifyPayload));
 
       const pn = document.getElementById('notify-portal-notice');
       if (pn) pn.style.display = rfqItems.length > 0 ? 'block' : 'none';
@@ -17733,11 +17871,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       document.getElementById('notify-modal-title').textContent = `Notify Client — ${label}`;
       document.getElementById('notify-preview-subject').textContent = `${label} — ${o.name}`;
       const itemCount = entriesWithDetail.reduce((acc, e) => acc + e.rfqItems.length, 0);
-      document.getElementById('notify-preview-body').textContent =
+      // Order notifications get the plain-text preview fallback — the
+      // server-side template for orders is more complex (multi-workbook,
+      // per-variant flatten with sale prices) so we don't try to mirror
+      // it client-side. The summary still conveys the basics.
+      _showNotifyTextPreview(
         `Hi ${contactName || clientEmail || 'Client'},\n\nUpdate on ${o.name}` +
         (o.poNumber ? ` (PO: ${o.poNumber})` : '') +
         (itemCount > 0 ? ` · ${itemCount} line item${itemCount !== 1 ? 's' : ''}` : '') +
-        (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})} USD` : '') + '.';
+        (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})} USD` : '') + '.'
+      );
 
       const orderAppUrl = `${window.location.origin}/#/order/${_currentOrderId}`;
 
@@ -17782,6 +17925,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function closeNotifyModal() {
     document.getElementById('modal-notify').classList.remove('open');
     _notifyPayload = null;
+    // Clear the iframe so re-opening for a different payload doesn't
+    // flash the previous preview before the new one writes in.
+    const frame = document.getElementById('notify-preview-frame');
+    if (frame) { frame.srcdoc = ''; frame.style.display = 'none'; }
+    const summary = document.getElementById('notify-preview-summary');
+    if (summary) summary.style.display = 'none';
   }
 
   // ── Watchers (per-step subscription on a workbook) ─────────────────────
