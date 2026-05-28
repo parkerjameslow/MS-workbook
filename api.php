@@ -1317,6 +1317,31 @@ switch ($action) {
             $reSent = true;
         }
 
+        // Persist the 'sent for review' flag into detail_json so the
+        // in-workbook 'Send for Review' button stays in its filled
+        // 'Sent ✓' state across reloads (the operator asked for it to
+        // not disappear after click). Covers the RFQ Queue per-row
+        // path too — the queue button doesn't otherwise touch the
+        // workbook's detail. JSON_SET is safe to call even when the
+        // keys don't exist yet; it just creates them.
+        try {
+            $pdo->prepare(
+                "UPDATE workbooks
+                 SET detail_json = JSON_SET(
+                       COALESCE(detail_json, JSON_OBJECT()),
+                       '$.sentForReview',   CAST('true' AS JSON),
+                       '$.sentForReviewAt', ?
+                     )
+                 WHERE id = ?"
+            )->execute([gmdate('c'), $wbId]);
+        } catch (Throwable $_e) {
+            // If JSON_SET isn't supported (very old MySQL) the in-
+            // workbook click path still writes the flag via its
+            // follow-up save_workbook_detail call, so we don't bail
+            // the whole action — just log and continue.
+            error_log('[submit_for_review] JSON_SET failed: ' . $_e->getMessage());
+        }
+
         // Build the flow object the frontend status-bar renderer expects:
         // cumulative booleans up to + including the current step.
         $flowKeys = ['quoteChina', 'quoteSubmitted', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];

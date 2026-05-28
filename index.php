@@ -5970,10 +5970,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button id="btn-submit-review" onclick="submitCurrentWorkbookForReview()"
           style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; justify-content:center; gap:5px; white-space:nowrap; transition:opacity 0.15s, background 0.15s, color 0.15s;"
           title="Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <!-- Two icons in the markup; renderStatusBar shows one and
+               hides the other depending on detail.sentForReview. The
+               label text is also swapped between 'Send for Review' and
+               'Sent for Review' so the button reads as either an
+               actionable CTA or a confirmed-done state without ever
+               disappearing from the row. -->
+          <svg class="btn-submit-review-icon-send" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
-          Send for Review
+          <svg class="btn-submit-review-icon-sent" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <span id="btn-submit-review-label">Send for Review</span>
         </button>
       </div>
       <button id="btn-watchers" onclick="openWatchersModal()" class="wb-watchers-btn" title="Manage milestone watchers">
@@ -17479,18 +17488,47 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    // "Send for Review" — visible (inside the stack) only while the
-    // workbook is actually parked in the RFQ Queue (sentToRfq === true
-    // AND we're still at the Quote Submitted stage). Once Karen clicks
-    // it the workbook advances past quoteSubmitted, the queue row
-    // disappears, and Jackson + Parker get an email. Hidden everywhere
-    // else so it can't be re-fired by accident after the order has
-    // moved on.
+    // "Send for Review" — visible across the full review window:
+    // anywhere from flow.quoteSubmitted (in queue) through quoteClient
+    // (advanced past queue, awaiting Jackson + Parker). Hidden only
+    // once the order has moved past Client Approved so the action can't
+    // be re-fired late in the order lifecycle. Style flips between two
+    // states without ever hiding the button — the operator asked for
+    // 'Sent ✓' to stay visible instead of disappearing on click.
+    //   • detail.sentForReview === false  → outlined, paper-plane icon,
+    //                                        label 'Send for Review'.
+    //   • detail.sentForReview === true   → filled success-green, check
+    //                                        icon, label 'Sent for Review'.
+    // Clicking when already sent re-fires the email (server is
+    // idempotent — see submit_for_review).
     const sendReviewBtn = document.getElementById('btn-submit-review');
     if (sendReviewBtn) {
       const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
-      const inQueue = !!detail.sentToRfq && !!flow.quoteSubmitted && !flow.quoteClient;
-      sendReviewBtn.style.display = inQueue ? 'inline-flex' : 'none';
+      const inReviewWindow = !!flow.quoteSubmitted && !flow.clientApproved;
+      sendReviewBtn.style.display = inReviewWindow ? 'inline-flex' : 'none';
+      if (inReviewWindow) {
+        const alreadySent = !!detail.sentForReview;
+        const iconSend = sendReviewBtn.querySelector('.btn-submit-review-icon-send');
+        const iconSent = sendReviewBtn.querySelector('.btn-submit-review-icon-sent');
+        const label    = document.getElementById('btn-submit-review-label');
+        if (alreadySent) {
+          sendReviewBtn.style.background   = 'var(--success, #10b981)';
+          sendReviewBtn.style.color        = '#fff';
+          sendReviewBtn.style.borderColor  = 'var(--success, #10b981)';
+          sendReviewBtn.title              = 'Already sent to Jackson + Parker. Click to re-send the review email.';
+          if (iconSend) iconSend.style.display = 'none';
+          if (iconSent) iconSent.style.display = '';
+          if (label)    label.textContent      = 'Sent for Review';
+        } else {
+          sendReviewBtn.style.background   = 'none';
+          sendReviewBtn.style.color        = 'var(--accent)';
+          sendReviewBtn.style.borderColor  = 'var(--accent)';
+          sendReviewBtn.title              = 'Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.';
+          if (iconSend) iconSend.style.display = '';
+          if (iconSent) iconSent.style.display = 'none';
+          if (label)    label.textContent      = 'Send for Review';
+        }
+      }
     }
 
     // Lock Product Overview tab once Quote to Client (index 2) or beyond
@@ -24324,8 +24362,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const detail = workbookDetail[key] || {};
     const productName = detail.product || document.getElementById('product-name')?.value || '';
     const btn = document.getElementById('btn-submit-review');
+    const labelEl = document.getElementById('btn-submit-review-label');
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
-    if (btn) { btn.disabled = true; btn.dataset.oldLabel = btn.textContent; btn.textContent = 'Sending…'; }
+    // Update only the label span so the SVG icons in the button aren't
+    // wiped out. Same idea applies to the error / final-state paths
+    // below — we touch labelEl.textContent, never btn.textContent.
+    if (btn && labelEl) { btn.disabled = true; btn.dataset.oldLabel = labelEl.textContent; labelEl.textContent = 'Sending…'; }
     try {
       // Make sure the latest edits land in detail_json before we mark
       // the workbook ready — otherwise Karen's review request would
@@ -24342,25 +24384,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         product_name: productName,
       });
       if (res && res.success) {
-        if (btn) {
-          btn.textContent = res.re_sent ? 'Re-sent ✓' : 'Sent ✓';
-          btn.style.background = 'var(--success, #10b981)';
-          btn.style.color = '#fff';
-          btn.style.borderColor = 'var(--success, #10b981)';
-        }
-        // Refresh the status bar so the advance applies + the button hides.
+        // Persist the Sent state so the button stays in its 'Sent ✓'
+        // form across reloads instead of reverting to the outlined
+        // ready state. The server has its own JSON_SET fallback for
+        // the RFQ Queue per-row path; this branch covers the
+        // in-workbook click + writes a fresh detail save with the
+        // flag so the local cache is consistent immediately.
+        const det = workbookDetail[key] || {};
+        det.sentForReview   = true;
+        det.sentForReviewAt = new Date().toISOString();
+        workbookDetail[key] = det;
+        try { apiCall('save_workbook_detail', { id: dbId, detail: det, changed_by: getCurrentUser() }); } catch (_) {}
+
+        // Refresh the status bar so the advance applies + the button
+        // re-renders into its 'Sent ✓' state (NOT hidden — the
+        // visibility rule keeps it on screen across the full review
+        // window now).
         const items = clientData[currentClient];
         const itemRow = items ? items.find(i => i.id === parseInt(currentWorkbookId)) : null;
         if (itemRow && res.flow) { itemRow.flow = res.flow; renderStatusBar(itemRow.flow); }
         try { rebuildRfqNav(); } catch (_) {}
       } else {
         alert((res && res.error) ? res.error : 'Couldn\'t send for review — try again.');
-        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
+        if (btn) {
+          btn.disabled = false;
+          if (labelEl) labelEl.textContent = btn.dataset.oldLabel || 'Send for Review';
+        }
       }
     } catch (e) {
       console.error('[submitCurrentWorkbookForReview]', e);
       alert('Network error sending for review — try again.');
-      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
+      if (btn) {
+        btn.disabled = false;
+        if (labelEl) labelEl.textContent = btn.dataset.oldLabel || 'Send for Review';
+      }
     }
   }
 
@@ -24863,6 +24920,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // RFQ queue flags (managed via toggleSendToRfq, not DOM-driven — preserve from existing)
       sentToRfq: !!existing.sentToRfq,
       sentToRfqAt: existing.sentToRfqAt || null,
+      // "Sent for Review" flag (managed via submit_for_review, not DOM-
+      // driven — preserve so the in-workbook button stays in its
+      // 'Sent ✓' state across reloads instead of reverting to the
+      // outlined ready state).
+      sentForReview:   !!existing.sentForReview,
+      sentForReviewAt: existing.sentForReviewAt || null,
       // Per-step milestone watchers — managed by the Watchers modal, not
       // DOM-driven. Preserve the live in-memory value from existing so
       // an autosave after add/remove doesn't clobber it.
