@@ -17683,96 +17683,169 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  // Build the full quote_ready email HTML for the preview iframe.
-  // Mirrors the server-side template in send_notification → the
-  // operator sees (close to) exactly what the client will get. The
-  // portal CTA renders as a static-looking button labelled 'Portal
-  // link generated at send' — the real URL is created server-side
-  // when the send actually fires.
+  // Build the quote preview HTML for the iframe — mirrors the on-screen
+  // Client Quote section on the Pricing tab (same blue header/footer
+  // bars, same stat cards, same rolled-up parent + variant-SKU rows,
+  // same Additional Fees section). Values read live from the rendered
+  // page so the preview always ties out to what the operator just
+  // approved before pressing 'Send to Client'.
+  //
+  // Pricing math (matches the on-screen Client Quote):
+  //   • Sale Price (USD) read from the qrs-usd stat in the header bar.
+  //   • Per-row line totals = rowQty × salePerUsd (qty from rfqItems —
+  //     blank when the operator hasn't entered a row qty, same as the
+  //     on-screen table).
+  //   • TOTAL ORDER stat read straight from qrs-total — that's the
+  //     authoritative tier-qty × Sale Per + applied fees computation
+  //     and is what the customer is being quoted.
   function _buildQuotePreviewHtml(payload) {
     const d            = payload && payload.details ? payload.details : {};
     const product      = _escHtml(d.product || 'your product');
     const contact      = _escHtml(payload.contact_name || '');
     const greeting     = contact ? `Hi ${contact},` : 'Hi there,';
-    const rate         = parseFloat(payload.rate) || 7.24;
-    const items        = Array.isArray(d.rfqItems) ? d.rfqItems.filter(i => i && (i.item || i.qty || i.priceRmb)) : [];
+    const items        = Array.isArray(d.rfqItems) ? d.rfqItems.filter(i => i && (i.item || i.qty || (i.variants||[]).length)) : [];
     const fmt2         = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const intFmt       = v => Number(v || 0).toLocaleString('en-US');
 
-    // Flatten the items: parents and their variants both appear as
-    // their own row, matching what the real email does (see
-    // ms_order_table_client server-side).
-    const flatRows = [];
-    items.forEach(it => {
-      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty || v.priceRmb)) : [];
-      if (vs.length) {
-        vs.forEach(v => {
-          const qty   = parseFloat(String(v.qty || '').replace(/,/g, '')) || 0;
-          const rmb   = parseFloat(String(v.priceRmb || '').replace(/,/g, '')) || 0;
-          const usd   = rate > 0 ? rmb / rate : 0;
-          flatRows.push({
-            name: `${it.item || product} — ${v.variant || 'Variant'}`,
-            qty, rmb, usd, total: qty * usd,
-          });
+    // Pull live values from the on-screen Client Quote header — these
+    // are populated by renderPricingTab so they're already correct.
+    const readStat = key => {
+      const el = document.querySelector(`.cq-summary-bar--header [data-qrs="${key}"]`);
+      return el && el.textContent ? el.textContent.trim() : '—';
+    };
+    const stats = {
+      salePrice:      readStat('usd'),
+      totalOrder:     readStat('total'),
+      productionLead: readStat('lead'),
+      shippingLead:   readStat('ship-lead'),
+      totalLead:      readStat('total-lead'),
+    };
+    // Parse Sale Per back to a number for the per-row line totals.
+    const salePerUsd = parseFloat(String(stats.salePrice).replace(/[^\d.]/g, '')) || 0;
+
+    // Build one row per parent SKU (rolled-up — variant SKUs listed
+    // inline in the Item cell, matching the on-screen design).
+    const lineRows = items.map((it, idx) => {
+      const parentName = (it.item || `Item ${idx + 1}`).trim();
+      const variants   = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty || v.priceRmb)) : [];
+      let qty = 0;
+      const variantLabels = [];
+      if (variants.length) {
+        variants.forEach(v => {
+          qty += parseFloat(String(v.qty || '').replace(/,/g, '')) || 0;
+          if (v.variant) variantLabels.push(String(v.variant).trim());
         });
       } else {
-        const qty = parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
-        const rmb = parseFloat(String(it.priceRmb || '').replace(/,/g, '')) || 0;
-        const usd = rate > 0 ? rmb / rate : 0;
-        flatRows.push({
-          name: it.item || product,
-          qty, rmb, usd, total: qty * usd,
-        });
+        qty = parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
       }
+      const lineTotal = qty > 0 && salePerUsd > 0 ? qty * salePerUsd : 0;
+      const itemDesc = variantLabels.length
+        ? `${parentName}: ${variantLabels.join(', ')}${qty > 0 ? ' = ' + intFmt(qty) : ''}`
+        : parentName;
+      return { idx: idx + 1, itemDesc, qty, lineTotal };
     });
-    const grandTotal = flatRows.reduce((s, r) => s + r.total, 0);
 
-    const itemsTable = flatRows.length === 0
-      ? '<p style="margin:18px 0; padding:14px; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; font-size:13px; color:#92400e;">⚠️ No line items entered yet — the client will receive an email with no quote table. Add RFQ items before sending.</p>'
-      : `<table style="width:100%; border-collapse:collapse; margin:24px 0; font-size:13px;">
-          <thead>
-            <tr style="background:#f1f3f5;">
-              <th style="text-align:left; padding:10px 12px; font-weight:700; color:#374151; border-bottom:2px solid #e5e7eb;">Item</th>
-              <th style="text-align:right; padding:10px 12px; font-weight:700; color:#374151; border-bottom:2px solid #e5e7eb;">Qty</th>
-              <th style="text-align:right; padding:10px 12px; font-weight:700; color:#374151; border-bottom:2px solid #e5e7eb;">Unit Price (USD)</th>
-              <th style="text-align:right; padding:10px 12px; font-weight:700; color:#374151; border-bottom:2px solid #e5e7eb;">Line Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${flatRows.map(r => `
-              <tr>
-                <td style="padding:10px 12px; border-bottom:1px solid #f1f3f5; color:#1f2937;">${_escHtml(r.name)}</td>
-                <td style="padding:10px 12px; border-bottom:1px solid #f1f3f5; text-align:right; color:#1f2937;">${r.qty.toLocaleString('en-US')}</td>
-                <td style="padding:10px 12px; border-bottom:1px solid #f1f3f5; text-align:right; color:#1f2937;">$${fmt2(r.usd)}</td>
-                <td style="padding:10px 12px; border-bottom:1px solid #f1f3f5; text-align:right; color:#1f2937; font-weight:600;">$${fmt2(r.total)}</td>
-              </tr>
-            `).join('')}
-            <tr>
-              <td colspan="3" style="padding:14px 12px; text-align:right; font-weight:700; color:#1a1d2e; background:#fafbfc; border-top:2px solid #e5e7eb;">Total (USD)</td>
-              <td style="padding:14px 12px; text-align:right; font-weight:800; color:#E8751A; background:#fafbfc; border-top:2px solid #e5e7eb; font-size:15px;">$${fmt2(grandTotal)}</td>
-            </tr>
-          </tbody>
-        </table>`;
+    // Applied additional fees (e.g. Added Shipping Cost for Air + UPS,
+    // tooling fees, etc.) — read via the same appliedFeesList helper
+    // the on-screen Client Quote uses.
+    const fees = (typeof appliedFeesList === 'function') ? appliedFeesList() : [];
 
-    const portalBtn = flatRows.length > 0
-      ? `<div style="text-align:center; margin:32px 0;">
-          <span style="display:inline-block; background:#E8751A; color:#fff; font-size:15px; font-weight:700; text-decoration:none; padding:14px 36px; border-radius:8px; letter-spacing:0.01em;">Review &amp; Approve Your Quote →</span>
-          <p style="margin:10px 0 0; font-size:12px; color:#9ba3c0; font-style:italic;">Portal link generated when you send.</p>
-        </div>`
-      : '';
+    // ── Render: blue header bar → table → fees → blue footer bar ──
+    const statCardsHtml = `
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
+          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Sale Price (USD)</div>
+          <div style="font-size:14px; font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.salePrice)}</div>
+        </div>
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
+          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Total Order</div>
+          <div style="font-size:14px; font-weight:700; color:#6b93ff; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.totalOrder)}</div>
+        </div>
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
+          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Production Lead</div>
+          <div style="font-size:14px; font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.productionLead)}</div>
+        </div>
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
+          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Shipping Lead</div>
+          <div style="font-size:14px; font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.shippingLead)}</div>
+        </div>
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:7px 14px; min-width:104px;">
+          <div style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.07em; color:#6b7280; white-space:nowrap;">Total Lead</div>
+          <div style="font-size:14px; font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; white-space:nowrap; margin-top:2px;">${_escHtml(stats.totalLead)}</div>
+        </div>
+      </div>`;
+
+    const summaryBarHtml = `
+      <div style="display:flex; align-items:center; gap:16px; padding:14px 18px; background:linear-gradient(135deg, rgba(107,147,255,0.14) 0%, rgba(107,147,255,0.05) 100%); border:1px solid rgba(107,147,255,0.40); border-radius:10px; flex-wrap:wrap;">
+        <div style="font-size:13px; font-weight:800; color:#6b93ff; letter-spacing:0.07em; text-transform:uppercase; white-space:nowrap;">Client Quote</div>
+        <div style="flex:1; min-width:0;"></div>
+        ${statCardsHtml}
+      </div>`;
+
+    const tableHeader = `
+      <thead>
+        <tr>
+          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:left;  padding:14px 12px 12px 14px; border-bottom:1px solid #e5e7eb; width:32px;">#</th>
+          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:left;  padding:14px 12px 12px 0; border-bottom:1px solid #e5e7eb;">Item</th>
+          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:right; padding:14px 12px 12px; border-bottom:1px solid #e5e7eb; width:80px;">Qty</th>
+          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:right; padding:14px 12px 12px; border-bottom:1px solid #e5e7eb; width:130px;">Sale Price (USD)</th>
+          <th style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; text-align:right; padding:14px 12px 12px 14px; border-bottom:1px solid #e5e7eb; width:110px;">Total (USD)</th>
+        </tr>
+      </thead>`;
+
+    const lineRowsHtml = lineRows.length === 0
+      ? `<tr><td colspan="5" style="padding:18px 14px; text-align:center; color:#92400e; background:#fef3c7; font-size:13px;">⚠️ No line items entered yet — the client will receive an email with no quote table. Add RFQ items before sending.</td></tr>`
+      : lineRows.map(r => `
+          <tr>
+            <td style="padding:14px 12px 14px 14px; color:#6b93ff; font-weight:700; font-size:13px; border-bottom:1px solid #f1f3f5;">${r.idx}</td>
+            <td style="padding:14px 12px 14px 0; color:#1f2937; font-weight:500; font-size:13px; border-bottom:1px solid #f1f3f5;">${_escHtml(r.itemDesc)}</td>
+            <td style="padding:14px 12px; color:#1f2937; font-weight:600; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums;">${r.qty > 0 ? intFmt(r.qty) : '—'}</td>
+            <td style="padding:14px 12px; color:#1f2937; font-weight:500; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums;">${salePerUsd > 0 ? '$' + fmt2(salePerUsd) : '—'}</td>
+            <td style="padding:14px 12px 14px 14px; color:${r.lineTotal > 0 ? '#6b93ff' : '#9ca3af'}; font-weight:700; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums;">${r.lineTotal > 0 ? '$' + fmt2(r.lineTotal) : '—'}</td>
+          </tr>`).join('');
+
+    // Additional fees — orange-tinted block matching the on-screen design.
+    const feesHtml = fees.length === 0 ? '' : `
+      <tr>
+        <td colspan="5" style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#E8751A; background:rgba(232,117,26,0.06); border-top:2px solid rgba(232,117,26,0.25); border-bottom:1px solid rgba(232,117,26,0.20);">Additional Fees</td>
+      </tr>
+      ${fees.map(f => {
+        const desc = f.desc ? ` — <span style="color:#9ca3af; font-weight:400;">${_escHtml(f.desc)}</span>` : '';
+        return `<tr style="background:rgba(232,117,26,0.04);">
+          <td style="padding:14px 12px 14px 14px; color:#E8751A; font-weight:700; font-size:13px; border-bottom:1px solid #f1f3f5;">+</td>
+          <td style="padding:14px 12px 14px 0; color:#1f2937; font-weight:500; font-size:13px; border-bottom:1px solid #f1f3f5;">${_escHtml(f.label)}${desc}</td>
+          <td style="padding:14px 12px; color:#9ca3af; text-align:right; border-bottom:1px solid #f1f3f5;">—</td>
+          <td style="padding:14px 12px; color:#9ca3af; text-align:right; border-bottom:1px solid #f1f3f5;">—</td>
+          <td style="padding:14px 12px 14px 14px; color:#6b93ff; font-weight:700; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums;">${f.usd > 0 ? '$' + fmt2(f.usd) : '—'}</td>
+        </tr>`;
+      }).join('')}`;
 
     return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
-      <body style="margin:0; padding:24px; background:#f4f6fa; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#374151;">
-        <div style="max-width:560px; margin:0 auto; background:#fff; border-radius:12px; padding:36px 32px; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-          <h1 style="margin:0 0 6px; font-size:26px; font-weight:800; color:#1a1d2e; line-height:1.2;">Your Quote is Ready</h1>
-          <p style="margin:0 0 28px; font-size:15px; color:#6b7280;">We've prepared pricing for your review.</p>
-          <p style="margin:0 0 16px; font-size:15px; color:#374151; line-height:1.7;">${_escHtml(greeting)}</p>
-          <p style="margin:0 0 4px; font-size:15px; color:#374151; line-height:1.7;">Your quote for <strong>${product}</strong> is ready. Please find the details below:</p>
-          ${itemsTable}
-          ${portalBtn}
-          <p style="margin:16px 0; font-size:15px; color:#374151; line-height:1.7;">Please review and don't hesitate to reach out with any questions or adjustments.</p>
-          <p style="margin:0; font-size:15px; color:#374151;">Thanks,<br><strong>Market Sculpt Team</strong></p>
+      <body style="margin:0; padding:20px; background:#fafbfc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#374151;">
+        <div style="max-width:780px; margin:0 auto;">
+          <p style="margin:0 0 14px; font-size:14px; color:#374151; line-height:1.6;">${_escHtml(greeting)}</p>
+          <p style="margin:0 0 18px; font-size:14px; color:#374151; line-height:1.6;">Your quote for <strong>${product}</strong> is ready. Please review the line items below.</p>
+
+          ${summaryBarHtml}
+
+          <table style="width:100%; border-collapse:collapse; margin-top:6px; background:#fff; font-family:inherit;">
+            ${tableHeader}
+            <tbody>
+              ${lineRowsHtml}
+              ${feesHtml}
+            </tbody>
+          </table>
+
+          <div style="margin-top:18px;">${summaryBarHtml}</div>
+
+          <div style="text-align:center; margin:28px 0 12px;">
+            <span style="display:inline-block; background:#E8751A; color:#fff; font-size:14px; font-weight:700; padding:13px 32px; border-radius:8px;">Review &amp; Approve Your Quote →</span>
+            <p style="margin:10px 0 0; font-size:11px; color:#9ba3c0; font-style:italic;">Portal link generated when you send.</p>
+          </div>
+
+          <p style="margin:18px 0 6px; font-size:13px; color:#374151; line-height:1.6;">Please review and don't hesitate to reach out with any questions or adjustments.</p>
+          <p style="margin:0; font-size:13px; color:#374151;">Thanks,<br><strong>Market Sculpt Team</strong></p>
         </div>
-        <p style="text-align:center; margin:18px 0 0; font-size:11px; color:#9ba3c0;">Market Sculpt · This is a preview — nothing has been sent yet.</p>
       </body></html>`;
   }
 
