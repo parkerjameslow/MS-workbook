@@ -2920,9 +2920,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px 24px;          /* row-gap : column-gap */
-      flex-wrap: wrap;         /* spill the right-side actions to a new row
-                                  when they can't fit alongside the flow steps */
+      gap: 24px;
       box-shadow: var(--shadow);
     }
 
@@ -2931,18 +2929,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       align-items: center;
       gap: 24px;
       flex: 1 1 auto;
-      min-width: 0;            /* allows the left side to shrink when actions wrap */
+      min-width: 0;            /* lets the flow steps shrink rather than push the actions off-screen */
     }
-
-    /* The right-side action cluster (Notify / RFQ / Send for Review /
-       Watchers / Back / Advance). Wrap onto a new row when the
-       combined width exceeds the available space so individual buttons
-       don't get clipped off the right edge of the card. */
-    .status-actions {
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      row-gap: 6px;
-    }
+    /* Sent-to-RFQ + Send-for-Review live in a vertical stack column so
+       the action row stays single-line even when both buttons are
+       visible. .status-actions itself stays display:flex (set inline
+       on the element) with no wrap. */
 
     .status-label {
       font-size: 13px;
@@ -5935,31 +5927,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         Notify Client
       </button>
-      <button id="btn-send-rfq" onclick="toggleSendToRfq()"
-        style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
-        title="Send this workbook to the RFQ queue for review">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-        <span id="btn-send-rfq-label">RFQ</span>
-      </button>
-      <!-- "Send for Review" — visible only while the workbook sits in
-           the RFQ Queue (sentToRfq === true AND flow_step === 1, which
-           is quoteSubmitted). Karen clicks this after finishing her
-           edits: it advances the workbook out of the queue and emails
-           Jackson + Parker that it's ready for review. Visibility is
-           managed in the status-bar renderer.
-           Style mirrors the outlined 'ready to select' state of the
-           sibling RFQ button — accent-coloured outline + label until
-           the operator clicks it; the click handler swaps in a filled
-           'Sent ✓' state. Icon is a paper-plane / send-arrow (NOT a
-           check mark) so the at-rest button doesn't look done. -->
-      <button id="btn-submit-review" onclick="submitCurrentWorkbookForReview()"
-        style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s, background 0.15s, color 0.15s;"
-        title="Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-        </svg>
-        Send for Review
-      </button>
+      <!-- RFQ button stack: 'Sent to RFQ' on top, 'Send for Review'
+           directly below it (same column). The two actions are part of
+           the same workflow — first the operator sends the workbook
+           into the RFQ Queue, then once edits are done they send it
+           back for review. Stacking keeps them grouped and avoids
+           pushing the rest of the action row off-screen. -->
+      <div id="rfq-btn-stack" style="display:none; flex-direction:column; gap:4px; align-items:stretch;">
+        <button id="btn-send-rfq" onclick="toggleSendToRfq()"
+          style="background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; justify-content:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
+          title="Send this workbook to the RFQ queue for review">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          <span id="btn-send-rfq-label">RFQ</span>
+        </button>
+        <!-- "Send for Review" — visible only while the workbook sits in
+             the RFQ Queue (sentToRfq === true AND flow_step === 1, which
+             is quoteSubmitted). Karen clicks this after finishing her
+             edits: it advances the workbook out of the queue and emails
+             Jackson + Parker that it's ready for review.
+             Outlined 'ready to select' style + paper-plane icon so the
+             at-rest button doesn't read as already-done. Click handler
+             swaps in a filled 'Sent ✓' state on success. -->
+        <button id="btn-submit-review" onclick="submitCurrentWorkbookForReview()"
+          style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; justify-content:center; gap:5px; white-space:nowrap; transition:opacity 0.15s, background 0.15s, color 0.15s;"
+          title="Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+          Send for Review
+        </button>
+      </div>
       <button id="btn-watchers" onclick="openWatchersModal()" class="wb-watchers-btn" title="Manage milestone watchers">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         <span>Watchers</span>
@@ -17442,12 +17439,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       notifyBtn.style.display = show ? 'inline-flex' : 'none';
     }
 
-    // Show "Send to RFQ" button only while status is at Quote Submitted (not advanced to Quote to Client)
-    const sendRfqBtn = document.getElementById('btn-send-rfq');
-    if (sendRfqBtn) {
-      const show = !!flow.quoteSubmitted && !flow.quoteClient;
-      sendRfqBtn.style.display = show ? 'inline-flex' : 'none';
-      if (show) {
+    // Show the RFQ button stack (Sent to RFQ + Send for Review) only
+    // while status is at Quote Submitted (not yet advanced to Quote to
+    // Client). The wrapper #rfq-btn-stack controls visibility for the
+    // whole vertical group; individual buttons inside still toggle on
+    // their own state (Sent to RFQ flips filled/outlined; Send for
+    // Review only appears once sentToRfq is true).
+    const sendRfqBtn   = document.getElementById('btn-send-rfq');
+    const rfqStackWrap = document.getElementById('rfq-btn-stack');
+    if (rfqStackWrap) {
+      const showStack = !!flow.quoteSubmitted && !flow.quoteClient;
+      rfqStackWrap.style.display = showStack ? 'flex' : 'none';
+      if (showStack && sendRfqBtn) {
         const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
         const sent = !!detail.sentToRfq;
         const label = document.getElementById('btn-send-rfq-label');
@@ -17457,12 +17460,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    // "Send for Review" — visible only while the workbook is parked in
-    // the RFQ Queue (sentToRfq === true AND we're still at the Quote
-    // Submitted stage). Once Karen clicks it the workbook advances past
-    // quoteSubmitted, the queue row disappears, and Jackson + Parker
-    // get an email. Hidden everywhere else so it can't be re-fired by
-    // accident after the order has moved on.
+    // "Send for Review" — visible (inside the stack) only while the
+    // workbook is actually parked in the RFQ Queue (sentToRfq === true
+    // AND we're still at the Quote Submitted stage). Once Karen clicks
+    // it the workbook advances past quoteSubmitted, the queue row
+    // disappears, and Jackson + Parker get an email. Hidden everywhere
+    // else so it can't be re-fired by accident after the order has
+    // moved on.
     const sendReviewBtn = document.getElementById('btn-submit-review');
     if (sendReviewBtn) {
       const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
