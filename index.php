@@ -2920,7 +2920,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 24px;
+      gap: 16px 24px;          /* row-gap : column-gap */
+      flex-wrap: wrap;         /* spill the right-side actions to a new row
+                                  when they can't fit alongside the flow steps */
       box-shadow: var(--shadow);
     }
 
@@ -2928,7 +2930,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex;
       align-items: center;
       gap: 24px;
-      flex: 1;
+      flex: 1 1 auto;
+      min-width: 0;            /* allows the left side to shrink when actions wrap */
+    }
+
+    /* The right-side action cluster (Notify / RFQ / Send for Review /
+       Watchers / Back / Advance). Wrap onto a new row when the
+       combined width exceeds the available space so individual buttons
+       don't get clipped off the right edge of the card. */
+    .status-actions {
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      row-gap: 6px;
     }
 
     .status-label {
@@ -5933,11 +5946,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            is quoteSubmitted). Karen clicks this after finishing her
            edits: it advances the workbook out of the queue and emails
            Jackson + Parker that it's ready for review. Visibility is
-           managed by syncSendForReviewBtn() in the flow renderer. -->
+           managed in the status-bar renderer.
+           Style mirrors the outlined 'ready to select' state of the
+           sibling RFQ button — accent-coloured outline + label until
+           the operator clicks it; the click handler swaps in a filled
+           'Sent ✓' state. Icon is a paper-plane / send-arrow (NOT a
+           check mark) so the at-rest button doesn't look done. -->
       <button id="btn-submit-review" onclick="submitCurrentWorkbookForReview()"
-        style="display:none; background:var(--accent); border:1px solid var(--accent); border-radius:8px; color:#fff; font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
+        style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s, background 0.15s, color 0.15s;"
         title="Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
         Send for Review
       </button>
       <button id="btn-watchers" onclick="openWatchersModal()" class="wb-watchers-btn" title="Manage milestone watchers">
