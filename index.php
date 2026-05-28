@@ -17719,26 +17719,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Parse Sale Per back to a number for the per-row line totals.
     const salePerUsd = parseFloat(String(stats.salePrice).replace(/[^\d.]/g, '')) || 0;
 
-    // Build one row per parent SKU (rolled-up — variant SKUs listed
-    // inline in the Item cell, matching the on-screen design).
+    // Build one row per parent SKU. Item cell shows just the parent
+    // name plus a small 'N variants' sub-line — NO inline variant
+    // name list. Qty + Total are aggregated across every variant so
+    // the customer-facing numbers stay correct even though the
+    // breakdown is collapsed.
     const lineRows = items.map((it, idx) => {
       const parentName = (it.item || `Item ${idx + 1}`).trim();
       const variants   = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty || v.priceRmb)) : [];
       let qty = 0;
-      const variantLabels = [];
       if (variants.length) {
         variants.forEach(v => {
           qty += parseFloat(String(v.qty || '').replace(/,/g, '')) || 0;
-          if (v.variant) variantLabels.push(String(v.variant).trim());
         });
       } else {
         qty = parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
       }
       const lineTotal = qty > 0 && salePerUsd > 0 ? qty * salePerUsd : 0;
-      const itemDesc = variantLabels.length
-        ? `${parentName}: ${variantLabels.join(', ')}${qty > 0 ? ' = ' + intFmt(qty) : ''}`
-        : parentName;
-      return { idx: idx + 1, itemDesc, qty, lineTotal };
+      return { idx: idx + 1, parentName, variantCount: variants.length, qty, lineTotal };
     });
 
     // Applied additional fees (e.g. Added Shipping Cost for Air + UPS,
@@ -17791,14 +17789,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const lineRowsHtml = lineRows.length === 0
       ? `<tr><td colspan="5" style="padding:18px 14px; text-align:center; color:#92400e; background:#fef3c7; font-size:13px;">⚠️ No line items entered yet — the client will receive an email with no quote table. Add RFQ items before sending.</td></tr>`
-      : lineRows.map(r => `
-          <tr>
-            <td style="padding:14px 12px 14px 14px; color:#6b93ff; font-weight:700; font-size:13px; border-bottom:1px solid #f1f3f5;">${r.idx}</td>
-            <td style="padding:14px 12px 14px 0; color:#1f2937; font-weight:500; font-size:13px; border-bottom:1px solid #f1f3f5;">${_escHtml(r.itemDesc)}</td>
-            <td style="padding:14px 12px; color:#1f2937; font-weight:600; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums;">${r.qty > 0 ? intFmt(r.qty) : '—'}</td>
-            <td style="padding:14px 12px; color:#1f2937; font-weight:500; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums;">${salePerUsd > 0 ? '$' + fmt2(salePerUsd) : '—'}</td>
-            <td style="padding:14px 12px 14px 14px; color:${r.lineTotal > 0 ? '#6b93ff' : '#9ca3af'}; font-weight:700; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums;">${r.lineTotal > 0 ? '$' + fmt2(r.lineTotal) : '—'}</td>
-          </tr>`).join('');
+      : lineRows.map(r => {
+          const subLine = r.variantCount > 0
+            ? `<div style="font-size:11px; color:#6b7280; margin-top:2px; font-weight:500;">${r.variantCount} variant${r.variantCount === 1 ? '' : 's'}</div>`
+            : '';
+          return `<tr>
+            <td style="padding:14px 12px 14px 14px; color:#6b93ff; font-weight:700; font-size:13px; border-bottom:1px solid #f1f3f5; vertical-align:top;">${r.idx}</td>
+            <td style="padding:14px 12px 14px 0; color:#1f2937; font-weight:500; font-size:13px; border-bottom:1px solid #f1f3f5; vertical-align:top;">${_escHtml(r.parentName)}${subLine}</td>
+            <td style="padding:14px 12px; color:#1f2937; font-weight:600; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums; vertical-align:top;">${r.qty > 0 ? intFmt(r.qty) : '—'}</td>
+            <td style="padding:14px 12px; color:#1f2937; font-weight:500; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums; vertical-align:top;">${salePerUsd > 0 ? '$' + fmt2(salePerUsd) : '—'}</td>
+            <td style="padding:14px 12px 14px 14px; color:${r.lineTotal > 0 ? '#6b93ff' : '#9ca3af'}; font-weight:700; font-size:13px; text-align:right; border-bottom:1px solid #f1f3f5; font-variant-numeric:tabular-nums; vertical-align:top;">${r.lineTotal > 0 ? '$' + fmt2(r.lineTotal) : '—'}</td>
+          </tr>`;
+        }).join('');
 
     // Additional fees — orange-tinted block matching the on-screen design.
     const feesHtml = fees.length === 0 ? '' : `
@@ -18711,7 +18713,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const variantData = [];
 
             group.variants.forEach(vr => {
-              const vi = vr.querySelectorAll('input:not([type="checkbox"])');
+              // Skip the SKU input — same shift-by-one fix applied at
+              // three other sites earlier. Without this, vi[0] reads
+              // the SKU (e.g. 'TN1L') instead of the variant name and
+              // vi[1] reads the variant NAME as qty (parses to 0 for
+              // 'X-Small', to 1 for '1XL', etc.), which produced the
+              // bogus 'Tank (Nude) qty = 6' the operator just flagged.
+              const vi = vr.querySelectorAll('input:not(.rfq-var-sku-input):not([type="checkbox"])');
               const vName = (vi[0]?.value || '').trim();
               const vQty  = _scaleQty(_msIntFromInput(vi[1]));
               const vLead = parseInt(_msStripCommasStr(vi[3]?.value)) || 0;
@@ -18753,24 +18761,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               : '';
             const saleText = saleMin === Infinity ? '—'
               : (isRange ? `${variablePill}$${_fmt2(saleMin)}–$${_fmt2(saleMax)}` : '$' + _fmt2(saleMin));
-            const itemDescParts = [parentName];
-            if (variantNames.length) itemDescParts.push(': ' + variantNames.join(', '));
-            if (totalQty > 0)        itemDescParts.push(' = ' + totalQty.toLocaleString('en-US'));
-            const itemDesc = itemDescParts.join('');
 
-            // Per UX direction — collapse variants into ONE parent row
-            // here. Variants live on the Inventory dashboard, not as
-            // expanded sub-rows in the Client Quote. The aggregate row
-            // still surfaces the variant names in itemDesc and shows a
-            // price range (with the Variable pill) when prices vary,
-            // so the operator can tell the parent covers a mix without
-            // having to drill into a sub-list.
+            // Per UX direction — DON'T list each variant name inline
+            // in the Item cell. Show just the parent name with a small
+            // 'N variants' sub-line underneath. The full breakdown
+            // lives on the Inventory dashboard; this row stays compact.
+            // Qty + Total still aggregate across every variant under
+            // the parent, so the customer-facing numbers are accurate
+            // even though the breakdown is hidden.
+            const variantCount = group.variants.length;
+            const variantSubLine = variantCount > 0
+              ? `<div style="font-size:11px; color:var(--text-muted); margin-top:2px; font-weight:500;">${variantCount} variant${variantCount === 1 ? '' : 's'}</div>`
+              : '';
             html += `<tr class="cq-parent-row no-variants" data-cq-parent="${parentId}">
-              <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
-              <td style="font-weight:500;">${itemDesc}</td>
-              <td style="text-align:right;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
-              <td style="text-align:right;">${saleText}</td>
-              <td style="text-align:right; font-weight:600; color:var(--accent);">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
+              <td style="color:var(--text-muted); width:24px; vertical-align:top; padding-top:10px;">${groupIdx}</td>
+              <td style="font-weight:500;">${parentName}${variantSubLine}</td>
+              <td style="text-align:right; vertical-align:top; padding-top:10px;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
+              <td style="text-align:right; vertical-align:top; padding-top:10px;">${saleText}</td>
+              <td style="text-align:right; font-weight:600; color:var(--accent); vertical-align:top; padding-top:10px;">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
             </tr>`;
           }
         });
