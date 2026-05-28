@@ -1522,16 +1522,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
     .inv-wb-pill-arrow { font-size: 11px; opacity: 0.75; flex-shrink: 0; }
-    /* RFQ Queue table — scoped column widths (override global .dash-table nth-child rules) */
+    /* RFQ Queue table — scoped column widths (override global .dash-table nth-child rules).
+       Eight columns now (ACTION added). Widths must sum to 100% so the
+       Send-for-Review button has room and doesn't overflow off the right
+       edge of the card. */
     #rfq-table { table-layout: fixed; }
-    #rfq-table th:nth-child(1), #rfq-table td:nth-child(1) { width: 12%; }   /* Client */
+    #rfq-table th:nth-child(1), #rfq-table td:nth-child(1) { width: 11%; }   /* Client */
     #rfq-table th:nth-child(2), #rfq-table td:nth-child(2) { width: 22%; }   /* Workbook */
-    #rfq-table th:nth-child(3), #rfq-table td:nth-child(3) { width: 12%; }   /* Submitted */
-    #rfq-table th:nth-child(4), #rfq-table td:nth-child(4) { width: 10%; }   /* Lines */
-    #rfq-table th:nth-child(5), #rfq-table td:nth-child(5) { width: 12%; }   /* Qty */
-    #rfq-table th:nth-child(6), #rfq-table td:nth-child(6) { width: 16%; }   /* RMB */
-    #rfq-table th:nth-child(7), #rfq-table td:nth-child(7) { width: 16%; }   /* USD */
+    #rfq-table th:nth-child(3), #rfq-table td:nth-child(3) { width: 10%; }   /* Submitted */
+    #rfq-table th:nth-child(4), #rfq-table td:nth-child(4) { width: 7%;  }   /* Lines */
+    #rfq-table th:nth-child(5), #rfq-table td:nth-child(5) { width: 9%;  }   /* Qty */
+    #rfq-table th:nth-child(6), #rfq-table td:nth-child(6) { width: 11%; }   /* RMB */
+    #rfq-table th:nth-child(7), #rfq-table td:nth-child(7) { width: 12%; }   /* USD */
+    #rfq-table th:nth-child(8), #rfq-table td:nth-child(8) { width: 18%; }   /* Action */
     #rfq-table th, #rfq-table td { padding-left: 12px; padding-right: 12px; }
+    /* Client cell — plain coloured text, no pill/chip background or
+       border. The whole row is the click target now; nesting the client
+       name in a chip just adds visual clutter without an interaction. */
+    #rfq-table .rfq-client-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    /* Send-for-Review button — sized + ellipsised so it always fits its
+       column, even when the table compresses on narrower viewports. */
+    #rfq-table .rfq-review-btn {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
 
     /* Samples table — scoped column widths so columns size proportionally to
        the available space (table-layout:fixed + percent widths). The global
@@ -24145,8 +24167,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const productEsc = String(r.product || '').replace(/'/g, "\\'");
       return `
         <tr class="rfq-row" style="cursor:pointer;" onclick="location.hash='${wbHref.substring(1)}'">
-          <td><span class="inv-client-chip" style="${_clientChipStyle(r.clientName)}; cursor:default;" title="${clientEsc}">${r.clientName}</span></td>
-          <td style="font-weight:600; color:var(--text);">${r.product}<span style="font-size:11px; color:var(--text-muted); margin-left:8px; font-weight:500;">→ open</span></td>
+          <td><span class="rfq-client-name" title="${clientEsc}">${r.clientName}</span></td>
+          <td style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.product}<span style="font-size:11px; color:var(--text-muted); margin-left:8px; font-weight:500;">→ open</span></td>
           <td style="color:var(--text-muted); font-size:12px;" title="${r.sentToRfqAt || ''}">${_rfqTimeAgo(r.sentToRfqAt)}</td>
           <td style="text-align:right;">${r.lineItems}</td>
           <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
