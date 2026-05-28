@@ -5906,6 +5906,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
         <span id="btn-send-rfq-label">RFQ</span>
       </button>
+      <!-- "Send for Review" — visible only while the workbook sits in
+           the RFQ Queue (sentToRfq === true AND flow_step === 1, which
+           is quoteSubmitted). Karen clicks this after finishing her
+           edits: it advances the workbook out of the queue and emails
+           Jackson + Parker that it's ready for review. Visibility is
+           managed by syncSendForReviewBtn() in the flow renderer. -->
+      <button id="btn-submit-review" onclick="submitCurrentWorkbookForReview()"
+        style="display:none; background:var(--accent); border:1px solid var(--accent); border-radius:8px; color:#fff; font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
+        title="Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Send for Review
+      </button>
       <button id="btn-watchers" onclick="openWatchersModal()" class="wb-watchers-btn" title="Manage milestone watchers">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         <span>Watchers</span>
@@ -7698,6 +7710,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">QTY</th>
               <th style="text-align:right;">RMB</th>
               <th style="text-align:right;">USD</th>
+              <th style="text-align:right;">ACTION</th>
             </tr>
           </thead>
           <tbody id="rfq-tbody">
@@ -17402,6 +17415,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
+    // "Send for Review" — visible only while the workbook is parked in
+    // the RFQ Queue (sentToRfq === true AND we're still at the Quote
+    // Submitted stage). Once Karen clicks it the workbook advances past
+    // quoteSubmitted, the queue row disappears, and Jackson + Parker
+    // get an email. Hidden everywhere else so it can't be re-fired by
+    // accident after the order has moved on.
+    const sendReviewBtn = document.getElementById('btn-submit-review');
+    if (sendReviewBtn) {
+      const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
+      const inQueue = !!detail.sentToRfq && !!flow.quoteSubmitted && !flow.quoteClient;
+      sendReviewBtn.style.display = inQueue ? 'inline-flex' : 'none';
+    }
+
     // Lock Product Overview tab once Quote to Client (index 2) or beyond
     lockWorkbookTab(currentIdx >= 2);
   }
@@ -24112,20 +24138,78 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const wbHref = `#/client/${encodeURIComponent(r.clientName)}/workbook/${r.workbookId}`;
       const rmb = r.totalRmb > 0 ? `¥${Math.round(r.totalRmb).toLocaleString('en-US')}` : '—';
       const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      // Whole row is the affordance to open the workbook so Karen can
+      // edit it. Client name is intentionally non-navigable here — the
+      // RFQ Queue is a workspace, not a client-browsing surface.
+      const clientEsc  = String(r.clientName || '').replace(/'/g, "\\'");
+      const productEsc = String(r.product || '').replace(/'/g, "\\'");
       return `
-        <tr>
-          <td><span class="inv-client-chip" style="${_clientChipStyle(r.clientName)}">${r.clientName}</span></td>
-          <td>
-            <span class="inv-wb-pill" onclick="location.hash='${wbHref.substring(1)}'" title="${r.product}"><span class="inv-wb-pill-text">${r.product}</span><span class="inv-wb-pill-arrow">→</span></span>
-          </td>
+        <tr class="rfq-row" style="cursor:pointer;" onclick="location.hash='${wbHref.substring(1)}'">
+          <td><span class="inv-client-chip" style="${_clientChipStyle(r.clientName)}; cursor:default;" title="${clientEsc}">${r.clientName}</span></td>
+          <td style="font-weight:600; color:var(--text);">${r.product}<span style="font-size:11px; color:var(--text-muted); margin-left:8px; font-weight:500;">→ open</span></td>
           <td style="color:var(--text-muted); font-size:12px;" title="${r.sentToRfqAt || ''}">${_rfqTimeAgo(r.sentToRfqAt)}</td>
           <td style="text-align:right;">${r.lineItems}</td>
           <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
           <td style="text-align:right; white-space:nowrap;">${rmb}</td>
           <td style="text-align:right; white-space:nowrap; color:var(--success);">${usd}</td>
+          <td style="text-align:right;">
+            <button class="btn rfq-review-btn"
+              onclick="event.stopPropagation(); submitWorkbookForReview(${r.workbookId}, '${clientEsc}', '${productEsc}', this);"
+              title="Mark as ready for review — advances the workbook out of the queue and emails Jackson + Parker."
+              style="font-size:11px; padding:5px 11px; white-space:nowrap; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
+              Send for Review
+            </button>
+          </td>
         </tr>
       `;
     }).join('');
+  }
+
+  // Hover affordance for the now-clickable RFQ Queue rows. Adds a
+  // subtle background tint so it's obvious the row is the click target.
+  (function _injectRfqRowHoverCss() {
+    if (document.getElementById('rfq-row-hover-style')) return;
+    const s = document.createElement('style');
+    s.id = 'rfq-row-hover-style';
+    s.textContent = `
+      .rfq-row:hover { background: rgba(110, 140, 255, 0.05); }
+      .rfq-row:hover td { color: var(--text); }
+      .rfq-review-btn:hover { opacity: 0.9; }
+      .rfq-review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    `;
+    document.head.appendChild(s);
+  })();
+
+  // Per-row "Send for Review" action on the RFQ Queue. Tells the server
+  // to advance this workbook past quoteSubmitted (so it leaves the queue)
+  // and email the internal review list (Jackson + Parker). The button
+  // disables itself + shows a spinner while the request is in flight so
+  // double-clicks don't fire twice.
+  async function submitWorkbookForReview(workbookId, clientName, productName, btn) {
+    if (!workbookId) return;
+    if (btn) { btn.disabled = true; const old = btn.textContent; btn.dataset.oldLabel = old; btn.textContent = 'Sending…'; }
+    try {
+      const res = await apiCall('submit_for_review', {
+        workbook_id: workbookId,
+        client_name: clientName || '',
+        product_name: productName || '',
+      });
+      if (res && res.success) {
+        if (btn) { btn.textContent = 'Sent ✓'; btn.style.background = 'var(--success, #10b981)'; }
+        // Refresh the queue so the row drops out (workbook advanced
+        // past quoteSubmitted → no longer qualifies).
+        if (typeof renderRfqDashboard === 'function') {
+          setTimeout(renderRfqDashboard, 600);
+        }
+      } else {
+        alert('Couldn\'t submit for review: ' + (res && res.error ? res.error : 'unknown error'));
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
+      }
+    } catch (e) {
+      console.error('[submitWorkbookForReview]', e);
+      alert('Network error sending for review — try again.');
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
+    }
   }
 
   // Toggle current workbook's sentToRfq state — called from the RFQ button on status bar
@@ -24159,6 +24243,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const items = clientData[currentClient];
     const item = items ? items.find(i => i.id === parseInt(currentWorkbookId)) : null;
     if (item) renderStatusBar(item.flow);
+  }
+
+  // Called from the in-workbook "Send for Review" button. Same backend
+  // action as the RFQ Queue button — submit_for_review advances the
+  // flow past quoteSubmitted (so the workbook leaves the queue) and
+  // emails Jackson + Parker that it's ready for review.
+  async function submitCurrentWorkbookForReview() {
+    if (!currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    const detail = workbookDetail[key] || {};
+    const productName = detail.product || document.getElementById('product-name')?.value || '';
+    const btn = document.getElementById('btn-submit-review');
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    if (btn) { btn.disabled = true; btn.dataset.oldLabel = btn.textContent; btn.textContent = 'Sending…'; }
+    try {
+      // Make sure the latest edits land in detail_json before we mark
+      // the workbook ready — otherwise Karen's review request would
+      // ship the pre-edit state to Jackson + Parker.
+      try {
+        const liveDetail = collectWorkbookDetail();
+        workbookDetail[key] = liveDetail;
+        await apiCall('save_workbook_detail', { id: dbId, detail: liveDetail, changed_by: getCurrentUser() });
+      } catch (e) { console.error('[submitForReview] save failed', e); }
+
+      const res = await apiCall('submit_for_review', {
+        workbook_id: dbId,
+        client_name: currentClient,
+        product_name: productName,
+      });
+      if (res && res.success) {
+        if (btn) { btn.textContent = 'Sent ✓'; btn.style.background = 'var(--success, #10b981)'; }
+        // Refresh the status bar so the advance applies + the button hides.
+        const items = clientData[currentClient];
+        const itemRow = items ? items.find(i => i.id === parseInt(currentWorkbookId)) : null;
+        if (itemRow && res.flow) { itemRow.flow = res.flow; renderStatusBar(itemRow.flow); }
+        try { rebuildRfqNav(); } catch (_) {}
+      } else {
+        alert('Couldn\'t submit for review: ' + (res && res.error ? res.error : 'unknown error'));
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
+      }
+    } catch (e) {
+      console.error('[submitCurrentWorkbookForReview]', e);
+      alert('Network error sending for review — try again.');
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
+    }
   }
 
   function router() {

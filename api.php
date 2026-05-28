@@ -1255,6 +1255,102 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
+    /*
+     * submit_for_review — Karen has finished her edits on a workbook
+     * sitting in the RFQ Queue and is sending it back to internal
+     * reviewers (Jackson + Parker). Atomically:
+     *   1. Advances the workbook's flow_step from 1 (quoteSubmitted) to
+     *      2 (quoteClient) so it drops out of the RFQ Queue. Other
+     *      stages are rejected so the action can't accidentally
+     *      re-fire after the order has moved on.
+     *   2. Emails the internal review list with a link back to the
+     *      workbook so they can open it directly from the inbox.
+     *
+     * Returns the new flow object the frontend can use to re-render
+     * the status bar without a round-trip refresh.
+     */
+    case 'submit_for_review': {
+        if (empty($input['workbook_id'])) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id required']);
+            break;
+        }
+        $wbId = (int)$input['workbook_id'];
+
+        // Look up the workbook + current flow_step. Guard against
+        // operating on a deleted workbook or one already past the
+        // RFQ-queue stage.
+        $stmt = $pdo->prepare("SELECT id, flow_step, deleted_at FROM workbooks WHERE id = ?");
+        $stmt->execute([$wbId]);
+        $wb = $stmt->fetch();
+        if (!$wb) {
+            echo json_encode(['success' => false, 'error' => 'Workbook not found']);
+            break;
+        }
+        if (!empty($wb['deleted_at'])) {
+            echo json_encode(['success' => false, 'error' => 'Workbook is archived']);
+            break;
+        }
+        $curStep = (int)$wb['flow_step'];
+        // Allow only when currently at quoteSubmitted (1). Anywhere
+        // else would mean the workbook isn't actually in the queue.
+        if ($curStep !== 1) {
+            echo json_encode([
+                'success' => false,
+                'error'   => 'Workbook is not in the RFQ Queue stage (current flow_step=' . $curStep . ').'
+            ]);
+            break;
+        }
+
+        $newStep = 2; // quoteClient — "Quote to Client" / ready-for-review
+        $up = $pdo->prepare("UPDATE workbooks SET flow_step = ? WHERE id = ?");
+        $up->execute([$newStep, $wbId]);
+
+        // Build the flow object the frontend status-bar renderer expects:
+        // cumulative booleans up to + including the current step.
+        $flowKeys = ['quoteChina', 'quoteSubmitted', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
+        $flow = [];
+        foreach ($flowKeys as $idx => $k) { $flow[$k] = ($idx <= $newStep); }
+
+        // Email the internal review list. Best-effort: if SMTP fails,
+        // the flow advance still stands (we don't roll back) but the
+        // operator gets a flagged response so they know to ping
+        // Jackson + Parker manually.
+        $clientName  = trim((string)($input['client_name']  ?? ''));
+        $productName = trim((string)($input['product_name'] ?? ''));
+        $reviewer    = trim((string)($_SESSION['username']  ?? ($_SESSION['email'] ?? 'Someone')));
+        $internal    = ['jackson@marketsculpt.com', 'parker@marketsculpt.com'];
+
+        $hostBase = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com');
+        $clientSafe = rawurlencode($clientName);
+        $wbUrl    = $hostBase . '/#/client/' . $clientSafe . '/workbook/' . $wbId;
+        $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
+
+        $subject = 'Workbook ready for review: ' . ($productName !== '' ? $productName : ('Workbook #' . $wbId))
+                 . ($clientName !== '' ? ' — ' . $clientName : '');
+        $html = '<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif; font-size:14px; color:#1a1a1a; max-width:560px;">'
+              . '<p>' . $esc($reviewer) . ' has finished editing a workbook in the RFQ Queue and marked it ready for your review.</p>'
+              . '<table style="border-collapse:collapse; margin:14px 0; font-size:13px;">'
+              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Client</td><td style="padding:4px 0; font-weight:600;">' . $esc($clientName !== '' ? $clientName : '—') . '</td></tr>'
+              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Workbook</td><td style="padding:4px 0; font-weight:600;">' . $esc($productName !== '' ? $productName : ('#' . $wbId)) . '</td></tr>'
+              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Workbook&nbsp;ID</td><td style="padding:4px 0;">#' . (int)$wbId . '</td></tr>'
+              . '</table>'
+              . '<p><a href="' . $esc($wbUrl) . '" style="display:inline-block; background:#5b6fcc; color:#fff; padding:9px 18px; border-radius:6px; text-decoration:none; font-weight:600;">Open Workbook</a></p>'
+              . '<p style="color:#666; font-size:12px; margin-top:20px;">The workbook has been advanced out of the RFQ Queue (now at <strong>Quote to Client</strong>).</p>'
+              . '</body></html>';
+
+        $mail = ms_smtp_send($internal, $subject, $html);
+
+        echo json_encode([
+            'success'    => true,
+            'flow_step'  => $newStep,
+            'flow'       => $flow,
+            'email_sent' => !empty($mail['ok']),
+            'email_error'=> empty($mail['ok']) ? ($mail['error'] ?? 'unknown') : null,
+            'reviewers'  => $internal,
+        ]);
+        break;
+    }
+
     case 'delete_workbook':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
