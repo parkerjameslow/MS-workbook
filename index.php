@@ -17582,7 +17582,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       rfqStackWrap.style.display = showStack ? 'flex' : 'none';
       if (sendRfqBtn) {
         // Sent-to-RFQ only applies at stage 1 (quoteSubmitted, not yet
-        // quoteClient).
+        // quoteClient). Once sent, the button locks itself — the
+        // operator has to use the status-bar back button to drop the
+        // flag before they can re-send. Prevents accidental re-fires.
         const rfqApplicable = !!flow.quoteSubmitted && !flow.quoteClient;
         sendRfqBtn.style.display = rfqApplicable ? 'inline-flex' : 'none';
         if (rfqApplicable) {
@@ -17592,6 +17594,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           if (label) label.textContent = sent ? '✓ Sent to RFQ' : 'RFQ';
           sendRfqBtn.style.background = sent ? 'var(--accent)' : 'none';
           sendRfqBtn.style.color = sent ? '#fff' : 'var(--accent)';
+          sendRfqBtn.disabled = sent;
+          sendRfqBtn.style.cursor = sent ? 'not-allowed' : 'pointer';
+          sendRfqBtn.style.opacity = sent ? '0.85' : '1';
+          sendRfqBtn.title = sent
+            ? 'Already in the RFQ queue. Use the back button (←) to undo and re-send.'
+            : 'Send this workbook to the RFQ queue for review';
         }
       }
     }
@@ -17617,11 +17625,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const iconSend = sendReviewBtn.querySelector('.btn-submit-review-icon-send');
         const iconSent = sendReviewBtn.querySelector('.btn-submit-review-icon-sent');
         const label    = document.getElementById('btn-submit-review-label');
+        // Once sent, the button locks. Same model as Sent to RFQ —
+        // operator goes back via the status-bar back button (←) to
+        // re-enable it (revertStatus clears the flag).
+        sendReviewBtn.disabled = alreadySent;
+        sendReviewBtn.style.cursor = alreadySent ? 'not-allowed' : 'pointer';
+        sendReviewBtn.style.opacity = alreadySent ? '0.85' : '1';
         if (alreadySent) {
           sendReviewBtn.style.background   = 'var(--success, #10b981)';
           sendReviewBtn.style.color        = '#fff';
           sendReviewBtn.style.borderColor  = 'var(--success, #10b981)';
-          sendReviewBtn.title              = 'Already sent to Jackson + Parker. Click to re-send the review email.';
+          sendReviewBtn.title              = 'Already sent to Jackson + Parker. Use the back button (←) to undo and re-send.';
           if (iconSend) iconSend.style.display = 'none';
           if (iconSent) iconSent.style.display = '';
           if (label)    label.textContent      = 'Sent for Review';
@@ -17629,7 +17643,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           sendReviewBtn.style.background   = 'none';
           sendReviewBtn.style.color        = 'var(--accent)';
           sendReviewBtn.style.borderColor  = 'var(--accent)';
-          sendReviewBtn.title              = 'Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.';
+          sendReviewBtn.title              = 'Mark this workbook as ready for review — emails Jackson + Parker.';
           if (iconSend) iconSend.style.display = '';
           if (iconSent) iconSent.style.display = 'none';
           if (label)    label.textContent      = 'Send for Review';
@@ -18141,8 +18155,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
+    // Back-stepping the status also clears the one-shot flags that
+    // gate Sent to RFQ + Send for Review. Without this the buttons
+    // would stay locked in their 'Sent ✓' state forever, even after
+    // the operator backed out and wanted to re-send. Per UX direction:
+    // 'go back in the status flow and make sure the buttons are
+    // deactivated again' — so deactivate them here.
+    const key = `${currentClient}|${currentWorkbookId}`;
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    const detail = workbookDetail[key];
+    let detailChanged = false;
+    if (detail) {
+      if (detail.sentToRfq || detail.sentToRfqAt) {
+        detail.sentToRfq   = false;
+        detail.sentToRfqAt = null;
+        detailChanged = true;
+      }
+      if (detail.sentForReview || detail.sentForReviewAt) {
+        detail.sentForReview   = false;
+        detail.sentForReviewAt = null;
+        detailChanged = true;
+      }
+      if (detailChanged) {
+        try { apiCall('save_workbook_detail', { id: dbId, detail, changed_by: getCurrentUser() }); }
+        catch (e) { console.error('[revertStatus] save_workbook_detail failed', e); }
+      }
+    }
+
     renderStatusBar(item.flow);
-    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     apiCall('update_flow', { id: dbId, flow_step: flowToStep(item.flow) });
     saveToLocalStorage();
     rebuildRfqNav();      // status moved — may enter/leave RFQ queue
@@ -24438,6 +24478,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!currentClient || !currentWorkbookId) return;
     const key = `${currentClient}|${currentWorkbookId}`;
 
+    // Once sent, the button is one-shot until the operator uses the
+    // back button (←) on the status bar to revert. Defense-in-depth
+    // for the disabled attribute set in renderStatusBar — scripted
+    // clicks / accessibility tooling shouldn't be able to re-fire.
+    const existingDetail = workbookDetail[key] || {};
+    if (existingDetail.sentToRfq) return;
+
     // Collect fresh DOM state so we never overwrite the DB record with a stale/partial detail.
     // collectWorkbookDetail now preserves sentToRfq/sentToRfqAt from the existing entry,
     // so we set the new flags AFTER collecting.
@@ -24445,7 +24492,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { detail = collectWorkbookDetail(); }
     catch(e) {
       console.error('[RFQ] collectWorkbookDetail failed, falling back to existing detail', e);
-      detail = Object.assign({}, workbookDetail[key] || {});
+      detail = Object.assign({}, existingDetail);
     }
     const turningOn = !detail.sentToRfq;
     detail.sentToRfq   = turningOn;
@@ -24475,6 +24522,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!currentClient || !currentWorkbookId) return;
     const key = `${currentClient}|${currentWorkbookId}`;
     const detail = workbookDetail[key] || {};
+    // One-shot per stage 1 — operator goes back via ← to re-enable.
+    // Defense-in-depth for the disabled attribute on the button.
+    if (detail.sentForReview) return;
     const productName = detail.product || document.getElementById('product-name')?.value || '';
     const btn = document.getElementById('btn-submit-review');
     const labelEl = document.getElementById('btn-submit-review-label');
