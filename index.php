@@ -28396,7 +28396,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const units = (!isNaN(palletTot) && palletTot > 0)
       ? palletTot
       : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
-    const weightKg = parseFloat(d.pricingShipmentWeightKg) || 0;
+    let weightKg = parseFloat(d.pricingShipmentWeightKg) || 0;
+    if (weightKg === 0) {
+      // Fallback: the cache is only written from renderPalletViz (which
+      // needs carton dims to produce pallets) or from calcFreight's
+      // weight-driven branch (which needs the workbook to be opened to
+      // run). Compute the honest value here from the same override
+      // fields used by _shipUnit, so the Orders page can render weight
+      // even when neither writer has fired yet for this workbook.
+      if (d.weightOnlyOverride) {
+        const wq = parseInt(String(d.weightOnlyCaseQty || '').replace(/,/g, ''), 10) || 0;
+        const wk = parseFloat(d.weightOnlyKg) || 0;
+        if (wq > 0 && wk > 0) weightKg = wq * wk;
+      } else if (d.caseOnlyOverride) {
+        const cn = parseInt(String(d.caseOnlyCasesOrder || '').replace(/,/g, ''), 10) || 0;
+        const ck = parseFloat(d.caseOnlyWeightKg) || 0;
+        if (cn > 0 && ck > 0) weightKg = cn * ck;
+      } else {
+        // Default flow — outer-carton weight × ceil(units / units-per-outer).
+        const ow = parseFloat(d.cartonOuterWeight) || 0;
+        const ic = parseInt(d.cartonInnerCount) || 0;
+        const oc = parseInt(d.cartonOuterCount) || 0;
+        const upo = ic * oc;
+        if (ow > 0 && upo > 0 && units > 0) {
+          weightKg = ow * Math.ceil(units / upo);
+        }
+      }
+    }
     // Prefer the new Grand Total Cost bar value; fall back to the
     // older landed-total cache so existing workbooks aren't stuck on 0
     // until they're re-opened on the Pricing tab.
