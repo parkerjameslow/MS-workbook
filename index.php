@@ -28404,11 +28404,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const price = parseFloat(d.pricingClientQuoteTotal) || 0;
     let cbm = parseFloat(d.pricingShipmentCbm) || 0;
     if (cbm === 0 && units > 0) {
-      const pl = parseFloat(d.dimCmL) || 0;
-      const pw = parseFloat(d.dimCmW) || 0;
-      const ph = parseFloat(d.dimCmH) || 0;
-      if (pl > 0 && pw > 0 && ph > 0) {
-        cbm = (pl * pw * ph * units) / 1_000_000;
+      // Fallback hierarchy depends on which Override is active. The
+      // product-dim fallback is meaningless when the operator chose
+      // Case-Only (ship unit = case, not product) or Weight-Only
+      // (no dims at all). Without this guard, Candy Pan-style workbooks
+      // — case-only with leftover product dims from a prior life — show
+      // a fake CBM derived from product L×W×H × units that bears no
+      // relation to how the goods actually ship.
+      if (d.weightOnlyOverride) {
+        // No dims, period. CBM is genuinely unknown.
+        cbm = 0;
+      } else if (d.caseOnlyOverride) {
+        // Use case dims × case count if supplied; otherwise unknown.
+        const cl = parseFloat(d.caseOnlyLCm) || 0;
+        const cw = parseFloat(d.caseOnlyWCm) || 0;
+        const ch = parseFloat(d.caseOnlyHCm) || 0;
+        const cn = parseInt(String(d.caseOnlyCasesOrder || '').replace(/,/g, ''), 10) || 0;
+        if (cl > 0 && cw > 0 && ch > 0 && cn > 0) {
+          cbm = (cl * cw * ch * cn) / 1_000_000;
+        }
+      } else {
+        // Default mode — product dims × units, the historical fallback.
+        const pl = parseFloat(d.dimCmL) || 0;
+        const pw = parseFloat(d.dimCmW) || 0;
+        const ph = parseFloat(d.dimCmH) || 0;
+        if (pl > 0 && pw > 0 && ph > 0) {
+          cbm = (pl * pw * ph * units) / 1_000_000;
+        }
       }
     }
     // Total lead = max(production lead across rfqItems) + max
