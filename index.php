@@ -4149,6 +4149,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qr-expand-toggle .section-chevron { margin-left: 0; padding-right: 2px; font-size: 14px; line-height: 1; vertical-align: middle; position: relative; top: -1px; }
 
     .pricing-quote-ref-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    /* Fee-only workbook (no RFQ qtys typed) — Sale Price column has
+       nothing to show, so hide it entirely. Total column then carries
+       the fee amount as the only number in that row. */
+    .pricing-quote-ref-table.no-sale-col th:nth-child(4),
+    .pricing-quote-ref-table.no-sale-col td:nth-child(4) { display: none; }
     .pricing-quote-ref-table th {
       font-size: 10px;
       font-weight: 700;
@@ -19259,11 +19264,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return hasName || hasQty || hasRmb || g.variants.length > 0;
       });
 
-      if (realGroups.length === 0) {
+      if (realGroups.length === 0 && _appliedFeesArr.length === 0) {
         refEl.innerHTML = '<span class="pricing-no-selection">Add items to Quote Details on the Workbook tab.</span>';
       } else {
+        // Pre-pass: figure out if ANY RFQ row carries a qty. When the
+        // workbook is fee-only (operator using it to quote tooling /
+        // sample / design with no per-unit product), the Sale Price
+        // column would just show "—" everywhere — we hide it via a
+        // CSS class so the fee total reads cleanly as the only number.
+        let hasAnyQty = false;
+        realGroups.forEach(group => {
+          const pInputs = group.parentInputs;
+          if (group.variants.length === 0) {
+            if (_scaleQty(_msIntFromInput(pInputs[2])) > 0) hasAnyQty = true;
+          } else {
+            group.variants.forEach(vr => {
+              const vi = vr.querySelectorAll('input:not(.rfq-var-sku-input):not([type="checkbox"])');
+              if (_scaleQty(_msIntFromInput(vi[1])) > 0) hasAnyQty = true;
+            });
+          }
+        });
+        const tableClass = hasAnyQty
+          ? 'pricing-quote-ref-table'
+          : 'pricing-quote-ref-table no-sale-col';
         let html = `<div style="overflow-x:auto;">
-          <table class="pricing-quote-ref-table">
+          <table class="${tableClass}">
             <thead><tr>
               <th></th>
               <th>Item</th>
@@ -19878,8 +19903,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Total USD: Sale Per × effective qty + applied fees. effectiveQty
     // rolls up to the Full Container Pitch when applied so the Client
     // Quote header + footer + line items all reflect the bumped qty.
+    // Fee-only workbook support: if there's no product sale (no Sale
+    // Per × qty), the total still populates from applied fees alone —
+    // operator can use a workbook as 'tooling fee only' without
+    // forcing an RFQ line item.
     const saleProductTotal = (!isNaN(salePer) && salePer > 0 && effectiveQty > 0) ? _msCeil2(salePer * effectiveQty) : NaN;
-    const totalUsd = !isNaN(saleProductTotal) ? _msCeil2(saleProductTotal + _appliedFeesTotal) : NaN;
+    let totalUsd;
+    if (!isNaN(saleProductTotal)) {
+      totalUsd = _msCeil2(saleProductTotal + _appliedFeesTotal);
+    } else if (_appliedFeesTotal > 0) {
+      totalUsd = _msCeil2(_appliedFeesTotal);
+    } else {
+      totalUsd = NaN;
+    }
 
     // Cache the Client Quote Total (sale × qty + fees) so the Add to
     // Order picker can sum customer-facing totals across selected
