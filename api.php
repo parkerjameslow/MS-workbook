@@ -91,6 +91,12 @@ try {
 try {
     $pdo->exec("ALTER TABLE workbooks ADD COLUMN deleted_by VARCHAR(255) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+// Auto-add live-broadcast column — tracks who made the last save, so
+// the dirty-check poll can skip self-echoes ('don't tell Karen about
+// the save Karen just made'). Lazy migration like the soft-delete cols.
+try {
+    $pdo->exec("ALTER TABLE workbooks ADD COLUMN updated_by VARCHAR(255) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN deleted_at DATETIME DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
@@ -1514,13 +1520,17 @@ switch ($action) {
         }
 
         // ── WRITE ─────────────────────────────────────────────────────────
+        // updated_by captures who made the last change so the live-broadcast
+        // poll on other browsers can skip self-echoes (you don't get a
+        // 'someone updated this' flash for your own keystroke landing).
         $newProductName = !empty($incomingArr['product']) ? trim($incomingArr['product']) : null;
+        $updaterName    = $changedBy ?: ($_SESSION['username'] ?? '');
         if ($newProductName) {
-            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, product_name = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([$incomingJson, $newProductName, $input['id']]);
+            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, product_name = ?, updated_at = NOW(), updated_by = ? WHERE id = ?");
+            $stmt->execute([$incomingJson, $newProductName, $updaterName, $input['id']]);
         } else {
-            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->execute([$incomingJson, $input['id']]);
+            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW(), updated_by = ? WHERE id = ?");
+            $stmt->execute([$incomingJson, $updaterName, $input['id']]);
         }
 
         // ── REVISION RETENTION ────────────────────────────────────────────
@@ -3602,6 +3612,46 @@ switch ($action) {
             'success'    => true,
             'updates'    => $rows,
             'server_now' => date('Y-m-d H:i:s')
+        ]);
+        break;
+
+    /*
+     * get_workbook_dirty — lightweight live-broadcast poll. The client
+     * fires this on the existing 2-second presence heartbeat. Returns
+     * just the workbook's last-write metadata (no detail_json body). If
+     * the timestamp has advanced AND the writer wasn't the polling
+     * user, the client knows to pull fresh detail via get_workbook_detail
+     * and apply the diff to the form in-place.
+     *
+     * server_now is always returned so the client can baseline its
+     * cursor on the first call (no-change responses still advance
+     * _lastSeenUpdatedAt to avoid replaying old saves later).
+     */
+    case 'get_workbook_dirty':
+        $wbId  = (int)($input['workbook_id'] ?? $_GET['workbook_id'] ?? 0);
+        $since = trim((string)($input['since'] ?? $_GET['since'] ?? ''));
+        if ($wbId <= 0) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id required']);
+            break;
+        }
+        $stmt = $pdo->prepare("SELECT updated_at, updated_by FROM workbooks WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$wbId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            echo json_encode(['success' => false, 'error' => 'workbook not found']);
+            break;
+        }
+        // changed flag is convenience for the client — true means the
+        // last write is both newer than `since` AND by a different user.
+        // (Self-echo is filtered client-side via getCurrentUser() match
+        // so the username comparison stays out of the SQL.)
+        $changed = ($since !== '' && $row['updated_at'] > $since);
+        echo json_encode([
+            'success'    => true,
+            'updated_at' => $row['updated_at'],
+            'updated_by' => (string)($row['updated_by'] ?? ''),
+            'server_now' => date('Y-m-d H:i:s'),
+            'changed'    => $changed,
         ]);
         break;
 

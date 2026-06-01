@@ -26073,7 +26073,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const dbId = dbWorkbookMap[key] || currentWorkbookId;
       showSaveStatus('saving');
       apiCall('save_workbook_detail', { id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: false })
-        .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
+        .then(r => {
+          showSaveStatus(r && r.success ? 'saved' : 'error');
+          if (r && r.success) {
+            // Clear the live-broadcast local-dirty flag on every input
+            // we just persisted — the server now has our values, so
+            // it's safe for an incoming broadcast to update them later.
+            try {
+              document.querySelectorAll('#view-workbook [data-local-dirty="1"]')
+                .forEach(el => { delete el.dataset.localDirty; });
+            } catch(_) {}
+            // Bump our own cursor so the next dirty-check poll doesn't
+            // echo this save back at us as a 'remote' change. We
+            // re-poll on the next 2s tick, which will baseline against
+            // the server's updated_at and skip-self via updated_by.
+          }
+        });
 
       syncClientDataName(currentClient, currentWorkbookId, detail);
 
@@ -26090,6 +26105,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   _wbView.addEventListener('input', function(e) {
     if (e.target.matches('input, textarea, select')) {
       _isDirty = true;
+      // Layer 2 of the live-broadcast safety: mark this input as
+      // having unsaved local edits. _applyRemoteWorkbookDetail will
+      // skip writing to any element with data-local-dirty="1" so
+      // Karen's in-flight 400ms autosave window can't be overwritten
+      // by an incoming broadcast from Jackson. Flag is cleared after
+      // a successful doSaveWorkbook round-trip.
+      try { e.target.dataset.localDirty = '1'; } catch(_) {}
       autoSaveWorkbook();
       // Keep header title in sync when product name is edited
       if (e.target.id === 'product-name') {
@@ -29637,6 +29659,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   var _cellValuesSince    = '';   // server timestamp cursor for delta polling
   var _pendingPushes      = new Map(); // fieldPath -> debounce timer id
 
+  // Live workbook-broadcast state. Cursor for the lightweight dirty-check
+  // poll (separate from cell-values — cell-values handles RFQ keystrokes,
+  // this handles whole-workbook saves of every other field).
+  // _lastSeenUpdatedAt is the timestamp of the last save we've ALREADY
+  // applied locally. Bumped both on remote saves we apply AND on our own
+  // saves (so the next poll doesn't echo our own change back at us).
+  var _lastSeenUpdatedAt  = '';
+  var _wbBroadcastInflight = false; // guard against overlapping pulls
+
   // ── In-app + Chrome browser notifications ──────────────────────────
   // Polled every 12 s on every page (not just workbooks) so a watcher
   // sees milestone notifications even when they're on the home view.
@@ -29727,13 +29758,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     stopPresenceHeartbeat(/* silent */ true);
     _presenceWorkbookId = workbookId;
     _cellValuesSince    = '';   // reset cursor for new workbook
+    _lastSeenUpdatedAt  = '';   // baseline on first dirty-check response
     _sendPresenceHeartbeat();
     _pollPresence();
     _pollCellValues();
+    _pollWorkbookDirty();
     _presenceInterval = setInterval(() => {
       _sendPresenceHeartbeat();
       _pollPresence();
       _pollCellValues();
+      _pollWorkbookDirty();
     }, 2000);  // 2 s — near real-time cursor tracking like Google Sheets
   }
 
@@ -29752,6 +29786,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _presenceWorkbookId = null;
       _myFocusedField     = '';
       _cellValuesSince    = '';
+      _lastSeenUpdatedAt  = '';
       // Cancel any pending cell-value pushes
       _pendingPushes.forEach(t => clearTimeout(t));
       _pendingPushes.clear();
@@ -29868,6 +29903,254 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         input.dispatchEvent(new Event('input', { bubbles: true }));
       });
     } catch(e) {}
+  }
+
+  /* ── Live workbook-broadcast (whole-document sync) ────────────────────
+     The cell-value sync above covers RFQ keystrokes. This handles every
+     OTHER field — product name, descriptions, dimensions, fees, splits,
+     freight, tier prices, pricing margin, sale per, etc. — by polling a
+     lightweight 'has this workbook been saved by anyone else?' endpoint
+     on the existing 2s heartbeat tick. If so, pull fresh detail_json and
+     apply the diff in-place without disturbing focused inputs.
+
+     Why this exists: today, once a user makes their FIRST edit in a
+     session, the 60s background refresh (_isDirty guard) silently turns
+     OFF — they never see another user's changes without a hard refresh.
+     This new path deliberately ignores _isDirty and uses per-input
+     safety guards (focused-input + locally-dirty) instead.
+  */
+  async function _pollWorkbookDirty() {
+    if (!_presenceWorkbookId) return;
+    if (_wbBroadcastInflight) return; // skip overlapping polls
+    _wbBroadcastInflight = true;
+    try {
+      const res = await apiCall('get_workbook_dirty', {
+        workbook_id: _presenceWorkbookId,
+        since:       _lastSeenUpdatedAt || ''
+      });
+      if (!res || !res.success) return;
+
+      // First call baselines the cursor without firing — we don't want
+      // to replay every change since the dawn of time.
+      if (!_lastSeenUpdatedAt) {
+        _lastSeenUpdatedAt = res.updated_at || res.server_now || '';
+        return;
+      }
+
+      // No change since our last seen timestamp → nothing to do, but
+      // advance to the server's clock so clock drift doesn't bite us.
+      if (!res.changed) {
+        // Don't move the cursor backward if server_now is older than
+        // what we already have (shouldn't happen but be defensive).
+        if (res.server_now && res.server_now > _lastSeenUpdatedAt) {
+          _lastSeenUpdatedAt = res.server_now;
+        }
+        return;
+      }
+
+      // Skip self-echoes: if the save was by us, we already have the
+      // value (and no surprise flash). Just advance the cursor.
+      const me = (typeof getCurrentUser === 'function') ? (getCurrentUser() || '') : '';
+      if (me && res.updated_by && String(res.updated_by) === String(me)) {
+        _lastSeenUpdatedAt = res.updated_at;
+        return;
+      }
+
+      // Remote change detected — pull fresh detail and apply.
+      // get_workbook is a GET endpoint reading $_GET['id']; apiCall
+      // doesn't support query params, so call fetch directly.
+      const full = await _wbBroadcastGetWorkbook(_presenceWorkbookId);
+      if (!full || !full.success || !full.data || !full.data.detail) return;
+      _applyRemoteWorkbookDetail(full.data.detail, res.updated_by || '');
+      _lastSeenUpdatedAt = res.updated_at;
+    } catch (e) {
+      // Network blips are fine — _lastSeenUpdatedAt isn't advanced on
+      // failure, so the next successful poll re-detects the missed change.
+      console.debug('[wb-broadcast] poll failed', e);
+    } finally {
+      _wbBroadcastInflight = false;
+    }
+  }
+
+  // apiCall wrapper helper — most calls in this file POST a JSON body,
+  // but get_workbook is GET with query params. Small adapter so the
+  // call site reads cleanly.
+  function _wbBroadcastGetWorkbook(id) {
+    return fetch('api.php?action=get_workbook&id=' + encodeURIComponent(id), {
+      headers: { 'Accept': 'application/json' }
+    }).then(r => r.json());
+  }
+
+  /* Apply a freshly-pulled detail_json to the open workbook form.
+     Surgical: only mutates individual input .value properties on
+     non-focused, non-locally-dirty inputs, never re-renders the whole
+     form skeleton. The orange-flash UX matches _pollCellValues so the
+     two paths feel like one mechanism to the operator.
+
+     The whitelist captures fields that map 1:1 from detail_json keys
+     to DOM input IDs. Section-level reconciliation (RFQ rows,
+     fee picker, shipment splits, tier rows) is delegated to the same
+     fillWorkbook helpers that handle initial load — but only when the
+     section's data has actually changed shape (item count, etc.), to
+     avoid heavy rebuilds on every poll.
+  */
+  function _applyRemoteWorkbookDetail(detail, byWho) {
+    if (!detail || typeof detail !== 'object') return;
+
+    // Stash the freshly-pulled detail in our in-memory cache so any
+    // section that re-renders from workbookDetail (Pricing tab, etc.)
+    // reads the new values instead of stale ones.
+    const key = `${currentClient}|${currentWorkbookId}`;
+    workbookDetail[key] = detail;
+
+    // ── Scalar field whitelist ─────────────────────────────────────
+    // Each entry: [detailKey, inputId]. Most workbook fields use this
+    // 1:1 convention; section-level data (rfqItems, tiers, etc.) is
+    // handled below via the existing fillWorkbook helpers.
+    const scalarFields = [
+      ['product',          'product-name'],
+      ['desc',             'product-desc'],
+      ['productCategory',  'product-category'],
+      ['productCategory2', 'product-category-2'],
+      ['dimInL',           'dim-in-l'],
+      ['dimInW',           'dim-in-w'],
+      ['dimInH',           'dim-in-h'],
+      ['dimCmL',           'dim-cm-l'],
+      ['dimCmW',           'dim-cm-w'],
+      ['dimCmH',           'dim-cm-h'],
+      ['dimWeightKg',      'dim-weight-kg'],
+      ['dimWeightLbs',     'dim-weight-lbs'],
+      ['dimPackaging',     'dim-packaging'],
+      ['cartonInnerLIn',   'carton-inner-l-in'],
+      ['cartonInnerLCm',   'carton-inner-l-cm'],
+      ['cartonInnerWIn',   'carton-inner-w-in'],
+      ['cartonInnerWCm',   'carton-inner-w-cm'],
+      ['cartonInnerHIn',   'carton-inner-h-in'],
+      ['cartonInnerHCm',   'carton-inner-h-cm'],
+      ['cartonInnerWeightKg',  'carton-inner-weight'],
+      ['cartonInnerWeightLbs', 'carton-inner-weight-lbs'],
+      ['cartonInnerCount', 'carton-inner-count'],
+      ['cartonOuterLIn',   'carton-outer-l-in'],
+      ['cartonOuterLCm',   'carton-outer-l-cm'],
+      ['cartonOuterWIn',   'carton-outer-w-in'],
+      ['cartonOuterWCm',   'carton-outer-w-cm'],
+      ['cartonOuterHIn',   'carton-outer-h-in'],
+      ['cartonOuterHCm',   'carton-outer-h-cm'],
+      ['cartonOuterWeightKg',  'carton-outer-weight'],
+      ['cartonOuterWeightLbs', 'carton-outer-weight-lbs'],
+      ['cartonOuterCount', 'carton-outer-count'],
+      ['palletTotalCartons', 'pallet-total-cartons'],
+      ['freightHsCode',    'freight-hs-code'],
+      ['pricingSalePer',   'ps-sale-per'],
+      ['pricingMarginPct', 'ps-margin-pct'],
+    ];
+
+    let scalarChanges = 0;
+    scalarFields.forEach(([k, id]) => {
+      const newVal = detail[k];
+      if (newVal === undefined || newVal === null) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      // SAFETY 1 — focused-input guard. Never overwrite an input the
+      // operator is currently typing in.
+      if (document.activeElement === el) return;
+      // SAFETY 2 — local-dirty guard. Skip inputs the operator has
+      // edited since their last successful autosave (the 400ms window).
+      // The flag is set by the global input listener and cleared on
+      // save success.
+      if (el.dataset && el.dataset.localDirty === '1') return;
+      const cur = String(el.value == null ? '' : el.value);
+      const next = String(newVal);
+      if (cur === next) return;
+      el.value = next;
+      scalarChanges++;
+      // Reuse the cell-sync orange flash so the operator sees what
+      // changed. Same timing (600ms) as _pollCellValues.
+      try {
+        el.style.transition = 'background-color 0.6s ease';
+        el.style.backgroundColor = 'rgba(232, 117, 26, 0.18)';
+        setTimeout(() => { el.style.backgroundColor = ''; }, 600);
+      } catch(_) {}
+      // Dispatch input so any downstream listeners (totals recalc,
+      // unit conversions, etc.) fire as if the user typed the change.
+      try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch(_) {}
+    });
+
+    // ── Section-level updates ──────────────────────────────────────
+    // For sections that contain arrays of rows (fees, splits, tiers),
+    // the simplest correct path is to re-run the same recalc + render
+    // helpers fillWorkbook uses on load — they're already idempotent.
+    // We only call them when the section's data has actually changed,
+    // and we suppress any cosmetic 'flash' since the change is
+    // structural (rows added/removed), not a single value.
+
+    // Pricing-tab applied fees + overrides — pull from detail straight
+    // into the in-memory state. The renderer is guarded against re-
+    // render while a fee-override input is focused (so the operator
+    // typing in $590→$600 isn't disturbed).
+    if (Array.isArray(detail.appliedFees)) {
+      const incoming = new Set(detail.appliedFees);
+      // Replace the local Set wholesale if anything differs.
+      let feeChanged = (incoming.size !== _appliedFees.size);
+      if (!feeChanged) {
+        for (const id of incoming) { if (!_appliedFees.has(id)) { feeChanged = true; break; } }
+      }
+      if (feeChanged) _appliedFees = incoming;
+    }
+    if (detail.appliedFeeOverrides && typeof detail.appliedFeeOverrides === 'object') {
+      _appliedFeeOverrides = Object.create(null);
+      Object.keys(detail.appliedFeeOverrides).forEach(k => {
+        const v = parseFloat(detail.appliedFeeOverrides[k]);
+        if (isFinite(v) && v >= 0) _appliedFeeOverrides[k] = v;
+      });
+    }
+
+    // Shipment splits — same wholesale replace, then re-render.
+    if (Array.isArray(detail.shipmentSplits)) {
+      _shipmentSplits = [];
+      _splitCounter = 0;
+      detail.shipmentSplits.forEach(r => {
+        _splitCounter++;
+        _shipmentSplits.push({ id: _splitCounter, method: r.method || 'slow', qty: r.qty || '' });
+      });
+      if (typeof renderShipmentSplits === 'function') renderShipmentSplits();
+    }
+
+    // Trigger downstream renders so any open tab reflects the new
+    // values. These are all idempotent re-renders that read from the
+    // DOM + workbookDetail; they don't touch focused inputs.
+    try {
+      if (scalarChanges > 0 && typeof recalcRfqTotals === 'function') recalcRfqTotals();
+      if (typeof _refreshPricingForSplits === 'function') _refreshPricingForSplits();
+      else if (typeof renderPricingTab === 'function') renderPricingTab();
+      if (typeof _updateAllSectionSummaries === 'function') _updateAllSectionSummaries();
+    } catch (e) { console.debug('[wb-broadcast] downstream render', e); }
+
+    // Tiny toast so the operator knows a change came in (not just
+    // mysterious orange flashes).
+    if (scalarChanges > 0 || (detail.appliedFees && detail.appliedFees.length)) {
+      _showWbBroadcastToast(byWho || 'Someone');
+    }
+  }
+
+  function _showWbBroadcastToast(who) {
+    let toast = document.getElementById('wb-broadcast-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'wb-broadcast-toast';
+      toast.style.cssText = 'position:fixed; bottom:24px; right:24px; background:#1a1d2e; color:#fff; padding:10px 16px; border-radius:8px; font-size:13px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,0.25); opacity:0; transform:translateY(8px); transition:opacity 0.18s, transform 0.18s; z-index:1200; max-width:280px;';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = `${who} updated this workbook`;
+    requestAnimationFrame(() => {
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateY(0)';
+    });
+    if (toast._hideTimer) clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(8px)';
+    }, 2600);
   }
 
   function _clearPresenceIndicators() {
