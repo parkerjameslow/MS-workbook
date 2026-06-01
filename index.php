@@ -20834,21 +20834,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (_hintEl) { _hintEl.style.display = 'none'; _hintEl.textContent = ''; }
 
     if (!lCm || !wCm || !hCm) {
-      // Weight-only override: freight is driven by Actual Weight alone
-      // (no dims → no volumetric). Render Actual + Chargeable from the
-      // override values and label volumetric N/A so the panel still
-      // reads cleanly without making the operator type fake dims.
-      if (ship.mode === 'weight-only' && actualKg > 0 && cartons > 0) {
+      // Weight-driven path: no dims means no volumetric weight, so
+      // chargeable weight collapses to Actual. Used by:
+      //   • Weight-Only Override  — operator skipped dims entirely
+      //   • Case-Only Override w/o dims — same situation, case-shaped
+      //     freight where the dim fields were left blank
+      // Both render the headline + comparison table off actualKg×count.
+      const weightDriven = (ship.mode === 'weight-only' || ship.mode === 'case-only')
+                           && actualKg > 0 && cartons > 0;
+      if (weightDriven) {
         const totalActual = actualKg * cartons;
+        const modeLabel = ship.mode === 'weight-only' ? 'weight-only mode' : 'case-only mode (no dims)';
         const fmt = (kg) => kg.toFixed(2) + ' kg  /  ' + (kg * 2.20462).toFixed(2) + ' lbs';
         const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
         set('freight-out-actual',  fmt(totalActual));
-        set('freight-out-vol',     'N/A — weight-only mode');
+        set('freight-out-vol',     'N/A — ' + modeLabel);
         set('freight-out-charge',  fmt(totalActual));
-        set('freight-out-formula', `${cartons.toLocaleString()} cases × ${actualKg} kg`);
+        set('freight-out-formula', `${cartons.toLocaleString()} ${ship.unitLabelP} × ${actualKg} kg`);
         const costEl = document.getElementById('freight-out-cost');
-        if (costEl) costEl.textContent = (totalActual * rate).toLocaleString('en-US', {style:'currency', currency:'USD', maximumFractionDigits:2}).replace('US$','$') + ' RMB est.';
-        // Bars — Actual full, others blank.
+        if (costEl) costEl.textContent = '¥ ' + (totalActual * rate).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + ((totalActual * rate) / exchange).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+        // Bars — Actual full, Volumetric blank, Chargeable = Actual.
         const setBar = (valId, barId, val, h) => {
           const v = document.getElementById(valId), b = document.getElementById(barId);
           if (v) v.textContent = val;
@@ -20857,6 +20862,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         setBar('freight-bar-actual-val', 'freight-bar-actual', totalActual.toFixed(0) + ' kg', '100%');
         setBar('freight-bar-vol-val',    'freight-bar-vol',    '—',                              '0%');
         setBar('freight-bar-charge-val', 'freight-bar-charge', totalActual.toFixed(0) + ' kg', '100%');
+        // Verdict — without dims there's no volumetric to lose to; the
+        // shipper bills off actual weight straight up.
+        const verdictEl = document.getElementById('freight-verdict');
+        const extraEl   = document.getElementById('freight-extra');
+        if (verdictEl) {
+          verdictEl.className = 'freight-verdict actual';
+          verdictEl.textContent = 'Actual weight applies — no dims supplied, no volumetric comparison.';
+        }
+        if (extraEl) extraEl.style.display = 'none';
+        // Method comparison — chargeable weight is identical across
+        // methods (volumetric = 0 everywhere), but the per-kg rate
+        // differs, so Cost (¥) / Cost ($) DO vary by row. Populate the
+        // 5-column table + results-panel chips so the operator can
+        // still compare methods on price.
+        [
+          { key: 'slow',      r: freightMethodRates.slow },
+          { key: 'fast',      r: freightMethodRates.fast },
+          { key: 'airupp',    r: freightMethodRates.airupp },
+          { key: 'directair', r: freightMethodRates.directair },
+        ].forEach(m => {
+          const cw = totalActual;             // chargeable = actual
+          const cr = cw * m.r;
+          const cu = exchange > 0 ? cr / exchange : 0;
+          const combinedVal = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+          const wtEl  = document.getElementById('freight-wt-'  + m.key);
+          const rmbEl = document.getElementById('freight-rmb-' + m.key);
+          const usdEl = document.getElementById('freight-usd-' + m.key);
+          if (wtEl)  wtEl.textContent  = cw.toFixed(2) + ' kg';
+          if (rmbEl) rmbEl.textContent = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+          if (usdEl) usdEl.textContent = '$ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+          const resEl = document.getElementById('freight-res-' + m.key);
+          if (resEl) resEl.textContent = combinedVal;
+        });
+        // No dims → no CBM to report.
+        const cmpSea = document.getElementById('freight-cmp-sea');
+        if (cmpSea) cmpSea.textContent = 'N/A — no dims';
         return;
       }
       ['freight-out-actual','freight-out-vol','freight-out-charge','freight-out-formula','freight-out-cost'].forEach(id => {
