@@ -17019,10 +17019,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              <div style="font-size:10px; color:var(--text-muted); white-space:nowrap;">As is: <span style="font-weight:600;">${fmtUsd(asIsUsd)}</span>${hasOver ? ` <button type="button" onclick="event.preventDefault(); event.stopPropagation(); _clearAppliedFeeOverride('${idAttr}');" title="Revert to as-is amount" style="background:none; border:none; color:var(--accent); font-size:10px; font-weight:600; cursor:pointer; padding:0 0 0 4px; font-family:inherit; text-decoration:underline;">revert</button>` : ''}</div>
              <div style="display:inline-flex; align-items:center; gap:4px;">
                <span style="font-size:12px; color:var(--text-muted);">\$</span>
-               <input type="number" min="0" step="0.01" inputmode="decimal" value="${effective.toFixed(2)}"
+               <input type="text" inputmode="decimal" pattern="[0-9]*\\.?[0-9]*" value="${effective.toFixed(2)}"
                  data-fee-override-id="${idAttr}"
-                 onclick="event.preventDefault(); event.stopPropagation();"
-                 onfocus="event.preventDefault(); event.stopPropagation(); this.select();"
+                 onfocus="this.select()"
                  oninput="_onAppliedFeeOverrideInput('${idAttr}', this.value)"
                  onblur="_formatAppliedFeeOverrideInput(this)"
                  style="width:90px; padding:4px 6px; font-size:13px; font-weight:700; text-align:right; border:1px solid ${hasOver ? 'var(--accent)' : 'var(--border)'}; border-radius:5px; background:var(--surface); color:var(--text); font-family:inherit;" />
@@ -17033,15 +17032,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              <div style="font-size:13px; font-weight:700; color:var(--text);">${fmtUsd(asIsUsd)}</div>
              ${sourceRmbStr ? `<div style="font-size:11px; color:var(--text-muted);">${sourceRmbStr}</div>` : ''}
            </div>`;
-      return `<label style="display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); cursor:pointer;">
-        <input type="checkbox" ${checked} onchange="toggleFeeApplied('${idAttr}', this.checked)"
-               style="width:16px; height:16px; accent-color:#E8751A; cursor:pointer; flex-shrink:0; margin-top:2px;" />
-        <div style="flex:1; min-width:0;">
-          <div style="font-size:13px; font-weight:600; color:var(--text);">${escHtmlSafe(f.label)}</div>
-          ${descLine}
-        </div>
+      // Row container is a plain <div> (NOT a <label>) — the label
+      // wrapped the override input causing the browser's label-to-first-
+      // form-control focus-transfer rule to blur the input on every
+      // keystroke (cursor leaving after typing one character). The
+      // checkbox-toggle UX is preserved by wrapping ONLY the checkbox +
+      // label text in a real <label>; the amount column (with the
+      // editable input) sits outside, unaffected.
+      return `<div style="display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border);">
+        <label style="display:flex; align-items:flex-start; gap:12px; cursor:pointer; flex:1; min-width:0;">
+          <input type="checkbox" ${checked} onchange="toggleFeeApplied('${idAttr}', this.checked)"
+                 style="width:16px; height:16px; accent-color:#E8751A; cursor:pointer; flex-shrink:0; margin-top:2px;" />
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:600; color:var(--text);">${escHtmlSafe(f.label)}</div>
+            ${descLine}
+          </div>
+        </label>
         ${amountColHtml}
-      </label>`;
+      </div>`;
     }).join('');
 
     body.innerHTML = rows;
