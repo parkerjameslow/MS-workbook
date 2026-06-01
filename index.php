@@ -19537,13 +19537,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Per-unit breakdown line beneath the label — shows the math the
     // grand total derives from: product per-unit USD + shipping per-unit
-    // USD = total per-unit USD. Uses the same per-unit values displayed
-    // in the Product Cost block (tierUsdPlain) and the Shipping block
-    // (shipPerUsd) so the numbers tie out exactly. For variants, shows
-    // the weighted-average per-unit USD (mirrors the Landed Per math).
+    // USD = total per-unit USD. Uses the precise per-unit math (qty-
+    // weighted RMB / FX rate) so the displayed components × qty tie
+    // exactly to the Grand Total Cost above. Single-tier branch already
+    // used tierUsdPlain (precise) — variants now also use the precise
+    // grandRmbWeighted path so a ¥0.30 entry reads as $0.044, not the
+    // ceiled $0.050 from grandUsd.
     let _gtPerProductRaw = 0;
-    if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0) {
-      _gtPerProductRaw = psSummary.grandUsd / psSummary.grandQty;
+    if (psSummary && psSummary.hasVariants && psSummary.grandRmbWeighted > 0 && USD_TO_RMB > 0) {
+      _gtPerProductRaw = psSummary.grandRmbWeighted / USD_TO_RMB;
     } else if (tierUsdPlain > 0) {
       _gtPerProductRaw = tierUsdPlain;
     }
@@ -19569,17 +19571,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Sale Per is manually entered; entering a value back-solves margin so
     // Suggested + Sale stay in sync.
 
-    // Per-unit USD (single value or [min,max]). Use range only when variants
-    // have variable pricing — otherwise fall back to the tier-row USD.
-    // Reads from psSummary (the renamed _lastRfqPriceSummary alias used
-    // by the Product Cost block above).
+    // Per-unit USD (single value or [min,max]). Same precise path the
+    // Product Cost block + Grand Total Cost use so Landed Per ties out
+    // exactly to those displays (no cent-ceil inflation). For variants
+    // we read rmbMin/Max + grandRmbWeighted from psSummary and divide
+    // by the FX rate live; for single-tier we use tierUsdPlain (also
+    // precise). Without this, a 75,000 × ¥0.30 entry showed Grand
+    // Total Cost \$4,128 but Landed Cost \$4,556 — different per-unit
+    // math in each block.
     let perUnitMin, perUnitMax, avgPerUnitUsd;
-    if (psSummary && psSummary.hasVariants && psSummary.usdMin > 0) {
-      perUnitMin    = psSummary.usdMin;
-      perUnitMax    = psSummary.usdMax;
-      avgPerUnitUsd = (psSummary.grandQty > 0 && psSummary.grandUsd > 0) ? psSummary.grandUsd / psSummary.grandQty : psSummary.usdMin;
+    if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0 && USD_TO_RMB > 0) {
+      perUnitMin    = psSummary.rmbMin / USD_TO_RMB;
+      perUnitMax    = psSummary.rmbMax / USD_TO_RMB;
+      avgPerUnitUsd = (psSummary.grandRmbWeighted > 0) ? psSummary.grandRmbWeighted / USD_TO_RMB : perUnitMin;
     } else {
-      perUnitMin = perUnitMax = avgPerUnitUsd = tierUsd;
+      perUnitMin = perUnitMax = avgPerUnitUsd = tierUsdPlain;
     }
 
     // Shipping per unit — the cost of moving one unit at the chosen freight mode
