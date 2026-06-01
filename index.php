@@ -19315,14 +19315,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       unitUsdText = '$' + fmt3(tierUsdPlain);
     }
 
-    if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandUsd > 0 && effectiveQty > 0) {
-      // Variants: weighted-average per-unit USD (grandUsd / grandQty),
-      // ceiled to the cent so the total ties to the displayed unit price.
-      productTotal = _msCeil2(effectiveQty * (psSummary.grandUsd / psSummary.grandQty));
+    // Product Cost totals — derived from the qty-weighted RMB
+    // (psSummary.grandRmbWeighted) which is computed in RMB without
+    // any USD round-trip or cent-ceil. Both USD and RMB totals stay in
+    // sync with the per-unit displayed above (¥0.300 → $0.044, total
+    // 75,000 units = ¥22,500 / $3,303.50, not the inflated $3,750
+    // the old grandUsd-back-calc was producing).
+    if (psSummary && psSummary.hasVariants && psSummary.grandRmbWeighted > 0 && effectiveQty > 0) {
+      productTotal = effectiveQty * (psSummary.grandRmbWeighted / USD_TO_RMB);
     } else {
-      // Single-tier total = ceil(qty × rmb / USD_TO_RMB), matching the
-      // Shipping tab tier-total cell.
-      productTotal = (effectiveQty > 0 && tierRmb > 0) ? _msCeil2(effectiveQty * tierUsdPlain) : 0;
+      // Single-tier total = qty × precise per-unit (no cent-ceil — same
+      // precision the Unit Price (USD) row displays just above).
+      productTotal = (effectiveQty > 0 && tierRmb > 0) ? effectiveQty * tierUsdPlain : 0;
     }
 
     // Pitch badge on the Quantity row — surfaces the delta vs the
@@ -19332,12 +19336,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       : '';
     if (e('ps-qty'))          e('ps-qty').innerHTML          = effectiveQty > 0 ? effectiveQty.toLocaleString('en-US') + ' units' + pitchSuffix : '—';
     if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
-    // Total Product Cost (RMB) = qty × tier RMB directly. Going through
-    // _fxRmbFromUsd(productTotal) would round-trip through USD and
-    // disagree with the tier-source RMB by a cent or two.
+    // Total Product Cost (RMB) = qty × precise per-unit RMB. Stays
+    // entirely in RMB so a 75,000 × ¥0.30 entry shows the honest
+    // ¥22,500, not ¥25,397 (which was qty × ceiled USD × FX rate).
     let productTotalRmb;
-    if (psSummary && psSummary.hasVariants && psSummary.grandQty > 0 && psSummary.grandRmb > 0 && effectiveQty > 0) {
-      productTotalRmb = effectiveQty * (psSummary.grandUsd / psSummary.grandQty) * USD_TO_RMB;
+    if (psSummary && psSummary.hasVariants && psSummary.grandRmbWeighted > 0 && effectiveQty > 0) {
+      productTotalRmb = effectiveQty * psSummary.grandRmbWeighted;
     } else {
       productTotalRmb = (effectiveQty > 0 && tierRmb > 0) ? effectiveQty * tierRmb : 0;
     }
