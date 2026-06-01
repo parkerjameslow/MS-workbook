@@ -14677,11 +14677,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const inputs = row.querySelectorAll('input:not([type="checkbox"])');
     const qty = _msNumFromInput(inputs[2]);
     const rmb = _msNumFromInput(inputs[3]);
-    const usd = _fxUsdFromRmb(rmb);  // ceil to the cent
-    const total = qty > 0 && usd > 0 ? _msCeil2(qty * usd) : 0;
+    // Use the precise (non-ceiled) conversion for DISPLAY so ¥0.30 reads
+    // as $0.044 instead of being inflated to $0.05 by the cent-ceil. Per-
+    // line total is qty × precise USD, displayed at 2 decimals.
+    const usd   = _fxUsdFromRmbPrecise(rmb);
+    const total = qty > 0 && usd > 0 ? qty * usd : 0;
     const usdEl = document.getElementById(`rfq-usd-${id}`);
     const totalEl = document.getElementById(`rfq-total-${id}`);
-    if (usdEl) usdEl.textContent = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    if (usdEl) usdEl.textContent   = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—';
     if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
@@ -14862,7 +14865,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _scheduleRfqSubtotalRebuild(() => {
       document.querySelectorAll('.rfq-item-subtotal').forEach(r => r.remove());
       if (!showBreakdown || !totalsRow) return;
+      const fmt3sub = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       itemSummaries.forEach(item => {
+        // Derive precise USD / Total at render time so the subtotal
+        // row matches the per-line row and the new TOTALS row (which
+        // also use precise math). item.usd / item.total in the data
+        // structure stay ceiled — they're consumed by downstream
+        // (Pricing tab, Tier USD) and we don't want to silently shift
+        // those numbers as a side effect of this display change.
+        const itemUsdPrecise = (item.rmb && USD_TO_RMB > 0) ? item.rmb / USD_TO_RMB : 0;
+        const itemTotalPrecise = (item.qty > 0 && itemUsdPrecise > 0) ? item.qty * itemUsdPrecise : 0;
         const tr = document.createElement('tr');
         tr.className = 'rfq-item-subtotal';
         tr.style.borderTop = '1px solid var(--border)';
@@ -14878,10 +14890,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${item.rmbText !== undefined ? item.rmbText : (item.rmb ? '¥' + fmt(item.rmb) : '—')}
           </td>
           <td style="font-size:12px;color:var(--text-muted);text-align:right;padding:7px 12px 7px 8px;">
-            ${item.usdText !== undefined ? item.usdText : (item.rmb ? '$' + fmt(item.usd) : '—')}
+            ${item.usdText !== undefined ? item.usdText : (itemUsdPrecise ? '$' + fmt3sub(itemUsdPrecise) : '—')}
           </td>
           <td style="font-size:12px;color:var(--text);font-weight:700;text-align:right;padding:7px 12px 7px 8px;">
-            ${item.total ? '$' + fmt(item.total) : '—'}
+            ${itemTotalPrecise ? '$' + fmt(itemTotalPrecise) : (item.total ? '$' + fmt(item.total) : '—')}
           </td>
           <td style="font-size:12px;color:var(--text-muted);padding:7px 8px 7px 26px;">
             ${item.lead ? item.lead + ' days' : '—'}
@@ -14936,19 +14948,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    // Unit Price (USD): mirrors RMB column logic
+    // Unit Price (USD) — precise (non-ceiled) conversion shown at 3
+    // decimals so ¥0.30 reads as $0.044 like the math actually gives,
+    // not the cent-ceiled $0.05 the old path produced. Uses the qty-
+    // weighted RMB so multi-row / variant workbooks average correctly.
+    const fmt3 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const perUnitUsdPrecise = (grandRmbQty > 0 && USD_TO_RMB > 0)
+      ? (grandRmbQtyXPrice / grandRmbQty) / USD_TO_RMB
+      : 0;
+    const grandUsdPrecise = (USD_TO_RMB > 0) ? (grandRmbQtyXPrice / USD_TO_RMB) : 0;
     const usdCell = document.getElementById('rfq-total-usd-sum');
     if (usdCell) {
-      if (hasVariants && pricedItems.length > 0) {
-        usdCell.textContent = isRange
-          ? '$' + fmt(usdMin) + '–$' + fmt(usdMax)
-          : '$' + fmt(usdMin);
+      if (hasVariants && pricedItems.length > 0 && isRange) {
+        // Mixed-price variants — keep the min–max range using the
+        // precise per-unit values for both ends.
+        const uMinPrecise = (USD_TO_RMB > 0) ? rmbMin / USD_TO_RMB : 0;
+        const uMaxPrecise = (USD_TO_RMB > 0) ? rmbMax / USD_TO_RMB : 0;
+        usdCell.textContent = '$' + fmt3(uMinPrecise) + '–$' + fmt3(uMaxPrecise);
       } else {
-        usdCell.textContent = grandUsdUnit ? '$' + fmt(grandUsdUnit) : '—';
+        usdCell.textContent = perUnitUsdPrecise > 0 ? '$' + fmt3(perUnitUsdPrecise) : '—';
       }
     }
 
-    document.getElementById('rfq-total-usd').textContent = grandUsd ? '$' + fmt(grandUsd) : '—';
+    // Total (USD) — qty × precise per-unit, displayed to the cent. Ties
+    // out with the per-line totals (which also use precise USD now).
+    document.getElementById('rfq-total-usd').textContent = grandUsdPrecise > 0 ? '$' + fmt(grandUsdPrecise) : '—';
     document.getElementById('rfq-max-lead').textContent  = maxLead  ? maxLead + ' days'   : '—';
 
     applyRfqRmbToTiers(grandRmb);
@@ -15256,11 +15280,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const inputs = row.querySelectorAll('input:not(.rfq-var-sku-input)');
     const qty = _msNumFromInput(inputs[1]);
     const rmb = _msNumFromInput(inputs[2]);
-    const usd = _fxUsdFromRmb(rmb);     // ceil to the cent
-    const total = qty > 0 && usd > 0 ? _msCeil2(qty * usd) : 0;
+    // Precise display — same reasoning as recalcRfqRow above.
+    const usd   = _fxUsdFromRmbPrecise(rmb);
+    const total = qty > 0 && usd > 0 ? qty * usd : 0;
     const usdEl = document.getElementById(`rfq-var-usd-${vid}`);
     const totalEl = document.getElementById(`rfq-var-total-${vid}`);
-    if (usdEl) usdEl.textContent = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    if (usdEl) usdEl.textContent   = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—';
     if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     const parentId = parseInt(row.dataset.rfqParent);
     if (parentId) syncParentQtyFromVariants(parentId);
@@ -16451,6 +16476,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return Math.ceil(v * 100) / 100;
   }
   function _fxUsdFromRmb(rmb)  { return _msCeil2((Number(rmb) || 0) / USD_TO_RMB); }
+  // Precise (non-ceiled, non-rounded) RMB→USD — for display rows
+  // where the operator expects to see the exact mathematical
+  // conversion (e.g. ¥0.30 → $0.0441), not the rounded-up margin-safe
+  // value _fxUsdFromRmb produces. Cost-side math should still use
+  // _fxUsdFromRmb to keep landed totals on the safe side of rounding.
+  function _fxUsdFromRmbPrecise(rmb) { return (Number(rmb) || 0) / (USD_TO_RMB || 1); }
   function _fxRmbFromUsd(usd)  { return _msCeil2((Number(usd) || 0) * USD_TO_RMB); }
   function _fxFreightUsdFromRmb(rmb) { return _msCeil2((Number(rmb) || 0) / USD_TO_RMB); }
   function _fxFreightRmbFromUsd(usd) { return _msCeil2((Number(usd) || 0) * USD_TO_RMB); }
