@@ -1518,6 +1518,55 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       max-width: 100%;
     }
     .inv-wb-pill:hover { border-color: var(--accent); background: rgba(107,147,255,0.18); }
+
+    /* ── Commissions Mark Paid / Paid toggle ───────────────────────
+       Two states sharing the same shape so the row layout doesn't
+       jump on toggle:
+         • .comm-pay-btn   — outlined, light. Click → marks paid.
+         • .comm-paid-btn  — green filled with ✓ Paid. On HOVER:
+           swaps the label to '× Unpay' + flips to outlined red so
+           the operator sees the toggle affordance instead of having
+           to discover it via the tooltip. */
+    .comm-pay-btn, .comm-paid-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 12px; border-radius: 14px;
+      font-size: 11px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+      font-family: inherit;
+      min-width: 90px; justify-content: center;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .comm-pay-btn  {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .comm-pay-btn:hover {
+      color: #16a34a; border-color: #16a34a;
+      background: rgba(22,163,74,0.06);
+    }
+    .comm-paid-btn {
+      background: #16a34a; color: #fff;
+      border: 1px solid #16a34a;
+    }
+    .comm-paid-btn .comm-paid-unpay { display: none; }
+    .comm-paid-btn .comm-paid-check { display: inline-block; }
+    .comm-paid-btn:hover {
+      background: transparent; color: #dc2626;
+      border-color: #dc2626;
+    }
+    .comm-paid-btn:hover .comm-paid-label,
+    .comm-paid-btn:hover .comm-paid-check { display: none; }
+    .comm-paid-btn:hover .comm-paid-unpay {
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .comm-paid-btn:hover .comm-paid-unpay::before {
+      content: '×'; font-size: 14px; line-height: 1; font-weight: 800;
+    }
+    /* Commission row hover — subtle highlight so the operator sees the
+       row is interactive (workbook pill clickable, paid pill toggleable). */
+    .comm-row { transition: background 0.12s; }
+    .comm-row:hover { background: rgba(107,147,255,0.04) !important; }
     .inv-wb-pill-text {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
@@ -27013,35 +27062,47 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const ageHtml = ageStr
           ? `<span style="font-size:10px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="${archived ? 'Paid' : 'Commission row created'} ${ageSrc ? new Date(ageSrc).toLocaleString() : ''}">${ageLabel}</span>`
           : '';
-        // Archived rows always show the green Paid pill (since they
-        // wouldn't be archived otherwise) but clicking still flips to
-        // pending — same behaviour as the active section's paid rows.
+        // Paid button toggles back to pending on click. The .comm-paid-btn
+        // / .comm-pay-btn classes carry the hover treatment — the Paid
+        // button morphs on hover into an outlined 'Unpay' look so the
+        // toggle affordance is obvious (operator wasn't sure clicking
+        // would revert before).
         const buttonHtml = (archived || isPaid)
-          ? `<button type="button"
+          ? `<button type="button" class="comm-paid-btn"
               onclick="event.stopPropagation(); setCommissionPaid(${r.id}, false)"
-              title="${paidTitle}"
-              style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; background:#16a34a; color:#fff; border:1px solid #16a34a;">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Paid
+              title="${paidTitle}">
+              <svg class="comm-paid-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              <span class="comm-paid-label">Paid</span>
+              <span class="comm-paid-unpay">Unpay</span>
             </button>`
-          : `<button type="button"
+          : `<button type="button" class="comm-pay-btn"
               onclick="event.stopPropagation(); setCommissionPaid(${r.id}, true)"
-              title="${paidTitle}"
-              style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:14px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; font-family:inherit; background:transparent; color:var(--text-muted); border:1px solid var(--border);">
+              title="${paidTitle}">
               Mark paid
             </button>`;
+
+        // Sub-line shows the client total this commission was rated
+        // against (e.g. "Quote: $16,223") plus the age — small, muted,
+        // tucked under the workbook pill so the main line stays clean.
+        const subParts = [];
+        if (r.client_total_usd) subParts.push(`Quote: <strong style="color:var(--text); font-weight:600;">${fmtUsd0(r.client_total_usd)}</strong>`);
+        if (ageStr)             subParts.push(archived ? `paid ${ageStr}` : ageStr);
+        const subHtml = subParts.length
+          ? `<div style="font-size:10px; color:var(--text-muted); margin-top:3px; padding-left:2px; font-variant-numeric:tabular-nums;">${subParts.join(' &nbsp;·&nbsp; ')}</div>`
+          : '';
+
         return `
-          <div style="display:grid; grid-template-columns: minmax(0, 1fr) auto auto auto; column-gap:10px; align-items:center; padding:6px 8px; border-radius:6px; background:${rowBg}; border:${rowBorder}; border-left:${leftAccent}; opacity:${opacity};">
-            <span style="display:flex; align-items:center; gap:8px; min-width:0;">
-              <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="flex:1 1 auto; min-width:0; max-width:100%;">
-                <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
-              </span>
-              ${statusPillHtml}
-              ${ageHtml}
-            </span>
-            <span style="font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="Client total this commission was rated against">
-              ${fmtUsd0(r.client_total_usd)}
-            </span>
-            <span style="font-size:13px; color:var(--success, #16a34a); font-weight:600; font-variant-numeric:tabular-nums; text-align:right; min-width:74px; white-space:nowrap;">
+          <div class="comm-row" style="display:flex; align-items:center; gap:12px; padding:8px 10px; border-radius:6px; background:${rowBg}; border:${rowBorder}; border-left:${leftAccent}; opacity:${opacity};">
+            <div style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column;">
+              <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="min-width:0; max-width:100%; flex:0 1 auto;">
+                  <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
+                </span>
+                ${statusPillHtml}
+              </div>
+              ${subHtml}
+            </div>
+            <span style="font-size:14px; color:var(--success, #16a34a); font-weight:700; font-variant-numeric:tabular-nums; text-align:right; min-width:90px; white-space:nowrap; flex-shrink:0;">
               ${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate — Client Cost not yet wired">est</span>' : ''}
             </span>
             ${buttonHtml}
