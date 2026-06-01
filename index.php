@@ -20898,6 +20898,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // No dims → no CBM to report.
         const cmpSea = document.getElementById('freight-cmp-sea');
         if (cmpSea) cmpSea.textContent = 'N/A — no dims';
+        // Cache total shipment weight on the workbook so the Orders
+        // page (and Add Workbook to Order picker) can display weight
+        // for Case-Only / Weight-Only workbooks that never run the
+        // pallet calc. Mirrors the same field written from
+        // renderPalletViz at line ~11989 — same key, same units (kg).
+        // Without this, the Orders summary reads 0 and renders "—".
+        if (typeof currentClient === 'string' && currentWorkbookId) {
+          const _wbWtKey = `${currentClient}|${currentWorkbookId}`;
+          if (!workbookDetail[_wbWtKey]) workbookDetail[_wbWtKey] = {};
+          workbookDetail[_wbWtKey].pricingShipmentWeightKg = totalActual > 0 ? totalActual : 0;
+          if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+        }
         return;
       }
       ['freight-out-actual','freight-out-vol','freight-out-charge','freight-out-formula','freight-out-cost'].forEach(id => {
