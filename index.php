@@ -8699,6 +8699,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">Qty</th>
               <th style="text-align:right;">Sale / Unit (USD)</th>
               <th style="text-align:right;">Total (USD)</th>
+              <th style="text-align:right;">Profit (USD)</th>
               <th style="text-align:right;">Lead</th>
               <th></th>
             </tr>
@@ -31469,6 +31470,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (empty) empty.style.display = 'none';
 
     let grandUsd = 0, grandMaxLead = 0;
+    // Order-level profit grand total — Σ (workbook sale − workbook cost)
+    // across every workbook with both numbers cached. Workbooks
+    // missing pricingGrandTotalCost contribute 0 (column shows "—"
+    // for those rows so the operator can spot the gap).
+    let grandProfitUsd = 0;
     // Sum cached shipment metrics across the order's workbooks. These
     // come from renderContainerViz / renderPricingTab caches written
     // when the operator visits each workbook's Shipping / Pricing tab,
@@ -31492,7 +31498,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const isMissing = !liveWb && !detail.product;
       if (isMissing) {
         return `<tr class="order-sheet-wb-header" style="background:rgba(220,38,38,0.06);">
-          <td colspan="5" style="border-top:1px dashed var(--danger, #dc2626); border-bottom:1px dashed var(--danger, #dc2626); padding:12px 14px;">
+          <td colspan="6" style="border-top:1px dashed var(--danger, #dc2626); border-bottom:1px dashed var(--danger, #dc2626); padding:12px 14px;">
             <div style="display:flex; align-items:center; gap:10px;">
               <span style="font-size:14px;">⚠</span>
               <div style="flex:1; min-width:0;">
@@ -31568,6 +31574,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const wbTotal  = perUnit > 0 ? perUnit * wbTotalQty : 0;
       grandUsd += wbTotal;
 
+      // Per-unit COST for the workbook = pricingGrandTotalCost / qty.
+      // pricingGrandTotalCost is the Pricing tab's "Grand Total Cost
+      // (USD)" cache (product + shipping, no margin, no fees). Lets
+      // us compute profit per line without re-deriving freight here.
+      // Profit only shown when we have BOTH a sale price AND a known
+      // cost — otherwise we'd be flashing $0 or misleading numbers.
+      const wbGrandTotalCost  = parseFloat(detail.pricingGrandTotalCost) || 0;
+      const wbCostPerUnit     = wbTotalQty > 0 && wbGrandTotalCost > 0 ? wbGrandTotalCost / wbTotalQty : 0;
+      const profitPerUnit     = (useQuote && wbCostPerUnit > 0) ? (wbSaleUnit - wbCostPerUnit) : 0;
+      const haveProfit        = useQuote && wbCostPerUnit > 0 && wbTotalQty > 0;
+      const wbProfit          = haveProfit ? profitPerUnit * wbTotalQty : 0;
+      grandProfitUsd         += wbProfit;
+
+      // Profit-cell helper — green for positive, red for negative,
+      // muted dash when we don't have the data to compute it.
+      const profitCell = (amount, has) => {
+        if (!has) return `<td style="text-align:right; color:var(--text-muted);">—</td>`;
+        const color = amount > 0 ? '#10b981' : amount < 0 ? '#dc2626' : 'var(--text-muted)';
+        const sign  = amount > 0 ? '' : ''; // negative sign already in fmt
+        return `<td style="text-align:right; font-weight:700; color:${color};">${sign}$${fmt2(amount)}</td>`;
+      };
+
       const isExpanded = _orderSheetExpanded.has(key);
       const chevron = `<span class="osh-chevron" data-osh-chev="${esc(key)}" style="display:inline-block; margin-right:6px; opacity:0.6; transition:transform 0.15s; transform:${isExpanded ? 'rotate(90deg)' : 'none'};">▶</span>`;
 
@@ -31586,6 +31614,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>
         <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
         <td style="text-align:right; font-weight:700;">${wbTotal > 0 ? '$' + fmt2(wbTotal) : '—'}</td>
+        ${profitCell(wbProfit, haveProfit)}
         <td style="text-align:right; color:var(--text-muted);">${leadStr}</td>
         <td style="text-align:right;">
           <button class="order-sheet-remove" onclick="event.stopPropagation(); removeWorkbookFromOrder(${idx})" title="Remove">×</button>
@@ -31598,7 +31627,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const detailStyle = isExpanded ? '' : 'display:none;';
       if (rfqItems.length === 0) {
         rows += `<tr data-osh-wb="${esc(key)}" style="${detailStyle}">
-          <td colspan="6" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
+          <td colspan="7" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
         // Per UX direction — when a workbook is EXPANDED, show its
@@ -31616,6 +31645,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             vs.forEach(v => {
               const vQty = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
               const vTot = perUnit > 0 ? perUnit * vQty : 0;
+              const vProfit = haveProfit && vQty > 0 ? profitPerUnit * vQty : 0;
               const vLabel = (v.variant || '').trim() || 'Variant';
               // Prefix the variant with its parent item name when the
               // workbook has multiple parents — disambiguates which
@@ -31630,6 +31660,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <td style="text-align:right;">${vQty > 0 ? vQty.toLocaleString('en-US') : '—'}</td>
                 <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
                 <td style="text-align:right; font-weight:600;">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
+                ${profitCell(vProfit, haveProfit && vQty > 0)}
                 <td></td>
                 <td></td>
               </tr>`;
@@ -31638,11 +31669,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             // No variants — show the item itself as the single line.
             const itemQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
             const iTot = perUnit > 0 ? perUnit * itemQty : 0;
+            const iProfit = haveProfit && itemQty > 0 ? profitPerUnit * itemQty : 0;
             rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
               <td style="padding-left:36px;">${esc(item.item || '—')}</td>
               <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
               <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
               <td style="text-align:right; font-weight:600;">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
+              ${profitCell(iProfit, haveProfit && itemQty > 0)}
               <td></td>
               <td></td>
             </tr>`;
@@ -31677,7 +31710,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const shipRow = showShipRow
       ? `<tr>
           <td colspan="3" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
-          <td colspan="3" style="text-align:right; font-size:12px; padding-top:4px;">
+          <td colspan="4" style="text-align:right; font-size:12px; padding-top:4px;">
             <span style="color:var(--text-muted); margin-right:14px;">Weight: <strong style="color:var(--text);">${wtStr}</strong></span>
             <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmHtml}</strong></span>
             <div style="margin-top:5px; height:4px; background:var(--surface2); border-radius:99px; overflow:hidden; max-width:260px; margin-left:auto;">
@@ -31686,9 +31719,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </td>
         </tr>`
       : '';
+    // Grand profit color follows the same green/red/muted rule as the
+    // per-row cells. Falls back to '—' when no workbook contributed
+    // (every row was missing a sale or a cost).
+    const profitColor   = grandProfitUsd > 0 ? '#10b981' : grandProfitUsd < 0 ? '#dc2626' : 'var(--text-muted)';
+    const grandProfitStr = grandProfitUsd !== 0 ? `$${fmt2(grandProfitUsd)}` : '—';
     tfoot.innerHTML = `<tr>
       <td colspan="3" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
       <td style="text-align:right; font-size:15px; font-weight:800;">${grandUsdStr}</td>
+      <td style="text-align:right; font-size:14px; font-weight:800; color:${profitColor};">${grandProfitStr}</td>
       <td style="text-align:right; font-weight:700; color:var(--text-muted);">${grandLeadStr}</td>
       <td></td>
     </tr>${shipRow}`;
