@@ -19841,10 +19841,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       workbookDetail[_wbKey2].pricingClientQuoteTotal = !isNaN(totalUsd) && totalUsd > 0 ? totalUsd : 0;
     }
 
-    // Order Profit: Sale Total − Landed Total (only when Total USD is real).
-    // Fees cancel out (they're in both sides), so this equals the product
-    // margin alone.
-    const orderProfit = !isNaN(totalUsd) ? totalUsd - landedTotal : NaN;
+    // Applied-fees "as-is" total — sum of each applied fee's SOURCE
+    // amount (Workbook-tab value), ignoring any per-fee override the
+    // operator typed on the Pricing tab. This is our actual cost of
+    // those fees; the difference between override and as-is is markup
+    // (= additional profit). Cached for the Order Sheet so per-line
+    // profit reflects fee markup correctly.
+    const _appliedFeesAsIsTotal = _appliedFeesArr.reduce((s, f) => {
+      const asIs = parseFloat(f.originalUsd);
+      return s + (isFinite(asIs) ? asIs : (parseFloat(f.usd) || 0));
+    }, 0);
+    if (currentClient && currentWorkbookId) {
+      const _wbKeyFA = `${currentClient}|${currentWorkbookId}`;
+      if (!workbookDetail[_wbKeyFA]) workbookDetail[_wbKeyFA] = {};
+      workbookDetail[_wbKeyFA].pricingAppliedFeesAsIs = _appliedFeesAsIsTotal > 0 ? _appliedFeesAsIsTotal : 0;
+    }
+
+    // Order Profit = Sale Total − TRUE cost basis. The override fees
+    // were added to BOTH sides (landedTotal includes _appliedFeesTotal
+    // which uses overrides), so they cancel out — leaving only product
+    // margin. To surface fee markup as profit, subtract the as-is
+    // portion from landedTotal: cost basis becomes
+    //     landedBase + fees AT AS-IS
+    // and Sale − Cost = product margin + (override − as-is) per fee
+    // = product margin + fee markup.
+    // Total Landed Cost displayed on the card stays at landedTotal
+    // (override amount) — that's "what gets billed", not the cost
+    // basis. Profit reflects the markup separately, here.
+    const _trueLandedCost = landedTotalBase + _appliedFeesAsIsTotal;
+    const orderProfit     = !isNaN(totalUsd) ? totalUsd - _trueLandedCost : NaN;
 
     // ─── Render cells ────────────────────────────────────────────────
     // fmtRange formats per-unit prices at three decimals (raw value,
@@ -26006,6 +26031,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // pricingLandedTotal (our cost) in the Add to Order picker grand
       // total card.
       pricingClientQuoteTotal: (existing && typeof existing.pricingClientQuoteTotal === 'number') ? existing.pricingClientQuoteTotal : 0,
+      // Cached applied-fees "as-is" total — sum of each applied fee's
+      // source (Workbook-tab) amount, NOT the override. Cost basis for
+      // the Order Sheet's profit calc: real_cost = grandTotalCost +
+      // appliedFeesAsIs, so fee markup (override − as-is) ends up in
+      // profit instead of being silently absorbed.
+      pricingAppliedFeesAsIs: (existing && typeof existing.pricingAppliedFeesAsIs === 'number') ? existing.pricingAppliedFeesAsIs : 0,
       // Cached total shipment weight (kg) and CBM — written by
       // renderContainerViz. Feed the Add Workbook to Order picker
       // so we can show per-workbook size + the grand total card
@@ -31809,18 +31840,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const wbTotal  = perUnit > 0 ? perUnit * wbTotalQty : 0;
       grandUsd += wbTotal;
 
-      // Per-unit COST for the workbook = pricingGrandTotalCost / qty.
-      // pricingGrandTotalCost is the Pricing tab's "Grand Total Cost
-      // (USD)" cache (product + shipping, no margin, no fees). Lets
-      // us compute profit per line without re-deriving freight here.
-      // Profit only shown when we have BOTH a sale price AND a known
-      // cost — otherwise we'd be flashing $0 or misleading numbers.
-      const wbGrandTotalCost  = parseFloat(detail.pricingGrandTotalCost) || 0;
-      const wbCostPerUnit     = wbTotalQty > 0 && wbGrandTotalCost > 0 ? wbGrandTotalCost / wbTotalQty : 0;
-      const profitPerUnit     = (useQuote && wbCostPerUnit > 0) ? (wbSaleUnit - wbCostPerUnit) : 0;
-      const haveProfit        = useQuote && wbCostPerUnit > 0 && wbTotalQty > 0;
-      const wbProfit          = haveProfit ? profitPerUnit * wbTotalQty : 0;
-      grandProfitUsd         += wbProfit;
+      // Per-unit COST for the workbook. The TRUE cost basis is:
+      //   pricingGrandTotalCost (product + shipping)
+      //   + pricingAppliedFeesAsIs (real cost of applied fees — NOT
+      //     the override, so any fee markup the operator typed flows
+      //     into profit instead of being silently absorbed).
+      // Spread evenly across qty for per-row math. Per-line profit
+      // therefore reflects product margin + fee markup × (rowQty /
+      // wbTotalQty) — i.e. each row carries its proportional share of
+      // the fee markup as profit.
+      const wbGrandTotalCost   = parseFloat(detail.pricingGrandTotalCost) || 0;
+      const wbAppliedFeesAsIs  = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
+      const wbTrueCostBasis    = wbGrandTotalCost + wbAppliedFeesAsIs;
+      const wbCostPerUnit      = wbTotalQty > 0 && wbTrueCostBasis > 0 ? wbTrueCostBasis / wbTotalQty : 0;
+      const profitPerUnit      = (useQuote && wbCostPerUnit > 0) ? (wbSaleUnit - wbCostPerUnit) : 0;
+      const haveProfit         = useQuote && wbCostPerUnit > 0 && wbTotalQty > 0;
+      const wbProfit           = haveProfit ? profitPerUnit * wbTotalQty : 0;
+      grandProfitUsd          += wbProfit;
 
       // Profit-cell helper — green for positive, red for negative,
       // muted dash when we don't have the data to compute it.
