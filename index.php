@@ -14963,21 +14963,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rows = document.querySelectorAll('#wb-tier-body tr');
     if (!rows.length) return;
     // Per-unit RMB price stored on each tier row's dataset.price.
-    //   • No variants    → parent's RMB unit price (which equals totalRmb)
-    //   • Variants exist → qty-weighted average of the per-unit RMB
-    //                      entries (ps.grandRmbWeighted). Computed in
-    //                      RMB throughout — no USD round-trip and no
-    //                      ceil-to-cent inflation, so an entered
-    //                      ¥0.30 displays as ¥0.300 here, not ¥0.34.
-    // Bumped to 3-decimal precision (.toFixed(3)) because 2-decimal
-    // truncation silently rounds low-RMB items (¥0.30 → ¥0.30 is fine,
-    // but ¥0.075 would snap to ¥0.08 and start the same inflation
-    // problem for finer-grained pricing). Downstream tier USD math
-    // re-derives from this raw RMB so the precision propagates.
+    // Single source of truth: ps.grandRmbWeighted — the qty-weighted
+    // average of every priced unit (parents + variants) on the RFQ:
+    //   weightedRmb = Σ(qty × rmb) / Σ(qty)
+    // Stays in RMB throughout — no USD round-trip and no ceil-to-cent
+    // inflation, so an entered ¥0.30 displays as ¥0.300 here, not
+    // ¥0.34. Falls back to the legacy totalRmb arg only when the price
+    // summary hasn't been built yet (first render before
+    // _lastRfqPriceSummary is set).
+    //
+    // Note on the legacy fallback: the prior `totalRmb` (= grandRmb)
+    // was the SUM of parent RMB values across all line items. With
+    // multiple line items it inflated tier RMB to the sum (e.g. two
+    // rows at ¥0.30 → tier showed ¥0.60). The weighted-average path
+    // handles every shape correctly: single row, multi-row, variants,
+    // mixed prices.
+    //
+    // 3-decimal precision so sub-cent prices (¥0.075, ¥0.123) aren't
+    // silently truncated and re-inflated on the next render.
     const ps = _lastRfqPriceSummary;
-    let perUnitRmb = parseFloat(totalRmb) || 0;
-    if (ps && ps.hasVariants && ps.grandRmbWeighted > 0) {
+    let perUnitRmb = 0;
+    if (ps && ps.grandRmbWeighted > 0) {
       perUnitRmb = ps.grandRmbWeighted;
+    } else {
+      perUnitRmb = parseFloat(totalRmb) || 0;
     }
     const price = perUnitRmb > 0 ? perUnitRmb.toFixed(3) : '';
     // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
