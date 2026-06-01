@@ -27131,31 +27131,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const ai = roleOrder.indexOf(a); const bi = roleOrder.indexOf(b);
           return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
         });
+        // Per-client paid totals — feed both the client header chip
+        // ("$X paid of $Y") and the green progress bar underneath it.
+        const cPaidTotal  = cRows.reduce((s, r) => s + (r.status === 'paid' ? (parseFloat(r.commission_amount) || 0) : 0), 0);
+        const cPaidPct    = cSubtotal > 0 ? Math.min(100, (cPaidTotal / cSubtotal) * 100) : 0;
+        const cPaidCount  = cRows.filter(r => r.status === 'paid').length;
+        const cFullyPaid  = cPaidCount === cRows.length && cRows.length > 0;
+
         const roleGroups = roleKeys.map(roleKey => {
           const rows = byRole[roleKey];
           const rates = [...new Set(rows.map(r => parseFloat(r.commission_rate) || 0))];
           const rateLabel = rates.length === 1 ? fmtRate(rates[0]) : 'varies';
           const groupTotal = rows.reduce((s, r) => s + (parseFloat(r.commission_amount) || 0), 0);
+          // Per-role paid totals so the role header can show progress
+          // independently when a client has multiple roles (AM + SP +
+          // Ops on the same workbooks).
+          const groupPaid  = rows.reduce((s, r) => s + (r.status === 'paid' ? (parseFloat(r.commission_amount) || 0) : 0), 0);
+          const groupPct   = groupTotal > 0 ? Math.min(100, (groupPaid / groupTotal) * 100) : 0;
+          const groupFully = groupPaid > 0 && groupPaid >= groupTotal - 0.005;
           const wbRows = rows.map(renderCommissionRow).join('');
+          // Right-side summary: '$X paid of $Y' + tiny inline progress
+          // chip. Color shifts from muted → green as more is paid.
+          const groupPaidLabel = groupPaid > 0
+            ? `<span style="color:#16a34a; font-weight:700;">${fmtUsd(groupPaid)}</span> <span style="color:var(--text-muted); font-weight:500;">paid of</span> <span style="color:var(--text); font-weight:700;">${fmtUsd(groupTotal)}</span>`
+            : `<span style="color:var(--text-muted); font-weight:500;">0 paid of</span> <span style="color:var(--text); font-weight:700;">${fmtUsd(groupTotal)}</span>`;
           return `
             <div style="margin-bottom:8px;">
-              <div style="display:flex; align-items:center; gap:8px; padding:4px 4px 6px; font-size:11px; color:var(--text-muted); font-weight:600;">
+              <div style="display:flex; align-items:center; gap:8px; padding:4px 4px 4px; font-size:11px; color:var(--text-muted); font-weight:600;">
                 ${rolePill(roleKey)}
                 <span style="font-variant-numeric:tabular-nums;">${rateLabel}</span>
-                <span style="margin-left:auto; color:var(--text); font-weight:700; font-variant-numeric:tabular-nums;">${fmtUsd(groupTotal)}</span>
+                <span style="margin-left:auto; font-variant-numeric:tabular-nums; font-size:11px;">${groupPaidLabel}${groupFully ? ' <span style="color:#16a34a; font-weight:700;">✓</span>' : ''}</span>
+              </div>
+              <!-- Progress bar — green fill grows as rows are marked paid.
+                   3px tall, sits between the role header and the rows. -->
+              <div style="height:3px; background:rgba(22,163,74,0.10); border-radius:99px; overflow:hidden; margin:0 4px 6px;">
+                <div style="height:100%; width:${groupPct}%; background:#16a34a; border-radius:99px; transition:width 0.25s ease;"></div>
               </div>
               <div style="display:flex; flex-direction:column; gap:5px;">${wbRows}</div>
             </div>`;
         }).join('');
 
+        // Client-level paid summary in the header line — same colour
+        // language as the role header so the eye reads them as one
+        // system ("how much have I paid this client this month").
+        const cPaidLabel = cPaidTotal > 0
+          ? `<span style="color:#16a34a; font-weight:700;">${fmtUsd(cPaidTotal)}</span> <span style="color:var(--text-muted);">paid of</span> <span style="color:var(--text); font-weight:700;">${fmtUsd(cSubtotal)}</span>`
+          : `<span style="color:var(--text-muted);">0 paid of</span> <span style="color:var(--text); font-weight:700;">${fmtUsd(cSubtotal)}</span>`;
+
         return `
           <div style="margin-bottom:14px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; gap:10px;">
               <span class="inv-client-chip" onclick="${clientChipClick}" style="${_clientChipStyle(c)} cursor:pointer; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(c)} — open client">${esc(c)}</span>
-              <span style="font-size:11px; color:var(--text-muted); font-weight:600; white-space:nowrap;">
-                ${cRows.length} workbook${cRows.length !== 1 ? 's' : ''} · subtotal
-                <span style="color:var(--text); font-weight:700;">${fmtUsd(cSubtotal)}</span>
+              <span style="font-size:11px; color:var(--text-muted); font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums;">
+                ${cRows.length} workbook${cRows.length !== 1 ? 's' : ''} &nbsp;·&nbsp; ${cPaidLabel}${cFullyPaid ? ' <span style="color:#16a34a; font-weight:700;">✓</span>' : ''}
               </span>
+            </div>
+            <!-- Client-level progress — slightly taller (4px) than the
+                 per-role bars so the visual hierarchy stays clear. -->
+            <div style="height:4px; background:rgba(22,163,74,0.10); border-radius:99px; overflow:hidden; margin:0 0 10px;">
+              <div style="height:100%; width:${cPaidPct}%; background:#16a34a; border-radius:99px; transition:width 0.25s ease;"></div>
             </div>
             ${roleGroups}
           </div>
