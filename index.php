@@ -14591,7 +14591,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.ondragover = function(e) { e.preventDefault(); tr.style.borderTop='2px solid var(--accent)'; };
     tr.ondragleave = function() { tr.style.borderTop=''; };
     tr.ondrop = function(e) { e.preventDefault(); tr.style.borderTop=''; rfqDropRow(e, id); };
-    const usdVal = priceRmb ? _fxUsdFromRmb(priceRmb).toFixed(2) : '';
+    const usdVal = priceRmb ? _fxUsdFromRmbPrecise(priceRmb).toFixed(2) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
     // Slightly taller row — bumped vertical padding from 10px to 12px so
     // the row has room for the inline "+ Add Variant" link below the
@@ -14678,14 +14678,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const inputs = row.querySelectorAll('input:not([type="checkbox"])');
     const qty = _msNumFromInput(inputs[2]);
     const rmb = _msNumFromInput(inputs[3]);
-    // Use the precise (non-ceiled) conversion for DISPLAY so ¥0.30 reads
-    // as $0.044 instead of being inflated to $0.05 by the cent-ceil. Per-
-    // line total is qty × precise USD, displayed at 2 decimals.
+    // Per-unit USD: precise RMB/rate conversion, displayed at 2
+    // decimals (nearest cent — JS toLocaleString rounds-to-nearest).
+    // Total: qty × precise per-unit, also 2 decimals. Keeps parent
+    // and variant rows consistent — no more "$0.078 on the parent,
+    // $0.08 on the variants" mismatch.
     const usd   = _fxUsdFromRmbPrecise(rmb);
     const total = qty > 0 && usd > 0 ? qty * usd : 0;
     const usdEl = document.getElementById(`rfq-usd-${id}`);
     const totalEl = document.getElementById(`rfq-total-${id}`);
-    if (usdEl) usdEl.textContent   = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—';
+    if (usdEl) usdEl.textContent   = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
@@ -14866,7 +14868,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _scheduleRfqSubtotalRebuild(() => {
       document.querySelectorAll('.rfq-item-subtotal').forEach(r => r.remove());
       if (!showBreakdown || !totalsRow) return;
-      const fmt3sub = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      // Subtotal rows now display at 2 decimals to match the per-line
+      // UNIT PRICE (USD) cells (variant rows + parent rows + totals
+      // row — everyone reads as the nearest cent).
+      const fmt3sub = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       itemSummaries.forEach(item => {
         // Derive precise USD / Total at render time so the subtotal
         // row matches the per-line row and the new TOTALS row (which
@@ -14962,12 +14967,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (usdCell) {
       if (hasVariants && pricedItems.length > 0 && isRange) {
         // Mixed-price variants — keep the min–max range using the
-        // precise per-unit values for both ends.
+        // precise per-unit values for both ends, displayed at 2
+        // decimals to match the per-line UNIT PRICE (USD) cells.
         const uMinPrecise = (USD_TO_RMB > 0) ? rmbMin / USD_TO_RMB : 0;
         const uMaxPrecise = (USD_TO_RMB > 0) ? rmbMax / USD_TO_RMB : 0;
-        usdCell.textContent = '$' + fmt3(uMinPrecise) + '–$' + fmt3(uMaxPrecise);
+        usdCell.textContent = '$' + fmt(uMinPrecise) + '–$' + fmt(uMaxPrecise);
       } else {
-        usdCell.textContent = perUnitUsdPrecise > 0 ? '$' + fmt3(perUnitUsdPrecise) : '—';
+        usdCell.textContent = perUnitUsdPrecise > 0 ? '$' + fmt(perUnitUsdPrecise) : '—';
       }
     }
 
@@ -15138,7 +15144,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         priceRmb = parentInputs[3]?.value || '';
       }
     }
-    const usdVal = priceRmb ? _fxUsdFromRmb(priceRmb).toFixed(2) : '';
+    const usdVal = priceRmb ? _fxUsdFromRmbPrecise(priceRmb).toFixed(2) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
     const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:13px; box-sizing:border-box; background:var(--surface2); color:var(--text); font-family:inherit;';
     const tr = document.createElement('tr');
@@ -15281,12 +15287,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const inputs = row.querySelectorAll('input:not(.rfq-var-sku-input)');
     const qty = _msNumFromInput(inputs[1]);
     const rmb = _msNumFromInput(inputs[2]);
-    // Precise display — same reasoning as recalcRfqRow above.
+    // Precise display rounded to nearest cent — matches the parent
+    // row's 2-decimal format so the column reads consistently
+    // (no more parent showing $0.078 while variants show $0.08).
     const usd   = _fxUsdFromRmbPrecise(rmb);
     const total = qty > 0 && usd > 0 ? qty * usd : 0;
     const usdEl = document.getElementById(`rfq-var-usd-${vid}`);
     const totalEl = document.getElementById(`rfq-var-total-${vid}`);
-    if (usdEl) usdEl.textContent   = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—';
+    if (usdEl) usdEl.textContent   = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
     const parentId = parseInt(row.dataset.rfqParent);
     if (parentId) syncParentQtyFromVariants(parentId);
