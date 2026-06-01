@@ -14732,6 +14732,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     });
     let grandQty = 0, grandUsd = 0, grandRmb = 0, grandUsdUnit = 0, maxLead = 0;
+    // True qty-weighted RMB accumulator — stays in RMB throughout (no
+    // USD round-trip, no ceil-to-cent inflation). Used by Tiered
+    // Pricing so the per-unit RMB displayed on each tier matches what
+    // the operator actually entered on the RFQ. Without this, low-RMB
+    // items (e.g. ¥0.30 / unit) got inflated to ¥0.34 because the old
+    // path back-calculated RMB from the already-ceiled grandUsd.
+    let grandRmbQtyXPrice = 0;   // Σ qty × rmb across priced units
+    let grandRmbQty       = 0;   // Σ qty for those same priced units
     const itemSummaries = [];  // { label, qty, rmb, usd, total, lead, isVariant }
 
     parentRows.forEach(row => {
@@ -14771,6 +14779,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             totUsd += _msCeil2(vQty * _fxUsdFromRmb(vRmb));
             if (vRmb < minRmb) minRmb = vRmb;
             if (vRmb > maxRmb) maxRmb = vRmb;
+            // Feed the qty-weighted RMB accumulator — RMB stays RMB.
+            if (vQty > 0) {
+              grandRmbQtyXPrice += vQty * vRmb;
+              grandRmbQty       += vQty;
+            }
           }
         });
 
@@ -14818,7 +14831,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         grandQty     += qty;
         grandRmb     += rmb;
         grandUsdUnit += usd;
-        if (qty && rmb) grandUsd += total;
+        if (qty && rmb) {
+          grandUsd          += total;
+          grandRmbQtyXPrice += qty * rmb;
+          grandRmbQty       += qty;
+        }
         if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
 
         if (name || qty || rmb) {
@@ -14889,9 +14906,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       isRange = hasVariants && (rmbMax - rmbMin > PRICE_EPS);
     }
 
+    // grandRmbWeighted = qty-weighted average of the per-unit RMB
+    // prices entered on the RFQ. Computed without ever going through
+    // USD so ceil-to-cent rounding can't inflate it (e.g. ¥0.30 stays
+    // ¥0.30, not ¥0.34). Tiered Pricing reads this directly.
+    const grandRmbWeighted = grandRmbQty > 0 ? (grandRmbQtyXPrice / grandRmbQty) : 0;
     _lastRfqPriceSummary = {
       hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange,
-      grandQty, grandRmb, grandUsdUnit, grandUsd
+      grandQty, grandRmb, grandRmbWeighted, grandUsdUnit, grandUsd
     };
 
     document.getElementById('rfq-total-qty').textContent = grandQty ? grandQty.toLocaleString('en-US') : '—';
@@ -14942,17 +14964,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!rows.length) return;
     // Per-unit RMB price stored on each tier row's dataset.price.
     //   • No variants    → parent's RMB unit price (which equals totalRmb)
-    //   • Variants exist → weighted average across all variant units
-    //                      = (grandUsd × USD_TO_RMB) / grandQty
-    // This makes Tier 1 (qty == grandQty) compute exactly to the RFQ
-    // Grand Total Total(USD), and keeps every downstream consumer
-    // (Pricing tab Product Cost, Shipping tier-detail bar) correct.
+    //   • Variants exist → qty-weighted average of the per-unit RMB
+    //                      entries (ps.grandRmbWeighted). Computed in
+    //                      RMB throughout — no USD round-trip and no
+    //                      ceil-to-cent inflation, so an entered
+    //                      ¥0.30 displays as ¥0.300 here, not ¥0.34.
+    // Bumped to 3-decimal precision (.toFixed(3)) because 2-decimal
+    // truncation silently rounds low-RMB items (¥0.30 → ¥0.30 is fine,
+    // but ¥0.075 would snap to ¥0.08 and start the same inflation
+    // problem for finer-grained pricing). Downstream tier USD math
+    // re-derives from this raw RMB so the precision propagates.
     const ps = _lastRfqPriceSummary;
     let perUnitRmb = parseFloat(totalRmb) || 0;
-    if (ps && ps.hasVariants && ps.grandQty > 0 && ps.grandUsd > 0) {
-      perUnitRmb = (ps.grandUsd * USD_TO_RMB) / ps.grandQty;
+    if (ps && ps.hasVariants && ps.grandRmbWeighted > 0) {
+      perUnitRmb = ps.grandRmbWeighted;
     }
-    const price = perUnitRmb > 0 ? perUnitRmb.toFixed(2) : '';
+    const price = perUnitRmb > 0 ? perUnitRmb.toFixed(3) : '';
     // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
     rows.forEach(row => { row.dataset.price = price; });
     // Sync qty into first tier row from the RFQ Grand Total qty
