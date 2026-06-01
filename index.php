@@ -16080,6 +16080,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // 'die','plate','design'); extra fees by 'extra:<id>'. Persisted as
   // an array on workbookDetail.appliedFees.
   let _appliedFees = new Set();
+  // Per-fee override amounts (USD). When an operator ticks a fee on the
+  // Pricing tab they can also edit its USD amount in-place — the "as is"
+  // workbook value stays as a reference, and this map carries whatever
+  // they typed. Keyed by fee id (same id space _appliedFees uses, incl.
+  // synthetic '__shipup_*' upgrade fees). Empty / cleared input deletes
+  // the entry → fee falls back to its source (Workbook tab) amount.
+  // Persisted alongside _appliedFees in detail_json.appliedFeeOverrides.
+  let _appliedFeeOverrides = Object.create(null);
+  function _hasFeeOverride(id) { return Object.prototype.hasOwnProperty.call(_appliedFeeOverrides, id); }
+  function _getAppliedFeeAmount(fee) {
+    if (!fee) return 0;
+    if (_hasFeeOverride(fee.id)) {
+      const v = parseFloat(_appliedFeeOverrides[fee.id]);
+      return isFinite(v) ? v : 0;
+    }
+    return parseFloat(fee.usd) || 0;
+  }
   // Synthetic "shipment upgrade" fees — the premium of shipping a split
   // via a faster method vs. the base/dropdown method. These aren't
   // entered on the Workbook tab; _renderPricingTabInner recomputes them
@@ -16906,21 +16923,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // Sum of every applied fee's USD amount. Drives both the Total Landed
   // Cost addition and the Client Quote line items. Includes synthetic
-  // shipment-upgrade fees (see _shipmentUpgradeFees) when ticked.
+  // shipment-upgrade fees (see _shipmentUpgradeFees) when ticked. Each
+  // fee's effective amount is the per-fee override when set, else the
+  // source ("as is") amount from the Workbook tab.
   function appliedFeesTotalUsd() {
     const fees = collectWorkbookFees();
-    let t = fees.reduce((s, f) => s + (_appliedFees.has(f.id) ? f.usd : 0), 0);
-    _shipmentUpgradeFees().forEach(f => { if (_appliedFees.has(f.id)) t += (f.usd || 0); });
+    let t = fees.reduce((s, f) => s + (_appliedFees.has(f.id) ? _getAppliedFeeAmount(f) : 0), 0);
+    _shipmentUpgradeFees().forEach(f => { if (_appliedFees.has(f.id)) t += _getAppliedFeeAmount(f); });
     return t;
   }
 
   // List of currently-applied fees (filtered + ordered the way they
-  // appear in the picker). Used by the Client Quote renderer. Synthetic
-  // shipment-upgrade fees are appended so they show as their own line
-  // item in the client quote when ticked.
+  // appear in the picker). Used by the Client Quote renderer. Each
+  // entry's .usd carries the EFFECTIVE amount (override or as-is) so
+  // downstream consumers don't need to know about the override map;
+  // .originalUsd preserves the source amount for any consumer that
+  // wants to show 'as is' vs current. Synthetic shipment-upgrade fees
+  // appended so they show as their own line item in the client quote.
   function appliedFeesList() {
-    const list = collectWorkbookFees().filter(f => _appliedFees.has(f.id));
-    _shipmentUpgradeFees().forEach(f => { if (_appliedFees.has(f.id)) list.push(f); });
+    const _wrap = f => ({ ...f, originalUsd: f.usd, usd: _getAppliedFeeAmount(f) });
+    const list = collectWorkbookFees().filter(f => _appliedFees.has(f.id)).map(_wrap);
+    _shipmentUpgradeFees().forEach(f => { if (_appliedFees.has(f.id)) list.push(_wrap(f)); });
     return list;
   }
 
@@ -16956,22 +16979,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const escHtmlSafe = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const rows = fees.map(f => {
-      const checked = _appliedFees.has(f.id) ? 'checked' : '';
-      const idAttr = escHtmlSafe(f.id);
-      const descLine = f.desc ? `<div style="font-size:11px; color:var(--text-muted); margin-top:1px;">${escHtmlSafe(f.desc)}</div>` : '';
-      const rmbStr = fmtRmb(f.rmb);
-      const usdStr = fmtUsd(f.usd);
-      return `<label style="display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); cursor:pointer;">
+      const isApplied = _appliedFees.has(f.id);
+      const checked   = isApplied ? 'checked' : '';
+      const idAttr    = escHtmlSafe(f.id);
+      const descLine  = f.desc ? `<div style="font-size:11px; color:var(--text-muted); margin-top:1px;">${escHtmlSafe(f.desc)}</div>` : '';
+      const rmbStr    = fmtRmb(f.rmb);
+      const asIsUsd   = parseFloat(f.usd) || 0;
+      const effective = _getAppliedFeeAmount(f);
+      const hasOver   = isApplied && _hasFeeOverride(f.id);
+      // Right-side amount column. When the fee is NOT applied → static
+      // 'as is' amount only. When APPLIED → 'as is' label above an
+      // editable override input. Clearing the input reverts to as-is.
+      const amountColHtml = isApplied
+        ? `<div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; min-width:140px;">
+             <div style="font-size:10px; color:var(--text-muted); white-space:nowrap;">As is: <span style="font-weight:600;">${fmtUsd(asIsUsd)}</span>${hasOver ? ` <button type="button" onclick="event.preventDefault(); event.stopPropagation(); _clearAppliedFeeOverride('${idAttr}');" title="Revert to as-is amount" style="background:none; border:none; color:var(--accent); font-size:10px; font-weight:600; cursor:pointer; padding:0 0 0 4px; font-family:inherit; text-decoration:underline;">revert</button>` : ''}</div>
+             <div style="display:inline-flex; align-items:center; gap:4px;">
+               <span style="font-size:12px; color:var(--text-muted);">\$</span>
+               <input type="number" min="0" step="0.01" inputmode="decimal" value="${effective.toFixed(2)}"
+                 onclick="event.preventDefault(); event.stopPropagation();"
+                 oninput="_onAppliedFeeOverrideInput('${idAttr}', this.value)"
+                 onblur="_formatAppliedFeeOverrideInput(this)"
+                 style="width:84px; padding:4px 6px; font-size:13px; font-weight:700; text-align:right; border:1px solid ${hasOver ? 'var(--accent)' : 'var(--border)'}; border-radius:5px; background:var(--surface); color:var(--text); font-family:inherit;" />
+             </div>
+             ${rmbStr ? `<div style="font-size:10px; color:var(--text-muted);">${rmbStr}</div>` : ''}
+           </div>`
+        : `<div style="text-align:right; flex-shrink:0;">
+             <div style="font-size:13px; font-weight:700; color:var(--text);">${fmtUsd(asIsUsd)}</div>
+             ${rmbStr ? `<div style="font-size:11px; color:var(--text-muted);">${rmbStr}</div>` : ''}
+           </div>`;
+      return `<label style="display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); cursor:pointer;">
         <input type="checkbox" ${checked} onchange="toggleFeeApplied('${idAttr}', this.checked)"
-               style="width:16px; height:16px; accent-color:#E8751A; cursor:pointer; flex-shrink:0;" />
+               style="width:16px; height:16px; accent-color:#E8751A; cursor:pointer; flex-shrink:0; margin-top:2px;" />
         <div style="flex:1; min-width:0;">
           <div style="font-size:13px; font-weight:600; color:var(--text);">${escHtmlSafe(f.label)}</div>
           ${descLine}
         </div>
-        <div style="text-align:right; flex-shrink:0;">
-          <div style="font-size:13px; font-weight:700; color:var(--text);">${usdStr}</div>
-          ${rmbStr ? `<div style="font-size:11px; color:var(--text-muted);">${rmbStr}</div>` : ''}
-        </div>
+        ${amountColHtml}
       </label>`;
     }).join('');
 
@@ -16983,10 +17026,52 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function toggleFeeApplied(id, isChecked) {
-    if (isChecked) _appliedFees.add(id); else _appliedFees.delete(id);
+    if (isChecked) {
+      _appliedFees.add(id);
+    } else {
+      _appliedFees.delete(id);
+      // Clearing the toggle also clears any per-fee override — re-
+      // checking later starts from the as-is amount again.
+      if (_hasFeeOverride(id)) delete _appliedFeeOverrides[id];
+    }
     if (typeof _schedulePricingTabRender === 'function') _schedulePricingTabRender();
     renderPricingFeesCard();
     if (!_filling) autoSaveWorkbook();
+  }
+
+  // oninput on a fee's override-amount input. Empty value reverts the
+  // fee back to its as-is amount (delete from the override map).
+  // Otherwise stash the numeric value so appliedFeesTotalUsd /
+  // appliedFeesList pick it up. Triggers the Pricing-tab re-render so
+  // Total Landed Cost + Client Quote reflect the new amount live.
+  function _onAppliedFeeOverrideInput(id, value) {
+    const trimmed = String(value == null ? '' : value).trim();
+    if (trimmed === '') {
+      if (_hasFeeOverride(id)) delete _appliedFeeOverrides[id];
+    } else {
+      const v = parseFloat(trimmed);
+      _appliedFeeOverrides[id] = isFinite(v) && v >= 0 ? v : 0;
+    }
+    if (typeof _schedulePricingTabRender === 'function') _schedulePricingTabRender();
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  // Explicit revert link next to the 'As is' label — clears the
+  // override and re-renders so the input snaps back to the source
+  // amount.
+  function _clearAppliedFeeOverride(id) {
+    if (_hasFeeOverride(id)) delete _appliedFeeOverrides[id];
+    if (typeof _schedulePricingTabRender === 'function') _schedulePricingTabRender();
+    renderPricingFeesCard();
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  // onblur formatter — re-pads the override input to 2 decimals so a
+  // typed "750" reads back as "750.00".
+  function _formatAppliedFeeOverrideInput(el) {
+    if (!el) return;
+    const v = parseFloat(el.value);
+    if (isFinite(v) && v >= 0) el.value = v.toFixed(2);
   }
 
   function calcAdditionalFees() {
@@ -24270,6 +24355,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       // Restore which fees the operator had ticked on the Pricing tab.
       _appliedFees = new Set(Array.isArray(data.appliedFees) ? data.appliedFees : []);
+      // Restore per-fee USD overrides (sample: $590 → operator typed
+      // $750 on this workbook). Numeric coercion in case the saved
+      // payload smuggled in strings.
+      _appliedFeeOverrides = Object.create(null);
+      if (data.appliedFeeOverrides && typeof data.appliedFeeOverrides === 'object') {
+        Object.keys(data.appliedFeeOverrides).forEach(k => {
+          const v = parseFloat(data.appliedFeeOverrides[k]);
+          if (isFinite(v) && v >= 0) _appliedFeeOverrides[k] = v;
+        });
+      }
       // Shipment splits
       _shipmentSplits = [];
       _splitCounter = 0;
@@ -24480,8 +24575,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const _newProd = item ? (item.product || '') : '';
       addRfqRow(_newProd, ''); addRfqRow(); addRfqRow();
       recalcRfqTotals();
-      // Brand-new workbook: no fees applied yet.
+      // Brand-new workbook: no fees applied yet, no overrides.
       _appliedFees = new Set();
+      _appliedFeeOverrides = Object.create(null);
     }
 
     // Shipping lead times — fall back to typical China→US transit defaults
@@ -25747,6 +25843,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Which fees the operator has ticked on the Pricing tab to apply
       // to Total Landed Cost + the Client Quote line items.
       appliedFees:   [..._appliedFees],
+      // Per-fee USD override the operator typed on the Pricing tab.
+      // Keyed by fee id (same key space as appliedFees). Empty when
+      // every applied fee is at its as-is amount.
+      appliedFeeOverrides: { ..._appliedFeeOverrides },
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
       productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
