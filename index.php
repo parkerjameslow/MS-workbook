@@ -30010,77 +30010,245 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     workbookDetail[key] = detail;
 
     // ── Scalar field whitelist ─────────────────────────────────────
-    // Each entry: [detailKey, inputId]. Most workbook fields use this
-    // 1:1 convention; section-level data (rfqItems, tiers, etc.) is
-    // handled below via the existing fillWorkbook helpers.
+    // Three groups based on how the input expects its value:
+    //   • scalar  — text / number / textarea — set .value
+    //   • select  — <select> — set .value
+    //   • checkbox — <input type=checkbox> — set .checked
+    // Each entry: [detailKey, inputId]. Covers every field
+    // collectWorkbookDetail writes that has a 1:1 DOM input mapping
+    // (so dimensions, carton specs, shipping options, freight overrides,
+    // fees, quote / invoice / art tabs, color & material text, pallet
+    // notes, pricing inputs, etc.). Section-level state — rfqItems,
+    // tiers, appliedFees, appliedFeeOverrides, shipmentSplits,
+    // freightRates per-method — is handled below.
     const scalarFields = [
-      ['product',          'product-name'],
-      ['desc',             'product-desc'],
-      ['productCategory',  'product-category'],
-      ['productCategory2', 'product-category-2'],
-      ['dimInL',           'dim-in-l'],
-      ['dimInW',           'dim-in-w'],
-      ['dimInH',           'dim-in-h'],
-      ['dimCmL',           'dim-cm-l'],
-      ['dimCmW',           'dim-cm-w'],
-      ['dimCmH',           'dim-cm-h'],
-      ['dimWeightKg',      'dim-weight-kg'],
-      ['dimWeightLbs',     'dim-weight-lbs'],
-      ['dimPackaging',     'dim-packaging'],
-      ['cartonInnerLIn',   'carton-inner-l-in'],
-      ['cartonInnerLCm',   'carton-inner-l-cm'],
-      ['cartonInnerWIn',   'carton-inner-w-in'],
-      ['cartonInnerWCm',   'carton-inner-w-cm'],
-      ['cartonInnerHIn',   'carton-inner-h-in'],
-      ['cartonInnerHCm',   'carton-inner-h-cm'],
-      ['cartonInnerWeightKg',  'carton-inner-weight'],
-      ['cartonInnerWeightLbs', 'carton-inner-weight-lbs'],
-      ['cartonInnerCount', 'carton-inner-count'],
-      ['cartonOuterLIn',   'carton-outer-l-in'],
-      ['cartonOuterLCm',   'carton-outer-l-cm'],
-      ['cartonOuterWIn',   'carton-outer-w-in'],
-      ['cartonOuterWCm',   'carton-outer-w-cm'],
-      ['cartonOuterHIn',   'carton-outer-h-in'],
-      ['cartonOuterHCm',   'carton-outer-h-cm'],
-      ['cartonOuterWeightKg',  'carton-outer-weight'],
-      ['cartonOuterWeightLbs', 'carton-outer-weight-lbs'],
-      ['cartonOuterCount', 'carton-outer-count'],
+      // Workbook tab — product + dims
+      ['product',                 'product-name'],
+      ['desc',                    'product-desc'],
+      ['productSubcategoryOther', 'product-subcategory-other'],
+      ['productSubcategoryOther2','product-subcategory-other-2'],
+      ['materials',               'materials'],
+      ['pantone',                 'pantone-text'],
+      ['cmyk',                    'cmyk'],
+      ['colorNotes',              'color-notes'],
+      ['qcNotes',                 'quote-qc'],
+      ['dimInL',                  'dim-in-l'],
+      ['dimInW',                  'dim-in-w'],
+      ['dimInH',                  'dim-in-h'],
+      ['dimCmL',                  'dim-cm-l'],
+      ['dimCmW',                  'dim-cm-w'],
+      ['dimCmH',                  'dim-cm-h'],
+      ['dimWeightKg',             'dim-weight-kg'],
+      ['dimWeightLbs',            'dim-weight-lbs'],
+      ['dimPackaging',            'dim-packaging'],
+      // Inner carton
+      ['cartonInnerLIn',     'carton-inner-l-in'],
+      ['cartonInnerLCm',     'carton-inner-l-cm'],
+      ['cartonInnerWIn',     'carton-inner-w-in'],
+      ['cartonInnerWCm',     'carton-inner-w-cm'],
+      ['cartonInnerHIn',     'carton-inner-h-in'],
+      ['cartonInnerHCm',     'carton-inner-h-cm'],
+      ['cartonInnerWeight',  'carton-inner-weight'],
+      ['cartonInnerCount',   'carton-inner-count'],
+      ['cartonInnerRow',     'carton-inner-row'],
+      ['cartonInnerSide',    'carton-inner-side'],
+      ['cartonInnerStack',   'carton-inner-stack'],
+      ['cartonInnerWall',    'carton-inner-wall'],
+      // Outer carton
+      ['cartonOuterLIn',     'carton-outer-l-in'],
+      ['cartonOuterLCm',     'carton-outer-l-cm'],
+      ['cartonOuterWIn',     'carton-outer-w-in'],
+      ['cartonOuterWCm',     'carton-outer-w-cm'],
+      ['cartonOuterHIn',     'carton-outer-h-in'],
+      ['cartonOuterHCm',     'carton-outer-h-cm'],
+      ['cartonOuterWeight',  'carton-outer-weight'],
+      ['cartonOuterCount',   'carton-outer-count'],
+      ['cartonOuterRow',     'carton-outer-row'],
+      ['cartonOuterSide',    'carton-outer-side'],
+      ['cartonOuterStack',   'carton-outer-stack'],
+      ['cartonOuterWall',    'carton-outer-wall'],
+      ['cartonUnitWeight',   'carton-unit-weight'],
       ['palletTotalCartons', 'pallet-total-cartons'],
-      ['freightHsCode',    'freight-hs-code'],
-      ['pricingSalePer',   'ps-sale-per'],
-      ['pricingMarginPct', 'ps-margin-pct'],
+      ['palletNotes',        'pallet-notes'],
+      ['palletStackNotes',   'pallet-stack-notes'],
+      // Shipping tab — freight overrides
+      ['freightHsCode',         'freight-hs-code'],
+      ['freightCostOverrideUsd','freight-cost-override'],
+      ['shipLeadSlow',          'ship-lead-slow'],
+      ['shipLeadFast',          'ship-lead-fast'],
+      ['shipLeadAirupp',        'ship-lead-airupp'],
+      ['shipLeadDirectair',     'ship-lead-directair'],
+      // Weight-only override
+      ['weightOnlyCaseQty', 'weight-only-qty'],
+      ['weightOnlyKg',      'weight-only-kg'],
+      ['weightOnlyLbs',     'weight-only-lbs'],
+      // Case-only override
+      ['caseOnlyProductsPer','case-only-products-per'],
+      ['caseOnlyCasesOrder', 'case-only-cases-order'],
+      ['caseOnlyLCm',        'case-only-l-cm'],
+      ['caseOnlyLIn',        'case-only-l-in'],
+      ['caseOnlyWCm',        'case-only-w-cm'],
+      ['caseOnlyWIn',        'case-only-w-in'],
+      ['caseOnlyHCm',        'case-only-h-cm'],
+      ['caseOnlyHIn',        'case-only-h-in'],
+      ['caseOnlyWeightKg',   'case-only-weight-kg'],
+      ['caseOnlyWeightLbs',  'case-only-weight-lbs'],
+      // Pricing tab
+      ['pricingSalePer',    'ps-sale-per'],
+      ['pricingMarginPct',  'ps-margin-pct'],
+      // Workbook-tab fees (USD + RMB + descriptions)
+      ['feeSampleDesc',  'fee-sample-desc'],
+      ['feeSampleRmb',   'fee-sample-rmb'],
+      ['feeSampleUsd',   'fee-sample-usd'],
+      ['feeToolingDesc', 'fee-tooling-desc'],
+      ['feeToolingRmb',  'fee-tooling-rmb'],
+      ['feeToolingUsd',  'fee-tooling-usd'],
+      ['feeDieDesc',     'fee-die-desc'],
+      ['feeDieRmb',      'fee-die-rmb'],
+      ['feeDieUsd',      'fee-die-usd'],
+      ['feePlateDesc',   'fee-plate-desc'],
+      ['feePlateRmb',    'fee-plate-rmb'],
+      ['feePlateUsd',    'fee-plate-usd'],
+      ['feeDesignDesc',  'fee-design-desc'],
+      ['feeDesignUsd',   'fee-design-usd'],
+      // Quote tab
+      ['quoteDate',        'quote-date'],
+      ['quoteValidUntil',  'quote-valid-until'],
+      ['quoteClQty',       'quote-cl-qty'],
+      ['quoteClUnitPrice', 'quote-cl-unit-price'],
+      ['quoteClShipping',  'quote-cl-shipping'],
+      ['quoteClNotes',     'quote-cl-notes'],
+      // Invoice tab
+      ['invNumber',    'inv-number'],
+      ['invDate',      'inv-date'],
+      ['invDueDate',   'inv-due-date'],
+      ['invQty',       'inv-qty'],
+      ['invUnitPrice', 'inv-unit-price'],
+      ['invShipping',  'inv-shipping'],
+      ['invNotes',     'inv-notes'],
+      // Art tab
+      ['artDueDate', 'art-due-date'],
+      ['artNotes',   'art-notes'],
+    ];
+
+    // <select> dropdowns. Same .value semantics as text inputs but
+    // listed separately for clarity (and to make checkbox handling
+    // below explicit by exclusion).
+    const selectFields = [
+      ['productCategory',    'product-category'],
+      ['productCategory2',   'product-category-2'],
+      ['productSubcategory', 'product-subcategory'],
+      ['productSubcategory2','product-subcategory-2'],
+      ['freightMode',        'freight-mode'],
+      ['invStatus',          'inv-status'],
+      ['invMethod',          'inv-method'],
+      ['artStatus',          'art-status'],
+    ];
+
+    // <input type=checkbox> — .checked instead of .value, and we
+    // dispatch 'change' (not 'input') so the existing onchange
+    // handlers fire (palletManualToggle, weight-only-toggle,
+    // case-only-toggle, etc. — each of these does grayout / cascade
+    // logic the broadcast needs to trigger).
+    const checkboxFields = [
+      ['palletManualMode',     'pallet-manual'],
+      ['palletDivider',        'pallet-divider'],
+      ['productDimsLocked',    'product-dims-lock'],
+      ['freightCostOverrideOn','freight-cost-override-toggle'],
+      ['weightOnlyOverride',   'weight-only-override'],
+      ['caseOnlyOverride',     'case-only-override'],
+      ['materialSecondEnabled','mat2-toggle'],
     ];
 
     let scalarChanges = 0;
-    scalarFields.forEach(([k, id]) => {
-      const newVal = detail[k];
-      if (newVal === undefined || newVal === null) return;
-      const el = document.getElementById(id);
-      if (!el) return;
+    // Shared per-element apply helper — encapsulates the focus + dirty
+    // guards + the orange flash so every field type uses the same path.
+    const applyValueChange = (el, doSet) => {
       // SAFETY 1 — focused-input guard. Never overwrite an input the
-      // operator is currently typing in.
-      if (document.activeElement === el) return;
+      // operator is currently typing in / interacting with.
+      if (document.activeElement === el) return false;
       // SAFETY 2 — local-dirty guard. Skip inputs the operator has
       // edited since their last successful autosave (the 400ms window).
-      // The flag is set by the global input listener and cleared on
-      // save success.
-      if (el.dataset && el.dataset.localDirty === '1') return;
-      const cur = String(el.value == null ? '' : el.value);
-      const next = String(newVal);
-      if (cur === next) return;
-      el.value = next;
-      scalarChanges++;
-      // Reuse the cell-sync orange flash so the operator sees what
-      // changed. Same timing (600ms) as _pollCellValues.
+      if (el.dataset && el.dataset.localDirty === '1') return false;
+      const changed = doSet();
+      if (!changed) return false;
+      // Orange flash so the operator sees what just changed.
       try {
         el.style.transition = 'background-color 0.6s ease';
         el.style.backgroundColor = 'rgba(232, 117, 26, 0.18)';
         setTimeout(() => { el.style.backgroundColor = ''; }, 600);
       } catch(_) {}
-      // Dispatch input so any downstream listeners (totals recalc,
-      // unit conversions, etc.) fire as if the user typed the change.
+      return true;
+    };
+
+    scalarFields.concat(selectFields).forEach(([k, id]) => {
+      const newVal = detail[k];
+      if (newVal === undefined || newVal === null) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      const next = String(newVal);
+      const changed = applyValueChange(el, () => {
+        const cur = String(el.value == null ? '' : el.value);
+        if (cur === next) return false;
+        el.value = next;
+        return true;
+      });
+      if (!changed) return;
+      scalarChanges++;
+      // input event for inputs/textareas, change for selects — most
+      // listeners bind to one or the other, so fire both to be safe.
       try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch(_) {}
+      try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch(_) {}
     });
+
+    checkboxFields.forEach(([k, id]) => {
+      const newVal = detail[k];
+      if (newVal === undefined || newVal === null) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      const next = !!newVal;
+      const changed = applyValueChange(el, () => {
+        if (!!el.checked === next) return false;
+        el.checked = next;
+        return true;
+      });
+      if (!changed) return;
+      scalarChanges++;
+      // Checkboxes fire change, not input — and many have onchange
+      // wired to a toggle handler that cascades visual state.
+      try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch(_) {}
+    });
+
+    // ── Per-method freight rates ───────────────────────────────────
+    // freightMethodRates is a JS object (not a single input); the four
+    // editable rate inputs feed it via onFreightRateInput. On a remote
+    // change we need to update both the object AND the visible inputs,
+    // then re-paint dependent UI (rate chip, comparison table, etc).
+    if (detail.freightRates && typeof detail.freightRates === 'object'
+        && typeof freightMethodRates !== 'undefined') {
+      let ratesChanged = false;
+      ['slow','fast','airupp','directair'].forEach(m => {
+        const r = parseFloat(detail.freightRates[m]);
+        if (!isFinite(r) || r < 0) return;
+        if (freightMethodRates[m] !== r) {
+          freightMethodRates[m] = r;
+          ratesChanged = true;
+        }
+        // Mirror to the matching input (if not focused / locally dirty).
+        const rateEl = document.getElementById('freight-rate-input-' + m);
+        if (rateEl) {
+          applyValueChange(rateEl, () => {
+            const cur = parseFloat(rateEl.value);
+            if (cur === r) return false;
+            rateEl.value = r.toFixed(2);
+            return true;
+          });
+        }
+      });
+      if (ratesChanged && typeof calcFreight === 'function') {
+        try { calcFreight(); } catch(_) {}
+      }
+    }
 
     // ── Section-level updates ──────────────────────────────────────
     // For sections that contain arrays of rows (fees, splits, tiers),
