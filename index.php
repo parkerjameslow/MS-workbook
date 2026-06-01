@@ -31601,28 +31601,52 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td colspan="6" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
-        // Per UX direction — collapse variants into ONE row per parent
-        // item in the Order Sheet. Variants belong on the Inventory
-        // left-nav dashboard, not exploded under each workbook here.
-        // When the item has variants, qty is the sum across them;
-        // no-variant items render the same way they always did.
+        // Per UX direction — when a workbook is EXPANDED, show its
+        // variants as the line-item breakdown so the operator can see
+        // what's actually inside ("Bulk Bag — Small / Medium / Large").
+        // If an item has no variants we just show the item itself
+        // (which will read identically to the workbook header for
+        // single-item workbooks — that's the correct collapsed state).
         rfqItems.forEach(item => {
           const vs = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
-          let itemQty;
-          if (vs.length) {
-            itemQty = vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g,'')) || 0), 0);
+          if (vs.length > 0) {
+            // Per-variant rows. Show each variant indented under the
+            // workbook header with its own qty + line total. Skip
+            // empty placeholder variants (no qty AND no name).
+            vs.forEach(v => {
+              const vQty = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
+              const vTot = perUnit > 0 ? perUnit * vQty : 0;
+              const vLabel = (v.variant || '').trim() || 'Variant';
+              // Prefix the variant with its parent item name when the
+              // workbook has multiple parents — disambiguates which
+              // 'Small' belongs to which bag. Single-parent workbooks
+              // can skip the prefix since context is unambiguous.
+              const prefix = rfqItems.length > 1 ? `${esc(item.item || 'Item')} — ` : '';
+              rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
+                <td style="padding-left:52px; color:var(--text-muted);">
+                  <span style="color:var(--text-muted); font-weight:400; margin-right:6px;">↳</span>
+                  ${prefix}<span style="color:var(--text); font-weight:500;">${esc(vLabel)}</span>
+                </td>
+                <td style="text-align:right;">${vQty > 0 ? vQty.toLocaleString('en-US') : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+                <td style="text-align:right; font-weight:600;">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
+                <td></td>
+                <td></td>
+              </tr>`;
+            });
           } else {
-            itemQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
+            // No variants — show the item itself as the single line.
+            const itemQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
+            const iTot = perUnit > 0 ? perUnit * itemQty : 0;
+            rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
+              <td style="padding-left:36px;">${esc(item.item || '—')}</td>
+              <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
+              <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+              <td style="text-align:right; font-weight:600;">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
+              <td></td>
+              <td></td>
+            </tr>`;
           }
-          const iTot = perUnit > 0 ? perUnit * itemQty : 0;
-          rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
-            <td style="padding-left:36px;">${esc(item.item || '—')}</td>
-            <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
-            <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
-            <td style="text-align:right; font-weight:600;">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
-            <td></td>
-            <td></td>
-          </tr>`;
         });
       }
 
