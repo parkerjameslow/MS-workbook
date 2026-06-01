@@ -16956,6 +16956,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fees = collectWorkbookFees();
     const totalEl = document.getElementById('pricing-fees-applied-total');
 
+    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+
+    // BAIL-OUT: if the operator is actively typing in a fee override
+    // input, don't re-render the body — that would destroy the input
+    // element they're focused on and clobber their cursor mid-keystroke.
+    // Just refresh the header chip so the '+ $XXX applied' total
+    // reflects the new override; everything else updates live via
+    // _onAppliedFeeOverrideInput.
+    const active = document.activeElement;
+    if (active && active.matches && active.matches('input[data-fee-override-id]')) {
+      const tot = appliedFeesTotalUsd();
+      if (totalEl) totalEl.textContent = tot > 0 ? `+ ${fmtUsd(tot)} applied` : '';
+      return;
+    }
+
     // Drop any applied-fee IDs that no longer correspond to a real fee
     // (e.g. user deleted an extra row on the Workbook tab).
     const validIds = new Set(fees.map(f => f.id));
@@ -16963,9 +16979,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // '__shipup_*' are synthetic shipment-upgrade fees with no Workbook-
     // tab row — never prune them here (they're managed by renderPricingTab).
     [..._appliedFees].forEach(id => { if (!validIds.has(id) && !String(id).startsWith('__shipup_')) { _appliedFees.delete(id); pruned = true; } });
-
-    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
 
     if (fees.length === 0) {
       body.innerHTML = `<div style="padding:14px 4px; font-size:12px; color:var(--text-muted); font-style:italic;">No fees entered on the Workbook tab. Add Sample / Tooling / Die / Plate / Design or custom fees there to make them available here.</div>`;
@@ -16983,29 +16996,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const checked   = isApplied ? 'checked' : '';
       const idAttr    = escHtmlSafe(f.id);
       const descLine  = f.desc ? `<div style="font-size:11px; color:var(--text-muted); margin-top:1px;">${escHtmlSafe(f.desc)}</div>` : '';
-      const rmbStr    = fmtRmb(f.rmb);
+      const asIsRmb   = parseFloat(f.rmb) || 0;
       const asIsUsd   = parseFloat(f.usd) || 0;
       const effective = _getAppliedFeeAmount(f);
       const hasOver   = isApplied && _hasFeeOverride(f.id);
+      // RMB displayed under the override input — derived from the
+      // EFFECTIVE USD (× FX rate) when the operator has overridden the
+      // amount, so editing $590 → $600 immediately shows the new ¥
+      // figure beneath it. Falls back to the source ¥ when the fee
+      // hasn't been overridden (preserves the workbook-tab rmb when
+      // available; otherwise derives from the as-is USD).
+      const liveRmb = hasOver
+        ? (effective * (USD_TO_RMB || 0))
+        : (asIsRmb > 0 ? asIsRmb : asIsUsd * (USD_TO_RMB || 0));
+      const liveRmbStr = liveRmb > 0 ? fmtRmb(liveRmb) : '';
+      const sourceRmbStr = fmtRmb(asIsRmb);
       // Right-side amount column. When the fee is NOT applied → static
       // 'as is' amount only. When APPLIED → 'as is' label above an
-      // editable override input. Clearing the input reverts to as-is.
+      // editable override input + live RMB. Clearing the input reverts.
       const amountColHtml = isApplied
         ? `<div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; min-width:140px;">
              <div style="font-size:10px; color:var(--text-muted); white-space:nowrap;">As is: <span style="font-weight:600;">${fmtUsd(asIsUsd)}</span>${hasOver ? ` <button type="button" onclick="event.preventDefault(); event.stopPropagation(); _clearAppliedFeeOverride('${idAttr}');" title="Revert to as-is amount" style="background:none; border:none; color:var(--accent); font-size:10px; font-weight:600; cursor:pointer; padding:0 0 0 4px; font-family:inherit; text-decoration:underline;">revert</button>` : ''}</div>
              <div style="display:inline-flex; align-items:center; gap:4px;">
                <span style="font-size:12px; color:var(--text-muted);">\$</span>
                <input type="number" min="0" step="0.01" inputmode="decimal" value="${effective.toFixed(2)}"
+                 data-fee-override-id="${idAttr}"
                  onclick="event.preventDefault(); event.stopPropagation();"
+                 onfocus="event.preventDefault(); event.stopPropagation(); this.select();"
                  oninput="_onAppliedFeeOverrideInput('${idAttr}', this.value)"
                  onblur="_formatAppliedFeeOverrideInput(this)"
-                 style="width:84px; padding:4px 6px; font-size:13px; font-weight:700; text-align:right; border:1px solid ${hasOver ? 'var(--accent)' : 'var(--border)'}; border-radius:5px; background:var(--surface); color:var(--text); font-family:inherit;" />
+                 style="width:90px; padding:4px 6px; font-size:13px; font-weight:700; text-align:right; border:1px solid ${hasOver ? 'var(--accent)' : 'var(--border)'}; border-radius:5px; background:var(--surface); color:var(--text); font-family:inherit;" />
              </div>
-             ${rmbStr ? `<div style="font-size:10px; color:var(--text-muted);">${rmbStr}</div>` : ''}
+             <div data-fee-rmb-id="${idAttr}" style="font-size:10px; color:var(--text-muted); min-height:14px;">${liveRmbStr}</div>
            </div>`
         : `<div style="text-align:right; flex-shrink:0;">
              <div style="font-size:13px; font-weight:700; color:var(--text);">${fmtUsd(asIsUsd)}</div>
-             ${rmbStr ? `<div style="font-size:11px; color:var(--text-muted);">${rmbStr}</div>` : ''}
+             ${sourceRmbStr ? `<div style="font-size:11px; color:var(--text-muted);">${sourceRmbStr}</div>` : ''}
            </div>`;
       return `<label style="display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); cursor:pointer;">
         <input type="checkbox" ${checked} onchange="toggleFeeApplied('${idAttr}', this.checked)"
@@ -17043,7 +17069,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // fee back to its as-is amount (delete from the override map).
   // Otherwise stash the numeric value so appliedFeesTotalUsd /
   // appliedFeesList pick it up. Triggers the Pricing-tab re-render so
-  // Total Landed Cost + Client Quote reflect the new amount live.
+  // Total Landed Cost + Client Quote reflect the new amount live —
+  // renderPricingFeesCard's own bail-out check keeps the body from
+  // being rewritten while the operator is focused on the input, so the
+  // cursor doesn't get clobbered mid-keystroke.
   function _onAppliedFeeOverrideInput(id, value) {
     const trimmed = String(value == null ? '' : value).trim();
     if (trimmed === '') {
@@ -17052,6 +17081,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const v = parseFloat(trimmed);
       _appliedFeeOverrides[id] = isFinite(v) && v >= 0 ? v : 0;
     }
+    // Update the in-row RMB display + input border color in-place so
+    // the operator sees the change without us needing to re-render
+    // (re-rendering would destroy the input element they're typing in).
+    try {
+      const safeId = (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(id) : id.replace(/"/g, '\\"');
+      const inputEl = document.querySelector(`input[data-fee-override-id="${safeId}"]`);
+      const rmbEl   = document.querySelector(`[data-fee-rmb-id="${safeId}"]`);
+      const effective = parseFloat(_appliedFeeOverrides[id]);
+      const hasOver   = _hasFeeOverride(id);
+      const usdNum    = isFinite(effective) ? effective : 0;
+      if (rmbEl) {
+        const rmbNum = usdNum * (USD_TO_RMB || 0);
+        rmbEl.textContent = rmbNum > 0
+          ? '¥' + rmbNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : '';
+      }
+      if (inputEl) inputEl.style.borderColor = hasOver ? 'var(--accent)' : 'var(--border)';
+    } catch (_) {}
     if (typeof _schedulePricingTabRender === 'function') _schedulePricingTabRender();
     if (!_filling) autoSaveWorkbook();
   }
