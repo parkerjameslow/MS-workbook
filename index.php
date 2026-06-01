@@ -30258,25 +30258,84 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // and we suppress any cosmetic 'flash' since the change is
     // structural (rows added/removed), not a single value.
 
-    // Pricing-tab applied fees + overrides — pull from detail straight
-    // into the in-memory state. The renderer is guarded against re-
-    // render while a fee-override input is focused (so the operator
-    // typing in $590→$600 isn't disturbed).
+    // ── Pricing tab Additional Fees ────────────────────────────────
+    // Three pieces of state to keep in sync:
+    //   1. _extraFeeRows  — custom rows from the Workbook-tab fees
+    //      section (Sample/Tooling/Die/Plate/Design are scalar inputs
+    //      handled above; extras are dynamic and need renderExtraFeeRows
+    //      to repaint).
+    //   2. _appliedFees   — Set of fee ids ticked on the Pricing tab.
+    //   3. _appliedFeeOverrides — per-fee USD overrides typed on the
+    //      Pricing tab.
+    // After updating the in-memory state we explicitly call
+    // renderPricingFeesCard() so the fees card body refreshes (it's
+    // guarded against re-render while an override input is focused —
+    // safe to call any time). The pricing-tab full re-render below
+    // also triggers it, but calling explicitly ensures the card
+    // reflects the broadcast even on tabs other than Pricing.
+    let feesStructureChanged = false;
+    let feesValueChanged     = false;
+
+    if (Array.isArray(detail.extraFeeRows)) {
+      // Reconstruct the local extras array. Cheap to do unconditionally
+      // since the renderer is idempotent — but only re-render when the
+      // shape actually changed to skip unnecessary DOM churn.
+      const before = JSON.stringify(_extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd})));
+      _extraFeeRows = [];
+      _extraFeeCounter = 0;
+      detail.extraFeeRows.forEach(r => {
+        _extraFeeCounter++;
+        _extraFeeRows.push({ id: _extraFeeCounter, type: r.type || '', desc: r.desc || '', rmb: r.rmb || 0, usd: r.usd || 0 });
+      });
+      const after = JSON.stringify(_extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd})));
+      if (before !== after) {
+        feesStructureChanged = true;
+        if (typeof renderExtraFeeRows === 'function') {
+          try { renderExtraFeeRows(); } catch(_) {}
+        }
+      }
+    }
+
     if (Array.isArray(detail.appliedFees)) {
       const incoming = new Set(detail.appliedFees);
       // Replace the local Set wholesale if anything differs.
-      let feeChanged = (incoming.size !== _appliedFees.size);
-      if (!feeChanged) {
-        for (const id of incoming) { if (!_appliedFees.has(id)) { feeChanged = true; break; } }
+      let changed = (incoming.size !== _appliedFees.size);
+      if (!changed) {
+        for (const id of incoming) { if (!_appliedFees.has(id)) { changed = true; break; } }
       }
-      if (feeChanged) _appliedFees = incoming;
+      if (changed) { _appliedFees = incoming; feesStructureChanged = true; }
     }
+
     if (detail.appliedFeeOverrides && typeof detail.appliedFeeOverrides === 'object') {
+      const before = JSON.stringify(_appliedFeeOverrides);
       _appliedFeeOverrides = Object.create(null);
       Object.keys(detail.appliedFeeOverrides).forEach(k => {
         const v = parseFloat(detail.appliedFeeOverrides[k]);
         if (isFinite(v) && v >= 0) _appliedFeeOverrides[k] = v;
       });
+      const after = JSON.stringify(_appliedFeeOverrides);
+      if (before !== after) feesValueChanged = true;
+    }
+
+    // Always re-render the fees card if any fee state changed (Pricing
+    // tab visibility doesn't matter — the body needs to be up to date
+    // for when the operator switches tabs OR opens the Notify modal).
+    if (feesStructureChanged || feesValueChanged) {
+      if (typeof renderPricingFeesCard === 'function') {
+        try { renderPricingFeesCard(); } catch(_) {}
+      }
+      // Brief accent flash on the fees card so the operator sees that
+      // SOMETHING in this section changed — per-row flash isn't
+      // possible since the whole body is re-rendered in one shot.
+      try {
+        const card = document.getElementById('pricing-fees-card');
+        if (card) {
+          const orig = card.style.boxShadow || '';
+          card.style.transition = 'box-shadow 0.4s ease, border-color 0.4s ease';
+          card.style.boxShadow = '0 0 0 2px rgba(232, 117, 26, 0.45)';
+          setTimeout(() => { card.style.boxShadow = orig; }, 900);
+        }
+      } catch(_) {}
     }
 
     // Shipment splits — same wholesale replace, then re-render.
@@ -30301,8 +30360,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } catch (e) { console.debug('[wb-broadcast] downstream render', e); }
 
     // Tiny toast so the operator knows a change came in (not just
-    // mysterious orange flashes).
-    if (scalarChanges > 0 || (detail.appliedFees && detail.appliedFees.length)) {
+    // mysterious orange flashes). Fires on ANY real change: scalar
+    // field, fees structure (add/remove/toggle), fee override value,
+    // or shipment splits.
+    const splitsChanged = Array.isArray(detail.shipmentSplits); // any incoming splits payload = potential change
+    if (scalarChanges > 0 || feesStructureChanged || feesValueChanged || splitsChanged) {
       _showWbBroadcastToast(byWho || 'Someone');
     }
   }
