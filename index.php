@@ -5872,24 +5872,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-size: 30px; font-weight: 800; color: var(--text); line-height: 1.1; margin-bottom: 4px;
     }
     .order-detail-name-wrap { margin-bottom: 14px; }
-    /* Invoice line — persistent label + editable number field. Sits
-       directly under the order name so the two read as a single
-       header block. Same muted color palette as the order name input
-       when idle; the input shifts to body-text color while focused
-       so the operator can see what they're typing. */
+    /* Invoice line — persistent INV: label + visibly-bordered input
+       box so the operator can tell it's editable at a glance (no
+       hover-to-discover). Sits directly under the client name as the
+       only editable subtitle on the order detail header. */
     .order-detail-invoice-wrap {
-      display: flex; align-items: baseline; gap: 6px; margin-top: 4px;
+      display: flex; align-items: center; gap: 8px; margin-top: 4px;
     }
     .order-detail-invoice-label {
-      font-size: 16px; font-weight: 500; color: var(--text-muted);
+      font-size: 16px; font-weight: 600; color: var(--text-muted);
+      letter-spacing: 0.02em;
     }
     #order-detail-invoice {
-      font-size: 16px; font-weight: 500; border: none; background: transparent;
-      color: var(--text-muted); outline: none; padding: 2px 0; min-width: 90px;
-      border-bottom: 2px solid transparent; transition: border-color 0.2s, color 0.2s;
+      font-size: 14px; font-weight: 500; padding: 5px 10px;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--surface2); color: var(--text);
+      outline: none; min-width: 140px;
+      transition: border-color 0.15s, background 0.15s;
       font-family: inherit;
     }
-    #order-detail-invoice:focus { border-bottom-color: var(--accent); color: var(--text); }
+    #order-detail-invoice:hover { border-color: var(--text-muted); }
+    #order-detail-invoice:focus { border-color: var(--accent); background: var(--surface); }
+    #order-detail-invoice::placeholder { color: var(--text-muted); opacity: 0.6; }
     .order-detail-controls {
       display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
     }
@@ -8697,7 +8701,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              show the same "INV: ###" string consistently. -->
         <div class="order-detail-invoice-wrap">
           <span class="order-detail-invoice-label">INV:</span>
-          <input type="text" id="order-detail-invoice" placeholder="—"
+          <input type="text" id="order-detail-invoice" placeholder="-"
                  oninput="onOrderInvoiceChange()" autocomplete="off"
                  data-1p-ignore="true" data-lpignore="true" />
         </div>
@@ -33076,11 +33080,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const raw = document.getElementById('order-detail-invoice').value;
     o.invoiceNumber = raw;
     // Mirror to o.name so the header title, sidebar, and orders-list
-    // card all read the same "INV: ###" string the operator just
-    // typed. Falls back to "Untitled Order" when the field is cleared
-    // entirely so the various surfaces still have something to render.
+    // card all read the same "INV: ###" string. Blank input falls
+    // back to "INV: -" so every surface stays consistent with the
+    // operator's mental model (orders always have an INV line, even
+    // when the number hasn't been assigned yet).
     const trimmed = String(raw || '').trim();
-    o.name = trimmed ? `INV: ${trimmed}` : 'Untitled Order';
+    o.name = trimmed ? `INV: ${trimmed}` : 'INV: -';
     saveOrders();
     if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav();
     const ht = document.getElementById('header-title');
