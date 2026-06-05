@@ -31756,45 +31756,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     downloadCsv(`All-Orders-${today}.csv`, headers, rows);
   }
 
-  // Spawn a transient <input type="date"> off-screen, focus it, and
-  // call showPicker() so the OS picker opens reliably. The original
-  // approach (label wrapping a position:absolute opacity:0 input)
-  // didn't trigger the picker in Chrome/Edge — modern engines block
-  // the synthetic click on an invisible overlay input.
-  //
-  // Off-screen position (left:-9999px) keeps the input from
-  // capturing keyboard focus rings on the visible card. The input
-  // is removed from the DOM as soon as the picker resolves
-  // (change → save → cleanup) or the operator dismisses it (blur
-  // with no change → cleanup with a small grace delay so the change
-  // event fires first).
-  function _openDeadlinePicker(orderId) {
-    const o = orderData[orderId];
-    if (!o) return;
-    const inp = document.createElement('input');
-    inp.type = 'date';
-    inp.value = (o.clientDeadline || '').trim();
-    inp.style.cssText = 'position:fixed; left:-9999px; top:-9999px; opacity:0;';
-    document.body.appendChild(inp);
-    const cleanup = () => { try { inp.remove(); } catch(_) {} };
-    inp.addEventListener('change', () => {
-      setOrderDeadline(orderId, inp.value);
-      cleanup();
-    });
-    inp.addEventListener('blur', () => setTimeout(cleanup, 150));
-    inp.focus();
-    if (typeof inp.showPicker === 'function') {
-      try { inp.showPicker(); } catch (_) { inp.click(); }
-    } else {
-      inp.click();
-    }
-  }
-
   // Set / clear a client-facing deadline on an order. Called from
-  // _openDeadlinePicker's change handler (and any direct callers).
-  // Empty string clears the deadline back to "+ Set client deadline".
-  // Persists via the standard saveOrders flow (localStorage +
-  // ms_orders app state).
+  // the pill's overlaid <input type="date"> onchange. Empty string
+  // clears the deadline back to "+ Set client deadline". Persists
+  // via the standard saveOrders flow (localStorage + ms_orders app
+  // state).
   function setOrderDeadline(orderId, iso) {
     const o = orderData[orderId];
     if (!o) return;
@@ -32012,15 +31978,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             bg = 'rgba(59,130,246,0.10)'; fg = '#3b82f6'; brd = 'rgba(59,130,246,0.30)';
             statusTxt = '';
           }
-          deadlineBadge = `<button type="button" style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${brd}; font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap; cursor:pointer; font-family:inherit;" onclick="event.stopPropagation(); _openDeadlinePicker(${id})" title="Click to change. Buffer = days between projected arrival and deadline. Adjust lead times to widen.">
-            <span style="text-transform:uppercase;">Deadline</span>
-            <span style="text-transform:none; letter-spacing:0;">${_fmtCardDate(dlDate)}${statusTxt}</span>
-          </button>`;
+          // Set state — render the rich pill (with status text) as the
+          // VISIBLE element, with a date input overlaid at full size +
+          // pointer-events:auto so the click hits the input directly
+          // and the browser opens its native picker. No showPicker()
+          // dance — direct click on a real input is the most reliable
+          // cross-browser path.
+          deadlineBadge = `<span class="oc-deadline-wrap" data-set="1" style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${brd}; font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap; position:relative; cursor:pointer;" onclick="event.stopPropagation();" title="Click to change. Buffer = days between projected arrival and deadline.">
+            <span style="text-transform:uppercase; pointer-events:none;">Deadline</span>
+            <span style="text-transform:none; letter-spacing:0; pointer-events:none;">${_fmtCardDate(dlDate)}${statusTxt}</span>
+            <input type="date" value="${_dlIso}"
+                   onclick="event.stopPropagation();"
+                   onchange="event.stopPropagation(); setOrderDeadline(${id}, this.value);"
+                   style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; padding:0; margin:0; border:none; background:transparent; color:transparent; font-size:0; -webkit-appearance:none; appearance:none;" />
+          </span>`;
         }
       } else {
-        deadlineBadge = `<button type="button" style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:transparent; color:var(--text-muted); border:1px dashed var(--border); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap; cursor:pointer; font-family:inherit;" onclick="event.stopPropagation(); _openDeadlinePicker(${id})" title="Click to set a client-facing deadline. The card will compare it against the projected arrival date and flag any tight or missed timelines.">
-          + Set client deadline
-        </button>`;
+        // Unset state — same overlay pattern, dashed-border pill,
+        // "+ Set client deadline" placeholder text underneath.
+        deadlineBadge = `<span class="oc-deadline-wrap" data-set="0" style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:transparent; color:var(--text-muted); border:1px dashed var(--border); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap; position:relative; cursor:pointer;" onclick="event.stopPropagation();" title="Click to set a client-facing deadline. The card will compare it against the projected arrival date and flag any tight or missed timelines.">
+          <span style="pointer-events:none;">+ Set client deadline</span>
+          <input type="date"
+                 onclick="event.stopPropagation();"
+                 onchange="event.stopPropagation(); setOrderDeadline(${id}, this.value);"
+                 style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; padding:0; margin:0; border:none; background:transparent; color:transparent; font-size:0; -webkit-appearance:none; appearance:none;" />
+        </span>`;
       }
       // Order-by date — works the lead time BACKWARDS from the
       // deadline to answer "when do I need to place the order to
