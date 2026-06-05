@@ -31801,31 +31801,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Lead-time badge: max across all workbooks in the order. A
       // 30-day production workbook drives the whole order's earliest
       // possible ship date. Hidden when no workbook contributes a lead.
-      // Sibling "arrives" pill projects the expected delivery date by
-      // adding the lead days to the order's dateCreated (which is
-      // stored as the en-GB "DD MMM YY" string at create time, so we
-      // parse it back to a Date to do the arithmetic). Hidden when
-      // the date can't be parsed or the lead is unknown.
-      const _monthMap = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
-      const _parseCardDate = (str) => {
-        const m = String(str || '').match(/^(\d{1,2})\s+(\w{3})\s+(\d{2,4})$/);
-        if (!m) return null;
-        const mo = _monthMap[m[2]];
-        if (mo === undefined) return null;
-        let yr = parseInt(m[3], 10);
-        if (yr < 100) yr += 2000;
-        return new Date(yr, mo, parseInt(m[1], 10));
-      };
+      // Sibling "arrives" pill projects the expected delivery date as
+      // a live forecast — "if I placed this order today, when does it
+      // land?" — so it advances day-by-day rather than being anchored
+      // to the order's creation date. Useful for draft / in-production
+      // orders where the client wants a current ETA.
       const _fmtCardDate = (d) => d
         ? d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'2-digit' })
         : '';
       let arrivesBadge = '';
       if (agMaxLead > 0) {
-        const createdDate = _parseCardDate(o.dateCreated);
-        if (createdDate) {
-          const arrives = new Date(createdDate.getTime() + agMaxLead * 86400000);
-          arrivesBadge = `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;" title="Projected arrival = order date + ${agMaxLead} day lead">Arrives ${_fmtCardDate(arrives)}</span>`;
-        }
+        // Anchor to today at midnight local time so the date doesn't
+        // jitter across timezone boundaries within the same day.
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const arrives = new Date(today.getTime() + agMaxLead * 86400000);
+        arrivesBadge = `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;" title="Projected arrival if the order is placed today — today + ${agMaxLead} day lead">Arrives ${_fmtCardDate(arrives)}</span>`;
       }
       const leadBadge = agMaxLead > 0
         ? `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;" title="Longest workbook lead time in this order — production + shipping">${agMaxLead} day lead</span>`
