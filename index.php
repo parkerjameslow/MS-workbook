@@ -31806,9 +31806,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // land?" — so it advances day-by-day rather than being anchored
       // to the order's creation date. Useful for draft / in-production
       // orders where the client wants a current ETA.
-      const _fmtCardDate = (d) => d
-        ? d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'2-digit' })
-        : '';
+      // Format like "July 25th, 2026" / "Aug 9th, 2026" — full month
+      // name (Intl en-US), day with ordinal suffix, four-digit year.
+      // Ordinal rules: 1st/2nd/3rd/4th-20th th, then 21st/22nd/23rd
+      // and the 11/12/13 exceptions all end in 'th'.
+      const _ordinalSuffix = (day) => {
+        if (day >= 11 && day <= 13) return 'th';
+        switch (day % 10) {
+          case 1: return 'st';
+          case 2: return 'nd';
+          case 3: return 'rd';
+          default: return 'th';
+        }
+      };
+      const _fmtCardDate = (d) => {
+        if (!d) return '';
+        const month = d.toLocaleDateString('en-US', { month: 'long' });
+        const day   = d.getDate();
+        const year  = d.getFullYear();
+        return `${month} ${day}${_ordinalSuffix(day)}, ${year}`;
+      };
       let arrivesBadge = '';
       if (agMaxLead > 0) {
         // Anchor to today at midnight local time so the date doesn't
@@ -31816,7 +31833,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const arrives = new Date(today.getTime() + agMaxLead * 86400000);
-        arrivesBadge = `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;" title="Projected arrival if the order is placed today — today + ${agMaxLead} day lead">Arrives ${_fmtCardDate(arrives)}</span>`;
+        arrivesBadge = `<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Projected arrival if the order is placed today — today + ${agMaxLead} day lead"><span style="text-transform:uppercase;">Arrives</span><span style="text-transform:none; letter-spacing:0;">${_fmtCardDate(arrives)}</span></span>`;
       }
       const leadBadge = agMaxLead > 0
         ? `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;" title="Longest workbook lead time in this order — production + shipping">${agMaxLead} day lead</span>`
