@@ -32179,9 +32179,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const _hasVar = _rfqs.some(it => Array.isArray(it.variants) && it.variants.length > 0);
         const _cacheStatus = (parseFloat(det.pricingProductCostUsd) > 0) ? 'cached'
                           : (_hasVar ? 'variant-weighted' : 'tier×qty');
+        // Per-unit RMB ACTUALLY used in the computation — reverse-
+        // engineered from productCost so any mismatch with the tier
+        // price (`_tp` above) is visible immediately.
+        const _actualPerUnit = (_tq > 0 && (w.productCost || 0) > 0)
+          ? ((w.productCost * 7.2) / _tq).toFixed(4) : 'n/a';
         const _allTiers = _ts.map((t, i) => `t${i+1}(id=${t.id ?? '?'},qty=${t.qty},px=${t.price})`).join('; ');
+        // Variant breakdown — shows every variant's qty + price so we
+        // can see exactly what's feeding the qty-weighted RMB average.
+        let _varLines = '';
+        if (_hasVar) {
+          const _vDump = [];
+          _rfqs.forEach(it => {
+            if (Array.isArray(it.variants) && it.variants.length > 0) {
+              it.variants.forEach(v => {
+                _vDump.push(`${v.sku || v.variant || '?'}: qty=${v.qty || 0}, px=¥${v.priceRmb || 0}`);
+              });
+            }
+          });
+          _varLines = `\n  variants:\n    ${_vDump.join('\n    ')}`;
+        }
         _costBreakdownLines.push(
-          `${_label}:\n  qty=${_tq.toLocaleString('en-US')} × ¥${_tp.toFixed(4)} = ${_prod}  [${_cacheStatus}, selIdx=${det.selectedTierIdx ?? '?'}]\n  tiers: ${_allTiers || '(none)'}`
+          `${_label}:\n  qty=${_tq.toLocaleString('en-US')} × ¥${_actualPerUnit} (actually used) = ${_prod}  [${_cacheStatus}, selIdx=${det.selectedTierIdx ?? '?'}]\n  tier price stored: ¥${_tp.toFixed(4)}\n  tiers: ${_allTiers || '(none)'}${_varLines}`
         );
       });
       const _costTooltip = `Per-workbook product cost (selected tier qty × tier RMB ÷ 7.2):\n\n` + _costBreakdownLines.join('\n\n') + `\n\nTotal: $${agProductCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
