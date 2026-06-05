@@ -15906,11 +15906,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rows.forEach(row => {
       const inputs = row.querySelectorAll('input');
       if (inputs.length >= 1) {
+        // Tier id (1, 2, 3…) extracted from the row id so downstream
+        // consumers can match selectedTierIdx back to the right tier.
+        // Without this, every "tiers.find(t => t.id == selectedTierIdx)"
+        // call site silently fell back to tiers[0] — using the FIRST
+        // tier's price even when the operator had a different tier
+        // selected. That made Cost (ours) on the Orders page drift
+        // away from the real product cost on multi-tier workbooks.
+        const idMatch = String(row.id || '').match(/(\d+)$/);
+        const tierId  = idMatch ? parseInt(idMatch[1], 10) : (tiers.length + 1);
         // Strip the display commas before saving so detail_json holds
         // raw "1234" — keeps front-end and server-side parsers aligned
         // across a refresh.
         tiers.push({
-          qty: _msStripCommasStr(inputs[0].value),
+          id:    tierId,
+          qty:   _msStripCommasStr(inputs[0].value),
           price: _msStripCommasStr(row.dataset.price)
         });
       }
@@ -28477,7 +28487,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _wbStatsForPicker(detail) {
     const d = detail || {};
     const tiers     = Array.isArray(d.tiers) ? d.tiers : [];
-    const selTier   = tiers.find(t => t.id == d.selectedTierIdx) || tiers[0];
+    // Resolve selected tier via id when present (new schema), else
+    // fall back to position. selectedTierIdx is the 1-indexed tier
+    // number from addTierRow/addWbTierRow's tierCount, so tiers[N-1]
+    // is the matching tier when ids weren't saved. Final fallback to
+    // tiers[0] keeps brand-new workbooks (no tier selected yet) from
+    // exploding.
+    const _selIdxNum = parseInt(d.selectedTierIdx, 10);
+    const selTier   = tiers.find(t => t.id == d.selectedTierIdx)
+                   || (Number.isInteger(_selIdxNum) && _selIdxNum >= 1 ? tiers[_selIdxNum - 1] : null)
+                   || tiers[0];
     const palletTot = parseInt(String(d.palletTotalCartons || '').replace(/,/g, ''), 10);
     const units = (!isNaN(palletTot) && palletTot > 0)
       ? palletTot
