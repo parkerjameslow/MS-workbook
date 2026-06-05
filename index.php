@@ -31988,7 +31988,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; padding:0; border:none;" />
         </label>`;
       }
-      const deadlineBlock = `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">${deadlineBadge}</div>`;
+      // Order-by date — works the lead time BACKWARDS from the
+      // deadline to answer "when do I need to place the order to
+      // hit the client's deadline?" Only renders when a deadline is
+      // set AND lead is known (otherwise the math is meaningless).
+      // Color tiers vs today:
+      //   • red    = order-by is in the past (already too late)
+      //   • amber  = order-by is today or within 3 days (urgent)
+      //   • green  = order-by is more than 3 days out (on track)
+      let orderByBadge = '';
+      if (_dlIso && agMaxLead > 0) {
+        const [_dy, _dm, _dd] = _dlIso.split('-').map(n => parseInt(n, 10));
+        const dlDate = (_dy && _dm && _dd) ? new Date(_dy, _dm - 1, _dd) : null;
+        if (dlDate && !isNaN(dlDate.getTime())) {
+          const orderByDate = new Date(dlDate.getTime() - agMaxLead * 86400000);
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const daysOut = Math.round((orderByDate.getTime() - today.getTime()) / 86400000);
+          let bg, fg, brd, hint;
+          if (daysOut < 0) {
+            bg = 'rgba(220,38,38,0.10)'; fg = '#dc2626'; brd = 'rgba(220,38,38,0.30)';
+            hint = ` (${-daysOut}d late)`;
+          } else if (daysOut <= 3) {
+            bg = 'rgba(245,158,11,0.10)'; fg = '#d97706'; brd = 'rgba(245,158,11,0.30)';
+            hint = daysOut === 0 ? ' (today!)' : ` (in ${daysOut}d)`;
+          } else {
+            bg = 'rgba(16,185,129,0.10)'; fg = '#10b981'; brd = 'rgba(16,185,129,0.30)';
+            hint = ` (in ${daysOut}d)`;
+          }
+          orderByBadge = `<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${brd}; font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Place the order by this date to hit the ${_fmtCardDate(dlDate)} deadline at a ${agMaxLead}-day lead.">
+            <span style="text-transform:uppercase;">Order by</span>
+            <span style="text-transform:none; letter-spacing:0;">${_fmtCardDate(orderByDate)}${hint}</span>
+          </span>`;
+        }
+      }
+      const deadlineBlock = `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">${deadlineBadge}${orderByBadge}</div>`;
       const changeBadge = o.changeRequested
         ? `<span class="oc-change-badge"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Change Requested</span>`
         : '';
