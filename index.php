@@ -31756,6 +31756,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     downloadCsv(`All-Orders-${today}.csv`, headers, rows);
   }
 
+  // Set / clear a client-facing deadline on an order. Called from the
+  // dashboard pill's hidden <input type="date">. Empty value clears
+  // the deadline back to "+ Set client deadline". Persists via the
+  // standard saveOrders flow (localStorage + ms_orders app state).
+  function setOrderDeadline(orderId, iso) {
+    const o = orderData[orderId];
+    if (!o) return;
+    const trimmed = String(iso || '').trim();
+    if (trimmed) {
+      o.clientDeadline = trimmed;
+    } else {
+      delete o.clientDeadline;
+    }
+    if (typeof saveOrders === 'function') saveOrders();
+    if (typeof renderOrdersList === 'function') renderOrdersList();
+  }
+
   function renderOrdersList() {
     document.getElementById('header-title').textContent = 'Orders';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
@@ -31918,6 +31935,60 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const leadBlock = (leadBadge || arrivesBadge)
         ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">${leadBadge}${arrivesBadge}</div>`
         : '';
+      // Client Deadline — operator-set target date, rendered under the
+      // arrives pill. Click opens the native date picker. Color codes
+      // vs the projected arrival:
+      //   • green  = comfortable (arrives more than 7 days before)
+      //   • amber  = tight (arrives within 7 days OR after deadline)
+      //   • red    = past deadline (today is after the deadline)
+      // Unset shows a dashed "+ Set deadline" affordance so the
+      // operator knows the field is editable.
+      const _dlIso = (o.clientDeadline || '').trim();
+      let deadlineBadge = '';
+      if (_dlIso) {
+        // Parse YYYY-MM-DD as local midnight to avoid TZ jitter that
+        // makes the date appear one day off in west-of-UTC zones.
+        const [_dy, _dm, _dd] = _dlIso.split('-').map(n => parseInt(n, 10));
+        const dlDate = (_dy && _dm && _dd) ? new Date(_dy, _dm - 1, _dd) : null;
+        if (dlDate && !isNaN(dlDate.getTime())) {
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const arrives = agMaxLead > 0 ? new Date(today.getTime() + agMaxLead * 86400000) : null;
+          // Color tiers — past > tight > comfortable.
+          let bg, fg, brd, statusTxt;
+          if (dlDate < today) {
+            bg = 'rgba(220,38,38,0.10)'; fg = '#dc2626'; brd = 'rgba(220,38,38,0.30)';
+            statusTxt = ' (past)';
+          } else if (arrives) {
+            const bufferDays = Math.round((dlDate.getTime() - arrives.getTime()) / 86400000);
+            if (bufferDays < 0) {
+              bg = 'rgba(220,38,38,0.10)'; fg = '#dc2626'; brd = 'rgba(220,38,38,0.30)';
+              statusTxt = ` (${-bufferDays}d late)`;
+            } else if (bufferDays <= 7) {
+              bg = 'rgba(245,158,11,0.10)'; fg = '#d97706'; brd = 'rgba(245,158,11,0.30)';
+              statusTxt = ` (${bufferDays}d buffer)`;
+            } else {
+              bg = 'rgba(59,130,246,0.10)'; fg = '#3b82f6'; brd = 'rgba(59,130,246,0.30)';
+              statusTxt = ` (${bufferDays}d buffer)`;
+            }
+          } else {
+            bg = 'rgba(59,130,246,0.10)'; fg = '#3b82f6'; brd = 'rgba(59,130,246,0.30)';
+            statusTxt = '';
+          }
+          deadlineBadge = `<label style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${brd}; font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap; cursor:pointer; position:relative;" onclick="event.stopPropagation();" title="Click to change. Buffer = days between projected arrival and deadline. Adjust lead times to widen.">
+            <span style="text-transform:uppercase;">Deadline</span>
+            <span style="text-transform:none; letter-spacing:0;">${_fmtCardDate(dlDate)}${statusTxt}</span>
+            <input type="date" value="${_dlIso}" onchange="event.stopPropagation(); setOrderDeadline(${id}, this.value)"
+                   style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; padding:0; border:none;" />
+          </label>`;
+        }
+      } else {
+        deadlineBadge = `<label style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:transparent; color:var(--text-muted); border:1px dashed var(--border); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap; cursor:pointer; position:relative;" onclick="event.stopPropagation();" title="Click to set a client-facing deadline. The card will compare it against the projected arrival date and flag any tight or missed timelines.">
+          + Set client deadline
+          <input type="date" onchange="event.stopPropagation(); setOrderDeadline(${id}, this.value)"
+                 style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; padding:0; border:none;" />
+        </label>`;
+      }
+      const deadlineBlock = `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">${deadlineBadge}</div>`;
       const changeBadge = o.changeRequested
         ? `<span class="oc-change-badge"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg> Change Requested</span>`
         : '';
@@ -32031,6 +32102,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="oc-title">${o.name}</span>
             <span class="oc-date">${o.dateCreated}</span>
             ${leadBlock}
+            ${deadlineBlock}
             ${changeBadge}
           </div>
           <div class="oc-wb-list">
