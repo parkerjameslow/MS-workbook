@@ -5585,7 +5585,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        full-width inside the card border. */
     .oc-stat-strip {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(8, 1fr);
       gap: 8px 14px;
       padding: 10px 16px 8px;
       margin: 0 -16px -12px;
@@ -19798,6 +19798,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const _wbKeyG = `${currentClient}|${currentWorkbookId}`;
       if (!workbookDetail[_wbKeyG]) workbookDetail[_wbKeyG] = {};
       workbookDetail[_wbKeyG].pricingGrandTotalCost = grandTotalCostUsd > 0 ? grandTotalCostUsd : 0;
+      // Cache the shipping component on its own so the Orders page can
+      // surface "Shipping" as a discrete column without re-running
+      // calcFreight. Includes manual overrides (since shippingUsd above
+      // already honors _shipOverrideUsd).
+      workbookDetail[_wbKeyG].pricingShippingCostUsd = shippingUsd > 0 ? shippingUsd : 0;
     }
 
     // Per-unit breakdown line beneath the label — shows the math the
@@ -28526,7 +28531,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       else { const n = parseInt(shipLeadStr, 10); if (!isNaN(n)) shipLead = n; }
     }
     const leadDays = (prodLead || 0) + (shipLead || 0);
-    return { units, weightKg, cost, price, cbm, leadDays };
+    // Shipping cost (USD) — cached on the Pricing tab as
+    // pricingShippingCostUsd. Fallback: honor a shipping-cost override
+    // if one was typed; otherwise compute chargeableKg × per-kg rate
+    // for the selected freight mode from the same fields _shipUnit
+    // reads. Returns 0 only when we truly can't compute it (no rate,
+    // no weight, no override).
+    let shippingUsd = parseFloat(d.pricingShippingCostUsd) || 0;
+    if (shippingUsd === 0) {
+      const overrideOn  = !!d.freightCostOverrideOn;
+      const overrideStr = String(d.freightCostOverrideUsd || '').replace(/,/g, '').trim();
+      const overrideVal = parseFloat(overrideStr);
+      if (overrideOn && isFinite(overrideVal) && overrideVal >= 0) {
+        shippingUsd = overrideVal;
+      } else {
+        const fr = (d.freightRates && typeof d.freightRates === 'object') ? d.freightRates : {};
+        const rateMap = {
+          slow:      parseFloat(fr.slow)      || 12,
+          fast:      parseFloat(fr.fast)      || 14,
+          airupp:    parseFloat(fr.airupp)    || 44,
+          directair: parseFloat(fr.directair) || 65,
+        };
+        const rateRmb = rateMap[mode] || 0;
+        // weightKg fallback above already collapsed to the honest
+        // shipment weight (Case-Only / Weight-Only / carton). Reuse it
+        // directly — chargeable weight = actual weight when no dims
+        // (volumetric collapses to 0), which is the only situation a
+        // cache-miss workbook is likely to be in here.
+        if (weightKg > 0 && rateRmb > 0) {
+          const FX = 7.2; // matches USD_TO_RMB constant used at write time
+          shippingUsd = (weightKg * rateRmb) / FX;
+        }
+      }
+    }
+    return { units, weightKg, cost, price, cbm, leadDays, shippingUsd };
   }
 
   function calcWorkbookShipStats(detail, qty) {
@@ -31705,7 +31743,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // selected freight mode's shipping lead); order lead = max
       // across the order's workbooks (a 30-day workbook sets the
       // floor for the whole shipment).
-      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0;
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0;
       const wbStatsByEntry = new Map();
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
@@ -31716,6 +31754,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         agCost     += w.cost;
         agPrice    += w.price;
         agCbm      += w.cbm;
+        agShipping += (w.shippingUsd || 0);
         if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
       });
 
@@ -31808,6 +31847,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCost)}</span></div>
+        <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD). Already included in Cost (ours)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Down (${depositPctT}%)</span><span class="oc-stat-val">${fmtUsdT(depositAmtT)}</span></div>
