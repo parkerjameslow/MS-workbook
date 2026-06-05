@@ -19812,6 +19812,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // calcFreight. Includes manual overrides (since shippingUsd above
       // already honors _shipOverrideUsd).
       workbookDetail[_wbKeyG].pricingShippingCostUsd = shippingUsd > 0 ? shippingUsd : 0;
+      // Cache the product component separately so the Orders strip can
+      // read product cost directly instead of subtracting one cache
+      // from another (which drifts when the shipping cache is missing
+      // and the fallback recomputes shipping at a different rate than
+      // what was originally baked into pricingGrandTotalCost).
+      workbookDetail[_wbKeyG].pricingProductCostUsd = (productTotal > 0) ? productTotal : 0;
     }
 
     // Per-unit breakdown line beneath the label — shows the math the
@@ -28539,6 +28545,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (m) shipLead = Math.max(parseInt(m[1], 10), parseInt(m[2], 10));
       else { const n = parseInt(shipLeadStr, 10); if (!isNaN(n)) shipLead = n; }
     }
+    // Product cost (USD) — cached on the Pricing tab as
+    // pricingProductCostUsd. Authoritative when present. Fallback:
+    // total cost minus shipping cost (the same arithmetic the
+    // strip used to do inline). The fallback drifts when shipping
+    // is itself a fallback at a different rate than what was
+    // originally baked into pricingGrandTotalCost — opening the
+    // workbook once on the Pricing tab repaints all three caches
+    // in sync and the drift disappears.
+    const productCost = parseFloat(d.pricingProductCostUsd)
+                     || Math.max(0, parseFloat(d.pricingGrandTotalCost || 0) - parseFloat(d.pricingShippingCostUsd || 0))
+                     || 0;
     const leadDays = (prodLead || 0) + (shipLead || 0);
     // Shipping cost (USD) — cached on the Pricing tab as
     // pricingShippingCostUsd. Fallback: honor a shipping-cost override
@@ -28573,7 +28590,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       }
     }
-    return { units, weightKg, cost, price, cbm, leadDays, shippingUsd };
+    return { units, weightKg, cost, price, cbm, leadDays, shippingUsd, productCost };
   }
 
   function calcWorkbookShipStats(detail, qty) {
@@ -31752,18 +31769,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // selected freight mode's shipping lead); order lead = max
       // across the order's workbooks (a 30-day workbook sets the
       // floor for the whole shipment).
-      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0;
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0;
       const wbStatsByEntry = new Map();
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
         const w = _wbStatsForPicker(workbookDetail[key]);
         wbStatsByEntry.set(key, w);
-        agUnits    += w.units;
-        agWeightKg += w.weightKg;
-        agCost     += w.cost;
-        agPrice    += w.price;
-        agCbm      += w.cbm;
-        agShipping += (w.shippingUsd || 0);
+        agUnits       += w.units;
+        agWeightKg    += w.weightKg;
+        agCost        += w.cost;
+        agPrice       += w.price;
+        agCbm         += w.cbm;
+        agShipping    += (w.shippingUsd || 0);
+        agProductCost += (w.productCost || 0);
         if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
       });
 
@@ -31874,26 +31892,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             : `${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`)
         : '—';
       const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
-      // Profit cell — Price (cust) minus Cost (ours). Only meaningful
-      // when both are populated, so blanks out when no workbook in
-      // the order has Sale Per typed yet. Red when negative (selling
-      // below cost — flags a pricing mistake) and green otherwise.
-      const profitT       = (agPrice > 0 && agCost > 0) ? (agPrice - agCost) : 0;
-      const profitHasData = (agPrice > 0 && agCost > 0);
+      // Cost decomposition: each workbook caches productCost and
+      // shippingUsd independently on the Pricing tab, so we sum the
+      // two streams instead of subtracting one cache from another.
+      // Total (ours) here is the SUM (not the legacy agCost rollup)
+      // so the row is always internally consistent — even when one
+      // workbook's product cache is missing but its shipping cache is
+      // present (or vice-versa). Falls back to agCost when both sides
+      // come up 0 (e.g. brand-new order with no workbooks priced yet).
+      const agCostProduct = agProductCost;
+      const agTotalOurs   = (agProductCost + agShipping) > 0
+        ? (agProductCost + agShipping)
+        : agCost;
+      // Profit cell — Price (cust) minus Total (ours). Uses the new
+      // additive Total (ours) above (product + shipping) so Profit
+      // always equals Price − Total as displayed in the same row.
+      // Operator sanity-check: the three cost cells visibly add up,
+      // and Profit visibly equals Price − Total. Red when negative
+      // (selling below cost — flags a pricing mistake) and green
+      // otherwise. Blanks out when no workbook in the order has Sale
+      // Per typed yet.
+      const profitT       = (agPrice > 0 && agTotalOurs > 0) ? (agPrice - agTotalOurs) : 0;
+      const profitHasData = (agPrice > 0 && agTotalOurs > 0);
       const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
       const profitHtml    = profitHasData
         ? `<span style="color:${profitColor}; font-weight:700;">${fmtUsdT(profitT)}</span>`
         : '—';
-      // Cost decomposition: split the existing rollup (product +
-      // shipping, no fees / no margin) into its two parts and surface
-      // the rollup as Total (ours). Cost (ours) here is the PRODUCT-
-      // ONLY component so the row reads as an additive breakdown:
-      //   Cost (ours)  +  Shipping  =  Total (ours)
-      // Mirrors the Price-side breakdown on the right-card. agCost
-      // stays the source of truth for Profit + Total — only the
-      // display partitions.
-      const agCostProduct = (agCost > agShipping) ? (agCost - agShipping) : agCost;
-      const agTotalOurs   = agCost; // product + shipping = the existing rollup
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
