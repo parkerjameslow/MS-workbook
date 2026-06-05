@@ -5599,7 +5599,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .oc-stat-cbm-cap { font-size: 11px; font-weight: 600; color: var(--text-muted); }
     .oc-cbm-bar      { height: 3px; margin-top: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
     .oc-cbm-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.2s; }
-    .oc-left { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 130px; flex: 0 0 180px; padding-right: 16px; }
+    .oc-left { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 130px; flex: 0 0 320px; padding-right: 16px; }
     .oc-client { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
     .oc-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
     .oc-date  { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
@@ -5879,6 +5879,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-family: inherit;
     }
     .order-detail-name:focus { border-bottom-color: var(--accent); color: var(--text); }
+    /* Invoice line — persistent label + editable number field. Sits
+       directly under the order name so the two read as a single
+       header block. Same muted color palette as the order name input
+       when idle; the input shifts to body-text color while focused
+       so the operator can see what they're typing. */
+    .order-detail-invoice-wrap {
+      display: flex; align-items: baseline; gap: 6px; margin-top: 4px;
+    }
+    .order-detail-invoice-label {
+      font-size: 16px; font-weight: 500; color: var(--text-muted);
+    }
+    #order-detail-invoice {
+      font-size: 16px; font-weight: 500; border: none; background: transparent;
+      color: var(--text-muted); outline: none; padding: 2px 0; min-width: 90px;
+      border-bottom: 2px solid transparent; transition: border-color 0.2s, color 0.2s;
+      font-family: inherit;
+    }
+    #order-detail-invoice:focus { border-bottom-color: var(--accent); color: var(--text); }
     .order-detail-controls {
       display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
     }
@@ -8678,6 +8696,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="order-detail-name-wrap">
         <input type="text" class="order-detail-name" id="order-detail-name" placeholder="Order name…"
           oninput="onOrderNameChange()" />
+        <!-- Persistent Invoice: label + editable number. Always shown
+             (with empty input) so the operator can drop in the invoice
+             number once it's generated; sits inline so the visual
+             rhythm under the client name stays consistent across orders
+             with and without an invoice. -->
+        <div class="order-detail-invoice-wrap">
+          <span class="order-detail-invoice-label">Invoice:</span>
+          <input type="text" id="order-detail-invoice" placeholder="—"
+                 oninput="onOrderInvoiceChange()" autocomplete="off"
+                 data-1p-ignore="true" data-lpignore="true" />
+        </div>
       </div>
       <div class="order-detail-controls">
         <div style="display:flex; align-items:center; gap:6px;">
@@ -32239,6 +32268,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('order-detail-client-name').textContent = o.clientName;
     document.getElementById('order-detail-name').value = o.name;
     document.getElementById('order-detail-po').value = o.poNumber || '';
+    document.getElementById('order-detail-invoice').value = o.invoiceNumber || '';
     document.getElementById('order-detail-deposit-pct').value = o.depositPct != null ? o.depositPct : 30;
     document.getElementById('order-detail-notes').value = o.notes || '';
     document.getElementById('order-detail-date-tag').textContent = o.dateCreated;
@@ -33036,6 +33066,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const o = orderData[_currentOrderId];
     if (!o) return;
     o.poNumber = document.getElementById('order-detail-po').value;
+    saveOrders();
+  }
+
+  function onOrderInvoiceChange() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    o.invoiceNumber = document.getElementById('order-detail-invoice').value;
     saveOrders();
   }
 
