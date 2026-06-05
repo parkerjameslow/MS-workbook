@@ -28627,7 +28627,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // For the dashboard rollup we use the simple tier × qty approach
     // — close enough for the Orders summary, and exactly right for
     // the common case where variants share one tier price.
-    const _ms_FX = 7.2; // matches USD_TO_RMB
+    // CRITICAL: use the LIVE USD_TO_RMB (dynamic — updated from a real-
+    // time FX fetch on app boot), not a hardcoded 7.2. The cached
+    // pricingProductCostUsd values were computed with whatever rate
+    // was active at save time; matching that here is what makes the
+    // fallback path produce numbers consistent with the cache. A
+    // hardcoded 7.2 against a real rate of ~6.78 (Jun 2026) drifted
+    // every workbook by ~6.06% — exactly the gap the user surfaced.
+    const _ms_FX = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
     let productCost = parseFloat(d.pricingProductCostUsd) || 0;
     if (productCost === 0) {
       // Variant-aware fallback mirroring renderPricingTab's EXACT
@@ -32182,8 +32189,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // Per-unit RMB ACTUALLY used in the computation — reverse-
         // engineered from productCost so any mismatch with the tier
         // price (`_tp` above) is visible immediately.
+        const _fxNow = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
         const _actualPerUnit = (_tq > 0 && (w.productCost || 0) > 0)
-          ? ((w.productCost * 7.2) / _tq).toFixed(4) : 'n/a';
+          ? ((w.productCost * _fxNow) / _tq).toFixed(4) : 'n/a';
         const _allTiers = _ts.map((t, i) => `t${i+1}(id=${t.id ?? '?'},qty=${t.qty},px=${t.price})`).join('; ');
         // Variant breakdown — shows every variant's qty + price so we
         // can see exactly what's feeding the qty-weighted RMB average.
