@@ -31874,11 +31874,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             : `${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`)
         : '—';
       const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
-      // Down payment cell — uses the order's depositPct (default 30%).
-      // Computed against agPrice (customer-facing total) so the deposit
-      // matches the dollar amount the client would actually wire.
-      const depositPctT = (o.depositPct != null) ? parseInt(o.depositPct) : 30;
-      const depositAmtT = agPrice > 0 ? agPrice * (depositPctT / 100) : 0;
       // Profit cell — Price (cust) minus Cost (ours). Only meaningful
       // when both are populated, so blanks out when no workbook in
       // the order has Sale Per typed yet. Red when negative (selling
@@ -31889,14 +31884,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const profitHtml    = profitHasData
         ? `<span style="color:${profitColor}; font-weight:700;">${fmtUsdT(profitT)}</span>`
         : '—';
+      // Cost decomposition: split the existing rollup (product +
+      // shipping, no fees / no margin) into its two parts and surface
+      // the rollup as Total (ours). Cost (ours) here is the PRODUCT-
+      // ONLY component so the row reads as an additive breakdown:
+      //   Cost (ours)  +  Shipping  =  Total (ours)
+      // Mirrors the Price-side breakdown on the right-card. agCost
+      // stays the source of truth for Profit + Total — only the
+      // display partitions.
+      const agCostProduct = (agCost > agShipping) ? (agCost - agShipping) : agCost;
+      const agTotalOurs   = agCost; // product + shipping = the existing rollup
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
-        <div class="oc-stat"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCost)}</span></div>
-        <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD). Already included in Cost (ours)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
+        <div class="oc-stat" title="Product cost only — Total (ours) minus Shipping. Sum of each workbook's Pricing-tab Product Cost (no fees, no margin)."><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span></div>
+        <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
+        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. What it costs us to land this order before margin and fees."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
-        <div class="oc-stat"><span class="oc-stat-label">Down (${depositPctT}%)</span><span class="oc-stat-val">${fmtUsdT(depositAmtT)}</span></div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
           <span class="oc-stat-val">${cbmValHtml}</span>
