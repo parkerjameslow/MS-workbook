@@ -28514,10 +28514,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const selTier   = tiers.find(t => t.id == d.selectedTierIdx)
                    || (Number.isInteger(_selIdxNum) && _selIdxNum >= 1 ? tiers[_selIdxNum - 1] : null)
                    || tiers[0];
+    // ── Two qty values, used in different places ───────────────────────
+    // tierQty:  the SELECTED tier's qty — what renderPricingTab calls
+    //           effectiveQty (line 19573). This is what drives Product
+    //           Cost: productTotalRmb = effectiveQty × tier.price.
+    //           Match it here so the dashboard's Cost (ours) ties to
+    //           what the Pricing tab actually computed and cached.
+    // units:    display qty (Total Units to Ship if set, else tier
+    //           qty). Used only for the Units stat and as the
+    //           denominator for per-unit fallbacks elsewhere. Drives
+    //           weight × rate freight math.
+    const tierQty   = selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0;
     const palletTot = parseInt(String(d.palletTotalCartons || '').replace(/,/g, ''), 10);
-    const units = (!isNaN(palletTot) && palletTot > 0)
-      ? palletTot
-      : (selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0);
+    const units     = (!isNaN(palletTot) && palletTot > 0) ? palletTot : tierQty;
     let weightKg = parseFloat(d.pricingShipmentWeightKg) || 0;
     if (weightKg === 0) {
       // Fallback: the cache is only written from renderPalletViz (which
@@ -28655,8 +28664,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const tierPrice   = selTier ? (parseFloat(String(selTier.price || '').replace(/,/g, '')) || 0) : 0;
       // Match renderPricingTab's hasVariants gate exactly.
       const perUnitRmb = (hasVariants && weightedRmb > 0) ? weightedRmb : tierPrice;
-      if (units > 0 && perUnitRmb > 0) {
-        productCost = (units * perUnitRmb) / _ms_FX;
+      // CRITICAL: use TIER qty here, not the dashboard "units" value.
+      // renderPricingTab computes productTotalRmb = effectiveQty ×
+      // perUnitRmb where effectiveQty = tierQty (line 19573). Using
+      // palletTotalCartons here would double-count for workbooks
+      // where Total Units to Ship differs from the selected tier
+      // (e.g. operator placed 100k units against the 50k tier).
+      if (tierQty > 0 && perUnitRmb > 0) {
+        productCost = (tierQty * perUnitRmb) / _ms_FX;
       }
     }
     // ── Shipping (USD) — derive from cachedTotal − product ──────────
@@ -32265,6 +32280,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const o = orderData[_currentOrderId];
     if (!o) { location.hash = '#/orders'; return; }
 
+    // Migrate any legacy name values that no longer match the
+    // single-INV-line convention. "Untitled Order" was the previous
+    // blank-state fallback; rewrite to "INV: -" so the header,
+    // sidebar nav, and dashboard card all read the same string the
+    // current onOrderInvoiceChange would produce when the field is
+    // cleared.
+    if (o.name === 'Untitled Order') {
+      o.name = 'INV: -';
+      if (typeof saveOrders === 'function') saveOrders();
+    }
     document.getElementById('header-title').textContent = o.name;
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
