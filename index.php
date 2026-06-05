@@ -28624,17 +28624,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (m) shipLead = Math.max(parseInt(m[1], 10), parseInt(m[2], 10));
       else { const n = parseInt(shipLeadStr, 10); if (!isNaN(n)) shipLead = n; }
     }
-    // Product cost (USD) — cached on the Pricing tab as
-    // pricingProductCostUsd. Authoritative when present. Fallback:
-    // total cost minus shipping cost (the same arithmetic the
-    // strip used to do inline). The fallback drifts when shipping
-    // is itself a fallback at a different rate than what was
-    // originally baked into pricingGrandTotalCost — opening the
-    // workbook once on the Pricing tab repaints all three caches
-    // in sync and the drift disappears.
-    const productCost = parseFloat(d.pricingProductCostUsd)
-                     || Math.max(0, parseFloat(d.pricingGrandTotalCost || 0) - parseFloat(d.pricingShippingCostUsd || 0))
-                     || 0;
     const leadDays = (prodLead || 0) + (shipLead || 0);
     // Shipping cost (USD) — cached on the Pricing tab as
     // pricingShippingCostUsd. Fallback: honor a shipping-cost override
@@ -28669,6 +28658,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       }
     }
+    // Product cost (USD) — cached on the Pricing tab as
+    // pricingProductCostUsd. Authoritative when present. Fallback
+    // derives from (cachedTotal − resolvedShipping) so the product
+    // number is consistent with the SHIPPING value we just resolved
+    // above. Computing this BEFORE shippingUsd was the original bug:
+    // it used d.pricingShippingCostUsd directly, which is undefined
+    // on un-refreshed workbooks, so the subtraction collapsed to
+    // total − 0 = total. Opening the workbook once on the Pricing
+    // tab (or hitting ↻ Refresh totals on the order card) repaints
+    // pricingProductCostUsd and removes the dependency on this
+    // fallback entirely.
+    const productCost = (parseFloat(d.pricingProductCostUsd) > 0)
+      ? parseFloat(d.pricingProductCostUsd)
+      : Math.max(0, (parseFloat(d.pricingGrandTotalCost) || 0) - shippingUsd);
     return { units, weightKg, cost, price, cbm, leadDays, shippingUsd, productCost };
   }
 
