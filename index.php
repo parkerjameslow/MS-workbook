@@ -32168,61 +32168,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Reads from wbStatsByEntry which was built above with the
       // same _wbStatsForPicker that drives the displayed totals, so
       // the tooltip + the cell agree by construction.
+      // Compact per-workbook breakdowns for the Cost (ours) + Shipping
+      // tooltips. Used to dump full tier/variant data for debugging;
+      // now that the FX rate bug is fixed and the numbers tie, dial
+      // back to the minimum useful info — workbook name + dollar
+      // contribution. Operator can still see WHICH workbook is
+      // dominating each total at a glance.
+      const _fxNow = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+      const _fmtUsdLine = n => '$' + (n || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
       const _costBreakdownLines = [];
-      entries.forEach(e => {
-        const key = `${e.clientName}|${e.workbookId}`;
-        const w   = wbStatsByEntry.get(key) || {};
-        const det = workbookDetail[key] || {};
-        const _selIdx = parseInt(det.selectedTierIdx, 10);
-        const _ts     = Array.isArray(det.tiers) ? det.tiers : [];
-        const _sel    = _ts.find(t => t.id == det.selectedTierIdx)
-                     || (Number.isInteger(_selIdx) && _selIdx >= 1 ? _ts[_selIdx - 1] : null)
-                     || _ts[0];
-        const _tp     = _sel ? (parseFloat(String(_sel.price || '').replace(/,/g, '')) || 0) : 0;
-        const _tq     = _sel ? (parseInt(String(_sel.qty   || '').replace(/,/g, ''), 10) || 0) : 0;
-        const _label  = (det.product || e.workbookId || '?');
-        const _prod   = '$' + (w.productCost || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-        const _rfqs   = Array.isArray(det.rfqItems) ? det.rfqItems : [];
-        const _hasVar = _rfqs.some(it => Array.isArray(it.variants) && it.variants.length > 0);
-        const _cacheStatus = (parseFloat(det.pricingProductCostUsd) > 0) ? 'cached'
-                          : (_hasVar ? 'variant-weighted' : 'tier×qty');
-        // Per-unit RMB ACTUALLY used in the computation — reverse-
-        // engineered from productCost so any mismatch with the tier
-        // price (`_tp` above) is visible immediately.
-        const _fxNow = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
-        const _actualPerUnit = (_tq > 0 && (w.productCost || 0) > 0)
-          ? ((w.productCost * _fxNow) / _tq).toFixed(4) : 'n/a';
-        const _allTiers = _ts.map((t, i) => `t${i+1}(id=${t.id ?? '?'},qty=${t.qty},px=${t.price})`).join('; ');
-        // Variant breakdown — shows every variant's qty + price so we
-        // can see exactly what's feeding the qty-weighted RMB average.
-        let _varLines = '';
-        if (_hasVar) {
-          const _vDump = [];
-          _rfqs.forEach(it => {
-            if (Array.isArray(it.variants) && it.variants.length > 0) {
-              it.variants.forEach(v => {
-                _vDump.push(`${v.sku || v.variant || '?'}: qty=${v.qty || 0}, px=¥${v.priceRmb || 0}`);
-              });
-            }
-          });
-          _varLines = `\n  variants:\n    ${_vDump.join('\n    ')}`;
-        }
-        _costBreakdownLines.push(
-          `${_label}:\n  qty=${_tq.toLocaleString('en-US')} × ¥${_actualPerUnit} (actually used) = ${_prod}  [${_cacheStatus}, selIdx=${det.selectedTierIdx ?? '?'}]\n  tier price stored: ¥${_tp.toFixed(4)}\n  tiers: ${_allTiers || '(none)'}${_varLines}`
-        );
-      });
-      const _costTooltip = `Per-workbook product cost (selected tier qty × tier RMB ÷ 7.2):\n\n` + _costBreakdownLines.join('\n\n') + `\n\nTotal: $${agProductCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
       const _shipBreakdownLines = [];
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
         const w   = wbStatsByEntry.get(key) || {};
         const det = workbookDetail[key] || {};
         const _label = (det.product || e.workbookId || '?');
-        const _src   = (parseFloat(det.pricingShippingCostUsd) > 0) ? 'cached'
-                     : (det.freightCostOverrideOn ? 'override' : `${det.freightMode || '?'} × ${(w.weightKg||0).toFixed(0)}kg`);
-        _shipBreakdownLines.push(`${_label}: $${(w.shippingUsd || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}   [${_src}]`);
+        _costBreakdownLines.push(`${_label}: ${_fmtUsdLine(w.productCost)}`);
+        _shipBreakdownLines.push(`${_label}: ${_fmtUsdLine(w.shippingUsd)}`);
       });
-      const _shipTooltip = `Per-workbook shipping cost:\n\n` + _shipBreakdownLines.join('\n') + `\n\nTotal: $${agShipping.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+      const _costTooltip = `Per-workbook product cost:\n\n` + _costBreakdownLines.join('\n') + `\n\nTotal: ${_fmtUsdLine(agProductCost)}`;
+      const _shipTooltip = `Per-workbook shipping cost:\n\n` + _shipBreakdownLines.join('\n') + `\n\nTotal: ${_fmtUsdLine(agShipping)}`;
       // Profit cell — Price (cust) minus Total (ours). Uses the new
       // additive Total (ours) above (product + shipping) so Profit
       // always equals Price − Total as displayed in the same row.
