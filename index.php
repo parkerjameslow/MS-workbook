@@ -5633,6 +5633,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .oc-gb-label { font-size: 10px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
     .oc-gb-val   { font-size: 12px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
     .oc-gb-divider { height: 1px; background: var(--border); margin: 4px 0 2px; }
+    .oc-refresh-btn {
+      margin-top: 6px;
+      padding: 3px 9px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      color: var(--text-muted);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+    }
+    .oc-refresh-btn:hover {
+      color: var(--accent);
+      border-color: rgba(232,117,26,0.45);
+      background: rgba(232,117,26,0.05);
+    }
+    .oc-refresh-btn:disabled { opacity: 0.55; cursor: progress; }
     .oc-right-wrap {
       flex: 0 0 180px;
       display: flex; flex-direction: column; align-items: stretch; justify-content: center;
@@ -17128,6 +17148,55 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (pruned && !_filling) autoSaveWorkbook();
   }
 
+  // Orders page — bulk-refresh every cached-cost field for an order
+  // by navigating to each workbook in turn. Each visit fires
+  // fillWorkbook → renderPricingTab → renderPalletViz, which writes
+  // the latest pricingProductCostUsd / pricingShippingCostUsd /
+  // pricingGrandTotalCost / pricingShipmentWeightKg / pricingShipmentCbm
+  // values from the on-screen render. The one-shot autoSaveWorkbook
+  // call at the end of fillWorkbook (added in this same change set)
+  // persists those caches to detail_json. When all workbooks have
+  // been visited we return to /orders and re-render the list.
+  // The button is disabled during the run so the operator can't fire
+  // a second pass on top of the first.
+  let _refreshingOrderCaches = false;
+  async function refreshOrderCaches(orderId) {
+    if (_refreshingOrderCaches) return;
+    const order = orderData[orderId];
+    if (!order) return;
+    const entries = (order.entries || []).slice();
+    if (entries.length === 0) {
+      showToast('No workbooks to refresh.', 'info');
+      return;
+    }
+    _refreshingOrderCaches = true;
+    // Disable every Refresh button on the page so concurrent clicks
+    // can't double-fire while a pass is in flight.
+    document.querySelectorAll('.oc-refresh-btn').forEach(b => { b.disabled = true; });
+    try {
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        showToast(`Refreshing ${i + 1}/${entries.length}: ${e.workbookId}`, 'info');
+        location.hash = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
+        // Wait long enough for fillWorkbook's 200ms _filling delay +
+        // its post-fill autoSaveWorkbook to round-trip to the server.
+        // 1.5s per workbook keeps the whole pass under ~10s for a
+        // typical 4-workbook order.
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    } finally {
+      _refreshingOrderCaches = false;
+      // Return to the Orders list and force a re-render so the
+      // refreshed caches reach the screen.
+      location.hash = '#/orders';
+      await new Promise(r => setTimeout(r, 300));
+      if (typeof renderOrdersList === 'function') renderOrdersList();
+      // Re-enable any Refresh buttons that survive the re-render.
+      document.querySelectorAll('.oc-refresh-btn').forEach(b => { b.disabled = false; });
+      showToast(`Refreshed ${entries.length} workbook${entries.length !== 1 ? 's' : ''}.`, 'success');
+    }
+  }
+
   // Client Quote — expand/collapse a variant group's sub-rows. Hidden
   // by default; clicking the parent row reveals every variant's SKU,
   // qty, sale price, and line total. Mirrors the same hide/show
@@ -24976,6 +25045,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         setTimeout(_scrubAutofill, 600);
         setTimeout(_scrubAutofill, 1500);
       } catch (e) { /* best-effort — never block the workbook from loading */ }
+      // One-shot autosave after _filling clears so cache fields written
+      // during the initial render pass (pricingProductCostUsd,
+      // pricingShippingCostUsd, pricingGrandTotalCost,
+      // pricingShipmentWeightKg, pricingShipmentCbm) reach detail_json
+      // without requiring an input event. Without this, opening a
+      // workbook recomputes the in-memory caches but they stay un-
+      // persisted unless the operator types something — which is why
+      // the Orders page kept showing stale fallback numbers after the
+      // cache schema changed.
+      if (typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
     }, 200);
   }  // end _fillWorkbookInner
 
@@ -31963,6 +32042,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="oc-grand-label">Total</span>
               <span class="oc-grand-usd">${usdStr}</span>
               ${rmbStr ? `<span class="oc-grand-rmb">${rmbStr}</span>` : ''}
+              <button class="oc-refresh-btn" type="button"
+                      onclick="event.stopPropagation(); refreshOrderCaches(${id})"
+                      title="Open each workbook in turn to repaint product / shipping / total caches. Fixes stale numbers without manually visiting each workbook.">
+                ↻ Refresh totals
+              </button>
             </div>
           </div>
         </div>
