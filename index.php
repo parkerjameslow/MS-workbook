@@ -5624,9 +5624,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .oc-grand-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
     .oc-grand-usd { font-size: 15px; font-weight: 800; color: var(--text); }
     .oc-grand-rmb { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+    /* Breakdown above the Total — Price (theirs) + Shipping rows whose
+       sum equals the headline Total below. Rendered only when shipping
+       is meaningful, to avoid clutter on workbooks where shipping is 0
+       or unknown. Width matches oc-right-wrap so the rows align cleanly. */
+    .oc-grand-breakdown { display: flex; flex-direction: column; align-items: stretch; gap: 3px; width: 100%; margin-bottom: 6px; }
+    .oc-gb-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .oc-gb-label { font-size: 10px; font-weight: 600; color: var(--text-muted); white-space: nowrap; }
+    .oc-gb-val   { font-size: 12px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+    .oc-gb-divider { height: 1px; background: var(--border); margin: 4px 0 2px; }
     .oc-right-wrap {
-      flex: 0 0 160px;
-      display: flex; align-items: center; justify-content: flex-end;
+      flex: 0 0 180px;
+      display: flex; flex-direction: column; align-items: stretch; justify-content: center;
       border-left: 2px solid var(--border); padding-left: 16px;
     }
     .oc-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; min-width: 100px; }
@@ -31909,6 +31918,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${wbPills}
           </div>
           <div class="oc-right-wrap">
+            ${(agShipping > 0 && agPrice > agShipping) ? `
+            <div class="oc-grand-breakdown">
+              <div class="oc-gb-row">
+                <span class="oc-gb-label">Price (theirs)</span>
+                <span class="oc-gb-val">${fmtUsdT(agPrice - agShipping)}</span>
+              </div>
+              <div class="oc-gb-row">
+                <span class="oc-gb-label">+ Shipping</span>
+                <span class="oc-gb-val">${fmtUsdT(agShipping)}</span>
+              </div>
+              <div class="oc-gb-divider"></div>
+            </div>` : ''}
             <div class="oc-grand-total">
               <span class="oc-grand-label">Total</span>
               <span class="oc-grand-usd">${usdStr}</span>
