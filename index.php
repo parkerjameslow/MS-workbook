@@ -28617,30 +28617,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _ms_FX = 7.2; // matches USD_TO_RMB
     let productCost = parseFloat(d.pricingProductCostUsd) || 0;
     if (productCost === 0) {
-      // Variant-aware fallback mirroring renderPricingTab's logic:
-      //   • If RFQ has variants with prices, use the qty-weighted RMB
-      //     average across all variants (this is what the Pricing tab
-      //     calls grandRmbWeighted — beats tier price for the variant
-      //     case where the workbook represents a mix of SKUs).
-      //   • Otherwise fall back to selectedTier.price × qty.
+      // Variant-aware fallback mirroring renderPricingTab's EXACT
+      // logic (line ~19562):
+      //   • If the workbook HAS VARIANTS and the qty-weighted RMB
+      //     across variants is > 0 → use weighted × effectiveQty.
+      //   • Otherwise → use selectedTier.price × effectiveQty.
+      // The hasVariants check is essential: a non-variant workbook
+      // whose RFQ row price differs from the selected tier's price
+      // (very common — RFQ holds the supplier's first-pass quote,
+      // tier holds the negotiated qty-bracket price) would otherwise
+      // pick up the wrong number.
       const rfqItems = Array.isArray(d.rfqItems) ? d.rfqItems : [];
+      const hasVariants = rfqItems.some(it => Array.isArray(it.variants) && it.variants.length > 0);
       let qXp = 0, totalQ = 0;
-      rfqItems.forEach(item => {
-        if (Array.isArray(item.variants) && item.variants.length > 0) {
-          item.variants.forEach(v => {
-            const vq = parseFloat(String(v.qty      || '').replace(/,/g, '')) || 0;
-            const vp = parseFloat(String(v.priceRmb || '').replace(/,/g, '')) || 0;
-            if (vq > 0 && vp > 0) { qXp += vq * vp; totalQ += vq; }
-          });
-        } else {
-          const iq = parseFloat(String(item.qty      || '').replace(/,/g, '')) || 0;
-          const ip = parseFloat(String(item.priceRmb || '').replace(/,/g, '')) || 0;
-          if (iq > 0 && ip > 0) { qXp += iq * ip; totalQ += iq; }
-        }
-      });
+      if (hasVariants) {
+        rfqItems.forEach(item => {
+          if (Array.isArray(item.variants) && item.variants.length > 0) {
+            item.variants.forEach(v => {
+              const vq = parseFloat(String(v.qty      || '').replace(/,/g, '')) || 0;
+              const vp = parseFloat(String(v.priceRmb || '').replace(/,/g, '')) || 0;
+              if (vq > 0 && vp > 0) { qXp += vq * vp; totalQ += vq; }
+            });
+          } else {
+            // Mixed workbook: parents-without-variants still feed the
+            // weighted RMB pool — same as renderPricingTab line 14917.
+            const iq = parseFloat(String(item.qty      || '').replace(/,/g, '')) || 0;
+            const ip = parseFloat(String(item.priceRmb || '').replace(/,/g, '')) || 0;
+            if (iq > 0 && ip > 0) { qXp += iq * ip; totalQ += iq; }
+          }
+        });
+      }
       const weightedRmb = totalQ > 0 ? (qXp / totalQ) : 0;
       const tierPrice   = selTier ? (parseFloat(String(selTier.price || '').replace(/,/g, '')) || 0) : 0;
-      const perUnitRmb  = weightedRmb > 0 ? weightedRmb : tierPrice;
+      // Match renderPricingTab's hasVariants gate exactly.
+      const perUnitRmb = (hasVariants && weightedRmb > 0) ? weightedRmb : tierPrice;
       if (units > 0 && perUnitRmb > 0) {
         productCost = (units * perUnitRmb) / _ms_FX;
       }
@@ -32194,7 +32204,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="oc-left">
             <span class="oc-client">${o.clientName}</span>
             <span class="oc-title">${o.name}</span>
-            <span class="oc-date">${o.dateCreated}</span>
             ${leadBlock}
             ${deadlineBlock}
             ${changeBadge}
