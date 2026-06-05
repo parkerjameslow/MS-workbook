@@ -17119,6 +17119,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (pruned && !_filling) autoSaveWorkbook();
   }
 
+  // Client Quote — expand/collapse a variant group's sub-rows. Hidden
+  // by default; clicking the parent row reveals every variant's SKU,
+  // qty, sale price, and line total. Mirrors the same hide/show
+  // pattern the Inventory page uses for nested variant SKUs.
+  function _cqToggleVariants(parentId) {
+    if (!parentId) return;
+    const parent = document.querySelector(`tr.cq-parent-row[data-cq-parent="${CSS.escape(parentId)}"]`);
+    if (!parent) return;
+    const expanded = parent.classList.toggle('expanded');
+    // Rotate chevron via class transform from the CSS rule.
+    document.querySelectorAll(`tr.cq-variant-row[data-cq-variant-of="${CSS.escape(parentId)}"]`).forEach(vr => {
+      vr.classList.toggle('hidden', !expanded);
+    });
+  }
+
   function toggleFeeApplied(id, isChecked) {
     if (isChecked) {
       _appliedFees.add(id);
@@ -19398,20 +19413,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const saleText = saleMin === Infinity ? '—'
               : (isRange ? `${variablePill}$${_fmt2(saleMin)}–$${_fmt2(saleMax)}` : '$' + _fmt2(saleMin));
 
-            // Inline-SKU listing per the design reference — parent name
-            // bold, variant SKUs in muted mono after a colon, '= N'
-            // suffix when a qty has been entered. Qty + Total cells
-            // still aggregate across every variant.
-            const variantList = variantNames.length
-              ? `<span style="color:var(--text-muted); font-family:'SF Mono','Consolas',monospace; font-size:12px; margin-left:6px;">: ${variantNames.join(', ')}</span>${totalQty > 0 ? `<span style="color:var(--text); font-weight:700; margin-left:6px;">= ${totalQty.toLocaleString('en-US')}</span>` : ''}`
-              : '';
-            html += `<tr class="cq-parent-row no-variants" data-cq-parent="${parentId}">
-              <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
-              <td><span style="font-weight:700;">${parentName}</span>${variantList}</td>
+            // Parent row — clickable chevron toggles sub-variant rows
+            // below. Index cell carries a small ▸/▾ chevron so the
+            // operator can tell at a glance which rows are expandable.
+            // Subtitle shows variant count when collapsed; the SKU
+            // list is no longer inline (it lives in the sub-rows).
+            const variantCountTxt = group.variants.length === 1
+              ? '1 variant'
+              : `${group.variants.length} variants`;
+            const escCq = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            html += `<tr class="cq-parent-row" data-cq-parent="${parentId}" onclick="_cqToggleVariants('${parentId}')">
+              <td style="color:var(--text-muted); width:32px;">
+                <span class="cq-chevron" style="display:inline-block; margin-right:4px; color:var(--text-muted); font-size:10px; transition:transform 0.15s;">▸</span>${groupIdx}
+              </td>
+              <td>
+                <span style="font-weight:700;">${parentName}</span>
+                <span style="color:var(--text-muted); font-size:11px; margin-left:8px; font-weight:500;">· ${variantCountTxt}</span>
+              </td>
               <td style="text-align:right;">${totalQty > 0 ? totalQty.toLocaleString('en-US') : '—'}</td>
               <td style="text-align:right;">${saleText}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${totalSale > 0 ? '$' + _fmt2(totalSale) : '—'}</td>
             </tr>`;
+
+            // Variant sub-rows — hidden by default, revealed by clicking
+            // the parent. Each row shows SKU (mono) + variant name + the
+            // per-variant qty / sale / total. Indent on the Item cell
+            // makes the hierarchy obvious without an extra column.
+            variantData.forEach((v, vIdx) => {
+              const isLast = vIdx === variantData.length - 1;
+              const branch = isLast ? '└' : '├';
+              const skuChip = v.sku
+                ? `<span style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:#E8751A; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:4px; padding:1px 6px; margin-right:8px; font-weight:600;">${escCq(v.sku)}</span>`
+                : '';
+              const nameTxt = v.name ? `<span style="color:var(--text);">${escCq(v.name)}</span>` : `<span style="color:var(--text-muted); font-style:italic;">(unnamed)</span>`;
+              html += `<tr class="cq-variant-row hidden" data-cq-variant-of="${parentId}">
+                <td></td>
+                <td style="padding-left:32px;">
+                  <span style="color:var(--text-muted); font-family:'SF Mono','Consolas',monospace; margin-right:8px;">${branch}</span>
+                  ${skuChip}${nameTxt}
+                </td>
+                <td style="text-align:right; color:var(--text-muted);">${v.qty > 0 ? v.qty.toLocaleString('en-US') : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${v.sale > 0 ? '$' + _fmt2(v.sale) : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted); font-weight:500;">${v.total > 0 ? '$' + _fmt2(v.total) : '—'}</td>
+              </tr>`;
+            });
           }
         });
 
