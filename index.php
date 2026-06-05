@@ -5872,13 +5872,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-size: 30px; font-weight: 800; color: var(--text); line-height: 1.1; margin-bottom: 4px;
     }
     .order-detail-name-wrap { margin-bottom: 14px; }
-    .order-detail-name {
-      font-size: 16px; font-weight: 500; border: none; background: transparent;
-      color: var(--text-muted); width: 100%; outline: none; padding: 2px 0;
-      border-bottom: 2px solid transparent; transition: border-color 0.2s;
-      font-family: inherit;
-    }
-    .order-detail-name:focus { border-bottom-color: var(--accent); color: var(--text); }
     /* Invoice line — persistent label + editable number field. Sits
        directly under the order name so the two read as a single
        header block. Same muted color palette as the order name input
@@ -8694,13 +8687,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="order-detail-header">
       <div class="order-detail-client-name" id="order-detail-client-name"></div>
       <div class="order-detail-name-wrap">
-        <input type="text" class="order-detail-name" id="order-detail-name" placeholder="Order name…"
-          oninput="onOrderNameChange()" />
-        <!-- Persistent Invoice: label + editable number. Always shown
-             (with empty input) so the operator can drop in the invoice
-             number once it's generated; sits inline so the visual
-             rhythm under the client name stays consistent across orders
-             with and without an invoice. -->
+        <!-- Single editable INV line below the client name. There used
+             to be two fields here (a free-text "Order name…" + a
+             separate Invoice field) which created visual duplication
+             when operators put the invoice number in the name field
+             out of habit. Now there's just one: INV: + editable
+             number. o.name is auto-derived from the invoice number
+             so the dashboard card title, header, and sidebar all
+             show the same "INV: ###" string consistently. -->
         <div class="order-detail-invoice-wrap">
           <span class="order-detail-invoice-label">INV:</span>
           <input type="text" id="order-detail-invoice" placeholder="—"
@@ -32265,9 +32259,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (ordNav) ordNav.classList.add('active');
 
     document.getElementById('order-detail-client-name').textContent = o.clientName;
-    document.getElementById('order-detail-name').value = o.name;
     document.getElementById('order-detail-po').value = o.poNumber || '';
-    document.getElementById('order-detail-invoice').value = o.invoiceNumber || '';
+    // Seed the invoice input. Backfill from o.name when it already
+    // matches the "INV: ###" pattern (so legacy orders that encoded
+    // the invoice number into the name field surface cleanly here
+    // without manual re-entry). Pure read — no write back unless the
+    // operator actually types.
+    let _invSeed = (o.invoiceNumber || '').trim();
+    if (!_invSeed) {
+      const _m = String(o.name || '').match(/^\s*INV[:\s]+\s*(.+?)\s*$/i);
+      if (_m) _invSeed = _m[1];
+    }
+    document.getElementById('order-detail-invoice').value = _invSeed;
     document.getElementById('order-detail-deposit-pct').value = o.depositPct != null ? o.depositPct : 30;
     document.getElementById('order-detail-notes').value = o.notes || '';
 
@@ -33043,15 +33046,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Inline edits ─────────────────────────────────────────────────────
-  function onOrderNameChange() {
-    const o = orderData[_currentOrderId];
-    if (!o) return;
-    o.name = document.getElementById('order-detail-name').value;
-    saveOrders();
-    rebuildOrdersNav();
-    document.getElementById('header-title').textContent = o.name;
-  }
-
   function onOrderStatusChange() {
     const o = orderData[_currentOrderId];
     if (!o) return;
@@ -33070,8 +33064,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onOrderInvoiceChange() {
     const o = orderData[_currentOrderId];
     if (!o) return;
-    o.invoiceNumber = document.getElementById('order-detail-invoice').value;
+    const raw = document.getElementById('order-detail-invoice').value;
+    o.invoiceNumber = raw;
+    // Mirror to o.name so the header title, sidebar, and orders-list
+    // card all read the same "INV: ###" string the operator just
+    // typed. Falls back to "Untitled Order" when the field is cleared
+    // entirely so the various surfaces still have something to render.
+    const trimmed = String(raw || '').trim();
+    o.name = trimmed ? `INV: ${trimmed}` : 'Untitled Order';
     saveOrders();
+    if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav();
+    const ht = document.getElementById('header-title');
+    if (ht) ht.textContent = o.name;
   }
 
   function onOrderDepositPctChange() {
