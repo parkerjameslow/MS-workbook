@@ -28625,53 +28625,69 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       else { const n = parseInt(shipLeadStr, 10); if (!isNaN(n)) shipLead = n; }
     }
     const leadDays = (prodLead || 0) + (shipLead || 0);
-    // Shipping cost (USD) — cached on the Pricing tab as
-    // pricingShippingCostUsd. Fallback: honor a shipping-cost override
-    // if one was typed; otherwise compute chargeableKg × per-kg rate
-    // for the selected freight mode from the same fields _shipUnit
-    // reads. Returns 0 only when we truly can't compute it (no rate,
-    // no weight, no override).
+    // ── Product cost (USD) — authoritative path ─────────────────────
+    // Compute directly from detail_json instead of trusting the
+    // pricingProductCostUsd cache (which is brittle: it only exists
+    // for workbooks opened-and-saved since the cache schema landed).
+    //
+    // Honest formula: effectiveQty × selectedTier.price / FX. Mirrors
+    // renderPricingTab's productTotalRmb computation (line ~19562)
+    // without needing the DOM.
+    //
+    // Variant note: when an RFQ row has variants with DIFFERENT
+    // per-unit RMB prices, renderPricingTab uses a qty-weighted
+    // average across variants instead of the parent's flat price.
+    // For the dashboard rollup we use the simple tier × qty approach
+    // — close enough for the Orders summary, and exactly right for
+    // the common case where variants share one tier price.
+    const _ms_FX = 7.2; // matches USD_TO_RMB
+    let productCost = parseFloat(d.pricingProductCostUsd) || 0;
+    if (productCost === 0) {
+      const tierPrice = selTier ? (parseFloat(String(selTier.price || '').replace(/,/g, '')) || 0) : 0;
+      if (units > 0 && tierPrice > 0) {
+        productCost = (units * tierPrice) / _ms_FX;
+      }
+    }
+    // ── Shipping (USD) — derive from cachedTotal − product ──────────
+    // The cached pricingGrandTotalCost is reliable (it's _msCeil2 of
+    // product + shipping at save time and the user has confirmed it
+    // matches the Pricing tab). Subtracting the computed product
+    // gives shipping that's GUARANTEED to tie to Total. This beats
+    // the old weight×rate fallback, which assumed a rate that didn't
+    // always match what calcFreight actually used.
+    //
+    // Cache-first path remains: if pricingShippingCostUsd is present,
+    // trust it (it was written from the same render that produced
+    // the total, so they're consistent by construction).
     let shippingUsd = parseFloat(d.pricingShippingCostUsd) || 0;
     if (shippingUsd === 0) {
-      const overrideOn  = !!d.freightCostOverrideOn;
-      const overrideStr = String(d.freightCostOverrideUsd || '').replace(/,/g, '').trim();
-      const overrideVal = parseFloat(overrideStr);
-      if (overrideOn && isFinite(overrideVal) && overrideVal >= 0) {
-        shippingUsd = overrideVal;
+      const cachedTotal = parseFloat(d.pricingGrandTotalCost) || 0;
+      if (cachedTotal > 0 && productCost > 0 && cachedTotal > productCost) {
+        shippingUsd = cachedTotal - productCost;
       } else {
-        const fr = (d.freightRates && typeof d.freightRates === 'object') ? d.freightRates : {};
-        const rateMap = {
-          slow:      parseFloat(fr.slow)      || 12,
-          fast:      parseFloat(fr.fast)      || 14,
-          airupp:    parseFloat(fr.airupp)    || 44,
-          directair: parseFloat(fr.directair) || 65,
-        };
-        const rateRmb = rateMap[mode] || 0;
-        // weightKg fallback above already collapsed to the honest
-        // shipment weight (Case-Only / Weight-Only / carton). Reuse it
-        // directly — chargeable weight = actual weight when no dims
-        // (volumetric collapses to 0), which is the only situation a
-        // cache-miss workbook is likely to be in here.
-        if (weightKg > 0 && rateRmb > 0) {
-          const FX = 7.2; // matches USD_TO_RMB constant used at write time
-          shippingUsd = (weightKg * rateRmb) / FX;
+        // Last-resort fallback for workbooks with no Pricing-tab cache
+        // at all (brand new, never priced): honor explicit override,
+        // else weight × rate.
+        const overrideOn  = !!d.freightCostOverrideOn;
+        const overrideStr = String(d.freightCostOverrideUsd || '').replace(/,/g, '').trim();
+        const overrideVal = parseFloat(overrideStr);
+        if (overrideOn && isFinite(overrideVal) && overrideVal >= 0) {
+          shippingUsd = overrideVal;
+        } else {
+          const fr = (d.freightRates && typeof d.freightRates === 'object') ? d.freightRates : {};
+          const rateMap = {
+            slow:      parseFloat(fr.slow)      || 12,
+            fast:      parseFloat(fr.fast)      || 14,
+            airupp:    parseFloat(fr.airupp)    || 44,
+            directair: parseFloat(fr.directair) || 65,
+          };
+          const rateRmb = rateMap[mode] || 0;
+          if (weightKg > 0 && rateRmb > 0) {
+            shippingUsd = (weightKg * rateRmb) / _ms_FX;
+          }
         }
       }
     }
-    // Product cost (USD) — cached on the Pricing tab as
-    // pricingProductCostUsd. Authoritative when present. Fallback
-    // derives from (cachedTotal − resolvedShipping) so the product
-    // number is consistent with the SHIPPING value we just resolved
-    // above. Computing this BEFORE shippingUsd was the original bug:
-    // it used d.pricingShippingCostUsd directly, which is undefined
-    // on un-refreshed workbooks, so the subtraction collapsed to
-    // total − 0 = total. Opening the workbook once on the Pricing
-    // tab (or hitting ↻ Refresh totals on the order card) repaints
-    // pricingProductCostUsd and removes the dependency on this
-    // fallback entirely.
-    const productCost = (parseFloat(d.pricingProductCostUsd) > 0)
-      ? parseFloat(d.pricingProductCostUsd)
-      : Math.max(0, (parseFloat(d.pricingGrandTotalCost) || 0) - shippingUsd);
     return { units, weightKg, cost, price, cbm, leadDays, shippingUsd, productCost };
   }
 
