@@ -31988,7 +31988,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span style="text-transform:uppercase; pointer-events:none;">Deadline</span>
             <span style="text-transform:none; letter-spacing:0; pointer-events:none;">${_fmtCardDate(dlDate)}${statusTxt}</span>
             <input type="date" value="${_dlIso}"
-                   onclick="event.stopPropagation();"
+                   onclick="event.stopPropagation(); if (typeof this.showPicker === 'function') { try { this.showPicker(); } catch(_) {} }"
                    onchange="event.stopPropagation(); setOrderDeadline(${id}, this.value);"
                    style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; padding:0; margin:0; border:none; background:transparent; color:transparent; font-size:0; -webkit-appearance:none; appearance:none;" />
           </span>`;
@@ -31999,7 +31999,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         deadlineBadge = `<span class="oc-deadline-wrap" data-set="0" style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:transparent; color:var(--text-muted); border:1px dashed var(--border); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap; position:relative; cursor:pointer;" onclick="event.stopPropagation();" title="Click to set a client-facing deadline. The card will compare it against the projected arrival date and flag any tight or missed timelines.">
           <span style="pointer-events:none;">+ Set client deadline</span>
           <input type="date"
-                 onclick="event.stopPropagation();"
+                 onclick="event.stopPropagation(); if (typeof this.showPicker === 'function') { try { this.showPicker(); } catch(_) {} }"
                  onchange="event.stopPropagation(); setOrderDeadline(${id}, this.value);"
                  style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; padding:0; margin:0; border:none; background:transparent; color:transparent; font-size:0; -webkit-appearance:none; appearance:none;" />
         </span>`;
