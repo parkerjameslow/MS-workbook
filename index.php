@@ -8702,7 +8702,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              rhythm under the client name stays consistent across orders
              with and without an invoice. -->
         <div class="order-detail-invoice-wrap">
-          <span class="order-detail-invoice-label">Invoice:</span>
+          <span class="order-detail-invoice-label">INV:</span>
           <input type="text" id="order-detail-invoice" placeholder="—"
                  oninput="onOrderInvoiceChange()" autocomplete="off"
                  data-1p-ignore="true" data-lpignore="true" />
@@ -8721,7 +8721,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; width:70px;"
             oninput="onOrderDepositPctChange()" />
         </div>
-        <div id="order-detail-date-tag" style="font-size:12px; color:var(--text-muted); padding:0 4px;"></div>
         <button id="btn-notify-order" onclick="openNotifyModal('order_status')"
           class="btn btn-ghost" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; border-color:var(--accent); color:var(--accent);"
           title="Send status notification to client">
@@ -32271,7 +32270,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('order-detail-invoice').value = o.invoiceNumber || '';
     document.getElementById('order-detail-deposit-pct').value = o.depositPct != null ? o.depositPct : 30;
     document.getElementById('order-detail-notes').value = o.notes || '';
-    document.getElementById('order-detail-date-tag').textContent = o.dateCreated;
 
     renderOrderSheet();
     renderOrderDepositTracking();
