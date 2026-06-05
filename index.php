@@ -31970,6 +31970,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const agTotalOurs   = agCost > 0
         ? agCost
         : (agProductCost + agShipping);
+      // Per-workbook breakdown for the Cost (ours) tooltip — helps
+      // diagnose drift between the aggregate and what the operator
+      // expects. Each line: "WorkbookID — qty × ¥price = $product".
+      // Reads from wbStatsByEntry which was built above with the
+      // same _wbStatsForPicker that drives the displayed totals, so
+      // the tooltip + the cell agree by construction.
+      const _costBreakdownLines = [];
+      entries.forEach(e => {
+        const key = `${e.clientName}|${e.workbookId}`;
+        const w   = wbStatsByEntry.get(key) || {};
+        const det = workbookDetail[key] || {};
+        const _selIdx = parseInt(det.selectedTierIdx, 10);
+        const _ts     = Array.isArray(det.tiers) ? det.tiers : [];
+        const _sel    = _ts.find(t => t.id == det.selectedTierIdx)
+                     || (Number.isInteger(_selIdx) && _selIdx >= 1 ? _ts[_selIdx - 1] : null)
+                     || _ts[0];
+        const _tp     = _sel ? (parseFloat(String(_sel.price || '').replace(/,/g, '')) || 0) : 0;
+        const _label  = (det.product || e.workbookId || '?');
+        const _qty    = (w.units || 0).toLocaleString('en-US');
+        const _prod   = '$' + (w.productCost || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+        _costBreakdownLines.push(`${_label}: ${_qty} × ¥${_tp.toFixed(4)} = ${_prod}   [tierIdx=${det.selectedTierIdx ?? '?'}]`);
+      });
+      const _costTooltip = `Per-workbook product cost (qty × selected tier RMB ÷ 7.2):\n\n` + _costBreakdownLines.join('\n') + `\n\nTotal: $${agProductCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+      const _shipBreakdownLines = [];
+      entries.forEach(e => {
+        const key = `${e.clientName}|${e.workbookId}`;
+        const w   = wbStatsByEntry.get(key) || {};
+        const det = workbookDetail[key] || {};
+        const _label = (det.product || e.workbookId || '?');
+        const _src   = (parseFloat(det.pricingShippingCostUsd) > 0) ? 'cached'
+                     : (det.freightCostOverrideOn ? 'override' : `${det.freightMode || '?'} × ${(w.weightKg||0).toFixed(0)}kg`);
+        _shipBreakdownLines.push(`${_label}: $${(w.shippingUsd || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}   [${_src}]`);
+      });
+      const _shipTooltip = `Per-workbook shipping cost:\n\n` + _shipBreakdownLines.join('\n') + `\n\nTotal: $${agShipping.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
       // Profit cell — Price (cust) minus Total (ours). Uses the new
       // additive Total (ours) above (product + shipping) so Profit
       // always equals Price − Total as displayed in the same row.
@@ -31987,8 +32021,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
-        <div class="oc-stat" title="Product cost only — Total (ours) minus Shipping. Sum of each workbook's Pricing-tab Product Cost (no fees, no margin)."><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span></div>
-        <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
+        <div class="oc-stat" title="${_costTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span></div>
+        <div class="oc-stat" title="${_shipTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
         <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. What it costs us to land this order before margin and fees."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
