@@ -31971,18 +31971,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             : `${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`)
         : '—';
       const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
-      // Cost decomposition: each workbook caches productCost and
-      // shippingUsd independently on the Pricing tab, so we sum the
-      // two streams instead of subtracting one cache from another.
-      // Total (ours) here is the SUM (not the legacy agCost rollup)
-      // so the row is always internally consistent — even when one
-      // workbook's product cache is missing but its shipping cache is
-      // present (or vice-versa). Falls back to agCost when both sides
-      // come up 0 (e.g. brand-new order with no workbooks priced yet).
+      // Cost decomposition: each workbook caches productCost,
+      // shippingUsd, and grandTotalCost independently on the Pricing
+      // tab. We display all three from the cached values directly.
+      //
+      // IMPORTANT: Total (ours) is the cached agCost rollup, NOT the
+      // recomputed (product + shipping) sum. Each workbook's cached
+      // grandTotalCost is ceil-2 of (productTotal + shippingUsd) at
+      // SAVE time — so per-workbook ceiling lands cleanly. Summing
+      // product and shipping streams independently re-ceils each one
+      // separately, which can drift by a cent or two per workbook
+      // (e.g. $30,804.26 cached vs $30,803.76 recomputed). Cached
+      // total wins — it's what the operator saw on the Pricing tab.
+      //
+      // Falls back to (product + shipping) only when agCost is truly
+      // missing (brand-new order, no workbooks priced yet).
       const agCostProduct = agProductCost;
-      const agTotalOurs   = (agProductCost + agShipping) > 0
-        ? (agProductCost + agShipping)
-        : agCost;
+      const agTotalOurs   = agCost > 0
+        ? agCost
+        : (agProductCost + agShipping);
       // Profit cell — Price (cust) minus Total (ours). Uses the new
       // additive Total (ours) above (product + shipping) so Profit
       // always equals Price − Total as displayed in the same row.
