@@ -32172,12 +32172,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                      || (Number.isInteger(_selIdx) && _selIdx >= 1 ? _ts[_selIdx - 1] : null)
                      || _ts[0];
         const _tp     = _sel ? (parseFloat(String(_sel.price || '').replace(/,/g, '')) || 0) : 0;
+        const _tq     = _sel ? (parseInt(String(_sel.qty   || '').replace(/,/g, ''), 10) || 0) : 0;
         const _label  = (det.product || e.workbookId || '?');
-        const _qty    = (w.units || 0).toLocaleString('en-US');
         const _prod   = '$' + (w.productCost || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-        _costBreakdownLines.push(`${_label}: ${_qty} × ¥${_tp.toFixed(4)} = ${_prod}   [tierIdx=${det.selectedTierIdx ?? '?'}]`);
+        const _rfqs   = Array.isArray(det.rfqItems) ? det.rfqItems : [];
+        const _hasVar = _rfqs.some(it => Array.isArray(it.variants) && it.variants.length > 0);
+        const _cacheStatus = (parseFloat(det.pricingProductCostUsd) > 0) ? 'cached'
+                          : (_hasVar ? 'variant-weighted' : 'tier×qty');
+        const _allTiers = _ts.map((t, i) => `t${i+1}(id=${t.id ?? '?'},qty=${t.qty},px=${t.price})`).join('; ');
+        _costBreakdownLines.push(
+          `${_label}:\n  qty=${_tq.toLocaleString('en-US')} × ¥${_tp.toFixed(4)} = ${_prod}  [${_cacheStatus}, selIdx=${det.selectedTierIdx ?? '?'}]\n  tiers: ${_allTiers || '(none)'}`
+        );
       });
-      const _costTooltip = `Per-workbook product cost (qty × selected tier RMB ÷ 7.2):\n\n` + _costBreakdownLines.join('\n') + `\n\nTotal: $${agProductCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+      const _costTooltip = `Per-workbook product cost (selected tier qty × tier RMB ÷ 7.2):\n\n` + _costBreakdownLines.join('\n\n') + `\n\nTotal: $${agProductCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
       const _shipBreakdownLines = [];
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
