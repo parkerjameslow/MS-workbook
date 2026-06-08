@@ -32110,7 +32110,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function buildOrderRows(o) {
     const rate = USD_TO_RMB || 7.24;
-    const f2 = v => v > 0 ? parseFloat(v).toFixed(2) : '';
+    // Format with thousand separators so the CSV reads cleanly in a
+    // spreadsheet ("85,596.87" instead of "85596.87"). downloadCsv
+    // already quotes any value containing a comma, so the commas are
+    // safe inside the CSV layer — sumCol below strips them before
+    // re-parsing for the totals footer.
+    const f2 = v => v > 0
+      ? parseFloat(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+      : '';
+    const fmtQty = v => {
+      const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+      return (!isFinite(n) || n <= 0) ? '' : n.toLocaleString('en-US');
+    };
     const rows = [];
     const statusLabel = { draft:'Draft', confirmed:'Confirmed', in_production:'In Production', complete:'Complete' };
     (o.entries || []).forEach(entry => {
@@ -32149,7 +32160,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const rawCostRmb = parseFloat(item.priceRmb) || 0;
           const useRmb = saleUnitRmb > 0 ? saleUnitRmb : rawCostRmb;
           const useUsd = useRmb / rate;
-          rows.push([...base, item.item || '', item.sku || '', itemQty || '', f2(useRmb), f2(useUsd), f2(useRmb * itemQty), f2(useUsd * itemQty)]);
+          rows.push([...base, item.item || '', item.sku || '', fmtQty(itemQty), f2(useRmb), f2(useUsd), f2(useRmb * itemQty), f2(useUsd * itemQty)]);
         });
       }
       // Applied Additional Fees — one row per fee, inline under the
@@ -32184,7 +32195,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // separately + a true grand total. Fee rows are flagged by the
     // "+ Fee:" prefix that buildOrderRows writes into the Item col.
     const isFeeRow = r => typeof r[6] === 'string' && r[6].startsWith('+ Fee:');
-    const sumCol = (rs, idx) => rs.reduce((s, r) => s + (parseFloat(r[idx]) || 0), 0);
+    // sumCol strips commas before parseFloat — buildOrderRows now
+    // formats Totals with thousand separators ("85,596.87"), and
+    // parseFloat would stop at the first comma without this strip.
+    const sumCol = (rs, idx) => rs.reduce((s, r) => {
+      const v = parseFloat(String(r[idx] == null ? '' : r[idx]).replace(/,/g, ''));
+      return s + (isFinite(v) ? v : 0);
+    }, 0);
+    const fmtTot = v => (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     const itemRows = rows.filter(r => !isFeeRow(r));
     const feeRows  = rows.filter(isFeeRow);
     const itemsRmb = sumCol(itemRows, 11), itemsUsd = sumCol(itemRows, 12);
@@ -32193,11 +32211,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalUsd = itemsUsd + feesUsd;
     const blank = ['','','','','','','','','','','','',''];
     rows.push(blank);
-    rows.push(['','','','','','','','','SUBTOTAL (Items)','','', itemsRmb.toFixed(2), itemsUsd.toFixed(2)]);
+    rows.push(['','','','','','','','','SUBTOTAL (Items)','','', fmtTot(itemsRmb), fmtTot(itemsUsd)]);
     if (feeRows.length > 0) {
-      rows.push(['','','','','','','','','SUBTOTAL (Fees)','','', feesRmb.toFixed(2), feesUsd.toFixed(2)]);
+      rows.push(['','','','','','','','','SUBTOTAL (Fees)','','', fmtTot(feesRmb), fmtTot(feesUsd)]);
     }
-    rows.push(['','','','','','','','','GRAND TOTAL','','', totalRmb.toFixed(2), totalUsd.toFixed(2)]);
+    rows.push(['','','','','','','','','GRAND TOTAL','','', fmtTot(totalRmb), fmtTot(totalUsd)]);
     downloadCsv(`${(o.name || 'Order').replace(/[^a-z0-9]/gi,'-')}.csv`, headers, rows);
   }
 
