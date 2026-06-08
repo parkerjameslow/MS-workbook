@@ -28936,7 +28936,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       }
     }
-    return { units, weightKg, cost, price, cbm, leadDays, shippingUsd, productCost };
+    // Applied fees AT AS-IS (what we owe the supplier) — separate
+    // from Price (cust) which already includes the override amount.
+    // Adding this to the cost side makes Profit = Price − (Cost +
+    // Shipping + FeesAsIs), so:
+    //   • Fee charged to client at as-is → cancels out, 0 profit impact
+    //   • Fee marked up (override > as-is) → only the markup hits
+    //     Profit, matching the Pricing tab's "markup only" behavior
+    //     the operator already trusts.
+    const feesAsIs = parseFloat(d.pricingAppliedFeesAsIs) || 0;
+    return { units, weightKg, cost, price, cbm, leadDays, shippingUsd, productCost, feesAsIs };
   }
 
   function calcWorkbookShipStats(detail, qty) {
@@ -32133,7 +32142,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // selected freight mode's shipping lead); order lead = max
       // across the order's workbooks (a 30-day workbook sets the
       // floor for the whole shipment).
-      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0;
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0;
       const wbStatsByEntry = new Map();
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
@@ -32146,6 +32155,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         agCbm         += w.cbm;
         agShipping    += (w.shippingUsd || 0);
         agProductCost += (w.productCost || 0);
+        agFeesAsIs    += (w.feesAsIs   || 0);
         if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
       });
 
@@ -32374,9 +32384,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Falls back to (product + shipping) only when agCost is truly
       // missing (brand-new order, no workbooks priced yet).
       const agCostProduct = agProductCost;
-      const agTotalOurs   = agCost > 0
-        ? agCost
-        : (agProductCost + agShipping);
+      // Total (ours) now includes applied-fee COST (as-is amount we
+      // owe the supplier), in addition to product + shipping. Profit
+      // then correctly excludes fee passthroughs and only counts the
+      // markup portion (override − as-is) as profit — matching the
+      // Pricing tab's behavior the user already trusts.
+      const agTotalOurs = (agCost > 0 ? agCost : (agProductCost + agShipping)) + agFeesAsIs;
       // Per-workbook breakdown for the Cost (ours) tooltip — helps
       // diagnose drift between the aggregate and what the operator
       // expects. Each line: "WorkbookID — qty × ¥price = $product".
@@ -32422,7 +32435,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
         <div class="oc-stat" title="${_costTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span></div>
         <div class="oc-stat" title="${_shipTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
-        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. What it costs us to land this order before margin and fees."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
+        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping + applied fees AT AS-IS. Fee passthroughs (charged to client at our cost) don't impact Profit; any override above the as-is amount shows up as Profit markup."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
         <div class="oc-stat oc-stat--cbm">
