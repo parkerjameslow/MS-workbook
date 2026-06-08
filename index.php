@@ -91,6 +91,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* ── Reset & Variables ───────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* Sheets-style cell-selection outline. Applied by _setNavSelected
+       to the input/textarea/select that's currently "selected but not
+       editing". outline-offset:-2px keeps the ring inside the element
+       so it doesn't overflow tight table cells, and box-shadow adds a
+       subtle accent glow so the highlight reads even on dense rows.
+       caret-color:transparent suppresses any stray cursor blink in
+       case the browser hasn't fully blurred the element yet. */
+    .ms-nav-selected {
+      outline: 2px solid var(--accent, #E8751A) !important;
+      outline-offset: -2px;
+      box-shadow: 0 0 0 3px rgba(232,117,26,0.18) !important;
+      caret-color: transparent !important;
+      border-radius: 4px;
+      position: relative;
+      z-index: 1;
+    }
+
     :root {
       --bg:          #0d0f14;
       --surface:     #181b26;
@@ -15446,26 +15463,201 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
-  // Arrow key navigation within RFQ table
-  document.addEventListener('keydown', function(e) {
-    const el = document.activeElement;
-    if (!el || !el.closest('#rfq-body')) return;
-    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
-    e.preventDefault();
-    const row = el.closest('tr');
-    const rows = Array.from(document.querySelectorAll('#rfq-body tr'));
-    const inputs = Array.from(row.querySelectorAll('input'));
-    const colIdx = inputs.indexOf(el);
-    const rowIdx = rows.indexOf(row);
-    if (e.key === 'ArrowLeft' && colIdx > 0) inputs[colIdx - 1].focus();
-    if (e.key === 'ArrowRight' && colIdx < inputs.length - 1) inputs[colIdx + 1].focus();
-    if (e.key === 'ArrowUp' && rowIdx > 0) {
-      const prevInputs = rows[rowIdx - 1].querySelectorAll('input');
-      if (prevInputs[colIdx]) prevInputs[colIdx].focus();
+  /* ══════════════════════════════════════════════════════════════════════
+     SHEETS-STYLE CELL NAVIGATION (universal across the workbook view)
+
+     Two modes, just like Google Sheets:
+       • EDITING   — input has DOM focus, cursor blinks inside, arrows
+                     move the caret within the text (browser default).
+       • SELECTED  — input has lost DOM focus but is visually outlined
+                     (ms-nav-selected class). Arrows move between cells.
+                     Type / Enter / F2 enters editing mode. Click
+                     anywhere else clears selection.
+
+     Transitions:
+       Click on input         → editing
+       Enter on input         → commit (blur fires save) + selected
+       Tab on input           → browser default (next focusable)
+       Arrow on selected      → move to neighbor cell, becomes selected
+       Letter/digit on sel    → enter editing, replace contents
+       Backspace/Delete on sel→ clear value
+       Esc on selected        → clear selection
+       Click outside          → clear selection
+
+     Navigation uses spatial geometry — find the input with the closest
+     center in the requested direction, weighted to prefer aligned
+     cells. Pure left/right doesn't wrap rows (per user spec); up/down
+     stops at the table edge (no neighbor → no movement).
+  ══════════════════════════════════════════════════════════════════════ */
+  let _navSelectedInput = null;
+
+  function _isNavigableInput(el) {
+    if (!el) return false;
+    if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return false;
+    const skipTypes = new Set(['checkbox', 'radio', 'file', 'hidden', 'button', 'submit', 'reset', 'image', 'color']);
+    if (el.tagName === 'INPUT' && skipTypes.has(el.type)) return false;
+    if (el.disabled) return false;
+    // Read-only inputs can still be navigated TO (so the operator can
+    // see them) but typing won't replace; we let the browser swallow
+    // keystrokes naturally for those.
+    const wb = document.getElementById('view-workbook');
+    if (!wb || !wb.contains(el)) return false;
+    if (el.offsetParent === null) return false; // hidden ancestor
+    return true;
+  }
+
+  function _getNavigableInputs() {
+    const wb = document.getElementById('view-workbook');
+    if (!wb) return [];
+    return Array.from(wb.querySelectorAll('input, textarea, select'))
+      .filter(_isNavigableInput);
+  }
+
+  function _setNavSelected(el) {
+    if (_navSelectedInput && _navSelectedInput !== el) {
+      _navSelectedInput.classList.remove('ms-nav-selected');
     }
-    if (e.key === 'ArrowDown' && rowIdx < rows.length - 1) {
-      const nextInputs = rows[rowIdx + 1].querySelectorAll('input');
-      if (nextInputs[colIdx]) nextInputs[colIdx].focus();
+    _navSelectedInput = el || null;
+    if (el) {
+      el.classList.add('ms-nav-selected');
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  function _moveNavSelected(direction) {
+    if (!_navSelectedInput) return false;
+    const candidates = _getNavigableInputs();
+    if (candidates.length === 0) return false;
+    const curRect = _navSelectedInput.getBoundingClientRect();
+    const cx = curRect.left + curRect.width / 2;
+    const cy = curRect.top + curRect.height / 2;
+    let best = null, bestScore = Infinity;
+    for (const el of candidates) {
+      if (el === _navSelectedInput) continue;
+      const r = el.getBoundingClientRect();
+      const ex = r.left + r.width / 2;
+      const ey = r.top + r.height / 2;
+      const dx = ex - cx;
+      const dy = ey - cy;
+      let primary, perp;
+      // Direction filter: only consider candidates whose center is
+      // STRICTLY past the current cell in the requested direction
+      // (small threshold to avoid same-row cells beating each other
+      // on a left/right press).
+      const THRESH = 4;
+      if (direction === 'right') {
+        if (dx <= THRESH) continue;
+        primary = dx; perp = Math.abs(dy);
+      } else if (direction === 'left') {
+        if (dx >= -THRESH) continue;
+        primary = -dx; perp = Math.abs(dy);
+      } else if (direction === 'down') {
+        if (dy <= THRESH) continue;
+        primary = dy; perp = Math.abs(dx);
+      } else if (direction === 'up') {
+        if (dy >= -THRESH) continue;
+        primary = -dy; perp = Math.abs(dx);
+      } else {
+        continue;
+      }
+      // Heavily weight the perpendicular distance so aligned cells
+      // win over near-but-misaligned ones (e.g. ArrowDown picks the
+      // cell directly below, not a slightly-offset one in another
+      // column).
+      const score = primary + perp * 4;
+      if (score < bestScore) { bestScore = score; best = el; }
+    }
+    if (best) { _setNavSelected(best); return true; }
+    return false; // edge — nothing in that direction, per user spec
+  }
+
+  function _enterEditMode() {
+    const el = _navSelectedInput;
+    if (!el) return;
+    _setNavSelected(null);
+    try { el.focus(); } catch(_) {}
+    if (typeof el.select === 'function') {
+      try { el.select(); } catch(_) {}
+    }
+  }
+
+  document.addEventListener('keydown', function(e) {
+    // Skip when modifier keys are held — let browser defaults run
+    // (e.g. Cmd+A, Ctrl+C, OS shortcuts).
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const focused = document.activeElement;
+    const focusedIsInput = focused && _isNavigableInput(focused);
+
+    // ── Editing mode ──────────────────────────────────────────────────
+    if (focusedIsInput) {
+      if (e.key === 'Enter') {
+        // Textarea: Shift+Enter inserts newline (browser default).
+        if (focused.tagName === 'TEXTAREA' && e.shiftKey) return;
+        // SELECT: let Enter close the dropdown naturally.
+        if (focused.tagName === 'SELECT') return;
+        e.preventDefault();
+        focused.blur(); // fires onblur / onchange → commit
+        _setNavSelected(focused);
+      }
+      return; // arrows / printable keys behave as browser default
+    }
+
+    // ── Selected mode ─────────────────────────────────────────────────
+    if (!_navSelectedInput) return;
+    switch (e.key) {
+      case 'ArrowUp':    e.preventDefault(); _moveNavSelected('up');    return;
+      case 'ArrowDown':  e.preventDefault(); _moveNavSelected('down');  return;
+      case 'ArrowLeft':  e.preventDefault(); _moveNavSelected('left');  return;
+      case 'ArrowRight': e.preventDefault(); _moveNavSelected('right'); return;
+      case 'Enter':
+      case 'F2':         e.preventDefault(); _enterEditMode(); return;
+      case 'Escape':     e.preventDefault(); _setNavSelected(null); return;
+      case 'Backspace':
+      case 'Delete': {
+        e.preventDefault();
+        const el = _navSelectedInput;
+        if (!el.readOnly && el.tagName !== 'SELECT') {
+          el.value = '';
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return;
+      }
+      case 'Tab': return; // let browser handle Tab in selected mode too
+    }
+    // Printable character → enter edit, replace contents (Sheets-like)
+    if (e.key.length === 1) {
+      const el = _navSelectedInput;
+      if (el.readOnly || el.tagName === 'SELECT') return;
+      e.preventDefault();
+      _setNavSelected(null);
+      el.value = e.key;
+      try { el.focus(); } catch(_) {}
+      // Place caret at end so further typing appends.
+      if (typeof el.setSelectionRange === 'function') {
+        try { el.setSelectionRange(el.value.length, el.value.length); } catch(_) {}
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }, true); // capture phase so we win over existing per-table handlers
+
+  // Click on a navigable input → editing mode. Click anywhere else
+  // (in the workbook view) clears any selection so it doesn't linger
+  // while the operator is using the mouse elsewhere.
+  document.addEventListener('mousedown', function(e) {
+    const t = e.target;
+    if (_isNavigableInput(t)) {
+      if (_navSelectedInput && _navSelectedInput !== t) _setNavSelected(null);
+      return;
+    }
+    if (_navSelectedInput) _setNavSelected(null);
+  });
+
+  // Focus in via Tab from outside should also clear any nav-selection
+  // so we don't have two indicators (focus ring + selected outline).
+  document.addEventListener('focusin', function(e) {
+    if (_navSelectedInput && e.target !== _navSelectedInput) {
+      _setNavSelected(null);
     }
   });
 
