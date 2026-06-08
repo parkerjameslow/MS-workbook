@@ -32919,9 +32919,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       { id: 'design',  label: 'Design Fee(s)',  usd: num(detail.feeDesignUsd),  desc: detail.feeDesignDesc  || '' },
     ].filter(f => f.usd > 0 || (f.desc && f.desc.trim() !== ''));
     // Extras — every custom-row fee the operator added via "+ Add Fee".
-    // Each carries its own id (counter-assigned at fill time).
-    const extras = (Array.isArray(detail.extraFeeRows) ? detail.extraFeeRows : []).map(r => ({
-      id: 'extra:' + r.id,
+    // r.id is the in-memory counter id from when the workbook was last
+    // loaded. CRITICAL: detail.extraFeeRows persisted to detail_json
+    // does NOT include the id field (see collectWorkbookDetail line
+    // ~26392: extraFeeRows.map(r => ({type,desc,rmb,usd}))). So on a
+    // fresh dashboard render r.id is undefined, which made every
+    // extra fee collapse to a shared "extra:undefined" key — so
+    // toggling one Plate Fee's Bill/Comp checkbox flipped ALL six
+    // plate-fee rows together. Fall back to the array index so each
+    // row gets a distinct id stable across re-renders of the same
+    // detail.
+    const extras = (Array.isArray(detail.extraFeeRows) ? detail.extraFeeRows : []).map((r, idx) => ({
+      id: 'extra:' + (r.id != null ? r.id : idx),
       label: r.type || 'Custom Fee',
       desc:  r.desc || '',
       usd:   num(r.usd),
