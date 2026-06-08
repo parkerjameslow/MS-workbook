@@ -32640,6 +32640,73 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // `${clientName}|${workbookId}`. Survives re-renders so editing
   // elsewhere doesn't snap an open workbook shut.
   const _orderSheetExpanded = new Set();
+
+  // Pure helper — read every applied fee for a workbook from its
+  // detail_json (no DOM). Used by the Order Sheet's fee sub-rows so
+  // we can render fees for any workbook in the order, not just the
+  // currently-open one. Returns [{id, label, desc, usd}, …] where
+  // usd is the EFFECTIVE amount (override when set, else as-is).
+  function _appliedFeesFromDetail(detail) {
+    if (!detail) return [];
+    const ids = Array.isArray(detail.appliedFees) ? detail.appliedFees : [];
+    if (ids.length === 0) return [];
+    const overrides = (detail.appliedFeeOverrides && typeof detail.appliedFeeOverrides === 'object')
+      ? detail.appliedFeeOverrides : {};
+    const num = v => {
+      const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+      return isFinite(n) ? n : 0;
+    };
+    // Standard fees — read from the same detail keys collectWorkbookFees
+    // reads from the DOM. Each has a fixed id (sample / tooling / die /
+    // plate / design) so we can look them up by name.
+    const std = [
+      { id: 'sample',  label: 'Sample Fee(s)',  usd: num(detail.feeSampleUsd),  desc: detail.feeSampleDesc  || '' },
+      { id: 'tooling', label: 'Tooling Fee(s)', usd: num(detail.feeToolingUsd), desc: detail.feeToolingDesc || '' },
+      { id: 'die',     label: 'Die Fee(s)',     usd: num(detail.feeDieUsd),     desc: detail.feeDieDesc     || '' },
+      { id: 'plate',   label: 'Plate Fee(s)',   usd: num(detail.feePlateUsd),   desc: detail.feePlateDesc   || '' },
+      { id: 'design',  label: 'Design Fee(s)',  usd: num(detail.feeDesignUsd),  desc: detail.feeDesignDesc  || '' },
+    ];
+    const extras = (Array.isArray(detail.extraFeeRows) ? detail.extraFeeRows : []).map(r => ({
+      id: 'extra:' + r.id,
+      label: r.type || 'Custom Fee',
+      desc:  r.desc || '',
+      usd:   num(r.usd),
+    }));
+    const all = std.concat(extras);
+    return ids.map(id => {
+      const f = all.find(x => x.id === id);
+      if (!f) return null;
+      const ov = overrides[id];
+      const effective = (ov !== undefined && ov !== null && ov !== '') ? num(ov) : f.usd;
+      return { id, label: f.label, desc: f.desc, usd: effective };
+    }).filter(Boolean);
+  }
+
+  // Per-order, per-workbook, per-fee visibility on the client view.
+  // Stored on the order as o.feeVisibility = { [wbId|feeId]: bool }.
+  // Default TRUE (fees show on the Client Quote / email) unless the
+  // operator unchecks them in the Order Sheet expanded panel.
+  function _orderFeeVisibilityKey(workbookId, feeId) {
+    return `${workbookId}|${feeId}`;
+  }
+  function _orderFeeIsVisible(order, workbookId, feeId) {
+    if (!order || !order.feeVisibility) return true;
+    const v = order.feeVisibility[_orderFeeVisibilityKey(workbookId, feeId)];
+    return v !== false; // undefined/null/true → visible
+  }
+  function toggleOrderFeeVisibility(orderId, workbookId, feeId, isVisible) {
+    const o = orderData[orderId];
+    if (!o) return;
+    if (!o.feeVisibility) o.feeVisibility = {};
+    const k = _orderFeeVisibilityKey(workbookId, feeId);
+    if (isVisible) {
+      // Default is visible, so delete the key to keep the object lean
+      delete o.feeVisibility[k];
+    } else {
+      o.feeVisibility[k] = false;
+    }
+    if (typeof saveOrders === 'function') saveOrders();
+  }
   function toggleOrderSheetWb(key) {
     if (_orderSheetExpanded.has(key)) _orderSheetExpanded.delete(key);
     else _orderSheetExpanded.add(key);
@@ -32889,6 +32956,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td></td>
             </tr>`;
           }
+        });
+      }
+
+      // Applied Additional Fees sub-rows — one per fee, with a
+      // checkbox the operator can untick to hide that specific fee
+      // from the client-facing view (Client Quote, email, portal).
+      // The fee still contributes to the order's cost basis +
+      // workbook profit math; only its CLIENT visibility flips.
+      const wbFees = _appliedFeesFromDetail(detail);
+      if (wbFees.length > 0) {
+        wbFees.forEach(f => {
+          const visible = _orderFeeIsVisible(o, entry.workbookId, f.id);
+          const escFeeId = esc(f.id).replace(/'/g, "\\'");
+          rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-fee-row" style="${detailStyle} background:rgba(232,117,26,0.04);">
+            <td style="padding-left:36px; color:var(--text);">
+              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;" title="${visible ? 'Shown' : 'Hidden'} on the client-facing quote / email. Toggle to flip.">
+                <input type="checkbox" ${visible ? 'checked' : ''}
+                       onchange="toggleOrderFeeVisibility(${_currentOrderId}, '${esc(entry.workbookId)}', '${escFeeId}', this.checked); renderOrderSheet();"
+                       style="accent-color:var(--accent, #E8751A); cursor:pointer; width:14px; height:14px;" />
+                <span style="font-size:12px; color:#E8751A; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">+ Fee</span>
+                <span style="font-weight:600;">${esc(f.label)}</span>
+                ${f.desc ? `<span style="color:var(--text-muted); font-weight:400; font-size:11px;">— ${esc(f.desc)}</span>` : ''}
+                ${visible ? '' : `<span style="color:var(--text-muted); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; padding:1px 6px; background:var(--surface2); border-radius:99px; margin-left:4px;">Hidden from client</span>`}
+              </label>
+            </td>
+            <td style="text-align:right; color:var(--text-muted);">—</td>
+            <td style="text-align:right; color:var(--text-muted);">—</td>
+            <td style="text-align:right; font-weight:600; color:#E8751A;">${f.usd > 0 ? '$' + fmt2(f.usd) : '—'}</td>
+            <td style="text-align:right; color:var(--text-muted);">—</td>
+            <td></td>
+            <td></td>
+          </tr>`;
         });
       }
 
