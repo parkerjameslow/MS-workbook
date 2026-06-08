@@ -32384,12 +32384,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Falls back to (product + shipping) only when agCost is truly
       // missing (brand-new order, no workbooks priced yet).
       const agCostProduct = agProductCost;
-      // Total (ours) now includes applied-fee COST (as-is amount we
-      // owe the supplier), in addition to product + shipping. Profit
-      // then correctly excludes fee passthroughs and only counts the
-      // markup portion (override − as-is) as profit — matching the
-      // Pricing tab's behavior the user already trusts.
-      const agTotalOurs = (agCost > 0 ? agCost : (agProductCost + agShipping)) + agFeesAsIs;
+      // Total (ours) = product + shipping ONLY (operational cost).
+      // Fees are kept out so the displayed Total matches what the
+      // operator expects from the Pricing-tab "Grand Total Cost" row.
+      // Profit handles the fee cost separately below.
+      const agTotalOurs = agCost > 0
+        ? agCost
+        : (agProductCost + agShipping);
       // Per-workbook breakdown for the Cost (ours) tooltip — helps
       // diagnose drift between the aggregate and what the operator
       // expects. Each line: "WorkbookID — qty × ¥price = $product".
@@ -32416,16 +32417,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       });
       const _costTooltip = `Per-workbook product cost:\n\n` + _costBreakdownLines.join('\n') + `\n\nTotal: ${_fmtUsdLine(agProductCost)}`;
       const _shipTooltip = `Per-workbook shipping cost:\n\n` + _shipBreakdownLines.join('\n') + `\n\nTotal: ${_fmtUsdLine(agShipping)}`;
-      // Profit cell — Price (cust) minus Total (ours). Uses the new
-      // additive Total (ours) above (product + shipping) so Profit
-      // always equals Price − Total as displayed in the same row.
-      // Operator sanity-check: the three cost cells visibly add up,
-      // and Profit visibly equals Price − Total. Red when negative
-      // (selling below cost — flags a pricing mistake) and green
-      // otherwise. Blanks out when no workbook in the order has Sale
-      // Per typed yet.
-      const profitT       = (agPrice > 0 && agTotalOurs > 0) ? (agPrice - agTotalOurs) : 0;
-      const profitHasData = (agPrice > 0 && agTotalOurs > 0);
+      // Profit cell — Price (cust) minus the FULL cost basis (Total
+      // (ours) + applied fees AT AS-IS). Fees are excluded from the
+      // displayed Total so Cost + Shipping still ties to Total, but
+      // the fee cost still has to come out of Profit — otherwise
+      // every fee passthrough would inflate Profit by the full fee
+      // amount. With this subtraction:
+      //   • Fee charged to client at as-is → 0 profit impact (the
+      //     fee dollar in Price cancels the fee dollar we subtract).
+      //   • Fee marked up (override > as-is) → only the markup hits
+      //     Profit, matching the Pricing tab's behavior.
+      // Red when negative (selling below cost — pricing mistake);
+      // green otherwise. Blanks out when no workbook has Sale Per
+      // typed yet.
+      const profitBasis = agTotalOurs + agFeesAsIs;
+      const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - profitBasis) : 0;
+      const profitHasData = (agPrice > 0 && profitBasis > 0);
       const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
       const profitHtml    = profitHasData
         ? `<span style="color:${profitColor}; font-weight:700;">${fmtUsdT(profitT)}</span>`
@@ -32435,7 +32442,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
         <div class="oc-stat" title="${_costTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span></div>
         <div class="oc-stat" title="${_shipTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
-        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping + applied fees AT AS-IS. Fee passthroughs (charged to client at our cost) don't impact Profit; any override above the as-is amount shows up as Profit markup."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
+        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
         <div class="oc-stat oc-stat--cbm">
