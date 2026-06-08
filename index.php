@@ -20400,13 +20400,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         feesRow.style.display = 'none';
       }
     }
-    // Inline math under the Landed Per label: "$prodTotal/qty + $shipTotal/qty"
+    // Inline math under the Landed Per label:
+    //   "$prodTotal/qty + $shipTotal/qty"
+    //   "$prodTotal/qty + $shipTotal/qty + $feesTotal/qty"  ← when fees applied
+    // Mirrors the Total Landed Cost headline math (landedTotal =
+    // landedTotalBase + _appliedFeesTotal), so an operator who sees
+    // a non-zero Additional Fees row above can trace every dollar
+    // back through this breakdown.
     if (e('ps-landed-math')) {
       const productTotalForLanded = tierQty > 0 ? tierQty * avgPerUnitUsd : 0;
       const fmtCompact = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
       const fmtQty     = q => q.toLocaleString('en-US');
+      const feeSegment = (_appliedFeesTotal > 0)
+        ? ` + ${fmtCompact(_appliedFeesTotal)} / ${fmtQty(tierQty)}`
+        : '';
       e('ps-landed-math').textContent = (tierQty > 0 && productTotalForLanded > 0)
-        ? `${fmtCompact(productTotalForLanded)} / ${fmtQty(tierQty)} + ${fmtCompact(shippingUsd)} / ${fmtQty(tierQty)}`
+        ? `${fmtCompact(productTotalForLanded)} / ${fmtQty(tierQty)} + ${fmtCompact(shippingUsd)} / ${fmtQty(tierQty)}${feeSegment}`
         : '';
     }
     if (e('ps-total-usd'))     e('ps-total-usd').textContent     = !isNaN(totalUsd) ? '$' + fmt2(totalUsd) : '—';
