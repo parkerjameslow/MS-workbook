@@ -18760,11 +18760,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const recipientHtml = clientEmail
       ? `<strong>${contact || 'Client'}</strong> <span class="nq-email-addr">&lt;${clientEmail}&gt;</span>`
       : `<span style="color:#fb7185;">⚠️ No client email on file — internal only.</span>`;
+    // white-space: pre-wrap preserves the line breaks + leading
+    // indentation in the multi-line summary so the breakdown renders
+    // as a clean column. font-family: monospace gives the columns
+    // tabular alignment so dollar amounts line up.
     host.innerHTML = `
       <div class="nq-order-summary">
         <h2>Notify Client — ${_escHtml(label)}</h2>
         <div style="font-size:12px; color:var(--text-muted); margin-bottom:14px;">to ${recipientHtml}</div>
-        <div class="nq-body-text">${_escHtml(summaryText || '')}</div>
+        <div class="nq-body-text" style="white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; line-height:1.65;">${_escHtml(summaryText || '')}</div>
       </div>`;
   }
 
@@ -18864,12 +18868,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         };
       });
 
-      const itemCount = entriesWithDetail.reduce((acc, e) => acc + e.rfqItems.length, 0);
-      const summaryText =
-        `Hi ${contactName || clientEmail || 'Client'},\n\nUpdate on ${o.name}` +
-        (o.poNumber ? ` (PO: ${o.poNumber})` : '') +
-        (itemCount > 0 ? ` · ${itemCount} line item${itemCount !== 1 ? 's' : ''}` : '') +
-        (tot.totalUsd > 0 ? ` · $${tot.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2})} USD` : '') + '.';
+      // Build an accurate, auditable summary that mirrors what the
+      // client will see on the email + portal table:
+      //   • Workbook count (products in the order)
+      //   • Line items = sum of parent rows + variant rows
+      //   • Fee count (with complimentary count broken out)
+      //   • Items subtotal at SALE Per × Qty (matches PDF/CSV/portal)
+      //   • Fees subtotal at billed amount (complimentary contribute 0)
+      //   • Grand Total = Items + Fees
+      //   • Complimentary Value = sum of fee.usd for unbilled fees
+      // Replaces the old orderTotals() math which used legacy
+      // tier × qty with hardcoded FX rate 7.2 (drifted on every
+      // tier-priced order).
+      const _vQtyE = it => {
+        const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+        if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty||'').replace(/,/g,'')) || 0), 0);
+        return parseFloat(String(it.qty||'').replace(/,/g,'')) || 0;
+      };
+      let lineItemCount = 0;
+      let feeCount = 0, feeCompCount = 0;
+      let itemsTotal = 0, feesBilledTotal = 0, feesCompTotal = 0;
+      entriesWithDetail.forEach(e => {
+        // Count visible line item rows the client will see: each
+        // variant counts as one row; a parent without variants
+        // counts as one row.
+        e.rfqItems.forEach(it => {
+          const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+          lineItemCount += vs.length || 1;
+        });
+        const wbQty = e.rfqItems.reduce((s, it) => s + _vQtyE(it), 0);
+        itemsTotal += (e.saleUsdPerUnit > 0 && wbQty > 0) ? (e.saleUsdPerUnit * wbQty) : 0;
+        (e.fees || []).forEach(f => {
+          feeCount++;
+          const usd = parseFloat(f.usd) || 0;
+          if (f.billed) feesBilledTotal += usd;
+          else { feeCompCount++; feesCompTotal += usd; }
+        });
+      });
+      const grandTotal = itemsTotal + feesBilledTotal;
+      const workbookCount = entriesWithDetail.length;
+      const fmt$ = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+      const lines = [];
+      lines.push(`Hi ${contactName || clientEmail || 'Client'},`);
+      lines.push('');
+      lines.push(`Update on ${o.name}${o.poNumber ? ` (PO: ${o.poNumber})` : ''}.`);
+      lines.push('');
+      lines.push('ORDER SUMMARY');
+      lines.push(`  Products:    ${workbookCount}`);
+      lines.push(`  Line items:  ${lineItemCount}`);
+      if (feeCount > 0) {
+        const compNote = feeCompCount > 0 ? ` (${feeCompCount} complimentary)` : '';
+        lines.push(`  Fees:        ${feeCount}${compNote}`);
+      }
+      lines.push('');
+      if (itemsTotal > 0)       lines.push(`  Items subtotal: ${fmt$(itemsTotal)}`);
+      if (feesBilledTotal > 0)  lines.push(`  Fees subtotal:  ${fmt$(feesBilledTotal)}`);
+      lines.push(`  Grand total:    ${fmt$(grandTotal)} USD`);
+      if (feesCompTotal > 0)    lines.push(`  ★ Complimentary value included: ${fmt$(feesCompTotal)}`);
+      const summaryText = lines.join('\n');
 
       const orderAppUrl = `${window.location.origin}/#/order/${_currentOrderId}`;
 
