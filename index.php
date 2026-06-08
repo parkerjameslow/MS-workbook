@@ -32061,14 +32061,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const product  = detail.product || `Workbook #${entry.workbookId}`;
       const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
       const base = [o.name || `Order #${o.id}`, o.dateCreated || '', o.clientName || '', o.poNumber || '', statusLabel[o.status] || o.status, product];
+      // Per-unit price for client-facing line items. Use the
+      // operator-typed Sale Per first (the actual client per-unit
+      // price, fees excluded). Fall back to (pricingClientQuoteTotal
+      // − pricingAppliedFeesAsIs) / totalQty when Sale Per isn't set.
+      // Last resort: raw RFQ supplier priceRmb (COST), so a workbook
+      // that hasn't been priced yet still renders something instead
+      // of blank.
+      const _vQty = it => {
+        const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+        if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty||'').replace(/,/g,'')) || 0), 0);
+        return parseFloat(String(it.qty||'').replace(/,/g,'')) || 0;
+      };
+      const wbTotalQty = rfqItems.reduce((s, it) => s + _vQty(it), 0);
+      const wbSalePer  = parseFloat(detail.pricingSalePer) || 0;
+      const wbQuote    = parseFloat(detail.pricingClientQuoteTotal) || 0;
+      const wbFeesAsIs = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
+      const saleUnitUsd = wbSalePer > 0
+        ? wbSalePer
+        : (wbQuote > 0 && wbTotalQty > 0 ? (wbQuote - wbFeesAsIs) / wbTotalQty : 0);
+      const saleUnitRmb = saleUnitUsd > 0 ? saleUnitUsd * rate : 0;
       if (!rfqItems.length) {
         rows.push([...base, '', '', '', '', '', '', '']);
       } else {
         rfqItems.forEach(item => {
-          const rmb   = parseFloat(item.priceRmb) || 0;
-          const qty   = parseFloat(item.qty)      || 0;
-          const usd   = rmb / rate;
-          rows.push([...base, item.item || '', item.sku || '', qty || '', f2(rmb), f2(usd), f2(rmb * qty), f2((rmb * qty) / rate)]);
+          const itemQty = _vQty(item);
+          // Prefer SALE per-unit (what the client is being charged);
+          // fall back to RFQ supplier priceRmb when no Sale Per +
+          // no quote total are available.
+          const rawCostRmb = parseFloat(item.priceRmb) || 0;
+          const useRmb = saleUnitRmb > 0 ? saleUnitRmb : rawCostRmb;
+          const useUsd = useRmb / rate;
+          rows.push([...base, item.item || '', item.sku || '', itemQty || '', f2(useRmb), f2(useUsd), f2(useRmb * itemQty), f2(useUsd * itemQty)]);
         });
       }
       // Applied Additional Fees — one row per fee, inline under the
