@@ -32418,15 +32418,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       .comp-tag { display:inline-block; margin-left:6px; padding:2px 9px; border-radius:99px; background:#dcfce7; color:#15803d; font-size:9px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; vertical-align:middle; }
       .comp-zero { color:#15803d !important; }
 
-      /* ── Totals card ───────────────────────────────────────────────── */
-      .totals-card { background:#fff; border-radius:16px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); padding:20px 24px; margin-bottom:14px; }
-      .totals-card .row { display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; font-size:13px; }
-      .totals-card .row .label { color:#6b7280; font-weight:500; }
-      .totals-card .row .val { font-variant-numeric:tabular-nums; color:#1a1d2e; font-weight:600; }
-      .totals-card .row.grand { margin-top:10px; padding:14px 16px; background:#1a1d2e; color:#fff; border-radius:12px; font-size:16px; font-weight:800; }
-      .totals-card .row.grand .label { color:rgba(255,255,255,0.7); font-weight:700; text-transform:uppercase; letter-spacing:0.05em; font-size:11px; }
-      .totals-card .row.grand .val { color:#fff; font-size:22px; font-weight:800; letter-spacing:-0.01em; }
-
       /* ── Complimentary callout ─────────────────────────────────────── */
       .you-saved { background:linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border:1px solid #bbf7d0; border-radius:14px; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; box-shadow: 0 1px 2px rgba(15,23,42,0.03); }
       .you-saved .left { display:flex; align-items:center; gap:10px; }
@@ -32447,7 +32438,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            paper's edge. Sides + bottom stay 0.4in. */
         @page { margin: 0.75in 0.4in 0.4in; }
         body { padding:0; background:#fff; }
-        .card, .stat-card, .totals-card { box-shadow:none; border:1px solid #e5e7eb; }
+        .card, .stat-card { box-shadow:none; border:1px solid #e5e7eb; }
         .stat-card.is-accent { border-color:#E8751A; }
         .no-print { display:none !important; }
         .wb-block { page-break-inside:avoid; }
@@ -32529,13 +32520,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     <!-- Workbook blocks -->
     ${workbookBlocks ? `<div class="card">${workbookBlocks}</div>` : `<div class="card"><div class="muted italic" style="text-align:center; color:#9ca3af; padding:20px;">No workbooks on this order.</div></div>`}
-
-    <!-- Totals card -->
-    <div class="totals-card">
-      <div class="row"><span class="label">Subtotal (Items)</span><span class="val">$${fmt2(itemsTotal)}</span></div>
-      ${feesBilled > 0 ? `<div class="row"><span class="label">Subtotal (Fees)</span><span class="val">$${fmt2(feesBilled)}</span></div>` : ''}
-      <div class="row grand"><span class="label">Grand Total (USD)</span><span class="val">$${fmt2(grandTotal)}</span></div>
-    </div>
 
     ${youSaved > 0 ? `<div class="you-saved">
       <div class="left">
