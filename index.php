@@ -15506,11 +15506,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return true;
   }
 
-  function _getNavigableInputs() {
-    const wb = document.getElementById('view-workbook');
-    if (!wb) return [];
-    return Array.from(wb.querySelectorAll('input, textarea, select'))
+  function _getNavigableInputs(rootEl) {
+    const root = rootEl || document.getElementById('view-workbook');
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('input, textarea, select'))
       .filter(_isNavigableInput);
+  }
+
+  // Find the section container that bounds arrow-key navigation —
+  // arrows can't leave this element. We prefer the nearest <table>
+  // (RFQ, Tiered Pricing, Dims, freight-rate table) so each table
+  // navigates as its own grid. Outside tables we fall back to the
+  // nearest .section-card so loose-form sections (Workbook tab
+  // shipping dims, Pricing tab settings) still bound cleanly.
+  // Returns the workbook view itself only as a last resort — meaning
+  // an input that lives outside every table AND every section-card
+  // gets the previous "anywhere" behavior. In practice that almost
+  // never happens.
+  function _navBoundaryFor(el) {
+    if (!el) return null;
+    const wb = document.getElementById('view-workbook');
+    // Nearest <table> if any, else nearest .section-card.
+    return el.closest('table') || el.closest('.section-card') || wb;
   }
 
   function _setNavSelected(el) {
@@ -15526,7 +15543,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function _moveNavSelected(direction) {
     if (!_navSelectedInput) return false;
-    const candidates = _getNavigableInputs();
+    // Scope candidates to the current cell's section boundary so
+    // arrows can't escape the table / card the operator is working
+    // in. Pressing → on the rightmost cell of the RFQ does NOTHING
+    // instead of jumping into Tiered Pricing — same for ↓ off the
+    // last row, etc.
+    const boundary = _navBoundaryFor(_navSelectedInput);
+    const candidates = _getNavigableInputs(boundary);
     if (candidates.length === 0) return false;
     const curRect = _navSelectedInput.getBoundingClientRect();
     const cx = curRect.left + curRect.width / 2;
