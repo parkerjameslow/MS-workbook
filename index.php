@@ -32045,6 +32045,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           rows.push([...base, item.item || '', item.sku || '', qty || '', f2(rmb), f2(usd), f2(rmb * qty), f2((rmb * qty) / rate)]);
         });
       }
+      // Applied Additional Fees — one row per fee, inline under the
+      // workbook's item rows. Item column carries "+ Fee: <label>" so
+      // the operator can tell line items from fee passthroughs at a
+      // glance when scanning the CSV. Qty + per-unit columns blank
+      // (fees aren't unit-priced); Total (USD) is the effective
+      // amount (override when set, else as-is) and Total (RMB) is
+      // that × FX rate for the convenience column.
+      const wbFees = (typeof _appliedFeesFromDetail === 'function')
+        ? _appliedFeesFromDetail(detail) : [];
+      wbFees.forEach(f => {
+        const usd = parseFloat(f.usd) || 0;
+        const rmb = usd * rate;
+        const labelParts = ['+ Fee:', f.label];
+        if (f.desc) labelParts.push(`— ${f.desc}`);
+        rows.push([...base, labelParts.join(' '), '', '', '', '', f2(rmb), f2(usd)]);
+      });
     });
     return rows;
   }
@@ -32054,10 +32070,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!o) return;
     const headers = ['Order','Date','Client','PO #','Status','Product','Item','SKU','Qty','Unit Price (RMB)','Unit Price (USD)','Total (RMB)','Total (USD)'];
     const rows = buildOrderRows(o);
-    // Totals row
-    const totalUsd = rows.reduce((s, r) => s + (parseFloat(r[12]) || 0), 0);
-    const totalRmb = rows.reduce((s, r) => s + (parseFloat(r[11]) || 0), 0);
-    rows.push(['','','','','','','','','TOTAL','','',totalRmb.toFixed(2), totalUsd.toFixed(2)]);
+    // Split items vs fees so the footer can report each subtotal
+    // separately + a true grand total. Fee rows are flagged by the
+    // "+ Fee:" prefix that buildOrderRows writes into the Item col.
+    const isFeeRow = r => typeof r[6] === 'string' && r[6].startsWith('+ Fee:');
+    const sumCol = (rs, idx) => rs.reduce((s, r) => s + (parseFloat(r[idx]) || 0), 0);
+    const itemRows = rows.filter(r => !isFeeRow(r));
+    const feeRows  = rows.filter(isFeeRow);
+    const itemsRmb = sumCol(itemRows, 11), itemsUsd = sumCol(itemRows, 12);
+    const feesRmb  = sumCol(feeRows,  11), feesUsd  = sumCol(feeRows,  12);
+    const totalRmb = itemsRmb + feesRmb;
+    const totalUsd = itemsUsd + feesUsd;
+    const blank = ['','','','','','','','','','','','',''];
+    rows.push(blank);
+    rows.push(['','','','','','','','','SUBTOTAL (Items)','','', itemsRmb.toFixed(2), itemsUsd.toFixed(2)]);
+    if (feeRows.length > 0) {
+      rows.push(['','','','','','','','','SUBTOTAL (Fees)','','', feesRmb.toFixed(2), feesUsd.toFixed(2)]);
+    }
+    rows.push(['','','','','','','','','GRAND TOTAL','','', totalRmb.toFixed(2), totalUsd.toFixed(2)]);
     downloadCsv(`${(o.name || 'Order').replace(/[^a-z0-9]/gi,'-')}.csv`, headers, rows);
   }
 
