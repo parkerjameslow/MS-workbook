@@ -32362,7 +32362,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       body {
         font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
         color:#1a1d2e; background:#f4f5fa; font-size:13px; line-height:1.5;
-        padding:28px 30px; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        padding:64px 30px 40px; -webkit-print-color-adjust: exact; print-color-adjust: exact;
       }
       .page { max-width: 760px; margin: 0 auto; }
       .card { background:#fff; border-radius:16px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 1px 1px rgba(15,23,42,0.03); padding:22px 24px; margin-bottom:14px; }
@@ -32442,7 +32442,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       .no-print button:hover { background:#d96414; }
 
       @media print {
-        @page { margin: 0.4in; }
+        /* Larger top margin so each printed page leads with breathing
+           room instead of pushing the first card up against the
+           paper's edge. Sides + bottom stay 0.4in. */
+        @page { margin: 0.75in 0.4in 0.4in; }
         body { padding:0; background:#fff; }
         .card, .stat-card, .totals-card { box-shadow:none; border:1px solid #e5e7eb; }
         .stat-card.is-accent { border-color:#E8751A; }
