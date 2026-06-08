@@ -32321,7 +32321,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }).join('');
 
       return `<section class="wb-block">
-        <h2>${esc(product)}</h2>
+        <div class="wb-title">
+          <span class="wb-dot"></span>
+          <span class="wb-name">${esc(product)}</span>
+        </div>
         <table class="lines">
           <thead>
             <tr><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr>
@@ -32334,80 +32337,216 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const grandTotal = itemsTotal + feesBilled;
     const youSaved   = feesValue;
 
+    // Client initials for the avatar bubble — up to 2 chars from
+    // the first and last token of the client name.
+    const clientName = String(o.clientName || '').trim();
+    const initials   = (() => {
+      const parts = clientName.split(/\s+/).filter(Boolean);
+      if (!parts.length) return '—';
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    })();
+    // Status pill — defaults to "Pending" if no explicit status.
+    const statusMap = {
+      draft:         { label: 'Draft',         bg:'#fef3c7', fg:'#92400e' },
+      confirmed:     { label: 'Confirmed',     bg:'#dbeafe', fg:'#1d4ed8' },
+      in_production: { label: 'In Production', bg:'#fed7aa', fg:'#c2410c' },
+      complete:      { label: 'Complete',      bg:'#dcfce7', fg:'#15803d' },
+    };
+    const status = statusMap[o.status] || { label: 'Pending', bg:'#f3f4f6', fg:'#4b5563' };
+
     const css = `
-      @page { size: letter; margin: 0.5in; }
+      @page { size: letter; margin: 0; }
       * { box-sizing: border-box; }
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#1a1d2e; margin:0; padding:32px 36px; background:#fff; font-size:13px; line-height:1.45; }
-      header.invoice-head { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:18px; border-bottom:3px solid #1a1d2e; margin-bottom:24px; }
-      .brand { font-size:22px; font-weight:800; letter-spacing:-0.01em; color:#1a1d2e; }
-      .brand-sub { font-size:11px; color:#6b7280; margin-top:3px; letter-spacing:0.04em; text-transform:uppercase; }
-      .invoice-meta { text-align:right; font-size:12px; color:#4b5563; }
-      .invoice-meta .inv-no { font-size:18px; color:#1a1d2e; font-weight:800; letter-spacing:0.02em; margin-bottom:4px; }
-      .invoice-meta .row { display:flex; justify-content:flex-end; gap:8px; margin-top:2px; }
-      .invoice-meta .label { color:#6b7280; text-transform:uppercase; font-size:10px; letter-spacing:0.05em; font-weight:700; padding-top:2px; }
-      .bill-to { margin-bottom:28px; }
-      .bill-to .label { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; margin-bottom:4px; }
-      .bill-to .client { font-size:18px; font-weight:700; color:#1a1d2e; }
-      .wb-block { margin-bottom:24px; page-break-inside:avoid; }
-      h2 { font-size:14px; color:#1a1d2e; margin:0 0 8px; padding-bottom:6px; border-bottom:1px solid #e5e7eb; font-weight:700; letter-spacing:-0.01em; }
-      table.lines { width:100%; border-collapse:collapse; font-size:12px; }
-      table.lines th { text-align:left; font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; padding:6px 10px; border-bottom:1px solid #e5e7eb; }
+      html, body { margin:0; padding:0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+        color:#1a1d2e; background:#f4f5fa; font-size:13px; line-height:1.5;
+        padding:28px 30px; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+      }
+      .page { max-width: 760px; margin: 0 auto; }
+      .card { background:#fff; border-radius:16px; box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 1px 1px rgba(15,23,42,0.03); padding:22px 24px; margin-bottom:14px; }
+      /* ── Header card ───────────────────────────────────────────────── */
+      .hdr { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; }
+      .hdr-left .brand { font-size:22px; font-weight:800; letter-spacing:-0.01em; color:#1a1d2e; }
+      .hdr-left .brand-sub { font-size:10px; color:#6b7280; margin-top:2px; letter-spacing:0.06em; text-transform:uppercase; font-weight:700; }
+      .hdr-left .greeting { font-size:13px; color:#6b7280; margin-top:14px; }
+      .hdr-left .greeting strong { color:#1a1d2e; }
+      .hdr-right { text-align:right; }
+      .hdr-right .inv-no { font-size:22px; font-weight:800; color:#1a1d2e; letter-spacing:-0.005em; line-height:1; }
+      .hdr-right .inv-date { font-size:11px; color:#6b7280; margin-top:6px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; }
+      .pill { display:inline-block; font-size:10px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; padding:5px 11px; border-radius:99px; margin-top:8px; }
+
+      /* ── Stat cards row ────────────────────────────────────────────── */
+      .stats { display:flex; gap:12px; margin-bottom:14px; }
+      .stat-card { flex:1; background:#fff; border-radius:16px; padding:16px 18px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); position:relative; overflow:hidden; }
+      .stat-card .stat-label { font-size:10px; color:#9ca3af; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+      .stat-card .stat-icon { width:26px; height:26px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; }
+      .stat-card .stat-val { font-size:20px; font-weight:800; color:#1a1d2e; letter-spacing:-0.01em; font-variant-numeric:tabular-nums; }
+      .stat-card.is-accent { background:#E8751A; color:#fff; }
+      .stat-card.is-accent .stat-label { color:rgba(255,255,255,0.85); }
+      .stat-card.is-accent .stat-val { color:#fff; }
+      .stat-card.is-accent .stat-icon { background:rgba(255,255,255,0.18); }
+      .stat-card .stat-icon.icn-items { background:#fef3c7; color:#a16207; }
+      .stat-card .stat-icon.icn-fees  { background:#fed7aa; color:#c2410c; }
+
+      /* ── Bill-to card ──────────────────────────────────────────────── */
+      .bill-to { display:flex; align-items:center; gap:14px; }
+      .avatar { width:46px; height:46px; border-radius:50%; background:linear-gradient(135deg, #E8751A 0%, #f59e42 100%); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; letter-spacing:0.02em; flex-shrink:0; }
+      .bill-to .name { font-size:18px; font-weight:700; color:#1a1d2e; }
+      .bill-to .meta { font-size:11px; color:#6b7280; margin-top:2px; letter-spacing:0.03em; text-transform:uppercase; font-weight:600; }
+
+      /* ── Item / fee table ──────────────────────────────────────────── */
+      .wb-block { margin-bottom:0; }
+      .wb-block + .wb-block { margin-top:14px; }
+      .wb-title { display:flex; align-items:center; gap:10px; padding:0 0 12px; }
+      .wb-title .wb-name { font-size:14px; font-weight:800; color:#1a1d2e; letter-spacing:-0.01em; }
+      .wb-title .wb-dot { width:8px; height:8px; border-radius:50%; background:#E8751A; flex-shrink:0; }
+      table.lines { width:100%; border-collapse:collapse; font-size:12.5px; }
+      table.lines th { text-align:left; font-size:10px; color:#9ca3af; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; padding:8px 12px; border-bottom:1px solid #e5e7eb; }
       table.lines th.num, table.lines td.num { text-align:right; }
-      table.lines td { padding:8px 10px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
-      table.lines td.indent { padding-left:24px; }
-      table.lines td.strong { font-weight:700; color:#1a1d2e; }
-      table.lines td.muted { color:#6b7280; }
+      table.lines td { padding:11px 12px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+      table.lines tr:last-child td { border-bottom:none; }
+      table.lines td.indent { padding-left:28px; color:#4b5563; }
+      table.lines td.indent strong { color:#1a1d2e; }
+      table.lines td.strong { font-weight:700; color:#1a1d2e; font-variant-numeric:tabular-nums; }
+      table.lines td.muted { color:#6b7280; font-variant-numeric:tabular-nums; }
       table.lines td.italic { font-style:italic; }
       table.lines tr.fee-row td { background:#fff7ed; border-bottom:1px solid #fed7aa; }
       table.lines tr.fee-row strong { color:#9a3412; }
-      .comp-tag { display:inline-block; margin-left:6px; padding:1px 8px; border-radius:99px; background:#dcfce7; color:#15803d; font-size:9px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; vertical-align:middle; }
+      table.lines tr.fee-row td:first-child::before { content:'+'; display:inline-block; margin-right:6px; font-weight:800; color:#E8751A; }
+      .comp-tag { display:inline-block; margin-left:6px; padding:2px 9px; border-radius:99px; background:#dcfce7; color:#15803d; font-size:9px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; vertical-align:middle; }
       .comp-zero { color:#15803d !important; }
-      .totals { margin-top:20px; padding-top:14px; border-top:2px solid #1a1d2e; }
-      .totals .row { display:flex; justify-content:space-between; padding:5px 0; font-size:13px; }
-      .totals .row.grand { padding-top:10px; margin-top:6px; border-top:1px solid #e5e7eb; font-size:18px; font-weight:800; color:#1a1d2e; }
-      .totals .row .label { color:#4b5563; }
-      .totals .row .val { font-variant-numeric:tabular-nums; }
-      .you-saved { margin-top:14px; padding:12px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; display:flex; justify-content:space-between; align-items:center; }
-      .you-saved .lbl { font-size:11px; color:#15803d; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
-      .you-saved .amt { font-size:16px; color:#15803d; font-weight:800; font-variant-numeric:tabular-nums; }
-      footer { margin-top:36px; padding-top:14px; border-top:1px solid #e5e7eb; text-align:center; color:#9ca3af; font-size:10px; letter-spacing:0.04em; text-transform:uppercase; }
-      .no-print { margin-top:30px; padding:14px; background:#f8f9fb; border-radius:8px; text-align:center; }
-      .no-print button { padding:10px 24px; background:#E8751A; color:#fff; border:none; border-radius:6px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+
+      /* ── Totals card ───────────────────────────────────────────────── */
+      .totals-card { background:#fff; border-radius:16px; box-shadow: 0 1px 2px rgba(15,23,42,0.04); padding:20px 24px; margin-bottom:14px; }
+      .totals-card .row { display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; font-size:13px; }
+      .totals-card .row .label { color:#6b7280; font-weight:500; }
+      .totals-card .row .val { font-variant-numeric:tabular-nums; color:#1a1d2e; font-weight:600; }
+      .totals-card .row.grand { margin-top:10px; padding:14px 16px; background:#1a1d2e; color:#fff; border-radius:12px; font-size:16px; font-weight:800; }
+      .totals-card .row.grand .label { color:rgba(255,255,255,0.7); font-weight:700; text-transform:uppercase; letter-spacing:0.05em; font-size:11px; }
+      .totals-card .row.grand .val { color:#fff; font-size:22px; font-weight:800; letter-spacing:-0.01em; }
+
+      /* ── Complimentary callout ─────────────────────────────────────── */
+      .you-saved { background:linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border:1px solid #bbf7d0; border-radius:14px; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; box-shadow: 0 1px 2px rgba(15,23,42,0.03); }
+      .you-saved .left { display:flex; align-items:center; gap:10px; }
+      .you-saved .star { width:30px; height:30px; border-radius:50%; background:#10b981; color:#fff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; }
+      .you-saved .lbl { font-size:11px; color:#15803d; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; }
+      .you-saved .sub { font-size:11px; color:#16a34a; font-weight:500; margin-top:2px; text-transform:none; letter-spacing:0; }
+      .you-saved .amt { font-size:20px; color:#15803d; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-0.01em; }
+
+      footer { text-align:center; color:#9ca3af; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; padding:18px 0 4px; font-weight:700; }
+
+      .no-print { margin:18px auto 0; max-width:760px; padding:16px 20px; background:#fff; border-radius:14px; text-align:center; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+      .no-print button { padding:11px 26px; background:#E8751A; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; letter-spacing:0.01em; }
+      .no-print button:hover { background:#d96414; }
+
       @media print {
-        body { padding:0; }
+        @page { margin: 0.4in; }
+        body { padding:0; background:#fff; }
+        .card, .stat-card, .totals-card { box-shadow:none; border:1px solid #e5e7eb; }
+        .stat-card.is-accent { border-color:#E8751A; }
         .no-print { display:none !important; }
+        .wb-block { page-break-inside:avoid; }
       }
     `;
 
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice INV: ${esc(invoiceNo)} — ${esc(o.clientName || '')}</title>
+    const itemsCount = (() => {
+      let n = 0;
+      (o.entries || []).forEach(e => {
+        const det = workbookDetail[`${e.clientName}|${e.workbookId}`] || {};
+        const rfqs = (det.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
+        rfqs.forEach(it => {
+          const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+          n += vs.length || 1;
+        });
+      });
+      return n;
+    })();
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice INV: ${esc(invoiceNo)} — ${esc(clientName)}</title>
 <style>${css}</style>
 </head><body>
-  <header class="invoice-head">
-    <div>
-      <div class="brand">Market Sculpt</div>
-      <div class="brand-sub">Sourcing &amp; Production</div>
+  <div class="page">
+    <!-- Header card -->
+    <div class="card">
+      <div class="hdr">
+        <div class="hdr-left">
+          <div class="brand">Market Sculpt</div>
+          <div class="brand-sub">Sourcing &amp; Production</div>
+          <div class="greeting">Hi <strong>${esc(clientName) || 'there'}</strong>, here's your invoice.</div>
+        </div>
+        <div class="hdr-right">
+          <div class="inv-no">INV: ${esc(invoiceNo)}</div>
+          <div class="inv-date">${esc(today)}${o.poNumber ? ` · PO ${esc(o.poNumber)}` : ''}</div>
+          <span class="pill" style="background:${status.bg}; color:${status.fg};">${esc(status.label)}</span>
+        </div>
+      </div>
     </div>
-    <div class="invoice-meta">
-      <div class="inv-no">INV: ${esc(invoiceNo)}</div>
-      <div class="row"><span class="label">Date</span><span>${esc(today)}</span></div>
-      ${o.poNumber ? `<div class="row"><span class="label">PO #</span><span>${esc(o.poNumber)}</span></div>` : ''}
+
+    <!-- Stat cards row -->
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">
+          <span class="stat-icon icn-items">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+          </span>
+          Items
+        </div>
+        <div class="stat-val">$${fmt2(itemsTotal)}</div>
+      </div>
+      ${feesBilled > 0 ? `<div class="stat-card">
+        <div class="stat-label">
+          <span class="stat-icon icn-fees">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </span>
+          Fees
+        </div>
+        <div class="stat-val">$${fmt2(feesBilled)}</div>
+      </div>` : ''}
+      <div class="stat-card is-accent">
+        <div class="stat-label">
+          <span class="stat-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </span>
+          Grand Total · ${itemsCount} item${itemsCount !== 1 ? 's' : ''}
+        </div>
+        <div class="stat-val">$${fmt2(grandTotal)}</div>
+      </div>
     </div>
-  </header>
-  <div class="bill-to">
-    <div class="label">Bill To</div>
-    <div class="client">${esc(o.clientName || '—')}</div>
+
+    <!-- Bill To card -->
+    <div class="card bill-to">
+      <div class="avatar">${esc(initials)}</div>
+      <div>
+        <div class="name">${esc(clientName) || '—'}</div>
+        <div class="meta">Bill To</div>
+      </div>
+    </div>
+
+    <!-- Workbook blocks -->
+    ${workbookBlocks ? `<div class="card">${workbookBlocks}</div>` : `<div class="card"><div class="muted italic" style="text-align:center; color:#9ca3af; padding:20px;">No workbooks on this order.</div></div>`}
+
+    <!-- Totals card -->
+    <div class="totals-card">
+      <div class="row"><span class="label">Subtotal (Items)</span><span class="val">$${fmt2(itemsTotal)}</span></div>
+      ${feesBilled > 0 ? `<div class="row"><span class="label">Subtotal (Fees)</span><span class="val">$${fmt2(feesBilled)}</span></div>` : ''}
+      <div class="row grand"><span class="label">Grand Total (USD)</span><span class="val">$${fmt2(grandTotal)}</span></div>
+    </div>
+
+    ${youSaved > 0 ? `<div class="you-saved">
+      <div class="left">
+        <div class="star">★</div>
+        <div>
+          <div class="lbl">Complimentary Value Included</div>
+          <div class="sub">Provided at no charge as part of your order.</div>
+        </div>
+      </div>
+      <div class="amt">$${fmt2(youSaved)}</div>
+    </div>` : ''}
+
+    <footer>Thank you for your business · Generated ${esc(today)}</footer>
   </div>
-  ${workbookBlocks || '<div class="muted italic">No workbooks on this order.</div>'}
-  <div class="totals">
-    <div class="row"><span class="label">Subtotal (Items)</span><span class="val">$${fmt2(itemsTotal)}</span></div>
-    ${feesBilled > 0 ? `<div class="row"><span class="label">Subtotal (Fees)</span><span class="val">$${fmt2(feesBilled)}</span></div>` : ''}
-    <div class="row grand"><span>Grand Total (USD)</span><span class="val">$${fmt2(grandTotal)}</span></div>
-  </div>
-  ${youSaved > 0 ? `<div class="you-saved">
-    <span class="lbl">★ Complimentary Value Included</span>
-    <span class="amt">$${fmt2(youSaved)}</span>
-  </div>` : ''}
-  <footer>Thank you for your business · Generated ${esc(today)}</footer>
   <div class="no-print">
     <button onclick="window.print()">Save as PDF</button>
     <span style="margin-left:14px; color:#6b7280; font-size:12px;">Tip: in the print dialog, set the destination to "Save as PDF".</span>
