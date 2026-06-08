@@ -18830,15 +18830,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty||'').replace(/,/g,'')) || 0), 0);
           return parseFloat(String(it.qty||'').replace(/,/g,'')) || 0;
         };
-        const wbQty   = rfqItems.reduce((s, it) => s + _vQty(it), 0);
-        const wbQuote = parseFloat(detail.pricingClientQuoteTotal) || 0;
-        const saleUsdPerUnit = (wbQuote > 0 && wbQty > 0) ? (wbQuote / wbQty) : 0;
+        const wbQty       = rfqItems.reduce((s, it) => s + _vQty(it), 0);
+        const wbQuote     = parseFloat(detail.pricingClientQuoteTotal) || 0;
+        const wbFeesAsIs  = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
+        // Sale Per used for the email + portal line items must NOT
+        // include fees — fees are rendered as their own rows below
+        // the items. Otherwise the per-unit prices would amortize
+        // fees in, and then we'd double-count them when listing the
+        // fee rows.
+        const saleUsdPerUnit = (wbQuote > 0 && wbQty > 0) ? ((wbQuote - wbFeesAsIs) / wbQty) : 0;
+        // Build the per-workbook fee list (every fee with an amount
+        // or description). Mark each with billed=true/false based on
+        // the order-level Bill/Complimentary toggle the operator set
+        // in the Order Sheet. Complimentary fees still flow through
+        // so the client can see them at $0.00 with a tag — showcasing
+        // the value-add instead of silently omitting.
+        const fees = (typeof _appliedFeesFromDetail === 'function')
+          ? _appliedFeesFromDetail(detail).map(f => ({
+              id:     f.id,
+              label:  f.label,
+              desc:   f.desc,
+              usd:    f.usd,
+              billed: (typeof _orderFeeIsBilled === 'function') ? _orderFeeIsBilled(o, e.workbookId, f.id) : true,
+            }))
+          : [];
         return {
           clientName: e.clientName,
           workbookId: e.workbookId,
           product:    detail.product || `Workbook #${e.workbookId}`,
           saleUsdPerUnit,
-          rfqItems
+          rfqItems,
+          fees
         };
       });
 

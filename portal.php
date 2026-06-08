@@ -552,21 +552,27 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
     $grandTotal  = 0;
     $itemIndices = []; // track valid indices for JS
 
+    $compTotal = 0; // total complimentary value, for callout below the table
     foreach ($items as $idx => $itm) {
         $product  = $itm['product'] ?? '';
         $itemName = htmlspecialchars($itm['item'] ?? '');
         $sku      = htmlspecialchars($itm['sku'] ?? '');
         $qty      = (float)($itm['qty'] ?? 0);
         $priceRmb = (float)($itm['priceRmb'] ?? 0);
+        $isFee    = !empty($itm['isFee']);
 
-        if (!$itemName && !$qty && !$priceRmb) continue;
-        $itemIndices[] = $idx;
+        if (!$isFee && !$itemName && !$qty && !$priceRmb) continue;
+        // Fee rows skip itemIndices — they don't get Approve / Request
+        // Change controls (they aren't line items the client negotiates
+        // individually); they just appear inline so the client sees
+        // every fee on their portal view.
+        if (!$isFee) $itemIndices[] = $idx;
 
         $unitUsd = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
         $totUsd  = ($priceRmb > 0 && $qty > 0 && $rate > 0) ? ($priceRmb / $rate) * $qty : 0;
         $totFmt  = $totUsd > 0 ? '$' . number_format($totUsd, 2) : '—';
         $qtyFmt  = $qty > 0 ? number_format($qty) : '—';
-        $grandTotal += $totUsd;
+        if (!$isFee) $grandTotal += $totUsd;
 
         // Product group header
         if ($product !== $prevProduct && $product !== '') {
@@ -575,6 +581,35 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
                         . htmlspecialchars($product)
                         . '</td></tr>';
             $prevProduct = $product;
+        }
+
+        // ── Applied Additional Fee row ───────────────────────────────
+        // Indented under the product group with an orange tint to
+        // visually separate from product line items. Billed → shows
+        // amount; Complimentary → shows $0.00 with a green tag. No
+        // approve/change controls (those are for product line items).
+        if ($isFee) {
+            $billed   = !empty($itm['feeBilled']);
+            $feeUsd   = (float)($itm['feeUsd']     ?? 0);
+            $feeFull  = (float)($itm['feeUsdFull'] ?? $feeUsd);
+            $feeDesc  = (string)($itm['feeDesc']   ?? '');
+            $descPart = $feeDesc !== '' ? ' <span style="color:#9a3412;font-weight:400;">— ' . htmlspecialchars($feeDesc) . '</span>' : '';
+            $tag      = $billed
+                ? ''
+                : ' <span style="display:inline-block;margin-left:6px;padding:1px 8px;border-radius:99px;background:#dcfce7;color:#15803d;font-size:10px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;vertical-align:middle;">Complimentary</span>';
+            $shown    = $billed ? '$' . number_format($feeUsd, 2) : '$0.00';
+            $amtColor = $billed ? '#1a1d2e' : '#15803d';
+            $grandTotal += $billed ? $feeUsd : 0;
+            $compTotal  += $billed ? 0 : $feeFull;
+            $tableRows .= '<tr style="background:#fff7ed;border-top:1px solid #fed7aa;">'
+                        . '<td></td>'
+                        . '<td colspan="4" style="padding:9px 14px 9px 36px;font-size:13px;color:#9a3412;font-weight:600;">'
+                        . $itemName . $descPart . $tag
+                        . '</td>'
+                        . '<td class="r total" style="font-weight:700;color:' . $amtColor . ';">' . $shown . '</td>'
+                        . '<td></td>'
+                        . '</tr>';
+            continue;
         }
 
         // Item row — status indicator is first column
@@ -609,6 +644,17 @@ function mainContent(array $order, array $items, float $rate, string $clName, st
                     . '<td></td>'
                     . '<td colspan="4" style="text-align:right;font-size:13px;color:#6b7280;font-weight:600;">Estimated Order Total</td>'
                     . '<td class="r" style="font-size:15px;">$' . number_format($grandTotal, 2) . ' <span style="font-size:11px;font-weight:400;color:#9ba3c0;">USD</span></td>'
+                    . '<td></td>'
+                    . '</tr>';
+    }
+    // Complimentary value callout — sums fees the operator marked
+    // as complimentary on the Order Sheet. Shows the client how
+    // much value they are getting included free as a single number.
+    if ($compTotal > 0) {
+        $tableRows .= '<tr style="background:#f0fdf4;border-top:1px solid #bbf7d0;">'
+                    . '<td></td>'
+                    . '<td colspan="4" style="text-align:right;font-size:12px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">★ Complimentary Value Included</td>'
+                    . '<td class="r" style="font-size:14px;font-weight:800;color:#15803d;">$' . number_format($compTotal, 2) . '</td>'
                     . '<td></td>'
                     . '</tr>';
     }

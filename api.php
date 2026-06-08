@@ -728,17 +728,46 @@ function ms_order_table_client(array $items, float $rate): string {
     $rows = '';
     $prevProduct = null;
     $grandTotal  = 0;
+    $compTotal   = 0; // running tally of complimentary value for the "you saved" line below
     foreach ($items as $itm) {
         $product  = $itm['product'] ?? '';
         $itemName = $itm['item']    ?? '';
         $sku      = $itm['sku']     ?? '';
         $qty      = (float)($itm['qty']      ?? 0);
         $priceRmb = (float)($itm['priceRmb'] ?? 0);
-        if (!$itemName && !$qty && !$priceRmb) continue;
+        $isFee    = !empty($itm['isFee']);
+        if (!$isFee && !$itemName && !$qty && !$priceRmb) continue;
         if ($product !== $prevProduct && $product !== '') {
             $rows .= '<tr style="background:#f8f9fb;"><td colspan="5" style="padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">'
                    . htmlspecialchars($product) . '</td></tr>';
             $prevProduct = $product;
+        }
+        // ── Applied Additional Fee row ───────────────────────────────
+        // Rendered with an orange-tinted background to set it apart
+        // from product line items. Billed → shows the fee amount;
+        // Complimentary → shows $0.00 with a green Complimentary tag
+        // so the client knows it is included free as a value-add.
+        if ($isFee) {
+            $billed   = !empty($itm['feeBilled']);
+            $feeUsd   = (float)($itm['feeUsd']     ?? 0);
+            $feeFull  = (float)($itm['feeUsdFull'] ?? $feeUsd);
+            $feeDesc  = (string)($itm['feeDesc']   ?? '');
+            $descPart = $feeDesc !== '' ? '<span style="color:#9a3412;font-weight:400;"> — ' . htmlspecialchars($feeDesc) . '</span>' : '';
+            $tag      = $billed
+                ? ''
+                : '<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:99px;background:#dcfce7;color:#15803d;font-size:10px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;vertical-align:middle;">Complimentary</span>';
+            $shownAmt = $billed ? '$' . number_format($feeUsd, 2) : '$0.00';
+            $amtColor = $billed ? '#1a1d2e' : '#15803d';
+            $grandTotal += $billed ? $feeUsd : 0;
+            $compTotal  += $billed ? 0 : $feeFull;
+            $rows .= '<tr style="border-top:1px solid #fed7aa;background:#fff7ed;">'
+                   . '<td colspan="3" style="padding:9px 12px;font-size:13px;color:#9a3412;font-weight:600;">'
+                   . htmlspecialchars($itemName) . $descPart . $tag
+                   . '</td>'
+                   . '<td style="padding:9px 12px;font-size:14px;color:#6b7280;text-align:right;">—</td>'
+                   . '<td style="padding:9px 12px;font-size:14px;font-weight:700;color:' . $amtColor . ';text-align:right;">' . $shownAmt . '</td>'
+                   . '</tr>';
+            continue;
         }
         $unitUsd = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
         $totUsd  = ($priceRmb > 0 && $qty > 0 && $rate > 0) ? ($priceRmb / $rate) * $qty : 0;
@@ -756,6 +785,16 @@ function ms_order_table_client(array $items, float $rate): string {
                . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;">' . $qtyFmt . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;">' . $unitUsd . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;">' . $totFmt . '</td>'
+               . '</tr>';
+    }
+    // Complimentary value callout — surfaces $X.XX of value-add when
+    // any fees were marked complimentary, so the client sees the
+    // total they are getting for free as a single number on the
+    // email / portal in addition to the per-row tags above.
+    if ($compTotal > 0) {
+        $rows .= '<tr style="background:#f0fdf4;border-top:1px solid #bbf7d0;">'
+               . '<td colspan="4" style="padding:10px 12px;font-size:13px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">★ Complimentary Value Included</td>'
+               . '<td style="padding:10px 12px;font-size:14px;font-weight:800;color:#15803d;text-align:right;">$' . number_format($compTotal, 2) . '</td>'
                . '</tr>';
     }
     if ($grandTotal > 0) {
@@ -2929,6 +2968,30 @@ switch ($action) {
                             'isVariant' => false,
                         ];
                     }
+                }
+                // After this workbook's RFQ items, append any applied
+                // fees as their own line items. Each fee row has
+                // 'isFee' => true so the email/portal table renderer
+                // can style them differently. 'feeBilled' flips to
+                // false when the operator marked the fee Complimentary
+                // in the Order Sheet — the renderer shows $0.00 + a
+                // Complimentary tag so the client sees the value-add.
+                foreach (($entry['fees'] ?? []) as $f) {
+                    $billed = !empty($f['billed']);
+                    $orderItems[] = [
+                        'product'    => $prod,
+                        'item'       => (string)($f['label'] ?? 'Fee'),
+                        'feeDesc'    => (string)($f['desc']  ?? ''),
+                        'sku'        => '',
+                        'qty'        => 0,
+                        'priceRmb'   => 0,
+                        'leadTime'   => '',
+                        'isVariant'  => false,
+                        'isFee'      => true,
+                        'feeBilled'  => $billed,
+                        'feeUsd'     => $billed ? (float)($f['usd'] ?? 0) : 0,
+                        'feeUsdFull' => (float)($f['usd'] ?? 0),
+                    ];
                 }
             }
 
