@@ -32136,8 +32136,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (vs.length) return s + vs.reduce((ss, v) => ss + (parseFloat(String(v.qty||'').replace(/,/g,'')) || 0), 0);
         return s + (parseFloat(String(it.qty||'').replace(/,/g,'')) || 0);
       }, 0);
-      const useQuote = wbQuote > 0 && wbTotalQty > 0;
-      const perUnit = useQuote ? (wbQuote / wbTotalQty) : 0;
+      // Use the operator-typed Sale Per as the per-unit price for
+      // item lines. pricingClientQuoteTotal already includes applied
+      // fees, so dividing it by qty would amortize fees into per-unit
+      // and double-count when we then render the fees as separate
+      // rows below. Sale Per is the pure product per-unit. Falls back
+      // to (quote - fees) / qty if Sale Per isn't typed.
+      const wbSalePerTyped = parseFloat(detail.pricingSalePer) || 0;
+      const wbFeesAsIs     = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
+      const useQuote = (wbSalePerTyped > 0 || wbQuote > 0) && wbTotalQty > 0;
+      const perUnit  = wbSalePerTyped > 0
+        ? wbSalePerTyped
+        : (wbQuote > 0 && wbTotalQty > 0 ? (wbQuote - wbFeesAsIs) / wbTotalQty : 0);
 
       // Item rows — variant-aware, mirrors the on-screen Order Sheet.
       const itemRowsHtml = rfqItems.length === 0
