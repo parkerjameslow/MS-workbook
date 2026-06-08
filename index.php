@@ -32874,45 +32874,55 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // elsewhere doesn't snap an open workbook shut.
   const _orderSheetExpanded = new Set();
 
-  // Pure helper — read every applied fee for a workbook from its
-  // detail_json (no DOM). Used by the Order Sheet's fee sub-rows so
-  // we can render fees for any workbook in the order, not just the
-  // currently-open one. Returns [{id, label, desc, usd}, …] where
-  // usd is the EFFECTIVE amount (override when set, else as-is).
+  // Pure helper — read EVERY fee on a workbook from its detail_json
+  // (no DOM dependency). Returns [{id, label, desc, usd}, …] where
+  // usd is the EFFECTIVE amount (per-fee override when present, else
+  // the as-is amount the operator typed).
+  //
+  // Returns every fee with a non-zero USD value (or a non-empty
+  // description) — regardless of whether the operator went back to
+  // the Pricing tab and ticked the per-fee "Apply" checkbox. This
+  // matches the operator's mental model: "if I typed a fee on the
+  // Workbook tab, it belongs on the order." The order-level
+  // Bill / Complimentary toggle in the Order Sheet then decides
+  // what the CLIENT sees per fee.
+  //
+  // Function name preserved for back-compat with existing call sites
+  // (exportOrderCsv, exportOrderPdf, renderOrderSheet). The OLD
+  // applied-only behavior is no longer needed at any caller.
   function _appliedFeesFromDetail(detail) {
     if (!detail) return [];
-    const ids = Array.isArray(detail.appliedFees) ? detail.appliedFees : [];
-    if (ids.length === 0) return [];
     const overrides = (detail.appliedFeeOverrides && typeof detail.appliedFeeOverrides === 'object')
       ? detail.appliedFeeOverrides : {};
     const num = v => {
       const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
       return isFinite(n) ? n : 0;
     };
-    // Standard fees — read from the same detail keys collectWorkbookFees
-    // reads from the DOM. Each has a fixed id (sample / tooling / die /
-    // plate / design) so we can look them up by name.
+    // Standard fees — only include when the operator gave them a
+    // value or a description (skip empties so the order doesn't show
+    // five hardcoded $0 lines on every workbook).
     const std = [
       { id: 'sample',  label: 'Sample Fee(s)',  usd: num(detail.feeSampleUsd),  desc: detail.feeSampleDesc  || '' },
       { id: 'tooling', label: 'Tooling Fee(s)', usd: num(detail.feeToolingUsd), desc: detail.feeToolingDesc || '' },
       { id: 'die',     label: 'Die Fee(s)',     usd: num(detail.feeDieUsd),     desc: detail.feeDieDesc     || '' },
       { id: 'plate',   label: 'Plate Fee(s)',   usd: num(detail.feePlateUsd),   desc: detail.feePlateDesc   || '' },
       { id: 'design',  label: 'Design Fee(s)',  usd: num(detail.feeDesignUsd),  desc: detail.feeDesignDesc  || '' },
-    ];
+    ].filter(f => f.usd > 0 || (f.desc && f.desc.trim() !== ''));
+    // Extras — every custom-row fee the operator added via "+ Add Fee".
+    // Each carries its own id (counter-assigned at fill time).
     const extras = (Array.isArray(detail.extraFeeRows) ? detail.extraFeeRows : []).map(r => ({
       id: 'extra:' + r.id,
       label: r.type || 'Custom Fee',
       desc:  r.desc || '',
       usd:   num(r.usd),
-    }));
+    })).filter(f => f.usd > 0 || (f.desc && f.desc.trim() !== ''));
     const all = std.concat(extras);
-    return ids.map(id => {
-      const f = all.find(x => x.id === id);
-      if (!f) return null;
-      const ov = overrides[id];
+    // Apply any per-fee override (override wins over as-is).
+    return all.map(f => {
+      const ov = overrides[f.id];
       const effective = (ov !== undefined && ov !== null && ov !== '') ? num(ov) : f.usd;
-      return { id, label: f.label, desc: f.desc, usd: effective };
-    }).filter(Boolean);
+      return { id: f.id, label: f.label, desc: f.desc, usd: effective };
+    });
   }
 
   // Per-order, per-workbook, per-fee BILLING state on the client view.
