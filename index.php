@@ -8742,9 +8742,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           Notify Client
         </button>
-        <button class="btn btn-ghost" onclick="exportOrderCsv(_currentOrderId)" title="Export this order to CSV" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
+        <button class="btn btn-ghost" onclick="exportOrderCsv(_currentOrderId)" title="Export this order to CSV (spreadsheet)" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export CSV
+        </button>
+        <button class="btn btn-ghost" onclick="exportOrderPdf(_currentOrderId)" title="Open a print-ready invoice — use browser's Save as PDF" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          Export PDF
         </button>
         <button class="btn-danger" id="order-delete-btn" onclick="deleteOrder(_currentOrderId)">Delete</button>
       </div>
@@ -32048,18 +32052,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Applied Additional Fees — one row per fee, inline under the
       // workbook's item rows. Item column carries "+ Fee: <label>" so
       // the operator can tell line items from fee passthroughs at a
-      // glance when scanning the CSV. Qty + per-unit columns blank
-      // (fees aren't unit-priced); Total (USD) is the effective
-      // amount (override when set, else as-is) and Total (RMB) is
-      // that × FX rate for the convenience column.
+      // glance when scanning the CSV. Complimentary fees (operator
+      // unticked the Bill-to-client checkbox) export at $0.00 with a
+      // "(Complimentary)" suffix so the client sees the value-add on
+      // the spreadsheet just like they will on the PDF / portal.
       const wbFees = (typeof _appliedFeesFromDetail === 'function')
         ? _appliedFeesFromDetail(detail) : [];
       wbFees.forEach(f => {
-        const usd = parseFloat(f.usd) || 0;
-        const rmb = usd * rate;
+        const billed = (typeof _orderFeeIsBilled === 'function')
+          ? _orderFeeIsBilled(o, entry.workbookId, f.id) : true;
+        const usdEffective = billed ? (parseFloat(f.usd) || 0) : 0;
+        const rmbEffective = usdEffective * rate;
         const labelParts = ['+ Fee:', f.label];
         if (f.desc) labelParts.push(`— ${f.desc}`);
-        rows.push([...base, labelParts.join(' '), '', '', '', '', f2(rmb), f2(usd)]);
+        if (!billed) labelParts.push('(Complimentary)');
+        rows.push([...base, labelParts.join(' '), '', '', '', '', f2(rmbEffective), f2(usdEffective)]);
       });
     });
     return rows;
@@ -32089,6 +32096,202 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     rows.push(['','','','','','','','','GRAND TOTAL','','', totalRmb.toFixed(2), totalUsd.toFixed(2)]);
     downloadCsv(`${(o.name || 'Order').replace(/[^a-z0-9]/gi,'-')}.csv`, headers, rows);
+  }
+
+  // Open a print-ready invoice in a new window. The operator hits
+  // Cmd/Ctrl+P (or the "Save as PDF" button rendered on the page) and
+  // the browser exports a clean PDF — no third-party PDF library
+  // needed. Mirrors the existing pallet-calc print pattern.
+  //
+  // Layout: client + INV header, line items table per workbook,
+  // applied fees inline (billed at amount, complimentary at $0 with
+  // a "Complimentary" tag). Footer: subtotals + grand total.
+  // Designed to read as a real invoice — clean spacing, neutral
+  // grays, accent only on the totals + complimentary tags.
+  function exportOrderPdf(orderId) {
+    const o = orderData[orderId != null ? orderId : _currentOrderId];
+    if (!o) return;
+    const rate    = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.24;
+    const fmt2    = n => (parseFloat(n) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const fmtNum  = n => (parseFloat(n) || 0).toLocaleString('en-US');
+    const esc     = s => String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    const invoiceNo = (o.invoiceNumber && String(o.invoiceNumber).trim()) || '—';
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    let itemsTotal = 0;
+    let feesBilled = 0; // money the client is charged for fees
+    let feesValue  = 0; // sticker value of complimentary fees (for "you saved" line)
+
+    const workbookBlocks = (o.entries || []).map(entry => {
+      const key      = `${entry.clientName}|${entry.workbookId}`;
+      const detail   = workbookDetail[key] || {};
+      const product  = detail.product || `Workbook #${entry.workbookId}`;
+      const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
+      const wbStats  = _wbStatsForPicker(detail);
+      const wbQuote  = parseFloat(detail.pricingClientQuoteTotal) || 0;
+      const wbTotalQty = rfqItems.reduce((s, it) => {
+        const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+        if (vs.length) return s + vs.reduce((ss, v) => ss + (parseFloat(String(v.qty||'').replace(/,/g,'')) || 0), 0);
+        return s + (parseFloat(String(it.qty||'').replace(/,/g,'')) || 0);
+      }, 0);
+      const useQuote = wbQuote > 0 && wbTotalQty > 0;
+      const perUnit = useQuote ? (wbQuote / wbTotalQty) : 0;
+
+      // Item rows — variant-aware, mirrors the on-screen Order Sheet.
+      const itemRowsHtml = rfqItems.length === 0
+        ? `<tr><td colspan="4" class="muted italic">No line items</td></tr>`
+        : rfqItems.map(item => {
+            const vs = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
+            if (vs.length) {
+              return vs.map(v => {
+                const vQty = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
+                const vTot = perUnit > 0 ? perUnit * vQty : 0;
+                itemsTotal += vTot;
+                const prefix = rfqItems.length > 1 ? `${esc(item.item || 'Item')} — ` : '';
+                return `<tr>
+                  <td class="indent">${prefix}<strong>${esc(v.variant || 'Variant')}</strong></td>
+                  <td class="num">${vQty > 0 ? fmtNum(vQty) : '—'}</td>
+                  <td class="num muted">${perUnit > 0 ? '$' + fmt2(perUnit) : '—'}</td>
+                  <td class="num strong">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
+                </tr>`;
+              }).join('');
+            }
+            const iQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
+            const iTot = perUnit > 0 ? perUnit * iQty : 0;
+            itemsTotal += iTot;
+            return `<tr>
+              <td>${esc(item.item || '—')}</td>
+              <td class="num">${iQty > 0 ? fmtNum(iQty) : '—'}</td>
+              <td class="num muted">${perUnit > 0 ? '$' + fmt2(perUnit) : '—'}</td>
+              <td class="num strong">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
+            </tr>`;
+          }).join('');
+
+      // Fee rows — show ALL applied fees. Billed → at amount in totals.
+      // Complimentary → $0.00 in totals but value still itemized in a
+      // "you saved" summary at the bottom of the invoice.
+      const wbFees = _appliedFeesFromDetail(detail);
+      const feeRowsHtml = wbFees.map(f => {
+        const billed = _orderFeeIsBilled(o, entry.workbookId, f.id);
+        const amount = parseFloat(f.usd) || 0;
+        if (billed) feesBilled += amount;
+        else        feesValue  += amount;
+        const shown  = billed ? '$' + fmt2(amount) : '$0.00';
+        const tag    = billed
+          ? ''
+          : ' <span class="comp-tag">Complimentary</span>';
+        const descPart = f.desc ? ` <span class="muted">— ${esc(f.desc)}</span>` : '';
+        return `<tr class="fee-row">
+          <td colspan="3"><strong>${esc(f.label)}</strong>${descPart}${tag}</td>
+          <td class="num strong ${billed ? '' : 'comp-zero'}">${shown}</td>
+        </tr>`;
+      }).join('');
+
+      return `<section class="wb-block">
+        <h2>${esc(product)}</h2>
+        <table class="lines">
+          <thead>
+            <tr><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr>
+          </thead>
+          <tbody>${itemRowsHtml}${feeRowsHtml}</tbody>
+        </table>
+      </section>`;
+    }).join('');
+
+    const grandTotal = itemsTotal + feesBilled;
+    const youSaved   = feesValue;
+
+    const css = `
+      @page { size: letter; margin: 0.5in; }
+      * { box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#1a1d2e; margin:0; padding:32px 36px; background:#fff; font-size:13px; line-height:1.45; }
+      header.invoice-head { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:18px; border-bottom:3px solid #1a1d2e; margin-bottom:24px; }
+      .brand { font-size:22px; font-weight:800; letter-spacing:-0.01em; color:#1a1d2e; }
+      .brand-sub { font-size:11px; color:#6b7280; margin-top:3px; letter-spacing:0.04em; text-transform:uppercase; }
+      .invoice-meta { text-align:right; font-size:12px; color:#4b5563; }
+      .invoice-meta .inv-no { font-size:18px; color:#1a1d2e; font-weight:800; letter-spacing:0.02em; margin-bottom:4px; }
+      .invoice-meta .row { display:flex; justify-content:flex-end; gap:8px; margin-top:2px; }
+      .invoice-meta .label { color:#6b7280; text-transform:uppercase; font-size:10px; letter-spacing:0.05em; font-weight:700; padding-top:2px; }
+      .bill-to { margin-bottom:28px; }
+      .bill-to .label { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; margin-bottom:4px; }
+      .bill-to .client { font-size:18px; font-weight:700; color:#1a1d2e; }
+      .wb-block { margin-bottom:24px; page-break-inside:avoid; }
+      h2 { font-size:14px; color:#1a1d2e; margin:0 0 8px; padding-bottom:6px; border-bottom:1px solid #e5e7eb; font-weight:700; letter-spacing:-0.01em; }
+      table.lines { width:100%; border-collapse:collapse; font-size:12px; }
+      table.lines th { text-align:left; font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; padding:6px 10px; border-bottom:1px solid #e5e7eb; }
+      table.lines th.num, table.lines td.num { text-align:right; }
+      table.lines td { padding:8px 10px; border-bottom:1px solid #f3f4f6; vertical-align:top; }
+      table.lines td.indent { padding-left:24px; }
+      table.lines td.strong { font-weight:700; color:#1a1d2e; }
+      table.lines td.muted { color:#6b7280; }
+      table.lines td.italic { font-style:italic; }
+      table.lines tr.fee-row td { background:#fff7ed; border-bottom:1px solid #fed7aa; }
+      table.lines tr.fee-row strong { color:#9a3412; }
+      .comp-tag { display:inline-block; margin-left:6px; padding:1px 8px; border-radius:99px; background:#dcfce7; color:#15803d; font-size:9px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; vertical-align:middle; }
+      .comp-zero { color:#15803d !important; }
+      .totals { margin-top:20px; padding-top:14px; border-top:2px solid #1a1d2e; }
+      .totals .row { display:flex; justify-content:space-between; padding:5px 0; font-size:13px; }
+      .totals .row.grand { padding-top:10px; margin-top:6px; border-top:1px solid #e5e7eb; font-size:18px; font-weight:800; color:#1a1d2e; }
+      .totals .row .label { color:#4b5563; }
+      .totals .row .val { font-variant-numeric:tabular-nums; }
+      .you-saved { margin-top:14px; padding:12px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; display:flex; justify-content:space-between; align-items:center; }
+      .you-saved .lbl { font-size:11px; color:#15803d; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; }
+      .you-saved .amt { font-size:16px; color:#15803d; font-weight:800; font-variant-numeric:tabular-nums; }
+      footer { margin-top:36px; padding-top:14px; border-top:1px solid #e5e7eb; text-align:center; color:#9ca3af; font-size:10px; letter-spacing:0.04em; text-transform:uppercase; }
+      .no-print { margin-top:30px; padding:14px; background:#f8f9fb; border-radius:8px; text-align:center; }
+      .no-print button { padding:10px 24px; background:#E8751A; color:#fff; border:none; border-radius:6px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+      @media print {
+        body { padding:0; }
+        .no-print { display:none !important; }
+      }
+    `;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice INV: ${esc(invoiceNo)} — ${esc(o.clientName || '')}</title>
+<style>${css}</style>
+</head><body>
+  <header class="invoice-head">
+    <div>
+      <div class="brand">Market Sculpt</div>
+      <div class="brand-sub">Sourcing &amp; Production</div>
+    </div>
+    <div class="invoice-meta">
+      <div class="inv-no">INV: ${esc(invoiceNo)}</div>
+      <div class="row"><span class="label">Date</span><span>${esc(today)}</span></div>
+      ${o.poNumber ? `<div class="row"><span class="label">PO #</span><span>${esc(o.poNumber)}</span></div>` : ''}
+    </div>
+  </header>
+  <div class="bill-to">
+    <div class="label">Bill To</div>
+    <div class="client">${esc(o.clientName || '—')}</div>
+  </div>
+  ${workbookBlocks || '<div class="muted italic">No workbooks on this order.</div>'}
+  <div class="totals">
+    <div class="row"><span class="label">Subtotal (Items)</span><span class="val">$${fmt2(itemsTotal)}</span></div>
+    ${feesBilled > 0 ? `<div class="row"><span class="label">Subtotal (Fees)</span><span class="val">$${fmt2(feesBilled)}</span></div>` : ''}
+    <div class="row grand"><span>Grand Total (USD)</span><span class="val">$${fmt2(grandTotal)}</span></div>
+  </div>
+  ${youSaved > 0 ? `<div class="you-saved">
+    <span class="lbl">★ Complimentary Value Included</span>
+    <span class="amt">$${fmt2(youSaved)}</span>
+  </div>` : ''}
+  <footer>Thank you for your business · Generated ${esc(today)}</footer>
+  <div class="no-print">
+    <button onclick="window.print()">Save as PDF</button>
+    <span style="margin-left:14px; color:#6b7280; font-size:12px;">Tip: in the print dialog, set the destination to "Save as PDF".</span>
+  </div>
+  <script>setTimeout(function(){window.print();}, 350);<\/script>
+</body></html>`;
+
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('Pop-up blocker is preventing the PDF window from opening. Allow pop-ups for this site and try again.');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   }
 
   function exportAllOrdersCsv() {
@@ -32712,28 +32915,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }).filter(Boolean);
   }
 
-  // Per-order, per-workbook, per-fee visibility on the client view.
-  // Stored on the order as o.feeVisibility = { [wbId|feeId]: bool }.
-  // Default TRUE (fees show on the Client Quote / email) unless the
-  // operator unchecks them in the Order Sheet expanded panel.
+  // Per-order, per-workbook, per-fee BILLING state on the client view.
+  // Stored on the order as o.feeVisibility = { [wbId|feeId]: bool }
+  // (field name kept for back-compat; semantics: true / absent = billed,
+  // false = complimentary).
+  //
+  // Default = billed (operator charges the client for the fee at the
+  // override / as-is amount). Unticking the checkbox flips the fee to
+  // COMPLIMENTARY — the client still SEES the fee on every client-
+  // facing surface (PDF invoice, CSV export, portal) but at $0.00 with
+  // a "Complimentary" tag so they understand they're getting the value
+  // for free instead of being silently invoiced.
   function _orderFeeVisibilityKey(workbookId, feeId) {
     return `${workbookId}|${feeId}`;
   }
-  function _orderFeeIsVisible(order, workbookId, feeId) {
+  function _orderFeeIsBilled(order, workbookId, feeId) {
     if (!order || !order.feeVisibility) return true;
     const v = order.feeVisibility[_orderFeeVisibilityKey(workbookId, feeId)];
-    return v !== false; // undefined/null/true → visible
+    return v !== false;
   }
-  function toggleOrderFeeVisibility(orderId, workbookId, feeId, isVisible) {
+  // Back-compat alias — callers added before the rename still work.
+  function _orderFeeIsVisible(order, workbookId, feeId) {
+    return _orderFeeIsBilled(order, workbookId, feeId);
+  }
+  function toggleOrderFeeVisibility(orderId, workbookId, feeId, isBilled) {
     const o = orderData[orderId];
     if (!o) return;
     if (!o.feeVisibility) o.feeVisibility = {};
     const k = _orderFeeVisibilityKey(workbookId, feeId);
-    if (isVisible) {
-      // Default is visible, so delete the key to keep the object lean
-      delete o.feeVisibility[k];
+    if (isBilled) {
+      delete o.feeVisibility[k]; // default = billed → no key needed
     } else {
-      o.feeVisibility[k] = false;
+      o.feeVisibility[k] = false; // explicitly complimentary
     }
     if (typeof saveOrders === 'function') saveOrders();
   }
@@ -32997,23 +33210,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const wbFees = _appliedFeesFromDetail(detail);
       if (wbFees.length > 0) {
         wbFees.forEach(f => {
-          const visible = _orderFeeIsVisible(o, entry.workbookId, f.id);
+          const billed = _orderFeeIsBilled(o, entry.workbookId, f.id);
           const escFeeId = esc(f.id).replace(/'/g, "\\'");
+          // Client sees: billed → fee at full amount; complimentary →
+          // fee at $0.00 with a "Complimentary" tag (showcases the
+          // value-add instead of hiding it).
+          const clientAmount = billed && f.usd > 0 ? '$' + fmt2(f.usd) : '$0.00';
+          const tag = billed ? '' : `<span style="color:#10b981; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:1px 7px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); border-radius:99px; margin-left:4px;">Complimentary</span>`;
           rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-fee-row" style="${detailStyle} background:rgba(232,117,26,0.04);">
             <td style="padding-left:36px; color:var(--text);">
-              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;" title="${visible ? 'Shown' : 'Hidden'} on the client-facing quote / email. Toggle to flip.">
-                <input type="checkbox" ${visible ? 'checked' : ''}
+              <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;" title="${billed ? 'Charged to the client at ' + (f.usd > 0 ? '$' + fmt2(f.usd) : 'the as-is amount') + '. Untick to give it to the client free of charge — they\\'ll still see it on every client-facing surface, just marked as Complimentary.' : 'Marked as Complimentary — the client sees this fee on their PDF / CSV / portal at $0.00 so they know they\\'re getting it free. Tick to bill it.'}">
+                <input type="checkbox" ${billed ? 'checked' : ''}
                        onchange="toggleOrderFeeVisibility(${_currentOrderId}, '${esc(entry.workbookId)}', '${escFeeId}', this.checked); renderOrderSheet();"
                        style="accent-color:var(--accent, #E8751A); cursor:pointer; width:14px; height:14px;" />
                 <span style="font-size:12px; color:#E8751A; font-weight:700; text-transform:uppercase; letter-spacing:0.03em;">+ Fee</span>
                 <span style="font-weight:600;">${esc(f.label)}</span>
                 ${f.desc ? `<span style="color:var(--text-muted); font-weight:400; font-size:11px;">— ${esc(f.desc)}</span>` : ''}
-                ${visible ? '' : `<span style="color:var(--text-muted); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; padding:1px 6px; background:var(--surface2); border-radius:99px; margin-left:4px;">Hidden from client</span>`}
+                ${tag}
               </label>
             </td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
-            <td style="text-align:right; font-weight:600; color:#E8751A;">${f.usd > 0 ? '$' + fmt2(f.usd) : '—'}</td>
+            <td style="text-align:right; font-weight:600; color:${billed ? '#E8751A' : 'var(--text-muted)'};">${clientAmount}</td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
             <td></td>
             <td></td>
