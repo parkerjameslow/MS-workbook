@@ -32352,7 +32352,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const o = orderData[orderId != null ? orderId : _currentOrderId];
     if (!o) return;
     const rate    = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.24;
-    const fmt2    = n => (parseFloat(n) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    // Truncate to hundredths (don't round up). Per user spec — they
+    // want $0.76 to render as $0.76, not get rounded to $0.80 by
+    // any upstream cents-ceiling (e.g. _msCeil2) or by a
+    // pre-rounded Sale Per. Math.floor(v * 100) / 100 chops at the
+    // 2nd decimal, then toLocaleString pads back to 2 fixed
+    // decimals so "0.76" is shown not "0.7" or "0.76000…".
+    const fmt2 = n => {
+      const v = parseFloat(n) || 0;
+      const truncated = Math.floor(v * 100) / 100;
+      return truncated.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    };
     const fmtNum  = n => (parseFloat(n) || 0).toLocaleString('en-US');
     const esc     = s => String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
