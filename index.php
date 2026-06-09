@@ -8731,11 +8731,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div id="view-order-detail" class="view">
   <main class="container">
 
-    <!-- Breadcrumb -->
-    <div style="margin-bottom:16px;">
-      <a href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" style="font-size:12px; color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+    <!-- Breadcrumb — text + href set by renderOrderDetail so it
+         points back to wherever the operator came from
+         (Orders / Fulfillment). Also includes a small stage pill
+         showing the order's current lane in the workflow. -->
+    <div style="margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <a id="order-detail-back" href="#/orders" onclick="event.preventDefault(); location.hash=this.getAttribute('href');" style="font-size:12px; color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
         ← Back to Orders
       </a>
+      <span id="order-detail-stage-pill" style="display:none;"></span>
     </div>
 
     <!-- Header: client name (big) → order name → controls -->
@@ -19270,12 +19274,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // fires. This is the trigger that moves the order from the
         // Orders nav into the Fulfillment nav — it leaves Fulfillment
         // automatically once any of its workbooks land on a Shipment
-        // (see _orderIsInFulfillment helper).
+        // (see _orderIsInFulfillment helper). Re-sends also clear
+        // changeRequested so the red "Changes Requested" pill on the
+        // detail page flips back to green "Notified" — the operator
+        // has now addressed the request and pushed a fresh version.
         if (_currentOrderId && _notifyPayload?.type && String(_notifyPayload.type).startsWith('order_')) {
           const _ord = orderData[_currentOrderId];
-          if (_ord && !_ord.notifiedAt) {
-            _ord.notifiedAt = new Date().toISOString();
-            saveOrders();
+          if (_ord) {
+            let _dirty = false;
+            if (!_ord.notifiedAt) { _ord.notifiedAt = new Date().toISOString(); _dirty = true; }
+            if (_ord.changeRequested) { _ord.changeRequested = false; _dirty = true; }
+            if (_dirty) saveOrders();
           }
         }
         closeNotifyModal();
@@ -33268,8 +33277,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('header-title').textContent = o.name;
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
-    const ordNav = document.getElementById('nav-orders-link');
-    if (ordNav) ordNav.classList.add('active');
+    // Light up the nav lane this order CURRENTLY belongs to so the
+    // sidebar stays in sync with reality — operators arriving from
+    // Fulfillment will see Fulfillment highlighted, not Orders.
+    const inFulfillment = _orderIsInFulfillment(o);
+    const navTargetId = inFulfillment ? 'nav-fulfillment-link' : 'nav-orders-link';
+    const navTarget = document.getElementById(navTargetId);
+    if (navTarget) navTarget.classList.add('active');
+    // Breadcrumb — point back to the order's current lane so the
+    // ← link always returns the operator to where they came from.
+    const backEl = document.getElementById('order-detail-back');
+    if (backEl) {
+      const backHash  = inFulfillment ? '#/fulfillment' : '#/orders';
+      const backLabel = inFulfillment ? '← Back to Fulfillment' : '← Back to Orders';
+      backEl.setAttribute('href', backHash);
+      backEl.textContent = backLabel;
+    }
+    // Stage pill next to the breadcrumb — quick visual confirmation
+    // of which lane this order lives in right now.
+    const stageEl = document.getElementById('order-detail-stage-pill');
+    if (stageEl) {
+      if (inFulfillment) {
+        stageEl.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:99px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;';
+        stageEl.textContent = 'In Fulfillment';
+      } else if (o.notifiedAt && _orderHasAnyWorkbookOnShipment(o)) {
+        stageEl.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:99px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;';
+        stageEl.textContent = 'On Shipment';
+      } else {
+        stageEl.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:99px; background:rgba(107,147,255,0.10); color:#6b93ff; border:1px solid rgba(107,147,255,0.30); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;';
+        stageEl.textContent = 'In Orders Queue';
+      }
+    }
 
     document.getElementById('order-detail-client-name').textContent = o.clientName;
     document.getElementById('order-detail-po').value = o.poNumber || '';
