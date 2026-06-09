@@ -20684,7 +20684,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // qty + applied fees (computed above as totalUsd). When Sale Per
     // is blank, both stats render as "—" so the header doesn't lie
     // about a value the operator hasn't committed to yet.
-    setQrs('usd',   (!isNaN(salePer) && salePer > 0) ? '$' + fmt2(salePer) : '—');
+    //
+    // Sale Price uses fmt3 (thousandths) — per-unit values can be
+    // $0.076 etc. and the third decimal carries meaningful client
+    // info. Total Order stays at fmt2 since that's a dollar amount
+    // where the cent is the right precision.
+    setQrs('usd',   (!isNaN(salePer) && salePer > 0) ? '$' + fmt3(salePer) : '—');
     setQrs('total', !isNaN(totalUsd)                 ? '$' + fmt2(totalUsd) : '—');
 
     const prodLeadDays = parseInt(document.getElementById('rfq-max-lead')?.textContent) || 0;
