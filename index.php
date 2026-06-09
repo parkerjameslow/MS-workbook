@@ -29236,7 +29236,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // ── Nav ──────────────────────────────────────────────────────────────
   function rebuildShipmentsNav() {
-    const ids = Object.keys(shipmentData);
+    // Exclude archived shipments from the nav badge — only "live"
+    // shipments (anything that hasn't crossed the 30-days-after-
+    // delivery archive threshold) count. Mirrors the predicate the
+    // Shipments page uses to split active vs archived so the badge
+    // number always matches the number of cards the operator sees
+    // when they click into Shipments.
+    const ids = Object.keys(shipmentData).filter(id => !_isArchiveCompleted(shipmentData[id]));
     // Actionable = any linked order has a change request
     const shipActionable = ids.filter(id => {
       const entries = shipmentData[id].entries || [];
