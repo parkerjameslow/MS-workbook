@@ -820,6 +820,7 @@ function ms_order_table_internal(array $items, float $rate): string {
     $prevProduct = null;
     $grandUsd    = 0;
     $grandRmb    = 0;
+    $compTotal   = 0;
     foreach ($items as $itm) {
         $product  = $itm['product'] ?? '';
         $itemName = $itm['item']    ?? '';
@@ -827,11 +828,43 @@ function ms_order_table_internal(array $items, float $rate): string {
         $qty      = (float)($itm['qty']      ?? 0);
         $priceRmb = (float)($itm['priceRmb'] ?? 0);
         $leadTime = (string)($itm['leadTime'] ?? '');
-        if (!$itemName && !$qty && !$priceRmb) continue;
+        $isFee    = !empty($itm['isFee']);
+        if (!$isFee && !$itemName && !$qty && !$priceRmb) continue;
         if ($product !== $prevProduct && $product !== '') {
             $rows .= '<tr style="background:#f8f9fb;"><td colspan="7" style="padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">'
                    . htmlspecialchars($product) . '</td></tr>';
             $prevProduct = $product;
+        }
+        // ── Applied Additional Fee row ───────────────────────────────
+        // Matches ms_order_table_client's fee handling: orange-tinted
+        // row, billed → shows amount, complimentary → $0.00 with a
+        // green tag. The internal table was previously rendering fee
+        // rows like regular items (qty=0, priceRmb=0) which printed
+        // an entire row of dashes and skipped the amount entirely —
+        // and the Total at the bottom silently excluded all fees.
+        if ($isFee) {
+            $billed   = !empty($itm['feeBilled']);
+            $feeUsd   = (float)($itm['feeUsd']     ?? 0);
+            $feeFull  = (float)($itm['feeUsdFull'] ?? $feeUsd);
+            $feeDesc  = (string)($itm['feeDesc']   ?? '');
+            $descPart = $feeDesc !== '' ? '<span style="color:#9a3412;font-weight:400;"> — ' . htmlspecialchars($feeDesc) . '</span>' : '';
+            $tag      = $billed
+                ? ''
+                : '<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:99px;background:#dcfce7;color:#15803d;font-size:10px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;vertical-align:middle;">Complimentary</span>';
+            $shownUsd = $billed ? '$' . number_format($feeUsd, 2) : '$0.00';
+            $shownRmb = $billed ? '¥' . number_format($feeUsd * $rate, 2) : '¥0.00';
+            $amtColor = $billed ? '#1a1d2e' : '#15803d';
+            $grandUsd += $billed ? $feeUsd : 0;
+            $grandRmb += $billed ? $feeUsd * $rate : 0;
+            $compTotal += $billed ? 0 : $feeFull;
+            $rows .= '<tr style="border-top:1px solid #fed7aa;background:#fff7ed;">'
+                   . '<td colspan="4" style="padding:9px 12px;font-size:13px;color:#9a3412;font-weight:600;">'
+                   . htmlspecialchars($itemName) . $descPart . $tag . '</td>'
+                   . '<td style="padding:9px 12px;font-size:14px;color:#6b7280;text-align:right;">' . $shownRmb . '</td>'
+                   . '<td style="padding:9px 12px;font-size:14px;font-weight:700;color:' . $amtColor . ';text-align:right;">' . $shownUsd . '</td>'
+                   . '<td style="padding:9px 12px;font-size:13px;color:#6b7280;text-align:center;">—</td>'
+                   . '</tr>';
+            continue;
         }
         $unitUsd  = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
         $unitRmb  = $priceRmb > 0 ? '¥' . number_format($priceRmb, 2) : '—';
@@ -857,6 +890,12 @@ function ms_order_table_internal(array $items, float $rate): string {
                . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:right;">' . $unitRmb . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;">' . $totUsdFmt . '</td>'
                . '<td style="padding:10px 12px;font-size:13px;color:#6b7280;text-align:center;">' . $leadFmt . '</td>'
+               . '</tr>';
+    }
+    if ($compTotal > 0) {
+        $rows .= '<tr style="background:#f0fdf4;border-top:1px solid #bbf7d0;">'
+               . '<td colspan="6" style="padding:10px 12px;font-size:13px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">★ Complimentary Value Included</td>'
+               . '<td style="padding:10px 12px;font-size:14px;font-weight:800;color:#15803d;text-align:right;">$' . number_format($compTotal, 2) . '</td>'
                . '</tr>';
     }
     if ($grandUsd > 0) {
