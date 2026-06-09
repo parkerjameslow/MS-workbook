@@ -1620,11 +1620,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-size: 11px; opacity: 0.55; margin-left: 4px; font-weight: 500;
     }
     .comm-meta-line {
+      display: flex; align-items: center; gap: 5px;
       font-size: 10.5px; color: var(--text-muted);
       font-variant-numeric: tabular-nums;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      overflow: hidden; white-space: nowrap;
+      margin-top: 3px;
     }
     .comm-meta-line strong { color: var(--text); font-weight: 600; }
+    /* Make the text portion ellipsis cleanly while the status pill
+       (rendered as a <span> on the same flex row) stays at its
+       natural size. */
+    .comm-meta-line > span:last-child { overflow: hidden; text-overflow: ellipsis; }
     .comm-amt {
       font-size: 14px; color: var(--success, #16a34a); font-weight: 700;
       font-variant-numeric: tabular-nums; text-align: right;
@@ -27452,24 +27458,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── One-shot reset: every commission → pending ─────────────────────
-  // Runs ONCE per device automatically on app boot via the
-  // ms_commissions_reset_v1 localStorage flag. After it fires, the
-  // flag stays set forever so the reset doesn't repeat on every
-  // refresh. Replaces the prior admin button — user wanted the reset
-  // to "just happen" so they can start clean from the next Mark Paid
-  // click without having to click a button first.
+  // Runs ONCE per device automatically on app boot via a versioned
+  // localStorage flag. Bumping the version forces a re-run on every
+  // device the next time loadCommissions fires — useful after the
+  // operator has accidentally marked rows paid OR new rows have
+  // accumulated since the last reset.
   //
-  // To re-trigger on a specific device (e.g. for testing), clear
-  // localStorage.removeItem('ms_commissions_reset_v1') in the console.
+  // CURRENT VERSION: v2. Bump this when you want every device to
+  // wipe paid statuses again. After the reset succeeds the flag
+  // sticks until the next bump.
+  const _COMMISSIONS_RESET_FLAG = 'ms_commissions_reset_v2';
   async function _commissionsOneShotReset() {
-    const FLAG = 'ms_commissions_reset_v1';
     try {
-      if (localStorage.getItem(FLAG)) return; // already ran on this device
+      if (localStorage.getItem(_COMMISSIONS_RESET_FLAG)) return;
     } catch (_) { /* private mode etc. — try the reset anyway */ }
     try {
       const res = await apiCall('reset_commissions_pending', {});
       if (res && res.success) {
-        try { localStorage.setItem(FLAG, '1'); } catch (_) {}
+        try { localStorage.setItem(_COMMISSIONS_RESET_FLAG, '1'); } catch (_) {}
       }
     } catch (_) { /* network error — just retry next page load */ }
   }
@@ -27905,17 +27911,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ? `<div class="comm-meta-line" title="${esc(metaTitle)}">${metaText}</div>`
           : '';
 
-        // <span> instead of <a> — anchors without href have
-        // unpredictable rendering across browsers and were
-        // collapsing to invisible in the narrow commission card.
+        // Layout fix: workbook name now owns the full first line —
+        // the status pill (SUBMITTED / ARCHIVED / etc.) was crowding
+        // it down to a single character on narrow cards because the
+        // pill sits in the same flex row and has a fixed width.
+        // Moving the pill into the meta line below gives the name
+        // the entire row to ellipsis cleanly when truncated. The
+        // text portion is wrapped in its own span so the ellipsis
+        // rule (`> span:last-child`) can target it specifically
+        // without truncating the pill.
+        const metaWithStatus = (statusPillHtml || metaText)
+          ? `<div class="comm-meta-line" title="${esc(metaTitle)}">
+               ${statusPillHtml}
+               ${metaText ? `<span>${statusPillHtml ? '· ' : ''}${metaText}</span>` : ''}
+             </div>`
+          : '';
         return `
           <div class="comm-row" style="background:${rowBg}; border:${rowBorder}; border-left:${leftAccent}; opacity:${opacity};">
             <div class="comm-row-info">
               <div class="comm-row-line1">
                 <span class="comm-wb-name" onclick="${wbClick}" title="${product}">${product}<span class="comm-wb-arrow">→</span></span>
-                ${statusPillHtml}
               </div>
-              ${metaHtml}
+              ${metaWithStatus}
             </div>
             <span class="comm-amt">
               ${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate — Client Cost not yet wired">est</span>' : ''}
