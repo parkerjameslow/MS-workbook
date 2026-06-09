@@ -32363,6 +32363,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const truncated = Math.floor(v * 100) / 100;
       return truncated.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     };
+    // fmt3 — per-unit price formatter at THOUSANDTHS. Per-unit values
+    // on Pricing tab are typed/displayed at 3 decimals (e.g. $0.076);
+    // hundredths would round 0.076 to 0.08, which the operator
+    // doesn't want. Totals stay at fmt2 (no $X,XXX.XXX) since those
+    // are dollar amounts where the cent is the right precision.
+    const fmt3 = n => {
+      const v = parseFloat(n) || 0;
+      const truncated = Math.floor(v * 1000) / 1000;
+      return truncated.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3});
+    };
     const fmtNum  = n => (parseFloat(n) || 0).toLocaleString('en-US');
     const esc     = s => String(s == null ? '' : s)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -32413,7 +32423,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 return `<tr>
                   <td class="indent">${prefix}<strong>${esc(v.variant || 'Variant')}</strong></td>
                   <td class="num">${vQty > 0 ? fmtNum(vQty) : '—'}</td>
-                  <td class="num muted">${perUnit > 0 ? '$' + fmt2(perUnit) : '—'}</td>
+                  <td class="num muted">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
                   <td class="num strong">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
                 </tr>`;
               }).join('');
@@ -32424,7 +32434,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             return `<tr>
               <td>${esc(item.item || '—')}</td>
               <td class="num">${iQty > 0 ? fmtNum(iQty) : '—'}</td>
-              <td class="num muted">${perUnit > 0 ? '$' + fmt2(perUnit) : '—'}</td>
+              <td class="num muted">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
               <td class="num strong">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
             </tr>`;
           }).join('');
