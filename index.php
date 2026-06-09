@@ -6147,6 +6147,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="nav-flat-sublabel">SKUs &amp; Variants</span>
     </a>
 
+    <!-- Samples — moved above RFQ per operator workflow preference. -->
+    <a id="nav-samples-link" href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'" class="nav-flat-link">
+      <span>Samples</span>
+      <span class="nav-badge" id="badge-samples"></span>
+    </a>
+
     <a id="nav-rfq-link" href="#/rfq" onclick="event.preventDefault(); location.hash='#/rfq'" class="nav-flat-link">
       <span>RFQ</span>
       <span class="nav-badge" id="badge-rfq"></span>
@@ -6166,10 +6172,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="nav-badge" id="badge-orders"></span>
     </a>
 
-    <!-- Samples -->
-    <a id="nav-samples-link" href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'" class="nav-flat-link">
-      <span>Samples</span>
-      <span class="nav-badge" id="badge-samples"></span>
+    <!-- Fulfillment — orders that have been Notify-Client'd but
+         haven't yet been placed on a Shipment. Acts as the holding
+         lane between client confirmation and physical shipping. -->
+    <a id="nav-fulfillment-link" href="#/fulfillment" onclick="event.preventDefault(); location.hash='#/fulfillment'" class="nav-flat-link">
+      <span>Fulfillment</span>
+      <span class="nav-badge" id="badge-fulfillment"></span>
     </a>
 
     <!-- Shipments -->
@@ -8498,6 +8506,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </main>
 </div><!-- /#view-orders -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: FULFILLMENT
+     Orders that have been Notify-Client'd but whose workbooks
+     haven't yet been placed on a Shipment. Acts as the "ready to
+     ship" holding lane.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-fulfillment" class="view">
+  <main class="container">
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Fulfillment</span>
+        <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Confirmed orders awaiting shipment</span>
+      </div>
+      <div class="section-body">
+        <div id="fulfillment-list-content">
+          <div class="order-list-empty">
+            <div class="order-list-empty-icon">📦</div>
+            <div class="order-list-empty-title">Nothing in Fulfillment</div>
+            <div class="order-list-empty-sub">Once you Notify a client on an order, it shows up here ready for shipment placement.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div><!-- /#view-fulfillment -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: INVENTORY
@@ -19229,6 +19263,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           orderData[_currentOrderId].changeRequested = false;
           saveOrders();
         }
+        // Stamp notifiedAt the first time an order-type notification
+        // fires. This is the trigger that moves the order from the
+        // Orders nav into the Fulfillment nav — it leaves Fulfillment
+        // automatically once any of its workbooks land on a Shipment
+        // (see _orderIsInFulfillment helper).
+        if (_currentOrderId && _notifyPayload?.type && String(_notifyPayload.type).startsWith('order_')) {
+          const _ord = orderData[_currentOrderId];
+          if (_ord && !_ord.notifiedAt) {
+            _ord.notifiedAt = new Date().toISOString();
+            saveOrders();
+          }
+        }
         closeNotifyModal();
         const s = document.getElementById('save-status');
         if (s) { s.textContent = '✓ Notification sent'; s.style.color = 'var(--success)'; s.style.opacity = '1'; setTimeout(() => { s.style.opacity = '0'; s.textContent = ''; }, 4000); }
@@ -26164,6 +26210,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/fulfillment — orders awaiting shipment placement.
+    if (hash === '#/fulfillment') {
+      renderFulfillmentList();
+      return;
+    }
+
     // Match: #/inventory
     if (hash === '#/inventory') {
       renderInventoryView();
@@ -31826,11 +31878,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── Nav ──────────────────────────────────────────────────────────────
   function rebuildOrdersNav() {
     const ids = Object.keys(orderData);
-    // Actionable = client has requested changes on an order
+    // Orders badge — only counts orders still in the Orders queue
+    // (not yet Notify-Client'd). Notified orders live in the
+    // Fulfillment badge below so the two nav numbers don't overlap.
+    const queueIds = ids.filter(id => _orderIsInOrdersQueue(orderData[id]));
     _applyNavBadge(
       document.getElementById('badge-orders'),
-      ids.filter(id => orderData[id].changeRequested).length,
-      ids.length
+      queueIds.filter(id => orderData[id].changeRequested).length,
+      queueIds.length
+    );
+    // Fulfillment badge — orders that have been notified but whose
+    // workbooks haven't landed on a Shipment yet.
+    const fulIds = ids.filter(id => _orderIsInFulfillment(orderData[id]));
+    _applyNavBadge(
+      document.getElementById('badge-fulfillment'),
+      fulIds.filter(id => orderData[id].changeRequested).length,
+      fulIds.length
     );
   }
 
@@ -32578,6 +32641,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // clears the deadline back to "+ Set client deadline". Persists
   // via the standard saveOrders flow (localStorage + ms_orders app
   // state).
+  // ── Fulfillment lifecycle helpers ─────────────────────────────────
+  // An order sits in "Fulfillment" between the moment the operator
+  // sends a client notification and the moment any of its workbooks
+  // get placed on a Shipment. Lets the operator triage what's been
+  // confirmed-but-not-yet-shipped without those orders cluttering
+  // the main Orders queue.
+  function _orderWorkbookIsOnShipment(clientName, workbookId) {
+    if (typeof shipmentData !== 'object' || !shipmentData) return false;
+    const target = String(workbookId);
+    return Object.values(shipmentData).some(sh => {
+      const ents = Array.isArray(sh && sh.entries) ? sh.entries : [];
+      return ents.some(e =>
+        e && String(e.workbookId) === target && (!clientName || e.clientName === clientName)
+      );
+    });
+  }
+  function _orderHasAnyWorkbookOnShipment(o) {
+    if (!o || !Array.isArray(o.entries)) return false;
+    return o.entries.some(e => _orderWorkbookIsOnShipment(e.clientName, e.workbookId));
+  }
+  // An order is "in Fulfillment" iff it's been Notify-Client'd at
+  // least once AND none of its workbooks have landed on a Shipment
+  // yet. The moment any workbook is added to a Shipment the order
+  // auto-leaves Fulfillment (no manual action needed).
+  function _orderIsInFulfillment(o) {
+    if (!o || !o.notifiedAt) return false;
+    return !_orderHasAnyWorkbookOnShipment(o);
+  }
+  // An order is "in the Orders queue" iff it has NOT yet been
+  // notified. Notification is the operator-controlled gate that
+  // moves the order out of Orders and into Fulfillment.
+  function _orderIsInOrdersQueue(o) {
+    return !!o && !o.notifiedAt;
+  }
+
   function setOrderDeadline(orderId, iso) {
     const o = orderData[orderId];
     if (!o) return;
@@ -32589,6 +32687,105 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     if (typeof saveOrders === 'function') saveOrders();
     if (typeof renderOrdersList === 'function') renderOrdersList();
+  }
+
+  function renderFulfillmentList() {
+    document.getElementById('header-title').textContent = 'Fulfillment';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const fNav = document.getElementById('nav-fulfillment-link');
+    if (fNav) fNav.classList.add('active');
+    showView('view-fulfillment');
+    const host = document.getElementById('fulfillment-list-content');
+    if (!host) return;
+    const ids = Object.keys(orderData).filter(id => _orderIsInFulfillment(orderData[id]));
+    if (ids.length === 0) {
+      host.innerHTML = `<div class="order-list-empty">
+        <div class="order-list-empty-icon">📦</div>
+        <div class="order-list-empty-title">Nothing in Fulfillment</div>
+        <div class="order-list-empty-sub">Once you Notify a client on an order, it shows up here ready for shipment placement.</div>
+      </div>`;
+      return;
+    }
+    // Sort: most recently notified first (newest at the top).
+    ids.sort((a, b) => String(orderData[b].notifiedAt || '').localeCompare(String(orderData[a].notifiedAt || '')));
+    // Reuse the same renderer the Orders dashboard uses so cards
+    // are visually identical — Fulfillment is the same data with a
+    // different filter. The card's existing onclick navigates to
+    // #/order/<id> which still works for editing / adding to
+    // shipments / further notifications.
+    host.innerHTML = `<div class="order-cards">${ids.map(id => {
+      // Defer to buildOrderCard if it exists in the outer closure;
+      // since it's defined inside renderOrdersContent we re-render
+      // the orders content silently to populate the helper in scope.
+      return _buildFulfillmentCard(id);
+    }).join('')}</div>`;
+  }
+
+  // Standalone card builder so the Fulfillment view doesn't have to
+  // call into renderOrdersContent (which would also re-render the
+  // Orders view). Mirrors buildOrderCard's structure but uses a
+  // simpler shape — Fulfillment only needs client + order title +
+  // Notify-sent timestamp + key money numbers + an "Add to Shipment"
+  // action that opens the existing add-workbook-to-shipment flow.
+  function _buildFulfillmentCard(id) {
+    const o = orderData[id];
+    if (!o) return '';
+    const entries = o.entries || [];
+    const wbCount = entries.length;
+    let agUnits = 0, agPrice = 0, agMaxLead = 0, agWeightKg = 0, agCbm = 0;
+    entries.forEach(e => {
+      const w = _wbStatsForPicker(workbookDetail[`${e.clientName}|${e.workbookId}`]);
+      agUnits    += w.units;
+      agPrice    += w.price;
+      agWeightKg += w.weightKg;
+      agCbm      += w.cbm;
+      if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
+    });
+    const fmtUsdT = n => n > 0 ? '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const fmtKgT  = n => n > 0 ? n.toLocaleString('en-US', {maximumFractionDigits:0}) + ' kg' : '—';
+    const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1}) + ' CBM' : '—';
+    const fmtNumT = n => n > 0 ? n.toLocaleString('en-US') : '—';
+    const notifiedDate = o.notifiedAt
+      ? new Date(o.notifiedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' })
+      : '—';
+    return `<div class="order-card" onclick="location.hash='#/order/${id}'">
+      <div class="oc-card-main">
+        <div class="oc-left">
+          <span class="oc-client">${o.clientName || ''}</span>
+          <span class="oc-title">${o.name || `Order #${id}`}</span>
+          <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
+            <span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;">
+              <span style="text-transform:uppercase;">Notified</span>
+              <span style="text-transform:none; letter-spacing:0;">${notifiedDate}</span>
+            </span>
+            ${agMaxLead > 0 ? `<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">${agMaxLead} day lead</span>` : ''}
+          </div>
+        </div>
+        <div class="oc-wb-list">
+          <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="oc-right-wrap">
+          <div class="oc-grand-total">
+            <span class="oc-grand-label">Total</span>
+            <span class="oc-grand-usd">${fmtUsdT(agPrice)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="oc-stat-strip" style="grid-template-columns: repeat(5, 1fr);">
+        <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
+        <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
+        <div class="oc-stat"><span class="oc-stat-label">CBM</span><span class="oc-stat-val">${fmtCbmT(agCbm)}</span></div>
+        <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
+        <div class="oc-stat">
+          <button onclick="event.stopPropagation(); location.hash='#/shipments'"
+            style="padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;"
+            title="Open Shipments to drop this order's workbooks into a shipment">
+            + Add to Shipment
+          </button>
+        </div>
+      </div>
+    </div>`;
   }
 
   function renderOrdersList() {
@@ -32612,12 +32809,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const el = document.getElementById('order-list-content');
     if (!el) return;
 
-    const ids = Object.keys(orderData);
+    // Pre-filter: orders that have been Notify-Client'd live in the
+    // Fulfillment view (see _orderIsInFulfillment + #/fulfillment
+    // route). Hide them from the Orders queue so we don't show the
+    // same order in two lists.
+    const ids = Object.keys(orderData).filter(id => _orderIsInOrdersQueue(orderData[id]));
     if (ids.length === 0) {
       el.innerHTML = `<div class="order-list-empty">
         <div class="order-list-empty-icon">📋</div>
-        <div class="order-list-empty-title">No orders yet</div>
-        <div class="order-list-empty-sub">Create an order to track approved workbooks through production.</div>
+        <div class="order-list-empty-title">No orders in the queue</div>
+        <div class="order-list-empty-sub">New orders show up here. Once you Notify the client, the order moves to <strong>Fulfillment</strong>.</div>
       </div>`;
       return;
     }
