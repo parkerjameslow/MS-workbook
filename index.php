@@ -8682,11 +8682,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </span>
         </label>
         <span id="commissions-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 rows</span>
-        <button type="button" onclick="resetAllCommissionsToPending()"
-          title="Wipe paid status across all commissions — useful for starting a fresh payout cycle."
-          style="margin-left:8px; padding:5px 12px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap;">
-          ↻ Reset all to Pending
-        </button>
       </div>
     </div>
 
@@ -27371,6 +27366,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       try { await apiCall('recompute_commissions', { client_quote_totals: liveQuoteTotals }); }
       catch (e) { console.warn('[commissions] recompute_commissions failed', e); }
 
+      // One-shot reset of every commission → pending. Runs once per
+      // device (gated by localStorage); subsequent loads no-op. Has
+      // to land BEFORE get_commissions so the data we return reflects
+      // the freshly-reset state, not the prior paid statuses.
+      await _commissionsOneShotReset();
       const res = await apiCall('get_commissions');
       if (res && res.success) commissionsData = res.data || [];
     } catch (e) { console.error('[commissions] loadCommissions failed', e); }
@@ -27451,19 +27451,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
-  // ── Reset all commissions to pending (one-shot admin action) ──────
-  // Calls the server endpoint that wipes status back to 'pending' and
-  // clears paid_at on every commission row. Gated by a confirm dialog
-  // since it's destructive. Refreshes the dashboard + nav badge after.
-  async function resetAllCommissionsToPending() {
-    if (!confirm('Reset every commission to "pending"? This clears all paid statuses across all employees. Use this to start fresh with deliberate Mark Paid clicks.\n\nThis cannot be undone.')) return;
-    const res = await apiCall('reset_commissions_pending', {});
-    if (!res || !res.success) {
-      alert((res && res.error) || 'Reset failed.');
-      return;
-    }
-    await loadCommissions();
-    renderCommissionsDashboard();
+  // ── One-shot reset: every commission → pending ─────────────────────
+  // Runs ONCE per device automatically on app boot via the
+  // ms_commissions_reset_v1 localStorage flag. After it fires, the
+  // flag stays set forever so the reset doesn't repeat on every
+  // refresh. Replaces the prior admin button — user wanted the reset
+  // to "just happen" so they can start clean from the next Mark Paid
+  // click without having to click a button first.
+  //
+  // To re-trigger on a specific device (e.g. for testing), clear
+  // localStorage.removeItem('ms_commissions_reset_v1') in the console.
+  async function _commissionsOneShotReset() {
+    const FLAG = 'ms_commissions_reset_v1';
+    try {
+      if (localStorage.getItem(FLAG)) return; // already ran on this device
+    } catch (_) { /* private mode etc. — try the reset anyway */ }
+    try {
+      const res = await apiCall('reset_commissions_pending', {});
+      if (res && res.success) {
+        try { localStorage.setItem(FLAG, '1'); } catch (_) {}
+      }
+    } catch (_) { /* network error — just retry next page load */ }
   }
 
   // ── Collapsed-client state ────────────────────────────────────────
