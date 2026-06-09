@@ -27750,33 +27750,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return `${Math.floor(day / 365)}y ago`;
     };
 
-    // "Archived" = every commission row for the workbook has been
-    // paid (across ALL roles — AM, Sales, Ops). The whole workbook
-    // is done, so it disappears from the active list and rolls into
-    // the collapsible Archived section. Operator no longer has to
-    // wade past completed workbooks looking for outstanding ones.
+    // Archive at the ROW level: once a single commission row is
+    // marked Paid, it moves to the Archived section below — from
+    // THIS operator's view. The other roles on the same workbook
+    // (e.g. SP, Ops) still appear active under their own employee
+    // breakdowns until their owners mark them paid. Per-employee
+    // perspective: "my row is paid, so I'm done with this
+    // workbook" → the row disappears from their active list, and
+    // if it was their last row for that client the client drops
+    // out of their dashboard entirely (byClient computed from
+    // activeRows below).
     //
-    // Pre-compute per-workbook all-paid flags once for the whole
-    // commissionsData set so the per-row predicate is O(1).
-    const _wbPaidStatus = (() => {
-      const byWb = {};
-      (Array.isArray(commissionsData) ? commissionsData : []).forEach(r => {
-        if (!r) return;
-        const key = `${r.client_name || ''}|${r.workbook_id || ''}`;
-        if (!byWb[key]) byWb[key] = { total: 0, paid: 0 };
-        byWb[key].total++;
-        if (r.status === 'paid') byWb[key].paid++;
-      });
-      const allPaid = {};
-      Object.keys(byWb).forEach(k => {
-        allPaid[k] = byWb[k].total > 0 && byWb[k].paid === byWb[k].total;
-      });
-      return allPaid;
-    })();
-    const _isArchivedRow = (r) => {
-      if (!r) return false;
-      return !!_wbPaidStatus[`${r.client_name || ''}|${r.workbook_id || ''}`];
-    };
+    // Previously was per-workbook ("all roles paid → archive") but
+    // that left an operator's own paid row sitting in their active
+    // list whenever another role was still unpaid — confusing and
+    // cluttered their view.
+    const _isArchivedRow = (r) => !!(r && r.status === 'paid');
 
     // Per-workbook context — current flow stage + whether the
     // workbook is referenced by any Order / Shipment. Rendered as
