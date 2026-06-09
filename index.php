@@ -27612,19 +27612,66 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return `${Math.floor(day / 365)}y ago`;
     };
 
-    // "Archived" = paid AND paid_at is in a calendar month BEFORE the
-    // current one. Active rows include all pending + this-month-paid
-    // rows. Lets the operator close out a month visually without losing
-    // the history.
-    const _now = new Date();
-    const _curYear  = _now.getFullYear();
-    const _curMonth = _now.getMonth();
+    // "Archived" = every commission row for the workbook has been
+    // paid (across ALL roles — AM, Sales, Ops). The whole workbook
+    // is done, so it disappears from the active list and rolls into
+    // the collapsible Archived section. Operator no longer has to
+    // wade past completed workbooks looking for outstanding ones.
+    //
+    // Pre-compute per-workbook all-paid flags once for the whole
+    // commissionsData set so the per-row predicate is O(1).
+    const _wbPaidStatus = (() => {
+      const byWb = {};
+      (Array.isArray(commissionsData) ? commissionsData : []).forEach(r => {
+        if (!r) return;
+        const key = `${r.client_name || ''}|${r.workbook_id || ''}`;
+        if (!byWb[key]) byWb[key] = { total: 0, paid: 0 };
+        byWb[key].total++;
+        if (r.status === 'paid') byWb[key].paid++;
+      });
+      const allPaid = {};
+      Object.keys(byWb).forEach(k => {
+        allPaid[k] = byWb[k].total > 0 && byWb[k].paid === byWb[k].total;
+      });
+      return allPaid;
+    })();
     const _isArchivedRow = (r) => {
-      if (r.status !== 'paid' || !r.paid_at) return false;
-      const p = new Date(r.paid_at);
-      if (isNaN(p.getTime())) return false;
-      return (p.getFullYear() < _curYear) ||
-             (p.getFullYear() === _curYear && p.getMonth() < _curMonth);
+      if (!r) return false;
+      return !!_wbPaidStatus[`${r.client_name || ''}|${r.workbook_id || ''}`];
+    };
+
+    // Per-workbook context — current flow stage + whether the
+    // workbook is referenced by any Order / Shipment. Rendered as
+    // small muted pills under the workbook name so the operator can
+    // see at a glance where this commission's underlying work
+    // actually stands without clicking into the workbook.
+    const _wbContextFor = (clientName, workbookId) => {
+      const out = { stage: '', orderName: '', shipmentName: '' };
+      // Stage from clientData[clientName] → matching workbook item
+      try {
+        const list = (clientData && clientData[clientName]) || [];
+        const wb = list.find(it => parseInt(it.id) === parseInt(workbookId));
+        if (wb && typeof getCurrentStepName === 'function') {
+          out.stage = getCurrentStepName(wb.flow) || '';
+        }
+      } catch(_) {}
+      // Order — first match wins
+      try {
+        for (const o of Object.values(orderData || {})) {
+          const hit = (o.entries || []).some(e =>
+            e && e.clientName === clientName && parseInt(e.workbookId) === parseInt(workbookId));
+          if (hit) { out.orderName = o.name || `Order #${o.id || '?'}`; break; }
+        }
+      } catch(_) {}
+      // Shipment — first match wins
+      try {
+        for (const s of Object.values(shipmentData || {})) {
+          const hit = (s.entries || []).some(e =>
+            e && e.clientName === clientName && parseInt(e.workbookId) === parseInt(workbookId));
+          if (hit) { out.shipmentName = s.name || `Shipment #${s.id || '?'}`; break; }
+        }
+      } catch(_) {}
+      return out;
     };
 
     // Stable role order: AM → Sales → Ops → anything else. Hoisted
@@ -27709,10 +27756,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               Mark paid
             </button>`;
 
-        // Meta line — Quote total + age tucked under the workbook
-        // name. Kept inline so the row stays at 2 visual lines max.
+        // Meta line — Quote total + age + context (stage / order /
+        // shipment) tucked under the workbook name. Context pills
+        // surface where this commission's underlying workbook
+        // actually stands so the operator can answer "is this still
+        // moving?" without leaving the page.
+        const ctx = _wbContextFor(r.client_name, r.workbook_id);
         const metaParts = [];
         if (r.client_total_usd) metaParts.push(`Quote: <strong>${fmtUsd0(r.client_total_usd)}</strong>`);
+        if (ctx.stage)          metaParts.push(`Stage: <strong>${esc(ctx.stage)}</strong>`);
+        if (ctx.orderName)      metaParts.push(`Order: <strong>${esc(ctx.orderName)}</strong>`);
+        if (ctx.shipmentName)   metaParts.push(`Shipment: <strong>${esc(ctx.shipmentName)}</strong>`);
         if (ageStr)             metaParts.push(archived ? `paid ${ageStr}` : ageStr);
         const metaHtml = metaParts.length
           ? `<div class="comm-meta-line">${metaParts.join(' &nbsp;·&nbsp; ')}</div>`
