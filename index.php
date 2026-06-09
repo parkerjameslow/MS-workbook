@@ -8770,12 +8770,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none; width:70px;"
             oninput="onOrderDepositPctChange()" />
         </div>
-        <button id="btn-notify-order" onclick="openNotifyModal('order_status')"
-          class="btn btn-ghost" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; border-color:var(--accent); color:var(--accent);"
-          title="Send status notification to client">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Notify Client
-        </button>
+        <div id="notify-status-wrap" style="display:flex; align-items:center; gap:8px;">
+          <span id="notify-status-pill" style="display:none;"></span>
+          <button id="btn-notify-order" onclick="openNotifyModal('order_status')"
+            class="btn btn-ghost" style="display:inline-flex; align-items:center; gap:5px; font-size:12px; border-color:var(--accent); color:var(--accent);"
+            title="Send status notification to client">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span id="btn-notify-order-label">Notify Client</span>
+          </button>
+        </div>
         <button class="btn btn-ghost" onclick="exportOrderCsv(_currentOrderId)" title="Export this order to CSV (spreadsheet)" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export CSV
@@ -30397,6 +30400,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (d) { orderData = JSON.parse(d); }
       if (n) { _nextOrderId = Math.max(parseInt(n) || 1, ...Object.keys(orderData).map(Number).map(x => x + 1), 1); }
     } catch(e) { orderData = {}; _nextOrderId = 1; }
+    _backfillNotifiedAt();
+  }
+
+  // One-time auto-heal for orders notified BEFORE the notifiedAt
+  // field landed. portalToken is only written when sendNotification
+  // succeeds on an order_confirmed payload, so its presence is a
+  // reliable signal that the operator already pushed the order to
+  // the client. We backfill notifiedAt from the order's dateCreated
+  // (best we have without an actual send timestamp) so legacy orders
+  // surface correctly in the new Fulfillment view without the
+  // operator manually flipping a flag.
+  function _backfillNotifiedAt() {
+    let touched = false;
+    Object.values(orderData).forEach(o => {
+      if (o && !o.notifiedAt && o.portalToken) {
+        // Reuse dateCreated if available, else today. Either way, the
+        // exact stamp doesn't matter for the Fulfillment filter —
+        // we just need notifiedAt to be truthy.
+        o.notifiedAt = (o.dateCreated && /\d/.test(String(o.dateCreated)))
+          ? new Date().toISOString()
+          : new Date().toISOString();
+        touched = true;
+      }
+    });
+    if (touched && typeof saveOrders === 'function') saveOrders();
   }
 
   // ── Sync orders/shipments from DB (overwrites local if DB has data) ──
@@ -33258,6 +33286,57 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('order-detail-invoice').value = _invSeed;
     document.getElementById('order-detail-deposit-pct').value = o.depositPct != null ? o.depositPct : 30;
     document.getElementById('order-detail-notes').value = o.notes || '';
+
+    // ── Notify Client status badge + button-label adaptation ─────────
+    // Three states the operator might be looking at:
+    //   1. NEVER NOTIFIED   → standard "Notify Client" button, no pill
+    //   2. NOTIFIED + OK    → green "Notified" pill + "Re-send Notification"
+    //                         (so the operator can see at a glance the
+    //                         client already has it and won't double-fire
+    //                         on autopilot)
+    //   3. NOTIFIED + CHANGES REQUESTED → red "Changes Requested" pill +
+    //                         "Re-send Updated Notification" button — the
+    //                         operator NEEDS to re-send after addressing
+    //                         the change request, so the pill reads
+    //                         action-required, not steady-state.
+    const _pill = document.getElementById('notify-status-pill');
+    const _btn  = document.getElementById('btn-notify-order');
+    const _lbl  = document.getElementById('btn-notify-order-label');
+    if (_pill && _btn && _lbl) {
+      const wasNotified = !!o.notifiedAt;
+      const needsResend = !!o.changeRequested;
+      if (!wasNotified) {
+        _pill.style.display = 'none';
+        _lbl.textContent = 'Notify Client';
+        _btn.style.background = '';
+        _btn.style.color = 'var(--accent)';
+        _btn.style.borderColor = 'var(--accent)';
+      } else if (needsResend) {
+        const notifiedTs = new Date(o.notifiedAt);
+        const notifiedFmt = isNaN(notifiedTs.getTime())
+          ? ''
+          : ` · last sent ${notifiedTs.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'})}`;
+        _pill.style.display = 'inline-flex';
+        _pill.style.cssText = 'display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:99px; background:rgba(220,38,38,0.10); color:#dc2626; border:1px solid rgba(220,38,38,0.35); font-size:10.5px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; white-space:nowrap;';
+        _pill.innerHTML = `⚑ Changes Requested${notifiedFmt}`;
+        _lbl.textContent = 'Re-send Updated Notification';
+        _btn.style.background = 'var(--accent)';
+        _btn.style.color = '#fff';
+        _btn.style.borderColor = 'var(--accent)';
+      } else {
+        const notifiedTs = new Date(o.notifiedAt);
+        const notifiedFmt = isNaN(notifiedTs.getTime())
+          ? ''
+          : ` ${notifiedTs.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'2-digit'})}`;
+        _pill.style.display = 'inline-flex';
+        _pill.style.cssText = 'display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:99px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.35); font-size:10.5px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; white-space:nowrap;';
+        _pill.innerHTML = `✓ Notified${notifiedFmt}`;
+        _lbl.textContent = 'Re-send Notification';
+        _btn.style.background = '';
+        _btn.style.color = 'var(--text-muted)';
+        _btn.style.borderColor = 'var(--border)';
+      }
+    }
 
     renderOrderSheet();
     renderOrderDepositTracking();
