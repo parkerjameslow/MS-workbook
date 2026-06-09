@@ -27981,7 +27981,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const groupPaid  = rows.reduce((s, r) => s + (r.status === 'paid' ? (parseFloat(r.commission_amount) || 0) : 0), 0);
           const groupPct   = groupTotal > 0 ? Math.min(100, (groupPaid / groupTotal) * 100) : 0;
           const groupFully = groupPaid > 0 && groupPaid >= groupTotal - 0.005;
-          const wbRows = rows.map(renderCommissionRow).join('');
+          // CRITICAL: wrap in an arrow so map's (element, index, array)
+          // signature doesn't leak the index into renderCommissionRow's
+          // `archived` parameter. Bare `.map(renderCommissionRow)`
+          // passed index 1..N as the 2nd arg, making every row past
+          // the first render with archived=truthy → green Paid badge
+          // regardless of actual paid status. Classic JS gotcha.
+          const wbRows = rows.map(r => renderCommissionRow(r)).join('');
           // Right-side summary: '$X paid of $Y' + tiny inline progress
           // chip. Color shifts from muted → green as more is paid.
           const groupPaidLabel = groupPaid > 0
