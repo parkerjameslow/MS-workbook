@@ -2630,6 +2630,16 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
+    // One-shot admin reset — wipes status back to 'pending' on every
+    // commission row and clears paid_at. Used by the "↻ Reset all to
+    // Pending" button on the Commissions dashboard when starting a
+    // fresh payout cycle. Destructive — front-end gates it behind a
+    // confirm() before calling.
+    case 'reset_commissions_pending':
+        $stmt = $pdo->query("UPDATE commissions SET status = 'pending', paid_at = NULL");
+        echo json_encode(['success' => true, 'affected' => $stmt->rowCount()]);
+        break;
+
     // Backfill / reconcile commissions for every (client, workbook) pair that
     // is currently in inventory OR on a current order. Idempotent — safe to
     // call on every dashboard load. Picks up:
@@ -3863,7 +3873,7 @@ switch ($action) {
             'get_users', 'add_user', 'update_user', 'delete_user', 'change_password',
             'duplicate_workbook',
             'get_inventory', 'promote_to_sku', 'remove_sku',
-            'get_commissions', 'set_commission_status', 'recompute_commissions',
+            'get_commissions', 'set_commission_status', 'recompute_commissions', 'reset_commissions_pending',
             'update_presence', 'get_presence', 'clear_presence',
             'push_cell_value', 'pull_cell_values',
             'diagnose_workbook', 'diagnose_revisions', 'merge_recover_workbook',

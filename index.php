@@ -1580,6 +1580,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .comm-paid-btn:hover .comm-paid-unpay::before {
       content: '×'; font-size: 14px; line-height: 1; font-weight: 800;
     }
+    /* Static Paid badge — replaces the old toggleable .comm-paid-btn.
+       Same green chip shape so existing rows still scan as "this is
+       paid", but no longer a button (no hover state, no onclick) since
+       Mark Paid is one-way from the dashboard now. */
+    .comm-paid-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 12px; border-radius: 14px;
+      background: #16a34a; color: #fff;
+      font-size: 11px; font-weight: 700;
+      min-width: 90px; justify-content: center;
+      cursor: default;
+    }
     /* Commission row — compact grid layout. info | amount | button.
        Info column splits into two lines (name + status pill / meta)
        that both truncate with ellipsis so the row stays ONE row tall
@@ -8670,6 +8682,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </span>
         </label>
         <span id="commissions-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 rows</span>
+        <button type="button" onclick="resetAllCommissionsToPending()"
+          title="Wipe paid status across all commissions — useful for starting a fresh payout cycle."
+          style="margin-left:8px; padding:5px 12px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:600; cursor:pointer; font-family:inherit; white-space:nowrap;">
+          ↻ Reset all to Pending
+        </button>
       </div>
     </div>
 
@@ -8905,6 +8922,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div><!-- /.app-layout -->
 
 <!-- ── New Shipment Modal ──────────────────────────────────────────────── -->
+<!-- ── Mark Commission Paid — Confirmation Modal ───────────────────────
+     Second-level confirmation so a stray click on the Mark Paid pill
+     doesn't accidentally move a workbook out of the active list.
+     The pending row's details (workbook + amount) are wired in by
+     openCommissionPaidConfirm so the operator can verify they're
+     about to finalize the right line. -->
+<div class="modal-overlay" id="modal-commission-pay-confirm" onclick="if(event.target===this)closeCommissionPaidConfirm()" style="z-index:1100;">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-title" style="display:flex; align-items:center; gap:10px;">
+      <span style="width:36px; height:36px; border-radius:50%; background:rgba(22,163,74,0.15); color:#16a34a; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </span>
+      Mark commission as paid?
+    </div>
+    <div style="font-size:13px; color:var(--text-muted); line-height:1.55; padding:0 4px 4px;">
+      You're about to mark <strong id="comm-confirm-product" style="color:var(--text);">—</strong>
+      (<strong id="comm-confirm-amount" style="color:#16a34a;">—</strong>)
+      as paid for <strong id="comm-confirm-employee" style="color:var(--text);">—</strong>.
+      <br><br>
+      Once paid, this row can't be reverted from the dashboard. If every
+      role on the workbook is paid the workbook moves to the
+      <strong style="color:var(--text);">Archived</strong> section.
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeCommissionPaidConfirm()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="comm-confirm-submit" onclick="commissionPaidConfirmSubmit()"
+        style="background:#16a34a; border-color:#16a34a;">
+        ✓ Yes, mark paid
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-new-shipment" onclick="if(event.target===this)closeNewShipmentModal()" style="z-index:1000;">
   <div class="modal" style="max-width:400px;">
     <div class="modal-title">New Shipment</div>
@@ -27366,6 +27416,71 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // the year/month buckets in the Earnings-over-time card recompute on
   // the next render. event.stopPropagation() is the caller's job; this
   // function only handles the network + state update.
+  // ── Mark-Paid confirmation modal ─────────────────────────────────
+  // Pending → Paid is now ONE-WAY from the dashboard. The Paid pill
+  // becomes a static badge after the operator confirms; no more
+  // toggle-back-to-pending click handler. Reduces accidental
+  // un-paying and forces the operator to be deliberate about
+  // closing out commissions.
+  let _commissionPaidConfirmId = null;
+  function openCommissionPaidConfirm(id) {
+    const r = Array.isArray(commissionsData) ? commissionsData.find(x => x.id == id) : null;
+    if (!r) return;
+    _commissionPaidConfirmId = id;
+    const fmtUsdHere = v => '$' + (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const setText = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
+    setText('comm-confirm-product',  r.product_name || `Workbook #${r.workbook_id}`);
+    setText('comm-confirm-amount',   fmtUsdHere(r.commission_amount));
+    setText('comm-confirm-employee', r.employee || '—');
+    document.getElementById('modal-commission-pay-confirm').classList.add('open');
+  }
+  function closeCommissionPaidConfirm() {
+    document.getElementById('modal-commission-pay-confirm').classList.remove('open');
+    _commissionPaidConfirmId = null;
+  }
+  async function commissionPaidConfirmSubmit() {
+    const id = _commissionPaidConfirmId;
+    if (!id) { closeCommissionPaidConfirm(); return; }
+    const btn = document.getElementById('comm-confirm-submit');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      await setCommissionPaid(id, true);
+    } finally {
+      closeCommissionPaidConfirm();
+      if (btn) { btn.disabled = false; btn.innerHTML = '✓ Yes, mark paid'; }
+    }
+  }
+
+  // ── Reset all commissions to pending (one-shot admin action) ──────
+  // Calls the server endpoint that wipes status back to 'pending' and
+  // clears paid_at on every commission row. Gated by a confirm dialog
+  // since it's destructive. Refreshes the dashboard + nav badge after.
+  async function resetAllCommissionsToPending() {
+    if (!confirm('Reset every commission to "pending"? This clears all paid statuses across all employees. Use this to start fresh with deliberate Mark Paid clicks.\n\nThis cannot be undone.')) return;
+    const res = await apiCall('reset_commissions_pending', {});
+    if (!res || !res.success) {
+      alert((res && res.error) || 'Reset failed.');
+      return;
+    }
+    await loadCommissions();
+    renderCommissionsDashboard();
+  }
+
+  // ── Collapsed-client state ────────────────────────────────────────
+  // Persists which clients on the Commissions dashboard are expanded.
+  // Default: every client COLLAPSED. Lets the operator scan a long
+  // list of clients without scrolling past every workbook breakdown,
+  // and only drill into the one they want to act on. Survives
+  // re-renders so toggling Mark Paid on one row doesn't snap an
+  // open client shut.
+  const _commExpandedClients = new Set();
+  function toggleCommClient(empName, clientName) {
+    const key = `${empName}|${clientName}`;
+    if (_commExpandedClients.has(key)) _commExpandedClients.delete(key);
+    else _commExpandedClients.add(key);
+    renderCommissionsDashboard();
+  }
+
   async function setCommissionPaid(id, paid) {
     const status = paid ? 'paid' : 'pending';
     const r = await apiCall('set_commission_status', { id, status });
@@ -27752,22 +27867,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const ageHtml = ageStr
           ? `<span style="font-size:10px; color:var(--text-muted); font-variant-numeric:tabular-nums; white-space:nowrap;" title="${archived ? 'Paid' : 'Commission row created'} ${ageSrc ? new Date(ageSrc).toLocaleString() : ''}">${ageLabel}</span>`
           : '';
-        // Paid button toggles back to pending on click. The .comm-paid-btn
-        // / .comm-pay-btn classes carry the hover treatment — the Paid
-        // button morphs on hover into an outlined 'Unpay' look so the
-        // toggle affordance is obvious (operator wasn't sure clicking
-        // would revert before).
+        // Paid → static green badge (no longer a button). Once paid,
+        // the row can't be un-paid from the dashboard — the operator
+        // confirmed deliberately via the modal and the workbook moves
+        // to Archived once every role is paid. Mark Paid now opens
+        // the confirmation modal instead of firing the API
+        // immediately — second-level safety so a stray click doesn't
+        // close out a commission by accident.
         const buttonHtml = (archived || isPaid)
-          ? `<button type="button" class="comm-paid-btn"
-              onclick="event.stopPropagation(); setCommissionPaid(${r.id}, false)"
-              title="${paidTitle}">
-              <svg class="comm-paid-check" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              <span class="comm-paid-label">Paid</span>
-              <span class="comm-paid-unpay">Unpay</span>
-            </button>`
+          ? `<span class="comm-paid-badge" title="${paidTitle}">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Paid
+            </span>`
           : `<button type="button" class="comm-pay-btn"
-              onclick="event.stopPropagation(); setCommissionPaid(${r.id}, true)"
-              title="${paidTitle}">
+              onclick="event.stopPropagation(); openCommissionPaidConfirm(${r.id})"
+              title="Click → confirm in modal → mark this commission paid">
               Mark paid
             </button>`;
 
@@ -27882,10 +27996,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ? `<span style="color:#16a34a; font-weight:700;">${fmtUsd(cPaidTotal)}</span> <span style="color:var(--text-muted);">paid of</span> <span style="color:var(--text); font-weight:700;">${fmtUsd(cSubtotal)}</span>`
           : `<span style="color:var(--text-muted);">0 paid of</span> <span style="color:var(--text); font-weight:700;">${fmtUsd(cSubtotal)}</span>`;
 
+        // Default-collapsed client cards. Operator clicks the
+        // header row to expand and see the per-role breakdown. The
+        // header stays visible (client name, workbook count, paid
+        // progress) so the operator can scan a long list of clients
+        // and only expand the ones they want to act on. Chevron
+        // rotates to signal state.
+        const cKey = `${empName}|${c}`;
+        const expanded = _commExpandedClients.has(cKey);
+        const chev = `<span style="display:inline-block; transition:transform 0.15s; transform:${expanded ? 'rotate(90deg)' : 'none'}; opacity:0.55; font-size:11px; margin-right:8px;">▶</span>`;
         return `
           <div style="margin-bottom:14px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; gap:10px;">
-              <span class="inv-client-chip" onclick="${clientChipClick}" style="${_clientChipStyle(c)} cursor:pointer; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(c)} — open client">${esc(c)}</span>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; gap:10px; cursor:pointer; padding:4px 2px; border-radius:6px; transition:background 0.12s;"
+                 onclick="toggleCommClient('${empName.replace(/'/g, "\\'")}', '${c.replace(/'/g, "\\'")}')"
+                 onmouseover="this.style.background='rgba(107,147,255,0.04)'"
+                 onmouseout="this.style.background='transparent'">
+              <span style="display:inline-flex; align-items:center; min-width:0; max-width:65%;">
+                ${chev}
+                <span class="inv-client-chip" onclick="event.stopPropagation(); location.hash='/client/${encodeURIComponent(c)}'" style="${_clientChipStyle(c)} cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(c)} — open client">${esc(c)}</span>
+              </span>
               <span style="font-size:11px; color:var(--text-muted); font-weight:600; white-space:nowrap; font-variant-numeric:tabular-nums;">
                 ${cRows.length} workbook${cRows.length !== 1 ? 's' : ''} &nbsp;·&nbsp; ${cPaidLabel}${cFullyPaid ? ' <span style="color:#16a34a; font-weight:700;">✓</span>' : ''}
               </span>
@@ -27895,7 +28024,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div style="height:4px; background:rgba(22,163,74,0.10); border-radius:99px; overflow:hidden; margin:0 0 10px;">
               <div style="height:100%; width:${cPaidPct}%; background:#16a34a; border-radius:99px; transition:width 0.25s ease;"></div>
             </div>
-            ${roleGroups}
+            ${expanded ? roleGroups : ''}
           </div>
         `;
       }).join('');
