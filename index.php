@@ -28087,11 +28087,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>`;
         }).join('');
         const chevronArch = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s; transform:rotate(${archExpanded ? 90 : 0}deg);"><polyline points="9 18 15 12 9 6"/></svg>`;
+        // Single-quoted onclick attribute so JSON.stringify's double
+        // quotes around the name don't close the attribute early.
+        // Prior version was double-quoted, which produced
+        //   onclick="...toggleCommissionArchive("Jackson")"
+        // and the HTML parser treated everything after the first
+        // inner double quote as stray attributes — the click never
+        // reached the handler, so the section couldn't expand.
+        const archToggleAttr = `onclick='event.stopPropagation(); toggleCommissionArchive(${JSON.stringify(empName)})'`;
         archivedHtml = `
           <div style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border);">
-            <div onclick="event.stopPropagation(); toggleCommissionArchive(${JSON.stringify(empName)})" style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; padding:6px 4px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">
+            <div ${archToggleAttr} style="display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; padding:6px 4px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">
               ${chevronArch}
-              <span>Archived (prior months)</span>
+              <span>Archived</span>
               <span style="margin-left:auto; font-weight:700; color:var(--text);">${archivedRows.length} row${archivedRows.length !== 1 ? 's' : ''} · ${fmtUsd(archSubtotal)}</span>
             </div>
             ${archExpanded ? `<div style="margin-top:8px;">${archBlocks}</div>` : ''}
