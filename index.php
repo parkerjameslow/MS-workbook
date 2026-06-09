@@ -1580,19 +1580,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .comm-paid-btn:hover .comm-paid-unpay::before {
       content: '×'; font-size: 14px; line-height: 1; font-weight: 800;
     }
-    /* Commission row hover — subtle highlight so the operator sees the
-       row is interactive (workbook link clickable, paid pill toggleable). */
-    .comm-row { transition: background 0.12s; }
+    /* Commission row — compact grid layout. info | amount | button.
+       Info column splits into two lines (name + status pill / meta)
+       that both truncate with ellipsis so the row stays ONE row tall
+       regardless of content length. Wrapping meta was bloating cards
+       to 4+ lines tall when Stage / Order / Shipment all populated. */
+    .comm-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 10px;
+      align-items: center;
+      padding: 7px 10px;
+      border-radius: 7px;
+      transition: background 0.12s;
+    }
     .comm-row:hover { background: rgba(107,147,255,0.04) !important; }
-    /* Commission row internals — two-line layout: product name + status
-       pill on top, Quote / age sub-line on bottom. Replaces the prior
-       inv-wb-pill chrome which was collapsing to just an arrow when the
-       row's flex column got tight. */
+    .comm-row-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .comm-row-line1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .comm-wb-name {
       font-size: 13px; font-weight: 600; color: var(--text);
-      text-decoration: none; cursor: pointer;
+      cursor: pointer; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-      min-width: 0; flex: 1 1 auto;
+      flex: 0 1 auto;
     }
     .comm-wb-name:hover { color: var(--accent); text-decoration: underline; }
     .comm-wb-name .comm-wb-arrow {
@@ -1600,9 +1609,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .comm-meta-line {
       font-size: 10.5px; color: var(--text-muted);
-      margin-top: 2px; font-variant-numeric: tabular-nums;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .comm-meta-line strong { color: var(--text); font-weight: 600; }
+    .comm-amt {
+      font-size: 14px; color: var(--success, #16a34a); font-weight: 700;
+      font-variant-numeric: tabular-nums; text-align: right;
+      min-width: 90px; white-space: nowrap;
+    }
     .inv-wb-pill-text {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
@@ -27756,32 +27771,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               Mark paid
             </button>`;
 
-        // Meta line — Quote total + age + context (stage / order /
-        // shipment) tucked under the workbook name. Context pills
-        // surface where this commission's underlying workbook
-        // actually stands so the operator can answer "is this still
-        // moving?" without leaving the page.
+        // Meta line — single-line, truncates with ellipsis if too
+        // long for the card width. Uses short labels (·) so the
+        // info fits without wrapping into the 4-line stack the
+        // previous version produced on narrow cards.
         const ctx = _wbContextFor(r.client_name, r.workbook_id);
         const metaParts = [];
-        if (r.client_total_usd) metaParts.push(`Quote: <strong>${fmtUsd0(r.client_total_usd)}</strong>`);
-        if (ctx.stage)          metaParts.push(`Stage: <strong>${esc(ctx.stage)}</strong>`);
-        if (ctx.orderName)      metaParts.push(`Order: <strong>${esc(ctx.orderName)}</strong>`);
-        if (ctx.shipmentName)   metaParts.push(`Shipment: <strong>${esc(ctx.shipmentName)}</strong>`);
+        if (r.client_total_usd) metaParts.push(`Quote <strong>${fmtUsd0(r.client_total_usd)}</strong>`);
+        if (ctx.stage)          metaParts.push(`<strong>${esc(ctx.stage)}</strong>`);
+        if (ctx.orderName)      metaParts.push(`Order <strong>${esc(ctx.orderName)}</strong>`);
+        if (ctx.shipmentName)   metaParts.push(`Shipment <strong>${esc(ctx.shipmentName)}</strong>`);
         if (ageStr)             metaParts.push(archived ? `paid ${ageStr}` : ageStr);
-        const metaHtml = metaParts.length
-          ? `<div class="comm-meta-line">${metaParts.join(' &nbsp;·&nbsp; ')}</div>`
+        const metaText = metaParts.join(' · ');
+        const metaTitleParts = [];
+        if (r.client_total_usd) metaTitleParts.push(`Quote: ${fmtUsd0(r.client_total_usd)}`);
+        if (ctx.stage)          metaTitleParts.push(`Stage: ${ctx.stage}`);
+        if (ctx.orderName)      metaTitleParts.push(`Order: ${ctx.orderName}`);
+        if (ctx.shipmentName)   metaTitleParts.push(`Shipment: ${ctx.shipmentName}`);
+        if (ageStr)             metaTitleParts.push(archived ? `paid ${ageStr}` : ageStr);
+        const metaTitle = metaTitleParts.join(' • ');
+        const metaHtml = metaText
+          ? `<div class="comm-meta-line" title="${esc(metaTitle)}">${metaText}</div>`
           : '';
 
+        // <span> instead of <a> — anchors without href have
+        // unpredictable rendering across browsers and were
+        // collapsing to invisible in the narrow commission card.
         return `
-          <div class="comm-row" style="display:flex; align-items:center; gap:14px; padding:9px 12px; border-radius:8px; background:${rowBg}; border:${rowBorder}; border-left:${leftAccent}; opacity:${opacity};">
-            <div style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:1px;">
-              <div style="display:flex; align-items:center; gap:8px; min-width:0;">
-                <a class="comm-wb-name" onclick="${wbClick}" title="${product}">${product}<span class="comm-wb-arrow">→</span></a>
+          <div class="comm-row" style="background:${rowBg}; border:${rowBorder}; border-left:${leftAccent}; opacity:${opacity};">
+            <div class="comm-row-info">
+              <div class="comm-row-line1">
+                <span class="comm-wb-name" onclick="${wbClick}" title="${product}">${product}<span class="comm-wb-arrow">→</span></span>
                 ${statusPillHtml}
               </div>
               ${metaHtml}
             </div>
-            <span style="font-size:14px; color:var(--success, #16a34a); font-weight:700; font-variant-numeric:tabular-nums; text-align:right; min-width:96px; white-space:nowrap; flex-shrink:0;">
+            <span class="comm-amt">
               ${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate — Client Cost not yet wired">est</span>' : ''}
             </span>
             ${buttonHtml}
