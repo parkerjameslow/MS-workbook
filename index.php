@@ -27467,7 +27467,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // CURRENT VERSION: v2. Bump this when you want every device to
   // wipe paid statuses again. After the reset succeeds the flag
   // sticks until the next bump.
-  const _COMMISSIONS_RESET_FLAG = 'ms_commissions_reset_v2';
+  const _COMMISSIONS_RESET_FLAG = 'ms_commissions_reset_v3';
   async function _commissionsOneShotReset() {
     try {
       if (localStorage.getItem(_COMMISSIONS_RESET_FLAG)) return;
