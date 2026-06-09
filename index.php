@@ -32759,67 +32759,137 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }).join('')}</div>`;
   }
 
-  // Standalone card builder so the Fulfillment view doesn't have to
-  // call into renderOrdersContent (which would also re-render the
-  // Orders view). Mirrors buildOrderCard's structure but uses a
-  // simpler shape — Fulfillment only needs client + order title +
-  // Notify-sent timestamp + key money numbers + an "Add to Shipment"
-  // action that opens the existing add-workbook-to-shipment flow.
+  // Fulfillment card builder — mirrors the Orders card's full
+  // structure (left column, workbook pills, right Total, full
+  // 8-column stat strip) so the same numbers + same actions are
+  // available. The only differences vs an Orders card:
+  //   • Green "Notified" pill in the left column (with the date)
+  //   • Orange "Fulfillment Date" pill = notifiedAt + agMaxLead days
+  //     so the operator sees the projected delivery from the day
+  //     the order was actually pushed to the client.
+  //   • A small "Add to Shipment" CTA pinned in the right-card
+  //     stack under the Total so the operator can act on the
+  //     fulfillment state without leaving the dashboard.
   function _buildFulfillmentCard(id) {
     const o = orderData[id];
     if (!o) return '';
     const entries = o.entries || [];
     const wbCount = entries.length;
-    let agUnits = 0, agPrice = 0, agMaxLead = 0, agWeightKg = 0, agCbm = 0;
+    let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0,
+        agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0;
+    const wbStatsByEntry = new Map();
     entries.forEach(e => {
-      const w = _wbStatsForPicker(workbookDetail[`${e.clientName}|${e.workbookId}`]);
-      agUnits    += w.units;
-      agPrice    += w.price;
-      agWeightKg += w.weightKg;
-      agCbm      += w.cbm;
+      const key = `${e.clientName}|${e.workbookId}`;
+      const w = _wbStatsForPicker(workbookDetail[key]);
+      wbStatsByEntry.set(key, w);
+      agUnits       += w.units;
+      agWeightKg    += w.weightKg;
+      agCost        += w.cost;
+      agPrice       += w.price;
+      agCbm         += w.cbm;
+      agShipping    += (w.shippingUsd || 0);
+      agProductCost += (w.productCost || 0);
+      agFeesAsIs    += (w.feesAsIs    || 0);
       if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
     });
-    const fmtUsdT = n => n > 0 ? '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    const fmtKgT  = n => n > 0 ? n.toLocaleString('en-US', {maximumFractionDigits:0}) + ' kg' : '—';
-    const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits:1, maximumFractionDigits:1}) + ' CBM' : '—';
+    const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+    const usdStr  = agPrice > 0 ? '$' + agPrice.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+
+    // Pills — Notified, Fulfillment Date, Lead. The fulfillment
+    // date is the projected delivery date if everything ships on
+    // schedule from the day notifiedAt was stamped (notifiedAt +
+    // agMaxLead). Useful for the operator to see "this order should
+    // be in the client's hands by X" once they push it through.
+    const notifiedDateObj = o.notifiedAt ? new Date(o.notifiedAt) : null;
+    const _fmtShortDate = d => d ? d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' }) : '';
+    const notifiedFmt = notifiedDateObj && !isNaN(notifiedDateObj.getTime()) ? _fmtShortDate(notifiedDateObj) : '—';
+    const fulfillmentDateFmt = (notifiedDateObj && !isNaN(notifiedDateObj.getTime()) && agMaxLead > 0)
+      ? _fmtShortDate(new Date(notifiedDateObj.getTime() + agMaxLead * 86400000))
+      : '';
+    const pills = [];
+    pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;"><span style="text-transform:uppercase;">Notified</span><span style="text-transform:none; letter-spacing:0;">${notifiedFmt}</span></span>`);
+    if (agMaxLead > 0) {
+      pills.push(`<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;">${agMaxLead} day lead</span>`);
+    }
+    if (fulfillmentDateFmt) {
+      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Projected delivery — Notify date + max workbook lead (${agMaxLead} days)"><span style="text-transform:uppercase;">Fulfillment Date</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
+    }
+
+    // Workbook pills — same as the Orders card.
+    const wbPills = entries.map(e => {
+      const w = wbStatsByEntry.get(`${e.clientName}|${e.workbookId}`) || {};
+      const det = workbookDetail[`${e.clientName}|${e.workbookId}`] || {};
+      const prod = (det.product || e.workbookId || '?');
+      const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
+      const wbUsd = w.price > 0 ? '$' + w.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+      return `<div class="oc-wb-row">
+        <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to Fulfillment'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
+        ${wbUsd ? `<span class="oc-wb-prices">${wbUsd}</span>` : ''}
+      </div>`;
+    }).join('');
+
+    // Stat strip — same 8-stat row as the Orders card so Cost +
+    // Shipping + Total + Profit are visible at a glance. Reuses the
+    // same Total = product+shipping logic and Profit = price -
+    // (total + feesAsIs) so fee passthroughs don't inflate.
+    const fmtUsdT = n => n > 0 ? '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—';
+    const fmtKgT  = n => n > 0 ? n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg' : '—';
+    const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1}) : '—';
     const fmtNumT = n => n > 0 ? n.toLocaleString('en-US') : '—';
-    const notifiedDate = o.notifiedAt
-      ? new Date(o.notifiedAt).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' })
+    const cbmCapT = 67;
+    const fillPctT  = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
+    const cbmOverT  = agCbm > cbmCapT ? agCbm - cbmCapT : 0;
+    const cbmValHtml = agCbm > 0
+      ? (cbmOverT > 0
+          ? `<span style="color:#d97706;">⚠</span> ${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span> <span style="color:#d97706; font-weight:800; margin-left:4px;">+${fmtCbmT(cbmOverT)} over</span>`
+          : `${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`)
       : '—';
+    const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
+    const agCostProduct = agProductCost;
+    const agTotalOurs   = agCost > 0 ? agCost : (agProductCost + agShipping);
+    const profitBasis = agTotalOurs + agFeesAsIs;
+    const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - profitBasis) : 0;
+    const profitHasData = (agPrice > 0 && profitBasis > 0);
+    const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
+    const profitHtml    = profitHasData
+      ? `<span style="color:${profitColor}; font-weight:700;">${fmtUsdT(profitT)}</span>`
+      : '—';
+
     return `<div class="order-card" onclick="location.hash='#/order/${id}'">
       <div class="oc-card-main">
         <div class="oc-left">
           <span class="oc-client">${o.clientName || ''}</span>
           <span class="oc-title">${o.name || `Order #${id}`}</span>
-          <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">
-            <span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;">
-              <span style="text-transform:uppercase;">Notified</span>
-              <span style="text-transform:none; letter-spacing:0;">${notifiedDate}</span>
-            </span>
-            ${agMaxLead > 0 ? `<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">${agMaxLead} day lead</span>` : ''}
-          </div>
+          <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">${pills.join('')}</div>
         </div>
         <div class="oc-wb-list">
           <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
+          ${wbPills}
         </div>
         <div class="oc-right-wrap">
           <div class="oc-grand-total">
             <span class="oc-grand-label">Total</span>
-            <span class="oc-grand-usd">${fmtUsdT(agPrice)}</span>
+            <span class="oc-grand-usd">${usdStr}</span>
+            <button onclick="event.stopPropagation(); location.hash='#/shipments'"
+              style="margin-top:10px; padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
+              title="Open Shipments to drop this order's workbooks into a shipment">
+              + Add to Shipment
+            </button>
           </div>
         </div>
       </div>
-      <div class="oc-stat-strip" style="grid-template-columns: repeat(5, 1fr);">
+      <div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
-        <div class="oc-stat"><span class="oc-stat-label">CBM</span><span class="oc-stat-val">${fmtCbmT(agCbm)}</span></div>
+        <div class="oc-stat" title="Product cost only — Total (ours) minus Shipping. Sum of each workbook's Pricing-tab Product Cost (no fees, no margin)."><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span></div>
+        <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
+        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
-        <div class="oc-stat">
-          <button onclick="event.stopPropagation(); location.hash='#/shipments'"
-            style="padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;"
-            title="Open Shipments to drop this order's workbooks into a shipment">
-            + Add to Shipment
-          </button>
+        <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
+        <div class="oc-stat oc-stat--cbm">
+          <span class="oc-stat-label">CBM</span>
+          <span class="oc-stat-val">${cbmValHtml}</span>
+          <div class="oc-cbm-bar"><div class="oc-cbm-bar-fill" style="width:${fillPctT}%; background:${cbmBarColor};"></div></div>
         </div>
       </div>
     </div>`;
