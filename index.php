@@ -1581,9 +1581,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       content: '×'; font-size: 14px; line-height: 1; font-weight: 800;
     }
     /* Commission row hover — subtle highlight so the operator sees the
-       row is interactive (workbook pill clickable, paid pill toggleable). */
+       row is interactive (workbook link clickable, paid pill toggleable). */
     .comm-row { transition: background 0.12s; }
     .comm-row:hover { background: rgba(107,147,255,0.04) !important; }
+    /* Commission row internals — two-line layout: product name + status
+       pill on top, Quote / age sub-line on bottom. Replaces the prior
+       inv-wb-pill chrome which was collapsing to just an arrow when the
+       row's flex column got tight. */
+    .comm-wb-name {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      text-decoration: none; cursor: pointer;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      min-width: 0; flex: 1 1 auto;
+    }
+    .comm-wb-name:hover { color: var(--accent); text-decoration: underline; }
+    .comm-wb-name .comm-wb-arrow {
+      font-size: 11px; opacity: 0.55; margin-left: 4px; font-weight: 500;
+    }
+    .comm-meta-line {
+      font-size: 10.5px; color: var(--text-muted);
+      margin-top: 2px; font-variant-numeric: tabular-nums;
+    }
+    .comm-meta-line strong { color: var(--text); font-weight: 600; }
     .inv-wb-pill-text {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
     }
@@ -27667,28 +27686,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               Mark paid
             </button>`;
 
-        // Sub-line shows the client total this commission was rated
-        // against (e.g. "Quote: $16,223") plus the age — small, muted,
-        // tucked under the workbook pill so the main line stays clean.
-        const subParts = [];
-        if (r.client_total_usd) subParts.push(`Quote: <strong style="color:var(--text); font-weight:600;">${fmtUsd0(r.client_total_usd)}</strong>`);
-        if (ageStr)             subParts.push(archived ? `paid ${ageStr}` : ageStr);
-        const subHtml = subParts.length
-          ? `<div style="font-size:10px; color:var(--text-muted); margin-top:3px; padding-left:2px; font-variant-numeric:tabular-nums;">${subParts.join(' &nbsp;·&nbsp; ')}</div>`
+        // Meta line — Quote total + age tucked under the workbook
+        // name. Kept inline so the row stays at 2 visual lines max.
+        const metaParts = [];
+        if (r.client_total_usd) metaParts.push(`Quote: <strong>${fmtUsd0(r.client_total_usd)}</strong>`);
+        if (ageStr)             metaParts.push(archived ? `paid ${ageStr}` : ageStr);
+        const metaHtml = metaParts.length
+          ? `<div class="comm-meta-line">${metaParts.join(' &nbsp;·&nbsp; ')}</div>`
           : '';
 
         return `
-          <div class="comm-row" style="display:flex; align-items:center; gap:12px; padding:8px 10px; border-radius:6px; background:${rowBg}; border:${rowBorder}; border-left:${leftAccent}; opacity:${opacity};">
-            <div style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column;">
+          <div class="comm-row" style="display:flex; align-items:center; gap:14px; padding:9px 12px; border-radius:8px; background:${rowBg}; border:${rowBorder}; border-left:${leftAccent}; opacity:${opacity};">
+            <div style="flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:1px;">
               <div style="display:flex; align-items:center; gap:8px; min-width:0;">
-                <span class="inv-wb-pill" onclick="${wbClick}" title="${product}" style="min-width:0; max-width:100%; flex:0 1 auto;">
-                  <span class="inv-wb-pill-text">${product}</span><span class="inv-wb-pill-arrow">→</span>
-                </span>
+                <a class="comm-wb-name" onclick="${wbClick}" title="${product}">${product}<span class="comm-wb-arrow">→</span></a>
                 ${statusPillHtml}
               </div>
-              ${subHtml}
+              ${metaHtml}
             </div>
-            <span style="font-size:14px; color:var(--success, #16a34a); font-weight:700; font-variant-numeric:tabular-nums; text-align:right; min-width:90px; white-space:nowrap; flex-shrink:0;">
+            <span style="font-size:14px; color:var(--success, #16a34a); font-weight:700; font-variant-numeric:tabular-nums; text-align:right; min-width:96px; white-space:nowrap; flex-shrink:0;">
               ${fmtUsd(r.commission_amount)}${isEst ? '<span style="margin-left:4px; font-size:10px; color:var(--text-muted); font-style:italic;" title="Estimate — Client Cost not yet wired">est</span>' : ''}
             </span>
             ${buttonHtml}
