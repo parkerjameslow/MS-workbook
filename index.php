@@ -27309,6 +27309,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const res = await apiCall('get_commissions');
       if (res && res.success) commissionsData = res.data || [];
     } catch (e) { console.error('[commissions] loadCommissions failed', e); }
+    // Repaint the left-nav badge as soon as data is in memory so the
+    // pending-commission count appears without waiting for the
+    // Commissions dashboard to render.
+    rebuildCommissionsNav();
   }
 
   function _commFilteredRows() {
@@ -27351,12 +27355,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const status = paid ? 'paid' : 'pending';
     const r = await apiCall('set_commission_status', { id, status });
     if (!r.success) { alert(r.error || 'Failed to update commission status.'); return; }
-    const row = commissionsData.find(x => x.id === id);
+    // Match id loosely — the API stores it as integer but the row
+    // could have been loaded as a string from JSON.parse depending on
+    // how the row was hydrated. Strict === would miss the update,
+    // leaving the local state in disagreement with the server until
+    // the next page load.
+    const row = commissionsData.find(x => x.id == id);
     if (row) {
       row.status  = status;
       row.paid_at = paid ? new Date().toISOString() : null;
     }
     renderCommissionsDashboard();
+    rebuildCommissionsNav();
+  }
+
+  // ── Commissions nav badge ─────────────────────────────────────────
+  // Counts pending (unpaid) commissions across every employee. Single
+  // blue total — every pending row is equally "needs paying", no
+  // separate actionable subcount. Hidden when the page hasn't loaded
+  // commissionsData yet OR when there's nothing pending.
+  function rebuildCommissionsNav() {
+    const badge = document.getElementById('badge-commissions');
+    if (!badge) return;
+    if (!Array.isArray(commissionsData)) { _applyNavBadge(badge, 0, 0); return; }
+    const pending = commissionsData.filter(r => r && r.status !== 'paid').length;
+    _applyNavBadge(badge, 0, pending);
   }
 
   // Selected year for the "Earnings over time" card. null = pick the most
