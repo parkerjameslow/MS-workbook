@@ -6249,10 +6249,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
-    <!-- Commissions -->
+    <!-- Commissions — no nav badge per operator preference. -->
     <a id="nav-commissions-link" href="#/commissions" onclick="event.preventDefault(); location.hash='#/commissions'" class="nav-flat-link">
       <span>Commissions</span>
-      <span class="nav-badge" id="badge-commissions"></span>
     </a>
 
     <!-- Reports -->
@@ -27513,17 +27512,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rebuildCommissionsNav();
   }
 
-  // ── Commissions nav badge ─────────────────────────────────────────
-  // Counts pending (unpaid) commissions across every employee. Single
-  // blue total — every pending row is equally "needs paying", no
-  // separate actionable subcount. Hidden when the page hasn't loaded
-  // commissionsData yet OR when there's nothing pending.
+  // Commissions left-nav badge intentionally NOT populated — the
+  // pending-count noise wasn't useful enough to justify the visual
+  // weight in the sidebar. Function kept as a no-op so existing
+  // callers (setCommissionPaid / loadCommissions) don't error.
   function rebuildCommissionsNav() {
     const badge = document.getElementById('badge-commissions');
-    if (!badge) return;
-    if (!Array.isArray(commissionsData)) { _applyNavBadge(badge, 0, 0); return; }
-    const pending = commissionsData.filter(r => r && r.status !== 'paid').length;
-    _applyNavBadge(badge, 0, pending);
+    if (badge) badge.innerHTML = '';
   }
 
   // Selected year for the "Earnings over time" card. null = pick the most
