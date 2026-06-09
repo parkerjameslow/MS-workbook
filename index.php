@@ -6339,7 +6339,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <thead>
             <tr>
               <th class="sortable" onclick="sortClientTable('product')">Product <span class="sort-arrow"></span></th>
-              <th class="col-landed sortable" onclick="sortClientTable('landed')">Landed Cost <span class="sort-arrow"></span></th>
+              <th class="col-landed sortable" onclick="sortClientTable('landed')">Client Quote Total <span class="sort-arrow"></span></th>
               <th class="col-date-created sortable" onclick="sortClientTable('date')">Date Created <span class="sort-arrow"></span></th>
               <th class="col-date-submitted sortable" onclick="sortClientTable('dateSubmitted')">Date Submitted <span class="sort-arrow"></span></th>
               <th class="col-order">Order</th>
@@ -24620,10 +24620,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // tab so we can show a Landed Cost column on this dashboard +
     // sort by it. The cache is written every time the Pricing tab
     // re-renders for that workbook; missing/0 → render as "—".
+    // Per-workbook "Client Quote Total" — prefer the cached value
+    // (pricingClientQuoteTotal = Sale Per × Qty + applied fees, as
+    // displayed in the Pricing tab's Client Quote card). Falls back
+    // to the legacy pricingLandedTotal when the newer cache hasn't
+    // been written yet (workbook hasn't been opened since the cache
+    // schema landed). Column was previously labelled "Landed Cost"
+    // and read pricingLandedTotal directly — renaming + swapping the
+    // source so the dashboard shows what the CLIENT will pay, not
+    // what the order COSTS us.
     const _landedFor = it => {
       const d = workbookDetail[`${clientName}|${it.id}`] || {};
-      const v = parseFloat(d.pricingLandedTotal);
-      return (!isNaN(v) && v > 0) ? v : 0;
+      const quote = parseFloat(d.pricingClientQuoteTotal);
+      if (!isNaN(quote) && quote > 0) return quote;
+      const landed = parseFloat(d.pricingLandedTotal);
+      return (!isNaN(landed) && landed > 0) ? landed : 0;
     };
 
     const dir = _clientSortDir === 'asc' ? 1 : -1;
@@ -24663,12 +24674,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ? ` <span class="pending-review-badge" title="Submitted via client intake link — needs review">Pending Review</span>`
         : '';
 
-      // Landed Cost cell — cached pricingLandedTotal from the Pricing
-      // tab. Empty → "—" (so the operator knows that workbook hasn't
-      // been priced yet).
+      // Client Quote Total cell — pricingClientQuoteTotal from the
+      // workbook's Pricing tab (what the CLIENT will pay = Sale Per
+      // × Qty + applied fees). Falls back to pricingLandedTotal for
+      // workbooks not yet opened under the new cache schema. Empty
+      // → "—" (workbook hasn't been priced).
       const landed = _landedFor(item);
       const landedCell = landed > 0
-        ? `<span class="wb-landed-pill" title="Total Landed Cost from this workbook's Pricing tab">${_fmtUsdShort(landed)}</span>`
+        ? `<span class="wb-landed-pill" title="Client Quote Total — what the client pays for this workbook (Sale Per × Qty + applied fees)">${_fmtUsdShort(landed)}</span>`
         : `<span style="color:var(--text-muted);">—</span>`;
 
       return `
