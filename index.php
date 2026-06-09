@@ -19700,6 +19700,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     //   • hidden variant rows revealed by toggleClientQuoteParent()
     // Add-Variant placeholder rows are skipped.
     const _fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    // Per-unit Sale Price formatter — 3 decimals (thousandths) so a
+    // $0.076 doesn't round to $0.08 and lose visible precision the
+    // operator typed on the Pricing tab. Line totals + grand totals
+    // keep _fmt2 since those are dollar amounts where the cent is
+    // the right precision.
+    const _fmt3 = v => v.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3});
     // Full Container Pitch scaling — when applied, the workbook's
     // pallet-total-cartons holds the bumped qty. We scale every RFQ
     // line's qty by (pitchUnits / grandRfqQty) so the Client Quote
@@ -19822,7 +19828,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
               <td style="font-weight:500;">${parentName}</td>
               <td style="text-align:right;">${pQty > 0 ? pQty.toLocaleString('en-US') + pitchBadge : '—'}</td>
-              <td style="text-align:right;">${pSale > 0 ? '$' + _fmt2(pSale) : '—'}</td>
+              <td style="text-align:right;">${pSale > 0 ? '$' + _fmt3(pSale) : '—'}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${pTotal > 0 ? '$' + _fmt2(pTotal) : '—'}</td>
             </tr>`;
           } else {
@@ -19887,7 +19893,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               ? `<span style="display:inline-block; vertical-align:middle; margin-right:6px; padding:2px 7px; background:rgba(232,117,26,0.14); color:#E8751A; border:1px solid rgba(232,117,26,0.45); border-radius:10px; font-size:9.5px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; line-height:1;">Variable</span>`
               : '';
             const saleText = saleMin === Infinity ? '—'
-              : (isRange ? `${variablePill}$${_fmt2(saleMin)}–$${_fmt2(saleMax)}` : '$' + _fmt2(saleMin));
+              : (isRange ? `${variablePill}$${_fmt3(saleMin)}–$${_fmt3(saleMax)}` : '$' + _fmt3(saleMin));
 
             // Parent row — clickable chevron toggles sub-variant rows
             // below. Index cell carries a small ▸/▾ chevron so the
@@ -19929,7 +19935,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   ${skuChip}${nameTxt}
                 </td>
                 <td style="text-align:right; color:var(--text-muted);">${v.qty > 0 ? v.qty.toLocaleString('en-US') : '—'}</td>
-                <td style="text-align:right; color:var(--text-muted);">${v.sale > 0 ? '$' + _fmt2(v.sale) : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${v.sale > 0 ? '$' + _fmt3(v.sale) : '—'}</td>
                 <td style="text-align:right; color:var(--text-muted); font-weight:500;">${v.total > 0 ? '$' + _fmt2(v.total) : '—'}</td>
               </tr>`;
             });
