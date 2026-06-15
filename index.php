@@ -34042,11 +34042,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       };
       const wbClientQuote = parseFloat(detail.pricingClientQuoteTotal) || 0;
       const wbTotalQty    = rfqItems.reduce((s, it) => s + itemEffQty(it), 0);
-      const useQuote      = wbClientQuote > 0 && wbTotalQty > 0;
-      // Per-unit sale price from the Client Quote = total ÷ total qty
-      // (fees amortized; constant across the workbook's variants since
-      // Sale Per is one workbook-level value).
-      const wbSaleUnit    = (useQuote && wbTotalQty > 0) ? (wbClientQuote / wbTotalQty) : 0;
+      // Per-unit sale price cascade — matches the PDF / CSV path so
+      // every export surface shows the same number:
+      //   1. pricingSalePer (operator-typed Sale Per — fees-free,
+      //      and the value the operator believes they set)
+      //   2. (pricingClientQuoteTotal − pricingAppliedFeesAsIs) / qty
+      //      (derive from cached quote with fees backed out)
+      //   3. Falls through to costUnit when no Sale Per AND no quote.
+      // The OLD math (clientQuote / qty) was amortizing fees into the
+      // per-unit, so a typed Sale Per of $0.14 with $3k of fees on
+      // 100k units would display as ~$0.171 — confusing the operator
+      // who never typed that number.
+      const wbSalePerTyped = parseFloat(detail.pricingSalePer) || 0;
+      const wbFeesAsIs     = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
+      const useQuote       = (wbSalePerTyped > 0 || wbClientQuote > 0) && wbTotalQty > 0;
+      const wbSaleUnit     = wbSalePerTyped > 0
+        ? wbSalePerTyped
+        : (wbClientQuote > 0 && wbTotalQty > 0 ? Math.max(0, wbClientQuote - wbFeesAsIs) / wbTotalQty : 0);
       // Cost-side fallback per-unit USD when no Client Quote yet —
       // qty-weighted blend so the workbook total still ≈ Σ rfq cost.
       const wbCostUnit = (() => {
