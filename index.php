@@ -33083,7 +33083,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const entries = o.entries || [];
     const wbCount = entries.length;
     let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0,
-        agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0;
+        agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0,
+        agCompFees = 0;
     const wbStatsByEntry = new Map();
     entries.forEach(e => {
       const key = `${e.clientName}|${e.workbookId}`;
@@ -33098,6 +33099,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       agProductCost += (w.productCost || 0);
       agFeesAsIs    += (w.feesAsIs    || 0);
       if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
+      // Tally complimentary-fee dollars per workbook so the card's
+      // Profit can subtract them. agPrice (pricingClientQuoteTotal)
+      // counts ALL Pricing-tab applied fees as revenue; comp fees
+      // need to be backed out of revenue so the dashboard's Profit
+      // matches the Order Sheet's per-workbook profit (which is now
+      // wbTotal − wbCost where wbTotal excludes comp fees).
+      if (typeof _appliedFeesFromDetail === 'function' && typeof _orderFeeIsBilled === 'function') {
+        const _fees = _appliedFeesFromDetail(workbookDetail[key] || {});
+        _fees.forEach(f => {
+          if (!_orderFeeIsBilled(o, e.workbookId, f.id)) {
+            agCompFees += (parseFloat(f.usd) || 0);
+          }
+        });
+      }
     });
     const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
     const usdStr  = agPrice > 0 ? '$' + agPrice.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
@@ -33154,8 +33169,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
     const agCostProduct = agProductCost;
     const agTotalOurs   = agCost > 0 ? agCost : (agProductCost + agShipping);
+    // Profit = Revenue − Cost. Revenue = agPrice (clientQuote sum,
+    // includes all applied fees) MINUS comp fees (operator marked
+    // them complimentary so client isn't actually paying for them).
+    // Cost = agTotalOurs + ALL fees-as-is (we pay them regardless).
+    // Matches the Order Sheet's per-workbook profit math so both
+    // surfaces show the same number on the same order.
     const profitBasis = agTotalOurs + agFeesAsIs;
-    const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - profitBasis) : 0;
+    const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - agCompFees - profitBasis) : 0;
     const profitHasData = (agPrice > 0 && profitBasis > 0);
     const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
     const profitHtml    = profitHasData
@@ -33269,7 +33290,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // selected freight mode's shipping lead); order lead = max
       // across the order's workbooks (a 30-day workbook sets the
       // floor for the whole shipment).
-      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0;
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0, agCompFees = 0;
       const wbStatsByEntry = new Map();
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
@@ -33284,6 +33305,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         agProductCost += (w.productCost || 0);
         agFeesAsIs    += (w.feesAsIs   || 0);
         if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
+        // Sum complimentary-fee dollars across the order so Profit
+        // below can subtract them from agPrice (which counts ALL
+        // Pricing-tab applied fees as revenue). Keeps the dashboard
+        // Profit in sync with the Order Sheet's per-workbook profit.
+        if (typeof _appliedFeesFromDetail === 'function' && typeof _orderFeeIsBilled === 'function') {
+          const _fees = _appliedFeesFromDetail(workbookDetail[key] || {});
+          _fees.forEach(f => {
+            if (!_orderFeeIsBilled(o, e.workbookId, f.id)) {
+              agCompFees += (parseFloat(f.usd) || 0);
+            }
+          });
+        }
       });
 
       const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
@@ -33557,8 +33590,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Red when negative (selling below cost — pricing mistake);
       // green otherwise. Blanks out when no workbook has Sale Per
       // typed yet.
+      // Profit = Revenue − Cost. Revenue = agPrice (clientQuote sum,
+      // includes all applied fees) MINUS comp fees (operator marked
+      // them complimentary so client isn't paying). Cost = agTotalOurs
+      // + ALL fees-as-is (we owe them regardless). Matches the Order
+      // Sheet's per-workbook profit math so the dashboard card + the
+      // drill-down show the same number for the same order.
       const profitBasis = agTotalOurs + agFeesAsIs;
-      const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - profitBasis) : 0;
+      const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - agCompFees - profitBasis) : 0;
       const profitHasData = (agPrice > 0 && profitBasis > 0);
       const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
       const profitHtml    = profitHasData
@@ -34109,22 +34148,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const wbTotal  = wbItemsTotal + wbBilledFees;
       grandUsd += wbTotal;
 
-      // Per-unit COST for the workbook. The TRUE cost basis is:
-      //   pricingGrandTotalCost (product + shipping)
-      //   + pricingAppliedFeesAsIs (real cost of applied fees — NOT
-      //     the override, so any fee markup the operator typed flows
-      //     into profit instead of being silently absorbed).
-      // Spread evenly across qty for per-row math. Per-line profit
+      // Per-workbook profit — consistent with Fulfillment / dashboard:
+      //   Revenue = (Sale Per × qty) + billed fees      (wbTotal)
+      //   Cost    = pricingGrandTotalCost + ALL fees as-is
+      //   Profit  = Revenue − Cost
+      // For fees at as-is amounts: billed_fees == fees_as_is → no
+      // profit impact (passthrough). For overridden fees: markup
+      // lands in profit. For complimentary fees: revenue side loses
+      // the fee while cost still pays it → profit drops by as-is.
+      //
+      // Previously this used sale_items − (cost + ALL fees), which
+      // treated every fee as complimentary, so workbooks with applied
+      // fees showed negative profit even when those fees were billed.
+      //
+      // Per-row profit is then (wbProfit / wbTotalQty) × variantQty —
+      // each variant carries its proportional share so the column
+      // sums back to the workbook profit. Spread evenly across qty for per-row math. Per-line profit
       // therefore reflects product margin + fee markup × (rowQty /
       // wbTotalQty) — i.e. each row carries its proportional share of
       // the fee markup as profit.
       const wbGrandTotalCost   = parseFloat(detail.pricingGrandTotalCost) || 0;
-      const wbAppliedFeesAsIs  = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
-      const wbTrueCostBasis    = wbGrandTotalCost + wbAppliedFeesAsIs;
+      // ALL fees the workbook actually owes the supplier — use the
+      // detail-driven fee list (not the cache) so workbooks whose
+      // pricingAppliedFeesAsIs cache is missing still get correct
+      // cost basis. Same _appliedFeesFromDetail call site as the
+      // wbBilledFees calc above; this one ignores billed/comp state
+      // since cost-side pays every fee regardless.
+      const wbAllFeesAsIs = _wbFeesForTotal.reduce((s, f) => s + (parseFloat(f.usd) || 0), 0);
+      const wbTrueCostBasis    = wbGrandTotalCost + wbAllFeesAsIs;
       const wbCostPerUnit      = wbTotalQty > 0 && wbTrueCostBasis > 0 ? wbTrueCostBasis / wbTotalQty : 0;
-      const profitPerUnit      = (useQuote && wbCostPerUnit > 0) ? (wbSaleUnit - wbCostPerUnit) : 0;
-      const haveProfit         = useQuote && wbCostPerUnit > 0 && wbTotalQty > 0;
-      const wbProfit           = haveProfit ? profitPerUnit * wbTotalQty : 0;
+      // wbProfit = Revenue − Cost. wbTotal already includes billed
+      // fees (see wbBilledFees computation above). Subtracting the
+      // full cost basis (including ALL fees as-is) yields:
+      //   • Passthrough fees (billed at as-is) → 0 profit impact.
+      //   • Override fees → markup lands in profit.
+      //   • Comp fees → -as-is per fee (we eat the cost).
+      const haveProfit = useQuote && wbTrueCostBasis > 0 && wbTotalQty > 0;
+      const wbProfit   = haveProfit ? (wbTotal - wbTrueCostBasis) : 0;
+      const profitPerUnit = wbTotalQty > 0 ? wbProfit / wbTotalQty : 0;
       grandProfitUsd          += wbProfit;
 
       // Profit-cell helper — green for positive, red for negative,
