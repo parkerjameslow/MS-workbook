@@ -34054,7 +34054,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // 100k units would display as ~$0.171 — confusing the operator
       // who never typed that number.
       const wbSalePerTyped = parseFloat(detail.pricingSalePer) || 0;
-      const wbFeesAsIs     = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
+      // Cache-first, then derive from detail_json so workbooks that
+      // haven't been opened since the cache field landed don't fall
+      // through to $0 fees (which would leak fee dollars back into
+      // the per-unit). _appliedFeesFromDetail walks the same
+      // standard + extra rows the Pricing tab does, so the value
+      // matches the on-screen Additional Fees total.
+      let wbFeesAsIs = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
+      if (wbFeesAsIs === 0 && typeof _appliedFeesFromDetail === 'function') {
+        const _liveFees = _appliedFeesFromDetail(detail);
+        wbFeesAsIs = _liveFees.reduce((s, f) => s + (parseFloat(f.usd) || 0), 0);
+      }
       const useQuote       = (wbSalePerTyped > 0 || wbClientQuote > 0) && wbTotalQty > 0;
       const wbSaleUnit     = wbSalePerTyped > 0
         ? wbSalePerTyped
@@ -34081,7 +34091,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return wbTotalQty > 0 ? costSum / wbTotalQty : 0;
       })();
       const perUnit  = useQuote ? wbSaleUnit : wbCostUnit;
-      const wbTotal  = perUnit > 0 ? perUnit * wbTotalQty : 0;
+      // Billed fees for this workbook — only fees the operator has
+      // CHECKED ON the order's Bill/Complimentary toggle count.
+      // Complimentary fees ($0 to client) contribute 0. Drives the
+      // grand total so unticking a fee actually drops the order's
+      // total, which the user reported wasn't happening.
+      const _wbFeesForTotal = (typeof _appliedFeesFromDetail === 'function')
+        ? _appliedFeesFromDetail(detail) : [];
+      const wbBilledFees = _wbFeesForTotal.reduce((sum, f) => {
+        const billed = (typeof _orderFeeIsBilled === 'function')
+          ? _orderFeeIsBilled(o, entry.workbookId, f.id) : true;
+        return sum + (billed ? (parseFloat(f.usd) || 0) : 0);
+      }, 0);
+      // wbTotal now = (Sale Per × qty) + billed fees. Items + fees,
+      // matching what the client is being charged.
+      const wbItemsTotal = perUnit > 0 ? perUnit * wbTotalQty : 0;
+      const wbTotal  = wbItemsTotal + wbBilledFees;
       grandUsd += wbTotal;
 
       // Per-unit COST for the workbook. The TRUE cost basis is:
