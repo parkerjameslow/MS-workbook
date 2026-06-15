@@ -29191,7 +29191,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     //           weight × rate freight math.
     const tierQty   = selTier ? (parseInt(String(selTier.qty || '').replace(/,/g, ''), 10) || 0) : 0;
     const palletTot = parseInt(String(d.palletTotalCartons || '').replace(/,/g, ''), 10);
-    const units     = (!isNaN(palletTot) && palletTot > 0) ? palletTot : tierQty;
+    // Units = sum of RFQ qtys (parent items + their variants) — what
+    // the workbook actually has lined up to sell. Falls back to
+    // palletTotalCartons (Total Units to Ship), then tier qty, so
+    // workbooks without RFQ rows still produce a sensible number.
+    //
+    // Previously this preferred palletTotalCartons. That field is a
+    // SHIPPING qty (used for freight / pallet math) and can drift
+    // from the sum of variant qtys when the operator types one
+    // round number into Total Units to Ship without re-balancing
+    // the variant rows. Dashboards then said "445k" while the Order
+    // Sheet drilled down to 435k — same workbook, different number.
+    // Matching Order Sheet's wbTotalQty math keeps both surfaces in
+    // sync. itemEffQty mirrors the Order Sheet helper inline so
+    // _wbStatsForPicker stays self-contained.
+    const _rfqItemsForUnits = Array.isArray(d.rfqItems) ? d.rfqItems : [];
+    const _itemEffQty = it => {
+      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+      if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g, '')) || 0), 0);
+      return parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
+    };
+    const rfqQtySum = _rfqItemsForUnits.reduce((s, it) => s + _itemEffQty(it), 0);
+    const units = rfqQtySum > 0
+      ? rfqQtySum
+      : ((!isNaN(palletTot) && palletTot > 0) ? palletTot : tierQty);
     let weightKg = parseFloat(d.pricingShipmentWeightKg) || 0;
     if (weightKg === 0) {
       // Fallback: the cache is only written from renderPalletViz (which
