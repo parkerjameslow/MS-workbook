@@ -8890,8 +8890,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <tr>
               <th>Item</th>
               <th style="text-align:right;">Qty</th>
-              <th style="text-align:right;">Sale / Unit (USD)</th>
-              <th style="text-align:right;">Total (USD)</th>
+              <th style="text-align:right;">Sale / Unit</th>
+              <th style="text-align:right;">Total</th>
               <th style="text-align:right;">Profit (USD)</th>
               <th style="text-align:right;">Lead</th>
               <th></th>
@@ -33184,16 +33184,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Projected delivery — Notify date + max workbook lead (${agMaxLead} days)"><span style="text-transform:uppercase;">Production Date</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
     }
 
-    // Workbook pills — same as the Orders card.
+    // Workbook pills — same RMB + USD layout as the Orders card so
+    // the operator sees both currencies inline regardless of which
+    // lane the order's currently in.
     const wbPills = entries.map(e => {
       const w = wbStatsByEntry.get(`${e.clientName}|${e.workbookId}`) || {};
       const det = workbookDetail[`${e.clientName}|${e.workbookId}`] || {};
       const prod = (det.product || e.workbookId || '?');
       const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
-      const wbUsd = w.price > 0 ? '$' + w.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+      let wbRmb = '', wbUsd = '';
+      if (w.price > 0) {
+        const totalUsd = w.price;
+        const totalRmb = totalUsd * _fxRate;
+        wbUsd = `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      }
+      const priceStr = (wbRmb || wbUsd)
+        ? `<span class="oc-wb-prices">${[wbRmb, wbUsd].filter(Boolean).join('&nbsp;&nbsp;')}</span>`
+        : '';
       return `<div class="oc-wb-row">
         <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to In Production'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
-        ${wbUsd ? `<span class="oc-wb-prices">${wbUsd}</span>` : ''}
+        ${priceStr}
       </div>`;
     }).join('');
 
@@ -34151,6 +34162,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // so older / never-opened workbooks contribute 0 until visited.
     let totalWeightKg = 0, totalCbm = 0;
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    // Hoisted so the tfoot (grand total) can also render the RMB
+    // companion line — same fallback as the per-iteration constant
+    // that used to live inside the .map callback.
+    const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+    // Inline RMB companion under each USD cell — small muted line so
+    // it never competes with the primary USD value but is always there
+    // for the operator who needs to think in RMB.
+    const rmbLine = (usd, opts) => {
+      if (!(usd > 0)) return '';
+      const decimals = (opts && opts.decimals) || 2;
+      const v = (usd * _fxRate).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      return `<div style="font-size:11px; color:var(--text-muted); opacity:0.75; font-weight:500; margin-top:1px;">¥${v}</div>`;
+    };
 
     tbody.innerHTML = entries.map((entry, idx) => {
       const key     = `${entry.clientName}|${entry.workbookId}`;
@@ -34200,7 +34224,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (wbLead > grandMaxLead) grandMaxLead = wbLead;
       const leadStr  = wbLead > 0 ? `${wbLead} days` : '—';
 
-      const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
       const fmt3 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -34346,8 +34369,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${splitBadges}
         </td>
         <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>
-        <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
-        <td style="text-align:right; font-weight:700;">${wbTotal > 0 ? '$' + fmt2(wbTotal) : '—'}</td>
+        <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
+        <td style="text-align:right;">${wbTotal > 0 ? '<div style="font-weight:700;">$' + fmt2(wbTotal) + '</div>' + rmbLine(wbTotal) : '—'}</td>
         ${profitCell(wbProfit, haveProfit)}
         <td style="text-align:right; color:var(--text-muted);">${leadStr}</td>
         <td style="text-align:right;">
@@ -34392,8 +34415,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   ${prefix}<span style="color:var(--text); font-weight:500;">${esc(vLabel)}</span>
                 </td>
                 <td style="text-align:right;">${vQty > 0 ? vQty.toLocaleString('en-US') : '—'}</td>
-                <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
-                <td style="text-align:right; font-weight:600;">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
+                <td style="text-align:right;">${vTot > 0 ? '<div style="font-weight:600;">$' + fmt2(vTot) + '</div>' + rmbLine(vTot) : '—'}</td>
                 ${profitCell(vProfit, haveProfit && vQty > 0)}
                 <td></td>
                 <td></td>
@@ -34407,8 +34430,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
               <td style="padding-left:36px;">${esc(item.item || '—')}</td>
               <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
-              <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
-              <td style="text-align:right; font-weight:600;">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
+              <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
+              <td style="text-align:right;">${iTot > 0 ? '<div style="font-weight:600;">$' + fmt2(iTot) + '</div>' + rmbLine(iTot) : '—'}</td>
               ${profitCell(iProfit, haveProfit && itemQty > 0)}
               <td></td>
               <td></td>
@@ -34446,7 +34469,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
-            <td style="text-align:right; font-weight:600; color:${billed ? '#E8751A' : 'var(--text-muted)'};">${clientAmount}</td>
+            <td style="text-align:right; color:${billed ? '#E8751A' : 'var(--text-muted)'};">
+              <div style="font-weight:600;">${clientAmount}</div>
+              ${billed && f.usd > 0 ? rmbLine(f.usd) : ''}
+            </td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
             <td></td>
             <td></td>
@@ -34497,7 +34523,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const grandProfitStr = grandProfitUsd !== 0 ? `$${fmt2(grandProfitUsd)}` : '—';
     tfoot.innerHTML = `<tr>
       <td colspan="3" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
-      <td style="text-align:right; font-size:15px; font-weight:800;">${grandUsdStr}</td>
+      <td style="text-align:right;">
+        <div style="font-size:15px; font-weight:800;">${grandUsdStr}</div>
+        ${grandUsd > 0 ? `<div style="font-size:12px; color:var(--text-muted); opacity:0.8; font-weight:600; margin-top:1px;">¥${fmt2(grandUsd * _fxRate)}</div>` : ''}
+      </td>
       <td style="text-align:right; font-size:14px; font-weight:800; color:${profitColor};">${grandProfitStr}</td>
       <td style="text-align:right; font-weight:700; color:var(--text-muted);">${grandLeadStr}</td>
       <td></td>
