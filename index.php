@@ -29241,6 +29241,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? rfqQtySum
       : ((!isNaN(palletTot) && palletTot > 0) ? palletTot : tierQty);
     let weightKg = parseFloat(d.pricingShipmentWeightKg) || 0;
+    // Cached weight was computed for whatever palletTotalCartons was
+    // set at the time. If the current RFQ qty has since changed
+    // (operator added units but hasn't re-opened the Shipping tab),
+    // scale per-unit and re-apply so the card reflects today's order,
+    // not yesterday's snapshot. Same scaling logic below for CBM.
+    if (weightKg > 0 && palletTot > 0 && units > 0 && palletTot !== units) {
+      weightKg = (weightKg / palletTot) * units;
+    }
     if (weightKg === 0) {
       // Fallback: the cache is only written from renderPalletViz (which
       // needs carton dims to produce pallets) or from calcFreight's
@@ -29273,6 +29281,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const cost = parseFloat(d.pricingGrandTotalCost) || parseFloat(d.pricingLandedTotal) || 0;
     const price = parseFloat(d.pricingClientQuoteTotal) || 0;
     let cbm = parseFloat(d.pricingShipmentCbm) || 0;
+    // Same staleness fix as weightKg above — cache was built for the
+    // qty that was on the Shipping tab last time; rescale per-unit
+    // when the order has since added or removed RFQ units.
+    if (cbm > 0 && palletTot > 0 && units > 0 && palletTot !== units) {
+      cbm = (cbm / palletTot) * units;
+    }
     if (cbm === 0 && units > 0) {
       // Fallback hierarchy depends on which Override is active. The
       // product-dim fallback is meaningless when the operator chose
