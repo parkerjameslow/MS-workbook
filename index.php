@@ -33181,7 +33181,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       pills.push(`<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;">${agMaxLead} day lead</span>`);
     }
     if (fulfillmentDateFmt) {
-      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Projected delivery — Notify date + max workbook lead (${agMaxLead} days)"><span style="text-transform:uppercase;">Fulfillment Date</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
+      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Projected delivery — Notify date + max workbook lead (${agMaxLead} days)"><span style="text-transform:uppercase;">Production Date</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
     }
 
     // Workbook pills — same as the Orders card.
@@ -33752,7 +33752,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const backEl = document.getElementById('order-detail-back');
     if (backEl) {
       const backHash  = inFulfillment ? '#/fulfillment' : '#/orders';
-      const backLabel = inFulfillment ? '← Back to Fulfillment' : '← Back to Orders';
+      const backLabel = inFulfillment ? '← Back to In Production' : '← Back to Orders';
       backEl.setAttribute('href', backHash);
       backEl.textContent = backLabel;
     }
@@ -33762,7 +33762,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (stageEl) {
       if (inFulfillment) {
         stageEl.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:99px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;';
-        stageEl.textContent = 'In Fulfillment';
+        stageEl.textContent = 'In Production';
       } else if (o.notifiedAt && _orderHasAnyWorkbookOnShipment(o)) {
         stageEl.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:99px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;';
         stageEl.textContent = 'On Shipment';
