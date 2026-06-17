@@ -8892,6 +8892,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">Qty</th>
               <th style="text-align:right;">Sale / Unit</th>
               <th style="text-align:right;">Total</th>
+              <th style="text-align:right;" title="Billed Additional Fees on this workbook. Complimentary fees are excluded — they appear on the invoice at $0.00 with a Complimentary tag.">Fees</th>
               <th style="text-align:right;">Profit (USD)</th>
               <th style="text-align:right;">Lead</th>
               <th></th>
@@ -33131,7 +33132,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const wbCount = entries.length;
     let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0,
         agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0,
-        agCompFees = 0;
+        agCompFees = 0, agFeesBilled = 0;
     const wbStatsByEntry = new Map();
     entries.forEach(e => {
       const key = `${e.clientName}|${e.workbookId}`;
@@ -33146,17 +33147,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       agProductCost += (w.productCost || 0);
       agFeesAsIs    += (w.feesAsIs    || 0);
       if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
-      // Tally complimentary-fee dollars per workbook so the card's
-      // Profit can subtract them. agPrice (pricingClientQuoteTotal)
-      // counts ALL Pricing-tab applied fees as revenue; comp fees
-      // need to be backed out of revenue so the dashboard's Profit
-      // matches the Order Sheet's per-workbook profit (which is now
-      // wbTotal − wbCost where wbTotal excludes comp fees).
+      // Tally complimentary + billed fees per workbook. Comp fees feed
+      // the Profit calc (agPrice counts ALL Pricing-tab fees as
+      // revenue → comp must be backed out). Billed fees feed the Fees
+      // stat displayed in the card strip — same definition the Order
+      // Sheet's Fees column uses so the two surfaces agree.
       if (typeof _appliedFeesFromDetail === 'function' && typeof _orderFeeIsBilled === 'function') {
         const _fees = _appliedFeesFromDetail(workbookDetail[key] || {});
         _fees.forEach(f => {
-          if (!_orderFeeIsBilled(o, e.workbookId, f.id)) {
-            agCompFees += (parseFloat(f.usd) || 0);
+          const amt = parseFloat(f.usd) || 0;
+          if (_orderFeeIsBilled(o, e.workbookId, f.id)) {
+            agFeesBilled += amt;
+          } else {
+            agCompFees   += amt;
           }
         });
       }
@@ -33271,6 +33274,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
         <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
+        <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
@@ -33348,7 +33352,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // selected freight mode's shipping lead); order lead = max
       // across the order's workbooks (a 30-day workbook sets the
       // floor for the whole shipment).
-      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0, agCompFees = 0;
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0, agCompFees = 0, agFeesBilled = 0;
       const wbStatsByEntry = new Map();
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
@@ -33363,15 +33367,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         agProductCost += (w.productCost || 0);
         agFeesAsIs    += (w.feesAsIs   || 0);
         if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
-        // Sum complimentary-fee dollars across the order so Profit
-        // below can subtract them from agPrice (which counts ALL
-        // Pricing-tab applied fees as revenue). Keeps the dashboard
-        // Profit in sync with the Order Sheet's per-workbook profit.
+        // Tally billed + complimentary fee dollars per workbook. Comp
+        // is needed for the Profit calc (agPrice = pricingClientQuoteTotal
+        // counts ALL fees as revenue → comp must be subtracted to match
+        // the Order Sheet's per-workbook profit). Billed feeds the new
+        // Fees stat in the strip — same number the Order Sheet shows.
         if (typeof _appliedFeesFromDetail === 'function' && typeof _orderFeeIsBilled === 'function') {
           const _fees = _appliedFeesFromDetail(workbookDetail[key] || {});
           _fees.forEach(f => {
-            if (!_orderFeeIsBilled(o, e.workbookId, f.id)) {
-              agCompFees += (parseFloat(f.usd) || 0);
+            const amt = parseFloat(f.usd) || 0;
+            if (_orderFeeIsBilled(o, e.workbookId, f.id)) {
+              agFeesBilled += amt;
+            } else {
+              agCompFees   += amt;
             }
           });
         }
@@ -33668,6 +33676,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-stat" title="${_shipTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
         <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
+        <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
@@ -34156,6 +34165,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // missing pricingGrandTotalCost contribute 0 (column shows "—"
     // for those rows so the operator can spot the gap).
     let grandProfitUsd = 0;
+    // Order-level Additional Fees total — Σ (billed fees per workbook).
+    // Excludes complimentary fees (operator can untick them; they still
+    // appear on the invoice at $0.00 with a Complimentary tag but don't
+    // contribute to the order's fee total).
+    let grandFeesUsd = 0;
     // Sum cached shipment metrics across the order's workbooks. These
     // come from renderContainerViz / renderPricingTab caches written
     // when the operator visits each workbook's Shipping / Pricing tab,
@@ -34192,7 +34206,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const isMissing = !liveWb && !detail.product;
       if (isMissing) {
         return `<tr class="order-sheet-wb-header" style="background:rgba(220,38,38,0.06);">
-          <td colspan="6" style="border-top:1px dashed var(--danger, #dc2626); border-bottom:1px dashed var(--danger, #dc2626); padding:12px 14px;">
+          <td colspan="7" style="border-top:1px dashed var(--danger, #dc2626); border-bottom:1px dashed var(--danger, #dc2626); padding:12px 14px;">
             <div style="display:flex; align-items:center; gap:10px;">
               <span style="font-size:14px;">⚠</span>
               <div style="flex:1; min-width:0;">
@@ -34303,6 +34317,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const wbItemsTotal = perUnit > 0 ? perUnit * wbTotalQty : 0;
       const wbTotal  = wbItemsTotal + wbBilledFees;
       grandUsd += wbTotal;
+      grandFeesUsd += wbBilledFees;
 
       // Per-workbook profit — consistent with Fulfillment / dashboard:
       //   Revenue = (Sale Per × qty) + billed fees      (wbTotal)
@@ -34371,6 +34386,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>
         <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
         <td style="text-align:right;">${wbTotal > 0 ? '<div style="font-weight:700;">$' + fmt2(wbTotal) + '</div>' + rmbLine(wbTotal) : '—'}</td>
+        <td style="text-align:right;">${wbBilledFees > 0 ? '<div style="font-weight:600; color:#E8751A;">$' + fmt2(wbBilledFees) + '</div>' + rmbLine(wbBilledFees) : '<span style="color:var(--text-muted);">—</span>'}</td>
         ${profitCell(wbProfit, haveProfit)}
         <td style="text-align:right; color:var(--text-muted);">${leadStr}</td>
         <td style="text-align:right;">
@@ -34384,7 +34400,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const detailStyle = isExpanded ? '' : 'display:none;';
       if (rfqItems.length === 0) {
         rows += `<tr data-osh-wb="${esc(key)}" style="${detailStyle}">
-          <td colspan="7" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
+          <td colspan="8" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
         // Per UX direction — when a workbook is EXPANDED, show its
@@ -34417,6 +34433,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <td style="text-align:right;">${vQty > 0 ? vQty.toLocaleString('en-US') : '—'}</td>
                 <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
                 <td style="text-align:right;">${vTot > 0 ? '<div style="font-weight:600;">$' + fmt2(vTot) + '</div>' + rmbLine(vTot) : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">—</td>
                 ${profitCell(vProfit, haveProfit && vQty > 0)}
                 <td></td>
                 <td></td>
@@ -34432,6 +34449,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
               <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
               <td style="text-align:right;">${iTot > 0 ? '<div style="font-weight:600;">$' + fmt2(iTot) + '</div>' + rmbLine(iTot) : '—'}</td>
+              <td style="text-align:right; color:var(--text-muted);">—</td>
               ${profitCell(iProfit, haveProfit && itemQty > 0)}
               <td></td>
               <td></td>
@@ -34467,6 +34485,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 ${tag}
               </label>
             </td>
+            <td style="text-align:right; color:var(--text-muted);">—</td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
             <td style="text-align:right; color:${billed ? '#E8751A' : 'var(--text-muted)'};">
@@ -34507,7 +34526,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const shipRow = showShipRow
       ? `<tr>
           <td colspan="3" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
-          <td colspan="4" style="text-align:right; font-size:12px; padding-top:4px;">
+          <td colspan="5" style="text-align:right; font-size:12px; padding-top:4px;">
             <span style="color:var(--text-muted); margin-right:14px;">Weight: <strong style="color:var(--text);">${wtStr}</strong></span>
             <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmHtml}</strong></span>
             <div style="margin-top:5px; height:4px; background:var(--surface2); border-radius:99px; overflow:hidden; max-width:260px; margin-left:auto;">
@@ -34526,6 +34545,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td style="text-align:right;">
         <div style="font-size:15px; font-weight:800;">${grandUsdStr}</div>
         ${grandUsd > 0 ? `<div style="font-size:12px; color:var(--text-muted); opacity:0.8; font-weight:600; margin-top:1px;">¥${fmt2(grandUsd * _fxRate)}</div>` : ''}
+      </td>
+      <td style="text-align:right;" title="Sum of billed Additional Fees across every workbook on this order. Complimentary fees excluded.">
+        ${grandFeesUsd > 0 ? `<div style="font-size:14px; font-weight:800; color:#E8751A;">$${fmt2(grandFeesUsd)}</div><div style="font-size:12px; color:var(--text-muted); opacity:0.8; font-weight:600; margin-top:1px;">¥${fmt2(grandFeesUsd * _fxRate)}</div>` : '<span style="color:var(--text-muted);">—</span>'}
       </td>
       <td style="text-align:right; font-size:14px; font-weight:800; color:${profitColor};">${grandProfitStr}</td>
       <td style="text-align:right; font-weight:700; color:var(--text-muted);">${grandLeadStr}</td>
