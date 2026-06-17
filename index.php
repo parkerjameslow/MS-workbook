@@ -33214,7 +33214,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       }
       const priceStr = (wbRmb || wbUsd)
-        ? `<span class="oc-wb-prices">${[wbRmb, wbUsd].filter(Boolean).join('&nbsp;&nbsp;')}</span>`
+        ? `<span class="oc-wb-prices">${wbRmb ? `<span>${wbRmb}</span>` : ''}${wbUsd ? `<span style="${wbRmb ? 'border-left:1px solid var(--border); padding-left:10px; margin-left:10px;' : ''}color:var(--text);">${wbUsd}</span>` : ''}</span>`
         : '';
       return `<div class="oc-wb-row">
         <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to In Production'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
@@ -33419,7 +33419,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             }
             const priceStr = (wbRmb || wbUsd)
-              ? `<span class="oc-wb-prices">${[wbRmb, wbUsd].filter(Boolean).join('&nbsp;&nbsp;')}</span>`
+              ? `<span class="oc-wb-prices">${wbRmb ? `<span>${wbRmb}</span>` : ''}${wbUsd ? `<span style="${wbRmb ? 'border-left:1px solid var(--border); padding-left:10px; margin-left:10px;' : ''}color:var(--text);">${wbUsd}</span>` : ''}</span>`
               : '';
             return `<div class="oc-wb-row">
               <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
