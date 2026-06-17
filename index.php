@@ -7615,6 +7615,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="freight-result-label">Estimated Shipping Cost</span>
           <span class="freight-result-value cost" id="freight-out-cost">—</span>
         </div>
+
+        <!-- Shipping Upgrade vs Fast Boat chip — only visible when the
+             selected mode is more expensive than Fast Boat. Clicking the
+             button adds (or refreshes) a markup-only Additional Fee on
+             the Pricing tab equal to (current_mode − fast_boat). The
+             fee covers the upgrade in client revenue; the operator's
+             cost basis stays at Fast Boat so profit doesn't move from
+             the baseline. Sale Per is untouched. -->
+        <div id="freight-upgrade-chip" style="display:none; margin-top:8px; padding:10px 14px; border-radius:8px; background:rgba(232,117,26,0.06); border:1px solid rgba(232,117,26,0.30);">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div style="font-size:12px; color:var(--text); min-width:0;">
+              <div style="font-weight:700;">Shipping Upgrade vs Fast Boat:&nbsp;<span id="freight-upgrade-delta" style="color:#E8751A;">$0.00</span></div>
+              <div id="freight-upgrade-sub" style="font-size:11px; color:var(--text-muted); margin-top:2px;"></div>
+            </div>
+            <button id="freight-upgrade-btn" type="button" onclick="addShippingUpgradeFee()"
+              style="padding:7px 14px; border-radius:6px; background:var(--accent); color:#fff; border:none; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; white-space:nowrap;"
+              title="Bill the upgrade premium as a markup-only Additional Fee. Bag price stays the same. The client pays the upgrade. Your profit stays at Fast Boat baseline (cost basis excludes this fee; revenue includes it).">
+              + Bill upgrade as Fee
+            </button>
+          </div>
+        </div>
+
         <!-- Manual override — tick the box to type a fixed USD shipping
              cost. When active, the value above flips to the override,
              the Total Landed Cost block reads the override for
@@ -21584,6 +21606,104 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const cbm = volume / 1000000;
     document.getElementById('freight-cmp-sea').textContent = (cbm * cartons).toFixed(2) + ' CBM';
+
+    // Refresh the Shipping Upgrade chip every time freight recomputes
+    // — keeps the delta in sync with the latest carton/dim/mode state
+    // so the operator always sees today's number, not a stale one.
+    if (typeof _renderShippingUpgradeChip === 'function') _renderShippingUpgradeChip();
+  }
+
+  // Read the per-method USD cost from the comparison table (one of the
+  // freight-res-{slow,fast,airupp,directair} text values). Returns 0
+  // when the cell isn't populated yet (specs missing, weight mode,
+  // etc.). Lets the upgrade chip + fee handler reuse whatever
+  // calcFreight just computed, instead of duplicating freight math.
+  function _freightMethodUsd(modeKey) {
+    const el = document.getElementById('freight-res-' + modeKey);
+    if (!el) return 0;
+    const m = el.textContent.match(/\$\s*([\d,]+\.\d+)/);
+    return m ? parseFloat(m[1].replace(/,/g, '')) : 0;
+  }
+
+  // Find any existing Shipping Upgrade fee on this workbook so a
+  // re-click of "Bill upgrade as Fee" updates it instead of duplicating.
+  // Identified by markupOnly + the type prefix the handler stamps on.
+  function _findShippingUpgradeFeeRow() {
+    return _extraFeeRows.find(r => r.markupOnly && /^Shipping Upgrade/i.test(r.type || ''));
+  }
+
+  // Show / hide the Shipping Upgrade chip + fill its delta + sub line.
+  // Hidden when: mode is fast/slow, or current cost ≤ fast boat cost
+  // (no upgrade to bill). Visible otherwise.
+  function _renderShippingUpgradeChip() {
+    const chip = document.getElementById('freight-upgrade-chip');
+    if (!chip) return;
+    const modeEl = document.getElementById('freight-mode');
+    const mode = modeEl ? modeEl.value : 'slow';
+    if (mode === 'fast' || mode === 'slow') { chip.style.display = 'none'; return; }
+    const currentUsd = _freightMethodUsd(mode);
+    const fastUsd    = _freightMethodUsd('fast');
+    const delta = currentUsd - fastUsd;
+    if (delta <= 0) { chip.style.display = 'none'; return; }
+    const labels = { slow:'Slow Boat', fast:'Fast Boat', airupp:'Air + UPS', directair:'Direct Air' };
+    const f2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const deltaEl = document.getElementById('freight-upgrade-delta');
+    const subEl   = document.getElementById('freight-upgrade-sub');
+    if (deltaEl) deltaEl.textContent = '$' + f2(delta);
+    if (subEl)   subEl.textContent   = `${labels[mode] || mode} ($${f2(currentUsd)}) − Fast Boat ($${f2(fastUsd)})`;
+    const btn = document.getElementById('freight-upgrade-btn');
+    if (btn) btn.textContent = _findShippingUpgradeFeeRow() ? '↻ Refresh upgrade Fee' : '+ Bill upgrade as Fee';
+    chip.style.display = '';
+  }
+
+  // Add (or update) the Shipping Upgrade fee. Markup-only: counts in
+  // revenue (the client pays the premium), excluded from cost basis
+  // (Air shipping cost is already on the cost side via the standard
+  // shipping line). Net effect on profit: zero from the Fast Boat
+  // baseline — the operator's margin stays put.
+  function addShippingUpgradeFee() {
+    const modeEl = document.getElementById('freight-mode');
+    const mode = modeEl ? modeEl.value : 'slow';
+    if (mode === 'fast' || mode === 'slow') {
+      alert('Already at Fast Boat or cheaper — nothing to bill as an upgrade.');
+      return;
+    }
+    const currentUsd = _freightMethodUsd(mode);
+    const fastUsd    = _freightMethodUsd('fast');
+    const deltaUsd = currentUsd - fastUsd;
+    if (deltaUsd <= 0) {
+      alert('Selected mode is not more expensive than Fast Boat. No upgrade fee to add.');
+      return;
+    }
+    const exchange = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+    const deltaRmb = deltaUsd * exchange;
+    const labels = { airupp:'Air + UPS', directair:'Direct Air' };
+    const modeLabel = labels[mode] || mode;
+    const f2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const feeType = `Shipping Upgrade — ${modeLabel}`;
+    const feeDesc = `${modeLabel} over Fast Boat baseline ($${f2(currentUsd)} − $${f2(fastUsd)}). Markup-only — bag Sale Per is unchanged; profit stays at Fast Boat baseline.`;
+    const existing = _findShippingUpgradeFeeRow();
+    if (existing) {
+      existing.type = feeType;
+      existing.desc = feeDesc;
+      existing.usd  = Math.round(deltaUsd * 100) / 100;
+      existing.rmb  = Math.round(deltaRmb * 100) / 100;
+      existing.markupOnly = true;
+    } else {
+      _extraFeeCounter++;
+      _extraFeeRows.push({
+        id: _extraFeeCounter,
+        type: feeType,
+        desc: feeDesc,
+        usd:  Math.round(deltaUsd * 100) / 100,
+        rmb:  Math.round(deltaRmb * 100) / 100,
+        markupOnly: true,
+      });
+    }
+    if (typeof renderExtraFeeRows === 'function') renderExtraFeeRows();
+    if (typeof calcAdditionalFees === 'function') calcAdditionalFees();
+    if (typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
+    _renderShippingUpgradeChip();
   }
 
   /* ── Quote & Invoice Calcs ───────────────────────────────────────────────── */
@@ -25163,7 +25283,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (Array.isArray(data.extraFeeRows)) {
         data.extraFeeRows.forEach(r => {
           _extraFeeCounter++;
-          _extraFeeRows.push({ id: _extraFeeCounter, type: r.type, desc: r.desc, rmb: r.rmb || 0, usd: r.usd || 0 });
+          _extraFeeRows.push({ id: _extraFeeCounter, type: r.type, desc: r.desc, rmb: r.rmb || 0, usd: r.usd || 0, markupOnly: !!r.markupOnly });
         });
         renderExtraFeeRows();
       }
@@ -26669,7 +26789,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       feePlateUsd:    (() => { const n = _msFeeNum(document.getElementById('fee-plate-usd'));    return n > 0 ? String(n) : ''; })(),
       feeDesignDesc:  _v('fee-design-desc'),
       feeDesignUsd:   (() => { const n = _msFeeNum(document.getElementById('fee-design-usd'));   return n > 0 ? String(n) : ''; })(),
-      extraFeeRows:  _extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd})),
+      // markupOnly: true → this fee is REVENUE only (excluded from the
+      // operator's cost basis). Used by the Shipping Upgrade fee so the
+      // upgrade premium covers the extra freight cost in revenue
+      // without double-counting it on the cost side. Defaults to false
+      // for every other fee; persists through detail_json so reloads
+      // keep the flag.
+      extraFeeRows:  _extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd, markupOnly: !!r.markupOnly})),
       // Which fees the operator has ticked on the Pricing tab to apply
       // to Total Landed Cost + the Client Quote line items.
       appliedFees:   [..._appliedFees],
@@ -31555,7 +31681,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _extraFeeCounter = 0;
       detail.extraFeeRows.forEach(r => {
         _extraFeeCounter++;
-        _extraFeeRows.push({ id: _extraFeeCounter, type: r.type || '', desc: r.desc || '', rmb: r.rmb || 0, usd: r.usd || 0 });
+        _extraFeeRows.push({ id: _extraFeeCounter, type: r.type || '', desc: r.desc || '', rmb: r.rmb || 0, usd: r.usd || 0, markupOnly: !!r.markupOnly });
       });
       const after = JSON.stringify(_extraFeeRows.map(r => ({type:r.type, desc:r.desc, rmb:r.rmb, usd:r.usd})));
       if (before !== after) {
@@ -34014,13 +34140,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       label: r.type || 'Custom Fee',
       desc:  r.desc || '',
       usd:   num(r.usd),
+      // Carry the markup-only flag through so downstream cost-basis
+      // calcs can exclude these fees (they're revenue only — used by
+      // the Shipping Upgrade fee where the cost is already in the
+      // shipping line, so double-counting would tank profit).
+      markupOnly: !!r.markupOnly,
     })).filter(f => f.usd > 0 || (f.desc && f.desc.trim() !== ''));
     const all = std.concat(extras);
     // Apply any per-fee override (override wins over as-is).
     return all.map(f => {
       const ov = overrides[f.id];
       const effective = (ov !== undefined && ov !== null && ov !== '') ? num(ov) : f.usd;
-      return { id: f.id, label: f.label, desc: f.desc, usd: effective };
+      return { id: f.id, label: f.label, desc: f.desc, usd: effective, markupOnly: !!f.markupOnly };
     });
   }
 
@@ -34058,7 +34189,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     };
     const qty = rfqItems.reduce((s, it) => s + itemEffQty(it), 0);
     const fees = (typeof _appliedFeesFromDetail === 'function') ? _appliedFeesFromDetail(detail) : [];
-    const allFees = fees.reduce((s, f) => s + (parseFloat(f.usd) || 0), 0);
+    // allFees feeds the cost-basis side of the Profit calc (we pay
+    // every fee regardless of billed/comp). Markup-only fees are
+    // excluded — their cost is already captured elsewhere (e.g. the
+    // Shipping Upgrade fee's cost lives in the Air shipping line),
+    // so counting them again would double-charge.
+    const allFees = fees.reduce((s, f) => s + (f.markupOnly ? 0 : (parseFloat(f.usd) || 0)), 0);
     const cachedFeesAsIs = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
     const feesAsIs = cachedFeesAsIs > 0 ? cachedFeesAsIs : allFees;
     const salePerTyped = parseFloat(detail.pricingSalePer) || 0;
@@ -34415,7 +34551,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // cost basis. Same _appliedFeesFromDetail call site as the
       // wbBilledFees calc above; this one ignores billed/comp state
       // since cost-side pays every fee regardless.
-      const wbAllFeesAsIs = _wbFeesForTotal.reduce((s, f) => s + (parseFloat(f.usd) || 0), 0);
+      // Cost basis excludes markup-only fees (e.g. Shipping Upgrade) —
+      // their cost is already in the workbook's shipping line, so
+      // double-counting would over-state cost and tank profit.
+      const wbAllFeesAsIs = _wbFeesForTotal.reduce((s, f) => s + (f.markupOnly ? 0 : (parseFloat(f.usd) || 0)), 0);
       const wbTrueCostBasis    = wbGrandTotalCost + wbAllFeesAsIs;
       const wbCostPerUnit      = wbTotalQty > 0 && wbTrueCostBasis > 0 ? wbTrueCostBasis / wbTotalQty : 0;
       // wbProfit = Revenue − Cost. wbTotal already includes billed
