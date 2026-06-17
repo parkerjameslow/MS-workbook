@@ -8903,6 +8903,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
+    <!-- Tiered Pricing Options — surfaces each workbook's tier
+         pricing (qty × per-unit) so the client can see what they
+         could save by ordering more. Read-only on this surface;
+         data comes from each workbook's saved tiers[] array
+         (Workbook tab → Tiered Pricing section). Populates via
+         renderOrderTieredPricing() — currently selected tier on
+         each workbook is highlighted with the accent border so the
+         client can see which row their current order matches. -->
+    <div class="section-card" style="margin-bottom:16px;">
+      <div class="section-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="section-title">Tiered Pricing Options</span>
+          <span style="font-size:11px; color:var(--text-muted); font-weight:500;">Volume breakpoints sent to the client</span>
+        </div>
+      </div>
+      <div class="section-body">
+        <div id="order-tiered-pricing-content">
+          <div style="padding:20px 4px; text-align:center; color:var(--text-muted); font-size:13px; font-style:italic;">
+            No tier pricing on this order's workbooks yet.
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Notes -->
     <div class="section-card" style="margin-bottom:0;">
       <div class="section-header">
@@ -33816,6 +33840,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     renderOrderSheet();
+    renderOrderTieredPricing();
     renderOrderDepositTracking();
     showView('view-order-detail');
 
@@ -34006,6 +34031,91 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
     const chev = document.querySelector(`.osh-chevron[data-osh-chev="${safe}"]`);
     if (chev) chev.style.transform = expanded ? 'rotate(90deg)' : '';
+  }
+
+  // Render the Tiered Pricing Options card on the Order Detail page.
+  // Per-workbook in the order, list every tier the operator entered
+  // on the Workbook tab so the client can see "if I bumped from 50k
+  // to 100k, my per-unit drops from $0.42 to $0.40". The current
+  // selected tier (the one driving the order's Sale Per) is
+  // highlighted with an accent left-border + green ✓ chip so the
+  // client can spot their current breakpoint at a glance.
+  function renderOrderTieredPricing() {
+    const host = document.getElementById('order-tiered-pricing-content');
+    if (!host) return;
+    const o = orderData[_currentOrderId];
+    if (!o || !Array.isArray(o.entries) || o.entries.length === 0) {
+      host.innerHTML = `<div style="padding:20px 4px; text-align:center; color:var(--text-muted); font-size:13px; font-style:italic;">No workbooks in this order.</div>`;
+      return;
+    }
+    const _fxNow = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+    const fmtUsd3 = v => '$' + (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3});
+    const fmtRmb  = v => '¥' + (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const fmtQty  = v => (parseFloat(v) || 0).toLocaleString('en-US');
+    const esc     = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    const blocks = o.entries.map(entry => {
+      const det = workbookDetail[`${entry.clientName}|${entry.workbookId}`] || {};
+      const product = det.product || `Workbook #${entry.workbookId}`;
+      const tiers = (Array.isArray(det.tiers) ? det.tiers : [])
+        .map(t => ({
+          id:    t.id,
+          qty:   parseInt(String(t.qty   || '').replace(/,/g, ''), 10) || 0,
+          price: parseFloat(String(t.price || '').replace(/,/g, '')) || 0,
+        }))
+        .filter(t => t.qty > 0 && t.price > 0)
+        .sort((a, b) => a.qty - b.qty);
+      if (tiers.length === 0) {
+        return `<div style="padding:14px 16px; margin-bottom:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface2);">
+          <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">${esc(product)}</div>
+          <div style="font-size:11px; color:var(--text-muted); font-style:italic;">No tier pricing entered on this workbook yet.</div>
+        </div>`;
+      }
+      // Selected tier = the one driving the order's current Sale Per.
+      // Match by id first (new schema with persisted ids), else by
+      // position fallback (legacy data where tier id wasn't saved).
+      const _selIdxNum = parseInt(det.selectedTierIdx, 10);
+      const selTier = tiers.find(t => t.id == det.selectedTierIdx)
+                   || (Number.isInteger(_selIdxNum) && _selIdxNum >= 1 ? tiers[_selIdxNum - 1] : null)
+                   || null;
+      const rows = tiers.map(t => {
+        const usd = _fxNow > 0 ? t.price / _fxNow : 0;
+        const isSelected = selTier && t.qty === selTier.qty && t.price === selTier.price;
+        const bg = isSelected ? 'rgba(232,117,26,0.06)' : 'transparent';
+        const border = isSelected ? '3px solid var(--accent, #E8751A)' : '3px solid transparent';
+        const chip = isSelected
+          ? `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:99px; background:rgba(16,185,129,0.12); color:#15803d; font-size:9px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase;">✓ Selected</span>`
+          : `<span style="font-size:10px; color:var(--text-muted); font-weight:600;">Available</span>`;
+        return `<tr style="background:${bg}; border-left:${border};">
+          <td style="padding:9px 14px; font-size:13px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums;">${fmtQty(t.qty)}<span style="font-weight:500; color:var(--text-muted); margin-left:4px;">units</span></td>
+          <td style="padding:9px 14px; text-align:right; font-size:13px; color:var(--text-muted); font-variant-numeric:tabular-nums;">${fmtRmb(t.price)}</td>
+          <td style="padding:9px 14px; text-align:right; font-size:14px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums;">${fmtUsd3(usd)}</td>
+          <td style="padding:9px 14px; text-align:right; font-size:13px; font-weight:600; color:var(--text); font-variant-numeric:tabular-nums;">${fmtUsd3(usd * t.qty).replace('.000', '.00')}</td>
+          <td style="padding:9px 14px; text-align:right;">${chip}</td>
+        </tr>`;
+      }).join('');
+      return `<div style="margin-bottom:14px;">
+        <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:6px;">
+          <span style="font-size:13px; font-weight:700; color:var(--text);">${esc(product)}</span>
+          ${selTier ? `<span style="font-size:11px; color:var(--text-muted);">currently <strong style="color:var(--text); font-weight:600;">${fmtQty(selTier.qty)}</strong> @ <strong style="color:var(--accent); font-weight:700;">${fmtUsd3(selTier.price / _fxNow)}</strong>/unit</span>` : ''}
+        </div>
+        <div style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--surface);">
+          <table style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr style="background:var(--surface2);">
+                <th style="padding:7px 14px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Quantity</th>
+                <th style="padding:7px 14px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Unit RMB</th>
+                <th style="padding:7px 14px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Unit USD</th>
+                <th style="padding:7px 14px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Order Total</th>
+                <th style="padding:7px 14px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+    }).join('');
+    host.innerHTML = blocks;
   }
 
   function renderOrderSheet() {
