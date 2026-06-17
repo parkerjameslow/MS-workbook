@@ -33132,37 +33132,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const wbCount = entries.length;
     let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0,
         agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0,
-        agCompFees = 0, agFeesBilled = 0;
+        agFeesBilled = 0;
     const wbStatsByEntry = new Map();
     entries.forEach(e => {
       const key = `${e.clientName}|${e.workbookId}`;
-      const w = _wbStatsForPicker(workbookDetail[key]);
+      const detail = workbookDetail[key] || {};
+      const w = _wbStatsForPicker(detail);
+      // Live (order-aware) total computed fresh from detail_json so
+      // the card matches the Order Sheet's grand total. Caches drift;
+      // this doesn't. See _wbLiveTotalForOrder comment above for why.
+      const _live = _wbLiveTotalForOrder(detail, o, e.workbookId);
+      w.liveTotal = _live.total;
       wbStatsByEntry.set(key, w);
       agUnits       += w.units;
       agWeightKg    += w.weightKg;
       agCost        += w.cost;
-      agPrice       += w.price;
+      agPrice       += _live.total;
       agCbm         += w.cbm;
       agShipping    += (w.shippingUsd || 0);
       agProductCost += (w.productCost || 0);
-      agFeesAsIs    += (w.feesAsIs    || 0);
+      // Fees: live so all sides of the math read the same detail_json
+      // snapshot. agFeesAsIs feeds the Profit cost basis (we pay every
+      // fee, billed or comp); agFeesBilled feeds the Fees stat (only
+      // what the customer actually pays).
+      agFeesAsIs    += _live.allFees;
+      agFeesBilled  += _live.billedFees;
       if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
-      // Tally complimentary + billed fees per workbook. Comp fees feed
-      // the Profit calc (agPrice counts ALL Pricing-tab fees as
-      // revenue → comp must be backed out). Billed fees feed the Fees
-      // stat displayed in the card strip — same definition the Order
-      // Sheet's Fees column uses so the two surfaces agree.
-      if (typeof _appliedFeesFromDetail === 'function' && typeof _orderFeeIsBilled === 'function') {
-        const _fees = _appliedFeesFromDetail(workbookDetail[key] || {});
-        _fees.forEach(f => {
-          const amt = parseFloat(f.usd) || 0;
-          if (_orderFeeIsBilled(o, e.workbookId, f.id)) {
-            agFeesBilled += amt;
-          } else {
-            agCompFees   += amt;
-          }
-        });
-      }
     });
     const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
     const usdStr  = agPrice > 0 ? '$' + agPrice.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
@@ -33189,17 +33184,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Workbook pills — same RMB + USD layout as the Orders card so
     // the operator sees both currencies inline regardless of which
-    // lane the order's currently in.
+    // lane the order's currently in. Uses the live order-aware total
+    // (not w.price cache) so the per-workbook pill agrees with the
+    // Order Sheet's per-workbook Total column.
     const wbPills = entries.map(e => {
       const w = wbStatsByEntry.get(`${e.clientName}|${e.workbookId}`) || {};
       const det = workbookDetail[`${e.clientName}|${e.workbookId}`] || {};
       const prod = (det.product || e.workbookId || '?');
       const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
+      const wbTotalUsd = w.liveTotal != null ? w.liveTotal : (w.price || 0);
       let wbRmb = '', wbUsd = '';
-      if (w.price > 0) {
-        const totalUsd = w.price;
-        const totalRmb = totalUsd * _fxRate;
-        wbUsd = `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      if (wbTotalUsd > 0) {
+        const totalRmb = wbTotalUsd * _fxRate;
+        wbUsd = `$${wbTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       }
       const priceStr = (wbRmb || wbUsd)
@@ -33236,14 +33233,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
     const agCostProduct = agProductCost;
     const agTotalOurs   = agCost > 0 ? agCost : (agProductCost + agShipping);
-    // Profit = Revenue − Cost. Revenue = agPrice (clientQuote sum,
-    // includes all applied fees) MINUS comp fees (operator marked
-    // them complimentary so client isn't actually paying for them).
-    // Cost = agTotalOurs + ALL fees-as-is (we pay them regardless).
-    // Matches the Order Sheet's per-workbook profit math so both
-    // surfaces show the same number on the same order.
+    // Profit = Revenue − Cost.
+    //   Revenue = agPrice (now LIVE = items + billed fees, computed by
+    //             _wbLiveTotalForOrder — comp fees are already
+    //             excluded, so no further subtraction needed).
+    //   Cost    = agTotalOurs + ALL fees-as-is (we pay them regardless
+    //             of whether we billed the client or made them comp).
+    // Matches the Order Sheet's wbProfit summed: each wb's
+    // (wbTotal − wbTrueCostBasis), where wbTotal = items + billedFees
+    // and wbTrueCostBasis = pricingGrandTotalCost + ALL fees-as-is.
     const profitBasis = agTotalOurs + agFeesAsIs;
-    const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - agCompFees - profitBasis) : 0;
+    const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - profitBasis) : 0;
     const profitHasData = (agPrice > 0 && profitBasis > 0);
     const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
     const profitHtml    = profitHasData
@@ -33359,37 +33359,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // selected freight mode's shipping lead); order lead = max
       // across the order's workbooks (a 30-day workbook sets the
       // floor for the whole shipment).
-      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0, agCompFees = 0, agFeesBilled = 0;
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0, agFeesBilled = 0;
       const wbStatsByEntry = new Map();
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
-        const w = _wbStatsForPicker(workbookDetail[key]);
+        const detail = workbookDetail[key] || {};
+        const w = _wbStatsForPicker(detail);
+        // Live (order-aware) total — matches the Order Sheet's wbTotal
+        // so the card's Price (cust) doesn't drift when the cached
+        // pricingClientQuoteTotal is stale. See _wbLiveTotalForOrder.
+        const _live = _wbLiveTotalForOrder(detail, o, e.workbookId);
+        w.liveTotal = _live.total;
         wbStatsByEntry.set(key, w);
         agUnits       += w.units;
         agWeightKg    += w.weightKg;
         agCost        += w.cost;
-        agPrice       += w.price;
+        agPrice       += _live.total;
         agCbm         += w.cbm;
         agShipping    += (w.shippingUsd || 0);
         agProductCost += (w.productCost || 0);
-        agFeesAsIs    += (w.feesAsIs   || 0);
+        agFeesAsIs    += _live.allFees;
+        agFeesBilled  += _live.billedFees;
         if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
-        // Tally billed + complimentary fee dollars per workbook. Comp
-        // is needed for the Profit calc (agPrice = pricingClientQuoteTotal
-        // counts ALL fees as revenue → comp must be subtracted to match
-        // the Order Sheet's per-workbook profit). Billed feeds the new
-        // Fees stat in the strip — same number the Order Sheet shows.
-        if (typeof _appliedFeesFromDetail === 'function' && typeof _orderFeeIsBilled === 'function') {
-          const _fees = _appliedFeesFromDetail(workbookDetail[key] || {});
-          _fees.forEach(f => {
-            const amt = parseFloat(f.usd) || 0;
-            if (_orderFeeIsBilled(o, e.workbookId, f.id)) {
-              agFeesBilled += amt;
-            } else {
-              agCompFees   += amt;
-            }
-          });
-        }
       });
 
       const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
@@ -33400,16 +33391,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const detail = workbookDetail[key];
             const prod = detail ? (detail.product || 'Untitled') : 'Untitled';
             const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
-            // Per-workbook pricing — Client Quote Total Order (Sale
-            // Per × qty + applied fees) so the per-row number matches
-            // what the customer is charged. RMB is the USD value
-            // back-converted at the live FX rate.
-            const w = wbStatsByEntry.get(key) || { price: 0 };
+            // Per-workbook pricing — Sale Per × qty + billed fees, the
+            // live order-aware total. Matches the Order Sheet's
+            // wbTotal column so the pill agrees with the per-workbook
+            // row inside the order. Cached w.price can drift; the live
+            // total can't.
+            const w = wbStatsByEntry.get(key) || { liveTotal: 0, price: 0 };
+            const wbTotalUsd = w.liveTotal != null ? w.liveTotal : (w.price || 0);
             let wbRmb = '', wbUsd = '';
-            if (w.price > 0) {
-              const totalUsd = w.price;
-              const totalRmb = totalUsd * _fxRate;
-              wbUsd = `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            if (wbTotalUsd > 0) {
+              const totalRmb = wbTotalUsd * _fxRate;
+              wbUsd = `$${wbTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
               wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
             }
             const priceStr = (wbRmb || wbUsd)
@@ -33666,14 +33658,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Red when negative (selling below cost — pricing mistake);
       // green otherwise. Blanks out when no workbook has Sale Per
       // typed yet.
-      // Profit = Revenue − Cost. Revenue = agPrice (clientQuote sum,
-      // includes all applied fees) MINUS comp fees (operator marked
-      // them complimentary so client isn't paying). Cost = agTotalOurs
-      // + ALL fees-as-is (we owe them regardless). Matches the Order
-      // Sheet's per-workbook profit math so the dashboard card + the
-      // drill-down show the same number for the same order.
+      // Profit = Revenue − Cost.
+      //   Revenue = agPrice (LIVE = items + billed fees from
+      //             _wbLiveTotalForOrder; comp already excluded).
+      //   Cost    = agTotalOurs + ALL fees-as-is.
+      // Same definition as the In Production card so a single order's
+      // Profit reads the same whether it's in the Orders lane or the
+      // In Production lane, and matches the Order Sheet drill-down.
       const profitBasis = agTotalOurs + agFeesAsIs;
-      const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - agCompFees - profitBasis) : 0;
+      const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - profitBasis) : 0;
       const profitHasData = (agPrice > 0 && profitBasis > 0);
       const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
       const profitHtml    = profitHasData
@@ -34015,6 +34008,58 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const effective = (ov !== undefined && ov !== null && ov !== '') ? num(ov) : f.usd;
       return { id: f.id, label: f.label, desc: f.desc, usd: effective };
     });
+  }
+
+  // Live workbook total ON A SPECIFIC ORDER — items (Sale Per × qty)
+  // plus billed fees, computed fresh from detail_json + the order's
+  // Bill/Comp toggle state. Returns the same number the Order Sheet's
+  // wbTotal column shows for this workbook.
+  //
+  // Use this anywhere the surface needs the all-in price the client
+  // actually pays (cards, exports, dashboards). Prefer this over the
+  // cached pricingClientQuoteTotal because the cache can drift:
+  //   • Operator added a fee on the Pricing tab without re-saving →
+  //     cache misses the new fee.
+  //   • Operator unticked Bill/Comp on the Order Sheet → cache still
+  //     shows fee billed even though revenue should drop.
+  //   • Operator typed a Sale Per but never opened the Pricing tab
+  //     long enough for the cache to refresh.
+  // Drift like this caused the Order Sheet grand total ($57,677.12) to
+  // disagree with the dashboard card ($56,646.70) by exactly one
+  // workbook's billed fees. Single source of truth fixes it.
+  //
+  // Same cascade as renderOrderSheet:
+  //   perUnit = pricingSalePer
+  //          || (pricingClientQuoteTotal − feesAsIs) / qty
+  //          || 0 (no cost-side fallback — card doesn't need it)
+  //   total   = perUnit × qty + billed_fees
+  function _wbLiveTotalForOrder(detail, order, workbookId) {
+    if (!detail) return { items: 0, billedFees: 0, allFees: 0, qty: 0, total: 0 };
+    const rfqItems = (Array.isArray(detail.rfqItems) ? detail.rfqItems : [])
+      .filter(i => i.item || i.qty || i.priceRmb);
+    const itemEffQty = it => {
+      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+      if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g,'')) || 0), 0);
+      return parseFloat(String(it.qty || '').replace(/,/g,'')) || 0;
+    };
+    const qty = rfqItems.reduce((s, it) => s + itemEffQty(it), 0);
+    const fees = (typeof _appliedFeesFromDetail === 'function') ? _appliedFeesFromDetail(detail) : [];
+    const allFees = fees.reduce((s, f) => s + (parseFloat(f.usd) || 0), 0);
+    const cachedFeesAsIs = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
+    const feesAsIs = cachedFeesAsIs > 0 ? cachedFeesAsIs : allFees;
+    const salePerTyped = parseFloat(detail.pricingSalePer) || 0;
+    const clientQuote  = parseFloat(detail.pricingClientQuoteTotal) || 0;
+    const useQuote = (salePerTyped > 0 || clientQuote > 0) && qty > 0;
+    const saleUnit = salePerTyped > 0
+      ? salePerTyped
+      : (clientQuote > 0 && qty > 0 ? Math.max(0, clientQuote - feesAsIs) / qty : 0);
+    const items = (useQuote && saleUnit > 0) ? saleUnit * qty : 0;
+    const billedFees = fees.reduce((s, f) => {
+      const billed = (typeof _orderFeeIsBilled === 'function')
+        ? _orderFeeIsBilled(order, workbookId, f.id) : true;
+      return s + (billed ? (parseFloat(f.usd) || 0) : 0);
+    }, 0);
+    return { items, billedFees, allFees, qty, total: items + billedFees };
   }
 
   // Per-order, per-workbook, per-fee BILLING state on the client view.
