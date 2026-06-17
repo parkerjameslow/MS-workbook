@@ -33219,6 +33219,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fmtKgT  = n => n > 0 ? n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg' : '—';
     const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1}) : '—';
     const fmtNumT = n => n > 0 ? n.toLocaleString('en-US') : '—';
+    // RMB companion line under each USD stat. Muted + small so the
+    // primary USD value stays dominant; only emits when the USD value
+    // is > 0 (matches fmtUsdT's behavior — no "¥0.00" noise on empty
+    // workbooks). Inline-styled so it doesn't depend on a class that
+    // could be missing from other surfaces.
+    const fmtRmbT = n => n > 0 ? `<span style="font-size:10px; color:var(--text-muted); font-weight:600; white-space:nowrap; line-height:1.1; margin-top:1px;">¥${(n * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : '';
     const cbmCapT = 67;
     const fillPctT  = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
     const cbmOverT  = agCbm > cbmCapT ? agCbm - cbmCapT : 0;
@@ -33259,6 +33265,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="oc-grand-total">
             <span class="oc-grand-label">Total</span>
             <span class="oc-grand-usd">${usdStr}</span>
+            ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : ''}
             <button onclick="event.stopPropagation(); location.hash='#/shipments'"
               style="margin-top:10px; padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
               title="Open Shipments to drop this order's workbooks into a shipment">
@@ -33270,12 +33277,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
-        <div class="oc-stat" title="Product cost only — Total (ours) minus Shipping. Sum of each workbook's Pricing-tab Product Cost (no fees, no margin)."><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span></div>
-        <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
-        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
-        <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
-        <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span></div>
-        <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
+        <div class="oc-stat" title="Product cost only — Total (ours) minus Shipping. Sum of each workbook's Pricing-tab Product Cost (no fees, no margin)."><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span>${fmtRmbT(agCostProduct)}</div>
+        <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span>${fmtRmbT(agShipping)}</div>
+        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span>${fmtRmbT(agTotalOurs)}</div>
+        <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span>${fmtRmbT(agPrice)}</div>
+        <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span>${fmtRmbT(agFeesBilled)}</div>
+        <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
           <span class="oc-stat-val">${cbmValHtml}</span>
@@ -33583,6 +33590,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const fmtKgT  = n => n > 0 ? n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg' : '—';
       const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1}) : '—';
       const fmtNumT = n => n > 0 ? n.toLocaleString('en-US') : '—';
+      // RMB companion line under each USD stat — mirrors the In
+      // Production card so both lanes show both currencies inline.
+      const fmtRmbT = n => n > 0 ? `<span style="font-size:10px; color:var(--text-muted); font-weight:600; white-space:nowrap; line-height:1.1; margin-top:1px;">¥${(n * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : '';
       const cbmCapT = 67;
       const fillPctT  = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
       const cbmOverT  = agCbm > cbmCapT ? agCbm - cbmCapT : 0;
@@ -33672,12 +33682,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
-        <div class="oc-stat" title="${_costTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span></div>
-        <div class="oc-stat" title="${_shipTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span></div>
-        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span></div>
-        <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span></div>
-        <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span></div>
-        <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span></div>
+        <div class="oc-stat" title="${_costTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span>${fmtRmbT(agCostProduct)}</div>
+        <div class="oc-stat" title="${_shipTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span>${fmtRmbT(agShipping)}</div>
+        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span>${fmtRmbT(agTotalOurs)}</div>
+        <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span>${fmtRmbT(agPrice)}</div>
+        <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span>${fmtRmbT(agFeesBilled)}</div>
+        <div class="oc-stat"><span class="oc-stat-label">Profit</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
           <span class="oc-stat-val">${cbmValHtml}</span>
@@ -33702,6 +33712,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="oc-grand-total">
               <span class="oc-grand-label">Total</span>
               <span class="oc-grand-usd">${usdStr}</span>
+              ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : ''}
             </div>
           </div>
         </div>
