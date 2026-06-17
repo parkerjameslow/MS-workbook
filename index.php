@@ -6228,7 +6228,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          haven't yet been placed on a Shipment. Acts as the holding
          lane between client confirmation and physical shipping. -->
     <a id="nav-fulfillment-link" href="#/fulfillment" onclick="event.preventDefault(); location.hash='#/fulfillment'" class="nav-flat-link">
-      <span>Fulfillment</span>
+      <span>In Production</span>
       <span class="nav-badge" id="badge-fulfillment"></span>
     </a>
 
@@ -8568,14 +8568,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <main class="container">
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
-        <span class="section-title" style="margin-right:auto;">Fulfillment</span>
+        <span class="section-title" style="margin-right:auto;">In Production</span>
         <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Confirmed orders awaiting shipment</span>
       </div>
       <div class="section-body">
         <div id="fulfillment-list-content">
           <div class="order-list-empty">
             <div class="order-list-empty-icon">📦</div>
-            <div class="order-list-empty-title">Nothing in Fulfillment</div>
+            <div class="order-list-empty-title">Nothing In Production</div>
             <div class="order-list-empty-sub">Once you Notify a client on an order, it shows up here ready for shipment placement.</div>
           </div>
         </div>
@@ -33081,7 +33081,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renderFulfillmentList() {
-    document.getElementById('header-title').textContent = 'Fulfillment';
+    document.getElementById('header-title').textContent = 'In Production';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const fNav = document.getElementById('nav-fulfillment-link');
@@ -33093,7 +33093,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (ids.length === 0) {
       host.innerHTML = `<div class="order-list-empty">
         <div class="order-list-empty-icon">📦</div>
-        <div class="order-list-empty-title">Nothing in Fulfillment</div>
+        <div class="order-list-empty-title">Nothing In Production</div>
         <div class="order-list-empty-sub">Once you Notify a client on an order, it shows up here ready for shipment placement.</div>
       </div>`;
       return;
@@ -33192,7 +33192,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
       const wbUsd = w.price > 0 ? '$' + w.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
       return `<div class="oc-wb-row">
-        <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to Fulfillment'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
+        <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to In Production'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
         ${wbUsd ? `<span class="oc-wb-prices">${wbUsd}</span>` : ''}
       </div>`;
     }).join('');
@@ -33300,7 +33300,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       el.innerHTML = `<div class="order-list-empty">
         <div class="order-list-empty-icon">📋</div>
         <div class="order-list-empty-title">No orders in the queue</div>
-        <div class="order-list-empty-sub">New orders show up here. Once you Notify the client, the order moves to <strong>Fulfillment</strong>.</div>
+        <div class="order-list-empty-sub">New orders show up here. Once you Notify the client, the order moves to <strong>In Production</strong>.</div>
       </div>`;
       return;
     }
