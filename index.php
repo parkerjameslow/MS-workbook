@@ -365,11 +365,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     .nav-item:hover { background: var(--surface2); color: var(--text); }
 
+    /* Active-state: no chrome. The orange highlight + accent border
+       were too loud and made the operator feel the row was "stuck"
+       selected. Active still triggers the action-button visibility
+       below (× / star buttons) and the page-routing behavior — only
+       the visual highlight is suppressed. */
     .nav-item.active {
-      background: var(--sidebar-active-bg);
-      color: #E8751A;
-      font-weight: 600;
-      border-left: 3px solid #E8751A;
+      background: transparent;
+      color: inherit;
+      font-weight: 400;
+      border-left: none;
     }
 
     /* Star button */
