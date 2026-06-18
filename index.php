@@ -1771,16 +1771,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        .dash-table nth-child rules from the workbook dashboard would otherwise
        win and squash these columns into the wrong shape. */
     #samples-table { table-layout: fixed; }
-    #samples-table th:nth-child(1), #samples-table td:nth-child(1) { width: 22%; }  /* Item */
-    #samples-table th:nth-child(2), #samples-table td:nth-child(2) { width: 16%; }  /* Client (pill) */
-    #samples-table th:nth-child(3), #samples-table td:nth-child(3) { width: 22%; }  /* Workbook (pill) */
-    #samples-table th:nth-child(4), #samples-table td:nth-child(4) { width: 8%;  }  /* Qty */
-    #samples-table th:nth-child(5), #samples-table td:nth-child(5) { width: 9%;  }  /* RMB */
-    #samples-table th:nth-child(6), #samples-table td:nth-child(6) { width: 9%;  }  /* USD */
-    #samples-table th:nth-child(7), #samples-table td:nth-child(7) { width: 6%;  }  /* Lead */
-    #samples-table th:nth-child(8), #samples-table td:nth-child(8) { width: 8%;  }  /* Status */
+    /* Column widths shifted +1 to account for the new leading
+       bulk-select checkbox column. The checkbox column is a fixed
+       48px (wide enough for the 16px box + comfortable left
+       padding) with the rest of the columns keeping the same
+       percentage widths the operator had before. */
+    #samples-table th:nth-child(1), #samples-table td:nth-child(1) { width: 48px; padding-left: 18px; padding-right: 4px; }  /* Checkbox */
+    #samples-table th:nth-child(2), #samples-table td:nth-child(2) { width: 22%; }  /* Item */
+    #samples-table th:nth-child(3), #samples-table td:nth-child(3) { width: 16%; }  /* Client (pill) */
+    #samples-table th:nth-child(4), #samples-table td:nth-child(4) { width: 22%; }  /* Workbook (pill) */
+    #samples-table th:nth-child(5), #samples-table td:nth-child(5) { width: 8%;  }  /* Qty */
+    #samples-table th:nth-child(6), #samples-table td:nth-child(6) { width: 9%;  }  /* RMB */
+    #samples-table th:nth-child(7), #samples-table td:nth-child(7) { width: 9%;  }  /* USD */
+    #samples-table th:nth-child(8), #samples-table td:nth-child(8) { width: 6%;  }  /* Lead */
+    #samples-table th:nth-child(9), #samples-table td:nth-child(9) { width: 8%;  }  /* Status */
     #samples-table th, #samples-table td { padding-left: 12px; padding-right: 12px; vertical-align: middle; }
     #samples-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The checkbox cell must not inherit text-overflow:ellipsis from
+       the cell-wide rule above — the cell contains a 16px <input>
+       plus collapsed whitespace, and Chrome/Safari were rendering
+       that whitespace as visible ".." dots beside the checkbox. */
+    #samples-table th:first-child, #samples-table td:first-child {
+      overflow: visible;
+      text-overflow: clip;
+    }
     /* Pill cells need to keep their min-width:0 so flex/inline-flex children
        can shrink and ellipsis-trim instead of pushing the column wider. */
     #samples-table .samples-pill-cell { overflow: visible; }
