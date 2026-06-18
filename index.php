@@ -8698,13 +8698,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="overflow-x:auto; border:1px solid var(--border); border-radius:8px;">
         <table id="received-audit-table" style="width:100%; border-collapse:collapse; font-size:13px;">
           <thead>
+            <!-- Two-tier header: outer row groups columns by SIDE
+                 (what should have shipped / what actually arrived);
+                 inner row labels the individual columns. The thick
+                 left-border on the Received QTY cell carries the
+                 visual divider down through every body row. -->
             <tr style="background:var(--surface2);">
-              <th style="padding:8px 12px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Workbook</th>
-              <th style="padding:8px 12px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Expected QTY</th>
-              <th style="padding:8px 12px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Master Pack</th>
-              <th style="padding:8px 12px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Total Cartons</th>
-              <th style="padding:8px 12px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Received QTY</th>
-              <th style="padding:8px 12px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Notes</th>
+              <th rowspan="2" style="padding:8px 12px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); vertical-align:bottom;">Workbook</th>
+              <th colspan="3" style="padding:6px 12px 4px; text-align:center; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--text); background:rgba(107,147,255,0.10);">What Should Have Shipped</th>
+              <th colspan="2" style="padding:6px 12px 4px; text-align:center; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--text); background:rgba(16,185,129,0.10); border-left:2px solid var(--border);">What Was Actually Received</th>
+            </tr>
+            <tr style="background:var(--surface2);">
+              <th style="padding:4px 12px 8px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); background:rgba(107,147,255,0.06);">Qty</th>
+              <th style="padding:4px 12px 8px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); background:rgba(107,147,255,0.06);">Master Pack</th>
+              <th style="padding:4px 12px 8px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); background:rgba(107,147,255,0.06);">Total Cartons</th>
+              <th style="padding:4px 12px 8px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); border-left:2px solid var(--border); background:rgba(16,185,129,0.06);">Received Qty</th>
+              <th style="padding:4px 12px 8px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); background:rgba(16,185,129,0.06);">Notes</th>
             </tr>
           </thead>
           <tbody id="received-audit-tbody"></tbody>
@@ -31277,17 +31286,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div style="font-weight:600;">${esc(r.product)}</div>
             <div style="font-size:11px; color:var(--text-muted); margin-top:1px;">${esc(r.clientName)} · ${esc(r.orderName)}</div>
           </td>
-          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; font-weight:600;">${fmt(r.qty)}</td>
-          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);" title="${r.inner > 0 && r.outer > 0 ? r.inner + ' inner × ' + r.outer + ' outer' : 'Carton fields not set on this workbook'}">${fmt(r.masterPack)}</td>
-          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${fmt(r.totalCartons)}</td>
-          <td style="padding:6px 8px; text-align:right;">
+          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; font-weight:600; background:rgba(107,147,255,0.04);">${fmt(r.qty)}</td>
+          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted); background:rgba(107,147,255,0.04);" title="${r.inner > 0 && r.outer > 0 ? r.inner + ' inner × ' + r.outer + ' outer' : 'Carton fields not set on this workbook'}">${fmt(r.masterPack)}</td>
+          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted); background:rgba(107,147,255,0.04);">${fmt(r.totalCartons)}</td>
+          <td style="padding:6px 8px; text-align:right; border-left:2px solid var(--border); background:rgba(16,185,129,0.04);">
             <input type="number" min="0" step="1" data-received-idx="${idx}"
                    value="${r.qty > 0 ? r.qty : ''}"
                    placeholder="${r.qty > 0 ? r.qty : '0'}"
                    class="form-input"
                    style="width:96px; padding:4px 8px; text-align:right; font-variant-numeric:tabular-nums;" />
           </td>
-          <td style="padding:6px 8px;">
+          <td style="padding:6px 8px; background:rgba(16,185,129,0.04);">
             <input type="text" data-received-note-idx="${idx}"
                    placeholder="Damaged / short / etc."
                    class="form-input"
