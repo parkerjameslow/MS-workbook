@@ -8663,22 +8663,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
-<!-- Mark Received modal — confirms delivery + optional audit notes. -->
+<!-- Mark Received modal — per-workbook audit grid + general notes.
+     Opens from the Receiving card's Mark Received button. The grid
+     shows Expected QTY, Master Pack, and Total Cartons computed
+     from the workbook's RFQ + carton fields. Operator types
+     Received QTY per workbook (defaults to expected so they only
+     touch the ones with a discrepancy) and an optional per-row
+     note. Confirm stamps receivedAt and archives out of Receiving. -->
 <div class="modal-overlay" id="received-modal" style="display:none;">
-  <div class="modal" style="max-width:440px; width:100%;">
+  <div class="modal" style="max-width:880px; width:100%;">
     <div class="modal-header">
-      <h3 style="margin:0; font-size:16px;">Mark Received</h3>
+      <h3 style="margin:0; font-size:16px;" id="received-modal-title">Receive Shipment</h3>
       <button onclick="closeReceivedModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
-      <p style="margin:0; font-size:13px; color:var(--text-muted);">Confirm the shipment has arrived. Add any audit notes — damaged cartons, missing items, qty discrepancies — and the shipment will archive out of Receiving.</p>
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Confirm received qty per workbook. Defaults to expected qty — only change the rows with a discrepancy. Once confirmed, the shipment archives out of Receiving.</p>
+      <div style="overflow-x:auto; border:1px solid var(--border); border-radius:8px;">
+        <table id="received-audit-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="background:var(--surface2);">
+              <th style="padding:8px 12px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Workbook</th>
+              <th style="padding:8px 12px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Expected QTY</th>
+              <th style="padding:8px 12px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Master Pack</th>
+              <th style="padding:8px 12px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Total Cartons</th>
+              <th style="padding:8px 12px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Received QTY</th>
+              <th style="padding:8px 12px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="received-audit-tbody"></tbody>
+        </table>
+      </div>
       <div>
-        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Audit Notes <span style="font-weight:400; text-transform:none; opacity:0.7;">(optional)</span></label>
-        <textarea id="received-modal-notes" class="form-input" style="width:100%;min-height:96px;" placeholder="Damaged outer carton on pallet 2 / 1 missing master / etc."></textarea>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">General notes <span style="font-weight:400; text-transform:none; opacity:0.7;">(optional)</span></label>
+        <textarea id="received-modal-notes" class="form-input" style="width:100%;min-height:72px;" placeholder="Carrier damage to outer pallet / late delivery / etc."></textarea>
       </div>
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
         <button class="btn btn-ghost" onclick="closeReceivedModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="confirmReceivedModal()">Mark Received</button>
+        <button class="btn btn-primary" onclick="confirmReceivedModal()">✓ Confirm Receipt</button>
       </div>
     </div>
   </div>
@@ -31044,7 +31065,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
           <span style="margin-left:auto; display:flex; gap:8px;">
             <button class="btn btn-ghost" style="font-size:12px;" onclick="refreshTrackingFor('${id}', this)">↻ Refresh tracking</button>
-            <button class="btn btn-primary" style="font-size:12px;" onclick="openReceivedModal('${id}','receiving')">✓ Mark Received</button>
+            <button class="btn btn-ghost" style="font-size:12px;" onclick="openReceivedModal('${id}','receiving')"
+                    title="Open the per-workbook audit. The blue check only appears once you actually confirm receipt inside the audit modal.">Mark Received</button>
           </span>
         </div>
         <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap; padding:8px 0; border-top:1px solid var(--border);">
@@ -31154,25 +31176,135 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Mark Received modal ───────────────────────────────────────────
-  let _receivedModalCtx = null;
+  // Audit grid per workbook on the shipment. Pulls Expected QTY from
+  // RFQ totals and Master Pack / Total Cartons from the carton-spec
+  // fields. Operator types Received QTY (defaults to expected) +
+  // optional per-row notes; on confirm we stamp receivedAt, save the
+  // per-workbook audit, and archive out of Receiving.
+  let _receivedModalCtx = null; // { shipmentId, returnTo, rows: [{key, qty, masterPack, total}] }
+
+  // RFQ qty for one item (sums variants when present, else the parent
+  // qty). Mirrors the same helper renderOrderSheet uses so the audit
+  // qty matches what the operator sees on the Order Sheet.
+  function _wbReceiveItemQty(it) {
+    const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+    if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g,'')) || 0), 0);
+    return parseFloat(String(it.qty || '').replace(/,/g,'')) || 0;
+  }
+
+  // Walk a shipment → all (clientName, workbookId) entries across
+  // every order on the shipment. Returns row-shaped data with the
+  // QTY / Master Pack / Total Cartons already computed.
+  function _buildReceiveAuditRows(s) {
+    const rows = [];
+    (s.entries || []).forEach(se => {
+      if (!se || !se.orderId) return;
+      const o = orderData[se.orderId];
+      if (!o) return;
+      (o.entries || []).forEach(oe => {
+        if (!oe || !oe.workbookId) return;
+        const key = `${oe.clientName}|${oe.workbookId}`;
+        const detail = workbookDetail[key] || {};
+        const rfqItems = (Array.isArray(detail.rfqItems) ? detail.rfqItems : [])
+          .filter(i => i.item || i.qty || i.priceRmb);
+        const qty = rfqItems.reduce((sum, it) => sum + _wbReceiveItemQty(it), 0);
+        const inner = parseInt(detail.cartonInnerCount) || 0;
+        const outer = parseInt(detail.cartonOuterCount) || 0;
+        const masterPack = inner * outer; // units per outer carton
+        const totalCartons = masterPack > 0 && qty > 0 ? Math.ceil(qty / masterPack) : 0;
+        const product = detail.product || `Workbook #${oe.workbookId}`;
+        rows.push({
+          key, clientName: oe.clientName, workbookId: oe.workbookId,
+          orderName: o.name || `Order #${o.id || ''}`,
+          product, qty, inner, outer, masterPack, totalCartons,
+        });
+      });
+    });
+    return rows;
+  }
+
   function openReceivedModal(shipmentId, returnTo) {
-    _receivedModalCtx = { shipmentId, returnTo: returnTo || 'detail' };
+    const s = shipmentData[shipmentId];
+    if (!s) return;
+    const rows = _buildReceiveAuditRows(s);
+    _receivedModalCtx = { shipmentId, returnTo: returnTo || 'detail', rows };
+    // Title — surface the shipment name so the modal isn't ambiguous
+    // when the operator has several shipments waiting.
+    const titleEl = document.getElementById('received-modal-title');
+    if (titleEl) titleEl.textContent = `Receive ${s.name || ('Shipment #' + shipmentId)}`;
+    // Build the audit grid rows.
+    const tbody = document.getElementById('received-audit-tbody');
+    const esc = (str) => String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const fmt = (n) => n > 0 ? n.toLocaleString('en-US') : '—';
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="padding:18px 12px; text-align:center; color:var(--text-muted); font-style:italic;">No workbooks linked to this shipment.</td></tr>`;
+    } else {
+      tbody.innerHTML = rows.map((r, idx) => `
+        <tr style="border-top:1px solid var(--border);">
+          <td style="padding:8px 12px;">
+            <div style="font-weight:600;">${esc(r.product)}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:1px;">${esc(r.clientName)} · ${esc(r.orderName)}</div>
+          </td>
+          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; font-weight:600;">${fmt(r.qty)}</td>
+          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);" title="${r.inner > 0 && r.outer > 0 ? r.inner + ' inner × ' + r.outer + ' outer' : 'Carton fields not set on this workbook'}">${fmt(r.masterPack)}</td>
+          <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted);">${fmt(r.totalCartons)}</td>
+          <td style="padding:6px 8px; text-align:right;">
+            <input type="number" min="0" step="1" data-received-idx="${idx}"
+                   value="${r.qty > 0 ? r.qty : ''}"
+                   placeholder="${r.qty > 0 ? r.qty : '0'}"
+                   class="form-input"
+                   style="width:96px; padding:4px 8px; text-align:right; font-variant-numeric:tabular-nums;" />
+          </td>
+          <td style="padding:6px 8px;">
+            <input type="text" data-received-note-idx="${idx}"
+                   placeholder="Damaged / short / etc."
+                   class="form-input"
+                   style="width:100%; padding:4px 8px; font-size:12px;" />
+          </td>
+        </tr>
+      `).join('');
+    }
     document.getElementById('received-modal-notes').value = '';
     document.getElementById('received-modal').style.display = 'flex';
-    setTimeout(() => { try { document.getElementById('received-modal-notes').focus(); } catch {} }, 50);
   }
+
   function closeReceivedModal() {
     document.getElementById('received-modal').style.display = 'none';
     _receivedModalCtx = null;
   }
+
   function confirmReceivedModal() {
     if (!_receivedModalCtx) return;
     const ctx = _receivedModalCtx;
     const s = shipmentData[ctx.shipmentId];
     if (!s) { closeReceivedModal(); return; }
+    // Capture per-workbook received qty + per-row notes from the
+    // audit grid. Stored under s.receivedAudit so the audit history
+    // survives in app_state and can be surfaced later (Reports,
+    // per-workbook receipt log, etc.).
+    const audit = [];
+    (ctx.rows || []).forEach((r, idx) => {
+      const qtyInp  = document.querySelector(`#received-audit-tbody input[data-received-idx="${idx}"]`);
+      const noteInp = document.querySelector(`#received-audit-tbody input[data-received-note-idx="${idx}"]`);
+      const receivedQty = qtyInp ? (parseFloat(qtyInp.value) || 0) : 0;
+      const note = noteInp ? (noteInp.value || '').trim() : '';
+      audit.push({
+        clientName: r.clientName,
+        workbookId: r.workbookId,
+        expectedQty: r.qty,
+        receivedQty,
+        masterPack: r.masterPack,
+        totalCartons: r.totalCartons,
+        notes: note,
+        // Flag mismatches so the Reports view (and future audit log)
+        // can highlight discrepancies without re-running the math.
+        discrepancy: receivedQty !== r.qty,
+      });
+    });
     s.status = 'received';
     s.receivedAt = new Date().toISOString();
     s.receivedNotes = document.getElementById('received-modal-notes').value.trim();
+    s.receivedAudit = audit;
     saveShipments();
     closeReceivedModal();
     if (ctx.returnTo === 'detail') {
@@ -31181,7 +31313,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     if (ctx.returnTo === 'receiving') renderReceivingList();
     rebuildShipmentsNav();
-    updateReceivingBadge();
   }
 
   // Thin wrapper kept for the call sites already wired earlier.
