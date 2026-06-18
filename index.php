@@ -6342,74 +6342,96 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="nav-flat-sublabel">SKUs &amp; Variants</span>
     </a>
 
-    <!-- Samples — moved above RFQ per operator workflow preference. -->
-    <a id="nav-samples-link" href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'" class="nav-flat-link">
-      <span>Samples</span>
-      <span class="nav-badge" id="badge-samples"></span>
-    </a>
-
-    <a id="nav-rfq-link" href="#/rfq" onclick="event.preventDefault(); location.hash='#/rfq'" class="nav-flat-link">
-      <span>RFQ</span>
-      <span class="nav-badge" id="badge-rfq"></span>
-    </a>
-
-    <!-- Ready for Review — workbooks Karen has finished editing and
-         sent back for Jackson + Parker to look at (sentForReview=true
-         and currently sitting at Quote to Client). Mirrors the RFQ
-         nav layout. -->
-    <a id="nav-review-link" href="#/review" onclick="event.preventDefault(); location.hash='#/review'" class="nav-flat-link">
-      <span>Ready for Review</span>
-      <span class="nav-badge" id="badge-review"></span>
-    </a>
-
-    <a id="nav-orders-link" href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" class="nav-flat-link">
-      <span>Orders</span>
-      <span class="nav-badge" id="badge-orders"></span>
-    </a>
-
-    <!-- Fulfillment — orders that have been Notify-Client'd but
-         haven't yet been placed on a Shipment. Acts as the holding
-         lane between client confirmation and physical shipping. -->
-    <a id="nav-fulfillment-link" href="#/fulfillment" onclick="event.preventDefault(); location.hash='#/fulfillment'" class="nav-flat-link">
-      <span>In Production</span>
-      <span class="nav-badge" id="badge-fulfillment"></span>
-    </a>
-
-    <!-- Shipments -->
-    <a id="nav-shipments-link" href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" class="nav-flat-link">
-      <span>Shipments</span>
-      <span class="nav-badge" id="badge-shipments"></span>
-    </a>
-
-    <!-- Receiving — shipments marked Waiting Arrival. Each one carries
-         a carrier + tracking number; the AI tracking lookup pulls live
-         status from the carrier's public tracking page. -->
-    <a id="nav-receiving-link" href="#/receiving" onclick="event.preventDefault(); location.hash='#/receiving'" class="nav-flat-link">
-      <span>Receiving</span>
-      <span class="nav-badge" id="badge-receiving"></span>
-    </a>
-
-    <!-- Billings -->
-    <div class="nav-section collapsed" id="nav-section-billings">
-      <div class="nav-section-header" onclick="toggleNavSection('nav-section-billings')">
-        <span>Billings</span>
+    <!-- ── Design | Production section ──────────────────────────────
+         Default expanded; remembers collapsed state per the existing
+         toggleNavSection persistence. Houses the day-to-day operator
+         flow from RFQ through arrival. Samples sits below Ready for
+         Review per the new layout. -->
+    <div class="nav-section" id="nav-section-design">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-design')">
+        <span>Design | Production</span>
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
-        <div class="nav-placeholder">Coming soon…</div>
+        <a id="nav-rfq-link" href="#/rfq" onclick="event.preventDefault(); location.hash='#/rfq'" class="nav-flat-link">
+          <span>RFQ</span>
+          <span class="nav-badge" id="badge-rfq"></span>
+        </a>
+
+        <!-- Ready for Review — workbooks Karen has finished editing
+             and sent back for Jackson + Parker to look at
+             (sentForReview=true, currently sitting at Quote to
+             Client). Mirrors the RFQ nav layout. -->
+        <a id="nav-review-link" href="#/review" onclick="event.preventDefault(); location.hash='#/review'" class="nav-flat-link">
+          <span>Ready for Review</span>
+          <span class="nav-badge" id="badge-review"></span>
+        </a>
+
+        <!-- Samples — sits below Ready for Review per the new
+             reorganization. -->
+        <a id="nav-samples-link" href="#/samples" onclick="event.preventDefault(); location.hash='#/samples'" class="nav-flat-link">
+          <span>Samples</span>
+          <span class="nav-badge" id="badge-samples"></span>
+        </a>
+
+        <a id="nav-orders-link" href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" class="nav-flat-link">
+          <span>Orders</span>
+          <span class="nav-badge" id="badge-orders"></span>
+        </a>
+
+        <!-- In Production — orders that have been Notify-Client'd but
+             haven't yet been placed on a Shipment. Holding lane
+             between client confirmation and physical shipping. -->
+        <a id="nav-fulfillment-link" href="#/fulfillment" onclick="event.preventDefault(); location.hash='#/fulfillment'" class="nav-flat-link">
+          <span>In Production</span>
+          <span class="nav-badge" id="badge-fulfillment"></span>
+        </a>
+
+        <a id="nav-shipments-link" href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" class="nav-flat-link">
+          <span>Shipments</span>
+          <span class="nav-badge" id="badge-shipments"></span>
+        </a>
+
+        <!-- Receiving — shipments marked Waiting Arrival. Each one
+             carries a carrier + tracking number; AI tracking lookup
+             pulls live status from the carrier's public page. -->
+        <a id="nav-receiving-link" href="#/receiving" onclick="event.preventDefault(); location.hash='#/receiving'" class="nav-flat-link">
+          <span>Receiving</span>
+          <span class="nav-badge" id="badge-receiving"></span>
+        </a>
       </div>
     </div>
 
-    <!-- Commissions — no nav badge per operator preference. -->
-    <a id="nav-commissions-link" href="#/commissions" onclick="event.preventDefault(); location.hash='#/commissions'" class="nav-flat-link">
-      <span>Commissions</span>
-    </a>
+    <!-- ── Internal section ─────────────────────────────────────────
+         Default COLLAPSED — operator-facing day work shouldn't have
+         to scroll past these. Houses billing / commission / reporting
+         surfaces. Billings is a placeholder until the view ships;
+         the link is non-interactive in the meantime. -->
+    <div class="nav-section collapsed" id="nav-section-internal">
+      <div class="nav-section-header" onclick="toggleNavSection('nav-section-internal')">
+        <span>Internal</span>
+        <span class="nav-section-chevron">›</span>
+      </div>
+      <div class="nav-section-body">
+        <!-- Billings — placeholder link until the view ships.
+             onclick is a no-op so the click feels neutral rather
+             than dead. -->
+        <a id="nav-billings-link" href="#" onclick="event.preventDefault();" class="nav-flat-link" style="opacity:0.6; cursor:default;">
+          <span>Billings</span>
+          <span style="margin-left:auto; font-size:10px; color:var(--text-muted); font-style:italic;">soon</span>
+        </a>
 
-    <!-- Reports -->
-    <a id="nav-reports-link" href="#/reports" onclick="event.preventDefault(); location.hash='#/reports'" class="nav-flat-link">
-      <span>Reports</span>
-      <span class="nav-badge" id="badge-reports"></span>
-    </a>
+        <!-- Commissions — no nav badge per operator preference. -->
+        <a id="nav-commissions-link" href="#/commissions" onclick="event.preventDefault(); location.hash='#/commissions'" class="nav-flat-link">
+          <span>Commissions</span>
+        </a>
+
+        <a id="nav-reports-link" href="#/reports" onclick="event.preventDefault(); location.hash='#/reports'" class="nav-flat-link">
+          <span>Reports</span>
+          <span class="nav-badge" id="badge-reports"></span>
+        </a>
+      </div>
+    </div>
 
   </nav>
 
