@@ -6251,6 +6251,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .order-wb-check-item:last-child { border-bottom: none; }
     .order-wb-check-item:hover { background: var(--surface); }
     .order-wb-check-item input[type="checkbox"] { flex-shrink: 0; }
+    /* Bulk-select checkboxes on the Samples table. 18×18 reads as
+       a deliberate interactive control next to the 13px row text
+       without dominating the row. accent-color paints the checked
+       state in our brand orange instead of the browser-default
+       OS blue. Matches both the header (select-all) and per-row
+       checkboxes. */
+    .samples-row-checkbox,
+    #samples-header-checkbox {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--accent);
+      vertical-align: middle;
+    }
     .order-wb-check-info { flex: 1; min-width: 0; }
     .order-wb-check-product { font-size: 13px; font-weight: 600; }
     .order-wb-check-status  { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
