@@ -1244,18 +1244,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 0 0 2px var(--surface), 0 2px 6px rgba(0,0,0,0.2);
+      /* 3px white ring + a heavier drop shadow so the badge stays
+         legible against a logo's dark or busy edge. Was 2px / soft
+         shadow, which got swallowed by a black-silhouette logo
+         where the badge overlapped the dark area. z-index pins it
+         above the logo image. */
+      box-shadow: 0 0 0 3px var(--surface), 0 2px 8px rgba(0,0,0,0.45);
       line-height: 1;
+      z-index: 2;
     }
     /* When a logo IS set, the avatar drops its accent-blue background
        and circular crop — the photo/logo gets a clean rounded-square
        frame with no chrome competing for attention. Without this, the
        blue ring bled through the corners of every logo the operator
-       uploaded. */
+       uploaded.
+
+       NO overflow:hidden here — the .cdc-avatar-img already self-clips
+       via its own border-radius, and the margin badge + edit pencil
+       both extend outside the avatar (negative top/right/bottom).
+       Clipping the parent would chop them in half when they overlap
+       a logo, which is what the operator just hit. */
     .cdc-avatar.cdc-avatar--logo {
       background: var(--surface);
       border-radius: 10px;
-      overflow: hidden;
     }
     /* Logo image fills the avatar frame. border-radius matches the
        parent so the corners stay clean in both states (circle when
@@ -1294,6 +1305,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       transition: opacity 0.15s, transform 0.15s, background 0.15s;
       padding: 0;
       font-family: inherit;
+      /* Pin above the logo image so dark logos don't swallow the
+         pencil icon (same fix as the margin badge below). */
+      z-index: 2;
     }
     .cdc-avatar-edit:hover { opacity: 1; transform: scale(1.08); background: var(--surface2); }
     .cdc-avatar-edit svg { width: 12px; height: 12px; display: block; }
