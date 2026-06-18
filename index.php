@@ -8126,8 +8126,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="add-text">Add File</div>
           </div>
         </div>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop art files here, or click the tile to browse.</div>
-        <input type="file" id="artInput" accept="image/*" multiple onchange="handleArtFiles(event)" style="display:none;" />
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop art files here, or click the tile to browse. Images, Adobe (AI/PSD/EPS), PDF, CAD (DWG/DXF/STEP/STL/etc.), video, and common docs are all accepted (max 100MB per file).</div>
+        <input type="file" id="artInput" multiple onchange="handleArtFiles(event)" style="display:none;"
+          accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.tif,.heic,.heif,.avif,.ai,.psd,.eps,.indd,.sketch,.xd,.fig,.pdf,.doc,.docx,.txt,.rtf,.csv,.xlsx,.xls,.ppt,.pptx,.dwg,.dxf,.step,.stp,.iges,.igs,.stl,.obj,.3mf,.sat,.ipt,.iam,.prt,.sldprt,.sldasm,.dgn,.x_t,.x_b,.mp4,.mov,.webm,.avi,.mkv,.m4v,.qt,.mpg,.mpeg,.wmv,.flv,.3gp,.zip,.rar,.7z,.tar,.gz" />
       </div>
     </div>
   </div>
@@ -10157,10 +10158,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   });
 
-  // Drag and drop support for the Art Files gallery — images only.
-  // Mirrors the image-gallery wiring so the Art tab has the same
-  // "drop or click to upload" UX without needing to bounce through a
-  // browse dialog.
+  // Drag and drop support for the Art Files gallery — accepts any
+  // file the backend's upload_art_file endpoint allows (images,
+  // Adobe, PDF, CAD, video, docs, archives). The endpoint enforces
+  // the extension allowlist + 100MB cap; the frontend just hands the
+  // files over and lets the server reject anything it doesn't take.
   const artGalleryEl = document.getElementById('artGallery');
   if (artGalleryEl) {
     artGalleryEl.addEventListener('dragover',  e => { e.preventDefault(); artGalleryEl.style.outline = '2px solid var(--accent)'; });
@@ -10168,8 +10170,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     artGalleryEl.addEventListener('drop', e => {
       e.preventDefault();
       artGalleryEl.style.outline = '';
-      const imageFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-      if (imageFiles.length) handleArtFiles({ target: { files: imageFiles, value: '' } });
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length) handleArtFiles({ target: { files, value: '' } });
     });
   }
 
@@ -10557,17 +10559,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!files.length || !currentWorkbookId) return;
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     for (const file of files) {
-      if (!file.type.startsWith('image/')) continue;
       const formData = new FormData();
-      formData.append('image', file);
+      formData.append('file', file);
       formData.append('workbook_id', dbId);
       try {
-        const res = await fetch('api.php?action=upload_image', { method: 'POST', body: formData });
+        const res = await fetch('api.php?action=upload_art_file', { method: 'POST', body: formData });
         const data = await res.json();
         if (data.success) {
           _artImages.push({ url: data.url });
           renderArtGallery();
           saveArtList();
+        } else if (data.error) {
+          // Surface the server's reason (usually "Unsupported file type:
+          // .xyz" or "File too large") so the operator knows which file
+          // and why it didn't land.
+          alert(`Could not upload ${file.name}: ${data.error}`);
         }
       } catch (err) { console.warn('Art upload failed:', err); }
     }
@@ -10584,6 +10590,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveArtList();
   }
 
+  // Extension → file-type category. Drives both the icon shown on the
+  // file card AND whether the gallery renders the entry as an inline
+  // image preview vs a generic file tile.
+  function _artFileKind(url) {
+    const ext = (String(url).split('.').pop() || '').toLowerCase();
+    if (['jpg','jpeg','png','gif','webp','svg','bmp','tiff','tif','heic','heif','avif'].includes(ext)) return 'image';
+    if (['mp4','mov','webm','avi','mkv','m4v','qt','mpg','mpeg','wmv','flv','3gp'].includes(ext))     return 'video';
+    if (['pdf'].includes(ext))                                                                         return 'pdf';
+    if (['ai','psd','eps','indd','sketch','xd','fig'].includes(ext))                                   return 'design';
+    if (['dwg','dxf','step','stp','iges','igs','stl','obj','3mf','sat','ipt','iam','prt','sldprt','sldasm','dgn','x_t','x_b'].includes(ext)) return 'cad';
+    if (['doc','docx','txt','rtf','csv','xlsx','xls','ppt','pptx'].includes(ext))                      return 'doc';
+    if (['zip','rar','7z','tar','gz'].includes(ext))                                                   return 'archive';
+    return 'file';
+  }
+  function _artFileIcon(kind) {
+    return ({ image:'🖼', video:'🎬', pdf:'📄', design:'🎨', cad:'📐', doc:'📃', archive:'🗜', file:'📎' })[kind] || '📎';
+  }
+  function _artFileBasename(url) {
+    // The uploads filename is `{uniqid}_{timestamp}.{ext}` — strip the
+    // uniqid+timestamp prefix when present so the tile label shows the
+    // extension prominently. Falls back to the last path segment.
+    const last = String(url).split('/').pop() || url;
+    const m = last.match(/^[a-z0-9]+_\d+\.(.+)$/i);
+    return m ? `.${m[1]}` : last;
+  }
+
   function renderArtGallery() {
     const gallery = document.getElementById('artGallery');
     const addBtn = gallery.querySelector('.image-add-btn');
@@ -10591,10 +10623,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _artImages.forEach((img, idx) => {
       const item = document.createElement('div');
       item.className = 'image-gallery-item';
-      item.innerHTML = `
-        <img src="${img.url}" alt="Art file ${idx+1}" onclick="openLightbox('${img.url}')" />
-        <button class="img-remove" onclick="removeArtImage(${idx}, event)" title="Remove">✕</button>
-      `;
+      const kind = _artFileKind(img.url);
+      if (kind === 'image') {
+        item.innerHTML = `
+          <img src="${img.url}" alt="Art file ${idx+1}" onclick="openLightbox('${img.url}')" />
+          <button class="img-remove" onclick="removeArtImage(${idx}, event)" title="Remove">✕</button>
+        `;
+      } else {
+        // Non-image tile: file-icon card with the extension as label.
+        // Clicking opens in a new tab (browser download for binary
+        // types like .ai/.dwg, inline preview for PDF/video).
+        const icon = _artFileIcon(kind);
+        const label = _artFileBasename(img.url).toUpperCase();
+        item.innerHTML = `
+          <a href="${img.url}" target="_blank" rel="noopener" download
+             style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; width:100%; height:100%; text-decoration:none; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px; box-sizing:border-box;"
+             title="${label} — click to open / download">
+            <span style="font-size:34px; line-height:1;">${icon}</span>
+            <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;">${label}</span>
+          </a>
+          <button class="img-remove" onclick="removeArtImage(${idx}, event)" title="Remove">✕</button>
+        `;
+      }
       gallery.insertBefore(item, addBtn);
     });
   }
@@ -25011,7 +25061,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     addRecentNav({ type: 'client', label: clientName, href: `#/client/${encodeURIComponent(clientName)}` });
   }
 
-  function fillWorkbook(clientName, workbookId) {
+  // Tab name to switch to after fillWorkbook completes. Set by the
+  // hash router when the URL ends in /{tab} (e.g. #/client/.../art).
+  // Cleared after the switch runs in _fillWorkbookInner's setTimeout
+  // tail.
+  let _pendingWbTab = null;
+  function fillWorkbook(clientName, workbookId, tabName) {
+    _pendingWbTab = tabName || null;
     try { _fillWorkbookInner(clientName, workbookId); }
     catch(e) {
       console.error('[MS fillWorkbook]', e);
@@ -25554,6 +25610,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Delay clearing _filling to let queued input events (from calcFreight etc.) fire while still blocked
     setTimeout(() => {
       _filling = false;
+      // Deep-link tab switch — hash router stashed a desired tab name
+      // (e.g. 'art' from the Order Sheet's Art pill); switch to it now
+      // that all wb-tab-* elements exist and are populated. Falls back
+      // silently when the tab name doesn't match a real tab button.
+      if (_pendingWbTab) {
+        const _btn = document.querySelector(`.wb-tab[onclick*="switchWbTab('${_pendingWbTab}'"]`);
+        if (_btn && typeof switchWbTab === 'function') switchWbTab(_pendingWbTab, _btn);
+        _pendingWbTab = null;
+      }
       // Wire up presence focus tracking now that the RFQ table is populated
       _initPresenceFocusTracking();
       // Re-apply lock after all dynamic rows (RFQ, tiers) have been added
@@ -26411,10 +26476,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { hash = decodeURIComponent(location.hash || '#/'); }
     catch(e) { hash = location.hash || '#/'; }
 
-    // Match: #/client/{name}/workbook/{id}
-    const wbMatch = hash.match(/^#\/client\/(.+?)\/workbook\/(\d+)$/);
+    // Match: #/client/{name}/workbook/{id}[/{tab}] — optional trailing
+    // tab segment deep-links straight into that tab on load (used by
+    // the Order Sheet's Art pill → /art). Allowed tab values mirror
+    // wb-tab-* element ids; unknown values fall through and just open
+    // the workbook on its default tab.
+    const wbMatch = hash.match(/^#\/client\/(.+?)\/workbook\/(\d+)(?:\/([a-z-]+))?$/);
     if (wbMatch) {
-      fillWorkbook(wbMatch[1], wbMatch[2]);
+      fillWorkbook(wbMatch[1], wbMatch[2], wbMatch[3] || null);
       return;
     }
 
@@ -34594,13 +34663,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Workbook header row — click anywhere on it (except the link
       // or the × button) to expand/collapse the variant breakdown.
       // Shows the workbook-level summary so the row is useful even
-      // while collapsed.
+      // while collapsed. Art pill renders to the right of the
+      // workbook link with the file count; clicking it deep-links to
+      // that workbook's Art tab via the hash router's /art suffix.
+      const _artCount = Array.isArray(detail.artImages) ? detail.artImages.length : 0;
+      const _artPill = `<span class="order-sheet-art-pill" onclick="event.stopPropagation(); _wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; location.hash='${wbHref.substring(1)}/art'"
+        style="display:inline-flex; align-items:center; gap:4px; margin-left:8px; padding:2px 8px; border-radius:9px; background:rgba(107,147,255,0.10); color:#6b93ff; border:1px solid rgba(107,147,255,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; white-space:nowrap; vertical-align:middle;"
+        title="Open this workbook's Art tab — ${_artCount} file${_artCount === 1 ? '' : 's'} uploaded">
+        <span style="font-size:12px; line-height:1;">🎨</span>Art <span style="opacity:0.75; font-variant-numeric:tabular-nums;">${_artCount}</span>
+      </span>`;
       let rows = `<tr class="order-sheet-wb-header" style="cursor:pointer;" onclick="toggleOrderSheetWb('${esc(key).replace(/'/g,"\\'")}')">
         <td>
           ${chevron}<a class="order-sheet-product-link" href="${wbHref}"
             onclick="event.stopPropagation(); _wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
             ${esc(product)} <span style="font-size:11px; opacity:0.5;">→</span>
           </a>
+          ${_artPill}
           ${splitBadges}
         </td>
         <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>

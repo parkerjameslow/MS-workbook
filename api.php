@@ -91,12 +91,6 @@ try {
 try {
     $pdo->exec("ALTER TABLE workbooks ADD COLUMN deleted_by VARCHAR(255) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
-// Auto-add live-broadcast column — tracks who made the last save, so
-// the dirty-check poll can skip self-echoes ('don't tell Karen about
-// the save Karen just made'). Lazy migration like the soft-delete cols.
-try {
-    $pdo->exec("ALTER TABLE workbooks ADD COLUMN updated_by VARCHAR(255) DEFAULT NULL");
-} catch (PDOException $e) { /* column already exists */ }
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN deleted_at DATETIME DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
@@ -728,46 +722,17 @@ function ms_order_table_client(array $items, float $rate): string {
     $rows = '';
     $prevProduct = null;
     $grandTotal  = 0;
-    $compTotal   = 0; // running tally of complimentary value for the "you saved" line below
     foreach ($items as $itm) {
         $product  = $itm['product'] ?? '';
         $itemName = $itm['item']    ?? '';
         $sku      = $itm['sku']     ?? '';
         $qty      = (float)($itm['qty']      ?? 0);
         $priceRmb = (float)($itm['priceRmb'] ?? 0);
-        $isFee    = !empty($itm['isFee']);
-        if (!$isFee && !$itemName && !$qty && !$priceRmb) continue;
+        if (!$itemName && !$qty && !$priceRmb) continue;
         if ($product !== $prevProduct && $product !== '') {
             $rows .= '<tr style="background:#f8f9fb;"><td colspan="5" style="padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">'
                    . htmlspecialchars($product) . '</td></tr>';
             $prevProduct = $product;
-        }
-        // ── Applied Additional Fee row ───────────────────────────────
-        // Rendered with an orange-tinted background to set it apart
-        // from product line items. Billed → shows the fee amount;
-        // Complimentary → shows $0.00 with a green Complimentary tag
-        // so the client knows it is included free as a value-add.
-        if ($isFee) {
-            $billed   = !empty($itm['feeBilled']);
-            $feeUsd   = (float)($itm['feeUsd']     ?? 0);
-            $feeFull  = (float)($itm['feeUsdFull'] ?? $feeUsd);
-            $feeDesc  = (string)($itm['feeDesc']   ?? '');
-            $descPart = $feeDesc !== '' ? '<span style="color:#9a3412;font-weight:400;"> — ' . htmlspecialchars($feeDesc) . '</span>' : '';
-            $tag      = $billed
-                ? ''
-                : '<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:99px;background:#dcfce7;color:#15803d;font-size:10px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;vertical-align:middle;">Complimentary</span>';
-            $shownAmt = $billed ? '$' . number_format($feeUsd, 2) : '$0.00';
-            $amtColor = $billed ? '#1a1d2e' : '#15803d';
-            $grandTotal += $billed ? $feeUsd : 0;
-            $compTotal  += $billed ? 0 : $feeFull;
-            $rows .= '<tr style="border-top:1px solid #fed7aa;background:#fff7ed;">'
-                   . '<td colspan="3" style="padding:9px 12px;font-size:13px;color:#9a3412;font-weight:600;">'
-                   . htmlspecialchars($itemName) . $descPart . $tag
-                   . '</td>'
-                   . '<td style="padding:9px 12px;font-size:14px;color:#6b7280;text-align:right;">—</td>'
-                   . '<td style="padding:9px 12px;font-size:14px;font-weight:700;color:' . $amtColor . ';text-align:right;">' . $shownAmt . '</td>'
-                   . '</tr>';
-            continue;
         }
         $unitUsd = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
         $totUsd  = ($priceRmb > 0 && $qty > 0 && $rate > 0) ? ($priceRmb / $rate) * $qty : 0;
@@ -785,16 +750,6 @@ function ms_order_table_client(array $items, float $rate): string {
                . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:center;">' . $qtyFmt . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;color:#1a1d2e;text-align:right;">' . $unitUsd . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;">' . $totFmt . '</td>'
-               . '</tr>';
-    }
-    // Complimentary value callout — surfaces $X.XX of value-add when
-    // any fees were marked complimentary, so the client sees the
-    // total they are getting for free as a single number on the
-    // email / portal in addition to the per-row tags above.
-    if ($compTotal > 0) {
-        $rows .= '<tr style="background:#f0fdf4;border-top:1px solid #bbf7d0;">'
-               . '<td colspan="4" style="padding:10px 12px;font-size:13px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">★ Complimentary Value Included</td>'
-               . '<td style="padding:10px 12px;font-size:14px;font-weight:800;color:#15803d;text-align:right;">$' . number_format($compTotal, 2) . '</td>'
                . '</tr>';
     }
     if ($grandTotal > 0) {
@@ -820,7 +775,6 @@ function ms_order_table_internal(array $items, float $rate): string {
     $prevProduct = null;
     $grandUsd    = 0;
     $grandRmb    = 0;
-    $compTotal   = 0;
     foreach ($items as $itm) {
         $product  = $itm['product'] ?? '';
         $itemName = $itm['item']    ?? '';
@@ -828,43 +782,11 @@ function ms_order_table_internal(array $items, float $rate): string {
         $qty      = (float)($itm['qty']      ?? 0);
         $priceRmb = (float)($itm['priceRmb'] ?? 0);
         $leadTime = (string)($itm['leadTime'] ?? '');
-        $isFee    = !empty($itm['isFee']);
-        if (!$isFee && !$itemName && !$qty && !$priceRmb) continue;
+        if (!$itemName && !$qty && !$priceRmb) continue;
         if ($product !== $prevProduct && $product !== '') {
             $rows .= '<tr style="background:#f8f9fb;"><td colspan="7" style="padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;">'
                    . htmlspecialchars($product) . '</td></tr>';
             $prevProduct = $product;
-        }
-        // ── Applied Additional Fee row ───────────────────────────────
-        // Matches ms_order_table_client's fee handling: orange-tinted
-        // row, billed → shows amount, complimentary → $0.00 with a
-        // green tag. The internal table was previously rendering fee
-        // rows like regular items (qty=0, priceRmb=0) which printed
-        // an entire row of dashes and skipped the amount entirely —
-        // and the Total at the bottom silently excluded all fees.
-        if ($isFee) {
-            $billed   = !empty($itm['feeBilled']);
-            $feeUsd   = (float)($itm['feeUsd']     ?? 0);
-            $feeFull  = (float)($itm['feeUsdFull'] ?? $feeUsd);
-            $feeDesc  = (string)($itm['feeDesc']   ?? '');
-            $descPart = $feeDesc !== '' ? '<span style="color:#9a3412;font-weight:400;"> — ' . htmlspecialchars($feeDesc) . '</span>' : '';
-            $tag      = $billed
-                ? ''
-                : '<span style="display:inline-block;margin-left:8px;padding:1px 8px;border-radius:99px;background:#dcfce7;color:#15803d;font-size:10px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;vertical-align:middle;">Complimentary</span>';
-            $shownUsd = $billed ? '$' . number_format($feeUsd, 2) : '$0.00';
-            $shownRmb = $billed ? '¥' . number_format($feeUsd * $rate, 2) : '¥0.00';
-            $amtColor = $billed ? '#1a1d2e' : '#15803d';
-            $grandUsd += $billed ? $feeUsd : 0;
-            $grandRmb += $billed ? $feeUsd * $rate : 0;
-            $compTotal += $billed ? 0 : $feeFull;
-            $rows .= '<tr style="border-top:1px solid #fed7aa;background:#fff7ed;">'
-                   . '<td colspan="4" style="padding:9px 12px;font-size:13px;color:#9a3412;font-weight:600;">'
-                   . htmlspecialchars($itemName) . $descPart . $tag . '</td>'
-                   . '<td style="padding:9px 12px;font-size:14px;color:#6b7280;text-align:right;">' . $shownRmb . '</td>'
-                   . '<td style="padding:9px 12px;font-size:14px;font-weight:700;color:' . $amtColor . ';text-align:right;">' . $shownUsd . '</td>'
-                   . '<td style="padding:9px 12px;font-size:13px;color:#6b7280;text-align:center;">—</td>'
-                   . '</tr>';
-            continue;
         }
         $unitUsd  = ($priceRmb > 0 && $rate > 0) ? '$' . number_format($priceRmb / $rate, 2) : '—';
         $unitRmb  = $priceRmb > 0 ? '¥' . number_format($priceRmb, 2) : '—';
@@ -890,12 +812,6 @@ function ms_order_table_internal(array $items, float $rate): string {
                . '<td style="padding:10px 12px;font-size:14px;color:#6b7280;text-align:right;">' . $unitRmb . '</td>'
                . '<td style="padding:10px 12px;font-size:14px;font-weight:700;color:#1a1d2e;text-align:right;">' . $totUsdFmt . '</td>'
                . '<td style="padding:10px 12px;font-size:13px;color:#6b7280;text-align:center;">' . $leadFmt . '</td>'
-               . '</tr>';
-    }
-    if ($compTotal > 0) {
-        $rows .= '<tr style="background:#f0fdf4;border-top:1px solid #bbf7d0;">'
-               . '<td colspan="6" style="padding:10px 12px;font-size:13px;color:#15803d;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;">★ Complimentary Value Included</td>'
-               . '<td style="padding:10px 12px;font-size:14px;font-weight:800;color:#15803d;text-align:right;">$' . number_format($compTotal, 2) . '</td>'
                . '</tr>';
     }
     if ($grandUsd > 0) {
@@ -1339,132 +1255,6 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
-    /*
-     * submit_for_review — Karen has finished her edits and is pinging
-     * Jackson + Parker to look. Idempotent.
-     *
-     * NEW POLICY (per UX direction): this action no longer advances
-     * the fulfillment flow_step. It ONLY:
-     *   1. Sets detail.sentForReview = true (+ sentForReviewAt).
-     *   2. Emails the internal reviewers.
-     * The user advances the flow stage manually via the status-bar
-     * advance button when they're ready. That keeps the RFQ Queue
-     * clear (it filters out sentForReview workbooks) without
-     * silently jumping the workbook into 'Quote to Client'.
-     *
-     * Refuses only when the workbook has been archived. Stage 0 used
-     * to be rejected too, but since flow isn't touched there's no
-     * harm in pinging reviewers even before the queue submit — kept
-     * an explicit guard anyway because there's nothing to review
-     * pre-submit.
-     */
-    case 'submit_for_review': {
-        if (empty($input['workbook_id'])) {
-            echo json_encode(['success' => false, 'error' => 'workbook_id required']);
-            break;
-        }
-        $wbId = (int)$input['workbook_id'];
-
-        $stmt = $pdo->prepare("SELECT id, flow_step, deleted_at FROM workbooks WHERE id = ?");
-        $stmt->execute([$wbId]);
-        $wb = $stmt->fetch();
-        if (!$wb) {
-            echo json_encode(['success' => false, 'error' => 'Workbook not found']);
-            break;
-        }
-        if (!empty($wb['deleted_at'])) {
-            echo json_encode(['success' => false, 'error' => 'This workbook has been archived.']);
-            break;
-        }
-        $curStep = (int)$wb['flow_step'];
-        if ($curStep < 1) {
-            echo json_encode([
-                'success' => false,
-                'error'   => 'This workbook hasn\'t been submitted yet. Send it to the RFQ Queue first.'
-            ]);
-            break;
-        }
-
-        // No flow advance. The 're_sent' flag tells the frontend
-        // whether this is the first ping (false) or a follow-up
-        // (true — i.e. sentForReview was already set on the detail).
-        $reSent  = false;
-        $newStep = $curStep;
-        try {
-            $check = $pdo->prepare("SELECT JSON_EXTRACT(detail_json, '$.sentForReview') AS sf FROM workbooks WHERE id = ?");
-            $check->execute([$wbId]);
-            $row = $check->fetch();
-            $reSent = $row && ($row['sf'] === 'true' || $row['sf'] === true || $row['sf'] === 1 || $row['sf'] === '1');
-        } catch (Throwable $_e) { /* JSON_EXTRACT unsupported → treat as first send */ }
-
-        // Persist the 'sent for review' flag into detail_json so the
-        // in-workbook 'Send for Review' button stays in its filled
-        // 'Sent ✓' state across reloads, AND so the RFQ Queue +
-        // Ready-for-Review queue agree on which side this workbook
-        // belongs on (sentForReview is the divider).
-        try {
-            $pdo->prepare(
-                "UPDATE workbooks
-                 SET detail_json = JSON_SET(
-                       COALESCE(detail_json, JSON_OBJECT()),
-                       '$.sentForReview',   CAST('true' AS JSON),
-                       '$.sentForReviewAt', ?
-                     )
-                 WHERE id = ?"
-            )->execute([gmdate('c'), $wbId]);
-        } catch (Throwable $_e) {
-            error_log('[submit_for_review] JSON_SET failed: ' . $_e->getMessage());
-        }
-
-        // Build the flow object the frontend status-bar renderer expects:
-        // cumulative booleans up to + including the current step.
-        $flowKeys = ['quoteChina', 'quoteSubmitted', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
-        $flow = [];
-        foreach ($flowKeys as $idx => $k) { $flow[$k] = ($idx <= $newStep); }
-
-        // Email the internal review list. Best-effort: if SMTP fails,
-        // the flow advance still stands (we don't roll back) but the
-        // operator gets a flagged response so they know to ping
-        // Jackson + Parker manually.
-        $clientName  = trim((string)($input['client_name']  ?? ''));
-        $productName = trim((string)($input['product_name'] ?? ''));
-        $reviewer    = trim((string)($_SESSION['username']  ?? ($_SESSION['email'] ?? 'Someone')));
-        $internal    = ['jackson@marketsculpt.com', 'parker@marketsculpt.com'];
-
-        $hostBase = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com');
-        $clientSafe = rawurlencode($clientName);
-        $wbUrl    = $hostBase . '/#/client/' . $clientSafe . '/workbook/' . $wbId;
-        $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
-
-        $subject = 'Workbook ready for review: ' . ($productName !== '' ? $productName : ('Workbook #' . $wbId))
-                 . ($clientName !== '' ? ' — ' . $clientName : '');
-        $html = '<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif; font-size:14px; color:#1a1a1a; max-width:560px;">'
-              . '<p>' . $esc($reviewer) . ' has finished editing a workbook in the RFQ Queue and marked it ready for your review.</p>'
-              . '<table style="border-collapse:collapse; margin:14px 0; font-size:13px;">'
-              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Client</td><td style="padding:4px 0; font-weight:600;">' . $esc($clientName !== '' ? $clientName : '—') . '</td></tr>'
-              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Workbook</td><td style="padding:4px 0; font-weight:600;">' . $esc($productName !== '' ? $productName : ('#' . $wbId)) . '</td></tr>'
-              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Workbook&nbsp;ID</td><td style="padding:4px 0;">#' . (int)$wbId . '</td></tr>'
-              . '</table>'
-              . '<p><a href="' . $esc($wbUrl) . '" style="display:inline-block; background:#5b6fcc; color:#fff; padding:9px 18px; border-radius:6px; text-decoration:none; font-weight:600;">Open Workbook</a></p>'
-              . ($reSent
-                  ? '<p style="color:#666; font-size:12px; margin-top:20px;">(Reminder — Karen already pinged you on this workbook; she\'s asking for another look.)</p>'
-                  : '<p style="color:#666; font-size:12px; margin-top:20px;">Open the workbook and advance the status when you\'re ready to push it to the client.</p>')
-              . '</body></html>';
-
-        $mail = ms_smtp_send($internal, $subject, $html);
-
-        echo json_encode([
-            'success'    => true,
-            'flow_step'  => $newStep,
-            'flow'       => $flow,
-            're_sent'    => $reSent,
-            'email_sent' => !empty($mail['ok']),
-            'email_error'=> empty($mail['ok']) ? ($mail['error'] ?? 'unknown') : null,
-            'reviewers'  => $internal,
-        ]);
-        break;
-    }
-
     case 'delete_workbook':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
@@ -1598,17 +1388,13 @@ switch ($action) {
         }
 
         // ── WRITE ─────────────────────────────────────────────────────────
-        // updated_by captures who made the last change so the live-broadcast
-        // poll on other browsers can skip self-echoes (you don't get a
-        // 'someone updated this' flash for your own keystroke landing).
         $newProductName = !empty($incomingArr['product']) ? trim($incomingArr['product']) : null;
-        $updaterName    = $changedBy ?: ($_SESSION['username'] ?? '');
         if ($newProductName) {
-            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, product_name = ?, updated_at = NOW(), updated_by = ? WHERE id = ?");
-            $stmt->execute([$incomingJson, $newProductName, $updaterName, $input['id']]);
+            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, product_name = ?, updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$incomingJson, $newProductName, $input['id']]);
         } else {
-            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW(), updated_by = ? WHERE id = ?");
-            $stmt->execute([$incomingJson, $updaterName, $input['id']]);
+            $stmt = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$incomingJson, $input['id']]);
         }
 
         // ── REVISION RETENTION ────────────────────────────────────────────
@@ -2154,6 +1940,58 @@ switch ($action) {
         }
         break;
 
+    case 'upload_art_file':
+        // Art-tab uploads — broad allowlist covering the formats a
+        // designer hands over: Adobe (ai/psd/eps/indd), images,
+        // PDF, CAD (dwg/dxf/step/stp/iges/igs/stl/obj/3mf/etc.),
+        // video, common docs, archives. Same upload directory as
+        // upload_image so existing artImages URLs keep resolving.
+        // Returns originalName so the frontend can show a friendlier
+        // label than the random uniqid filename.
+        if (empty($_FILES['file']) || empty($_POST['workbook_id'])) {
+            echo json_encode(['success' => false, 'error' => 'file and workbook_id required']);
+            break;
+        }
+        $wbId = intval($_POST['workbook_id']);
+        $file = $_FILES['file'];
+        $origName = isset($file['name']) ? $file['name'] : '';
+        $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+        $allowed = [
+            // Images
+            'jpg','jpeg','png','gif','webp','svg','bmp','tiff','tif','heic','heif','avif',
+            // Adobe + design
+            'ai','psd','eps','indd','sketch','xd','fig',
+            // PDF / docs
+            'pdf','doc','docx','txt','rtf','csv','xlsx','xls','ppt','pptx',
+            // CAD
+            'dwg','dxf','step','stp','iges','igs','stl','obj','3mf','sat','ipt','iam','prt','sldprt','sldasm','dgn','x_t','x_b',
+            // Video
+            'mp4','mov','webm','avi','mkv','m4v','qt','mpg','mpeg','wmv','flv','3gp',
+            // Archives
+            'zip','rar','7z','tar','gz',
+        ];
+        if (!in_array($ext, $allowed)) {
+            echo json_encode(['success' => false, 'error' => "Unsupported file type: .{$ext}"]);
+            break;
+        }
+        // 100MB ceiling — Adobe + CAD source files run large; tighter
+        // than the 500MB video cap but loose enough for production art.
+        if ($file['size'] > 100 * 1024 * 1024) {
+            echo json_encode(['success' => false, 'error' => 'File too large (max 100MB)']);
+            break;
+        }
+        $uploadDir = __DIR__ . '/uploads/' . $wbId . '/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+        $filename = uniqid() . '_' . time() . '.' . $ext;
+        $filepath = $uploadDir . $filename;
+        if (move_uploaded_file($file['tmp_name'], $filepath)) {
+            $url = 'uploads/' . $wbId . '/' . $filename;
+            echo json_encode(['success' => true, 'url' => $url, 'filename' => $filename, 'originalName' => $origName]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Upload failed']);
+        }
+        break;
+
     case 'upload_video':
         if (empty($_FILES['video']) || empty($_POST['workbook_id'])) {
             echo json_encode(['success' => false, 'error' => 'Video file and workbook_id required']);
@@ -2630,16 +2468,6 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
-    // One-shot admin reset — wipes status back to 'pending' on every
-    // commission row and clears paid_at. Used by the "↻ Reset all to
-    // Pending" button on the Commissions dashboard when starting a
-    // fresh payout cycle. Destructive — front-end gates it behind a
-    // confirm() before calling.
-    case 'reset_commissions_pending':
-        $stmt = $pdo->query("UPDATE commissions SET status = 'pending', paid_at = NULL");
-        echo json_encode(['success' => true, 'affected' => $stmt->rowCount()]);
-        break;
-
     // Backfill / reconcile commissions for every (client, workbook) pair that
     // is currently in inventory OR on a current order. Idempotent — safe to
     // call on every dashboard load. Picks up:
@@ -2648,20 +2476,6 @@ switch ($action) {
     //   • workbooks whose rfqItems totals changed since the original write
     //     (UPSERT refreshes pending rows; paid rows stay frozen)
     case 'recompute_commissions':
-        // Optional live overrides from the JS workbookDetail cache —
-        // a map of "$clientName|$wbId" => pricingClientQuoteTotal (USD).
-        // Lets the Commissions dashboard reflect Sale Per typed by the
-        // operator since the last autosave round-trip, instead of
-        // waiting on the saved detail_json to catch up. Numbers are
-        // applied below in the per-workbook write loop.
-        $liveQuoteTotals = [];
-        if (isset($input['client_quote_totals']) && is_array($input['client_quote_totals'])) {
-            foreach ($input['client_quote_totals'] as $k => $v) {
-                $f = (float)$v;
-                if ($f > 0) $liveQuoteTotals[(string)$k] = $f;
-            }
-        }
-
         $pairs = []; // map "$clientName|$wbId" => ['client_name', 'workbook_id']
 
         // 1. Pairs from inventory (anything ever promoted)
@@ -2706,22 +2520,6 @@ switch ($action) {
         } catch (Exception $_) {
             // Older installs may not have w.deleted_at or c.deleted_at.
             // Fall through to whatever we already have in $pairs.
-        }
-
-        // 1c. Pairs from the live Client Quote total payload — every
-        //     workbook the dashboard knows has a Client Quote $ value
-        //     gets a pair, so a freshly-typed Sale Per produces a
-        //     commission row even if paths 1/1b haven't picked the
-        //     workbook up yet (e.g. brand-new workbook never promoted
-        //     and never added to an order).
-        foreach ($liveQuoteTotals as $k => $_v) {
-            if (isset($pairs[$k])) continue;
-            $pipe = strrpos($k, '|');
-            if ($pipe === false) continue;
-            $cn = substr($k, 0, $pipe);
-            $wbId = (int)substr($k, $pipe + 1);
-            if (!$cn || $wbId <= 0) continue;
-            $pairs[$k] = ['client_name' => $cn, 'workbook_id' => $wbId];
         }
 
         // 2. Pairs from active orders. Orders live as JSON under
@@ -2787,17 +2585,12 @@ switch ($action) {
             $wbRow = $workbookCache[$wb];
             if (!$wbRow) continue;
 
-            // Priority for the commission basis:
-            //   1. Live Client Quote total sent by the dashboard (the
-            //      JS workbookDetail cache may be ahead of the saved
-            //      detail_json by an autosave debounce window).
-            //   2. Saved pricingClientQuoteTotal in detail_json.
-            //   3. Cost-side RFQ-derived total (fallback so workbooks
-            //      without Sale Per yet still produce a non-zero row).
-            $liveKey  = $cn . '|' . $wb;
-            $liveCqt  = $liveQuoteTotals[$liveKey] ?? 0;
-            $savedCqt = ms_workbook_client_quote_total_from_detail($wbRow['detail_json'] ?? null);
-            $cqt      = $liveCqt > 0 ? $liveCqt : $savedCqt;
+            // Prefer the customer-facing Client Quote total (Sale Per
+            // × qty + fees) cached on the workbook detail by the JS
+            // Pricing tab. Fall back to the cost-side RFQ-derived
+            // total when Sale Per hasn't been typed yet, so older
+            // workbooks still produce a non-zero commission row.
+            $cqt = ms_workbook_client_quote_total_from_detail($wbRow['detail_json'] ?? null);
             $totalUsd = $cqt > 0
                 ? $cqt
                 : ms_workbook_total_usd_from_detail($wbRow['detail_json'] ?? null, $fxRate);
@@ -2962,16 +2755,6 @@ switch ($action) {
             foreach (($details['entries'] ?? []) as $entry) {
                 $prod  = $entry['product'] ?? '';
                 $saleU = (float)($entry['saleUsdPerUnit'] ?? 0);
-                // Count distinct named RFQ items in this workbook. When
-                // there's >1, variant labels need to be prefixed with
-                // their parent item name ("Large Bag · Blue") so the
-                // client can tell which line they're approving. Single-
-                // item workbooks just show "Blue" since the product
-                // group header already names the parent.
-                $namedItems = array_filter(($entry['rfqItems'] ?? []), function ($it) {
-                    return is_array($it) && trim((string)($it['item'] ?? '')) !== '';
-                });
-                $multiItem = count($namedItems) > 1;
                 foreach (($entry['rfqItems'] ?? []) as $rfqItem) {
                     if (!($rfqItem['item'] ?? '') && !($rfqItem['qty'] ?? 0) && !($rfqItem['priceRmb'] ?? 0)) continue;
                     $itemName = $rfqItem['item'] ?? '';
@@ -2987,17 +2770,14 @@ switch ($action) {
                             $vq = $stripNum($v['qty'] ?? 0);
                             if ($vq <= 0 && ($v['variant'] ?? '') === '') continue;
                             $vCostRmb = $stripNum($v['priceRmb'] ?? 0) ?: $stripNum($rfqItem['priceRmb'] ?? 0);
-                            // Label: single-item workbook → variant
-                            // name only; multi-item → "Item · Variant"
-                            // so the client never has to guess which
-                            // parent row this variant belongs to.
-                            $vName = ($v['variant'] ?? '') !== '' ? $v['variant'] : 'Variant';
-                            $label = ($multiItem && trim((string)$itemName) !== '')
-                                ? (trim((string)$itemName) . ' · ' . $vName)
-                                : $vName;
+                            // Label is the variant name only — the
+                            // product group header above already names
+                            // the item, so "Medium Bag — Blue" would
+                            // just be noise. isVariant drives the extra
+                            // indent in the table / portal renderers.
                             $orderItems[] = [
                                 'product'   => $prod,
-                                'item'      => $label,
+                                'item'      => ($v['variant'] ?? 'Variant') !== '' ? $v['variant'] : 'Variant',
                                 'sku'       => $sku,
                                 'qty'       => $vq,
                                 'priceRmb'  => $saleU > 0 ? ($saleU * $rate) : $vCostRmb,
@@ -3017,30 +2797,6 @@ switch ($action) {
                             'isVariant' => false,
                         ];
                     }
-                }
-                // After this workbook's RFQ items, append any applied
-                // fees as their own line items. Each fee row has
-                // 'isFee' => true so the email/portal table renderer
-                // can style them differently. 'feeBilled' flips to
-                // false when the operator marked the fee Complimentary
-                // in the Order Sheet — the renderer shows $0.00 + a
-                // Complimentary tag so the client sees the value-add.
-                foreach (($entry['fees'] ?? []) as $f) {
-                    $billed = !empty($f['billed']);
-                    $orderItems[] = [
-                        'product'    => $prod,
-                        'item'       => (string)($f['label'] ?? 'Fee'),
-                        'feeDesc'    => (string)($f['desc']  ?? ''),
-                        'sku'        => '',
-                        'qty'        => 0,
-                        'priceRmb'   => 0,
-                        'leadTime'   => '',
-                        'isVariant'  => false,
-                        'isFee'      => true,
-                        'feeBilled'  => $billed,
-                        'feeUsd'     => $billed ? (float)($f['usd'] ?? 0) : 0,
-                        'feeUsdFull' => (float)($f['usd'] ?? 0),
-                    ];
                 }
             }
 
@@ -3727,46 +3483,6 @@ switch ($action) {
         ]);
         break;
 
-    /*
-     * get_workbook_dirty — lightweight live-broadcast poll. The client
-     * fires this on the existing 2-second presence heartbeat. Returns
-     * just the workbook's last-write metadata (no detail_json body). If
-     * the timestamp has advanced AND the writer wasn't the polling
-     * user, the client knows to pull fresh detail via get_workbook_detail
-     * and apply the diff to the form in-place.
-     *
-     * server_now is always returned so the client can baseline its
-     * cursor on the first call (no-change responses still advance
-     * _lastSeenUpdatedAt to avoid replaying old saves later).
-     */
-    case 'get_workbook_dirty':
-        $wbId  = (int)($input['workbook_id'] ?? $_GET['workbook_id'] ?? 0);
-        $since = trim((string)($input['since'] ?? $_GET['since'] ?? ''));
-        if ($wbId <= 0) {
-            echo json_encode(['success' => false, 'error' => 'workbook_id required']);
-            break;
-        }
-        $stmt = $pdo->prepare("SELECT updated_at, updated_by FROM workbooks WHERE id = ? AND deleted_at IS NULL");
-        $stmt->execute([$wbId]);
-        $row = $stmt->fetch();
-        if (!$row) {
-            echo json_encode(['success' => false, 'error' => 'workbook not found']);
-            break;
-        }
-        // changed flag is convenience for the client — true means the
-        // last write is both newer than `since` AND by a different user.
-        // (Self-echo is filtered client-side via getCurrentUser() match
-        // so the username comparison stays out of the SQL.)
-        $changed = ($since !== '' && $row['updated_at'] > $since);
-        echo json_encode([
-            'success'    => true,
-            'updated_at' => $row['updated_at'],
-            'updated_by' => (string)($row['updated_by'] ?? ''),
-            'server_now' => date('Y-m-d H:i:s'),
-            'changed'    => $changed,
-        ]);
-        break;
-
     case 'email_pallet_calc':
         // Receives a Pallet Calculator run + canvas image (base64 PNG)
         // + suggestion list, builds an HTML report email, attaches the
@@ -3869,11 +3585,11 @@ switch ($action) {
             'get_revisions', 'get_revision_detail', 'restore_revision',
             'get_archived', 'restore_workbook', 'restore_client',
             'permanent_delete_workbook', 'permanent_delete_client',
-            'upload_image', 'delete_image', 'upload_video',
+            'upload_image', 'upload_art_file', 'delete_image', 'upload_video',
             'get_users', 'add_user', 'update_user', 'delete_user', 'change_password',
             'duplicate_workbook',
             'get_inventory', 'promote_to_sku', 'remove_sku',
-            'get_commissions', 'set_commission_status', 'recompute_commissions', 'reset_commissions_pending',
+            'get_commissions', 'set_commission_status', 'recompute_commissions',
             'update_presence', 'get_presence', 'clear_presence',
             'push_cell_value', 'pull_cell_values',
             'diagnose_workbook', 'diagnose_revisions', 'merge_recover_workbook',
