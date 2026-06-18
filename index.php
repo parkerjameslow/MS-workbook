@@ -1242,6 +1242,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: 0 0 0 2px var(--surface), 0 2px 6px rgba(0,0,0,0.2);
       line-height: 1;
     }
+    /* Logo image fills the avatar circle when set. The blue background
+       still shows through transparent corners on SVG/PNG logos so the
+       initials placeholder and the logo never feel visually divorced. */
+    .cdc-avatar-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+    /* Edit-pencil overlay on the avatar — top-right corner. Opens a
+       file picker for the per-client logo. Hover dimming + scale gives
+       it the same feel as the cog and other edit affordances on the
+       card. */
+    .cdc-avatar-edit {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      opacity: 0.85;
+      transition: opacity 0.15s, transform 0.15s, background 0.15s;
+      padding: 0;
+      font-family: inherit;
+    }
+    .cdc-avatar-edit:hover { opacity: 1; transform: scale(1.08); background: var(--surface2); }
+    .cdc-avatar-edit svg { width: 12px; height: 12px; display: block; }
     /* Cog button in Financial Summary header — opens the margin modal. */
     .cdc-fin-cog {
       margin-left: auto;
@@ -8076,21 +8113,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-body">
       <p style="color:var(--text-muted); margin-bottom:16px;">Upload artwork files, logos, and design assets for this product.</p>
 
-      <!-- Client Logo -->
-      <div style="margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border);">
-        <label style="display:block; margin-bottom:10px; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Client Logo</label>
-        <div style="display:flex; align-items:center; gap:16px;">
-          <div id="client-logo-preview" onclick="document.getElementById('clientLogoInput').click()" style="width:72px; height:72px; border-radius:10px; border:2px dashed var(--border); display:flex; align-items:center; justify-content:center; cursor:pointer; background:var(--surface2); overflow:hidden; flex-shrink:0; transition:border-color 0.15s;">
-            <span id="client-logo-placeholder" style="font-size:24px; color:var(--text-muted);">🖼</span>
-          </div>
-          <div>
-            <button onclick="document.getElementById('clientLogoInput').click()" class="btn-create" style="font-size:12px; padding:7px 14px;">Upload Logo</button>
-            <button id="client-logo-remove-btn" onclick="removeClientLogo()" style="display:none; margin-left:8px; background:none; border:none; cursor:pointer; font-size:12px; color:var(--danger); font-family:inherit; font-weight:600;">Remove</button>
-            <p style="font-size:11px; color:var(--text-muted); margin-top:6px; margin-bottom:0;">Used as the client avatar in the sidebar and search.</p>
-          </div>
-        </div>
-        <input type="file" id="clientLogoInput" accept="image/*" onchange="handleClientLogoUpload(event)" style="display:none;" />
-      </div>
+      <!-- Client Logo moved to the Clients view → client detail card
+           avatar (edit-pencil overlay). Stored per CLIENT now, not
+           per workbook. -->
 
       <div class="form-grid form-grid-2">
         <div class="field">
@@ -10495,63 +10520,69 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Art Tab ─────────────────────────────────────────────────────────────── */
   let _artImages = [];
-  let _clientLogo = null;
 
-  async function handleClientLogoUpload(e) {
-    const file = e.target.files[0];
-    if (!file || !currentWorkbookId) return;
-    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('workbook_id', dbId);
-    const res = await fetch('api.php?action=upload_image', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success) {
-      _clientLogo = data.url;
-      renderClientLogo();
-      saveClientLogo();
-      rebuildSidebar();
-    }
-    e.target.value = '';
-  }
-
-  async function removeClientLogo() {
-    if (!_clientLogo) return;
-    try { await apiCall('delete_image', { url: _clientLogo }); } catch {}
-    _clientLogo = null;
-    renderClientLogo();
-    saveClientLogo();
-    rebuildSidebar();
-  }
-
-  function renderClientLogo() {
-    const preview = document.getElementById('client-logo-preview');
-    const placeholder = document.getElementById('client-logo-placeholder');
-    const removeBtn = document.getElementById('client-logo-remove-btn');
-    if (!preview) return;
-    if (_clientLogo) {
-      preview.style.border = '2px solid var(--border)';
-      placeholder.style.display = 'none';
-      let img = preview.querySelector('img');
-      if (!img) { img = document.createElement('img'); preview.appendChild(img); }
-      img.src = _clientLogo;
-      img.style.cssText = 'width:100%; height:100%; object-fit:contain;';
-      if (removeBtn) removeBtn.style.display = '';
-    } else {
-      preview.style.border = '2px dashed var(--border)';
-      placeholder.style.display = '';
-      const img = preview.querySelector('img');
-      if (img) img.remove();
-      if (removeBtn) removeBtn.style.display = 'none';
+  // Per-client logo upload — replaces the prior per-workbook Client
+  // Logo section on the Art tab. Triggered from the edit-pencil
+  // overlay on the avatar in the client detail card. Files into
+  // uploads/clients/{id}/ via the upload_client_logo endpoint, which
+  // writes clients.logo_url so every avatar surface (sidebar, search,
+  // card) picks up the new image on the next render.
+  async function uploadClientLogoFor(clientName, file) {
+    if (!file) return;
+    const cd = clientDetails[clientName] || {};
+    const cid = cd.id || dbClientMap[clientName];
+    if (!cid) { alert('Client not loaded yet — try again in a moment.'); return; }
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('client_id', cid);
+    try {
+      const res = await fetch('api.php?action=upload_client_logo', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.success) {
+        if (!clientDetails[clientName]) clientDetails[clientName] = {};
+        clientDetails[clientName].logo_url = data.url;
+        if (typeof renderClientDetailCard === 'function') renderClientDetailCard(clientName);
+        if (typeof rebuildSidebar === 'function') rebuildSidebar();
+      } else {
+        alert(`Logo upload failed: ${data.error || 'unknown error'}`);
+      }
+    } catch (err) {
+      alert('Logo upload failed — see console for details.');
+      console.warn('upload_client_logo:', err);
     }
   }
 
+  function pickClientLogo(clientName) {
+    // Build a one-off file picker so we don't need a hidden <input> in
+    // the DOM at all times — the avatar overlay button calls this.
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.jpg,.jpeg,.png,.gif,.webp,.svg,image/*';
+    inp.addEventListener('change', (e) => {
+      const f = (e.target.files || [])[0];
+      if (f) uploadClientLogoFor(clientName, f);
+    });
+    inp.click();
+  }
+
+  async function removeClientLogoFor(clientName) {
+    const cd = clientDetails[clientName] || {};
+    const cid = cd.id || dbClientMap[clientName];
+    if (!cid) return;
+    if (!confirm(`Remove ${clientName}'s logo?`)) return;
+    try {
+      const res = await apiCall('delete_client_logo', { client_id: cid });
+      if (res && res.success) {
+        if (clientDetails[clientName]) clientDetails[clientName].logo_url = '';
+        if (typeof renderClientDetailCard === 'function') renderClientDetailCard(clientName);
+        if (typeof rebuildSidebar === 'function') rebuildSidebar();
+      }
+    } catch (err) { console.warn('delete_client_logo:', err); }
+  }
+
+  // (No-ops kept so any stray detail_json with the legacy clientLogo
+  // field doesn't break the load path. saveClientLogo is unused now.)
   function saveClientLogo() {
-    const key = `${currentClient}|${currentWorkbookId}`;
-    if (!workbookDetail[key]) workbookDetail[key] = {};
-    workbookDetail[key].clientLogo = _clientLogo || '';
-    const dbId = dbWorkbookMap[key] || currentWorkbookId;
-    apiCall('save_workbook_detail', { id: dbId, detail: collectWorkbookDetail() });
   }
 
   async function handleArtFiles(e) {
@@ -17865,7 +17896,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         salesperson_pct:     (c.salesperson_pct     === null || c.salesperson_pct     === undefined) ? '' : c.salesperson_pct,
         operations_pct:      (c.operations_pct      === null || c.operations_pct      === undefined) ? '' : c.operations_pct,
         // Per-client default profit margin (%). NULL → '' here → UI treats as 50%.
-        default_margin_pct:  (c.default_margin_pct  === null || c.default_margin_pct  === undefined) ? '' : c.default_margin_pct
+        default_margin_pct:  (c.default_margin_pct  === null || c.default_margin_pct  === undefined) ? '' : c.default_margin_pct,
+        // Per-client logo URL — set via the edit-pencil overlay on
+        // the client detail card avatar. Preferred over the legacy
+        // per-workbook clientLogo by getClientLogo().
+        logo_url:            c.logo_url || ''
       };
     });
 
@@ -18512,13 +18547,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function getClientLogo(clientName) {
+    // Source of truth — per-client logo set via the edit-pencil
+    // overlay on the client detail card avatar (clients.logo_url).
+    const cd = clientDetails[clientName];
+    if (cd && cd.logo_url) return cd.logo_url;
     const workbooks = clientData[clientName] || [];
-    // Prefer dedicated clientLogo first
+    // Legacy fallback — per-workbook clientLogo (the old Art-tab
+    // upload location). Existing data keeps showing without needing a
+    // re-upload; new edits go through clients.logo_url above.
     for (const wb of workbooks) {
       const detail = workbookDetail[`${clientName}|${wb.id}`];
       if (detail && detail.clientLogo) return detail.clientLogo;
     }
-    // Fall back to first art image
+    // Final fallback — first art image on any workbook.
     for (const wb of workbooks) {
       const detail = workbookDetail[`${clientName}|${wb.id}`];
       if (detail && detail.artImages && detail.artImages.length > 0) return detail.artImages[0];
@@ -23327,10 +23368,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const marginPct = isNaN(marginRaw) ? 50 : marginRaw;
     const marginBadge = Math.round(marginPct);
 
+    // Avatar image — prefer the per-client logo (clients.logo_url),
+    // fall back to the legacy per-workbook chain via getClientLogo.
+    // When no logo, fall through to the initials placeholder.
+    const _logoUrl = (typeof getClientLogo === 'function') ? getClientLogo(clientName) : (d.logo_url || '');
+    const _avatarBody = _logoUrl
+      ? `<img class="cdc-avatar-img" src="${_logoUrl}" alt="${initials}" />`
+      : initials;
+    const _encName = encodeURIComponent(clientName).replace(/'/g, "%27");
+    // Pencil overlay — uploads a new logo. Right-click (contextmenu)
+    // offers Remove when a logo exists, since adding a second button
+    // would crowd the badge layout.
+    const _editPencil = `<button type="button" class="cdc-avatar-edit"
+        onclick="event.stopPropagation(); if (typeof pickClientLogo === 'function') pickClientLogo(decodeURIComponent('${_encName}'))"
+        oncontextmenu="event.preventDefault(); if (${_logoUrl ? 'true' : 'false'} && typeof removeClientLogoFor === 'function') removeClientLogoFor(decodeURIComponent('${_encName}'));"
+        title="${_logoUrl ? 'Click to change logo · right-click to remove' : 'Click to upload a client logo'}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+      </button>`;
     wrap.innerHTML = `
       <div class="client-detail-card">
         <div class="cdc-avatar">
-          ${initials}
+          ${_avatarBody}
+          ${_editPencil}
           <span class="cdc-avatar-margin-badge" title="Default profit margin: ${marginPct}%">${marginBadge}</span>
         </div>
         <div class="cdc-left">
@@ -25488,8 +25547,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _artImages = [];
       }
       renderArtGallery();
-      _clientLogo = data.clientLogo || null;
-      renderClientLogo();
       setTimeout(renderPalletViz, 50);
     } else {
       // Fill with basic info from the client list
@@ -25510,8 +25567,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       renderVideoGallery();
       _artImages = [];
       renderArtGallery();
-      _clientLogo = null;
-      renderClientLogo();
       // Apply any category suggested during creation
       if (_pendingWorkbookCategory) {
         const pend = _pendingWorkbookCategory;
@@ -26944,7 +26999,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       artDueDate: _v('art-due-date'),
       artNotes: _v('art-notes'),
       artImages: _artImages.length > 0 ? _artImages.map(i => i.url) : (existing.artImages || []),
-      clientLogo: _clientLogo || existing.clientLogo || '',
+      // Preserve any legacy per-workbook clientLogo so old detail_json
+      // entries still feed getClientLogo()'s fallback chain. New logo
+      // uploads live on clients.logo_url instead (see the edit-pencil
+      // overlay on the client detail card avatar).
+      clientLogo: existing.clientLogo || '',
       // Preserve sample statuses (managed from samples dashboard, not DOM-driven)
       sampleStatuses: existing.sampleStatuses || {},
       // Selected pricing tier

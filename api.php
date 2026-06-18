@@ -103,6 +103,13 @@ try {
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN deleted_by VARCHAR(255) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
+// Per-client logo URL — set via the edit-pencil overlay on the client
+// detail card avatar. Replaces the prior per-workbook clientLogo
+// stored in detail_json (kept as a fallback by getClientLogo so
+// existing logos keep showing).
+try {
+    $pdo->exec("ALTER TABLE clients ADD COLUMN logo_url VARCHAR(500) DEFAULT NULL");
+} catch (PDOException $e) { /* column already exists */ }
 try {
     $pdo->exec("ALTER TABLE clients ADD COLUMN email VARCHAR(255) DEFAULT NULL");
 } catch (PDOException $e) { /* column already exists */ }
@@ -2154,6 +2161,72 @@ switch ($action) {
         }
         break;
 
+    case 'upload_client_logo':
+        // Per-client logo upload — saves under uploads/clients/{id}/
+        // and writes the URL onto clients.logo_url so every avatar
+        // surface (sidebar, search, card) picks it up via the same
+        // getClientLogo() helper.
+        if (empty($_FILES['file']) || empty($_POST['client_id'])) {
+            echo json_encode(['success' => false, 'error' => 'file and client_id required']);
+            break;
+        }
+        $cid = intval($_POST['client_id']);
+        $file = $_FILES['file'];
+        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+        $allowed = ['jpg','jpeg','png','gif','webp','svg'];
+        if (!in_array($ext, $allowed)) {
+            echo json_encode(['success' => false, 'error' => 'Logo must be an image (jpg, png, gif, webp, svg)']);
+            break;
+        }
+        if ($file['size'] > 5 * 1024 * 1024) {
+            echo json_encode(['success' => false, 'error' => 'Logo too large (max 5MB)']);
+            break;
+        }
+        $uploadDir = __DIR__ . '/uploads/clients/' . $cid . '/';
+        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+        $filename = 'logo_' . uniqid() . '_' . time() . '.' . $ext;
+        $filepath = $uploadDir . $filename;
+        if (move_uploaded_file($file['tmp_name'], $filepath)) {
+            $url = 'uploads/clients/' . $cid . '/' . $filename;
+            // Delete the OLD logo file if there was one — avoids stranded
+            // images piling up in uploads/clients/{id}/ over time.
+            try {
+                $old = $pdo->prepare("SELECT logo_url FROM clients WHERE id = ?");
+                $old->execute([$cid]);
+                $prev = $old->fetchColumn();
+                if ($prev) {
+                    $prevPath = __DIR__ . '/' . $prev;
+                    if (file_exists($prevPath) && strpos(realpath($prevPath), realpath(__DIR__ . '/uploads/clients/')) === 0) {
+                        @unlink($prevPath);
+                    }
+                }
+            } catch (PDOException $e) { /* logo_url column not there yet; skip */ }
+            $pdo->prepare("UPDATE clients SET logo_url = ? WHERE id = ?")->execute([$url, $cid]);
+            echo json_encode(['success' => true, 'url' => $url]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Upload failed']);
+        }
+        break;
+
+    case 'delete_client_logo':
+        if (empty($input['client_id'])) {
+            echo json_encode(['success' => false, 'error' => 'client_id required']);
+            break;
+        }
+        $cid = intval($input['client_id']);
+        $stmt = $pdo->prepare("SELECT logo_url FROM clients WHERE id = ?");
+        $stmt->execute([$cid]);
+        $prev = $stmt->fetchColumn();
+        if ($prev) {
+            $prevPath = __DIR__ . '/' . $prev;
+            if (file_exists($prevPath) && strpos(realpath($prevPath), realpath(__DIR__ . '/uploads/clients/')) === 0) {
+                @unlink($prevPath);
+            }
+        }
+        $pdo->prepare("UPDATE clients SET logo_url = NULL WHERE id = ?")->execute([$cid]);
+        echo json_encode(['success' => true]);
+        break;
+
     case 'upload_art_file':
         // Art-tab uploads — broad allowlist covering the formats a
         // designer hands over: Adobe (ai/psd/eps/indd), images,
@@ -3921,7 +3994,7 @@ switch ($action) {
             'get_revisions', 'get_revision_detail', 'restore_revision',
             'get_archived', 'restore_workbook', 'restore_client',
             'permanent_delete_workbook', 'permanent_delete_client',
-            'upload_image', 'upload_art_file', 'delete_image', 'upload_video',
+            'upload_image', 'upload_art_file', 'upload_client_logo', 'delete_client_logo', 'delete_image', 'upload_video',
             'get_users', 'add_user', 'update_user', 'delete_user', 'change_password',
             'duplicate_workbook',
             'get_inventory', 'promote_to_sku', 'remove_sku',
