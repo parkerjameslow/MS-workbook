@@ -2126,6 +2126,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex; align-items: center; justify-content: center;
       font-size: 16px; padding-left: 3px;
     }
+    /* Full-tile invisible <button> overlay. Sits ABOVE the embed /
+       video media (which can swallow pointer events in certain
+       browsers even with CSS pointer-events:none) and BELOW the ×
+       remove button (which has its own .img-remove z-index of 2).
+       The 0.01-alpha background gives Safari a concrete hit-test
+       rectangle — a fully `transparent` background can be skipped
+       by Safari's hit testing on absolutely-positioned buttons. */
+    .art-tile-clicker {
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.01);
+      border: 0; padding: 0; margin: 0;
+      cursor: pointer; z-index: 1;
+      font-family: inherit;
+    }
     /* Video gallery */
     .video-gallery { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
     .video-item {
@@ -10768,42 +10782,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         `;
       } else if (kind === 'pdf') {
         // <embed> renders the first PDF page as a real thumbnail in
-        // every modern browser — no JS lib needed. #toolbar=0&
-        // navpanes=0 collapses the in-frame PDF chrome for a clean
-        // tile. CRITICAL: a transparent click-capture div sits ON
-        // TOP of the embed because `pointer-events:none` is unreliable
-        // on plugin embeds (especially Safari's native PDF viewer —
-        // it captures clicks for its own page-turn behavior even
-        // when CSS says it shouldn't). The capture div owns the
-        // onclick and reliably opens the preview modal.
+        // every modern browser. A <button> overlay sits ON TOP at a
+        // higher z-index than the × remove button so clicks
+        // reliably reach openArtPreview — <div onclick> + an inline
+        // onclick attr wasn't firing across all browsers (the embed
+        // / PDF plugin was eating events even with pointer-events:
+        // none). A real <button> is the most reliable hit target.
+        // The 0.01 rgba background gives it an actual hit-test
+        // rectangle in Safari, where fully-transparent elements can
+        // sometimes be skipped for hit testing.
         item.innerHTML = `
-          <div style="position:absolute; inset:0; background:#fff;">
+          <div style="position:absolute; inset:0; background:#fff; pointer-events:none;">
             <embed src="${img.url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1"
                    type="application/pdf"
                    style="width:100%; height:100%; pointer-events:none;" />
             <div class="art-tile-badge art-tile-badge--light">PDF</div>
-            <div onclick="openArtPreview('${urlAttr}')"
-                 style="position:absolute; inset:0; cursor:pointer; background:transparent; z-index:1;"
-                 title="Click to preview"></div>
           </div>
+          <button type="button" class="art-tile-clicker"
+                  data-art-url="${urlAttr}"
+                  title="Click to preview"></button>
           ${removeBtn}
         `;
       } else if (kind === 'video') {
-        // muted + preload="metadata" gets the first frame as a poster
-        // without playing the video. A small ▶ overlay tells the
-        // operator the tile is clickable. Same click-capture overlay
-        // pattern as PDF — keeps the open-preview behavior consistent
-        // regardless of browser quirks with media elements.
+        // Same click-capture pattern as PDF (button overlay above
+        // the media). <video> is generally cooperative but using the
+        // same pattern keeps behavior consistent across all
+        // previewable tile types.
         item.innerHTML = `
-          <div style="position:absolute; inset:0; background:#000;">
+          <div style="position:absolute; inset:0; background:#000; pointer-events:none;">
             <video src="${img.url}" muted preload="metadata" playsinline
                    style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
             <div class="art-tile-play"><span>▶</span></div>
             <div class="art-tile-badge art-tile-badge--dark">VIDEO</div>
-            <div onclick="openArtPreview('${urlAttr}')"
-                 style="position:absolute; inset:0; cursor:pointer; background:transparent; z-index:1;"
-                 title="Click to preview"></div>
           </div>
+          <button type="button" class="art-tile-clicker"
+                  data-art-url="${urlAttr}"
+                  title="Click to preview"></button>
           ${removeBtn}
         `;
       } else {
@@ -10837,6 +10851,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       window.open(url, '_blank', 'noopener');
       return;
     }
+    // CRITICAL: reparent to <body> so the modal's position:fixed
+    // always uses the viewport. If any ancestor of where the modal
+    // was authored has a transform / filter / perspective (some of
+    // our wb-tab-content / section-card chains do), position:fixed
+    // gets retargeted to that ancestor's box, and the modal appears
+    // off-screen or hidden behind other content. Moving it to body
+    // sidesteps every one of those cases.
+    if (overlay.parentNode !== document.body) document.body.appendChild(overlay);
     const kind = (typeof _artFileKind === 'function') ? _artFileKind(url) : 'file';
     if (kind === 'image') {
       content.innerHTML = `<img src="${url}" alt="Art preview" />`;
@@ -10854,6 +10876,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     overlay.classList.add('open');
   }
+  // Event-delegated click on the .art-tile-clicker overlay. Attaching
+  // once on document handles every tile rendered now AND future
+  // re-renders without re-wiring. Reads data-art-url and routes to
+  // openArtPreview.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.art-tile-clicker');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const url = btn.getAttribute('data-art-url');
+    if (url) openArtPreview(url);
+  });
   function closeArtPreview() {
     const overlay = document.getElementById('artPreviewOverlay');
     const content = document.getElementById('artPreviewContent');
