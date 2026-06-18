@@ -2044,6 +2044,56 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .lightbox-overlay.open { display: flex; }
     .lightbox-overlay img { max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; }
+    /* Art preview modal — handles image / PDF / video natively in
+       one overlay so the operator can click a thumbnail and see the
+       file full-size without leaving the tab. Sits above the image
+       lightbox in z-order so it can layer on top if both ever open
+       at once. */
+    .art-preview-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.88); z-index: 620;
+      align-items: center; justify-content: center; cursor: pointer;
+    }
+    .art-preview-overlay.open { display: flex; }
+    .art-preview-content {
+      width: 92vw; height: 92vh; cursor: default;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--surface); border-radius: 10px;
+      overflow: hidden;
+    }
+    .art-preview-content img,
+    .art-preview-content video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+    .art-preview-content iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+    .art-preview-close {
+      position: fixed; top: 18px; right: 24px;
+      width: 38px; height: 38px; border-radius: 50%;
+      background: rgba(255,255,255,0.15); color: #fff;
+      font-size: 22px; line-height: 1; border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 621; font-family: inherit;
+    }
+    .art-preview-close:hover { background: rgba(255,255,255,0.28); }
+    /* Inline-preview tile decorations — small badges that label the
+       file type at the bottom of a thumbnail (PDF / VIDEO) and the
+       play-button overlay centered on video tiles. */
+    .art-tile-badge {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 3px 6px; font-size: 9px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      text-align: center; pointer-events: none;
+    }
+    .art-tile-badge--light { background: rgba(255,255,255,0.88); color: var(--text-muted); }
+    .art-tile-badge--dark  { background: rgba(0,0,0,0.65);    color: #fff; }
+    .art-tile-play {
+      position: absolute; inset: 0; display: flex;
+      align-items: center; justify-content: center; pointer-events: none;
+    }
+    .art-tile-play span {
+      width: 42px; height: 42px; border-radius: 50%;
+      background: rgba(0,0,0,0.6); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; padding-left: 3px;
+    }
     /* Video gallery */
     .video-gallery { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
     .video-item {
@@ -6748,6 +6798,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="lightbox-overlay" id="lightboxOverlay" onclick="this.classList.remove('open')">
         <img id="lightboxImg" src="" alt="Full size" onclick="event.stopPropagation()" />
       </div>
+      <!-- Art file preview modal — opens from the Art tab gallery
+           when an operator clicks a thumbnail. Content swaps based
+           on file type (img / iframe / video) so PDFs, images, and
+           videos all preview inline without bouncing to a new tab. -->
+      <div class="art-preview-overlay" id="artPreviewOverlay" onclick="if(event.target===this) closeArtPreview()">
+        <button class="art-preview-close" type="button" onclick="closeArtPreview()" title="Close (Esc)">×</button>
+        <div class="art-preview-content" id="artPreviewContent" onclick="event.stopPropagation()"></div>
+      </div>
       <!-- Video Lightbox -->
       <div class="video-lightbox-overlay" id="videoLightboxOverlay" onclick="if(event.target===this){document.getElementById('videoLightboxIframe').src='';document.getElementById('videoLightboxVideo').src='';this.classList.remove('open');}">
         <div class="video-lightbox-inner" onclick="event.stopPropagation()">
@@ -10668,15 +10726,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const item = document.createElement('div');
       item.className = 'image-gallery-item';
       const kind = _artFileKind(img.url);
+      const urlAttr = String(img.url).replace(/'/g, "\\'");
+      const removeBtn = `<button class="img-remove" onclick="removeArtImage(${idx}, event)" title="Remove">✕</button>`;
       if (kind === 'image') {
+        // Native image preview, click opens the art preview modal.
         item.innerHTML = `
-          <img src="${img.url}" alt="Art file ${idx+1}" onclick="openLightbox('${img.url}')" />
-          <button class="img-remove" onclick="removeArtImage(${idx}, event)" title="Remove">✕</button>
+          <img src="${img.url}" alt="Art file ${idx+1}" onclick="openArtPreview('${urlAttr}')" />
+          ${removeBtn}
+        `;
+      } else if (kind === 'pdf') {
+        // <embed> renders the first PDF page as a real thumbnail in
+        // every modern browser — no JS lib needed. pointer-events:
+        // none on the embed so clicks fall through to the wrapper's
+        // onclick (the embed would otherwise intercept them for its
+        // own toolbar). #toolbar=0&navpanes=0 collapses the in-frame
+        // PDF chrome for a clean tile.
+        item.innerHTML = `
+          <div onclick="openArtPreview('${urlAttr}')"
+               style="position:absolute; inset:0; cursor:pointer; background:#fff;"
+               title="Click to preview">
+            <embed src="${img.url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1"
+                   type="application/pdf"
+                   style="width:100%; height:100%; pointer-events:none;" />
+            <div class="art-tile-badge art-tile-badge--light">PDF</div>
+          </div>
+          ${removeBtn}
+        `;
+      } else if (kind === 'video') {
+        // muted + preload="metadata" gets the first frame as a poster
+        // without playing the video. A small ▶ overlay tells the
+        // operator the tile is clickable.
+        item.innerHTML = `
+          <div onclick="openArtPreview('${urlAttr}')"
+               style="position:absolute; inset:0; cursor:pointer; background:#000;"
+               title="Click to preview">
+            <video src="${img.url}" muted preload="metadata" playsinline
+                   style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
+            <div class="art-tile-play"><span>▶</span></div>
+            <div class="art-tile-badge art-tile-badge--dark">VIDEO</div>
+          </div>
+          ${removeBtn}
         `;
       } else {
-        // Non-image tile: file-icon card with the extension as label.
-        // Clicking opens in a new tab (browser download for binary
-        // types like .ai/.dwg, inline preview for PDF/video).
+        // Adobe / CAD / docs / archives — no native preview is
+        // possible in-browser. Keep the file-icon card; click opens
+        // the file in a new tab (browser downloads binary formats).
         const icon = _artFileIcon(kind);
         const label = _artFileBasename(img.url).toUpperCase();
         item.innerHTML = `
@@ -10686,12 +10780,56 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span style="font-size:34px; line-height:1;">${icon}</span>
             <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;">${label}</span>
           </a>
-          <button class="img-remove" onclick="removeArtImage(${idx}, event)" title="Remove">✕</button>
+          ${removeBtn}
         `;
       }
       gallery.insertBefore(item, addBtn);
     });
   }
+
+  // Unified art preview modal — handles image / PDF / video inline,
+  // falls through to "open in new tab" for non-previewable formats
+  // (Adobe, CAD, docs, archives). Single overlay, content swaps in
+  // by file kind.
+  function openArtPreview(url) {
+    const overlay = document.getElementById('artPreviewOverlay');
+    const content = document.getElementById('artPreviewContent');
+    if (!overlay || !content) {
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    const kind = (typeof _artFileKind === 'function') ? _artFileKind(url) : 'file';
+    if (kind === 'image') {
+      content.innerHTML = `<img src="${url}" alt="Art preview" />`;
+    } else if (kind === 'pdf') {
+      // Plain iframe — browsers render PDFs natively; PDF.js fallback
+      // not needed for our supported browsers.
+      content.innerHTML = `<iframe src="${url}" title="PDF preview"></iframe>`;
+    } else if (kind === 'video') {
+      content.innerHTML = `<video src="${url}" controls autoplay></video>`;
+    } else {
+      // No inline preview possible — open in a new tab (download for
+      // binary formats) without showing an empty modal.
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
+    overlay.classList.add('open');
+  }
+  function closeArtPreview() {
+    const overlay = document.getElementById('artPreviewOverlay');
+    const content = document.getElementById('artPreviewContent');
+    if (overlay) overlay.classList.remove('open');
+    // Wipe content so any <video> or <iframe> stops playing / loading
+    // and doesn't keep memory in the background after close.
+    if (content) content.innerHTML = '';
+  }
+  // ESC closes the art preview if it's open. Doesn't interfere with
+  // other ESC handlers because we no-op when the overlay isn't open.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const overlay = document.getElementById('artPreviewOverlay');
+    if (overlay && overlay.classList.contains('open')) closeArtPreview();
+  });
 
   function saveArtList() {
     if (!currentClient || !currentWorkbookId) return;
