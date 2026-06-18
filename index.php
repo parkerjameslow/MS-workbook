@@ -1242,9 +1242,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: 0 0 0 2px var(--surface), 0 2px 6px rgba(0,0,0,0.2);
       line-height: 1;
     }
-    /* Logo image fills the avatar circle when set. The blue background
-       still shows through transparent corners on SVG/PNG logos so the
-       initials placeholder and the logo never feel visually divorced. */
+    /* When a logo IS set, the avatar drops its accent-blue background
+       and circular crop — the photo/logo gets a clean rounded-square
+       frame with no chrome competing for attention. Without this, the
+       blue ring bled through the corners of every logo the operator
+       uploaded. */
+    .cdc-avatar.cdc-avatar--logo {
+      background: var(--surface);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    /* Logo image fills the avatar frame. border-radius matches the
+       parent so the corners stay clean in both states (circle when
+       no logo, rounded-square once one is set). */
     .cdc-avatar-img {
       position: absolute;
       inset: 0;
@@ -1252,6 +1262,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       height: 100%;
       object-fit: cover;
       border-radius: 50%;
+    }
+    .cdc-avatar.cdc-avatar--logo .cdc-avatar-img {
+      border-radius: 10px;
     }
     /* Edit-pencil overlay on the avatar — top-right corner. Opens a
        file picker for the per-client logo. Hover dimming + scale gives
@@ -23543,9 +23556,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         title="${_logoUrl ? 'Click to change logo · right-click to remove' : 'Click to upload a client logo'}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
       </button>`;
+    // Add the --logo modifier when a logo is set so the avatar drops
+    // the blue accent + circular crop in favor of a clean rounded
+    // square frame. Initials placeholder keeps the circle.
+    const _avatarClass = _logoUrl ? 'cdc-avatar cdc-avatar--logo' : 'cdc-avatar';
     wrap.innerHTML = `
       <div class="client-detail-card">
-        <div class="cdc-avatar">
+        <div class="${_avatarClass}">
           ${_avatarBody}
           ${_editPencil}
           <span class="cdc-avatar-margin-badge" title="Default profit margin: ${marginPct}%">${marginBadge}</span>
