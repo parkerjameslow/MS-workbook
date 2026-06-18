@@ -5526,7 +5526,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .ship-status-planning  { background: rgba(107,147,255,0.1); color: #6b93ff; }
     .ship-status-booked    { background: rgba(251,175,52,0.12); color: #f59e0b; }
     .ship-status-in_transit { background: rgba(74,222,128,0.12); color: #4ade80; }
+    .ship-status-waiting_arrival { background: rgba(232,117,26,0.12); color: #E8751A; }
     .ship-status-delivered  { background: rgba(52,211,153,0.12); color: #34d399; }
+    .ship-status-received   { background: rgba(34,197,94,0.14);  color: #16a34a; }
+    /* Inline-edit version of the status pill — same visual as
+       .ship-status-badge but as a native <select> so the operator can
+       change status directly from the card. appearance:none kills the
+       browser's default arrow; we paint our own ▾ with background-image
+       so the pill stays compact. cursor:pointer hints clickability. */
+    select.ship-status-badge {
+      appearance: none; -webkit-appearance: none; -moz-appearance: none;
+      border: 0; cursor: pointer; font-family: inherit;
+      padding-right: 24px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+    }
+    select.ship-status-badge:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    select.ship-status-badge option { background: var(--surface); color: var(--text); font-weight: 600; }
 
     /* Detail header */
     .ship-detail-header {
@@ -30431,7 +30448,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span${palOver ? ` style="${overStyle}"` : ''}><span class="sc-stat-inline"${palOver ? ` style="${overStyle}"` : ''}>${tot.pallets}</span> pallet${tot.pallets !== 1 ? 's' : ''} (${palletPct}%)</span>
           </div>
           <div class="sc-right">
-            <span class="ship-status-badge ship-status-${s.status}">${s.status.replace('_',' ')}</span>
+            <select class="ship-status-badge ship-status-${s.status}"
+                    onclick="event.stopPropagation();"
+                    onchange="event.stopPropagation(); onShipmentCardStatusChange('${id}', this.value, this);"
+                    title="Change shipment status">
+              <option value="planning"        ${s.status === 'planning'        ? 'selected' : ''}>Planning</option>
+              <option value="booked"          ${s.status === 'booked'          ? 'selected' : ''}>Booked</option>
+              <option value="in_transit"      ${s.status === 'in_transit'      ? 'selected' : ''}>In Transit</option>
+              <option value="waiting_arrival" ${s.status === 'waiting_arrival' ? 'selected' : ''}>Waiting Arrival</option>
+              <option value="delivered"       ${s.status === 'delivered'       ? 'selected' : ''}>Delivered</option>
+              <option value="received"        ${s.status === 'received'        ? 'selected' : ''}>Received</option>
+            </select>
             <span class="shipment-container-tag">${spec.label}</span>
           </div>
         </div>
@@ -31168,6 +31195,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const dd = document.getElementById('ship-detail-status');
       if (dd) dd.value = s.status;
       location.hash = '#/receiving';
+    } else if (ctx.returnTo === 'card') {
+      // Came in from the Shipments-list card inline status pill —
+      // navigate over to Receiving so the operator sees the card
+      // they just routed.
+      location.hash = '#/receiving';
     } else {
       renderReceivingList();
     }
@@ -31312,6 +31344,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (dd) dd.value = s.status;
     }
     if (ctx.returnTo === 'receiving') renderReceivingList();
+    // Inline status pill from the Shipments page — repaint the list
+    // so the now-received shipment falls out of view (its status
+    // class is filtered by renderShipmentsContent).
+    if (ctx.returnTo === 'card' && typeof renderShipmentsContent === 'function') renderShipmentsContent();
+    rebuildShipmentsNav();
+  }
+
+  // Inline status change from the shipment card pill on the
+  // Shipments page. Mirrors onShipmentStatusChange (the detail-view
+  // handler) for the special-cased statuses that need a modal first.
+  function onShipmentCardStatusChange(id, newStatus, selectEl) {
+    const s = shipmentData[id];
+    if (!s) return;
+    if (newStatus === 'waiting_arrival' && (!s.carrier || !s.trackingNumber)) {
+      openTrackingModal(id, 'waiting_arrival', 'card');
+      // Revert the pill until the modal confirms; otherwise the
+      // operator could close the modal and the pill would lie about
+      // the persisted status.
+      if (selectEl) selectEl.value = s.status || 'planning';
+      return;
+    }
+    if (newStatus === 'received' && !s.receivedAt) {
+      openReceivedModal(id, 'card');
+      if (selectEl) selectEl.value = s.status || 'planning';
+      return;
+    }
+    s.status = newStatus;
+    saveShipments();
+    if (typeof renderShipmentsContent === 'function') renderShipmentsContent();
     rebuildShipmentsNav();
   }
 
