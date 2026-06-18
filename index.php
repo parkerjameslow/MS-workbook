@@ -30202,19 +30202,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // ── Nav ──────────────────────────────────────────────────────────────
   function rebuildShipmentsNav() {
-    // Exclude archived shipments from the nav badge — only "live"
-    // shipments (anything that hasn't crossed the 30-days-after-
-    // delivery archive threshold) count. Mirrors the predicate the
-    // Shipments page uses to split active vs archived so the badge
-    // number always matches the number of cards the operator sees
-    // when they click into Shipments.
-    const ids = Object.keys(shipmentData).filter(id => !_isArchiveCompleted(shipmentData[id]));
+    // Shipments badge — counts only shipments that actually live on
+    // the Shipments page. Excludes:
+    //   • Archived (delivered 30+ days ago — sit in the completed
+    //     drawer)
+    //   • waiting_arrival — moved to the Receiving lane; counting
+    //     them under Shipments was inflating the badge to numbers
+    //     the operator couldn't see anywhere on the page.
+    //   • received — archived out of Receiving; same reason.
+    // Mirrors the predicate renderShipmentsContent uses to filter
+    // the visible list so the badge number always matches what the
+    // operator finds when they click in.
+    const ids = Object.keys(shipmentData).filter(id => {
+      const s = shipmentData[id];
+      if (!s) return false;
+      if (_isArchiveCompleted(s)) return false;
+      if (s.status === 'waiting_arrival' || s.status === 'received') return false;
+      return true;
+    });
     // Actionable = any linked order has a change request
     const shipActionable = ids.filter(id => {
       const entries = shipmentData[id].entries || [];
       return entries.some(e => e.orderId && orderData[e.orderId]?.changeRequested);
     }).length;
     _applyNavBadge(document.getElementById('badge-shipments'), shipActionable, ids.length);
+    // Receiving badge — number of shipments awaiting arrival. Lives
+    // here (not in a separate update function) so the two badges
+    // stay in lockstep on every shipment mutation; integrating into
+    // rebuildShipmentsNav means saveShipments → rebuildShipmentsNav
+    // → both badges update together.
+    const receivingIds = Object.keys(shipmentData).filter(id => {
+      return shipmentData[id] && shipmentData[id].status === 'waiting_arrival';
+    });
+    _applyNavBadge(document.getElementById('badge-receiving'), 0, receivingIds.length);
     // Shipments list (if a sub-nav list element exists — may not, since Shipments is now a flat link)
     const list = document.getElementById('shipments-nav-list');
     if (!list) return;
@@ -31164,14 +31184,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     updateReceivingBadge();
   }
 
-  // Side-effect: keep the Receiving sidebar badge in sync with the
-  // count of waiting-arrival shipments. Called from every place that
-  // can mutate shipment.status.
+  // Thin wrapper kept for the call sites already wired earlier.
+  // Receiving badge is now painted inside rebuildShipmentsNav() so
+  // the Shipments + Receiving counts can never disagree about the
+  // same shipment's status.
   function updateReceivingBadge() {
-    const badge = document.getElementById('badge-receiving');
-    if (!badge) return;
-    const n = Object.values(shipmentData || {}).filter(s => s && s.status === 'waiting_arrival').length;
-    badge.textContent = n > 0 ? String(n) : '';
+    if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
   }
   function onShipmentDateChange() {
     const s = shipmentData[_currentShipmentId];
