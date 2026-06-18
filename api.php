@@ -2161,6 +2161,121 @@ switch ($action) {
         }
         break;
 
+    case 'fetch_tracking_status':
+        // Pulls the carrier's public tracking page and asks Claude to
+        // parse it into a structured status. Best-effort — carriers
+        // occasionally block scrapers / return interstitials, in
+        // which case we return an honest "couldn't read" error so
+        // the operator knows the data is stale rather than wrong.
+        //
+        // Input:  { carrier: 'ups'|'fedex'|'dhl', tracking_number: string }
+        // Output: { ok, data: { status, location, eta, events[] } }
+        //         OR { ok:false, error: string }
+        $carrier = strtolower(trim($input['carrier'] ?? ''));
+        $tn      = trim($input['tracking_number'] ?? '');
+        if ($carrier === '' || $tn === '') {
+            echo json_encode(['ok' => false, 'error' => 'carrier and tracking_number required']);
+            break;
+        }
+        $urls = [
+            'ups'   => 'https://www.ups.com/track?tracknum='   . urlencode($tn),
+            'fedex' => 'https://www.fedex.com/fedextrack/?trknbr=' . urlencode($tn),
+            'dhl'   => 'https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=' . urlencode($tn),
+        ];
+        if (!isset($urls[$carrier])) {
+            echo json_encode(['ok' => false, 'error' => "Unsupported carrier: {$carrier}. Use ups, fedex, or dhl."]);
+            break;
+        }
+        // Fetch the carrier page server-side with a realistic UA so
+        // we don't immediately trip basic bot blocks. Truncate the
+        // response to keep the LLM prompt small (carrier pages tend
+        // to be 300-800 KB; 80 KB is plenty to find the status text).
+        $html = '';
+        $fetchErr = '';
+        if (function_exists('curl_init')) {
+            $ch = curl_init($urls[$carrier]);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS      => 4,
+                CURLOPT_TIMEOUT        => 12,
+                CURLOPT_USERAGENT      => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+                CURLOPT_HTTPHEADER     => [
+                    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language: en-US,en;q=0.9',
+                ],
+            ]);
+            $resp = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if ($resp === false || $code < 200 || $code >= 400) {
+                $fetchErr = "Could not reach carrier page (HTTP {$code})";
+            } else {
+                $html = (string)$resp;
+            }
+        } else {
+            $fetchErr = 'Server is missing curl; cannot fetch tracking page.';
+        }
+        if ($fetchErr !== '') {
+            echo json_encode(['ok' => false, 'error' => $fetchErr]);
+            break;
+        }
+        // Strip <script>/<style> + collapse whitespace before sending
+        // to the LLM — those tags account for most of the page weight
+        // and never contain status text.
+        $clean = preg_replace('#<script[^>]*>.*?</script>#is', ' ', $html);
+        $clean = preg_replace('#<style[^>]*>.*?</style>#is',   ' ', $clean);
+        $clean = preg_replace('#\s+#', ' ', $clean);
+        $clean = mb_substr($clean, 0, 80000);
+
+        $carrierLabel = ['ups' => 'UPS', 'fedex' => 'FedEx', 'dhl' => 'DHL'][$carrier];
+        $system = "You parse shipment-tracking page HTML and return ONLY valid JSON. No prose, no markdown, no code fences. " .
+                  "Schema: {\"status\": string, \"location\": string, \"eta\": string, \"events\": [{\"time\": string, \"location\": string, \"description\": string}]}. " .
+                  "status: one short phrase like 'In Transit', 'Out for Delivery', 'Delivered', 'Label Created', or 'Unknown' if the page doesn't reveal it. " .
+                  "location: most recent known location ('Salt Lake City, UT' / 'Shanghai, CN'), or empty string. " .
+                  "eta: ISO date or human phrase ('Jun 18' / '2026-06-18' / 'By end of day'), or empty string. " .
+                  "events: up to 12 most-recent scan events, newest first. Each time can be human-readable ('Jun 17, 6:42 PM'). " .
+                  "If the page is an interstitial / captcha / 'tracking number not found', return status: 'Unknown' with empty fields and a single event describing what you saw.";
+        $userMsg = "Carrier: {$carrierLabel}\nTracking number: {$tn}\n\nHTML (cleaned, truncated):\n" . $clean;
+        $r = ms_anthropic_send($system, $userMsg, 1600);
+        if (!$r['ok']) {
+            echo json_encode(['ok' => false, 'error' => $r['error'] ?? 'AI request failed']);
+            break;
+        }
+        $text = trim((string)($r['text'] ?? ''));
+        // Strip code-fence wrappers if Claude added them despite the
+        // instruction.
+        $text = preg_replace('#^```(?:json)?\s*#i', '', $text);
+        $text = preg_replace('#\s*```$#', '', $text);
+        $parsed = json_decode($text, true);
+        if (!is_array($parsed)) {
+            echo json_encode(['ok' => false, 'error' => 'AI returned non-JSON: ' . mb_substr($text, 0, 200)]);
+            break;
+        }
+        // Normalize shape so the frontend can rely on every key being
+        // present and the right type.
+        $out = [
+            'status'   => (string)($parsed['status']   ?? 'Unknown'),
+            'location' => (string)($parsed['location'] ?? ''),
+            'eta'      => (string)($parsed['eta']      ?? ''),
+            'events'   => [],
+            'fetchedAt' => date('c'),
+            'carrier'   => $carrier,
+            'trackingNumber' => $tn,
+        ];
+        if (isset($parsed['events']) && is_array($parsed['events'])) {
+            foreach (array_slice($parsed['events'], 0, 12) as $ev) {
+                if (!is_array($ev)) continue;
+                $out['events'][] = [
+                    'time'        => (string)($ev['time']        ?? ''),
+                    'location'    => (string)($ev['location']    ?? ''),
+                    'description' => (string)($ev['description'] ?? ''),
+                ];
+            }
+        }
+        echo json_encode(['ok' => true, 'data' => $out]);
+        break;
+
     case 'upload_client_logo':
         // Per-client logo upload — saves under uploads/clients/{id}/
         // and writes the URL onto clients.logo_url so every avatar
@@ -3995,6 +4110,7 @@ switch ($action) {
             'get_archived', 'restore_workbook', 'restore_client',
             'permanent_delete_workbook', 'permanent_delete_client',
             'upload_image', 'upload_art_file', 'upload_client_logo', 'delete_client_logo', 'delete_image', 'upload_video',
+            'fetch_tracking_status',
             'get_users', 'add_user', 'update_user', 'delete_user', 'change_password',
             'duplicate_workbook',
             'get_inventory', 'promote_to_sku', 'remove_sku',

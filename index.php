@@ -6381,6 +6381,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span class="nav-badge" id="badge-shipments"></span>
     </a>
 
+    <!-- Receiving — shipments marked Waiting Arrival. Each one carries
+         a carrier + tracking number; the AI tracking lookup pulls live
+         status from the carrier's public tracking page. -->
+    <a id="nav-receiving-link" href="#/receiving" onclick="event.preventDefault(); location.hash='#/receiving'" class="nav-flat-link">
+      <span>Receiving</span>
+      <span class="nav-badge" id="badge-receiving"></span>
+    </a>
+
     <!-- Billings -->
     <div class="nav-section collapsed" id="nav-section-billings">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-billings')">
@@ -8573,6 +8581,88 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div><!-- /#view-shipments -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: RECEIVING
+     Shipments the operator has flagged Waiting Arrival. Each row
+     carries a carrier + tracking number; the AI tracking lookup
+     pulls live status from the carrier's public tracking page.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-receiving" class="view">
+  <main class="container">
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Receiving</span>
+        <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Shipments awaiting arrival</span>
+      </div>
+      <div class="section-body">
+        <div id="receiving-list-content">
+          <div class="order-list-empty">
+            <div class="order-list-empty-icon">📦</div>
+            <div class="order-list-empty-title">Nothing waiting</div>
+            <div class="order-list-empty-sub">Set a shipment's status to <strong>Waiting Arrival</strong> in Shipments — once you add a carrier + tracking number, it lands here with live AI tracking status.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div><!-- /#view-receiving -->
+
+<!-- Tracking entry modal — triggered when an operator switches a
+     shipment's status to "Waiting Arrival". Captures carrier + tracking
+     number, then kicks off the AI lookup. -->
+<div class="modal-overlay" id="tracking-modal" style="display:none;">
+  <div class="modal" style="max-width:440px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Add Carrier &amp; Tracking</h3>
+      <button onclick="closeTrackingModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Required for the shipment to land in Receiving. AI will look up tracking status against the carrier's public page.</p>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Carrier</label>
+        <div class="ship-select-wrap">
+          <select id="tracking-modal-carrier" class="form-input" style="width:100%;">
+            <option value="">— Select carrier —</option>
+            <option value="ups">UPS</option>
+            <option value="fedex">FedEx</option>
+            <option value="dhl">DHL</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Tracking Number</label>
+        <input id="tracking-modal-number" type="text" class="form-input" style="width:100%;" placeholder="e.g. 1Z999AA10123456784" autocomplete="off" />
+      </div>
+      <div id="tracking-modal-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closeTrackingModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmTrackingModal()">Move to Receiving</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mark Received modal — confirms delivery + optional audit notes. -->
+<div class="modal-overlay" id="received-modal" style="display:none;">
+  <div class="modal" style="max-width:440px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Mark Received</h3>
+      <button onclick="closeReceivedModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Confirm the shipment has arrived. Add any audit notes — damaged cartons, missing items, qty discrepancies — and the shipment will archive out of Receiving.</p>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Audit Notes <span style="font-weight:400; text-transform:none; opacity:0.7;">(optional)</span></label>
+        <textarea id="received-modal-notes" class="form-input" style="width:100%;min-height:96px;" placeholder="Damaged outer carton on pallet 2 / 1 missing master / etc."></textarea>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closeReceivedModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmReceivedModal()">Mark Received</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
      VIEW: SHIPMENT DETAIL
 ═══════════════════════════════════════════════════════════════════════ -->
 <div id="view-shipment-detail" class="view">
@@ -8597,7 +8687,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <option value="planning">Planning</option>
           <option value="booked">Booked</option>
           <option value="in_transit">In Transit</option>
+          <option value="waiting_arrival">Waiting Arrival</option>
           <option value="delivered">Delivered</option>
+          <option value="received">Received</option>
         </select>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
@@ -26808,6 +26900,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/receiving — shipments flagged Waiting Arrival with
+    // carrier + tracking number set; live status pulled by the AI
+    // tracking helper.
+    if (hash === '#/receiving') {
+      renderReceivingList();
+      return;
+    }
+
     // Match: #/shipment/{id}
     const shipMatch = hash.match(/^#\/shipment\/(\d+)$/);
     if (shipMatch) {
@@ -29486,6 +29586,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Try loading from LocalStorage immediately for fast render
     loadFromLocalStorage();
     loadShipments();
+    if (typeof updateReceivingBadge === 'function') updateReceivingBadge();
     loadOrders();
     loadInventory();
     loadCommissions();
@@ -30180,7 +30281,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const el = document.getElementById('shipment-list-content');
     if (!el) return;
 
-    const allIds = Object.keys(shipmentData);
+    // Hide shipments that have moved to the Receiving lane (operator
+    // flagged Waiting Arrival) or are already Received. They live on
+    // the #/receiving view; showing them here too would double-stack
+    // the same shipment in two places.
+    const allIds = Object.keys(shipmentData).filter(id => {
+      const st = shipmentData[id] && shipmentData[id].status;
+      return st !== 'waiting_arrival' && st !== 'received';
+    });
     if (allIds.length === 0) {
       el.innerHTML = `<div class="shipment-list-empty">
         <div class="shipment-list-empty-icon">🚢</div>
@@ -30780,11 +30888,268 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onShipmentStatusChange() {
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
-    s.status = document.getElementById('ship-detail-status').value;
+    const newStatus = document.getElementById('ship-detail-status').value;
+    // Special handling for waiting_arrival → require carrier + tracking
+    // number before committing the status. If the operator already has
+    // them (re-selecting the status), we go straight through.
+    if (newStatus === 'waiting_arrival' && (!s.carrier || !s.trackingNumber)) {
+      openTrackingModal(_currentShipmentId, newStatus, 'detail');
+      // Revert the dropdown until they confirm in the modal; the modal's
+      // confirm handler sets s.status and refreshes the UI.
+      document.getElementById('ship-detail-status').value = s.status || 'planning';
+      return;
+    }
+    if (newStatus === 'received' && !s.receivedAt) {
+      openReceivedModal(_currentShipmentId, 'detail');
+      document.getElementById('ship-detail-status').value = s.status || 'planning';
+      return;
+    }
+    s.status = newStatus;
     const wrap = document.getElementById('ship-delivered-wrap');
     if (wrap) wrap.style.display = s.status === 'delivered' ? 'flex' : 'none';
     saveShipments();
     rebuildShipmentsNav();
+    updateReceivingBadge();
+  }
+
+  // ── Receiving view ────────────────────────────────────────────────
+  // Shipments with status === 'waiting_arrival' live here. Each card
+  // shows the carrier + tracking number, the last-known AI tracking
+  // status (location, ETA, timeline of events), and actions to
+  // refresh the lookup or mark received.
+
+  function renderReceivingList() {
+    document.getElementById('header-title').textContent = 'Receiving';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const recNav = document.getElementById('nav-receiving-link');
+    if (recNav) recNav.classList.add('active');
+    showView('view-receiving');
+    const host = document.getElementById('receiving-list-content');
+    if (!host) return;
+    const ids = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'waiting_arrival');
+    if (ids.length === 0) {
+      host.innerHTML = `<div class="order-list-empty">
+        <div class="order-list-empty-icon">📦</div>
+        <div class="order-list-empty-title">Nothing waiting</div>
+        <div class="order-list-empty-sub">Set a shipment's status to <strong>Waiting Arrival</strong> in Shipments — once you add a carrier + tracking number, it lands here with live AI tracking status.</div>
+      </div>`;
+      return;
+    }
+    // Sort by most-recent ETA first (parsed from the AI tracking
+    // payload). Shipments without an ETA sink to the bottom.
+    ids.sort((a, b) => {
+      const ea = shipmentData[a].tracking?.eta || '';
+      const eb = shipmentData[b].tracking?.eta || '';
+      if (!ea && !eb) return 0;
+      if (!ea) return 1;
+      if (!eb) return -1;
+      return ea.localeCompare(eb);
+    });
+    host.innerHTML = ids.map(_buildReceivingCard).join('');
+  }
+
+  function _carrierLabel(c) { return ({ ups: 'UPS', fedex: 'FedEx', dhl: 'DHL' })[c] || c.toUpperCase(); }
+  function _carrierColor(c) {
+    // UPS brown, FedEx purple, DHL yellow — universally recognized so
+    // the operator scans the lane at a glance.
+    return ({ ups: '#5a3a22', fedex: '#4d148c', dhl: '#d40511' })[c] || 'var(--accent)';
+  }
+  function _esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function _buildReceivingCard(id) {
+    const s = shipmentData[id];
+    if (!s) return '';
+    const tk = s.tracking || {};
+    const carrierLabel = _carrierLabel(s.carrier || '');
+    const carrierColor = _carrierColor(s.carrier || '');
+    const lastChecked = tk.fetchedAt ? new Date(tk.fetchedAt) : null;
+    const lastCheckedStr = lastChecked && !isNaN(lastChecked.getTime())
+      ? lastChecked.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      : 'never';
+    const statusText = tk.status || 'Not yet checked';
+    const statusColor = /deliver/i.test(statusText)   ? '#16a34a'
+                      : /out for/i.test(statusText)   ? '#E8751A'
+                      : /transit|moving/i.test(statusText) ? '#3b82f6'
+                      : 'var(--text-muted)';
+    const eventsHtml = (Array.isArray(tk.events) && tk.events.length > 0)
+      ? tk.events.slice(0, 6).map(ev => `
+          <div style="display:flex; gap:10px; padding:6px 0; border-top:1px dashed var(--border); font-size:12px;">
+            <div style="flex:0 0 110px; color:var(--text-muted); font-variant-numeric:tabular-nums;">${_esc(ev.time)}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:600;">${_esc(ev.description)}</div>
+              ${ev.location ? `<div style="color:var(--text-muted); font-size:11px; margin-top:1px;">${_esc(ev.location)}</div>` : ''}
+            </div>
+          </div>`).join('')
+      : `<div style="padding:8px 0; font-size:12px; color:var(--text-muted); font-style:italic;">No tracking events yet — click <strong>Refresh tracking</strong> to fetch the latest from ${_esc(carrierLabel || 'the carrier')}.</div>`;
+    // Carrier tracking URL — opens the carrier's own page in a new
+    // tab so the operator can click through for the full timeline /
+    // proof of delivery.
+    const carrierUrls = {
+      ups: `https://www.ups.com/track?tracknum=${encodeURIComponent(s.trackingNumber)}`,
+      fedex: `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(s.trackingNumber)}`,
+      dhl: `https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=${encodeURIComponent(s.trackingNumber)}`,
+    };
+    const carrierUrl = carrierUrls[s.carrier] || '#';
+    const shipName = s.name || `Shipment #${id}`;
+    return `<div class="order-card" style="margin-bottom:12px;">
+      <div style="display:flex; flex-direction:column; gap:10px; padding:14px 16px;">
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div style="font-size:16px; font-weight:800;">${_esc(shipName)}</div>
+          <span style="padding:3px 10px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:11px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase;">${_esc(carrierLabel)}</span>
+          <a href="${carrierUrl}" target="_blank" rel="noopener"
+             style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);"
+             title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
+          <span style="margin-left:auto; display:flex; gap:8px;">
+            <button class="btn btn-ghost" style="font-size:12px;" onclick="refreshTrackingFor('${id}', this)">↻ Refresh tracking</button>
+            <button class="btn btn-primary" style="font-size:12px;" onclick="openReceivedModal('${id}','receiving')">✓ Mark Received</button>
+          </span>
+        </div>
+        <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap; padding:8px 0; border-top:1px solid var(--border);">
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Status</div>
+            <div style="font-size:14px; font-weight:700; color:${statusColor}; margin-top:2px;">${_esc(statusText)}</div>
+          </div>
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Last known location</div>
+            <div style="font-size:13px; margin-top:2px;">${_esc(tk.location || '—')}</div>
+          </div>
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">ETA</div>
+            <div style="font-size:13px; font-weight:600; margin-top:2px;">${_esc(tk.eta || '—')}</div>
+          </div>
+          <div style="margin-left:auto; font-size:11px; color:var(--text-muted);">
+            Last checked: ${_esc(lastCheckedStr)}
+          </div>
+        </div>
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:4px 12px;">
+          <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); padding:8px 0 4px;">Tracking events</div>
+          ${eventsHtml}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  async function refreshTrackingFor(id, btn) {
+    const s = shipmentData[id];
+    if (!s) return;
+    if (!s.carrier || !s.trackingNumber) {
+      alert('No carrier / tracking number on this shipment yet.');
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
+    try {
+      const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
+      if (r && r.ok && r.data) {
+        s.tracking = r.data;
+        saveShipments();
+        renderReceivingList();
+        return;
+      }
+      const errMsg = (r && r.error) ? r.error : 'Tracking fetch failed.';
+      alert(`Could not refresh tracking: ${errMsg}`);
+    } catch (e) {
+      console.warn('refreshTracking:', e);
+      alert('Tracking fetch error — see console.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh tracking'; }
+    }
+  }
+
+  // ── Tracking entry modal ──────────────────────────────────────────
+  let _trackingModalCtx = null; // { shipmentId, requestedStatus, returnTo }
+  function openTrackingModal(shipmentId, requestedStatus, returnTo) {
+    _trackingModalCtx = { shipmentId, requestedStatus, returnTo: returnTo || 'detail' };
+    const s = shipmentData[shipmentId] || {};
+    document.getElementById('tracking-modal-carrier').value = s.carrier || '';
+    document.getElementById('tracking-modal-number').value = s.trackingNumber || '';
+    document.getElementById('tracking-modal-error').style.display = 'none';
+    document.getElementById('tracking-modal').style.display = 'flex';
+    setTimeout(() => { try { document.getElementById('tracking-modal-number').focus(); } catch {} }, 50);
+  }
+  function closeTrackingModal() {
+    document.getElementById('tracking-modal').style.display = 'none';
+    _trackingModalCtx = null;
+  }
+  async function confirmTrackingModal() {
+    if (!_trackingModalCtx) return;
+    const carrier = document.getElementById('tracking-modal-carrier').value;
+    const num = document.getElementById('tracking-modal-number').value.trim();
+    const err = document.getElementById('tracking-modal-error');
+    if (!carrier || !num) {
+      err.textContent = 'Both carrier and tracking number are required.';
+      err.style.display = 'block';
+      return;
+    }
+    const ctx = _trackingModalCtx;
+    const s = shipmentData[ctx.shipmentId];
+    if (!s) { closeTrackingModal(); return; }
+    s.carrier = carrier;
+    s.trackingNumber = num;
+    s.status = ctx.requestedStatus;
+    s.tracking = s.tracking || null; // will be filled by the AI fetch below
+    saveShipments();
+    closeTrackingModal();
+    // Kick off the initial AI lookup so the operator sees status the
+    // moment they land in Receiving. Failure is non-fatal — the
+    // shipment still moves; they can Refresh manually.
+    try {
+      const r = await apiCall('fetch_tracking_status', { carrier, tracking_number: num });
+      if (r && r.ok && r.data) { s.tracking = r.data; saveShipments(); }
+    } catch {}
+    // Route to wherever feels natural for the operator's context.
+    if (ctx.returnTo === 'detail') {
+      // Update the dropdown in the shipment detail view + re-route to
+      // Receiving so they see their newly-arrived card.
+      const dd = document.getElementById('ship-detail-status');
+      if (dd) dd.value = s.status;
+      location.hash = '#/receiving';
+    } else {
+      renderReceivingList();
+    }
+    rebuildShipmentsNav();
+    updateReceivingBadge();
+  }
+
+  // ── Mark Received modal ───────────────────────────────────────────
+  let _receivedModalCtx = null;
+  function openReceivedModal(shipmentId, returnTo) {
+    _receivedModalCtx = { shipmentId, returnTo: returnTo || 'detail' };
+    document.getElementById('received-modal-notes').value = '';
+    document.getElementById('received-modal').style.display = 'flex';
+    setTimeout(() => { try { document.getElementById('received-modal-notes').focus(); } catch {} }, 50);
+  }
+  function closeReceivedModal() {
+    document.getElementById('received-modal').style.display = 'none';
+    _receivedModalCtx = null;
+  }
+  function confirmReceivedModal() {
+    if (!_receivedModalCtx) return;
+    const ctx = _receivedModalCtx;
+    const s = shipmentData[ctx.shipmentId];
+    if (!s) { closeReceivedModal(); return; }
+    s.status = 'received';
+    s.receivedAt = new Date().toISOString();
+    s.receivedNotes = document.getElementById('received-modal-notes').value.trim();
+    saveShipments();
+    closeReceivedModal();
+    if (ctx.returnTo === 'detail') {
+      const dd = document.getElementById('ship-detail-status');
+      if (dd) dd.value = s.status;
+    }
+    if (ctx.returnTo === 'receiving') renderReceivingList();
+    rebuildShipmentsNav();
+    updateReceivingBadge();
+  }
+
+  // Side-effect: keep the Receiving sidebar badge in sync with the
+  // count of waiting-arrival shipments. Called from every place that
+  // can mutate shipment.status.
+  function updateReceivingBadge() {
+    const badge = document.getElementById('badge-receiving');
+    if (!badge) return;
+    const n = Object.values(shipmentData || {}).filter(s => s && s.status === 'waiting_arrival').length;
+    badge.textContent = n > 0 ? String(n) : '';
   }
   function onShipmentDateChange() {
     const s = shipmentData[_currentShipmentId];
