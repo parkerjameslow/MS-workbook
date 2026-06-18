@@ -10754,34 +10754,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         `;
       } else if (kind === 'pdf') {
         // <embed> renders the first PDF page as a real thumbnail in
-        // every modern browser — no JS lib needed. pointer-events:
-        // none on the embed so clicks fall through to the wrapper's
-        // onclick (the embed would otherwise intercept them for its
-        // own toolbar). #toolbar=0&navpanes=0 collapses the in-frame
-        // PDF chrome for a clean tile.
+        // every modern browser — no JS lib needed. #toolbar=0&
+        // navpanes=0 collapses the in-frame PDF chrome for a clean
+        // tile. CRITICAL: a transparent click-capture div sits ON
+        // TOP of the embed because `pointer-events:none` is unreliable
+        // on plugin embeds (especially Safari's native PDF viewer —
+        // it captures clicks for its own page-turn behavior even
+        // when CSS says it shouldn't). The capture div owns the
+        // onclick and reliably opens the preview modal.
         item.innerHTML = `
-          <div onclick="openArtPreview('${urlAttr}')"
-               style="position:absolute; inset:0; cursor:pointer; background:#fff;"
-               title="Click to preview">
+          <div style="position:absolute; inset:0; background:#fff;">
             <embed src="${img.url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1"
                    type="application/pdf"
                    style="width:100%; height:100%; pointer-events:none;" />
             <div class="art-tile-badge art-tile-badge--light">PDF</div>
+            <div onclick="openArtPreview('${urlAttr}')"
+                 style="position:absolute; inset:0; cursor:pointer; background:transparent; z-index:1;"
+                 title="Click to preview"></div>
           </div>
           ${removeBtn}
         `;
       } else if (kind === 'video') {
         // muted + preload="metadata" gets the first frame as a poster
         // without playing the video. A small ▶ overlay tells the
-        // operator the tile is clickable.
+        // operator the tile is clickable. Same click-capture overlay
+        // pattern as PDF — keeps the open-preview behavior consistent
+        // regardless of browser quirks with media elements.
         item.innerHTML = `
-          <div onclick="openArtPreview('${urlAttr}')"
-               style="position:absolute; inset:0; cursor:pointer; background:#000;"
-               title="Click to preview">
+          <div style="position:absolute; inset:0; background:#000;">
             <video src="${img.url}" muted preload="metadata" playsinline
                    style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
             <div class="art-tile-play"><span>▶</span></div>
             <div class="art-tile-badge art-tile-badge--dark">VIDEO</div>
+            <div onclick="openArtPreview('${urlAttr}')"
+                 style="position:absolute; inset:0; cursor:pointer; background:transparent; z-index:1;"
+                 title="Click to preview"></div>
           </div>
           ${removeBtn}
         `;
