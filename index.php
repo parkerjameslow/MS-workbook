@@ -8659,7 +8659,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div>
         <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Carrier</label>
         <div class="ship-select-wrap">
-          <select id="tracking-modal-carrier" class="form-input" style="width:100%;">
+          <!-- appearance:none kills the browser's native dropdown arrow
+               so only the custom triangle painted by .ship-select-wrap
+               shows. Without this, two carets stack side by side. -->
+          <select id="tracking-modal-carrier" class="form-input" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;">
             <option value="">— Select carrier —</option>
             <option value="ups">UPS</option>
             <option value="fedex">FedEx</option>
