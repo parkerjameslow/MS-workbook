@@ -34957,14 +34957,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Workbook header row — click anywhere on it (except the link
       // or the × button) to expand/collapse the variant breakdown.
       // Shows the workbook-level summary so the row is useful even
-      // while collapsed. Art pill renders to the right of the
-      // workbook link with the file count; clicking it deep-links to
-      // that workbook's Art tab via the hash router's /art suffix.
+      // Art pill — peer of the workbook link, same shape/size/feel
+      // via the shared .order-sheet-product-link class. Deep-links
+      // to that workbook's Art tab. No emoji per UX direction; the
+      // "Art N" label alone is enough.
       const _artCount = Array.isArray(detail.artImages) ? detail.artImages.length : 0;
-      const _artPill = `<span class="order-sheet-art-pill" onclick="event.stopPropagation(); _wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; location.hash='${wbHref.substring(1)}/art'"
-        style="display:inline-flex; align-items:center; gap:4px; margin-left:8px; padding:2px 8px; border-radius:9px; background:rgba(107,147,255,0.10); color:#6b93ff; border:1px solid rgba(107,147,255,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; white-space:nowrap; vertical-align:middle;"
+      const _artPill = `<span class="order-sheet-product-link" style="margin-left:8px;"
+        onclick="event.stopPropagation(); _wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; location.hash='${wbHref.substring(1)}/art'"
         title="Open this workbook's Art tab — ${_artCount} file${_artCount === 1 ? '' : 's'} uploaded">
-        <span style="font-size:12px; line-height:1;">🎨</span>Art <span style="opacity:0.75; font-variant-numeric:tabular-nums;">${_artCount}</span>
+        Art <span style="opacity:0.6; font-weight:500; font-variant-numeric:tabular-nums;">${_artCount}</span>
       </span>`;
       let rows = `<tr class="order-sheet-wb-header" style="cursor:pointer;" onclick="toggleOrderSheetWb('${esc(key).replace(/'/g,"\\'")}')">
         <td>
