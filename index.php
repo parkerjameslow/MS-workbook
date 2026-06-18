@@ -8436,6 +8436,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <!-- Stats Row -->
     <div id="samples-stats-row" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px;"></div>
 
+    <!-- Bulk-action bar — appears when 1+ samples are checked. The
+         operator can deselect everything in one click or kick off a
+         bulk action (Create Shipment + carrier/tracking). Sticky just
+         below the header so the bar stays visible while scrolling
+         long sample lists. -->
+    <div id="samples-bulk-bar" style="display:none; align-items:center; gap:12px; padding:10px 16px; background:rgba(232,117,26,0.10); border:1px solid rgba(232,117,26,0.30); border-radius:10px; margin-bottom:12px; position:sticky; top:8px; z-index:10;">
+      <strong style="font-size:13px; color:var(--accent);"><span id="samples-bulk-count">0 samples</span> selected</strong>
+      <button class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllSamples()">Deselect all</button>
+      <span style="margin-left:auto; display:flex; gap:8px;">
+        <button class="btn btn-primary" style="font-size:12px;" onclick="openCreateSampleShipmentModal()">+ Create Shipment</button>
+      </span>
+    </div>
+
     <!-- Samples Table -->
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
@@ -8453,6 +8466,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <table class="dash-table" id="samples-table">
           <thead>
             <tr>
+              <th style="width:36px; text-align:center;">
+                <input type="checkbox" id="samples-header-checkbox"
+                       onchange="toggleAllSamplesSelection(this.checked)"
+                       title="Select all visible samples" />
+              </th>
               <th>ITEM</th>
               <th>CLIENT</th>
               <th>WORKBOOK</th>
@@ -8678,6 +8696,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
         <button class="btn btn-ghost" onclick="closeTrackingModal()">Cancel</button>
         <button class="btn btn-primary" onclick="confirmTrackingModal()">Move to Receiving</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Create Sample Shipment modal — opened from the Samples bulk-action
+     bar when 1+ samples are checked. Creates a new shipment with
+     status=waiting_arrival, sets carrier + tracking number, stores
+     the selected samples under sampleEntries, fires the AI tracking
+     lookup, then navigates to Receiving so the operator sees the new
+     shipment card. -->
+<div class="modal-overlay" id="sample-shipment-modal" style="display:none;">
+  <div class="modal" style="max-width:480px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Create Sample Shipment</h3>
+      <button onclick="closeSampleShipmentModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Creating a shipment for <strong id="sample-shipment-count-label" style="color:var(--text);">0 samples</strong>. The new shipment lands in <strong>Receiving</strong> with carrier + tracking ready for AI status lookup.</p>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Shipment Name</label>
+        <input id="sample-shipment-name" type="text" class="form-input" style="width:100%;" placeholder="e.g. UPS Air — Sample Round 1" autocomplete="off" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Carrier</label>
+        <div class="ship-select-wrap">
+          <select id="sample-shipment-carrier" class="form-input" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;">
+            <option value="">— Select carrier —</option>
+            <option value="ups">UPS</option>
+            <option value="fedex">FedEx</option>
+            <option value="dhl">DHL</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Tracking Number</label>
+        <input id="sample-shipment-tracking" type="text" class="form-input" style="width:100%;" placeholder="e.g. 1Z999AA10123456784" autocomplete="off" />
+      </div>
+      <div id="sample-shipment-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closeSampleShipmentModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmSampleShipmentModal()">+ Create &amp; Move to Receiving</button>
       </div>
     </div>
   </div>
@@ -26274,6 +26334,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // sampleMeta is stored alongside rfqItems: sampleStatuses[rowIndex] = 'pending'|'received' etc.
   let _samplesFilter = 'all';
+  // Bulk-select state for the Samples view. Composite key is
+  // `${clientName}|${workbookId}|${rowIndex}` so a single sample row
+  // is uniquely addressable even when the operator has multiple
+  // workbooks with similarly-indexed RFQ items. Survives table
+  // re-renders (status change, filter change) so the operator
+  // doesn't lose their selection mid-flow.
+  const _samplesSelected = new Set();
 
   function collectAllSamples() {
     const results = [];
@@ -26349,10 +26416,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const filtered = _samplesFilter === 'all' ? allSamples : allSamples.filter(s => s.status === _samplesFilter);
 
+    // Drop selections that are no longer visible (e.g. operator
+    // changed the filter to one that excludes a previously-selected
+    // sample, or the sample was removed). Keeps the bulk action's
+    // count honest without surprising the operator.
+    const visibleKeys = new Set(filtered.map(s => `${s.key}|${s.rowIndex}`));
+    Array.from(_samplesSelected).forEach(k => { if (!visibleKeys.has(k)) _samplesSelected.delete(k); });
+
     if (filtered.length === 0) {
       tbody.innerHTML = '';
       if (emptyEl) emptyEl.style.display = '';
       if (tableEl) tableEl.style.display = 'none';
+      updateSamplesBulkActionBar();
       return;
     }
     if (emptyEl) emptyEl.style.display = 'none';
@@ -26378,8 +26453,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const wbPill = `<span class="inv-wb-pill" onclick="event.stopPropagation(); location.hash='${wbHref.substring(1)}'"
           title="${esc(s.product)}" style="max-width:100%; min-width:0;"
           ><span class="inv-wb-pill-text">${esc(s.product)}</span><span class="inv-wb-pill-arrow">→</span></span>`;
+      const compKey = `${s.key}|${s.rowIndex}`;
+      const checked = _samplesSelected.has(compKey) ? 'checked' : '';
       return `
         <tr>
+          <td style="text-align:center;">
+            <input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked}
+                   onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" />
+          </td>
           <td style="font-weight:600; color:var(--text);" title="${esc(s.item)}">${esc(s.item)}</td>
           <td class="samples-pill-cell">${clientPill}</td>
           <td class="samples-pill-cell">${wbPill}</td>
@@ -26399,6 +26480,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </tr>
       `;
     }).join('');
+    // Reflect current selection state in the action bar + header
+    // checkbox now that the row checkboxes are in the DOM.
+    updateSamplesBulkActionBar();
+    _syncSamplesHeaderCheckbox();
   }
 
   function updateSampleStatus(key, rowIndex, newStatus) {
@@ -26459,6 +26544,160 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.querySelectorAll('#view-samples .status-filter-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
     renderSamplesTable(collectAllSamples());
+  }
+
+  // ── Bulk select on Samples ────────────────────────────────────────
+  // Foundation for bulk actions on the Samples list. Once an operator
+  // has 1+ rows checked, the action bar above the table reveals
+  // Deselect All + Create Shipment. The same pattern is meant to be
+  // replicated on RFQ / Ready for Review / Orders / etc. in a follow-
+  // up turn — each list provides its own action set, but the
+  // checkbox + bulk-bar plumbing is identical.
+
+  function toggleSampleSelection(compositeKey, checked) {
+    if (checked) _samplesSelected.add(compositeKey);
+    else         _samplesSelected.delete(compositeKey);
+    updateSamplesBulkActionBar();
+    _syncSamplesHeaderCheckbox();
+  }
+
+  function toggleAllSamplesSelection(checked) {
+    document.querySelectorAll('.samples-row-checkbox').forEach(cb => {
+      cb.checked = checked;
+      const k = cb.getAttribute('data-sample-key');
+      if (!k) return;
+      if (checked) _samplesSelected.add(k);
+      else         _samplesSelected.delete(k);
+    });
+    updateSamplesBulkActionBar();
+  }
+
+  function deselectAllSamples() {
+    _samplesSelected.clear();
+    document.querySelectorAll('.samples-row-checkbox').forEach(cb => { cb.checked = false; });
+    const h = document.getElementById('samples-header-checkbox');
+    if (h) { h.checked = false; h.indeterminate = false; }
+    updateSamplesBulkActionBar();
+  }
+
+  function updateSamplesBulkActionBar() {
+    const bar = document.getElementById('samples-bulk-bar');
+    if (!bar) return;
+    const n = _samplesSelected.size;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    const countEl = document.getElementById('samples-bulk-count');
+    if (countEl) countEl.textContent = n === 1 ? '1 sample' : `${n} samples`;
+  }
+
+  // Keep the header checkbox honest:
+  //   • all visible rows checked        → checked
+  //   • some visible rows checked       → indeterminate (the dash UI)
+  //   • no visible rows checked         → unchecked
+  function _syncSamplesHeaderCheckbox() {
+    const h = document.getElementById('samples-header-checkbox');
+    if (!h) return;
+    const rows = document.querySelectorAll('.samples-row-checkbox');
+    if (!rows.length) { h.checked = false; h.indeterminate = false; return; }
+    let checkedCount = 0;
+    rows.forEach(cb => { if (cb.checked) checkedCount++; });
+    if (checkedCount === 0)              { h.checked = false; h.indeterminate = false; }
+    else if (checkedCount === rows.length) { h.checked = true;  h.indeterminate = false; }
+    else                                  { h.checked = false; h.indeterminate = true;  }
+  }
+
+  // ── Create Sample Shipment flow ───────────────────────────────────
+  // Wraps the carrier + tracking modal: when the operator confirms,
+  // we mint a new shipment in shipmentData with status=waiting_arrival
+  // and the selected samples stored under sampleEntries. Fires the AI
+  // tracking lookup async, then routes to #/receiving so the operator
+  // lands on the new card.
+
+  function openCreateSampleShipmentModal() {
+    if (_samplesSelected.size === 0) return;
+    const label = document.getElementById('sample-shipment-count-label');
+    if (label) label.textContent = _samplesSelected.size === 1 ? '1 sample' : `${_samplesSelected.size} samples`;
+    // Default name: dated + carrier-agnostic so the operator can keep
+    // it or override. Year omitted to stay compact.
+    const today = new Date();
+    const ds = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const nameInp = document.getElementById('sample-shipment-name');
+    if (nameInp) nameInp.value = `Sample Shipment — ${ds}`;
+    document.getElementById('sample-shipment-carrier').value = '';
+    document.getElementById('sample-shipment-tracking').value = '';
+    document.getElementById('sample-shipment-error').style.display = 'none';
+    document.getElementById('sample-shipment-modal').style.display = 'flex';
+    setTimeout(() => { try { document.getElementById('sample-shipment-tracking').focus(); } catch {} }, 50);
+  }
+
+  function closeSampleShipmentModal() {
+    document.getElementById('sample-shipment-modal').style.display = 'none';
+  }
+
+  async function confirmSampleShipmentModal() {
+    const carrier  = document.getElementById('sample-shipment-carrier').value;
+    const tracking = document.getElementById('sample-shipment-tracking').value.trim();
+    const name     = document.getElementById('sample-shipment-name').value.trim() || `Sample Shipment ${new Date().toLocaleDateString()}`;
+    const err = document.getElementById('sample-shipment-error');
+    if (!carrier || !tracking) {
+      err.textContent = 'Carrier and tracking number are both required.';
+      err.style.display = 'block';
+      return;
+    }
+    if (_samplesSelected.size === 0) {
+      err.textContent = 'No samples selected.';
+      err.style.display = 'block';
+      return;
+    }
+    // Snapshot the selected sample rows so the shipment carries the
+    // human-readable label even if the underlying RFQ row later gets
+    // edited or removed.
+    const allSamples = collectAllSamples();
+    const sampleEntries = [];
+    allSamples.forEach(s => {
+      const k = `${s.key}|${s.rowIndex}`;
+      if (!_samplesSelected.has(k)) return;
+      sampleEntries.push({
+        clientName: s.clientName,
+        workbookId: s.workbookId,
+        rowIndex: s.rowIndex,
+        item: s.item,
+        qty: s.qty,
+        product: s.product,
+      });
+    });
+    // Mint the new shipment. Container type defaults to whatever new
+    // shipments default to (currently '40hc' on createShipment) — for
+    // sample shipments it's not meaningful but the cards expect a
+    // value, so we set it anyway.
+    const newId = String(_nextShipmentId++);
+    shipmentData[newId] = {
+      id: newId,
+      name,
+      status: 'waiting_arrival',
+      carrier,
+      trackingNumber: tracking,
+      entries: [],           // no orderId entries — this is a sample-only shipment
+      sampleEntries,         // operator-selected sample rows
+      containerType: '40hc',
+      etd: '', eta: '', deliveredOn: '',
+      createdAt: new Date().toISOString(),
+      tracking: null,        // populated by AI fetch below
+    };
+    saveShipments();
+    _samplesSelected.clear();
+    closeSampleShipmentModal();
+    // Fire the AI tracking lookup in the background so the operator
+    // sees status the moment they land in Receiving. Failure is non-
+    // fatal — they can hit Refresh tracking on the card.
+    try {
+      const r = await apiCall('fetch_tracking_status', { carrier, tracking_number: tracking });
+      if (r && r.ok && r.data) {
+        shipmentData[newId].tracking = r.data;
+        saveShipments();
+      }
+    } catch {}
+    rebuildShipmentsNav();
+    location.hash = '#/receiving';
   }
 
   /* ── RFQ Queue ───────────────────────────────────────────────────────────── */
