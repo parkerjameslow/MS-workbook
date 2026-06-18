@@ -3313,9 +3313,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     /* ── Workbook sticky header group ─────────────────────────────────────
-       Pins the back-button + tabs + "X is editing" indicator under the
-       app header. The fulfillment-flow status bar below is NOT pinned
-       — it scrolls with the rest of the page (per user request).
+       Pins the back-button + tabs + "X is editing" indicator AND the
+       fulfillment-flow status bar to the top under the app header so
+       the operator never has to scroll up to see the workflow stage.
+       Per user request — having the flow visible at all times beats
+       the slightly heavier pinned header.
     ─────────────────────────────────────────────────────────────────── */
     .wb-sticky-group {
       position: sticky;
@@ -3329,6 +3331,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .wb-sticky-bar {
       padding: 0;
       background: transparent;
+    }
+    /* Pinned variant of .status-bar — same look as the original,
+       but with zero outer margin so it sits flush against the tabs
+       row above it (the wb-sticky-group already supplies bottom
+       padding for the whole pinned block) and a small top margin to
+       breathe under the tabs. */
+    .status-bar.status-bar--pinned {
+      margin: 8px 0 0;
     }
     @media (max-width: 768px) {
       .wb-sticky-group { padding-top: 16px; padding-bottom: 8px; margin-top: -16px; }
@@ -6484,10 +6494,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div id="wb-presence-banner" class="wb-presence-banner wb-presence-inline" style="justify-self:end;"></div>
       </div>
     </div>
-  </div>
 
-  <!-- ── Status Bar (fulfillment flow) — NOT pinned ── -->
-  <div class="status-bar" id="status-bar">
+  <!-- ── Status Bar (fulfillment flow) — now pinned with the sticky
+       group so the operator always sees the workflow stage without
+       scrolling up. Lives INSIDE .wb-sticky-group so both the tabs
+       row and the status bar share one sticky pin. -->
+  <div class="status-bar status-bar--pinned" id="status-bar">
     <div class="status-bar-left">
       <div class="status-label">Status</div>
       <div class="status-flow" id="status-flow">
@@ -6561,6 +6573,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </button>
     </div>
   </div><!-- /.status-bar -->
+  </div><!-- /.wb-sticky-group — closes after status-bar so both stick together -->
 
   <!-- ── Tab: Workbook ── -->
   <div id="wb-tab-workbook" class="wb-tab-content active">
@@ -22958,6 +22971,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function showView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
+    // Always land the operator at the top of the new view so the
+    // pinned status / flow bar (workbook view) and section headers
+    // (dashboards, order detail, etc.) are immediately visible
+    // instead of off-screen above the fold. Use 'auto' so the jump
+    // is instant — smooth-scrolling here feels janky on rapid nav.
+    try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }
+    catch (_) { window.scrollTo(0, 0); }
   }
 
   function updateSidebarActive(clientName) {
