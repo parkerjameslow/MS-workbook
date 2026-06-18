@@ -27551,6 +27551,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return commissionsData.filter(r => {
       if (_commEmployeeFilter !== 'all' && r.employee !== _commEmployeeFilter) return false;
       if (_commRoleFilter     !== 'all' && r.role     !== _commRoleFilter)     return false;
+      // Drop rows whose underlying workbook has been archived or
+      // deleted on the Clients view (no longer in clientData). These
+      // used to render with a muted "Archived" pill mixed in with
+      // active rows; the user asked to remove them from the dashboard
+      // entirely. KPIs (Total Earned / Pending / etc.) and the
+      // scoreboard both feed from this filter, so excluding here
+      // cleans every surface in one place. To bring a commission
+      // back, un-archive the workbook on the Clients view.
+      const wbs = (typeof clientData === 'object' && clientData) ? (clientData[r.client_name] || []) : [];
+      const wbExists = wbs.some(wb => parseInt(wb.id) === parseInt(r.workbook_id));
+      if (!wbExists) return false;
       return true;
     });
   }
