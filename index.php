@@ -8778,15 +8778,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <p style="margin:0; font-size:13px; color:var(--text-muted);">Combining <strong id="combine-rfq-count" style="color:var(--text);">0 items</strong>. The Client Quote and PDFs will show ONE line for this group (using the primary item's qty, with summed RMB + USD per-unit prices). Your RFQ section stays unchanged.</p>
       <div>
         <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Group Label (what the client sees)</label>
-        <input id="combine-rfq-label" type="text" class="form-input" style="width:100%;" placeholder="e.g. Plushie" autocomplete="off" />
+        <input id="combine-rfq-label" type="text" class="form-input" style="width:100%;" placeholder="e.g. Plushie" autocomplete="off"
+               oninput="_renderCombineRfqPreview()" />
       </div>
       <div>
         <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Primary item (qty source)</label>
         <div class="ship-select-wrap">
-          <select id="combine-rfq-primary" class="form-input" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;"></select>
+          <select id="combine-rfq-primary" class="form-input" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;"
+                  onchange="_renderCombineRfqPreview()"></select>
         </div>
         <p style="font-size:11px; color:var(--text-muted); margin:4px 0 0;">The client sees the primary item's qty (e.g. 1,000 plushies, not 5,000 component pieces).</p>
       </div>
+
+      <!-- Live preview — rebuilt on every label / primary change so
+           the operator confirms exactly what'll show on the Client
+           Quote before committing. Shows the rolled-up line, then
+           the components folded into it with their per-unit prices. -->
+      <div id="combine-rfq-preview" style="background:rgba(107,147,255,0.06); border:1px solid rgba(107,147,255,0.25); border-radius:8px; padding:12px 14px;"></div>
+
       <div id="combine-rfq-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
       <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.30); border-radius:8px; padding:8px 12px; font-size:11px; color:#92400e;">
         <strong>Heads up:</strong> drag-reordering RFQ rows after creating a group may break references — use Manage Groups to recreate if items show up wrong on the quote.
@@ -15592,6 +15601,82 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sku  = inputs[0] ? inputs[0].value.trim() : '';
     return item || sku || `Item ${_rfqIdxFromDomId(domId) + 1}`;
   }
+  function _rfqRowData(domId) {
+    const tr = document.getElementById(`rfq-${domId}`);
+    if (!tr) return null;
+    const inputs = tr.querySelectorAll('input:not([type="checkbox"])');
+    const sku   = inputs[0] ? inputs[0].value.trim() : '';
+    const item  = inputs[1] ? inputs[1].value.trim() : '';
+    const qty   = inputs[2] ? (parseFloat(String(inputs[2].value || '').replace(/,/g, '')) || 0) : 0;
+    const rmb   = inputs[3] ? (parseFloat(String(inputs[3].value || '').replace(/,/g, '')) || 0) : 0;
+    const fx    = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+    const usd   = fx > 0 ? rmb / fx : 0;
+    return { domId, sku, item, qty, rmb, usd, name: item || sku || `Item ${_rfqIdxFromDomId(domId) + 1}` };
+  }
+  function _renderCombineRfqPreview() {
+    const host = document.getElementById('combine-rfq-preview');
+    if (!host) return;
+    const labelInp = document.getElementById('combine-rfq-label');
+    const primarySel = document.getElementById('combine-rfq-primary');
+    const label = (labelInp ? labelInp.value : '').trim() || '(unnamed group)';
+    const primaryDomId = primarySel ? parseInt(primarySel.value, 10) : NaN;
+    // Collect every currently-selected row's data so the preview
+    // shows what's actually being merged (label, qty source, summed
+    // RMB + USD, full component list).
+    const rows = [];
+    Array.from(_rfqSelected).forEach(domId => {
+      const d = _rfqRowData(domId);
+      if (d) rows.push(d);
+    });
+    if (!rows.length) {
+      host.innerHTML = `<div style="font-size:12px; color:var(--text-muted); font-style:italic;">No items selected.</div>`;
+      return;
+    }
+    const sumRmb = rows.reduce((s, r) => s + r.rmb, 0);
+    const sumUsd = rows.reduce((s, r) => s + r.usd, 0);
+    const primary = rows.find(r => r.domId === primaryDomId) || rows[0];
+    const fmtN  = n => Number(n || 0).toLocaleString('en-US');
+    const fmt2  = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt3  = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    // Headline — the line the client will literally see on the
+    // Client Quote / PDF / email. Qty comes from the primary; unit
+    // prices are the summed values across every component.
+    const headline = `
+      <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#6b93ff; margin-bottom:6px;">Client Quote line preview</div>
+      <div style="display:grid; grid-template-columns:1fr auto auto auto; gap:8px 14px; align-items:end; padding:6px 0 10px; border-bottom:1px dashed rgba(107,147,255,0.35); margin-bottom:8px;">
+        <div>
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">Item</div>
+          <div style="font-weight:800; font-size:14px;">${esc(label)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">Qty</div>
+          <div style="font-weight:700; font-variant-numeric:tabular-nums;">${fmtN(primary.qty)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">¥ Unit</div>
+          <div style="font-weight:700; font-variant-numeric:tabular-nums;">¥${fmt2(sumRmb)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">$ Unit</div>
+          <div style="font-weight:700; font-variant-numeric:tabular-nums; color:#16a34a;">$${fmt3(sumUsd)}</div>
+        </div>
+      </div>`;
+    const componentRows = rows.map(r => {
+      const isPrim = r.domId === primary.domId;
+      const primTag = isPrim ? `<span style="font-size:9px; font-weight:800; padding:1px 6px; border-radius:9px; background:#6b93ff; color:#fff; letter-spacing:0.04em; margin-left:6px; vertical-align:middle;">PRIMARY</span>` : '';
+      return `<div style="display:grid; grid-template-columns:1fr auto auto auto; gap:6px 14px; align-items:center; padding:4px 0; font-size:12px;">
+        <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.name)}${primTag}</div>
+        <div style="text-align:right; color:var(--text-muted); font-variant-numeric:tabular-nums;">${fmtN(r.qty)}</div>
+        <div style="text-align:right; color:var(--text-muted); font-variant-numeric:tabular-nums;">¥${fmt2(r.rmb)}</div>
+        <div style="text-align:right; color:var(--text-muted); font-variant-numeric:tabular-nums;">$${fmt3(r.usd)}</div>
+      </div>`;
+    }).join('');
+    const components = `
+      <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Components folded in (${rows.length})</div>
+      ${componentRows}`;
+    host.innerHTML = headline + components;
+  }
 
   // ── Combine RFQ Items modal ───────────────────────────────────────
   function openCombineRfqModal() {
@@ -15613,6 +15698,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (lbl) lbl.textContent = _rfqSelected.size === 1 ? '1 item' : `${_rfqSelected.size} items`;
     document.getElementById('combine-rfq-label').value = '';
     document.getElementById('combine-rfq-error').style.display = 'none';
+    _renderCombineRfqPreview();
     document.getElementById('combine-rfq-modal').style.display = 'flex';
     setTimeout(() => { try { document.getElementById('combine-rfq-label').focus(); } catch {} }, 50);
   }
