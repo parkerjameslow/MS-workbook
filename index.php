@@ -27060,7 +27060,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     shipmentData[newId] = {
       id: newId,
       name,
-      status: 'waiting_arrival',
+      // Sample shipments enter the Shipments lane at in_transit (they
+      // physically ship before they arrive). Operator marks Delivered
+      // when the package arrives, which routes the card to Receiving
+      // for the audit. Was waiting_arrival under the old "WA → Receiving"
+      // trigger; that trigger is now Delivered.
+      status: 'in_transit',
       carrier,
       trackingNumber: tracking,
       entries: [],           // no orderId entries — this is a sample-only shipment
@@ -27070,6 +27075,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       createdAt: new Date().toISOString(),
       tracking: null,        // populated by AI fetch below
     };
+    // Note: status starts at in_transit — sample shipments live in the
+    // Shipments lane until the operator marks them Delivered, which
+    // is now the trigger that moves them to Receiving.
     saveShipments();
     _samplesSelected.clear();
     closeSampleShipmentModal();
@@ -30898,7 +30906,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const s = shipmentData[id];
       if (!s) return false;
       if (_isArchiveCompleted(s)) return false;
-      if (s.status === 'waiting_arrival' || s.status === 'received') return false;
+      // delivered lives in the Receiving lane; received is archived.
+      // Everything else (planning / booked / in_transit / waiting_arrival)
+      // stays on the Shipments page.
+      if (s.status === 'delivered' || s.status === 'received') return false;
       return true;
     });
     // Actionable = any linked order has a change request
@@ -30913,7 +30924,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // rebuildShipmentsNav means saveShipments → rebuildShipmentsNav
     // → both badges update together.
     const receivingIds = Object.keys(shipmentData).filter(id => {
-      return shipmentData[id] && shipmentData[id].status === 'waiting_arrival';
+      return shipmentData[id] && shipmentData[id].status === 'delivered';
     });
     _applyNavBadge(document.getElementById('badge-receiving'), 0, receivingIds.length);
     // Shipments list (if a sub-nav list element exists — may not, since Shipments is now a flat link)
@@ -31025,8 +31036,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const completedIds = allIds.filter(id => _isArchiveCompleted(shipmentData[id]));
     const ids          = allIds.filter(id => !_isArchiveCompleted(shipmentData[id]));
 
-    const STATUS_ORDER = ['planning', 'booked', 'in_transit', 'delivered'];
-    const filterLabels = { all: 'All', planning: 'Planning', booked: 'Booked', in_transit: 'In Transit', delivered: 'Delivered' };
+    // Delivered dropped from the filter set — those shipments now
+    // live in the Receiving lane (not Shipments). Waiting Arrival
+    // added since it stays in Shipments under the new transition
+    // model (carrier+tracking captured, awaiting Delivered).
+    const STATUS_ORDER = ['planning', 'booked', 'in_transit', 'waiting_arrival'];
+    const filterLabels = { all: 'All', planning: 'Planning', booked: 'Booked', in_transit: 'In Transit', waiting_arrival: 'Waiting Arrival' };
 
     // Counts per status for badges on filter buttons (main list only — completed is separate)
     const counts = { all: ids.length };
@@ -31036,7 +31051,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
 
     const filterBar = `<div class="ship-filter-bar">
-      ${['all','planning','booked','in_transit','delivered'].map(s =>
+      ${['all','planning','booked','in_transit','waiting_arrival'].map(s =>
         `<button class="ship-filter-btn${_shipFilter === s ? ' active' : ''}" onclick="filterShipments('${s}', this)">
           ${filterLabels[s]}${counts[s] ? ` <span style="opacity:0.7">(${counts[s]})</span>` : ''}
         </button>`
@@ -31108,26 +31123,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>`;
     }
 
-    // Split into active and delivered
-    const filtered = ids.filter(id => _shipFilter === 'all' || shipmentData[id].status === _shipFilter);
-    const active    = filtered.filter(id => shipmentData[id].status !== 'delivered');
-    const delivered = filtered.filter(id => shipmentData[id].status === 'delivered');
-
-    // Sort active by status order
-    active.sort((a, b) => STATUS_ORDER.indexOf(shipmentData[a].status) - STATUS_ORDER.indexOf(shipmentData[b].status));
+    // delivered shipments live in the Receiving lane now — no
+    // longer a sub-section here. Sort the remaining active list by
+    // STATUS_ORDER so Planning → Booked → In Transit → Waiting
+    // Arrival reads top-to-bottom.
+    const active = ids
+      .filter(id => _shipFilter === 'all' || shipmentData[id].status === _shipFilter)
+      .sort((a, b) => STATUS_ORDER.indexOf(shipmentData[a].status) - STATUS_ORDER.indexOf(shipmentData[b].status));
 
     let html = filterBar;
 
     if (active.length > 0) {
       html += `<div class="shipment-cards">${active.map(buildCard).join('')}</div>`;
-    }
-
-    if (delivered.length > 0) {
-      html += `<div class="sc-section-label" style="margin-top:${active.length > 0 ? '20px' : '0'}">Delivered</div>
-        <div class="shipment-cards" style="opacity:0.7">${delivered.map(buildCard).join('')}</div>`;
-    }
-
-    if (active.length === 0 && delivered.length === 0) {
+    } else {
       html += `<div style="padding:30px 0; text-align:center; color:var(--text-muted); font-size:13px;">No shipments match this filter.</div>`;
     }
 
@@ -31622,13 +31630,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
     const newStatus = document.getElementById('ship-detail-status').value;
-    // Special handling for waiting_arrival → require carrier + tracking
-    // number before committing the status. If the operator already has
-    // them (re-selecting the status), we go straight through.
-    if (newStatus === 'waiting_arrival' && (!s.carrier || !s.trackingNumber)) {
+    // Status-transition rules (post-2026-06 reorg):
+    //   • in_transit / waiting_arrival / delivered → require carrier
+    //     + tracking number. If missing, pop the tracking modal and
+    //     revert the dropdown until the operator confirms. All three
+    //     statuses stay in the Shipments lane EXCEPT delivered, which
+    //     moves to Receiving (filter handles it; no nav from here).
+    //   • received → opens the per-workbook audit modal; archives on
+    //     confirm.
+    //   • planning / booked → no special handling.
+    const needsTracking = (newStatus === 'in_transit' || newStatus === 'waiting_arrival' || newStatus === 'delivered');
+    if (needsTracking && (!s.carrier || !s.trackingNumber)) {
       openTrackingModal(_currentShipmentId, newStatus, 'detail');
-      // Revert the dropdown until they confirm in the modal; the modal's
-      // confirm handler sets s.status and refreshes the UI.
+      // Revert until modal confirms — keeps the displayed status
+      // honest if the operator cancels.
       document.getElementById('ship-detail-status').value = s.status || 'planning';
       return;
     }
@@ -31643,6 +31658,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveShipments();
     rebuildShipmentsNav();
     updateReceivingBadge();
+    // If status moved to delivered (already had tracking), route the
+    // operator to the Receiving lane so they land on the card.
+    if (newStatus === 'delivered') location.hash = '#/receiving';
   }
 
   // ── Receiving view ────────────────────────────────────────────────
@@ -31660,12 +31678,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     showView('view-receiving');
     const host = document.getElementById('receiving-list-content');
     if (!host) return;
-    const ids = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'waiting_arrival');
+    const ids = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'delivered');
     if (ids.length === 0) {
       host.innerHTML = `<div class="order-list-empty">
         <div class="order-list-empty-icon">📦</div>
         <div class="order-list-empty-title">Nothing waiting</div>
-        <div class="order-list-empty-sub">Set a shipment's status to <strong>Waiting Arrival</strong> in Shipments — once you add a carrier + tracking number, it lands here with live AI tracking status.</div>
+        <div class="order-list-empty-sub">Once a shipment is marked <strong>Delivered</strong> in Shipments, it lands here with live AI tracking status for receipt + audit.</div>
       </div>`;
       return;
     }
@@ -31832,19 +31850,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (r && r.ok && r.data) { s.tracking = r.data; saveShipments(); }
     } catch {}
     // Route to wherever feels natural for the operator's context.
+    // Only 'delivered' moves the shipment off the Shipments lane and
+    // into Receiving — in_transit / waiting_arrival stay put.
+    const goesToReceiving = (s.status === 'delivered');
     if (ctx.returnTo === 'detail') {
-      // Update the dropdown in the shipment detail view + re-route to
-      // Receiving so they see their newly-arrived card.
       const dd = document.getElementById('ship-detail-status');
       if (dd) dd.value = s.status;
-      location.hash = '#/receiving';
+      if (goesToReceiving) location.hash = '#/receiving';
     } else if (ctx.returnTo === 'card') {
-      // Came in from the Shipments-list card inline status pill —
-      // navigate over to Receiving so the operator sees the card
-      // they just routed.
-      location.hash = '#/receiving';
+      if (goesToReceiving) {
+        location.hash = '#/receiving';
+      } else if (typeof renderShipmentsContent === 'function') {
+        // in_transit / waiting_arrival — repaint the Shipments list
+        // so the new status pill reflects on the card without leaving
+        // the page.
+        renderShipmentsContent();
+      }
     } else {
-      renderReceivingList();
+      // No explicit return context (e.g. came in from the deprecated
+      // direct openTrackingModal call) — just refresh whichever lane
+      // makes sense.
+      if (goesToReceiving) renderReceivingList();
+      else if (typeof renderShipmentsContent === 'function') renderShipmentsContent();
     }
     rebuildShipmentsNav();
     updateReceivingBadge();
@@ -32000,11 +32027,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onShipmentCardStatusChange(id, newStatus, selectEl) {
     const s = shipmentData[id];
     if (!s) return;
-    if (newStatus === 'waiting_arrival' && (!s.carrier || !s.trackingNumber)) {
-      openTrackingModal(id, 'waiting_arrival', 'card');
-      // Revert the pill until the modal confirms; otherwise the
-      // operator could close the modal and the pill would lie about
-      // the persisted status.
+    // Same transition rules as onShipmentStatusChange — in_transit,
+    // waiting_arrival, and delivered all require carrier + tracking
+    // (modal pops if missing). Only delivered moves the card off the
+    // Shipments page; in_transit / waiting_arrival keep it here.
+    const needsTracking = (newStatus === 'in_transit' || newStatus === 'waiting_arrival' || newStatus === 'delivered');
+    if (needsTracking && (!s.carrier || !s.trackingNumber)) {
+      openTrackingModal(id, newStatus, 'card');
       if (selectEl) selectEl.value = s.status || 'planning';
       return;
     }
@@ -32015,6 +32044,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     s.status = newStatus;
     saveShipments();
+    if (newStatus === 'delivered') { location.hash = '#/receiving'; rebuildShipmentsNav(); return; }
     if (typeof renderShipmentsContent === 'function') renderShipmentsContent();
     rebuildShipmentsNav();
   }
