@@ -8389,7 +8389,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="add-text">Add File</div>
           </div>
         </div>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop art files here, or click the tile to browse. Images, Adobe (AI/PSD/EPS), PDF, CAD (DWG/DXF/STEP/STL/etc.), video, and common docs are all accepted (max 100MB per file).</div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop art files here, or click the tile to browse. Images, Adobe (AI/PSD/EPS), PDF, CAD (DWG/DXF/STEP/STL/etc.), video, and common docs are all accepted (max 100MB per file). <strong style="color:var(--text-muted);">For Dropbox files:</strong> drag from your Dropbox folder in Finder/Explorer (not dropbox.com) — the desktop app makes them real files the browser can read.</div>
         <input type="file" id="artInput" multiple onchange="handleArtFiles(event)" style="display:none;"
           accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.tif,.heic,.heif,.avif,.ai,.psd,.eps,.indd,.sketch,.xd,.fig,.pdf,.doc,.docx,.txt,.rtf,.csv,.xlsx,.xls,.ppt,.pptx,.dwg,.dxf,.step,.stp,.iges,.igs,.stl,.obj,.3mf,.sat,.ipt,.iam,.prt,.sldprt,.sldasm,.dgn,.x_t,.x_b,.mp4,.mov,.webm,.avi,.mkv,.m4v,.qt,.mpg,.mpeg,.wmv,.flv,.3gp,.zip,.rar,.7z,.tar,.gz" />
       </div>
