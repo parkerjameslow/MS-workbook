@@ -8734,7 +8734,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button onclick="closeTrackingModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
-      <p style="margin:0; font-size:13px; color:var(--text-muted);">Required for the shipment to land in Receiving. AI will look up tracking status against the carrier's public page.</p>
+      <p id="tracking-modal-intro" style="margin:0; font-size:13px; color:var(--text-muted);">AI will look up tracking status against the carrier's public page.</p>
       <div>
         <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Carrier</label>
         <div class="ship-select-wrap">
@@ -8756,7 +8756,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div id="tracking-modal-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
         <button class="btn btn-ghost" onclick="closeTrackingModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="confirmTrackingModal()">Move to Receiving</button>
+        <button id="tracking-modal-confirm" class="btn btn-primary" onclick="confirmTrackingModal()">Save Tracking</button>
       </div>
     </div>
   </div>
@@ -31902,6 +31902,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('tracking-modal-carrier').value = s.carrier || '';
     document.getElementById('tracking-modal-number').value = s.trackingNumber || '';
     document.getElementById('tracking-modal-error').style.display = 'none';
+    // Intro copy + confirm button label both reflect the requested
+    // status. Under the new transition rules:
+    //   • in_transit / waiting_arrival → stays in Shipments; button
+    //     reads "Save Tracking" and the intro just talks about the
+    //     AI lookup.
+    //   • delivered → moves to Receiving; button reads "Move to
+    //     Receiving" and the intro says so explicitly.
+    const intro = document.getElementById('tracking-modal-intro');
+    const btn   = document.getElementById('tracking-modal-confirm');
+    const goesToReceiving = (requestedStatus === 'delivered');
+    if (intro) {
+      intro.textContent = goesToReceiving
+        ? 'Once saved, this shipment moves to the Receiving lane for receipt + audit. AI will look up tracking status against the carrier’s public page.'
+        : 'Tracking stays attached to the shipment in the Shipments lane. AI will look up status against the carrier’s public page.';
+    }
+    if (btn) {
+      btn.textContent = goesToReceiving ? 'Move to Receiving' : 'Save Tracking';
+    }
     document.getElementById('tracking-modal').style.display = 'flex';
     setTimeout(() => { try { document.getElementById('tracking-modal-number').focus(); } catch {} }, 50);
   }
