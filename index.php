@@ -35040,7 +35040,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     };
     const rows = [];
     const statusLabel = { draft:'Draft', confirmed:'Confirmed', in_production:'In Production', complete:'Complete' };
-    (o.entries || []).forEach(entry => {
+    // Blank-row separator inserted BEFORE every entry except the
+    // first — gives the operator a visible break between products
+    // when the CSV is opened in Excel / Sheets. Matches the
+    // column count so spreadsheet auto-format doesn't go weird.
+    const _separatorRow = ['','','','','','','','','','','','',''];
+    (o.entries || []).forEach((entry, _entryIdx) => {
+      if (_entryIdx > 0) rows.push(_separatorRow);
       const detail   = workbookDetail[`${entry.clientName}|${entry.workbookId}`] || {};
       const product  = detail.product || `Workbook #${entry.workbookId}`;
       const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
@@ -35076,7 +35082,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const rawCostRmb = parseFloat(item.priceRmb) || 0;
           const useRmb = saleUnitRmb > 0 ? saleUnitRmb : rawCostRmb;
           const useUsd = useRmb / rate;
+          // Parent rollup row — name + sku + total qty + per-unit +
+          // line totals. Same row as before for non-variant items;
+          // for variant items this becomes the headline above the
+          // variant breakdown rendered below.
           rows.push([...base, item.item || '', item.sku || '', fmtQty(itemQty), f2(useRmb), f2(useUsd), f2(useRmb * itemQty), f2(useUsd * itemQty)]);
+          // Per-variant sub-rows — only emitted when the item has
+          // variants. Indented label ("  └ Green") so the operator
+          // can scan the hierarchy in the spreadsheet AND the
+          // export-time totals footer can skip variant rows
+          // (regex on the indent marker) so qty/$ don't double-
+          // count against the parent rollup.
+          const variants = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
+          if (variants.length > 0) {
+            variants.forEach(v => {
+              const vQty = parseFloat(String(v.qty || '').replace(/,/g, '')) || 0;
+              const vName = `  └ ${v.variant || 'Variant'}`;
+              const vSku  = v.sku || '';
+              rows.push([...base, vName, vSku, fmtQty(vQty), f2(useRmb), f2(useUsd), f2(useRmb * vQty), f2(useUsd * vQty)]);
+            });
+          }
         });
       }
       // Applied Additional Fees — one row per fee, inline under the
@@ -35110,7 +35135,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Split items vs fees so the footer can report each subtotal
     // separately + a true grand total. Fee rows are flagged by the
     // "+ Fee:" prefix that buildOrderRows writes into the Item col.
-    const isFeeRow = r => typeof r[6] === 'string' && r[6].startsWith('+ Fee:');
+    const isFeeRow     = r => typeof r[6] === 'string' && r[6].startsWith('+ Fee:');
+    // Variant sub-rows carry per-variant qty/$ for the operator to
+    // scan but their totals are already in the parent rollup row
+    // above. Identify them via the leading "  └" indent marker so
+    // the footer subtotal isn't 2× the truth.
+    const isVariantRow = r => typeof r[6] === 'string' && /^\s+└/.test(r[6]);
     // sumCol strips commas before parseFloat — buildOrderRows now
     // formats Totals with thousand separators ("85,596.87"), and
     // parseFloat would stop at the first comma without this strip.
@@ -35119,7 +35149,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return s + (isFinite(v) ? v : 0);
     }, 0);
     const fmtTot = v => (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-    const itemRows = rows.filter(r => !isFeeRow(r));
+    const itemRows = rows.filter(r => !isFeeRow(r) && !isVariantRow(r));
     const feeRows  = rows.filter(isFeeRow);
     const itemsRmb = sumCol(itemRows, 11), itemsUsd = sumCol(itemRows, 12);
     const feesRmb  = sumCol(feeRows,  11), feesUsd  = sumCol(feeRows,  12);
