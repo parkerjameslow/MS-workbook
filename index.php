@@ -35165,18 +35165,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : rfqItems.map(item => {
             const vs = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
             if (vs.length) {
-              return vs.map(v => {
+              // Variant group — render a parent ROLLUP row first
+              // (item name + Σ variant qtys + per-unit + Σ totals)
+              // so the client sees the headline at a glance, then the
+              // variant rows indented underneath. Without the rollup
+              // the PDF only showed individual variant lines and the
+              // operator had to mental-math the total per item.
+              const itemTotalQty = vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g,'')) || 0), 0);
+              const itemTotalAmt = perUnit > 0 ? perUnit * itemTotalQty : 0;
+              // Tally to itemsTotal on the PARENT (not each variant)
+              // so we don't double-count when variant rows render
+              // below without their own tally.
+              itemsTotal += itemTotalAmt;
+              const parentRow = `<tr class="item-parent">
+                <td><strong>${esc(item.item || '—')}</strong></td>
+                <td class="num"><strong>${itemTotalQty > 0 ? fmtNum(itemTotalQty) : '—'}</strong></td>
+                <td class="num muted">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+                <td class="num strong">${itemTotalAmt > 0 ? '$' + fmt2(itemTotalAmt) : '—'}</td>
+              </tr>`;
+              const variantRows = vs.map(v => {
                 const vQty = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
                 const vTot = perUnit > 0 ? perUnit * vQty : 0;
-                itemsTotal += vTot;
-                const prefix = rfqItems.length > 1 ? `${esc(item.item || 'Item')} — ` : '';
-                return `<tr>
-                  <td class="indent">${prefix}<strong>${esc(v.variant || 'Variant')}</strong></td>
-                  <td class="num">${vQty > 0 ? fmtNum(vQty) : '—'}</td>
+                // Variants are indented + muted; tally stays on parent.
+                return `<tr class="variant-row">
+                  <td class="indent muted">${esc(v.variant || 'Variant')}</td>
+                  <td class="num muted">${vQty > 0 ? fmtNum(vQty) : '—'}</td>
                   <td class="num muted">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
-                  <td class="num strong">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
+                  <td class="num muted">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
                 </tr>`;
               }).join('');
+              return parentRow + variantRows;
             }
             const iQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
             const iTot = perUnit > 0 ? perUnit * iQty : 0;
