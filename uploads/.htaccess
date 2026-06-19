@@ -1,0 +1,25 @@
+# Allow cross-origin GETs on uploaded files so external 3D / PDF /
+# image viewers (3dviewer.net, etc.) can fetch them from
+# wb.marketsculpt.com. Required for the Art-tab "Open in Full Viewer"
+# link to actually render the model after 3dviewer.net does its
+# cross-origin XHR.
+#
+# Public-by-design: anything we host under /uploads/ is meant to be
+# linked from client-facing surfaces (PDFs / portals / shipping
+# emails), so * is appropriate. If we ever serve private uploads
+# we'd carve those out into a separate path with its own auth.
+<IfModule mod_headers.c>
+  Header set Access-Control-Allow-Origin  "*"
+  Header set Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+  Header set Access-Control-Allow-Headers "Range"
+  Header set Access-Control-Expose-Headers "Content-Length, Content-Range"
+</IfModule>
+
+# Browser-side: serve binary 3D / CAD / Adobe files with octet-stream
+# rather than text/plain so save-as / 3rd-party fetchers treat them
+# correctly. Image / PDF / video keep their normal MIME (Apache's
+# default).
+<IfModule mod_mime.c>
+  AddType application/octet-stream .stl .step .stp .obj .3mf .iges .igs .gltf .glb .ply .3ds .fbx
+  AddType application/octet-stream .ai .psd .eps .indd .dwg .dxf .sat .ipt .iam .prt .sldprt .sldasm .dgn
+</IfModule>
