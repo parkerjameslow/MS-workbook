@@ -6373,18 +6373,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="nav-section-body" id="client-list"></div>
     </div>
 
-    <!-- Orders -->
-    <!-- Permanent SKU. The Inventory link carries a static sub-title
-         ("SKUs & Variants") to remind the operator that promoted
-         workbooks land here as both parent SKUs and per-variant SKUs.
-         Flex-column so the sub-title sits directly under the label. -->
-    <a id="nav-inventory-link" href="#/inventory" onclick="event.preventDefault(); location.hash='#/inventory'" class="nav-flat-link nav-flat-link-stacked">
-      <div style="display:flex; align-items:center; gap:8px; width:100%;">
-        <span>Inventory</span>
-        <span class="nav-badge" id="badge-inventory" style="margin-left:auto;"></span>
-      </div>
-      <span class="nav-flat-sublabel">SKUs &amp; Variants</span>
-    </a>
+    <!-- Inventory moved into the Internal section below. -->
+
 
     <!-- ── Design | Production section ──────────────────────────────
          Default expanded; remembers collapsed state per the existing
@@ -6457,6 +6447,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
+        <!-- Inventory — moved here from a top-level flat link. Stays
+             stacked so the "SKUs & Variants" sub-label still sits
+             directly under the name. -->
+        <a id="nav-inventory-link" href="#/inventory" onclick="event.preventDefault(); location.hash='#/inventory'" class="nav-flat-link nav-flat-link-stacked">
+          <div style="display:flex; align-items:center; gap:8px; width:100%;">
+            <span>Inventory</span>
+            <span class="nav-badge" id="badge-inventory" style="margin-left:auto;"></span>
+          </div>
+          <span class="nav-flat-sublabel">SKUs &amp; Variants</span>
+        </a>
+
         <!-- Billings — placeholder link until the view ships.
              onclick is a no-op so the click feels neutral rather
              than dead. -->
