@@ -31348,10 +31348,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const overStyle = 'color:#ef4444 !important; font-weight:700;';
       const cbmOver = cbmPct > 100; const kgOver = kgPct > 100; const palOver = palletPct > 100;
 
+      // Compact tracking strip — only renders when carrier + tracking
+      // are set. Single line: carrier pill + tracking # + AI status +
+      // location + ETA. The full tracking events timeline lives on
+      // the shipment detail page; this is just the at-a-glance view
+      // for the card.
+      const _trackingStrip = (s.carrier && s.trackingNumber)
+        ? _renderShipmentTrackingCardStrip(s)
+        : '';
       return `<div class="shipment-card${shipHasChangeRequest ? ' has-change-request' : ''}" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
           <span class="sc-title">${s.name}</span>
           <span class="sc-eta">${etaLabel} ${eta}</span>
+          ${_trackingStrip}
         </div>
         <div class="sc-wb-list">
           <div class="sc-wb-count">${wbCount} order${wbCount !== 1 ? 's' : ''}</div>
@@ -31470,7 +31479,145 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     renderShipmentOrders();
     renderShipmentUtilization();
+    _renderShipmentTrackingSection();
     showView('view-shipment-detail');
+  }
+
+  // ── Tracking helpers (shared by the shipment card + the detail) ──
+
+  function _trackingStatusColor(status) {
+    if (!status) return 'var(--text-muted)';
+    if (/deliver/i.test(status))           return '#16a34a';
+    if (/out for/i.test(status))           return '#E8751A';
+    if (/transit|moving/i.test(status))    return '#3b82f6';
+    if (/exception|fail|delay/i.test(status)) return '#dc2626';
+    return 'var(--text-muted)';
+  }
+
+  // Compact 1-line tracking summary used on the shipment card.
+  // Carrier badge + tracking # + status + ETA + last-checked. Returns
+  // empty string when no tracking has been entered yet so the caller
+  // can drop it in unconditionally.
+  function _renderShipmentTrackingCardStrip(s) {
+    if (!s || !s.carrier || !s.trackingNumber) return '';
+    const tk = s.tracking || {};
+    const carrierLabel = _carrierLabel(s.carrier);
+    const carrierColor = _carrierColor(s.carrier);
+    const statusText = tk.status || 'Not yet checked';
+    const statusColor = _trackingStatusColor(statusText);
+    const eta = tk.eta || s.eta || '';
+    const lastChecked = tk.fetchedAt ? new Date(tk.fetchedAt) : null;
+    const lastCheckedStr = lastChecked && !isNaN(lastChecked.getTime())
+      ? lastChecked.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      : 'never';
+    const esc = (str) => String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); font-size:11px;">
+      <span style="padding:2px 8px; border-radius:99px; background:${carrierColor}; color:#fff; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; font-size:9px;">${esc(carrierLabel)}</span>
+      <span style="font-family:'SF Mono','Consolas',monospace; color:var(--text-muted); font-size:10px;">${esc(s.trackingNumber)}</span>
+      <span style="color:${statusColor}; font-weight:700;">${esc(statusText)}</span>
+      ${tk.location ? `<span style="color:var(--text-muted);">· ${esc(tk.location)}</span>` : ''}
+      ${eta ? `<span style="color:var(--text-muted);">· ETA <strong style="color:var(--text);">${esc(eta)}</strong></span>` : ''}
+      <span style="margin-left:auto; color:var(--text-muted); font-style:italic;">checked ${esc(lastCheckedStr)}</span>
+    </div>`;
+  }
+
+  // Full tracking section on the shipment detail view. Renders to
+  // the dedicated section card injected after Container View. Shows
+  // status, location, ETA, last checked, the per-event timeline,
+  // and a Refresh button. When no carrier/tracking is set, the
+  // section hides entirely so it doesn't clutter shipments that
+  // haven't been routed yet.
+  function _renderShipmentTrackingSection() {
+    let section = document.getElementById('ship-tracking-section');
+    const s = shipmentData[_currentShipmentId];
+    // Lazily create the section the first time we need it — easier
+    // than hand-authoring an empty <div> in the template, since the
+    // section's entire visibility hinges on whether the shipment
+    // has tracking.
+    if (!section) {
+      section = document.createElement('div');
+      section.id = 'ship-tracking-section';
+      section.className = 'section-card';
+      section.style.cssText = 'margin:16px 0 0;';
+      // Insert above Orders so the operator sees status before
+      // diving into the order list.
+      const orderCard = document.querySelector('#view-shipment-detail .section-card');
+      if (orderCard) orderCard.parentNode.insertBefore(section, orderCard);
+      else document.querySelector('#view-shipment-detail main')?.appendChild(section);
+    }
+    if (!s || !s.carrier || !s.trackingNumber) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+    const tk = s.tracking || {};
+    const carrierLabel = _carrierLabel(s.carrier);
+    const carrierColor = _carrierColor(s.carrier);
+    const statusText = tk.status || 'Not yet checked';
+    const statusColor = _trackingStatusColor(statusText);
+    const lastChecked = tk.fetchedAt ? new Date(tk.fetchedAt) : null;
+    const lastCheckedStr = lastChecked && !isNaN(lastChecked.getTime())
+      ? lastChecked.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      : 'never';
+    const carrierUrls = {
+      ups:   `https://www.ups.com/track?tracknum=${encodeURIComponent(s.trackingNumber)}`,
+      fedex: `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(s.trackingNumber)}`,
+      dhl:   `https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=${encodeURIComponent(s.trackingNumber)}`,
+    };
+    const carrierUrl = carrierUrls[s.carrier] || '#';
+    const esc = (str) => String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const eventsHtml = (Array.isArray(tk.events) && tk.events.length > 0)
+      ? tk.events.slice(0, 8).map(ev => `
+          <div style="display:flex; gap:12px; padding:8px 0; border-top:1px dashed var(--border); font-size:12px;">
+            <div style="flex:0 0 130px; color:var(--text-muted); font-variant-numeric:tabular-nums;">${esc(ev.time || '')}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:600;">${esc(ev.description || '')}</div>
+              ${ev.location ? `<div style="color:var(--text-muted); font-size:11px; margin-top:1px;">${esc(ev.location)}</div>` : ''}
+            </div>
+          </div>`).join('')
+      : `<div style="padding:10px 0; font-size:12px; color:var(--text-muted); font-style:italic;">No tracking events yet — click <strong>Refresh tracking</strong> to fetch the latest from ${esc(carrierLabel)}.</div>`;
+    section.innerHTML = `
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title">Tracking</span>
+        <span style="padding:2px 10px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:10px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase;">${esc(carrierLabel)}</span>
+        <a href="${carrierUrl}" target="_blank" rel="noopener" style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);" title="Open carrier tracking page">${esc(s.trackingNumber)} ↗</a>
+        <span style="margin-left:auto; display:flex; gap:8px;">
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="refreshTrackingForCurrent(this)">↻ Refresh tracking</button>
+        </span>
+      </div>
+      <div class="section-body">
+        <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; padding-bottom:10px; border-bottom:1px solid var(--border);">
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Status</div>
+            <div style="font-size:15px; font-weight:700; color:${statusColor}; margin-top:3px;">${esc(statusText)}</div>
+          </div>
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Last known location</div>
+            <div style="font-size:13px; margin-top:3px;">${esc(tk.location || '—')}</div>
+          </div>
+          <div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">ETA</div>
+            <div style="font-size:13px; font-weight:600; margin-top:3px;">${esc(tk.eta || '—')}</div>
+          </div>
+          <div style="margin-left:auto; font-size:11px; color:var(--text-muted);">
+            Last checked: ${esc(lastCheckedStr)}
+          </div>
+        </div>
+        <div style="margin-top:10px;">
+          <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Tracking events</div>
+          ${eventsHtml}
+        </div>
+      </div>`;
+  }
+
+  // Refresh handler for the detail-view button. Thin wrapper over the
+  // existing refreshTrackingFor(id, btn) used on the Receiving cards —
+  // same code path, just pulls the current shipment id from
+  // _currentShipmentId and re-renders the section after the fetch.
+  async function refreshTrackingForCurrent(btn) {
+    if (!_currentShipmentId) return;
+    await refreshTrackingFor(String(_currentShipmentId), btn);
+    _renderShipmentTrackingSection();
   }
 
   function renderShipmentOrders() {
@@ -32128,7 +32275,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);"
              title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
           <span style="margin-left:auto; display:flex; gap:8px;">
-            <button class="btn btn-ghost" style="font-size:12px;" onclick="refreshTrackingFor('${id}', this)">↻ Refresh tracking</button>
+            <button class="btn btn-ghost" style="font-size:12px;" onclick="refreshTrackingForReceivingCard('${id}', this)">↻ Refresh tracking</button>
             <button class="btn btn-ghost" style="font-size:12px;" onclick="openReceivedModal('${id}','receiving')"
                     title="Open the per-workbook audit. The blue check only appears once you actually confirm receipt inside the audit modal.">Mark Received</button>
           </span>
@@ -32158,12 +32305,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>`;
   }
 
+  // Refreshes the AI tracking lookup for one shipment. Saves on
+  // success, returns true/false so callers can pick what to
+  // re-render (Receiving list vs detail tracking section vs nothing).
+  // Previously called renderReceivingList() unconditionally, which
+  // would yank an operator off the shipment detail view if they hit
+  // Refresh from there.
   async function refreshTrackingFor(id, btn) {
     const s = shipmentData[id];
-    if (!s) return;
+    if (!s) return false;
     if (!s.carrier || !s.trackingNumber) {
       alert('No carrier / tracking number on this shipment yet.');
-      return;
+      return false;
     }
     if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
     try {
@@ -32171,8 +32324,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (r && r.ok && r.data) {
         s.tracking = r.data;
         saveShipments();
-        renderReceivingList();
-        return;
+        return true;
       }
       const errMsg = (r && r.error) ? r.error : 'Tracking fetch failed.';
       alert(`Could not refresh tracking: ${errMsg}`);
@@ -32182,6 +32334,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh tracking'; }
     }
+    return false;
+  }
+  // Receiving-card variant — same refresh + re-renders the Receiving
+  // list so the operator sees the updated AI data on the card.
+  async function refreshTrackingForReceivingCard(id, btn) {
+    const ok = await refreshTrackingFor(id, btn);
+    if (ok) renderReceivingList();
   }
 
   // ── Tracking entry modal ──────────────────────────────────────────
