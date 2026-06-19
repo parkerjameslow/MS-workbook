@@ -31128,6 +31128,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // model (carrier+tracking captured, awaiting Delivered).
     const STATUS_ORDER = ['planning', 'booked', 'in_transit', 'waiting_arrival'];
     const filterLabels = { all: 'All', planning: 'Planning', booked: 'Booked', in_transit: 'In Transit', waiting_arrival: 'Waiting Arrival' };
+    // Defensive reset: if _shipFilter is set to a value that no
+    // longer matches one of the current filter options (e.g. the
+    // operator clicked the old 'Delivered' button before that
+    // button got removed when delivered moved to the Receiving
+    // lane), force it back to 'all'. Without this, the active
+    // shipment list silently filters to zero — shipments appear
+    // "lost in the abyss" even though they exist in shipmentData
+    // and count toward the nav badge.
+    if (_shipFilter !== 'all' && !filterLabels[_shipFilter]) _shipFilter = 'all';
 
     // Counts per status for badges on filter buttons (main list only — completed is separate)
     const counts = { all: ids.length };
