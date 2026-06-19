@@ -10669,16 +10669,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Adobe, PDF, CAD, video, docs, archives). The endpoint enforces
   // the extension allowlist + 100MB cap; the frontend just hands the
   // files over and lets the server reject anything it doesn't take.
+  // Drag-drop wiring for the Art Files gallery + its surrounding
+  // section card. Earlier version only listened on artGallery (the
+  // small inner grid). If the operator dropped slightly above or
+  // below the grid the file would fall through to the browser and
+  // navigate away. Listening on the section card too gives a much
+  // bigger forgiving drop zone — visually outlined via the same
+  // outline:2px treatment.
   const artGalleryEl = document.getElementById('artGallery');
   if (artGalleryEl) {
-    artGalleryEl.addEventListener('dragover',  e => { e.preventDefault(); artGalleryEl.style.outline = '2px solid var(--accent)'; });
-    artGalleryEl.addEventListener('dragleave', e => { if (!artGalleryEl.contains(e.relatedTarget)) artGalleryEl.style.outline = ''; });
-    artGalleryEl.addEventListener('drop', e => {
-      e.preventDefault();
-      artGalleryEl.style.outline = '';
-      const files = Array.from(e.dataTransfer.files);
-      if (files.length) handleArtFiles({ target: { files, value: '' } });
-    });
+    // The enclosing section-card is the wider drop target. Falls back
+    // to the gallery if the parent chain isn't found.
+    const dropZone = artGalleryEl.closest('.section-card[data-section="art"]') || artGalleryEl;
+    const wireDropTarget = (el, applyOutlineTo) => {
+      el.addEventListener('dragover',  e => { e.preventDefault(); applyOutlineTo.style.outline = '2px solid var(--accent)'; applyOutlineTo.style.outlineOffset = '4px'; });
+      el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) { applyOutlineTo.style.outline = ''; applyOutlineTo.style.outlineOffset = ''; } });
+      el.addEventListener('drop', e => {
+        e.preventDefault();
+        applyOutlineTo.style.outline = '';
+        applyOutlineTo.style.outlineOffset = '';
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length) handleArtFiles({ target: { files, value: '' } });
+      });
+    };
+    wireDropTarget(artGalleryEl, artGalleryEl);
+    if (dropZone !== artGalleryEl) wireDropTarget(dropZone, artGalleryEl);
   }
 
   // Clipboard paste — upload images when workbook is open
@@ -21668,6 +21683,72 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       totalUsd = NaN;
     }
 
+    // ── Combine-groups adjustment ───────────────────────────────────
+    // When the operator has defined combine groups, the Client Quote
+    // table renders each group as ONE collapsed line using primary
+    // qty × summed unit price (Phase 2). The legacy totalUsd above
+    // computes salePer × effectiveQty, which over-counts (treats
+    // component qtys individually + ignores the sum-of-unit-prices
+    // rule). Recompute totalUsd + the displayed Sale Per so the
+    // header stats match what the operator sees in the table.
+    //
+    // _salePerDisplay defaults to the operator-typed salePer; only
+    // replaced when combine groups exist (with the weighted-avg
+    // across all rendered lines).
+    let _salePerDisplay = salePer;
+    if (Array.isArray(_combineGroups) && _combineGroups.length > 0) {
+      const _allPDomIds = Array.from(document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])')).map(r => r.id);
+      const _idxToGroup = new Map();
+      _combineGroups.forEach(g => { (g.itemIdxs || []).forEach(idx => _idxToGroup.set(idx, g)); });
+      const _emittedG = new Set();
+      let _itemsSubtotal = 0;
+      let _itemsQty      = 0;
+      _allPDomIds.forEach((domId, idx) => {
+        const row = document.getElementById(domId);
+        if (!row) return;
+        const ins = row.querySelectorAll('input:not([type="checkbox"])');
+        const g = _idxToGroup.get(idx);
+        if (g) {
+          if (_emittedG.has(g.id)) return; // group already counted
+          _emittedG.add(g.id);
+          // Sum every member's unit RMB -> USD
+          let sumRmb = 0;
+          (g.itemIdxs || []).forEach(mIdx => {
+            const mDom = _allPDomIds[mIdx];
+            const mRow = mDom ? document.getElementById(mDom) : null;
+            if (!mRow) return;
+            const mIns = mRow.querySelectorAll('input:not([type="checkbox"])');
+            sumRmb += _msNumFromInput(mIns[3]);
+          });
+          const sumUsd = (USD_TO_RMB > 0) ? sumRmb / USD_TO_RMB : 0;
+          // Primary's qty drives the line
+          const pDom = _allPDomIds[g.primaryIdx];
+          const pRow = pDom ? document.getElementById(pDom) : null;
+          const pQty = pRow ? _scaleQty(_msIntFromInput(pRow.querySelectorAll('input:not([type="checkbox"])')[2])) : 0;
+          if (pQty > 0 && sumUsd > 0) {
+            _itemsSubtotal += _msCeil2(pQty * sumUsd);
+            _itemsQty      += pQty;
+          }
+        } else {
+          // Uncombined parent — use Sale Per × its qty (matches the
+          // single-line render path in the table).
+          const itemQty = _scaleQty(_msIntFromInput(ins[2]));
+          if (itemQty > 0 && !isNaN(salePer) && salePer > 0) {
+            _itemsSubtotal += _msCeil2(itemQty * salePer);
+            _itemsQty      += itemQty;
+          }
+        }
+      });
+      if (_itemsSubtotal > 0 || _appliedFeesTotal > 0) {
+        totalUsd = _msCeil2(_itemsSubtotal + _appliedFeesTotal);
+      }
+      // Weighted-avg unit price across the rendered lines so the
+      // header Sale Price doesn't lie next to the table.
+      if (_itemsQty > 0 && _itemsSubtotal > 0) {
+        _salePerDisplay = _itemsSubtotal / _itemsQty;
+      }
+    }
+
     // Cache the Client Quote Total (sale × qty + fees) so the Add to
     // Order picker can sum customer-facing totals across selected
     // workbooks without re-running the Pricing render per workbook.
@@ -21902,8 +21983,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // $0.076 etc. and the third decimal carries meaningful client
     // info. Total Order stays at fmt2 since that's a dollar amount
     // where the cent is the right precision.
-    setQrs('usd',   (!isNaN(salePer) && salePer > 0) ? '$' + fmt3(salePer) : '—');
-    setQrs('total', !isNaN(totalUsd)                 ? '$' + fmt2(totalUsd) : '—');
+    // _salePerDisplay = operator's typed Sale Per by default; replaced
+    // by a weighted-avg unit price when combine groups exist so the
+    // header value matches what's rendered in the Client Quote table.
+    setQrs('usd',   (!isNaN(_salePerDisplay) && _salePerDisplay > 0) ? '$' + fmt3(_salePerDisplay) : '—');
+    setQrs('total', !isNaN(totalUsd)                                ? '$' + fmt2(totalUsd)        : '—');
 
     const prodLeadDays = parseInt(document.getElementById('rfq-max-lead')?.textContent) || 0;
     setQrs('lead', prodLeadDays > 0 ? prodLeadDays + ' days' : '—');
