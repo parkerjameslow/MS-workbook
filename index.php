@@ -11433,9 +11433,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _ensure3dViewerLoaded() {
     if (window.OV) return Promise.resolve(true);
     if (window._loading3dViewer) return window._loading3dViewer;
+    // Path was previously /build/o3dv.min.js (404'd) — the correct
+    // location in the published npm package is /build/engine/
+    // o3dv.min.js. The IIFE inside that script creates a top-level
+    // `var OV` which the browser hoists to window.OV (what my
+    // success check below relies on). Pinned to 0.18.0 — latest
+    // release at the time of writing; jsdelivr caches it long-term.
     window._loading3dViewer = new Promise((resolve) => {
       const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/online-3d-viewer@0.13.0/build/o3dv.min.js';
+      script.src = 'https://cdn.jsdelivr.net/npm/online-3d-viewer@0.18.0/build/engine/o3dv.min.js';
       script.onload = () => resolve(!!window.OV);
       script.onerror = () => resolve(false);
       document.head.appendChild(script);
