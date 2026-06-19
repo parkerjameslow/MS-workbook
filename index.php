@@ -11096,15 +11096,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const ext = (String(url).split('.').pop() || '').toLowerCase();
     if (['jpg','jpeg','png','gif','webp','svg','bmp','tiff','tif','heic','heif','avif'].includes(ext)) return 'image';
     if (['mp4','mov','webm','avi','mkv','m4v','qt','mpg','mpeg','wmv','flv','3gp'].includes(ext))     return 'video';
-    if (['pdf'].includes(ext))                                                                         return 'pdf';
-    if (['ai','psd','eps','indd','sketch','xd','fig'].includes(ext))                                   return 'design';
-    if (['dwg','dxf','step','stp','iges','igs','stl','obj','3mf','sat','ipt','iam','prt','sldprt','sldasm','dgn','x_t','x_b'].includes(ext)) return 'cad';
+    // AI is PDF-compatible from Illustrator CS3 onward — route into
+    // the pdf branch so the in-browser PDF viewer renders it instead
+    // of bouncing the operator to a download.
+    if (['pdf','ai'].includes(ext))                                                                    return 'pdf';
+    if (['psd','eps','indd','sketch','xd','fig'].includes(ext))                                        return 'design';
+    // 3D-renderable formats — the online-3d-viewer library handles
+    // these natively. Click opens the 3D viewer modal.
+    if (['stl','step','stp','obj','3mf','iges','igs','gltf','glb','ply','3ds','fbx'].includes(ext))    return '3d';
+    // True CAD formats — viewer can't render; stays file-card +
+    // download-on-click as before.
+    if (['dwg','dxf','sat','ipt','iam','prt','sldprt','sldasm','dgn','x_t','x_b'].includes(ext))      return 'cad';
     if (['doc','docx','txt','rtf','csv','xlsx','xls','ppt','pptx'].includes(ext))                      return 'doc';
     if (['zip','rar','7z','tar','gz'].includes(ext))                                                   return 'archive';
     return 'file';
   }
   function _artFileIcon(kind) {
-    return ({ image:'🖼', video:'🎬', pdf:'📄', design:'🎨', cad:'📐', doc:'📃', archive:'🗜', file:'📎' })[kind] || '📎';
+    return ({ image:'🖼', video:'🎬', pdf:'📄', design:'🎨', '3d':'🧊', cad:'📐', doc:'📃', archive:'🗜', file:'📎' })[kind] || '📎';
   }
   function _artFileBasename(url) {
     // The uploads filename is `{uniqid}_{timestamp}.{ext}` — strip the
@@ -11171,10 +11179,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   title="Click to preview"></button>
           ${removeBtn}
         `;
+      } else if (kind === '3d') {
+        // 3D-renderable formats (STL/STEP/OBJ/3MF/etc.). Tile shows
+        // an icon + extension; clicking opens the modal which lazy-
+        // loads online-3d-viewer to render the model interactively.
+        // Same click-capture overlay pattern as PDF/video so the
+        // operator's click always reaches openArtPreview regardless
+        // of browser quirks.
+        const label = _artFileBasename(img.url).toUpperCase();
+        item.innerHTML = `
+          <div style="position:absolute; inset:0; background:var(--surface2); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; pointer-events:none;">
+            <span style="font-size:34px; line-height:1;">🧊</span>
+            <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; padding:0 6px;">${label}</span>
+            <div class="art-tile-badge art-tile-badge--light">3D</div>
+          </div>
+          <button type="button" class="art-tile-clicker"
+                  data-art-url="${urlAttr}"
+                  title="Click to open in 3D viewer"></button>
+          ${removeBtn}
+        `;
       } else {
-        // Adobe / CAD / docs / archives — no native preview is
-        // possible in-browser. Keep the file-icon card; click opens
-        // the file in a new tab (browser downloads binary formats).
+        // Adobe / CAD (non-3D) / docs / archives — no native preview
+        // is possible in-browser. Keep the file-icon card; click
+        // opens the file in a new tab (browser downloads binary
+        // formats).
         const icon = _artFileIcon(kind);
         const label = _artFileBasename(img.url).toUpperCase();
         item.innerHTML = `
@@ -11195,7 +11223,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // falls through to "open in new tab" for non-previewable formats
   // (Adobe, CAD, docs, archives). Single overlay, content swaps in
   // by file kind.
-  function openArtPreview(url) {
+  // Lazy-load online-3d-viewer (https://3dviewer.net) so the bundle
+  // only hits the network when an operator actually clicks an STL /
+  // STEP / OBJ / etc. tile. Returns true on success, false if the CDN
+  // is unreachable. Idempotent — second call resolves instantly once
+  // window.OV exists.
+  function _ensure3dViewerLoaded() {
+    if (window.OV) return Promise.resolve(true);
+    if (window._loading3dViewer) return window._loading3dViewer;
+    window._loading3dViewer = new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/online-3d-viewer@0.13.0/build/o3dv.min.js';
+      script.onload = () => resolve(!!window.OV);
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+    return window._loading3dViewer;
+  }
+
+  async function openArtPreview(url) {
     const overlay = document.getElementById('artPreviewOverlay');
     const content = document.getElementById('artPreviewContent');
     if (!overlay || !content) {
@@ -11215,10 +11261,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       content.innerHTML = `<img src="${url}" alt="Art preview" />`;
     } else if (kind === 'pdf') {
       // Plain iframe — browsers render PDFs natively; PDF.js fallback
-      // not needed for our supported browsers.
+      // not needed for our supported browsers. AI files route here
+      // too (PDF-compatible from CS3 onward).
       content.innerHTML = `<iframe src="${url}" title="PDF preview"></iframe>`;
     } else if (kind === 'video') {
       content.innerHTML = `<video src="${url}" controls autoplay></video>`;
+    } else if (kind === '3d') {
+      // 3D model — lazy-load online-3d-viewer, then drop an
+      // EmbeddedViewer into the modal pointed at the file URL. Same
+      // library that powers https://3dviewer.net — supports STL /
+      // STEP / OBJ / 3MF / IGES / GLTF and more.
+      content.innerHTML = `
+        <div id="art-3d-host" style="width:100%; height:100%; background:#1a1a1a; position:relative;">
+          <div id="art-3d-loading" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#9ca3af; font-size:13px; gap:8px;">
+            <span style="display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.25); border-top-color:#fff; border-radius:50%; animation:art3dSpin 0.8s linear infinite;"></span>
+            Loading 3D viewer…
+          </div>
+        </div>
+        <style>@keyframes art3dSpin { to { transform: rotate(360deg); } }</style>`;
+      overlay.classList.add('open');
+      const ok = await _ensure3dViewerLoaded();
+      const loading = document.getElementById('art-3d-loading');
+      const host = document.getElementById('art-3d-host');
+      if (!ok || !host) {
+        if (loading) { loading.textContent = 'Could not load 3D viewer — opening the file directly.'; }
+        setTimeout(() => { window.open(url, '_blank', 'noopener'); }, 1200);
+        return;
+      }
+      if (loading) loading.remove();
+      try {
+        const viewer = new OV.EmbeddedViewer(host, {
+          backgroundColor:    new OV.RGBAColor(26, 26, 26, 255),
+          defaultColor:       new OV.RGBColor(200, 200, 200),
+          edgeSettings:       new OV.EdgeSettings(false, new OV.RGBColor(0, 0, 0), 1),
+          environmentSettings: new OV.EnvironmentSettings([], false),
+        });
+        // Absolute URL — the viewer needs to fetch the file via XHR
+        // and a relative URL can't be resolved correctly from within
+        // its internal context.
+        const absUrl = new URL(url, window.location.href).toString();
+        viewer.LoadModelFromUrlList([absUrl]);
+      } catch (e) {
+        console.warn('3D viewer error:', e);
+        host.innerHTML = `<div style="padding:24px; color:#fb7185; text-align:center;">Could not render this file as 3D: ${String(e.message || e)}</div>`;
+      }
+      return;
     } else {
       // No inline preview possible — open in a new tab (download for
       // binary formats) without showing an empty modal.
@@ -20846,8 +20933,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">Total (USD)</th>
             </tr></thead><tbody>`;
 
+        // Combine-group lookup — build once per render. detail.rfqItems
+        // (and _combineGroups.itemIdxs) reference parent rows by their
+        // unfiltered position; we walk every parent in DOM order to
+        // get the same indexing, then map each member's DOM id to its
+        // group. The first time we encounter a group member in
+        // realGroups, we render the rolled-up line; subsequent
+        // members are skipped via emittedCombineGroups.
+        const _allParentDomIds = Array.from(document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])')).map(r => r.id);
+        const _domIdToCombineGroup = new Map();
+        const _combineGroupPrimaryDomId = new Map();
+        (typeof _combineGroups !== 'undefined' && Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => {
+          (g.itemIdxs || []).forEach(idx => {
+            const did = _allParentDomIds[idx];
+            if (did) _domIdToCombineGroup.set(did, g);
+          });
+          const pdid = _allParentDomIds[g.primaryIdx];
+          if (pdid) _combineGroupPrimaryDomId.set(g.id, pdid);
+        });
+        const _emittedCombineGroups = new Set();
+
         let groupIdx = 0;
         realGroups.forEach(group => {
+          // If this parent belongs to a combine group, render once as
+          // the rolled-up line then short-circuit subsequent members.
+          const _combineG = _domIdToCombineGroup.get(group.parent.id);
+          if (_combineG) {
+            if (_emittedCombineGroups.has(_combineG.id)) return;
+            _emittedCombineGroups.add(_combineG.id);
+            groupIdx++;
+            // Sum member unit RMB → derive summed USD. Primary's qty
+            // drives the line qty (per the user's "1,000 plushies, not
+            // 5,000 component pieces" example).
+            let _sumRmb = 0;
+            (_combineG.itemIdxs || []).forEach(idx => {
+              const did = _allParentDomIds[idx];
+              const row = did ? document.getElementById(did) : null;
+              if (!row) return;
+              const ins = row.querySelectorAll('input:not([type="checkbox"])');
+              _sumRmb += _msNumFromInput(ins[3]);
+            });
+            const _sumUsd = _fxUsdFromRmb(_sumRmb);
+            const _primaryDid = _combineGroupPrimaryDomId.get(_combineG.id);
+            const _primaryRow = _primaryDid ? document.getElementById(_primaryDid) : null;
+            const _primaryIns = _primaryRow ? _primaryRow.querySelectorAll('input:not([type="checkbox"])') : null;
+            const _primaryRawQty = _primaryIns ? _msIntFromInput(_primaryIns[2]) : 0;
+            const _primaryQty = _scaleQty(_primaryRawQty);
+            const _lineTotal = _primaryQty > 0 && _sumUsd > 0 ? _msCeil2(_primaryQty * _sumUsd) : 0;
+            const _escLabel = String(_combineG.label || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const _memberCount = (_combineG.itemIdxs || []).length;
+            html += `<tr class="cq-parent-row no-variants">
+              <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
+              <td style="font-weight:500;">${_escLabel} <span style="font-size:10px; color:#6b93ff; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:1px 6px; background:rgba(107,147,255,0.10); border:1px solid rgba(107,147,255,0.25); border-radius:9px; margin-left:6px; vertical-align:middle;">Combined · ${_memberCount}</span></td>
+              <td style="text-align:right;">${_primaryQty > 0 ? _primaryQty.toLocaleString('en-US') : '—'}</td>
+              <td style="text-align:right;">${_sumUsd > 0 ? '$' + _fmt3(_sumUsd) : '—'}</td>
+              <td style="text-align:right; font-weight:600; color:var(--accent);">${_lineTotal > 0 ? '$' + _fmt2(_lineTotal) : '—'}</td>
+            </tr>`;
+            return;
+          }
+
           groupIdx++;
           const pInputs = group.parentInputs;
           const parentId    = group.parent.id.replace('rfq-', '');
@@ -31764,6 +31908,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // status (location, ETA, timeline of events), and actions to
   // refresh the lookup or mark received.
 
+  // Sticky-across-renders open state for the Archived (Received)
+  // drawer at the bottom of Receiving. Default collapsed so the
+  // active waiting-for-audit cards take the eye first.
+  let _receivingArchiveOpen = false;
+  function toggleReceivingArchive() {
+    _receivingArchiveOpen = !_receivingArchiveOpen;
+    renderReceivingList();
+  }
+
   function renderReceivingList() {
     document.getElementById('header-title').textContent = 'Receiving';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
@@ -31773,18 +31926,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     showView('view-receiving');
     const host = document.getElementById('receiving-list-content');
     if (!host) return;
-    const ids = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'delivered');
-    if (ids.length === 0) {
-      host.innerHTML = `<div class="order-list-empty">
-        <div class="order-list-empty-icon">📦</div>
-        <div class="order-list-empty-title">Nothing waiting</div>
-        <div class="order-list-empty-sub">Once a shipment is marked <strong>Delivered</strong> in Shipments, it lands here with live AI tracking status for receipt + audit.</div>
-      </div>`;
-      return;
-    }
-    // Sort by most-recent ETA first (parsed from the AI tracking
-    // payload). Shipments without an ETA sink to the bottom.
-    ids.sort((a, b) => {
+    const activeIds   = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'delivered');
+    const archivedIds = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'received');
+
+    // Sort active by most-recent ETA first (parsed from the AI
+    // tracking payload). Shipments without an ETA sink to the bottom.
+    activeIds.sort((a, b) => {
       const ea = shipmentData[a].tracking?.eta || '';
       const eb = shipmentData[b].tracking?.eta || '';
       if (!ea && !eb) return 0;
@@ -31792,7 +31939,120 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (!eb) return -1;
       return ea.localeCompare(eb);
     });
-    host.innerHTML = ids.map(_buildReceivingCard).join('');
+    // Sort archived by receivedAt DESC so the most-recently-received
+    // ones are at the top of the drawer.
+    archivedIds.sort((a, b) => {
+      const ra = shipmentData[a].receivedAt || '';
+      const rb = shipmentData[b].receivedAt || '';
+      return rb.localeCompare(ra);
+    });
+
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+    // Active (Delivered → awaiting audit) section
+    let html = '';
+    if (activeIds.length === 0) {
+      html += `<div class="order-list-empty">
+        <div class="order-list-empty-icon">📦</div>
+        <div class="order-list-empty-title">Nothing waiting</div>
+        <div class="order-list-empty-sub">Once a shipment is marked <strong>Delivered</strong> in Shipments, it lands here with live AI tracking status for receipt + audit.</div>
+      </div>`;
+    } else {
+      html += activeIds.map(_buildReceivingCard).join('');
+    }
+
+    // Archived (Received) drawer — collapsible, default closed.
+    // Always rendered so the operator knows it exists + can find
+    // historical receipts (and recover anything they accidentally
+    // marked Received). Empty-state message inside explains how
+    // shipments land here.
+    const chev = _receivingArchiveOpen ? '▼' : '▶';
+    html += `
+      <div style="margin-top:24px;">
+        <div onclick="toggleReceivingArchive()"
+             style="display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; cursor:pointer; user-select:none;"
+             title="Toggle archived (Received) shipments">
+          <span style="font-size:12px; color:var(--text-muted); transform:translateY(-1px);">${chev}</span>
+          <span style="font-weight:700; font-size:13px; color:var(--text);">Archived (Received) <span style="color:var(--text-muted); font-weight:500; margin-left:4px;">${archivedIds.length}</span></span>
+          <span style="margin-left:auto; font-size:11px; color:var(--text-muted); font-style:italic;">Marked Received via the per-workbook audit. Click any card for receipt details.</span>
+        </div>
+        ${_receivingArchiveOpen ? `<div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">${
+          archivedIds.length === 0
+            ? `<div style="padding:24px 12px; text-align:center; color:var(--text-muted); font-size:13px; font-style:italic;">No archived shipments yet.</div>`
+            : archivedIds.map(id => _buildArchivedReceivingCard(id, esc)).join('')
+        }</div>` : ''}
+      </div>`;
+    host.innerHTML = html;
+  }
+
+  // Compact card for a Received shipment — shows name + carrier +
+  // received date + receipt notes + per-workbook audit grid. Lets
+  // the operator un-archive (back to Delivered) if they mis-clicked.
+  function _buildArchivedReceivingCard(id, esc) {
+    const s = shipmentData[id];
+    if (!s) return '';
+    const tk = s.tracking || {};
+    const carrierLabel = _carrierLabel(s.carrier || '');
+    const carrierColor = _carrierColor(s.carrier || '');
+    const receivedAt = s.receivedAt ? new Date(s.receivedAt) : null;
+    const receivedFmt = (receivedAt && !isNaN(receivedAt.getTime()))
+      ? receivedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '—';
+    const audit = Array.isArray(s.receivedAudit) ? s.receivedAudit : [];
+    const auditRows = audit.length
+      ? audit.map(a => {
+          const mismatch = a.discrepancy ? `<span style="color:#dc2626; font-weight:700;">⚠</span>` : '';
+          return `<tr>
+            <td style="padding:4px 8px;">${esc(a.clientName || '')} · WB#${esc(a.workbookId || '')}</td>
+            <td style="padding:4px 8px; text-align:right; font-variant-numeric:tabular-nums;">${Number(a.expectedQty || 0).toLocaleString('en-US')}</td>
+            <td style="padding:4px 8px; text-align:right; font-variant-numeric:tabular-nums;">${Number(a.receivedQty || 0).toLocaleString('en-US')} ${mismatch}</td>
+            <td style="padding:4px 8px; color:var(--text-muted); font-size:11px;">${esc(a.notes || '')}</td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="4" style="padding:8px; text-align:center; color:var(--text-muted); font-style:italic; font-size:12px;">No per-workbook audit recorded.</td></tr>`;
+    return `<div class="order-card" style="opacity:0.85;">
+      <div style="display:flex; flex-direction:column; gap:8px; padding:12px 14px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div style="font-size:14px; font-weight:700;">${esc(s.name || 'Shipment #' + id)}</div>
+          ${s.carrier ? `<span style="padding:2px 8px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:10px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase;">${esc(carrierLabel)}</span>` : ''}
+          ${s.trackingNumber ? `<span style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:var(--text-muted);">${esc(s.trackingNumber)}</span>` : ''}
+          <span style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+            <span style="font-size:11px; color:#16a34a; font-weight:700;">✓ Received ${esc(receivedFmt)}</span>
+            <button class="btn btn-ghost" style="font-size:11px;" onclick="unarchiveReceivedShipment('${id}')"
+                    title="Move back to Delivered (active Receiving lane). Use if Mark Received was clicked by mistake.">Un-archive</button>
+          </span>
+        </div>
+        ${s.receivedNotes ? `<div style="background:var(--surface2); border-left:3px solid var(--accent); padding:6px 10px; font-size:12px; color:var(--text);">${esc(s.receivedNotes)}</div>` : ''}
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <thead>
+            <tr style="background:var(--surface2);">
+              <th style="padding:6px 8px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Workbook</th>
+              <th style="padding:6px 8px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Expected</th>
+              <th style="padding:6px 8px; text-align:right; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Received</th>
+              <th style="padding:6px 8px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">Notes</th>
+            </tr>
+          </thead>
+          <tbody>${auditRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  // Move a received shipment back to delivered (active Receiving).
+  // Use if the operator clicked Mark Received by mistake — preserves
+  // the audit data so they can re-confirm without re-entering qtys.
+  function unarchiveReceivedShipment(id) {
+    const s = shipmentData[id];
+    if (!s) return;
+    if (!confirm(`Un-archive "${s.name || 'this shipment'}"? It moves back to the active Receiving lane.`)) return;
+    s.status = 'delivered';
+    // Clear receivedAt so the audit modal opens fresh next time;
+    // keep receivedAudit + receivedNotes so the operator's prior
+    // work isn't lost.
+    s.receivedAt = '';
+    saveShipments();
+    renderReceivingList();
+    rebuildShipmentsNav();
   }
 
   function _carrierLabel(c) { return ({ ups: 'UPS', fedex: 'FedEx', dhl: 'DHL' })[c] || c.toUpperCase(); }
