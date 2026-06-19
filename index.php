@@ -10688,10 +10688,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         e.preventDefault();
         applyOutlineTo.style.outline = '';
         applyOutlineTo.style.outlineOffset = '';
+        // Diagnostic toast — surfaces what the browser saw in the
+        // drop event so the operator (and me debugging this) can
+        // tell instantly whether a drop yielded real Files, just a
+        // URL, or nothing at all. Useful for the cloud-storage
+        // drag-drop class of bugs where the symptom is "nothing
+        // happens." Auto-dismisses after a few seconds.
+        const _showDropToast = (msg, kind) => {
+          let host = document.getElementById('art-drop-toast');
+          if (!host) {
+            host = document.createElement('div');
+            host.id = 'art-drop-toast';
+            host.style.cssText = 'position:fixed; top:24px; right:24px; z-index:9999; min-width:260px; max-width:420px; padding:12px 16px; border-radius:10px; font-size:13px; line-height:1.45; font-family:inherit; box-shadow:0 8px 24px rgba(0,0,0,0.18); opacity:0; transform:translateY(-8px); transition:opacity 0.18s, transform 0.18s; pointer-events:auto; cursor:pointer;';
+            host.onclick = () => { host.style.opacity = '0'; setTimeout(() => host.remove(), 200); };
+            document.body.appendChild(host);
+          }
+          const palette = {
+            info:   { bg: '#1e3a8a', fg: '#dbeafe', border: '#3b82f6' },
+            ok:     { bg: '#14532d', fg: '#dcfce7', border: '#22c55e' },
+            warn:   { bg: '#7c2d12', fg: '#fed7aa', border: '#f97316' },
+            err:    { bg: '#7f1d1d', fg: '#fecaca', border: '#ef4444' },
+          }[kind] || { bg: '#1f2937', fg: '#e5e7eb', border: '#6b7280' };
+          host.style.background  = palette.bg;
+          host.style.color       = palette.fg;
+          host.style.border      = `1px solid ${palette.border}`;
+          host.innerHTML = `<div style="font-weight:700; margin-bottom:2px; font-size:11px; text-transform:uppercase; letter-spacing:0.05em; opacity:0.85;">Art drop</div><div>${msg}</div><div style="margin-top:6px; font-size:10px; opacity:0.6;">tap to dismiss</div>`;
+          requestAnimationFrame(() => { host.style.opacity = '1'; host.style.transform = 'translateY(0)'; });
+          clearTimeout(host._timer);
+          host._timer = setTimeout(() => { host.style.opacity = '0'; host.style.transform = 'translateY(-8px)'; setTimeout(() => host.remove(), 220); }, 6500);
+        };
+        // Log full dataTransfer details for the console-aware too.
+        try {
+          const dt = e.dataTransfer;
+          const summary = {
+            types: Array.from(dt.types || []),
+            filesCount: dt.files ? dt.files.length : 0,
+            itemsCount: dt.items ? dt.items.length : 0,
+            items: Array.from(dt.items || []).map(it => ({ kind: it.kind, type: it.type })),
+            files: Array.from(dt.files || []).map(f => ({ name: f.name, type: f.type, size: f.size })),
+            uriList:  (dt.getData('text/uri-list') || '').slice(0, 200),
+            plain:    (dt.getData('text/plain')   || '').slice(0, 200),
+            downloadUrl: (dt.getData('DownloadURL') || '').slice(0, 200),
+          };
+          console.log('[Art drop] dataTransfer:', summary);
+        } catch (logErr) { /* noop */ }
         // Local-file drops (Finder / Explorer) — dataTransfer.files
         // is populated. Most common path.
         const files = Array.from(e.dataTransfer.files);
         if (files.length) {
+          // Detect "promised file" / zero-byte stubs — usually a
+          // cloud-synced (Dropbox / iCloud) file that hasn't been
+          // materialized to disk yet. macOS sometimes hands the
+          // browser an empty placeholder. Surface this instead of
+          // silently uploading 0 bytes.
+          const empty = files.filter(f => f.size === 0);
+          if (empty.length === files.length) {
+            _showDropToast(`Browser got ${files.length} file${files.length === 1 ? '' : 's'} but they're 0 bytes — likely a cloud-only file that hasn't downloaded yet.<br><br>Try: right-click in Finder → <strong>Make Available Offline</strong> (or wait for the cloud icon to disappear), then drag again.`, 'warn');
+            return;
+          }
+          _showDropToast(`Uploading ${files.length} file${files.length === 1 ? '' : 's'}: ${files.map(f => `${f.name} (${(f.size/1024).toFixed(0)} KB)`).join(', ')}`, 'info');
           handleArtFiles({ target: { files, value: '' } });
           return;
         }
@@ -10728,10 +10783,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
         if (!candidateUrls.length) {
           if (!currentWorkbookId) {
-            alert('Open a workbook first, then drop the file into the Art tab.');
+            _showDropToast('Open a workbook first, then drop the file into the Art tab.', 'warn');
+          } else {
+            // Surface what WAS in the drop so the operator can tell
+            // whether the source served nothing usable. Most common
+            // cause: dragging from an in-browser preview that puts
+            // only text/html (or nothing) into dataTransfer.
+            const types = Array.from(e.dataTransfer.types || []).join(', ') || '(none)';
+            _showDropToast(`Drop arrived with no files and no URL. Types received: ${types}.<br><br>If dragging from Dropbox.com, open Finder → Dropbox folder and drag from there instead.`, 'warn');
           }
           return;
         }
+        _showDropToast(`Fetching ${candidateUrls.length} URL${candidateUrls.length === 1 ? '' : 's'} from the source…`, 'info');
         // Rewrite known-source-specific URLs to direct-download
         // equivalents BEFORE fetching. Dropbox preview pages
         // serve HTML; only ?dl=1 returns the file bytes.
