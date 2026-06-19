@@ -11426,13 +11426,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // (Adobe, CAD, docs, archives). Single overlay, content swaps in
   // by file kind.
   // 3D files (STL / STEP / OBJ / 3MF / IGES / GLTF / etc.) preview
-  // via our self-hosted copy of 3dviewer.net at /3dviewer/. That
-  // copy has the iframe-block guard patched out and the upstream
-  // ads/analytics stripped — so we get the FULL UI (mesh tree,
-  // details panel, snapshot, theme, edges, projection, etc.)
-  // inside our modal without the cross-origin CORS issues that
-  // dogged the iframe-to-3dviewer.net approach. See 3dviewer/
-  // README.md for the patches + refresh procedure.
+  // via online-3d-viewer's EmbeddedViewer — bare 3D canvas in the
+  // modal. Orbit / pan / zoom via mouse, auto-fits on load. No
+  // toolbar; the operator can rotate/inspect and that's it. Earlier
+  // attempts to layer a full toolbar / self-host the 3dviewer.net
+  // app didn't pan out for this workbook's deploy, so the simplest
+  // path wins.
+  function _ensure3dViewerLoaded() {
+    if (window.OV) return Promise.resolve(true);
+    if (window._loading3dViewer) return window._loading3dViewer;
+    window._loading3dViewer = new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/online-3d-viewer@0.18.0/build/engine/o3dv.min.js';
+      script.onload = () => resolve(!!window.OV);
+      script.onerror = () => resolve(false);
+      document.head.appendChild(script);
+    });
+    return window._loading3dViewer;
+  }
 
   async function openArtPreview(url) {
     const overlay = document.getElementById('artPreviewOverlay');
@@ -11460,19 +11471,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } else if (kind === 'video') {
       content.innerHTML = `<video src="${url}" controls autoplay></video>`;
     } else if (kind === '3d') {
-      // Iframe our self-hosted /3dviewer/ copy. Same-origin, same-
-      // domain → no CORS, no iframe block. Hash param `model=URL`
-      // tells the viewer which file to load. Absolute URL so the
-      // iframe's hash router can resolve it against our domain
-      // (uploads/ is same-origin too — straight XHR succeeds).
+      // Bare EmbeddedViewer — orbit / pan / zoom only, no UI chrome.
       const absUrl = new URL(url, window.location.href).toString();
-      const encUrl = encodeURIComponent(absUrl);
       content.innerHTML = `
-        <iframe src="3dviewer/index.html#model=${encUrl}"
-                style="width:100%; height:100%; border:0; background:#1a1a1a;"
-                title="3D viewer"
-                allow="fullscreen"></iframe>`;
+        <div id="art-3d-host" style="position:relative; width:100%; height:100%; background:#1a1a1a;">
+          <div id="art-3d-loading" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#9ca3af; font-size:13px; gap:8px;">
+            <span style="display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.25); border-top-color:#fff; border-radius:50%; animation:art3dSpin 0.8s linear infinite;"></span>
+            Loading 3D viewer…
+          </div>
+        </div>
+        <style>@keyframes art3dSpin { to { transform: rotate(360deg); } }</style>`;
       overlay.classList.add('open');
+      const ok = await _ensure3dViewerLoaded();
+      const loading = document.getElementById('art-3d-loading');
+      const host    = document.getElementById('art-3d-host');
+      if (!ok || !host) {
+        if (loading) loading.textContent = 'Could not load 3D viewer.';
+        return;
+      }
+      if (loading) loading.remove();
+      try {
+        const viewer = new OV.EmbeddedViewer(host, {
+          backgroundColor:    new OV.RGBAColor(26, 26, 26, 255),
+          defaultColor:       new OV.RGBColor(200, 200, 200),
+          edgeSettings:       new OV.EdgeSettings(false, new OV.RGBColor(0, 0, 0), 1),
+          environmentSettings: new OV.EnvironmentSettings([], false),
+        });
+        viewer.LoadModelFromUrlList([absUrl]);
+      } catch (e) {
+        console.warn('3D viewer error:', e);
+        host.innerHTML = `<div style="padding:24px; color:#fb7185; text-align:center;">Could not render this file: ${String(e.message || e)}</div>`;
+      }
       return;
     } else {
       // No inline preview possible — open in a new tab (download for
