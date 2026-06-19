@@ -10695,31 +10695,82 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           handleArtFiles({ target: { files, value: '' } });
           return;
         }
-        // Cross-tab drags (Dropbox, Google Drive, browser image
-        // tabs) carry a text/uri-list entry, NOT a File. Fetch each
-        // URL into a blob, wrap as File, and route through
-        // handleArtFiles. Mirrors the same trick the product-image
-        // gallery already uses for browser-to-browser drags.
+        // ── Cross-app drag URL resolution ─────────────────────────
+        // Sources we want to support:
+        //   • Dropbox web (drops a /preview/… page URL that 403s
+        //     on direct fetch — we rewrite to ?dl=1 force-download)
+        //   • Google Drive (similar — uc?export=download&id=…)
+        //   • Generic image tabs (text/uri-list works as-is)
+        //   • Chrome cross-app via DownloadURL backchannel (some
+        //     apps including Dropbox put a direct URL there)
+        const candidateUrls = [];
+        // 1) Chrome's DownloadURL backchannel — format:
+        //    "<mime>:<filename>:<url>"
+        const dlURL = e.dataTransfer.getData('DownloadURL') || '';
+        if (dlURL) {
+          // Split on the FIRST two colons only — the URL itself
+          // contains colons (https://) so a naive split() over-counts.
+          const m = dlURL.match(/^([^:]+):([^:]+):(.+)$/);
+          if (m && /^https?:/i.test(m[3])) candidateUrls.push({ url: m[3], filename: m[2] });
+        }
+        // 2) text/uri-list (most browser-to-browser drags)
         const uriList = e.dataTransfer.getData('text/uri-list')
                      || e.dataTransfer.getData('text/plain') || '';
-        const urls = uriList.split(/\r?\n/).map(s => s.trim()).filter(s => /^https?:\/\//i.test(s));
-        if (!urls.length) {
+        uriList.split(/\r?\n/).forEach(s => {
+          const t = s.trim();
+          if (/^https?:\/\//i.test(t)) candidateUrls.push({ url: t });
+        });
+        // 3) text/html — sometimes carries an <img src> or <a href>
+        const htmlData = e.dataTransfer.getData('text/html') || '';
+        if (htmlData && !candidateUrls.length) {
+          const aMatch = htmlData.match(/href="([^"]+)"/i) || htmlData.match(/src="([^"]+)"/i);
+          if (aMatch && /^https?:/i.test(aMatch[1])) candidateUrls.push({ url: aMatch[1] });
+        }
+        if (!candidateUrls.length) {
           if (!currentWorkbookId) {
             alert('Open a workbook first, then drop the file into the Art tab.');
           }
           return;
         }
+        // Rewrite known-source-specific URLs to direct-download
+        // equivalents BEFORE fetching. Dropbox preview pages
+        // serve HTML; only ?dl=1 returns the file bytes.
+        const _toFetchable = (u) => {
+          try {
+            const url = new URL(u);
+            // Dropbox: www.dropbox.com/preview/PATH → www.dropbox.com/PATH?dl=1
+            //          www.dropbox.com/s/… → same + ?dl=1
+            //          www.dropbox.com/scl/… → same + ?dl=1
+            if (/(^|\.)dropbox\.com$/i.test(url.hostname)) {
+              url.pathname = url.pathname.replace(/^\/preview\//, '/');
+              url.searchParams.set('dl', '1');
+              return url.toString();
+            }
+            // Google Drive: drive.google.com/file/d/FILE_ID/view
+            //   → drive.google.com/uc?export=download&id=FILE_ID
+            if (/(^|\.)drive\.google\.com$/i.test(url.hostname)) {
+              const m = url.pathname.match(/\/file\/d\/([^/]+)/);
+              if (m) return `https://drive.google.com/uc?export=download&id=${m[1]}`;
+            }
+            return u;
+          } catch { return u; }
+        };
         const fetched = [];
         const fails = [];
-        for (const u of urls) {
+        for (const c of candidateUrls) {
+          const fetchUrl = _toFetchable(c.url);
           try {
-            const r = await fetch(u, { mode: 'cors' });
+            const r = await fetch(fetchUrl, { mode: 'cors' });
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const blob = await r.blob();
-            // Derive a sensible filename from the URL path, stripping
-            // query / fragment. If no extension on the path, infer one
-            // from the blob's MIME so the backend allowlist can match.
-            let name = (new URL(u)).pathname.split('/').pop() || ('art-' + Date.now());
+            // Bail when the server returned HTML (a sign-in page or
+            // a preview wrapper) — saving that as the operator's
+            // "file" would be worse than failing loudly.
+            if ((blob.type || '').startsWith('text/html')) {
+              throw new Error('source returned an HTML page, not the file (auth required?)');
+            }
+            // Filename: prefer DownloadURL-provided name, else URL path
+            let name = c.filename || ((new URL(fetchUrl)).pathname.split('/').pop() || ('art-' + Date.now()));
             name = name.split('?')[0].split('#')[0];
             if (!/\.[a-z0-9]{2,5}$/i.test(name)) {
               const ext = ((blob.type || '').split('/')[1] || 'bin').split(';')[0];
@@ -10727,15 +10778,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             }
             fetched.push(new File([blob], name, { type: blob.type || 'application/octet-stream' }));
           } catch (err) {
-            const short = u.length > 60 ? (u.slice(0, 60) + '…') : u;
-            fails.push(`${short}: ${err.message || err}`);
+            const short = c.url.length > 60 ? (c.url.slice(0, 60) + '…') : c.url;
+            fails.push({ url: c.url, short, msg: err.message || String(err) });
           }
         }
         if (fetched.length) handleArtFiles({ target: { files: fetched, value: '' } });
         if (fails.length) {
+          // Tailored guidance per source — Dropbox + Drive both have
+          // a known workaround (the desktop sync app exposes the file
+          // via Finder/Explorer, where the drop becomes a real File).
+          const hasDropbox = fails.some(f => /(^|\.)dropbox\.com/i.test(f.url));
+          const hasDrive   = fails.some(f => /(^|\.)drive\.google\.com/i.test(f.url));
+          let tip = '';
+          if (hasDropbox) {
+            tip = "\n\nDropbox tip: drag from the Dropbox FOLDER in Finder (via the Dropbox desktop app) instead of dropbox.com — that gives the browser a real file. Or in Dropbox.com, click the file → Download → drag from your Downloads folder.";
+          } else if (hasDrive) {
+            tip = "\n\nGoogle Drive tip: in Drive, right-click the file → Download → drag from your Downloads folder. Or install Drive for desktop and drag from your synced folder.";
+          } else {
+            tip = "\n\nTip: download the file to your computer first, then drag it from Finder / Explorer into the Art tab.";
+          }
           alert("Couldn't fetch " + fails.length + " dragged file" + (fails.length === 1 ? '' : 's')
-            + " (the source likely blocks cross-origin downloads):\n\n• " + fails.join('\n• ')
-            + "\n\nTip: download the file from Dropbox to your computer first, then drag it from Finder/Explorer into the Art tab.");
+            + " (the source blocks cross-origin downloads):\n\n• "
+            + fails.map(f => `${f.short}: ${f.msg}`).join('\n• ') + tip);
         }
       });
     };
