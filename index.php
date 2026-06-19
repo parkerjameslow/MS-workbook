@@ -1713,16 +1713,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        Eight columns now (ACTION added). Widths must sum to 100% so the
        Send-for-Review button has room and doesn't overflow off the right
        edge of the card. */
-    #rfq-table { table-layout: fixed; }
-    #rfq-table th:nth-child(1), #rfq-table td:nth-child(1) { width: 11%; }   /* Client */
-    #rfq-table th:nth-child(2), #rfq-table td:nth-child(2) { width: 22%; }   /* Workbook */
-    #rfq-table th:nth-child(3), #rfq-table td:nth-child(3) { width: 10%; }   /* Submitted */
-    #rfq-table th:nth-child(4), #rfq-table td:nth-child(4) { width: 7%;  }   /* Lines */
-    #rfq-table th:nth-child(5), #rfq-table td:nth-child(5) { width: 9%;  }   /* Qty */
-    #rfq-table th:nth-child(6), #rfq-table td:nth-child(6) { width: 11%; }   /* RMB */
-    #rfq-table th:nth-child(7), #rfq-table td:nth-child(7) { width: 12%; }   /* USD */
-    #rfq-table th:nth-child(8), #rfq-table td:nth-child(8) { width: 18%; }   /* Action */
-    #rfq-table th, #rfq-table td { padding-left: 12px; padding-right: 12px; }
+    /* ID collision: BOTH the workbook RFQ section table and the RFQ
+       dashboard table use id="rfq-table" (legacy). The dashboard's
+       8-column width rules were bleeding into the 11-column workbook
+       table and overriding its colgroup widths — causing the
+       misalignment the user surfaced. Scoped to .dash-table so only
+       the dashboard table picks them up. The workbook table's
+       colgroup widths win on its own. */
+    .dash-table#rfq-table { table-layout: fixed; }
+    .dash-table#rfq-table th:nth-child(1), .dash-table#rfq-table td:nth-child(1) { width: 11%; }   /* Client */
+    .dash-table#rfq-table th:nth-child(2), .dash-table#rfq-table td:nth-child(2) { width: 22%; }   /* Workbook */
+    .dash-table#rfq-table th:nth-child(3), .dash-table#rfq-table td:nth-child(3) { width: 10%; }   /* Submitted */
+    .dash-table#rfq-table th:nth-child(4), .dash-table#rfq-table td:nth-child(4) { width: 7%;  }   /* Lines */
+    .dash-table#rfq-table th:nth-child(5), .dash-table#rfq-table td:nth-child(5) { width: 9%;  }   /* Qty */
+    .dash-table#rfq-table th:nth-child(6), .dash-table#rfq-table td:nth-child(6) { width: 11%; }   /* RMB */
+    .dash-table#rfq-table th:nth-child(7), .dash-table#rfq-table td:nth-child(7) { width: 12%; }   /* USD */
+    .dash-table#rfq-table th:nth-child(8), .dash-table#rfq-table td:nth-child(8) { width: 18%; }   /* Action */
+    .dash-table#rfq-table th, .dash-table#rfq-table td { padding-left: 12px; padding-right: 12px; }
 
     /* Ready-for-Review table — 7 columns, no per-row action (the row
        itself opens the workbook). Widths sum to 100% so the columns
@@ -2370,7 +2377,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        parent row's Item input. No vertical bar in the gutter — the
        indent alone is the nesting cue. The empty <td>s (handle / sample
        / SKU) keep their default padding. */
-    #rfq-table .rfq-variant-row td:nth-child(4) {
+    /* Variant-row indent on the WORKBOOK RFQ section. Targets the
+       ITEM cell so the variant's name nests visually under the
+       parent's Item input. nth-child(5) because the column layout
+       is: checkbox | # | SAMPLE | SKU | ITEM | QTY | RMB | USD | TOTAL | LEAD | × .
+       Scoped to .tier-table so the (id-colliding) dashboard table
+       isn't affected. */
+    .tier-table#rfq-table .rfq-variant-row td:nth-child(5) {
       padding-left: 28px;
     }
     /* Make a parent row + its variant rows visually read as one unit
@@ -7045,7 +7058,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <td></td>
             <td></td>
             <td></td>
-            <td style="font-weight:700; color:#374151; padding-left:26px;">TOTALS</td>
+            <td id="rfq-totals-label" style="font-weight:700; color:#374151; padding-left:26px;">TOTALS</td>
             <td id="rfq-total-qty" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
             <td id="rfq-total-rmb" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
             <td id="rfq-total-usd-sum" style="color:#374151; font-weight:700; text-align:right;">—</td>
@@ -16204,7 +16217,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                        || itemSummaries.some(s => s.isVariant);
 
     // ── 3. Grand total row label (sync — single cell update is cheap) ───
-    const totalsLabel = totalsRow?.querySelector('td:nth-child(4)');
+    // Use the dedicated id rather than nth-child — the column
+    // position has shifted twice this branch (sample/checkbox
+    // columns) and any future column reshuffle would break a
+    // position-based selector. The id is stable across all of them.
+    const totalsLabel = document.getElementById('rfq-totals-label');
     if (totalsLabel) totalsLabel.textContent = showBreakdown ? 'GRAND TOTAL' : 'TOTALS';
 
     _scheduleRfqSubtotalRebuild(() => {
@@ -31246,12 +31263,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!el) return;
 
     // Hide shipments that have moved to the Receiving lane (operator
-    // flagged Waiting Arrival) or are already Received. They live on
-    // the #/receiving view; showing them here too would double-stack
-    // the same shipment in two places.
+    // marked Delivered → moves to Receiving for audit) or are
+    // already Received (archived). They live on the #/receiving
+    // view; showing them here too would double-stack the same
+    // shipment in two places. Predicate MUST match rebuildShipmentsNav
+    // exactly — when it didn't, waiting_arrival shipments counted
+    // toward the badge but vanished from the page ("lost in abyss"
+    // bug the user hit).
     const allIds = Object.keys(shipmentData).filter(id => {
       const st = shipmentData[id] && shipmentData[id].status;
-      return st !== 'waiting_arrival' && st !== 'received';
+      return st !== 'delivered' && st !== 'received';
     });
     if (allIds.length === 0) {
       el.innerHTML = `<div class="shipment-list-empty">
