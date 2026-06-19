@@ -10684,12 +10684,59 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const wireDropTarget = (el, applyOutlineTo) => {
       el.addEventListener('dragover',  e => { e.preventDefault(); applyOutlineTo.style.outline = '2px solid var(--accent)'; applyOutlineTo.style.outlineOffset = '4px'; });
       el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) { applyOutlineTo.style.outline = ''; applyOutlineTo.style.outlineOffset = ''; } });
-      el.addEventListener('drop', e => {
+      el.addEventListener('drop', async e => {
         e.preventDefault();
         applyOutlineTo.style.outline = '';
         applyOutlineTo.style.outlineOffset = '';
+        // Local-file drops (Finder / Explorer) — dataTransfer.files
+        // is populated. Most common path.
         const files = Array.from(e.dataTransfer.files);
-        if (files.length) handleArtFiles({ target: { files, value: '' } });
+        if (files.length) {
+          handleArtFiles({ target: { files, value: '' } });
+          return;
+        }
+        // Cross-tab drags (Dropbox, Google Drive, browser image
+        // tabs) carry a text/uri-list entry, NOT a File. Fetch each
+        // URL into a blob, wrap as File, and route through
+        // handleArtFiles. Mirrors the same trick the product-image
+        // gallery already uses for browser-to-browser drags.
+        const uriList = e.dataTransfer.getData('text/uri-list')
+                     || e.dataTransfer.getData('text/plain') || '';
+        const urls = uriList.split(/\r?\n/).map(s => s.trim()).filter(s => /^https?:\/\//i.test(s));
+        if (!urls.length) {
+          if (!currentWorkbookId) {
+            alert('Open a workbook first, then drop the file into the Art tab.');
+          }
+          return;
+        }
+        const fetched = [];
+        const fails = [];
+        for (const u of urls) {
+          try {
+            const r = await fetch(u, { mode: 'cors' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const blob = await r.blob();
+            // Derive a sensible filename from the URL path, stripping
+            // query / fragment. If no extension on the path, infer one
+            // from the blob's MIME so the backend allowlist can match.
+            let name = (new URL(u)).pathname.split('/').pop() || ('art-' + Date.now());
+            name = name.split('?')[0].split('#')[0];
+            if (!/\.[a-z0-9]{2,5}$/i.test(name)) {
+              const ext = ((blob.type || '').split('/')[1] || 'bin').split(';')[0];
+              name += '.' + ext;
+            }
+            fetched.push(new File([blob], name, { type: blob.type || 'application/octet-stream' }));
+          } catch (err) {
+            const short = u.length > 60 ? (u.slice(0, 60) + '…') : u;
+            fails.push(`${short}: ${err.message || err}`);
+          }
+        }
+        if (fetched.length) handleArtFiles({ target: { files: fetched, value: '' } });
+        if (fails.length) {
+          alert("Couldn't fetch " + fails.length + " dragged file" + (fails.length === 1 ? '' : 's')
+            + " (the source likely blocks cross-origin downloads):\n\n• " + fails.join('\n• ')
+            + "\n\nTip: download the file from Dropbox to your computer first, then drag it from Finder/Explorer into the Art tab.");
+        }
       });
     };
     wireDropTarget(artGalleryEl, artGalleryEl);
