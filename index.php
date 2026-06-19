@@ -6957,9 +6957,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-body">
       <div class="subsection-title" style="margin-top:0;">Quote Details</div>
       <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Add line items for each product/component in this quote.</p>
+
+      <!-- Bulk-action bar — appears when 1+ RFQ rows checked. Combine
+           rolls the selected items into a single Client-Quote line
+           with summed unit price. The RFQ table stays unchanged
+           visually; the rollup only affects the Client Quote / PDF /
+           Notify-Client email. -->
+      <div id="rfq-bulk-bar" style="display:none; align-items:center; gap:12px; padding:8px 12px; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:8px; margin-bottom:10px;">
+        <strong style="font-size:13px; color:var(--accent);"><span id="rfq-bulk-count">0 items</span> selected</strong>
+        <button type="button" class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllRfqRows()">Deselect all</button>
+        <span style="margin-left:auto; display:flex; gap:8px;">
+          <button type="button" class="btn btn-primary" style="font-size:12px;" onclick="openCombineRfqModal()">+ Combine Items</button>
+        </span>
+      </div>
+
+      <!-- Combined Groups summary — visible whenever the workbook has
+           1+ groups defined. Click "Manage" to see / delete them. -->
+      <div id="rfq-groups-bar" style="display:none; align-items:center; gap:10px; padding:7px 12px; background:rgba(107,147,255,0.07); border:1px solid rgba(107,147,255,0.25); border-radius:8px; margin-bottom:10px; font-size:12px;">
+        <span style="font-weight:700; color:#6b93ff; letter-spacing:0.03em; text-transform:uppercase; font-size:11px;">
+          <span id="rfq-groups-count">0</span> combined group<span id="rfq-groups-plural">s</span>
+        </span>
+        <span style="color:var(--text-muted);">Client Quote rolls them up into single lines with summed unit prices.</span>
+        <button type="button" class="btn btn-ghost" style="margin-left:auto; font-size:12px;" onclick="openManageRfqGroupsModal()">Manage</button>
+      </div>
+
       <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
-      <table class="tier-table" id="rfq-table" style="min-width:860px; border-collapse:collapse;">
+      <table class="tier-table" id="rfq-table" style="min-width:900px; border-collapse:collapse;">
         <colgroup>
+          <col style="width:36px;">
           <col style="width:40px;">
           <col style="width:50px;">
           <col style="width:13%;">
@@ -6973,6 +6998,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </colgroup>
         <thead>
           <tr>
+            <th style="text-align:center;">
+              <input type="checkbox" id="rfq-header-checkbox"
+                     onchange="toggleAllRfqRows(this.checked)"
+                     title="Select all parent line items"
+                     style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
+            </th>
             <th>#</th>
             <th style="text-align:center;" title="Sample Request">SAMPLE</th>
             <th>SKU</th>
@@ -6988,7 +7019,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <tbody id="rfq-body"></tbody>
         <tfoot>
           <tr>
-            <td colspan="10" style="padding:8px 14px 12px; border-bottom:none;">
+            <td colspan="11" style="padding:8px 14px 12px; border-bottom:none;">
               <button type="button" class="rfq-add-line-btn" onclick="addRfqRow()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 Add Line Item
@@ -6996,6 +7027,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </td>
           </tr>
           <tr style="background:var(--surface2);">
+            <th style="border-bottom:1px solid var(--border);"></th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">#</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:center;" title="Sample Request">SAMPLE</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">SKU</th>
@@ -7008,6 +7040,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <th style="border-bottom:1px solid var(--border);"></th>
           </tr>
           <tr id="rfq-totals" style="border-top:2px solid var(--border); font-weight:700; background:rgba(232, 117, 26, 0.08);">
+            <td></td>
             <td></td>
             <td></td>
             <td></td>
@@ -8723,6 +8756,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
         <button class="btn btn-ghost" onclick="closeTrackingModal()">Cancel</button>
         <button class="btn btn-primary" onclick="confirmTrackingModal()">Move to Receiving</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Combine RFQ Items modal — opened from the RFQ section bulk-action
+     bar when 2+ rows are checked. Captures the rolled-up label + which
+     of the selected items is "primary" (its qty becomes the group's
+     client-facing qty). Combined groups roll up unit prices but do
+     NOT change the RFQ display — operator still sees every component
+     row exactly as today; rollup only affects Client Quote / PDFs. -->
+<div class="modal-overlay" id="combine-rfq-modal" style="display:none;">
+  <div class="modal" style="max-width:480px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Combine Items into Group</h3>
+      <button onclick="closeCombineRfqModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Combining <strong id="combine-rfq-count" style="color:var(--text);">0 items</strong>. The Client Quote and PDFs will show ONE line for this group (using the primary item's qty, with summed RMB + USD per-unit prices). Your RFQ section stays unchanged.</p>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Group Label (what the client sees)</label>
+        <input id="combine-rfq-label" type="text" class="form-input" style="width:100%;" placeholder="e.g. Plushie" autocomplete="off" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Primary item (qty source)</label>
+        <div class="ship-select-wrap">
+          <select id="combine-rfq-primary" class="form-input" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;"></select>
+        </div>
+        <p style="font-size:11px; color:var(--text-muted); margin:4px 0 0;">The client sees the primary item's qty (e.g. 1,000 plushies, not 5,000 component pieces).</p>
+      </div>
+      <div id="combine-rfq-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
+      <div style="background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.30); border-radius:8px; padding:8px 12px; font-size:11px; color:#92400e;">
+        <strong>Heads up:</strong> drag-reordering RFQ rows after creating a group may break references — use Manage Groups to recreate if items show up wrong on the quote.
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closeCombineRfqModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmCombineRfqModal()">Create Group</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Combined Groups modal — list of existing groups with a
+     delete button per group. Opened from the rfq-groups-bar's Manage
+     button. Used to clean up stale groups (especially after RFQ
+     reorders) without forcing a re-create from scratch. -->
+<div class="modal-overlay" id="manage-rfq-groups-modal" style="display:none;">
+  <div class="modal" style="max-width:560px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Manage Combined Groups</h3>
+      <button onclick="closeManageRfqGroupsModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Combined groups roll multiple RFQ items into a single Client Quote line. Delete a group to revert its members to individual lines on the quote.</p>
+      <div id="manage-rfq-groups-list" style="display:flex; flex-direction:column; gap:8px; max-height:400px; overflow:auto;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closeManageRfqGroupsModal()">Close</button>
       </div>
     </div>
   </div>
@@ -15409,6 +15499,250 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let _wbLocked = false;
   let _draggingVarId = null; // tracks which variant row is being dragged
 
+  // ── RFQ bulk-select state + Combined Groups ───────────────────────
+  // _rfqSelected: in-memory selection of parent RFQ row IDs (the
+  // rfqCount counter assigned by addRfqRow). Survives within a single
+  // workbook session but is NOT persisted.
+  // _combineGroups: persisted to detail.combineGroups. Each group is
+  // {id, label, primaryIdx, itemIdxs} where idxs reference position
+  // in detail.rfqItems after save. V1 trade-off: index-based refs
+  // mean drag-reorder may invalidate; modal warns.
+  const _rfqSelected = new Set();
+  let _combineGroups = [];
+
+  function toggleRfqRowSelection(id, checked) {
+    if (checked) _rfqSelected.add(id);
+    else         _rfqSelected.delete(id);
+    updateRfqBulkBar();
+    _syncRfqHeaderCheckbox();
+  }
+  function toggleAllRfqRows(checked) {
+    document.querySelectorAll('#rfq-body .rfq-row-checkbox').forEach(cb => {
+      cb.checked = checked;
+      const idAttr = parseInt(cb.getAttribute('data-rfq-id'), 10);
+      if (!isFinite(idAttr)) return;
+      if (checked) _rfqSelected.add(idAttr);
+      else         _rfqSelected.delete(idAttr);
+    });
+    updateRfqBulkBar();
+  }
+  function deselectAllRfqRows() {
+    _rfqSelected.clear();
+    document.querySelectorAll('#rfq-body .rfq-row-checkbox').forEach(cb => { cb.checked = false; });
+    const h = document.getElementById('rfq-header-checkbox');
+    if (h) { h.checked = false; h.indeterminate = false; }
+    updateRfqBulkBar();
+  }
+  function updateRfqBulkBar() {
+    const bar = document.getElementById('rfq-bulk-bar');
+    if (!bar) return;
+    const n = _rfqSelected.size;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    const countEl = document.getElementById('rfq-bulk-count');
+    if (countEl) countEl.textContent = n === 1 ? '1 item' : `${n} items`;
+  }
+  function _syncRfqHeaderCheckbox() {
+    const h = document.getElementById('rfq-header-checkbox');
+    if (!h) return;
+    const rows = document.querySelectorAll('#rfq-body .rfq-row-checkbox');
+    if (!rows.length) { h.checked = false; h.indeterminate = false; return; }
+    let n = 0;
+    rows.forEach(cb => { if (cb.checked) n++; });
+    if (n === 0)              { h.checked = false; h.indeterminate = false; }
+    else if (n === rows.length) { h.checked = true;  h.indeterminate = false; }
+    else                       { h.checked = false; h.indeterminate = true;  }
+  }
+  // Visibility of the persistent "X combined groups · Manage" bar.
+  function updateRfqGroupsBar() {
+    const bar = document.getElementById('rfq-groups-bar');
+    if (!bar) return;
+    const n = (_combineGroups || []).length;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    const countEl = document.getElementById('rfq-groups-count');
+    const pluralEl = document.getElementById('rfq-groups-plural');
+    if (countEl)  countEl.textContent = String(n);
+    if (pluralEl) pluralEl.textContent = n === 1 ? '' : 's';
+  }
+
+  // Map an in-memory rfq row id to its corresponding position in
+  // detail.rfqItems (i.e. what collectRfqItems produces). We walk the
+  // DOM in tbody order, skipping variant + add-for rows, mirroring
+  // collectRfqItems' enumeration so the indexes line up.
+  function _rfqIdxFromDomId(domId) {
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    for (let i = 0; i < parents.length; i++) {
+      if (parents[i].id === `rfq-${domId}`) return i;
+    }
+    return -1;
+  }
+  function _rfqDomIdFromIdx(idx) {
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const tr = parents[idx];
+    if (!tr || !tr.id) return null;
+    const m = tr.id.match(/^rfq-(\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+  function _rfqRowName(domId) {
+    const tr = document.getElementById(`rfq-${domId}`);
+    if (!tr) return '';
+    const inputs = tr.querySelectorAll('input:not([type="checkbox"])');
+    // [0]=SKU, [1]=Item, [2]=Qty, [3]=RMB, [4]=Lead
+    const item = inputs[1] ? inputs[1].value.trim() : '';
+    const sku  = inputs[0] ? inputs[0].value.trim() : '';
+    return item || sku || `Item ${_rfqIdxFromDomId(domId) + 1}`;
+  }
+
+  // ── Combine RFQ Items modal ───────────────────────────────────────
+  function openCombineRfqModal() {
+    if (_rfqSelected.size < 2) {
+      alert('Pick at least 2 items to combine.');
+      return;
+    }
+    const primarySel = document.getElementById('combine-rfq-primary');
+    primarySel.innerHTML = '';
+    Array.from(_rfqSelected).forEach((domId, i) => {
+      const label = _rfqRowName(domId);
+      const opt = document.createElement('option');
+      opt.value = String(domId);
+      opt.textContent = label;
+      if (i === 0) opt.selected = true;
+      primarySel.appendChild(opt);
+    });
+    const lbl = document.getElementById('combine-rfq-count');
+    if (lbl) lbl.textContent = _rfqSelected.size === 1 ? '1 item' : `${_rfqSelected.size} items`;
+    document.getElementById('combine-rfq-label').value = '';
+    document.getElementById('combine-rfq-error').style.display = 'none';
+    document.getElementById('combine-rfq-modal').style.display = 'flex';
+    setTimeout(() => { try { document.getElementById('combine-rfq-label').focus(); } catch {} }, 50);
+  }
+  function closeCombineRfqModal() {
+    document.getElementById('combine-rfq-modal').style.display = 'none';
+  }
+  function confirmCombineRfqModal() {
+    const label = document.getElementById('combine-rfq-label').value.trim();
+    const primaryDomId = parseInt(document.getElementById('combine-rfq-primary').value, 10);
+    const errEl = document.getElementById('combine-rfq-error');
+    if (!label) {
+      errEl.textContent = 'Group label is required (this is what the client sees).';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (!isFinite(primaryDomId)) {
+      errEl.textContent = 'Pick a primary item to source the qty from.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const itemIdxs = [];
+    let primaryIdx = -1;
+    Array.from(_rfqSelected).forEach(domId => {
+      const idx = _rfqIdxFromDomId(domId);
+      if (idx < 0) return;
+      itemIdxs.push(idx);
+      if (domId === primaryDomId) primaryIdx = idx;
+    });
+    if (itemIdxs.length < 2) {
+      errEl.textContent = 'Could not resolve selected items — try again or reload.';
+      errEl.style.display = 'block';
+      return;
+    }
+    const gid = 'g' + Date.now() + Math.floor(Math.random() * 1000);
+    _combineGroups.push({ id: gid, label, primaryIdx, itemIdxs });
+    closeCombineRfqModal();
+    deselectAllRfqRows();
+    updateRfqGroupsBar();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
+  // ── Manage Groups modal ───────────────────────────────────────────
+  function openManageRfqGroupsModal() {
+    renderManageRfqGroupsList();
+    document.getElementById('manage-rfq-groups-modal').style.display = 'flex';
+  }
+  function closeManageRfqGroupsModal() {
+    document.getElementById('manage-rfq-groups-modal').style.display = 'none';
+  }
+  function renderManageRfqGroupsList() {
+    const host = document.getElementById('manage-rfq-groups-list');
+    if (!host) return;
+    if (!_combineGroups || !_combineGroups.length) {
+      host.innerHTML = `<div style="padding:24px 8px; text-align:center; color:var(--text-muted); font-size:13px; font-style:italic;">No combined groups defined yet.</div>`;
+      return;
+    }
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    host.innerHTML = _combineGroups.map(g => {
+      const primaryDomId = _rfqDomIdFromIdx(g.primaryIdx);
+      const primaryName = primaryDomId ? _rfqRowName(primaryDomId) : `(missing — was index ${g.primaryIdx})`;
+      const memberCount = (g.itemIdxs || []).length;
+      const memberNames = (g.itemIdxs || [])
+        .map(idx => {
+          const dId = _rfqDomIdFromIdx(idx);
+          return dId ? _rfqRowName(dId) : `(missing #${idx})`;
+        })
+        .join(', ');
+      return `<div style="border:1px solid var(--border); border-radius:8px; padding:10px 12px; display:flex; gap:10px; align-items:flex-start;">
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:700; font-size:14px;">${esc(g.label)}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">Primary: <strong style="color:var(--text);">${esc(primaryName)}</strong> · ${memberCount} member${memberCount === 1 ? '' : 's'}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(memberNames)}">${esc(memberNames)}</div>
+        </div>
+        <button class="btn btn-ghost" style="font-size:11px; color:var(--danger); flex-shrink:0;" onclick="deleteRfqGroup('${esc(g.id)}')">Delete</button>
+      </div>`;
+    }).join('');
+  }
+  function deleteRfqGroup(id) {
+    _combineGroups = _combineGroups.filter(g => g.id !== id);
+    renderManageRfqGroupsList();
+    updateRfqGroupsBar();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
+  // Apply combine groups to a list of rfqItems for client-facing
+  // rendering. Returns a NEW array where grouped items are replaced
+  // by a single rolled-up entry. Members keep their flag so callers
+  // can skip them. Used by the Notify Client quote preview (Phase 1);
+  // PDF + on-screen Client Quote will adopt this in Phase 2.
+  function applyRfqCombineGroups(rfqItems, groups) {
+    if (!Array.isArray(rfqItems) || !Array.isArray(groups) || !groups.length) {
+      return rfqItems.slice();
+    }
+    // Build a fast lookup: rfqItems index → group it belongs to.
+    const idxToGroup = new Map();
+    groups.forEach(g => {
+      (g.itemIdxs || []).forEach(i => { idxToGroup.set(i, g); });
+    });
+    const out = [];
+    const emitted = new Set();
+    rfqItems.forEach((item, idx) => {
+      const g = idxToGroup.get(idx);
+      if (!g) { out.push(item); return; }
+      if (emitted.has(g.id)) return; // already rolled up
+      emitted.add(g.id);
+      const primary = rfqItems[g.primaryIdx] || item;
+      // Sum unit prices across every member (skip ones that fell out
+      // of range after RFQ deletion).
+      let sumRmb = 0;
+      (g.itemIdxs || []).forEach(i => {
+        const it = rfqItems[i];
+        if (!it) return;
+        sumRmb += parseFloat(String(it.priceRmb || '').replace(/,/g, '')) || 0;
+      });
+      const fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+      const sumUsd = sumRmb / fxRate;
+      out.push({
+        item: g.label,
+        sku: primary.sku || '',
+        qty: primary.qty || '',
+        priceRmb: sumRmb.toFixed(2),
+        priceUsd: sumUsd.toFixed(3),
+        leadTime: primary.leadTime || '',
+        variants: [],
+        _isCombineGroup: true,
+        _groupMembers: g.itemIdxs.slice(),
+      });
+    });
+    return out;
+  }
+
   function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = []) {
     rfqCount++;
     const id = rfqCount;
@@ -15437,6 +15771,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const handleAttr = isFirstRow ? '' : `draggable="true" onmousedown="this.closest('tr').draggable=true" onmouseup="this.closest('tr').draggable=false" ondragstart="event.dataTransfer.setData('text/plain','${id}'); this.closest('tr').style.opacity='0.4'" ondragend="this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false"`;
     tr.innerHTML = `
+      <td style="text-align:center; vertical-align:middle; padding:0 4px;">
+        <input type="checkbox" class="rfq-row-checkbox" data-rfq-id="${id}"
+               onchange="toggleRfqRowSelection(${id}, this.checked)"
+               title="Select for bulk action (Combine Items)"
+               style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
+      </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
       <td style="text-align:center; padding:24px 8px 4px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
       <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" /></td>
@@ -16002,6 +16342,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // empty-on-load goes into auto mode.
     const _vSkuAuto = (sku == null || String(sku).trim() === '') ? '1' : '0';
     tr.innerHTML = `
+      <td></td>
       <td title="Drag to reorder" style="cursor:grab; color:var(--text-muted); text-align:center; padding:0 6px; user-select:none; font-size:12px;"
           onmousedown="this.closest('tr').draggable=true"
           onmouseup="this.closest('tr').draggable=false">☰</td>
@@ -19343,7 +19684,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const clientEmail  = _escHtml(payload.client_email || '');
     const contactFirst = (payload.contact_name || '').trim().split(/\s+/)[0] || '';
     const greeting     = contactFirst ? `Hi ${_escHtml(contactFirst)},` : 'Hi there,';
-    const items        = Array.isArray(d.rfqItems) ? d.rfqItems.filter(i => i && (i.item || i.qty || (i.variants||[]).length)) : [];
+    // Apply combine groups BEFORE filtering empties — the rolled-up
+    // line replaces N member rows with a single entry that uses the
+    // group's label + summed unit prices. Member rows are dropped
+    // from the visible quote so the client never sees the component
+    // breakdown.
+    const _rawRfq = Array.isArray(d.rfqItems) ? d.rfqItems : [];
+    const _withGroups = (typeof applyRfqCombineGroups === 'function')
+      ? applyRfqCombineGroups(_rawRfq, Array.isArray(d.combineGroups) ? d.combineGroups : [])
+      : _rawRfq;
+    const items = _withGroups.filter(i => i && (i.item || i.qty || (i.variants||[]).length));
     const fmt2         = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const intFmt       = v => Number(v || 0).toLocaleString('en-US');
 
@@ -19535,7 +19885,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _notifyPayload = {
         type: 'quote_ready', client_email: clientEmail, contact_name: contactName,
         client_name: currentClient, rate: USD_TO_RMB,
-        details: { product, rfqItems, app_url: quoteAppUrl }
+        // combineGroups thread through so _renderQuotePreviewModal can
+        // collapse member items into rolled-up Client-Quote lines.
+        details: { product, rfqItems, combineGroups: (detail.combineGroups || _combineGroups || []), app_url: quoteAppUrl }
       };
 
       if (exportCsv) exportCsv.style.display = '';
@@ -25888,6 +26240,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         });
         renderExtraFeeRows();
       }
+      // Restore combined groups (Client Quote / PDF rollup spec) +
+      // refresh the bulk-select chrome + groups summary bar so the
+      // operator immediately sees how many groups this workbook has.
+      _combineGroups = Array.isArray(data.combineGroups) ? data.combineGroups.slice() : [];
+      _rfqSelected.clear();
+      updateRfqBulkBar();
+      updateRfqGroupsBar();
       // Restore which fees the operator had ticked on the Pricing tab.
       _appliedFees = new Set(Array.isArray(data.appliedFees) ? data.appliedFees : []);
       // Restore per-fee USD overrides (sample: $590 → operator typed
@@ -27567,6 +27926,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cmyk: _v('cmyk'),
       colorNotes: _v('color-notes'),
       rfqItems: collectRfqItems(),
+      // Combined groups for Client Quote rollup. Each group references
+      // RFQ items by their position in the rfqItems array (V1 trade-off:
+      // drag-reorder may invalidate references; warned in the modal
+      // copy). Stored as {id, label, primaryIdx, itemIdxs}.
+      combineGroups: Array.isArray(_combineGroups) ? _combineGroups.slice() : [],
       qcNotes: _v('quote-qc'),
       feeSampleDesc:  _v('fee-sample-desc'),
       // Money fields are now comma-formatted text inputs — strip the
