@@ -35805,21 +35805,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const opt = (v, lbl) => `<option value="${v}"${v === key ? ' selected' : ''} style="background:#fff; color:#1a1d2e; font-weight:500;">${lbl}</option>`;
     const customerLabel = (key === 'customer' && bg === '#fef2f2') ? 'Client · no address' : 'Client';
-    // Caret is appended to the option text (' ▾') rather than
-    // painted via background-image. The data:image-SVG approach
-    // breaks because currentColor in background-image SVGs doesn't
-    // cascade from the host element — the caret renders black
-    // regardless of pill state and disappears against tinted bgs.
-    // Unicode ▾ inherits the select's color property natively.
-    return `<select onclick="event.stopPropagation();"
-            onchange="event.stopPropagation(); onOrderCardShipToChange('${o.id}', this.value)"
-            title="Pick where this order ships to"
-            style="appearance:none; -webkit-appearance:none; -moz-appearance:none; box-sizing:border-box; height:22px; line-height:20px; padding:0 10px; margin-top:6px; border-radius:11px; background-color:${bg}; color:${fg}; border:1px solid ${bd}; font-size:11px; font-weight:600; white-space:nowrap; cursor:pointer; font-family:inherit; vertical-align:middle; align-self:flex-start;">
-      ${opt('',             'Ship to…  ▾')}
-      ${opt('pyvot',        'Ship to: Pyvot  ▾')}
-      ${opt('marketsculpt', 'Ship to: MarketSculpt  ▾')}
-      ${opt('customer',     `Ship to: ${customerLabel}  ▾`)}
-    </select>`;
+    // Caret rendered as a separate absolutely-positioned span over
+    // the right edge of the pill (pointer-events:none so clicks
+    // still hit the underlying <select>). Padding-right on the
+    // select reserves the caret's gutter so the option text never
+    // overlaps. Inheriting from the wrapper's color keeps the caret
+    // matched to whichever pill state color is active — done with
+    // an explicit color: on the caret span since position:absolute
+    // can sometimes lose inheritance through the layered z-stack.
+    return `<span style="position:relative; display:inline-flex; margin-top:6px; align-self:flex-start;">
+      <select onclick="event.stopPropagation();"
+              onchange="event.stopPropagation(); onOrderCardShipToChange('${o.id}', this.value)"
+              title="Pick where this order ships to"
+              style="appearance:none; -webkit-appearance:none; -moz-appearance:none; box-sizing:border-box; height:22px; line-height:20px; padding:0 24px 0 10px; border-radius:11px; background-color:${bg}; color:${fg}; border:1px solid ${bd}; font-size:11px; font-weight:600; white-space:nowrap; cursor:pointer; font-family:inherit; vertical-align:middle;">
+        ${opt('',             'Ship to…')}
+        ${opt('pyvot',        'Ship to: Pyvot')}
+        ${opt('marketsculpt', 'Ship to: MarketSculpt')}
+        ${opt('customer',     `Ship to: ${customerLabel}`)}
+      </select>
+      <span aria-hidden="true" style="position:absolute; right:9px; top:50%; transform:translateY(-50%); pointer-events:none; font-size:9px; color:${fg}; line-height:1;">▾</span>
+    </span>`;
   }
 
   // Inline-edit handler for the Ship To pill on the order cards.
