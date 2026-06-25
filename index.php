@@ -9339,7 +9339,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <option value="">— Fulfillment address —</option>
             <option value="pyvot">Pyvot</option>
             <option value="marketsculpt">MarketSculpt</option>
-            <option value="customer">Customer's address</option>
+            <option value="customer">Client's address</option>
           </select>
         </div>
         <div id="order-detail-shipto-preview" style="font-size:12px; color:var(--text-muted); line-height:1.45; flex:1; min-width:240px;"></div>
@@ -35804,7 +35804,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
     const opt = (v, lbl) => `<option value="${v}"${v === key ? ' selected' : ''} style="background:#fff; color:#1a1d2e; font-weight:500;">${lbl}</option>`;
-    const customerLabel = (key === 'customer' && bg === '#fef2f2') ? 'Customer · no address' : 'Customer';
+    const customerLabel = (key === 'customer' && bg === '#fef2f2') ? 'Client · no address' : 'Client';
     // Caret is appended to the option text (' ▾') rather than
     // painted via background-image. The data:image-SVG approach
     // breaks because currentColor in background-image SVGs doesn't
@@ -37781,7 +37781,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const cd  = (typeof clientDetails === 'object' && clientDetails) ? (clientDetails[o.clientName] || {}) : {};
       const adr = (cd.shipping_address || '').trim();
       if (!adr) {
-        preview.innerHTML = `<span style="color:#dc2626; font-weight:700;">⚠ No customer address on file.</span> <a href="#/client/${encodeURIComponent(o.clientName)}" style="color:var(--accent); text-decoration:underline;">Add one on ${o.clientName}'s client page</a>, then re-pick this option to see it here.`;
+        preview.innerHTML = `<span style="color:#dc2626; font-weight:700;">⚠ No client address on file.</span> <a href="#/client/${encodeURIComponent(o.clientName)}" style="color:var(--accent); text-decoration:underline;">Add one on ${o.clientName}'s client page</a>, then re-pick this option to see it here.`;
         return;
       }
       const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
