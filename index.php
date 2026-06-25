@@ -35814,7 +35814,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <select onclick="event.stopPropagation();"
               onchange="event.stopPropagation(); onOrderCardShipToChange('${o.id}', this.value)"
               title="Pick where this order ships to"
-              style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:2px 22px 2px 8px; border-radius:9px; background-color:${bg}; ${caret} color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; cursor:pointer; font-family:inherit;">
+              style="appearance:none; -webkit-appearance:none; -moz-appearance:none; box-sizing:border-box; height:20px; line-height:18px; padding:0 20px 0 8px; border-radius:9px; background-color:${bg}; ${caret} color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; cursor:pointer; font-family:inherit; vertical-align:middle;">
         ${opt('',             'Pick…')}
         ${opt('pyvot',        'Pyvot')}
         ${opt('marketsculpt', 'MarketSculpt')}
