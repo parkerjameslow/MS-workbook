@@ -35804,7 +35804,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         label = 'Customer — no address on file';
       }
     }
-    return `<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; margin-top:4px;" title="Ship To · ${label}">${label}</span>`;
+    return `<span style="display:inline-flex; align-items:center; gap:6px; margin-top:4px;">
+      <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Ship To:</span>
+      <span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap;" title="Ship To · ${label}">${label}</span>
+    </span>`;
   }
 
   function _buildFulfillmentCard(id) {
