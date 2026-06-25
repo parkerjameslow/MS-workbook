@@ -35791,36 +35791,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _orderCardShipToBadge(o) {
     if (!o) return '';
     const key = o.shipTo || '';
-    const labelMap = { pyvot: 'Pyvot', marketsculpt: 'MarketSculpt', customer: 'Customer' };
-    // Default (no pick yet) → muted grey, label "Pick…". Otherwise
-    // blue. Customer + no address on file → red warn so operator
-    // catches the missing address BEFORE packout.
-    let bg = 'rgba(150,150,150,0.10)', fg = 'var(--text-muted)', bd = 'rgba(150,150,150,0.30)';
+    // Color palette by state. Unset = neutral grey; assigned = soft
+    // blue tint; customer-without-address = red warn (operator
+    // catches the missing address BEFORE packout).
+    let bg = '#f3f4f6', fg = '#6b7280', bd = '#e5e7eb';
     if (key) {
-      bg = 'rgba(107,147,255,0.10)'; fg = '#6b93ff'; bd = 'rgba(107,147,255,0.30)';
+      bg = '#eef2ff'; fg = '#4f46e5'; bd = '#c7d2fe';
       if (key === 'customer') {
         const cd = (typeof clientDetails === 'object' && clientDetails) ? (clientDetails[o.clientName] || {}) : {};
         const hasAdr = !!(cd.shipping_address && String(cd.shipping_address).trim());
-        if (!hasAdr) { bg = 'rgba(220,38,38,0.10)'; fg = '#dc2626'; bd = 'rgba(220,38,38,0.30)'; }
+        if (!hasAdr) { bg = '#fef2f2'; fg = '#dc2626'; bd = '#fecaca'; }
       }
     }
-    const opt = (v, lbl) => `<option value="${v}"${v === key ? ' selected' : ''}>${lbl}</option>`;
-    // Hand-painted dropdown caret as a data: SVG so the pill stays
-    // self-contained — no theme-dependent assets. currentColor on
-    // the stroke makes it pick up whatever fg the pill is using.
-    const caret = "background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>\"); background-repeat: no-repeat; background-position: right 7px center;";
-    return `<span style="display:inline-flex; align-items:center; gap:6px; margin-top:4px;">
-      <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Ship To:</span>
-      <select onclick="event.stopPropagation();"
-              onchange="event.stopPropagation(); onOrderCardShipToChange('${o.id}', this.value)"
-              title="Pick where this order ships to"
-              style="appearance:none; -webkit-appearance:none; -moz-appearance:none; box-sizing:border-box; height:20px; line-height:18px; padding:0 20px 0 8px; border-radius:9px; background-color:${bg}; ${caret} color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; cursor:pointer; font-family:inherit; vertical-align:middle;">
-        ${opt('',             'Pick…')}
-        ${opt('pyvot',        'Pyvot')}
-        ${opt('marketsculpt', 'MarketSculpt')}
-        ${opt('customer',     key === 'customer' && bg === 'rgba(220,38,38,0.10)' ? 'Customer — no address on file' : 'Customer')}
-      </select>
-    </span>`;
+    const opt = (v, lbl) => `<option value="${v}"${v === key ? ' selected' : ''} style="background:#fff; color:#1a1d2e; font-weight:500;">${lbl}</option>`;
+    const customerLabel = (key === 'customer' && bg === '#fef2f2') ? 'Customer · no address' : 'Customer';
+    // Hand-painted dropdown caret as a data: SVG. currentColor on
+    // the stroke matches the pill's fg.
+    const caret = "background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'><path d='M1.5 3l2.5 2.5L6.5 3' fill='none' stroke='currentColor' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>\"); background-repeat: no-repeat; background-position: right 8px center;";
+    return `<select onclick="event.stopPropagation();"
+            onchange="event.stopPropagation(); onOrderCardShipToChange('${o.id}', this.value)"
+            title="Pick where this order ships to"
+            style="appearance:none; -webkit-appearance:none; -moz-appearance:none; box-sizing:border-box; height:22px; line-height:20px; padding:0 22px 0 10px; margin-top:6px; border-radius:11px; background-color:${bg}; ${caret} color:${fg}; border:1px solid ${bd}; font-size:11px; font-weight:600; white-space:nowrap; cursor:pointer; font-family:inherit; vertical-align:middle; align-self:flex-start;">
+      ${opt('',             'Ship to…')}
+      ${opt('pyvot',        'Ship to: Pyvot')}
+      ${opt('marketsculpt', 'Ship to: MarketSculpt')}
+      ${opt('customer',     `Ship to: ${customerLabel}`)}
+    </select>`;
   }
 
   // Inline-edit handler for the Ship To pill on the order cards.
