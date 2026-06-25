@@ -35783,6 +35783,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   //   • A small "Add to Shipment" CTA pinned in the right-card
   //     stack under the Total so the operator can act on the
   //     fulfillment state without leaving the dashboard.
+  // Tiny chip rendered next to the order title on both card
+  // builders (Orders + In Production) so the operator can see at
+  // a glance where each order is shipping to without drilling in.
+  // Returns empty string when no shipTo set yet (some orders
+  // haven't been routed yet — don't pretend they have).
+  function _orderCardShipToBadge(o) {
+    if (!o || !o.shipTo) return '';
+    const key = o.shipTo;
+    const labelMap = { pyvot: 'Pyvot', marketsculpt: 'MarketSculpt', customer: 'Customer' };
+    let label = labelMap[key] || key;
+    let bg = 'rgba(107,147,255,0.10)', fg = '#6b93ff', bd = 'rgba(107,147,255,0.30)';
+    let prefix = '📦';
+    // For the customer option, check whether an address exists on
+    // file. If it doesn't, flip the chip to a red warn state so the
+    // operator notices BEFORE they ship — no surprise "where does
+    // this even go?" at packout time.
+    if (key === 'customer') {
+      const cd = (typeof clientDetails === 'object' && clientDetails) ? (clientDetails[o.clientName] || {}) : {};
+      const hasAdr = !!(cd.shipping_address && String(cd.shipping_address).trim());
+      if (!hasAdr) {
+        bg = 'rgba(220,38,38,0.10)'; fg = '#dc2626'; bd = 'rgba(220,38,38,0.30)';
+        prefix = '⚠'; label = 'Customer — no address on file';
+      }
+    }
+    return `<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; margin-top:4px;" title="Ship To · ${label}">
+      <span style="font-size:11px; line-height:1;">${prefix}</span>${label}
+    </span>`;
+  }
+
   function _buildFulfillmentCard(id) {
     const o = orderData[id];
     if (!o) return '';
@@ -35913,6 +35942,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-left">
           <span class="oc-client">${o.clientName || ''}</span>
           <span class="oc-title">${o.name || `Order #${id}`}</span>
+          ${_orderCardShipToBadge(o)}
           <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">${pills.join('')}</div>
         </div>
         <div class="oc-wb-list">
@@ -36351,6 +36381,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="oc-left">
             <span class="oc-client">${o.clientName}</span>
             <span class="oc-title">${o.name}</span>
+            ${_orderCardShipToBadge(o)}
             ${leadBlock}
             ${deadlineBlock}
             ${changeBadge}
