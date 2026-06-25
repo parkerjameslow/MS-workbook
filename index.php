@@ -35794,22 +35794,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const labelMap = { pyvot: 'Pyvot', marketsculpt: 'MarketSculpt', customer: 'Customer' };
     let label = labelMap[key] || key;
     let bg = 'rgba(107,147,255,0.10)', fg = '#6b93ff', bd = 'rgba(107,147,255,0.30)';
-    let prefix = '📦';
-    // For the customer option, check whether an address exists on
-    // file. If it doesn't, flip the chip to a red warn state so the
-    // operator notices BEFORE they ship — no surprise "where does
-    // this even go?" at packout time.
+    // Customer + no address on file → red warn state. Operator
+    // catches the missing address BEFORE packout, not after.
     if (key === 'customer') {
       const cd = (typeof clientDetails === 'object' && clientDetails) ? (clientDetails[o.clientName] || {}) : {};
       const hasAdr = !!(cd.shipping_address && String(cd.shipping_address).trim());
       if (!hasAdr) {
         bg = 'rgba(220,38,38,0.10)'; fg = '#dc2626'; bd = 'rgba(220,38,38,0.30)';
-        prefix = '⚠'; label = 'Customer — no address on file';
+        label = 'Customer — no address on file';
       }
     }
-    return `<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; margin-top:4px;" title="Ship To · ${label}">
-      <span style="font-size:11px; line-height:1;">${prefix}</span>${label}
-    </span>`;
+    return `<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; margin-top:4px;" title="Ship To · ${label}">${label}</span>`;
   }
 
   function _buildFulfillmentCard(id) {
