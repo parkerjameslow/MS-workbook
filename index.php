@@ -35805,18 +35805,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const opt = (v, lbl) => `<option value="${v}"${v === key ? ' selected' : ''} style="background:#fff; color:#1a1d2e; font-weight:500;">${lbl}</option>`;
     const customerLabel = (key === 'customer' && bg === '#fef2f2') ? 'Customer · no address' : 'Customer';
-    // Bigger / bolder hand-painted caret so the chip clearly reads
-    // as a clickable dropdown. 11×11 svg with 2.2 stroke (was 8×8
-    // / 1.4) — visible against any pill color.
-    const caret = "background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 12 12'><path d='M2 4.5l4 4l4-4' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/></svg>\"); background-repeat: no-repeat; background-position: right 8px center;";
+    // Caret is appended to the option text (' ▾') rather than
+    // painted via background-image. The data:image-SVG approach
+    // breaks because currentColor in background-image SVGs doesn't
+    // cascade from the host element — the caret renders black
+    // regardless of pill state and disappears against tinted bgs.
+    // Unicode ▾ inherits the select's color property natively.
     return `<select onclick="event.stopPropagation();"
             onchange="event.stopPropagation(); onOrderCardShipToChange('${o.id}', this.value)"
             title="Pick where this order ships to"
-            style="appearance:none; -webkit-appearance:none; -moz-appearance:none; box-sizing:border-box; height:22px; line-height:20px; padding:0 26px 0 10px; margin-top:6px; border-radius:11px; background-color:${bg}; ${caret} color:${fg}; border:1px solid ${bd}; font-size:11px; font-weight:600; white-space:nowrap; cursor:pointer; font-family:inherit; vertical-align:middle; align-self:flex-start;">
-      ${opt('',             'Ship to…')}
-      ${opt('pyvot',        'Ship to: Pyvot')}
-      ${opt('marketsculpt', 'Ship to: MarketSculpt')}
-      ${opt('customer',     `Ship to: ${customerLabel}`)}
+            style="appearance:none; -webkit-appearance:none; -moz-appearance:none; box-sizing:border-box; height:22px; line-height:20px; padding:0 10px; margin-top:6px; border-radius:11px; background-color:${bg}; color:${fg}; border:1px solid ${bd}; font-size:11px; font-weight:600; white-space:nowrap; cursor:pointer; font-family:inherit; vertical-align:middle; align-self:flex-start;">
+      ${opt('',             'Ship to…  ▾')}
+      ${opt('pyvot',        'Ship to: Pyvot  ▾')}
+      ${opt('marketsculpt', 'Ship to: MarketSculpt  ▾')}
+      ${opt('customer',     `Ship to: ${customerLabel}  ▾`)}
     </select>`;
   }
 
