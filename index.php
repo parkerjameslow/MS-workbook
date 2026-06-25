@@ -35789,25 +35789,52 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Returns empty string when no shipTo set yet (some orders
   // haven't been routed yet — don't pretend they have).
   function _orderCardShipToBadge(o) {
-    if (!o || !o.shipTo) return '';
-    const key = o.shipTo;
+    if (!o) return '';
+    const key = o.shipTo || '';
     const labelMap = { pyvot: 'Pyvot', marketsculpt: 'MarketSculpt', customer: 'Customer' };
-    let label = labelMap[key] || key;
-    let bg = 'rgba(107,147,255,0.10)', fg = '#6b93ff', bd = 'rgba(107,147,255,0.30)';
-    // Customer + no address on file → red warn state. Operator
-    // catches the missing address BEFORE packout, not after.
-    if (key === 'customer') {
-      const cd = (typeof clientDetails === 'object' && clientDetails) ? (clientDetails[o.clientName] || {}) : {};
-      const hasAdr = !!(cd.shipping_address && String(cd.shipping_address).trim());
-      if (!hasAdr) {
-        bg = 'rgba(220,38,38,0.10)'; fg = '#dc2626'; bd = 'rgba(220,38,38,0.30)';
-        label = 'Customer — no address on file';
+    // Default (no pick yet) → muted grey, label "Pick…". Otherwise
+    // blue. Customer + no address on file → red warn so operator
+    // catches the missing address BEFORE packout.
+    let bg = 'rgba(150,150,150,0.10)', fg = 'var(--text-muted)', bd = 'rgba(150,150,150,0.30)';
+    if (key) {
+      bg = 'rgba(107,147,255,0.10)'; fg = '#6b93ff'; bd = 'rgba(107,147,255,0.30)';
+      if (key === 'customer') {
+        const cd = (typeof clientDetails === 'object' && clientDetails) ? (clientDetails[o.clientName] || {}) : {};
+        const hasAdr = !!(cd.shipping_address && String(cd.shipping_address).trim());
+        if (!hasAdr) { bg = 'rgba(220,38,38,0.10)'; fg = '#dc2626'; bd = 'rgba(220,38,38,0.30)'; }
       }
     }
+    const opt = (v, lbl) => `<option value="${v}"${v === key ? ' selected' : ''}>${lbl}</option>`;
+    // Hand-painted dropdown caret as a data: SVG so the pill stays
+    // self-contained — no theme-dependent assets. currentColor on
+    // the stroke makes it pick up whatever fg the pill is using.
+    const caret = "background-image: url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>\"); background-repeat: no-repeat; background-position: right 7px center;";
     return `<span style="display:inline-flex; align-items:center; gap:6px; margin-top:4px;">
       <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Ship To:</span>
-      <span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:${bg}; color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap;" title="Ship To · ${label}">${label}</span>
+      <select onclick="event.stopPropagation();"
+              onchange="event.stopPropagation(); onOrderCardShipToChange('${o.id}', this.value)"
+              title="Pick where this order ships to"
+              style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:2px 22px 2px 8px; border-radius:9px; background-color:${bg}; ${caret} color:${fg}; border:1px solid ${bd}; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; white-space:nowrap; cursor:pointer; font-family:inherit;">
+        ${opt('',             'Pick…')}
+        ${opt('pyvot',        'Pyvot')}
+        ${opt('marketsculpt', 'MarketSculpt')}
+        ${opt('customer',     key === 'customer' && bg === 'rgba(220,38,38,0.10)' ? 'Customer — no address on file' : 'Customer')}
+      </select>
     </span>`;
+  }
+
+  // Inline-edit handler for the Ship To pill on the order cards.
+  // Persists via saveOrders + re-renders whichever lane is visible
+  // so the pill color updates immediately without a full page
+  // reload.
+  function onOrderCardShipToChange(orderId, value) {
+    const o = orderData[orderId];
+    if (!o) return;
+    o.shipTo = value || '';
+    saveOrders();
+    const h = location.hash;
+    if (h === '#/orders'      && typeof renderOrdersList      === 'function') renderOrdersList();
+    if (h === '#/fulfillment' && typeof renderFulfillmentList === 'function') renderFulfillmentList();
   }
 
   function _buildFulfillmentCard(id) {
