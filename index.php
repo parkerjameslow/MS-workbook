@@ -9322,9 +9322,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span id="order-detail-stage-pill" style="display:none;"></span>
     </div>
 
-    <!-- Header: client name (big) → order name → controls -->
+    <!-- Header: client name (big) → ship-to → order name → controls -->
     <div class="order-detail-header">
       <div class="order-detail-client-name" id="order-detail-client-name"></div>
+
+      <!-- Fulfillment Address: dropdown to pick where the order ships
+           to (Pyvot / MarketSculpt warehouse / the customer's own
+           address from the Client Detail page). Resolved address +
+           any missing-address warning render in the line below the
+           dropdown so the operator can confirm where it'll land. -->
+      <div id="order-detail-shipto-wrap" style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:4px 0 10px;">
+        <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); white-space:nowrap;">Ship To</label>
+        <div class="ship-select-wrap" style="display:inline-block;">
+          <select id="order-detail-shipto" onchange="onOrderShipToChange()"
+                  style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:6px 30px 6px 12px; cursor:pointer; height:32px; line-height:1.1; box-sizing:border-box; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; min-width:180px;">
+            <option value="">— Fulfillment address —</option>
+            <option value="pyvot">Pyvot</option>
+            <option value="marketsculpt">MarketSculpt</option>
+            <option value="customer">Customer's address</option>
+          </select>
+        </div>
+        <div id="order-detail-shipto-preview" style="font-size:12px; color:var(--text-muted); line-height:1.45; flex:1; min-width:240px;"></div>
+      </div>
+
       <div class="order-detail-name-wrap">
         <!-- Single editable INV line below the client name. There used
              to be two fields here (a free-text "Order name…" + a
@@ -36449,6 +36469,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('order-detail-invoice').value = _invSeed;
     document.getElementById('order-detail-deposit-pct').value = o.depositPct != null ? o.depositPct : 30;
     document.getElementById('order-detail-notes').value = o.notes || '';
+    // Fulfillment address (Ship To) — read whatever the operator
+    // picked last (default blank → '— Fulfillment address —') and
+    // paint the resolved address line.
+    const _shipToSel = document.getElementById('order-detail-shipto');
+    if (_shipToSel) _shipToSel.value = o.shipTo || '';
+    _renderOrderShipToPreview();
 
     // ── Notify Client status badge + button-label adaptation ─────────
     // Three states the operator might be looking at:
@@ -37663,6 +37689,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     o.status = document.getElementById('order-detail-status').value;
     saveOrders();
     rebuildOrdersNav();
+  }
+
+  // Fulfillment-address pickset. Two static warehouses Pyvot +
+  // MarketSculpt; the customer option resolves to whatever's on
+  // clientDetails[clientName].shipping_address at the time the
+  // Order Detail renders (so address edits on the client page
+  // surface here without needing to re-save the order).
+  //
+  // Pyvot / MarketSculpt addresses below are operator-editable —
+  // change the constants here and every order shows the new value
+  // on the next render. We could push these into a settings UI
+  // later if either address starts changing per order.
+  const _FULFILLMENT_ADDRESSES = {
+    pyvot: {
+      label: 'Pyvot',
+      address: 'Pyvot Warehouse\n[street address — UPDATE ME]\n[city, state, zip]',
+    },
+    marketsculpt: {
+      label: 'MarketSculpt',
+      address: 'MarketSculpt\n13863 S. 2700 W. Unit [#]\nBluffdale, UT 84065',
+    },
+  };
+
+  // Format the resolved address for the preview line + the warning
+  // when the customer option is picked but the client has no
+  // shipping_address on file.
+  function _renderOrderShipToPreview() {
+    const preview = document.getElementById('order-detail-shipto-preview');
+    if (!preview) return;
+    const o = orderData[_currentOrderId];
+    if (!o) { preview.textContent = ''; return; }
+    const key = o.shipTo || '';
+    if (!key) { preview.textContent = ''; return; }
+    if (key === 'customer') {
+      const cd  = (typeof clientDetails === 'object' && clientDetails) ? (clientDetails[o.clientName] || {}) : {};
+      const adr = (cd.shipping_address || '').trim();
+      if (!adr) {
+        preview.innerHTML = `<span style="color:#dc2626; font-weight:700;">⚠ No customer address on file.</span> <a href="#/client/${encodeURIComponent(o.clientName)}" style="color:var(--accent); text-decoration:underline;">Add one on ${o.clientName}'s client page</a>, then re-pick this option to see it here.`;
+        return;
+      }
+      const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      preview.innerHTML = `<strong style="color:var(--text);">${esc(o.clientName)}</strong> · ${esc(adr).replace(/\r?\n/g, ' · ')}`;
+      return;
+    }
+    const entry = _FULFILLMENT_ADDRESSES[key];
+    if (!entry) { preview.textContent = ''; return; }
+    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    preview.innerHTML = `<strong style="color:var(--text);">${esc(entry.label)}</strong> · ${esc(entry.address).replace(/\r?\n/g, ' · ')}`;
+  }
+
+  function onOrderShipToChange() {
+    const o = orderData[_currentOrderId];
+    if (!o) return;
+    o.shipTo = document.getElementById('order-detail-shipto').value || '';
+    saveOrders();
+    _renderOrderShipToPreview();
   }
 
   function onOrderPoChange() {
