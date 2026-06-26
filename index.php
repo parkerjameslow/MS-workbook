@@ -31656,45 +31656,70 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _pendingOrderIdForPicker = null;
   }
 
+  // Status display map — single source of truth for the pill label +
+  // pastel pair across the lifecycle. Keeps the picker visually
+  // consistent with the rest of the Shipments lane.
+  const _SHIP_STATUS_DISPLAY = {
+    planning:         { label: 'Planning',        bg: '#eef2ff', fg: '#4f46e5' },
+    waiting_arrival:  { label: 'Waiting Arrival', bg: '#fef3c7', fg: '#a16207' },
+    in_transit:       { label: 'In Transit',      bg: '#dbeafe', fg: '#1d4ed8' },
+    delivered:        { label: 'Delivered',       bg: '#dcfce7', fg: '#16a34a' },
+    received:         { label: 'Received',        bg: '#f3f4f6', fg: '#4b5563' },
+  };
+
   function _renderPickShipmentList() {
     const list = document.getElementById('pick-ship-list');
     if (!list) return;
     const orderId = _pendingOrderIdForPicker;
-    // Eligible = shipments still open for additions. Once a shipment
-    // is in_transit or beyond, the factory has already loaded the
-    // container and adding more orders doesn't make sense.
-    const openStatuses = ['planning', 'waiting_arrival'];
-    const eligible = Object.values(shipmentData || {})
-      .filter(s => s && openStatuses.includes(s.status))
-      // Newest first — operators usually want the most recent planning
-      // shipment, not a months-old one.
-      .sort((a, b) => (parseInt(b.id) || 0) - (parseInt(a.id) || 0));
-    if (eligible.length === 0) {
+    // Show EVERY shipment regardless of status — operator wants full
+    // visibility. Each card surfaces its current status pill so the
+    // picker doubles as a quick "where did orders go?" map.
+    // Open shipments (planning + waiting_arrival) sort to the top
+    // since those are the ones the operator usually wants; remaining
+    // statuses fall through in lifecycle order.
+    const statusOrder = ['planning', 'waiting_arrival', 'in_transit', 'delivered', 'received'];
+    const all = Object.values(shipmentData || {})
+      .filter(s => s && s.id != null)
+      .sort((a, b) => {
+        const ai = statusOrder.indexOf(a.status); const bi = statusOrder.indexOf(b.status);
+        if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        // Within the same status bucket, newest first.
+        return (parseInt(b.id) || 0) - (parseInt(a.id) || 0);
+      });
+    if (all.length === 0) {
       list.innerHTML = `<div style="padding:24px 16px; text-align:center; color:var(--text-muted); font-size:13px; border:1px dashed var(--border); border-radius:10px;">
-        No open shipments yet — use <strong>+ Create New Shipment</strong> above to start one.
+        No shipments yet — use <strong>+ Create New Shipment</strong> above to start one.
       </div>`;
       return;
     }
-    list.innerHTML = eligible.map(s => {
+    // Closed = in_transit, delivered, or received. The container has
+    // physically left the factory; adding orders to it would desync
+    // the manifest. Render those non-clickable but still visible so
+    // the operator can see where past orders ended up.
+    const closedStatuses = new Set(['in_transit', 'delivered', 'received']);
+    list.innerHTML = all.map(s => {
       const sid = s.id;
-      const statusLabel = s.status === 'planning' ? 'Planning' : 'Waiting Arrival';
-      const statusBg    = s.status === 'planning' ? '#eef2ff' : '#fef3c7';
-      const statusFg    = s.status === 'planning' ? '#4f46e5' : '#a16207';
+      const disp = _SHIP_STATUS_DISPLAY[s.status] || { label: (s.status || 'unknown').toUpperCase(), bg: '#f3f4f6', fg: '#4b5563' };
       const entryCount  = Array.isArray(s.entries) ? s.entries.length : 0;
-      // Check if this order is already in the shipment so the operator
-      // doesn't accidentally double-add.
-      const alreadyIn = entryCount > 0 && s.entries.some(e => e && parseInt(e.orderId) === parseInt(orderId));
-      const disabledStyle = alreadyIn ? 'opacity:0.55; cursor:not-allowed;' : 'cursor:pointer;';
-      const onclick       = alreadyIn ? '' : ` onclick="_pickShipmentForOrder('${sid}')"`;
-      return `<div${onclick} style="display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fff; transition:background 0.12s, border-color 0.12s; ${disabledStyle}"
-                   onmouseover="if(!${alreadyIn}){this.style.background='#f9fafb'; this.style.borderColor='var(--accent)';}"
+      const alreadyIn   = entryCount > 0 && s.entries.some(e => e && parseInt(e.orderId) === parseInt(orderId));
+      const isClosed    = closedStatuses.has(s.status);
+      const cantPick    = alreadyIn || isClosed;
+      const disabledStyle = cantPick ? 'opacity:0.6; cursor:not-allowed;' : 'cursor:pointer;';
+      const onclick       = cantPick ? '' : ` onclick="_pickShipmentForOrder('${sid}')"`;
+      const titleAttr     = isClosed && !alreadyIn ? ' title="Shipment has left the factory — can\'t add more orders"' : '';
+      let trailing;
+      if (alreadyIn)      trailing = '<span style="font-size:11px; font-weight:600; color:#16a34a; white-space:nowrap;">✓ Added</span>';
+      else if (isClosed)  trailing = '<span style="font-size:14px; color:var(--text-muted); opacity:0.5;">🔒</span>';
+      else                trailing = '<span style="font-size:16px; color:var(--text-muted);">›</span>';
+      return `<div${onclick}${titleAttr} style="display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fff; transition:background 0.12s, border-color 0.12s; ${disabledStyle}"
+                   onmouseover="if(!${cantPick}){this.style.background='#f9fafb'; this.style.borderColor='var(--accent)';}"
                    onmouseout="this.style.background='#fff'; this.style.borderColor='var(--border)';">
         <div style="flex:1; min-width:0;">
           <div style="font-weight:700; font-size:14px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${(s.name || '(unnamed shipment)').replace(/</g, '&lt;')}</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}${s.dateCreated ? ' · created ' + s.dateCreated : ''}</div>
         </div>
-        <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:3px 8px; border-radius:99px; background:${statusBg}; color:${statusFg}; white-space:nowrap;">${statusLabel}</span>
-        ${alreadyIn ? '<span style="font-size:11px; font-weight:600; color:#16a34a; white-space:nowrap;">✓ Added</span>' : '<span style="font-size:16px; color:var(--text-muted);">›</span>'}
+        <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:3px 8px; border-radius:99px; background:${disp.bg}; color:${disp.fg}; white-space:nowrap;">${disp.label}</span>
+        ${trailing}
       </div>`;
     }).join('');
   }
