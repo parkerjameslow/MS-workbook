@@ -8800,7 +8800,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text); user-select:none;">
           <input type="checkbox" id="tracking-modal-book-truck" onchange="_toggleBookTruckFields(this.checked)"
                  style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); margin:0;" />
-          <span>🚚 Book a truck with Ivan</span>
+          <span>Book a truck with Ivan</span>
         </label>
         <p style="margin:6px 0 0 26px; font-size:11px; color:var(--text-muted); line-height:1.4;">
           Check to capture the BOL so Ivan can dispatch a truck for pickup.
@@ -32874,16 +32874,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fields = document.getElementById('tracking-modal-bol-fields');
     if (!fields) return;
     fields.style.display = checked ? 'flex' : 'none';
-    // If the operator is just opening the BOL section for the first
-    // time and the Ship To field is blank, try to pre-fill it from the
-    // shipment's first order's resolved Ship To address — saves a
-    // copy-paste for the common case.
     if (checked) {
+      // Pre-fill Ship To from the shipment's first order if the
+      // textarea is blank — saves a copy-paste in the common case.
       const shipTo = document.getElementById('bol-ship-to');
       if (shipTo && !shipTo.value.trim()) {
         const inferred = _inferBolShipToForCurrentShipment();
         if (inferred) shipTo.value = inferred;
       }
+      // Scroll the BOL section into view inside the modal so the
+      // operator immediately sees what just appeared (the section
+      // is below the carrier/tracking fields and would otherwise
+      // sit below the fold on smaller screens).
+      setTimeout(() => { try { fields.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {} }, 30);
+      // Focus the first empty field for fast entry.
+      setTimeout(() => {
+        const order = ['bol-ship-from', 'bol-ship-to', 'bol-pickup-date', 'bol-pickup-time', 'bol-pallets', 'bol-weight', 'bol-commodity', 'bol-notes'];
+        for (const id of order) {
+          const el = document.getElementById(id);
+          if (el && !String(el.value || '').trim()) { try { el.focus(); } catch {}; break; }
+        }
+      }, 220);
     }
   }
 
@@ -32941,6 +32952,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     setVal('bol-weight',     tb && tb.weight     || '');
     setVal('bol-commodity',  tb && tb.commodity  || '');
     setVal('bol-notes',      tb && tb.notes      || '');
+    // If the shipment is already booked, scroll the BOL section
+    // into view on open so the operator immediately sees the saved
+    // BOL details (otherwise the section sits below the fold and
+    // looks like nothing happened).
+    if (tb && bolFields) {
+      setTimeout(() => { try { bolFields.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {} }, 80);
+    }
     // Intro copy + confirm button label both reflect the requested
     // status. Under the new transition rules:
     //   • in_transit / waiting_arrival → stays in Shipments; button
