@@ -9062,13 +9062,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
-    <!-- Container type selector -->
-    <div style="margin-bottom:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Container Type</div>
-    <div class="container-type-row" id="ship-container-btns">
-      <button class="container-type-btn active" data-type="20ft" onclick="setContainerType('20ft')">20' Standard <span style="font-weight:400; opacity:0.7;">· 25 CBM · 21,700 kg</span></button>
-      <button class="container-type-btn" data-type="40ft"  onclick="setContainerType('40ft')">40' Standard <span style="font-weight:400; opacity:0.7;">· 55 CBM · 26,500 kg</span></button>
-      <button class="container-type-btn" data-type="40hc"  onclick="setContainerType('40hc')">40' High Cube <span style="font-weight:400; opacity:0.7;">· 65 CBM · 26,500 kg</span></button>
-    </div>
+    <!-- Container type selector removed per operator — the underlying
+         containerType field still backs the CBM / weight / pallet cap
+         math, defaulting to 40hc on every create. -->
 
     <!-- Container utilization -->
     <div class="ship-util-grid" id="ship-util-grid">
@@ -9673,16 +9669,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </select>
         </div>
       </div>
-      <div class="modal-field">
-        <label>Container Type</label>
-        <div class="select-wrap">
-          <select id="new-ship-container">
-            <option value="20ft">20' Standard — 25 CBM · 21,700 kg</option>
-            <option value="40ft">40' Standard — 55 CBM · 26,500 kg</option>
-            <option value="40hc" selected>40' High Cube — 65 CBM · 26,500 kg</option>
-          </select>
-        </div>
-      </div>
+      <!-- Container Type select removed per operator. New shipments
+           default to 40hc internally so cap math + container viz keep
+           working — operator just never sees the field. -->
+      <input type="hidden" id="new-ship-container" value="40hc" />
       <!-- Port dates only relevant for ocean freight; show/hide via
            _onNewShipMethodChange. Hidden by default until method picked. -->
       <div id="new-ship-port-dates" style="display:none; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
@@ -32158,7 +32148,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <option value="delivered"       ${s.status === 'delivered'       ? 'selected' : ''}>Delivered</option>
               <option value="received"        ${s.status === 'received'        ? 'selected' : ''}>Received</option>
             </select>
-            <span class="shipment-container-tag">${spec.label}</span>
+            <!-- container-type tag removed per operator preference -->
           </div>
         </div>
       </div>`;
@@ -35939,7 +35929,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       status: 'draft',
       dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
       poNumber: '',
-      depositPct: 30,
+      depositPct: 50,
       notes: '',
       entries,
     };
@@ -37482,7 +37472,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (_m) _invSeed = _m[1];
     }
     document.getElementById('order-detail-invoice').value = _invSeed;
-    document.getElementById('order-detail-deposit-pct').value = o.depositPct != null ? o.depositPct : 30;
+    document.getElementById('order-detail-deposit-pct').value = o.depositPct != null ? o.depositPct : 50;
     document.getElementById('order-detail-notes').value = o.notes || '';
     // Fulfillment address (Ship To) — read whatever the operator
     // picked last (default blank → '— Fulfillment address —') and
@@ -38363,7 +38353,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Falls back to the legacy orderTotals.totalUsd (tier × qty)
     // when no workbook has Sale Per typed yet so a brand-new
     // order still shows a non-zero deposit.
-    const pct = o.depositPct != null ? o.depositPct : 30;
+    const pct = o.depositPct != null ? o.depositPct : 50;
     let baseUsd = 0;
     (o.entries || []).forEach(e => {
       const w = _wbStatsForPicker(workbookDetail[`${e.clientName}|${e.workbookId}`]);
@@ -38790,7 +38780,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onOrderDepositPctChange() {
     const o = orderData[_currentOrderId];
     if (!o) return;
-    const val = parseInt(document.getElementById('order-detail-deposit-pct').value) || 30;
+    const val = parseInt(document.getElementById('order-detail-deposit-pct').value) || 50;
     o.depositPct = Math.min(100, Math.max(0, val));
     saveOrders();
     renderOrderDepositTracking();
