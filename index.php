@@ -35963,7 +35963,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const profitHasData = (agPrice > 0 && profitBasis > 0);
     const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
     const profitHtml    = profitHasData
-      ? `<span style="color:${profitColor}; font-weight:700;">${fmtUsdT(profitT)}</span>`
+      ? fmtUsdT(profitT)
       : '—';
 
     return `<div class="order-card" onclick="location.hash='#/order/${id}'">
@@ -35994,12 +35994,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
+        <div class="oc-stat" title="Sale revenue minus all cost (product + shipping + fees). Operator-internal only — never sent to the client. Label reads 'Additional' so the column doesn't surface as profit if the screen is shared."><span class="oc-stat-label">Additional</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
         <div class="oc-stat" title="Product cost only — Total (ours) minus Shipping. Sum of each workbook's Pricing-tab Product Cost (no fees, no margin)."><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span>${fmtRmbT(agCostProduct)}</div>
         <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span>${fmtRmbT(agShipping)}</div>
         <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span>${fmtRmbT(agTotalOurs)}</div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span>${fmtRmbT(agPrice)}</div>
         <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span>${fmtRmbT(agFeesBilled)}</div>
-        <div class="oc-stat" title="Sale revenue minus all cost (product + shipping + fees). Operator-internal only — never sent to the client. Label reads 'Additional' so the column doesn't surface as profit if the screen is shared."><span class="oc-stat-label">Additional</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
           <span class="oc-stat-val">${cbmValHtml}</span>
@@ -36387,17 +36387,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const profitHasData = (agPrice > 0 && profitBasis > 0);
       const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
       const profitHtml    = profitHasData
-        ? `<span style="color:${profitColor}; font-weight:700;">${fmtUsdT(profitT)}</span>`
+        ? fmtUsdT(profitT)
         : '—';
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
+        <div class="oc-stat" title="Sale revenue minus all cost (product + shipping + fees). Operator-internal only — never sent to the client. Label reads 'Additional' so the column doesn't surface as profit if the screen is shared."><span class="oc-stat-label">Additional</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
         <div class="oc-stat" title="${_costTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span>${fmtRmbT(agCostProduct)}</div>
         <div class="oc-stat" title="${_shipTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span>${fmtRmbT(agShipping)}</div>
         <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span>${fmtRmbT(agTotalOurs)}</div>
         <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span>${fmtRmbT(agPrice)}</div>
         <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span>${fmtRmbT(agFeesBilled)}</div>
-        <div class="oc-stat" title="Sale revenue minus all cost (product + shipping + fees). Operator-internal only — never sent to the client. Label reads 'Additional' so the column doesn't surface as profit if the screen is shared."><span class="oc-stat-label">Additional</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
           <span class="oc-stat-val">${cbmValHtml}</span>
