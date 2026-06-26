@@ -9580,6 +9580,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- ── Pick Shipment for Order Modal (from Production card) ──────────── -->
+<!-- Lightweight picker triggered by the "+ Add to Shipment" button on
+     an In Production order card. Lists open shipments (planning +
+     waiting_arrival) the operator can drop this order into, and always
+     surfaces a "+ Create New Shipment" CTA at the top so a fresh
+     shipment is one click away regardless of how many exist. -->
+<div class="modal-overlay" id="modal-pick-shipment-for-order" onclick="if(event.target===this)closePickShipmentForOrder()" style="z-index:1000;">
+  <div class="modal" style="max-width:520px; display:flex; flex-direction:column; max-height:80vh; overflow:hidden;">
+    <div class="modal-title" style="flex-shrink:0;">Add Order to Shipment</div>
+    <div id="pick-ship-subtitle" style="flex-shrink:0; font-size:13px; color:var(--text-muted); margin:-6px 0 14px;">Pick an existing shipment, or create a new one.</div>
+    <button type="button" id="pick-ship-new-btn" onclick="_createNewShipmentForCurrentOrder()"
+            style="flex-shrink:0; width:100%; padding:12px 14px; margin-bottom:14px; border-radius:10px; background:var(--accent); color:#fff; border:none; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; display:flex; align-items:center; justify-content:center; gap:8px;">
+      <span style="font-size:16px; line-height:1;">+</span> Create New Shipment
+    </button>
+    <div id="pick-ship-list" style="flex:1; overflow-y:auto; min-height:60px; display:flex; flex-direction:column; gap:8px; padding-right:4px;"></div>
+    <div class="modal-actions" style="flex-shrink:0; margin-top:14px;">
+      <button type="button" class="btn btn-ghost" onclick="closePickShipmentForOrder()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Add Order to Shipment Modal ────────────────────────────────────── -->
 <!-- Modal is a fixed-height flex column: title / filter / search are
      pinned at the top, the Orders + Samples lists scroll inside the
@@ -31523,10 +31544,131 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       etd: '', eta: '',
       entries: [],
     };
+    // If this createShipment was triggered from the production-card
+    // pick-shipment flow ("+ Create New Shipment" inside the order's
+    // shipment picker), auto-attach the pending order entry so the
+    // operator doesn't have to re-add it after the route. Cleared
+    // either way so a normal "+ New Shipment" elsewhere isn't
+    // contaminated by a stale id.
+    const pendingOrderId = _pendingOrderForNewShipment;
+    _pendingOrderForNewShipment = null;
+    if (pendingOrderId != null && orderData[pendingOrderId]) {
+      shipmentData[id].entries.push({ orderId: parseInt(pendingOrderId) });
+    }
     saveShipments();
     rebuildShipmentsNav();
     closeNewShipmentModal();
+    // When routed from the production picker, refresh the source list
+    // so the count badge / pill state on the order card updates the
+    // next time the operator backs out.
+    if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') {
+      renderFulfillmentList();
+    }
     location.hash = `#/shipment/${id}`;
+  }
+
+  // ── Pick Shipment for Order (from Production card) ───────────────────
+  // Triggered by the "+ Add to Shipment" button on the In Production
+  // order card. Replaces the old "punt to /shipments" behavior with a
+  // focused picker: lists every open shipment (planning +
+  // waiting_arrival statuses — shipments that haven't physically left
+  // the factory yet), plus a permanently-visible "+ Create New
+  // Shipment" CTA. Picking a shipment adds the order entry and saves
+  // in place; creating a new one routes to the new shipment with the
+  // order already attached via _pendingOrderForNewShipment.
+  let _pendingOrderIdForPicker = null;
+  let _pendingOrderForNewShipment = null;
+
+  function openPickShipmentForOrder(orderId) {
+    const o = orderData[orderId];
+    if (!o) return;
+    _pendingOrderIdForPicker = orderId;
+    const sub = document.getElementById('pick-ship-subtitle');
+    if (sub) {
+      const clientName = (o.clientName || 'this order');
+      sub.textContent = `Pick a shipment to add ${clientName} Order #${String(orderId).padStart(3, '0')} to, or create a new one.`;
+    }
+    _renderPickShipmentList();
+    document.getElementById('modal-pick-shipment-for-order').classList.add('open');
+    document.getElementById('modal-pick-shipment-for-order').style.display = 'flex';
+  }
+
+  function closePickShipmentForOrder() {
+    const m = document.getElementById('modal-pick-shipment-for-order');
+    if (m) { m.classList.remove('open'); m.style.display = 'none'; }
+    _pendingOrderIdForPicker = null;
+  }
+
+  function _renderPickShipmentList() {
+    const list = document.getElementById('pick-ship-list');
+    if (!list) return;
+    const orderId = _pendingOrderIdForPicker;
+    // Eligible = shipments still open for additions. Once a shipment
+    // is in_transit or beyond, the factory has already loaded the
+    // container and adding more orders doesn't make sense.
+    const openStatuses = ['planning', 'waiting_arrival'];
+    const eligible = Object.values(shipmentData || {})
+      .filter(s => s && openStatuses.includes(s.status))
+      // Newest first — operators usually want the most recent planning
+      // shipment, not a months-old one.
+      .sort((a, b) => (parseInt(b.id) || 0) - (parseInt(a.id) || 0));
+    if (eligible.length === 0) {
+      list.innerHTML = `<div style="padding:24px 16px; text-align:center; color:var(--text-muted); font-size:13px; border:1px dashed var(--border); border-radius:10px;">
+        No open shipments yet — use <strong>+ Create New Shipment</strong> above to start one.
+      </div>`;
+      return;
+    }
+    list.innerHTML = eligible.map(s => {
+      const sid = s.id;
+      const statusLabel = s.status === 'planning' ? 'Planning' : 'Waiting Arrival';
+      const statusBg    = s.status === 'planning' ? '#eef2ff' : '#fef3c7';
+      const statusFg    = s.status === 'planning' ? '#4f46e5' : '#a16207';
+      const entryCount  = Array.isArray(s.entries) ? s.entries.length : 0;
+      // Check if this order is already in the shipment so the operator
+      // doesn't accidentally double-add.
+      const alreadyIn = entryCount > 0 && s.entries.some(e => e && parseInt(e.orderId) === parseInt(orderId));
+      const disabledStyle = alreadyIn ? 'opacity:0.55; cursor:not-allowed;' : 'cursor:pointer;';
+      const onclick       = alreadyIn ? '' : ` onclick="_pickShipmentForOrder('${sid}')"`;
+      return `<div${onclick} style="display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; background:#fff; transition:background 0.12s, border-color 0.12s; ${disabledStyle}"
+                   onmouseover="if(!${alreadyIn}){this.style.background='#f9fafb'; this.style.borderColor='var(--accent)';}"
+                   onmouseout="this.style.background='#fff'; this.style.borderColor='var(--border)';">
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:700; font-size:14px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${(s.name || '(unnamed shipment)').replace(/</g, '&lt;')}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${entryCount} ${entryCount === 1 ? 'entry' : 'entries'}${s.dateCreated ? ' · created ' + s.dateCreated : ''}</div>
+        </div>
+        <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:3px 8px; border-radius:99px; background:${statusBg}; color:${statusFg}; white-space:nowrap;">${statusLabel}</span>
+        ${alreadyIn ? '<span style="font-size:11px; font-weight:600; color:#16a34a; white-space:nowrap;">✓ Added</span>' : '<span style="font-size:16px; color:var(--text-muted);">›</span>'}
+      </div>`;
+    }).join('');
+  }
+
+  function _pickShipmentForOrder(shipmentId) {
+    const orderId = _pendingOrderIdForPicker;
+    const s = shipmentData[shipmentId];
+    const o = orderData[orderId];
+    if (!s || !o) return;
+    s.entries = s.entries || [];
+    const oid = parseInt(orderId);
+    if (!s.entries.some(e => parseInt(e.orderId) === oid)) {
+      s.entries.push({ orderId: oid });
+    }
+    saveShipments();
+    rebuildShipmentsNav();
+    closePickShipmentForOrder();
+    // Refresh the source list so any per-card hints (e.g. "in shipment
+    // #X") update on the spot. Skip if we're not on the production view.
+    if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') {
+      renderFulfillmentList();
+    }
+  }
+
+  function _createNewShipmentForCurrentOrder() {
+    // Stash the order id so createShipment auto-attaches it after the
+    // shipment is minted. Close the picker, open the new-shipment
+    // modal — the existing form/submit flow handles the rest.
+    _pendingOrderForNewShipment = _pendingOrderIdForPicker;
+    closePickShipmentForOrder();
+    openNewShipmentModal();
   }
 
   // ── List view ────────────────────────────────────────────────────────
@@ -36014,9 +36156,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="oc-grand-label">Total</span>
             <span class="oc-grand-usd">${usdStr}</span>
             ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : ''}
-            <button onclick="event.stopPropagation(); location.hash='#/shipments'"
+            <button onclick="event.stopPropagation(); openPickShipmentForOrder('${id}')"
               style="margin-top:10px; padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
-              title="Open Shipments to drop this order's workbooks into a shipment">
+              title="Pick a shipment to add this order to, or create a new one">
               + Add to Shipment
             </button>
           </div>
