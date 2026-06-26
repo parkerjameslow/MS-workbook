@@ -8766,7 +8766,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      shipment's status to "Waiting Arrival". Captures carrier + tracking
      number, then kicks off the AI lookup. -->
 <div class="modal-overlay" id="tracking-modal" style="display:none;">
-  <div class="modal" style="max-width:440px; width:100%;">
+  <div class="modal" style="max-width:560px; width:100%; max-height:90vh; overflow-y:auto;">
     <div class="modal-header">
       <h3 style="margin:0; font-size:16px;">Add Carrier &amp; Tracking</h3>
       <button onclick="closeTrackingModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
@@ -8790,6 +8790,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div>
         <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Tracking Number</label>
         <input id="tracking-modal-number" type="text" class="form-input" style="width:100%;" placeholder="e.g. 1Z999AA10123456784" autocomplete="off" />
+      </div>
+      <!-- ─ Book a truck with Ivan ─────────────────────────────────────
+           Operator-only toggle for arranging a US-side truck pickup
+           through Ivan. Checking the box reveals the BOL (Bill of
+           Lading) fields. Persists to s.truckBooking on save so the
+           Shipments lane can surface a "truck booked" indicator. -->
+      <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:4px;">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text); user-select:none;">
+          <input type="checkbox" id="tracking-modal-book-truck" onchange="_toggleBookTruckFields(this.checked)"
+                 style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); margin:0;" />
+          <span>🚚 Book a truck with Ivan</span>
+        </label>
+        <p style="margin:6px 0 0 26px; font-size:11px; color:var(--text-muted); line-height:1.4;">
+          Check to capture the BOL so Ivan can dispatch a truck for pickup.
+        </p>
+        <div id="tracking-modal-bol-fields" style="display:none; flex-direction:column; gap:12px; margin-top:14px; padding:14px; background:rgba(107,147,255,0.06); border:1px solid var(--border); border-radius:10px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Ship From</label>
+            <textarea id="bol-ship-from" class="form-input" rows="2" placeholder="Origin address — where Ivan picks up&#10;(e.g. Port of Long Beach, 1100 Pier S Way)" style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px;"></textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Ship To</label>
+            <textarea id="bol-ship-to" class="form-input" rows="2" placeholder="Destination address — final delivery&#10;(auto-fills from order Ship To when available)" style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px;"></textarea>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;"># of Stops</label>
+              <input id="bol-stops" type="number" class="form-input" min="1" value="1" style="width:100%; padding:8px 10px; font-size:13px;" />
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Pickup Date</label>
+              <input id="bol-pickup-date" type="date" class="form-input" style="width:100%; padding:8px 10px; font-size:13px;" />
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Pickup Time</label>
+              <input id="bol-pickup-time" type="time" class="form-input" style="width:100%; padding:8px 10px; font-size:13px;" />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Pallet Count</label>
+              <input id="bol-pallets" type="number" class="form-input" min="0" placeholder="e.g. 18" style="width:100%; padding:8px 10px; font-size:13px;" />
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Total Weight (lbs)</label>
+              <input id="bol-weight" type="number" class="form-input" min="0" placeholder="e.g. 12,400" style="width:100%; padding:8px 10px; font-size:13px;" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Commodity / Description</label>
+            <input id="bol-commodity" type="text" class="form-input" placeholder="e.g. Retail-packaged consumer goods, NMFC 156600 Class 70" style="width:100%; padding:8px 10px; font-size:13px;" />
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Notes / Special Instructions</label>
+            <textarea id="bol-notes" class="form-input" rows="2" placeholder="Dock hours, lift-gate required, appointment needed, etc." style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px;"></textarea>
+          </div>
+        </div>
       </div>
       <div id="tracking-modal-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
@@ -32784,6 +32841,55 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Tracking entry modal ──────────────────────────────────────────
+  // Toggle visibility of the BOL section in response to the
+  // "Book a truck with Ivan" checkbox. Pure presentation —
+  // confirmTrackingModal reads the checkbox state on save to decide
+  // whether to persist s.truckBooking or clear it.
+  function _toggleBookTruckFields(checked) {
+    const fields = document.getElementById('tracking-modal-bol-fields');
+    if (!fields) return;
+    fields.style.display = checked ? 'flex' : 'none';
+    // If the operator is just opening the BOL section for the first
+    // time and the Ship To field is blank, try to pre-fill it from the
+    // shipment's first order's resolved Ship To address — saves a
+    // copy-paste for the common case.
+    if (checked) {
+      const shipTo = document.getElementById('bol-ship-to');
+      if (shipTo && !shipTo.value.trim()) {
+        const inferred = _inferBolShipToForCurrentShipment();
+        if (inferred) shipTo.value = inferred;
+      }
+    }
+  }
+
+  // Walk the current shipment's entries, find the first orderId with a
+  // resolved Ship To address (Pyvot / MarketSculpt / customer), and
+  // return it as a plain-text block suitable for the BOL textarea.
+  // Returns '' when nothing can be inferred so the operator just sees
+  // the placeholder.
+  function _inferBolShipToForCurrentShipment() {
+    const ctx = _trackingModalCtx;
+    if (!ctx) return '';
+    const s = shipmentData[ctx.shipmentId];
+    if (!s || !Array.isArray(s.entries)) return '';
+    for (const e of s.entries) {
+      const o = e && e.orderId != null ? orderData[e.orderId] : null;
+      if (!o) continue;
+      const key = o.shipTo || '';
+      if (!key) continue;
+      // _FULFILLMENT_ADDRESSES holds the Pyvot + MarketSculpt strings;
+      // the customer option resolves through clientDetails.
+      if (key === 'customer') {
+        const cd = (typeof clientDetails === 'object' && clientDetails) ? (clientDetails[o.clientName] || {}) : {};
+        const adr = (cd.shipping_address || '').trim();
+        if (adr) return `${o.clientName || ''}\n${adr}`.trim();
+      } else if (typeof _FULFILLMENT_ADDRESSES === 'object' && _FULFILLMENT_ADDRESSES[key]) {
+        return _FULFILLMENT_ADDRESSES[key].address || '';
+      }
+    }
+    return '';
+  }
+
   let _trackingModalCtx = null; // { shipmentId, requestedStatus, returnTo }
   function openTrackingModal(shipmentId, requestedStatus, returnTo) {
     _trackingModalCtx = { shipmentId, requestedStatus, returnTo: returnTo || 'detail' };
@@ -32791,6 +32897,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('tracking-modal-carrier').value = s.carrier || '';
     document.getElementById('tracking-modal-number').value = s.trackingNumber || '';
     document.getElementById('tracking-modal-error').style.display = 'none';
+    // Pre-populate the truck-booking section from prior data if the
+    // operator already saved a BOL for this shipment. Empty out
+    // everything otherwise so a fresh open doesn't show stale state
+    // from a different shipment.
+    const tb = (s && s.truckBooking) || null;
+    const cb = document.getElementById('tracking-modal-book-truck');
+    if (cb) cb.checked = !!tb;
+    const bolFields = document.getElementById('tracking-modal-bol-fields');
+    if (bolFields) bolFields.style.display = tb ? 'flex' : 'none';
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
+    setVal('bol-ship-from',  tb && tb.shipFrom   || '');
+    setVal('bol-ship-to',    tb && tb.shipTo     || '');
+    setVal('bol-stops',      tb && tb.stops      || (tb ? '' : 1));
+    setVal('bol-pickup-date',tb && tb.pickupDate || '');
+    setVal('bol-pickup-time',tb && tb.pickupTime || '');
+    setVal('bol-pallets',    tb && tb.pallets    || '');
+    setVal('bol-weight',     tb && tb.weight     || '');
+    setVal('bol-commodity',  tb && tb.commodity  || '');
+    setVal('bol-notes',      tb && tb.notes      || '');
     // Intro copy + confirm button label both reflect the requested
     // status. Under the new transition rules:
     //   • in_transit / waiting_arrival → stays in Shipments; button
@@ -32833,6 +32958,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     s.trackingNumber = num;
     s.status = ctx.requestedStatus;
     s.tracking = s.tracking || null; // will be filled by the AI fetch below
+    // Persist (or clear) the truck booking BOL. When the checkbox is
+    // OFF we drop s.truckBooking entirely so the shipment card doesn't
+    // keep showing a "truck booked" pill from a stale state.
+    const bookTruck = !!document.getElementById('tracking-modal-book-truck').checked;
+    if (bookTruck) {
+      const getVal = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+      s.truckBooking = {
+        bookedWith: 'Ivan',
+        bookedAt: new Date().toISOString(),
+        shipFrom:   getVal('bol-ship-from').trim(),
+        shipTo:     getVal('bol-ship-to').trim(),
+        stops:      parseInt(getVal('bol-stops'))  || 1,
+        pickupDate: getVal('bol-pickup-date'),
+        pickupTime: getVal('bol-pickup-time'),
+        pallets:    getVal('bol-pallets')  ? parseInt(getVal('bol-pallets'))  : null,
+        weight:     getVal('bol-weight')   ? parseFloat(getVal('bol-weight')) : null,
+        commodity:  getVal('bol-commodity').trim(),
+        notes:      getVal('bol-notes').trim(),
+      };
+    } else {
+      delete s.truckBooking;
+    }
     saveShipments();
     closeTrackingModal();
     // Kick off the initial AI lookup so the operator sees status the
