@@ -36335,9 +36335,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // CBM exceeds the single 40' HC container cap (67 m³).
       const cbmValHtml = agCbm > 0
         ? (cbmOverT > 0
-            ? `<span style="color:#d97706;">⚠</span> ${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span> <span style="color:#d97706; font-weight:800; margin-left:4px;">+${fmtCbmT(cbmOverT)} over</span>`
+            ? `<span style="color:#d97706;">⚠</span> ${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`
             : `${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`)
         : '—';
+      const cbmOverHtml = (agCbm > 0 && cbmOverT > 0)
+        ? `<span style="font-size:10px; font-weight:700; color:#d97706; line-height:1.1; margin-top:1px;">+${fmtCbmT(cbmOverT)} over</span>`
+        : '';
       const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
       // Cost decomposition: each workbook caches productCost,
       // shippingUsd, and grandTotalCost independently on the Pricing
