@@ -35960,11 +35960,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const cbmCapT = 67;
     const fillPctT  = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
     const cbmOverT  = agCbm > cbmCapT ? agCbm - cbmCapT : 0;
+    // Main value: ⚠ + "100.4 / 67" only — the over-warning stacks
+    // on its own sub-line below so the cell stays narrow and the
+    // 1fr column doesn't bleed into its neighbor.
     const cbmValHtml = agCbm > 0
       ? (cbmOverT > 0
-          ? `<span style="color:#d97706;">⚠</span> ${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span> <span style="color:#d97706; font-weight:800; margin-left:4px;">+${fmtCbmT(cbmOverT)} over</span>`
+          ? `<span style="color:#d97706;">⚠</span> ${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`
           : `${fmtCbmT(agCbm)} <span class="oc-stat-cbm-cap">/ ${cbmCapT}</span>`)
       : '—';
+    const cbmOverHtml = (agCbm > 0 && cbmOverT > 0)
+      ? `<span style="font-size:10px; font-weight:700; color:#d97706; line-height:1.1; margin-top:1px;">+${fmtCbmT(cbmOverT)} over</span>`
+      : '';
     const cbmBarColor = cbmOverT > 0 ? '#f59e0b' : 'var(--accent)';
     const agCostProduct = agProductCost;
     const agTotalOurs   = agCost > 0 ? agCost : (agProductCost + agShipping);
@@ -36022,6 +36028,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
           <span class="oc-stat-val">${cbmValHtml}</span>
+          ${cbmOverHtml}
           <div class="oc-cbm-bar"><div class="oc-cbm-bar-fill" style="width:${fillPctT}%; background:${cbmBarColor};"></div></div>
         </div>
       </div>
@@ -36420,6 +36427,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
           <span class="oc-stat-val">${cbmValHtml}</span>
+          ${cbmOverHtml}
           <div class="oc-cbm-bar"><div class="oc-cbm-bar-fill" style="width:${fillPctT}%; background:${cbmBarColor};"></div></div>
         </div>
       </div>`;
