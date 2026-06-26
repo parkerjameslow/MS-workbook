@@ -31881,7 +31881,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const crTag = order.changeRequested
               ? `<span style="background:#fff7ed;border:1px solid #fed7aa;color:#E8751A;font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:10px;margin-left:4px;vertical-align:middle;">⚑ Hold</span>`
               : '';
-            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${order.clientName} – ${order.name}${crTag}<span class="sc-wb-pill-arrow">→</span></span>`;
+            // Inline "← Production" mini-button on each order pill so
+            // the operator can pull an order out of the shipment
+            // without opening the detail page. Calls the same
+            // moveOrderBackToProduction handler the detail page uses,
+            // so behavior + confirmation modal stay consistent.
+            const moveBackBtn = `<button onclick="event.stopPropagation(); moveOrderBackToProduction(${e.orderId})"
+              title="Move this order back to In Production"
+              style="margin-left:6px; padding:1px 6px 2px; border-radius:9px; background:rgba(107,147,255,0.12); color:var(--accent); border:1px solid var(--accent); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; vertical-align:middle; line-height:1.3;">← Production</button>`;
+            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${order.clientName} – ${order.name}${crTag}<span class="sc-wb-pill-arrow">→</span></span>${moveBackBtn}`;
           }).join('');
       const wbCount = orderEntries.length;
       const overStyle = 'color:#ef4444 !important; font-weight:700;';
@@ -32269,7 +32277,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               ${rmbStr ? `<span class="soc-cost-rmb">${rmbStr}</span>` : ''}
             </div>
             <button onclick="event.stopPropagation(); moveOrderBackToProduction(${entry.orderId})"
-                    style="padding:6px 10px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
+                    style="padding:6px 10px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
                     title="Move the entire order back to In Production (removes all of its entries from every shipment)">
               ← Move to Production
             </button>
