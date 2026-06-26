@@ -9677,9 +9677,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="text" id="new-ship-name" placeholder="e.g. May 2026 Container" required />
       </div>
       <div class="modal-field">
-        <label>Shipping Method <span class="required">*</span></label>
+        <label>Shipping Method <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional — can set later)</span></label>
         <div class="select-wrap">
-          <select id="new-ship-method" required onchange="_onNewShipMethodChange()">
+          <select id="new-ship-method" onchange="_onNewShipMethodChange()">
             <option value="">— Select method —</option>
             <option value="slow_boat">Slow Boat — Cosco</option>
             <option value="fast_boat">Fast Boat — Matson</option>
@@ -31841,6 +31841,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
   function closeNewShipmentModal() {
     document.getElementById('modal-new-shipment').classList.remove('open');
+    // Clear any pending picker-attach order so a cancelled creation
+    // doesn't silently leak the order id into the next createShipment.
+    // Previously: operator clicked + Add to Shipment → + Create New
+    // → hit a validation block → cancelled → tried again → wrong
+    // order got attached to the new shipment.
+    _pendingOrderForNewShipment = null;
   }
 
   // Compute the auto-derived release date string (arrival + 7 days)
@@ -31900,10 +31906,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const method    = document.getElementById('new-ship-method').value;
     const container = document.getElementById('new-ship-container').value;
     if (!name) return;
-    if (!method) {
-      alert('Please pick a Shipping Method before creating the shipment.');
-      return;
-    }
+    // Shipping method is optional at creation time — the operator can
+    // fill it in on the shipment detail page later. Previously a hard
+    // alert here would block the form, leaving the pending order id
+    // stuck in _pendingOrderForNewShipment and breaking the next
+    // create attempt. Keep the dropdown visible + asterisk-free; default
+    // to empty when not picked.
     const meta = SHIPPING_METHODS[method] || {};
     const id = _nextShipmentId++;
     const portShipDate    = (document.getElementById('new-ship-port-ship-date')    || {}).value || '';
