@@ -5851,7 +5851,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          is. */
       grid-template-columns: repeat(9, 1fr);
       gap: 8px 12px;
-      padding: 10px 16px 8px;
+      padding: 10px 16px 10px;
       margin: 0 -16px -12px;
       background: rgba(107,147,255,0.06);
       border-top: 1px solid var(--border);
