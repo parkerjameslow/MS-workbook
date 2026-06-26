@@ -23555,18 +23555,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return currentClient || '';
     })();
 
+    // Always show the dropdown — operator wants to be able to switch
+    // clients even when the modal was opened from a client dashboard.
+    // Pre-select the context client when one exists so the common path
+    // is still one click, but the dropdown stays interactive instead
+    // of being replaced with a static label.
+    sel.required = true;
+    dropdownField.style.display = '';
+    displayField.style.display  = 'none';
     if (ctxClient && clientData[ctxClient]) {
-      // Already on a client — pre-fill and hide the dropdown
       sel.value = ctxClient;
-      sel.required = false;
-      dropdownField.style.display = 'none';
-      displayField.style.display  = '';
-      displayLabel.textContent    = ctxClient;
     } else {
-      // No client context — show the dropdown
-      sel.required = true;
-      dropdownField.style.display = '';
-      displayField.style.display  = 'none';
+      sel.value = '';
     }
 
     // Reset suggestions
@@ -26801,6 +26801,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tierCount = 0;
     document.getElementById('wb-tier-body').innerHTML = '';
     wbTierCount = 0;
+
+    // ── Wipe every workbook-level input BEFORE branching ───────────────
+    // A brand-new workbook (no saved detail) used to fall through to the
+    // no-data branch which only cleared ~11 of the ~60 inputs the data
+    // branch sets. Result: dim-weight-kg / carton-* / pricing / quote /
+    // invoice / art / freight fields carried over from whatever workbook
+    // was open immediately before. This pre-clear sweep zeroes every
+    // known persistent input id once so neither branch needs to think
+    // about cleanup. The data branch then overwrites whichever fields
+    // it has saved values for; the no-data branch leaves everything
+    // empty (plus client + product seeded from the client list).
+    const _clearIds = [
+      // Workbook tab — dims + categories
+      'dim-in-l','dim-in-w','dim-in-h','dim-cm-l','dim-cm-w','dim-cm-h',
+      'dim-mm-l','dim-mm-w','dim-mm-h',
+      'dim-weight-kg','dim-weight-lbs','dim-packaging',
+      'product-category','product-category-2','materials','pantone-text','cmyk','color-notes',
+      // Carton — inner
+      'carton-inner-l-in','carton-inner-l-cm','carton-inner-w-in','carton-inner-w-cm','carton-inner-h-in','carton-inner-h-cm',
+      'carton-inner-weight','carton-inner-weight-lbs','carton-inner-count','carton-inner-row','carton-inner-side','carton-inner-stack','carton-inner-wall',
+      // Carton — outer
+      'carton-outer-l-in','carton-outer-l-cm','carton-outer-w-in','carton-outer-w-cm','carton-outer-h-in','carton-outer-h-cm',
+      'carton-outer-weight','carton-outer-weight-lbs','carton-outer-count','carton-outer-row','carton-outer-side','carton-outer-stack','carton-outer-wall',
+      'carton-unit-weight','carton-unit-weight-lbs','pallet-total-cartons',
+      // Shipping
+      'freight-mode','freight-hs-code',
+      'ship-lead-slow','ship-lead-fast','ship-lead-airupp','ship-lead-directair',
+      // Pricing
+      'ps-margin-pct','ps-sale-per',
+      // Quote for Client
+      'quote-date','quote-valid-until','quote-cl-qty','quote-cl-unit-price','quote-cl-shipping','quote-cl-notes','quote-qc',
+      // Invoice
+      'inv-number','inv-date','inv-due-date','inv-qty','inv-unit-price','inv-shipping','inv-status','inv-method','inv-notes',
+      // Art
+      'art-status','art-due-date','art-notes',
+    ];
+    _clearIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // Subcategory selects rebuild themselves on category change; reset
+    // their option lists so a stale category's subs don't appear.
+    const _subA = document.getElementById('product-subcategory');
+    if (_subA) _subA.innerHTML = '<option value="">Select category first...</option>';
+    const _subB = document.getElementById('product-subcategory-2');
+    if (_subB) _subB.innerHTML = '<option value="">None</option>';
+    const _cat2Wrap = document.getElementById('cat2-wrap');  if (_cat2Wrap) _cat2Wrap.classList.remove('has-value');
+    const _mat2Wrap = document.getElementById('mat2-wrap');  if (_mat2Wrap) _mat2Wrap.classList.remove('has-value');
+    // Reset cached image / video / art arrays so previous workbook'\''s
+    // media doesn'\''t flash on screen between switches.
+    _productImages = [];
+    _productVideos = [];
+    _artImages     = [];
+    // Pitch snap is a per-workbook computed value; clear it before
+    // the branch decides whether to restore one.
+    window._fullContainerPitchSnap = null;
+    // Applied additional-fees state is per-workbook too.
+    _appliedFees = new Set();
+    _appliedFeeOverrides = Object.create(null);
 
     function _s(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
 
