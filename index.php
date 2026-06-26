@@ -37804,7 +37804,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     },
     marketsculpt: {
       label: 'MarketSculpt',
-      address: 'MarketSculpt\n13863 S. 2700 W. Unit [#]\nBluffdale, UT 84065',
+      address: 'MarketSculpt\n123 E 200 S, Unit A1\nLindon, Utah 84042',
     },
   };
 
