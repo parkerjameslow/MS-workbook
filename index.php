@@ -36142,6 +36142,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return !!o && !o.notifiedAt;
   }
 
+  // Operator-triggered move from the Orders lane → In Production.
+  // Mirrors the gate that Notify Client uses (stamping notifiedAt is
+  // what _orderIsInFulfillment looks for) so the order disappears from
+  // Orders and shows up in In Production on the next render. Useful
+  // when the operator has already aligned with the client out-of-band
+  // (in-person, on a call, etc.) and just needs to advance the lane
+  // without re-sending the system notification email.
+  //
+  // movedToProductionAt is stamped separately so an audit can tell
+  // "moved manually" from "Notify Client'd". This field is purely
+  // informational — _orderIsInFulfillment only checks notifiedAt.
+  function moveOrderToProduction(orderId) {
+    const o = orderData[orderId];
+    if (!o) return;
+    if (o.notifiedAt) {
+      // Already in production lane — render the Orders list anyway so
+      // the operator sees the card disappear if the state was stale.
+      if (typeof renderOrdersList === 'function') renderOrdersList();
+      return;
+    }
+    const wbCount = Array.isArray(o.entries) ? o.entries.length : 0;
+    const proceed = confirm(`Move "${o.name || 'this order'}" to In Production?\n\n${wbCount} workbook${wbCount === 1 ? '' : 's'} will be locked in and the order will leave the Orders lane.`);
+    if (!proceed) return;
+    const stamp = new Date().toISOString();
+    o.notifiedAt = stamp;
+    o.movedToProductionAt = stamp;
+    if (typeof saveOrders === 'function') saveOrders();
+    if (typeof renderOrdersList === 'function') renderOrdersList();
+  }
+
   function setOrderDeadline(orderId, iso) {
     const o = orderData[orderId];
     if (!o) return;
@@ -36851,6 +36881,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="oc-grand-label">Total</span>
               <span class="oc-grand-usd">${usdStr}</span>
               ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : ''}
+              <button onclick="event.stopPropagation(); moveOrderToProduction('${id}')"
+                style="margin-top:10px; padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
+                title="Flip this order into the In Production lane so it'\''s ready for shipment placement">
+                + Move to Production
+              </button>
             </div>
           </div>
         </div>
