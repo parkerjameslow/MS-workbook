@@ -32218,19 +32218,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // order back to the In Production lane via the shared
       // moveOrderBackToProduction handler. Stacked vertically so a
       // shipment with multiple orders still has a 1:1 mapping.
-      const moveBackStack = orderEntries.length === 0 ? '' : `
-        <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px; width:100%;">
-          ${orderEntries.map(e => {
-            const order = orderData[e.orderId];
-            if (!order) return '';
-            const lbl = orderEntries.length > 1
-              ? `← ${order.clientName} – ${order.name}`
-              : '← Move to Production';
-            return `<button onclick="event.stopPropagation(); moveOrderBackToProduction(${e.orderId})"
-              title="Move ${(order.clientName || '').replace(/"/g,'&quot;')} – ${(order.name || '').replace(/"/g,'&quot;')} back to In Production"
-              style="width:100%; padding:7px 10px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${lbl}</button>`;
-          }).join('')}
-        </div>`;
+      // Empty-state hint when there are no orders so the operator
+      // doesn'\''t wonder why the action button is missing.
+      const moveBackStack = orderEntries.length === 0
+        ? `<div style="margin-top:12px; padding:6px 10px; border:1px dashed var(--border); border-radius:8px; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); text-align:center;">No orders to move</div>`
+        : `<div style="display:flex; flex-direction:column; gap:6px; margin-top:12px; width:100%;">
+            ${orderEntries.map(e => {
+              const order = orderData[e.orderId];
+              if (!order) return '';
+              const lbl = orderEntries.length > 1
+                ? `← ${order.clientName} – ${order.name}`
+                : '← Move to Production';
+              return `<button onclick="event.stopPropagation(); moveOrderBackToProduction(${e.orderId})"
+                title="Move ${(order.clientName || '').replace(/"/g,'&quot;')} – ${(order.name || '').replace(/"/g,'&quot;')} back to In Production"
+                style="width:100%; padding:7px 10px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${lbl}</button>`;
+            }).join('')}
+          </div>`;
       const wbCount = orderEntries.length;
       const overStyle = 'color:#ef4444 !important; font-weight:700;';
       const cbmOver = cbmPct > 100; const kgOver = kgPct > 100; const palOver = palletPct > 100;
@@ -36670,10 +36673,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('move-order-modal-title').textContent   = title || 'Move Order';
     document.getElementById('move-order-modal-body').textContent    = body  || '';
     document.getElementById('move-order-modal-confirm').textContent = confirmLabel || 'Move';
-    document.getElementById('modal-move-order').classList.add('open');
+    const el = document.getElementById('modal-move-order');
+    el.classList.add('open');
+    // Belt-and-suspenders: some surfaces toggle .open while others
+    // set inline display. Force flex so the modal is visible regardless
+    // of which path another modal on the page interacted with last.
+    el.style.display = 'flex';
   }
   function closeMoveOrderModal() {
-    document.getElementById('modal-move-order').classList.remove('open');
+    const el = document.getElementById('modal-move-order');
+    el.classList.remove('open');
+    el.style.display = 'none';
     _moveOrderModalCtx = null;
   }
   function _confirmMoveOrderModal() {
@@ -36704,9 +36714,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         o.notifiedAt = stamp;
         o.movedToProductionAt = stamp;
         if (typeof saveOrders === 'function') saveOrders();
-        if (typeof renderOrdersList     === 'function') renderOrdersList();
-        if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
-        if (typeof _renderOrderDetailLaneControls === 'function' && location.hash.startsWith('#/order/')) _renderOrderDetailLaneControls();
+        if (typeof renderOrdersList      === 'function') renderOrdersList();
+        if (typeof renderFulfillmentList === 'function') renderFulfillmentList();
+        if (typeof _renderOrderDetailLaneControls === 'function') _renderOrderDetailLaneControls();
+        if (typeof _msToast === 'function') _msToast(`Moved “${o.name || 'order'}” to In Production.`, 'success');
       },
     });
   }
@@ -36746,9 +36757,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         delete o.notifiedAt;
         delete o.movedToProductionAt;
         if (typeof saveOrders === 'function') saveOrders();
-        if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
-        if (typeof renderOrdersList      === 'function' && location.hash === '#/orders')      renderOrdersList();
-        if (typeof _renderOrderDetailLaneControls === 'function' && location.hash.startsWith('#/order/')) _renderOrderDetailLaneControls();
+        if (typeof renderFulfillmentList === 'function') renderFulfillmentList();
+        if (typeof renderOrdersList      === 'function') renderOrdersList();
+        if (typeof _renderOrderDetailLaneControls === 'function') _renderOrderDetailLaneControls();
+        if (typeof _msToast === 'function') _msToast(`Moved “${o.name || 'order'}” back to Orders.`, 'success');
       },
     });
   }
@@ -36788,11 +36800,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         });
         if (typeof saveShipments === 'function') saveShipments();
         if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
-        if (typeof renderShipmentOrders === 'function' && location.hash.startsWith('#/shipment/')) renderShipmentOrders();
-        if (typeof renderShipmentUtilization === 'function' && location.hash.startsWith('#/shipment/')) renderShipmentUtilization();
-        if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
-        if (typeof renderShipmentsContent === 'function' && location.hash === '#/shipments') renderShipmentsContent();
-        if (typeof _renderOrderDetailLaneControls === 'function' && location.hash.startsWith('#/order/')) _renderOrderDetailLaneControls();
+        // Re-render every list view that COULD be visible. The hash
+        // gating used to silently skip renders if the operator was
+        // on a route that didn'\''t exactly match — switching to
+        // unconditional re-renders so the UI never goes stale on a
+        // successful move. (The renderers are cheap; safe to call
+        // even when their view isn'\''t active.)
+        if (typeof renderShipmentOrders     === 'function') renderShipmentOrders();
+        if (typeof renderShipmentUtilization === 'function') renderShipmentUtilization();
+        if (typeof renderFulfillmentList    === 'function') renderFulfillmentList();
+        if (typeof renderShipmentsContent   === 'function') renderShipmentsContent();
+        if (typeof _renderOrderDetailLaneControls === 'function') _renderOrderDetailLaneControls();
+        if (typeof _msToast === 'function') {
+          _msToast(`Moved “${o.name || 'order'}” back to In Production.`, 'success');
+        }
       },
     });
   }
