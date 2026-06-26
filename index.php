@@ -31673,12 +31673,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const orderId = _pendingOrderIdForPicker;
     // Show shipments across the lifecycle — operator wants visibility
     // into open AND in-flight containers so the picker doubles as a
-    // "where did orders go?" map. Delivered is hidden explicitly:
-    // once a shipment hits the destination it'\''s no longer a useful
-    // candidate for routing decisions, and the receiving lane already
-    // surfaces those.
-    const hiddenStatuses = new Set(['delivered']);
-    const statusOrder = ['planning', 'waiting_arrival', 'in_transit', 'received'];
+    // "where did orders go?" map. Delivered + Received are hidden:
+    // once a shipment has arrived (or been audited in) it'\''s no longer
+    // a useful routing candidate, and the Receiving lane already
+    // exposes those.
+    const hiddenStatuses = new Set(['delivered', 'received']);
+    const statusOrder = ['planning', 'booked', 'waiting_arrival', 'in_transit'];
     const all = Object.values(shipmentData || {})
       .filter(s => s && s.id != null && !hiddenStatuses.has(s.status))
       .sort((a, b) => {
