@@ -32117,6 +32117,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (shipNav) shipNav.classList.add('active');
     showView('view-shipments');
     renderShipmentsContent();
+    if (typeof startTrackingAutoRefresh === 'function') startTrackingAutoRefresh();
   }
 
   function filterShipments(status, btn) {
@@ -32203,10 +32204,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const kgPct     = spec.maxKg     > 0 ? Math.round((tot.kg      / spec.maxKg)     * 100) : 0;
       const palletPct = spec.maxPallets > 0 ? Math.round((tot.pallets / spec.maxPallets) * 100) : 0;
       const isDelivered = s.status === 'delivered';
-      const eta = isDelivered
-        ? (s.deliveredOn ? `<strong style="color:#34d399">${s.deliveredOn}</strong>` : '—')
-        : (s.eta ? `<strong>${s.eta}</strong>` : '—');
-      const etaLabel = isDelivered ? 'Delivered' : 'ETA';
+      // ETA fallback chain: tracking-derived ETA (most authoritative)
+      // → manual s.eta → port arrival date → "—". Was only reading
+      // s.eta, so shipments with a Slow Boat port arrival date set
+      // displayed "—" on the card. ETA label flips to "Released" when
+      // delivered for a clearer at-a-glance read.
+      const _trackingEta = (s.tracking && s.tracking.eta) ? s.tracking.eta : '';
+      const _etaResolved = isDelivered ? (s.deliveredOn || '')
+                          : (_trackingEta || s.eta || s.portArrivalDate || '');
+      const _etaColor = isDelivered ? '#34d399'
+                       : (_trackingEta ? '#1d4ed8' : '');
+      const eta = _etaResolved
+        ? `<strong${_etaColor ? ` style="color:${_etaColor};"` : ''}>${_etaResolved}</strong>`
+        : '—';
+      const etaLabel = isDelivered ? 'Delivered' : (_trackingEta ? 'ETA (tracked)' : 'ETA');
       const entries = s.entries || [];
       const orderEntries = entries.filter(e => e.orderId);
       const shipHasChangeRequest = orderEntries.some(e => orderData[e.orderId]?.changeRequested);
@@ -32254,10 +32265,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const _trackingStrip = (s.carrier && s.trackingNumber)
         ? _renderShipmentTrackingCardStrip(s)
         : '';
+      // Method + port info line — surfaces the lane the operator
+      // picked so they can see at a glance what's traveling where.
+      // Renders for any shipment with a method set; port row only
+      // adds when port data is filled (ocean shipments).
+      const _shippingInfoBlock = _renderShipmentInfoBlock(s);
       return `<div class="shipment-card${shipHasChangeRequest ? ' has-change-request' : ''}" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
           <span class="sc-title">${s.name}</span>
           <span class="sc-eta">${etaLabel} ${eta}</span>
+          ${_shippingInfoBlock}
           ${_trackingStrip}
         </div>
         <div class="sc-wb-list">
@@ -32392,6 +32409,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderShipmentUtilization();
     _renderShipmentTrackingSection();
     showView('view-shipment-detail');
+    if (typeof startTrackingAutoRefresh === 'function') startTrackingAutoRefresh();
   }
 
   // ── Shipment detail: shipping method + port dates + trackings ────────
@@ -32534,6 +32552,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Carrier badge + tracking # + status + ETA + last-checked. Returns
   // empty string when no tracking has been entered yet so the caller
   // can drop it in unconditionally.
+  // Compact YYYY-MM-DD → "Jul 9" formatter. Parses as a LOCAL date
+  // so a date input doesn't display one day earlier in negative-UTC
+  // zones (same trick _computeReleaseDateLabel uses).
+  function _fmtShortDate(iso) {
+    if (!iso) return '';
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return '';
+    const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  function _fmtMidDate(iso) {
+    if (!iso) return '';
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return '';
+    const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  const _SHIP_PORT_LABELS = {
+    long_beach:     'Long Beach',
+    salt_lake_city: 'Salt Lake City',
+  };
+
+  // Render the method + port info block under the ETA on shipment
+  // list cards. Surfaces every transport attribute the operator
+  // picked so the card answers "where, how, and when" at a glance.
+  // Empty string when nothing meaningful is set (so the card
+  // doesn't paint a sad blank row for un-routed shipments).
+  function _renderShipmentInfoBlock(s) {
+    if (!s) return '';
+    const meta = SHIPPING_METHODS[s.shippingMethod] || null;
+    const lines = [];
+    if (meta) {
+      lines.push(`<span style="display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:99px; background:rgba(107,147,255,0.10); color:var(--accent); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">${meta.label} · ${meta.carrier}</span>`);
+    }
+    // Port location (ocean methods only)
+    if (s.portLocation) {
+      const portLbl = _SHIP_PORT_LABELS[s.portLocation] || s.portLocation;
+      lines.push(`<span style="font-size:11px; color:var(--text-muted);"><span style="font-weight:700; color:var(--text);">Port:</span> ${portLbl}</span>`);
+    }
+    // Port dates — only render when at least one is set
+    if (s.portShipDate || s.portArrivalDate) {
+      const ship   = s.portShipDate    ? _fmtShortDate(s.portShipDate)    : '—';
+      const arrive = s.portArrivalDate ? _fmtShortDate(s.portArrivalDate) : '—';
+      lines.push(`<span style="font-size:11px; color:var(--text-muted);">Ship <strong style="color:var(--text);">${ship}</strong> → Arrive <strong style="color:var(--text);">${arrive}</strong></span>`);
+    }
+    // Release date (arrival + 7 days) — auto-derived
+    if (s.portArrivalDate) {
+      const rel = _computeReleaseDateLabel(s.portArrivalDate);
+      lines.push(`<span style="font-size:11px; color:var(--text-muted); font-style:italic;">Release: <strong style="color:var(--text); font-style:normal;">${rel}</strong></span>`);
+    }
+    if (lines.length === 0) return '';
+    return `<div style="display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:6px; align-items:center;">${lines.join('')}</div>`;
+  }
+
   function _renderShipmentTrackingCardStrip(s) {
     if (!s || !s.carrier || !s.trackingNumber) return '';
     const tk = s.tracking || {};
@@ -33362,6 +33437,71 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Previously called renderReceivingList() unconditionally, which
   // would yank an operator off the shipment detail view if they hit
   // Refresh from there.
+  // ── Auto-refresh tracking for visible shipments ─────────────────────
+  // When the operator lands on the Shipments lane (#/shipments) we
+  // kick a soft background refresh for every shipment that has a
+  // carrier + tracking number AND whose last fetch is older than the
+  // STALE_MS threshold. Findings save back into s.tracking and the
+  // list re-renders so the operator sees fresh status without a
+  // manual button press. Throttled so we don'\''t hammer the carrier
+  // APIs every time the user touches the page.
+  const _TRACKING_STALE_MS = 30 * 60 * 1000;   // 30 minutes
+  const _TRACKING_POLL_MS  = 5  * 60 * 1000;   //  5 minutes (periodic)
+  let _trackingPollTimer = null;
+
+  function _isTrackingStale(s) {
+    if (!s || !s.carrier || !s.trackingNumber) return false;
+    const tk = s.tracking || {};
+    if (!tk.fetchedAt) return true;
+    const last = new Date(tk.fetchedAt).getTime();
+    if (isNaN(last)) return true;
+    return (Date.now() - last) >= _TRACKING_STALE_MS;
+  }
+
+  async function _refreshStaleTrackings() {
+    // Only act when the operator is actively looking at a shipments
+    // surface; refreshing in the background while they'\''re elsewhere
+    // wastes API calls + can fight with their concurrent edits.
+    const onShipments = location.hash === '#/shipments' || location.hash.startsWith('#/shipment/');
+    if (!onShipments) return;
+    const ids = Object.keys(shipmentData || {}).filter(id => {
+      const s = shipmentData[id];
+      // Skip closed-lane shipments — tracking doesn'\''t change after
+      // delivered / received and the operator can'\''t act on it anyway.
+      if (!s || s.status === 'delivered' || s.status === 'received') return false;
+      return _isTrackingStale(s);
+    });
+    if (ids.length === 0) return;
+    let anyChanged = false;
+    for (const id of ids) {
+      const s = shipmentData[id];
+      try {
+        const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
+        if (r && r.ok && r.data) {
+          s.tracking = r.data;
+          anyChanged = true;
+        }
+      } catch { /* swallow — periodic refresh is best-effort */ }
+    }
+    if (anyChanged) {
+      saveShipments();
+      // Re-render the list / detail so the operator sees fresh status.
+      if (typeof renderShipmentsContent === 'function' && location.hash === '#/shipments') renderShipmentsContent();
+      if (typeof _renderShipmentTrackingSection === 'function' && location.hash.startsWith('#/shipment/')) _renderShipmentTrackingSection();
+    }
+  }
+
+  function startTrackingAutoRefresh() {
+    if (_trackingPollTimer) return;
+    // Kick once shortly after page lands so the operator sees current
+    // data without waiting a full poll cycle.
+    setTimeout(_refreshStaleTrackings, 1500);
+    _trackingPollTimer = setInterval(_refreshStaleTrackings, _TRACKING_POLL_MS);
+  }
+  function stopTrackingAutoRefresh() {
+    if (_trackingPollTimer) { clearInterval(_trackingPollTimer); _trackingPollTimer = null; }
+  }
+
   async function refreshTrackingFor(id, btn) {
     const s = shipmentData[id];
     if (!s) return false;
