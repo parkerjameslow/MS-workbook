@@ -5870,7 +5870,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       text-align: center;
     }
     .oc-stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-    .oc-stat-val   { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .oc-stat-val   { font-size: 12px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .oc-stat-cbm-cap { font-size: 11px; font-weight: 600; color: var(--text-muted); }
     .oc-cbm-bar      { height: 3px; margin-top: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
     .oc-cbm-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.2s; }
