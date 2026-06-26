@@ -36798,6 +36798,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         hits.forEach(({ s }) => {
           s.entries = (s.entries || []).filter(e => !(e && parseInt(e.orderId) === oid));
         });
+        // Guarantee the order actually lands in the In Production lane,
+        // not the Orders Queue. _orderIsInFulfillment requires
+        // notifiedAt to be set; without this, orders that were dropped
+        // straight into a shipment via "+ Add Order" (bypassing
+        // Production) would fall back to Orders on removal and the
+        // operator would think the move silently failed.
+        if (!o.notifiedAt) {
+          const stamp = new Date().toISOString();
+          o.notifiedAt = stamp;
+          o.movedToProductionAt = stamp;
+          if (typeof saveOrders === 'function') saveOrders();
+        }
         if (typeof saveShipments === 'function') saveShipments();
         if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
         // Re-render every list view that COULD be visible. The hash
@@ -36810,6 +36822,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (typeof renderShipmentUtilization === 'function') renderShipmentUtilization();
         if (typeof renderFulfillmentList    === 'function') renderFulfillmentList();
         if (typeof renderShipmentsContent   === 'function') renderShipmentsContent();
+        if (typeof renderOrdersList         === 'function') renderOrdersList();
         if (typeof _renderOrderDetailLaneControls === 'function') _renderOrderDetailLaneControls();
         if (typeof _msToast === 'function') {
           _msToast(`Moved “${o.name || 'order'}” back to In Production.`, 'success');
