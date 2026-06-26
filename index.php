@@ -32561,6 +32561,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!s) return;
     const newStatus = document.getElementById('ship-detail-status').value;
     // Status-transition rules (post-2026-06 reorg):
+    //   • booked → pops the tracking modal with the Book a Truck
+    //     section pre-checked + revealed. Truck booking is the
+    //     defining action of this status; carrier + tracking are
+    //     optional. Always pops when missing s.truckBooking so the
+    //     operator captures the BOL before status flips.
     //   • in_transit / waiting_arrival / delivered → require carrier
     //     + tracking number. If missing, pop the tracking modal and
     //     revert the dropdown until the operator confirms. All three
@@ -32568,7 +32573,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     //     moves to Receiving (filter handles it; no nav from here).
     //   • received → opens the per-workbook audit modal; archives on
     //     confirm.
-    //   • planning / booked → no special handling.
+    //   • planning → no special handling.
+    if (newStatus === 'booked' && !s.truckBooking) {
+      openTrackingModal(_currentShipmentId, newStatus, 'detail');
+      document.getElementById('ship-detail-status').value = s.status || 'planning';
+      return;
+    }
     const needsTracking = (newStatus === 'in_transit' || newStatus === 'waiting_arrival' || newStatus === 'delivered');
     if (needsTracking && (!s.carrier || !s.trackingNumber)) {
       openTrackingModal(_currentShipmentId, newStatus, 'detail');
@@ -32938,11 +32948,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // operator already saved a BOL for this shipment. Empty out
     // everything otherwise so a fresh open doesn't show stale state
     // from a different shipment.
+    // When the modal opened in response to selecting "Booked" from
+    // the status dropdown, auto-check the box and reveal the BOL
+    // section so the operator lands directly on the form they
+    // intended to fill out.
     const tb = (s && s.truckBooking) || null;
     const cb = document.getElementById('tracking-modal-book-truck');
-    if (cb) cb.checked = !!tb;
+    const shouldCheck = !!tb || isBookedFlow;
+    if (cb) cb.checked = shouldCheck;
     const bolFields = document.getElementById('tracking-modal-bol-fields');
-    if (bolFields) bolFields.style.display = tb ? 'flex' : 'none';
+    if (bolFields) bolFields.style.display = shouldCheck ? 'flex' : 'none';
     const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
     setVal('bol-ship-from',  tb && tb.shipFrom   || '');
     setVal('bol-ship-to',    tb && tb.shipTo     || '');
@@ -32953,12 +32968,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     setVal('bol-weight',     tb && tb.weight     || '');
     setVal('bol-commodity',  tb && tb.commodity  || '');
     setVal('bol-notes',      tb && tb.notes      || '');
-    // If the shipment is already booked, scroll the BOL section
-    // into view on open so the operator immediately sees the saved
-    // BOL details (otherwise the section sits below the fold and
-    // looks like nothing happened).
-    if (tb && bolFields) {
+    // If the shipment is already booked OR the operator just selected
+    // "Booked" from the status dropdown, scroll the BOL section into
+    // view on open so the form is immediately visible. For the fresh
+    // booked flow, also infer Ship To from the first order so the
+    // operator doesn't have to look it up by hand.
+    if (shouldCheck && bolFields) {
       setTimeout(() => { try { bolFields.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {} }, 80);
+      if (isBookedFlow && !tb) {
+        const shipTo = document.getElementById('bol-ship-to');
+        if (shipTo && !shipTo.value.trim()) {
+          const inferred = _inferBolShipToForCurrentShipment();
+          if (inferred) shipTo.value = inferred;
+        }
+      }
     }
     // Intro copy + confirm button label both reflect the requested
     // status. Under the new transition rules:
@@ -32970,13 +32993,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const intro = document.getElementById('tracking-modal-intro');
     const btn   = document.getElementById('tracking-modal-confirm');
     const goesToReceiving = (requestedStatus === 'delivered');
+    const isBookedFlow    = (requestedStatus === 'booked');
     if (intro) {
-      intro.textContent = goesToReceiving
-        ? 'Once saved, this shipment moves to the Receiving lane for receipt + audit. AI will look up tracking status against the carrier’s public page.'
-        : 'Tracking stays attached to the shipment in the Shipments lane. AI will look up status against the carrier’s public page.';
+      intro.textContent = isBookedFlow
+        ? 'Capture the truck booking details below. Carrier + tracking are optional for this status — fill them in when the shipment carrier is confirmed.'
+        : goesToReceiving
+          ? 'Once saved, this shipment moves to the Receiving lane for receipt + audit. AI will look up tracking status against the carrier’s public page.'
+          : 'Tracking stays attached to the shipment in the Shipments lane. AI will look up status against the carrier’s public page.';
     }
     if (btn) {
-      btn.textContent = goesToReceiving ? 'Move to Receiving' : 'Save Tracking';
+      btn.textContent = isBookedFlow
+        ? 'Confirm Booking'
+        : (goesToReceiving ? 'Move to Receiving' : 'Save Tracking');
     }
     document.getElementById('tracking-modal').style.display = 'flex';
     setTimeout(() => { try { document.getElementById('tracking-modal-number').focus(); } catch {} }, 50);
@@ -32990,7 +33018,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const carrier = document.getElementById('tracking-modal-carrier').value;
     const num = document.getElementById('tracking-modal-number').value.trim();
     const err = document.getElementById('tracking-modal-error');
-    if (!carrier || !num) {
+    const bookTruck    = !!document.getElementById('tracking-modal-book-truck').checked;
+    const isBookedFlow = (_trackingModalCtx.requestedStatus === 'booked');
+    // Validation depends on the requested status:
+    //   • Booked flow → truck booking is the defining action; require
+    //     the box to be checked + at least Ship From / Ship To filled.
+    //     Carrier + tracking are optional (often the shipment carrier
+    //     hasn't been confirmed yet at booking time).
+    //   • All other tracking-required flows → carrier + tracking
+    //     remain mandatory exactly as before.
+    if (isBookedFlow) {
+      if (!bookTruck) {
+        err.textContent = 'Check "Book a truck with Ivan" and fill in the BOL to confirm the booking.';
+        err.style.display = 'block';
+        return;
+      }
+      const shipFrom = document.getElementById('bol-ship-from').value.trim();
+      const shipTo   = document.getElementById('bol-ship-to').value.trim();
+      if (!shipFrom || !shipTo) {
+        err.textContent = 'Ship From and Ship To are required to confirm a truck booking.';
+        err.style.display = 'block';
+        return;
+      }
+    } else if (!carrier || !num) {
       err.textContent = 'Both carrier and tracking number are required.';
       err.style.display = 'block';
       return;
@@ -33005,7 +33055,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Persist (or clear) the truck booking BOL. When the checkbox is
     // OFF we drop s.truckBooking entirely so the shipment card doesn't
     // keep showing a "truck booked" pill from a stale state.
-    const bookTruck = !!document.getElementById('tracking-modal-book-truck').checked;
+    // (bookTruck already declared above as part of the validation
+    //  branch — reuse it here so we don't redeclare in the same scope.)
     if (bookTruck) {
       const getVal = id => { const el = document.getElementById(id); return el ? el.value : ''; };
       s.truckBooking = {
@@ -33211,10 +33262,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onShipmentCardStatusChange(id, newStatus, selectEl) {
     const s = shipmentData[id];
     if (!s) return;
-    // Same transition rules as onShipmentStatusChange — in_transit,
-    // waiting_arrival, and delivered all require carrier + tracking
-    // (modal pops if missing). Only delivered moves the card off the
-    // Shipments page; in_transit / waiting_arrival keep it here.
+    // Same transition rules as onShipmentStatusChange:
+    //   • booked → pops tracking modal with Book a Truck pre-checked
+    //     so the operator captures the BOL before status flips.
+    //   • in_transit / waiting_arrival / delivered → require carrier +
+    //     tracking; modal pops if missing. Only delivered moves the
+    //     card off the Shipments page.
+    if (newStatus === 'booked' && !s.truckBooking) {
+      openTrackingModal(id, newStatus, 'card');
+      if (selectEl) selectEl.value = s.status || 'planning';
+      return;
+    }
     const needsTracking = (newStatus === 'in_transit' || newStatus === 'waiting_arrival' || newStatus === 'delivered');
     if (needsTracking && (!s.carrier || !s.trackingNumber)) {
       openTrackingModal(id, newStatus, 'card');
