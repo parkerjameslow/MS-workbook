@@ -5841,8 +5841,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        full-width inside the card border. */
     .oc-stat-strip {
       display: grid;
-      grid-template-columns: repeat(8, 1fr);
-      gap: 8px 14px;
+      /* 9 stats now (Units / Weight / Additional / Cost / Shipping /
+         Total / Price / Fees / CBM). Equal 1fr columns made narrow
+         values (e.g. "435,000") sit in a column much wider than
+         their content, exaggerating the gap to the next label.
+         minmax(0, max-content) lets each column shrink to its
+         content width while still flexing if extra width is
+         available — gaps read evenly across the row. */
+      grid-template-columns: repeat(9, minmax(0, max-content));
+      justify-content: space-between;
+      gap: 8px 18px;
       padding: 10px 16px 8px;
       margin: 0 -16px -12px;
       background: rgba(107,147,255,0.06);
