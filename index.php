@@ -5849,8 +5849,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          content width while still flexing if extra width is
          available — gaps read evenly across the row. */
       grid-template-columns: repeat(9, minmax(0, max-content));
-      justify-content: space-between;
-      gap: 8px 18px;
+      justify-content: start;
+      gap: 8px 28px;
       padding: 10px 16px 8px;
       margin: 0 -16px -12px;
       background: rgba(107,147,255,0.06);
