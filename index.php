@@ -5841,23 +5841,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        full-width inside the card border. */
     .oc-stat-strip {
       display: grid;
-      /* 9 stats now (Units / Weight / Additional / Cost / Shipping /
-         Total / Price / Fees / CBM). Equal 1fr columns made narrow
-         values (e.g. "435,000") sit in a column much wider than
-         their content, exaggerating the gap to the next label.
-         minmax(0, max-content) lets each column shrink to its
-         content width while still flexing if extra width is
-         available — gaps read evenly across the row. */
-      grid-template-columns: repeat(9, minmax(0, max-content));
-      justify-content: start;
-      gap: 8px 28px;
+      /* 9 stats (Units / Weight / Additional / Cost / Shipping /
+         Total / Price / Fees / CBM). 9 equal 1fr columns span the
+         FULL strip width — content sits centered within each
+         column so narrow values like "435,000" don't anchor to
+         the left edge and create the uneven visual gap the
+         operator flagged. Result: every column reads as the same
+         visual "slot" regardless of how short or long the value
+         is. */
+      grid-template-columns: repeat(9, 1fr);
+      gap: 8px 12px;
       padding: 10px 16px 8px;
       margin: 0 -16px -12px;
       background: rgba(107,147,255,0.06);
       border-top: 1px solid var(--border);
       border-radius: 0 0 var(--radius) var(--radius);
     }
-    .oc-stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    /* Each stat cell — label + value stacked, both centered
+       horizontally so the visual midline runs evenly across the
+       row. text-align:center on the children mirrors the cross-
+       axis alignment for the inline-flex CBM cell too. */
+    .oc-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      min-width: 0;
+      text-align: center;
+    }
     .oc-stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
     .oc-stat-val   { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .oc-stat-cbm-cap { font-size: 11px; font-weight: 600; color: var(--text-muted); }
