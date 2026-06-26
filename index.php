@@ -9496,7 +9496,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          order without scrolling past the workbook list. -->
     <div class="section-card" style="margin-bottom:16px;" id="order-deposit-card">
       <div class="section-header">
-        <span class="section-title">Payment Tracking</span>
+        <span class="section-title">Client Payment</span>
       </div>
       <div class="section-body">
         <div id="order-deposit-rows"></div>
