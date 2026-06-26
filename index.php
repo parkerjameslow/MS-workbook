@@ -9685,24 +9685,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <input type="date" id="new-ship-port-arrival-date" />
         </div>
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1.4fr; gap:10px;">
-        <div class="modal-field">
-          <label>Tracking Carrier <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
-          <div class="select-wrap">
-            <select id="new-ship-carrier" style="width:100%;">
-              <option value="">— None yet —</option>
-              <option value="ups">UPS</option>
-              <option value="fedex">FedEx</option>
-              <option value="dhl">DHL</option>
-              <option value="cosco">Cosco</option>
-              <option value="matson">Matson</option>
-            </select>
-          </div>
+      <div class="modal-field">
+        <label>Tracking Carrier <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+        <div class="select-wrap">
+          <select id="new-ship-carrier">
+            <option value="">— None yet —</option>
+            <option value="ups">UPS</option>
+            <option value="fedex">FedEx</option>
+            <option value="dhl">DHL</option>
+            <option value="cosco">Cosco</option>
+            <option value="matson">Matson</option>
+          </select>
         </div>
-        <div class="modal-field">
-          <label>Tracking Number <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
-          <input type="text" id="new-ship-tracking" placeholder="e.g. 1Z999AA10123456784" autocomplete="off" />
-        </div>
+      </div>
+      <div class="modal-field">
+        <label>Tracking Number <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+        <input type="text" id="new-ship-tracking" placeholder="e.g. 1Z999AA10123456784" autocomplete="off" />
       </div>
       <div style="border-top:1px solid var(--border); padding-top:14px; margin-bottom:14px;">
         <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text); user-select:none;">
@@ -32152,16 +32150,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const crTag = order.changeRequested
               ? `<span style="background:#fff7ed;border:1px solid #fed7aa;color:#E8751A;font-size:9px;font-weight:700;text-transform:uppercase;padding:1px 5px;border-radius:10px;margin-left:4px;vertical-align:middle;">⚑ Hold</span>`
               : '';
-            // Inline "← Production" mini-button on each order pill so
-            // the operator can pull an order out of the shipment
-            // without opening the detail page. Calls the same
-            // moveOrderBackToProduction handler the detail page uses,
-            // so behavior + confirmation modal stay consistent.
-            const moveBackBtn = `<button onclick="event.stopPropagation(); moveOrderBackToProduction(${e.orderId})"
-              title="Move this order back to In Production"
-              style="margin-left:6px; padding:1px 6px 2px; border-radius:9px; background:rgba(107,147,255,0.12); color:var(--accent); border:1px solid var(--accent); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; vertical-align:middle; line-height:1.3;">← Production</button>`;
-            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${order.clientName} – ${order.name}${crTag}<span class="sc-wb-pill-arrow">→</span></span>${moveBackBtn}`;
+            return `<span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='${href}'">${order.clientName} – ${order.name}${crTag}<span class="sc-wb-pill-arrow">→</span></span>`;
           }).join('');
+      // Per-order "← Production" buttons that sit on the right side of
+      // the card, below the status dropdown. Each button pulls one
+      // order back to the In Production lane via the shared
+      // moveOrderBackToProduction handler. Stacked vertically so a
+      // shipment with multiple orders still has a 1:1 mapping.
+      const moveBackStack = orderEntries.length === 0 ? '' : `
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:12px; width:100%;">
+          ${orderEntries.map(e => {
+            const order = orderData[e.orderId];
+            if (!order) return '';
+            const lbl = orderEntries.length > 1
+              ? `← ${order.clientName} – ${order.name}`
+              : '← Move to Production';
+            return `<button onclick="event.stopPropagation(); moveOrderBackToProduction(${e.orderId})"
+              title="Move ${(order.clientName || '').replace(/"/g,'&quot;')} – ${(order.name || '').replace(/"/g,'&quot;')} back to In Production"
+              style="width:100%; padding:7px 10px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${lbl}</button>`;
+          }).join('')}
+        </div>`;
       const wbCount = orderEntries.length;
       const overStyle = 'color:#ef4444 !important; font-weight:700;';
       const cbmOver = cbmPct > 100; const kgOver = kgPct > 100; const palOver = palletPct > 100;
@@ -32204,7 +32212,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <option value="delivered"       ${s.status === 'delivered'       ? 'selected' : ''}>Delivered</option>
               <option value="received"        ${s.status === 'received'        ? 'selected' : ''}>Received</option>
             </select>
-            <!-- container-type tag removed per operator preference -->
+            ${moveBackStack}
           </div>
         </div>
       </div>`;
