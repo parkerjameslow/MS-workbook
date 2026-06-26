@@ -9107,7 +9107,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="section-title">Shipping &amp; Tracking</span>
       </div>
       <div class="section-body" style="padding:14px 16px; display:flex; flex-direction:column; gap:14px;">
-        <div style="display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:12px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div>
             <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Shipping Method</label>
             <div class="ship-select-wrap" style="width:100%;">
@@ -9120,13 +9120,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               </select>
             </div>
           </div>
-          <div id="ship-detail-port-ship-wrap" style="display:none;">
+          <div id="ship-detail-port-location-wrap" style="display:none;">
+            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Port Location</label>
+            <div class="ship-select-wrap" style="width:100%;">
+              <select id="ship-detail-port-location" onchange="onShipmentPortLocationChange()" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:8px 28px 8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer;">
+                <option value="">— Select port —</option>
+                <option value="long_beach">Long Beach</option>
+                <option value="salt_lake_city">Salt Lake City</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div id="ship-detail-port-dates-wrap" style="display:none; grid-template-columns:1fr 1fr; gap:12px;">
+          <div id="ship-detail-port-ship-wrap">
             <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Port Ship Date</label>
             <input type="date" id="ship-detail-port-ship-date" oninput="onShipmentPortDateChange()" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;" />
           </div>
-          <div id="ship-detail-port-arrival-wrap" style="display:none;">
+          <div id="ship-detail-port-arrival-wrap">
             <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Port Arrival Date</label>
             <input type="date" id="ship-detail-port-arrival-date" oninput="onShipmentPortDateChange()" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;" />
+            <div id="ship-detail-release-hint" style="margin-top:4px; font-size:11px; color:var(--text-muted); font-style:italic;">Release Date: —</div>
           </div>
         </div>
         <div>
@@ -9513,6 +9526,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </button>
         <button class="btn-danger" id="order-delete-btn" onclick="deleteOrder(_currentOrderId)">Delete</button>
       </div>
+      <!-- Lane controls — surfaces the same Orders ↔ Production ↔
+           Shipment move actions that live on the dashboard cards,
+           but visible inside the drill-down so the operator never
+           has to back out to switch lanes. Populated by
+           _renderOrderDetailLaneControls() on each detail load. -->
+      <div id="order-detail-lane-controls" style="display:flex; align-items:center; gap:10px; margin-top:14px; padding:10px 14px; border:1px solid var(--border); border-radius:var(--radius-sm); background:rgba(107,147,255,0.04);"></div>
     </div>
 
     <!-- Change Request Banner (shown only when client has requested changes) -->
@@ -9673,16 +9692,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            default to 40hc internally so cap math + container viz keep
            working — operator just never sees the field. -->
       <input type="hidden" id="new-ship-container" value="40hc" />
-      <!-- Port dates only relevant for ocean freight; show/hide via
-           _onNewShipMethodChange. Hidden by default until method picked. -->
-      <div id="new-ship-port-dates" style="display:none; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+      <!-- Port dates + port location — only relevant for ocean freight;
+           show/hide via _onNewShipMethodChange. Hidden by default until
+           method picked. Release Date hint below arrival auto-derives
+           as arrival + 7 days. -->
+      <div id="new-ship-port-dates" style="display:none; flex-direction:column; gap:14px; margin-bottom:14px;">
         <div class="modal-field" style="margin-bottom:0;">
-          <label>Port Ship Date</label>
-          <input type="date" id="new-ship-port-ship-date" />
+          <label>Port Location</label>
+          <div class="select-wrap">
+            <select id="new-ship-port-location">
+              <option value="">— Select port —</option>
+              <option value="long_beach">Long Beach</option>
+              <option value="salt_lake_city">Salt Lake City</option>
+            </select>
+          </div>
         </div>
-        <div class="modal-field" style="margin-bottom:0;">
-          <label>Port Arrival Date</label>
-          <input type="date" id="new-ship-port-arrival-date" />
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div class="modal-field" style="margin-bottom:0;">
+            <label>Port Ship Date</label>
+            <input type="date" id="new-ship-port-ship-date" />
+          </div>
+          <div class="modal-field" style="margin-bottom:0;">
+            <label>Port Arrival Date</label>
+            <input type="date" id="new-ship-port-arrival-date" oninput="_onNewShipPortArrivalChange()" />
+            <div id="new-ship-release-hint" style="margin-top:4px; font-size:11px; color:var(--text-muted); font-style:italic;">Release Date: —</div>
+          </div>
         </div>
       </div>
       <div class="modal-field">
@@ -31784,6 +31818,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     setVal('new-ship-container',         '40hc');
     setVal('new-ship-port-ship-date',    '');
     setVal('new-ship-port-arrival-date', '');
+    setVal('new-ship-port-location',     '');
+    const _rh = document.getElementById('new-ship-release-hint');
+    if (_rh) _rh.textContent = 'Release Date: —';
     setVal('new-ship-carrier',           '');
     setVal('new-ship-tracking',          '');
     setVal('new-ship-bol-ship-from',     '');
@@ -31806,6 +31843,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('modal-new-shipment').classList.remove('open');
   }
 
+  // Compute the auto-derived release date string (arrival + 7 days)
+  // for the "Release Date: <date>" hint shown under Port Arrival
+  // inputs. Returns '—' for empty/invalid input so the hint stays
+  // visible without showing junk.
+  function _computeReleaseDateLabel(arrivalISO) {
+    if (!arrivalISO) return '—';
+    // Parse YYYY-MM-DD as a LOCAL date to avoid UTC drift that turns
+    // a date input into a day-earlier display in negative-UTC zones.
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(arrivalISO);
+    if (!m) return '—';
+    const d = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+    if (isNaN(d.getTime())) return '—';
+    d.setDate(d.getDate() + 7);
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  }
+
+  function _onNewShipPortArrivalChange() {
+    const hint = document.getElementById('new-ship-release-hint');
+    const v    = (document.getElementById('new-ship-port-arrival-date') || {}).value || '';
+    if (hint) hint.textContent = `Release Date: ${_computeReleaseDateLabel(v)}`;
+  }
+
   // Shipping-method onChange: show/hide port-date row (only meaningful
   // for ocean freight). Also pre-fill the tracking carrier when the
   // method has a known default carrier so the operator just needs to
@@ -31814,7 +31873,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const method = document.getElementById('new-ship-method').value;
     const meta = SHIPPING_METHODS[method];
     const portDates = document.getElementById('new-ship-port-dates');
-    if (portDates) portDates.style.display = (meta && meta.isOcean) ? 'grid' : 'none';
+    if (portDates) portDates.style.display = (meta && meta.isOcean) ? 'flex' : 'none';
     // Suggest the carrier for ocean lanes (cosco/matson are common
     // carriers — operator can still pick a different one).
     if (meta && (method === 'slow_boat' || method === 'fast_boat')) {
@@ -31849,6 +31908,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const id = _nextShipmentId++;
     const portShipDate    = (document.getElementById('new-ship-port-ship-date')    || {}).value || '';
     const portArrivalDate = (document.getElementById('new-ship-port-arrival-date') || {}).value || '';
+    const portLocation    = (document.getElementById('new-ship-port-location')     || {}).value || '';
     const carrier   = (document.getElementById('new-ship-carrier')  || {}).value || '';
     const tracking  = ((document.getElementById('new-ship-tracking') || {}).value || '').trim();
     const bookTruck = !!(document.getElementById('new-ship-book-truck') || {}).checked;
@@ -31864,6 +31924,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // the record always so a method change later doesn't lose data.
       portShipDate:    meta.isOcean ? portShipDate    : '',
       portArrivalDate: meta.isOcean ? portArrivalDate : '',
+      portLocation:    meta.isOcean ? portLocation    : '',
       // First tracking (if provided) seeds both the legacy single-
       // tracking slots AND the trackings[] array so downstream code
       // that reads either shape works. trackings[] is the new canonical
@@ -32304,8 +32365,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _renderShipDetailPortDates(s.shippingMethod);
     const psd = document.getElementById('ship-detail-port-ship-date');
     const pad = document.getElementById('ship-detail-port-arrival-date');
+    const plEl = document.getElementById('ship-detail-port-location');
     if (psd) psd.value = s.portShipDate    || '';
     if (pad) pad.value = s.portArrivalDate || '';
+    if (plEl) plEl.value = s.portLocation  || '';
+    _updateShipDetailReleaseHint();
     _renderShipmentDetailTrackings();
 
     // Container type buttons
@@ -32323,10 +32387,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _renderShipDetailPortDates(method) {
     const meta = SHIPPING_METHODS[method] || null;
     const isOcean = !!(meta && meta.isOcean);
-    const psw = document.getElementById('ship-detail-port-ship-wrap');
-    const paw = document.getElementById('ship-detail-port-arrival-wrap');
-    if (psw) psw.style.display = isOcean ? '' : 'none';
-    if (paw) paw.style.display = isOcean ? '' : 'none';
+    const datesWrap = document.getElementById('ship-detail-port-dates-wrap');
+    const plWrap    = document.getElementById('ship-detail-port-location-wrap');
+    if (datesWrap) datesWrap.style.display = isOcean ? 'grid' : 'none';
+    if (plWrap)    plWrap.style.display    = isOcean ? '' : 'none';
+  }
+
+  function _updateShipDetailReleaseHint() {
+    const hint = document.getElementById('ship-detail-release-hint');
+    if (!hint) return;
+    const v = (document.getElementById('ship-detail-port-arrival-date') || {}).value || '';
+    hint.textContent = `Release Date: ${_computeReleaseDateLabel(v)}`;
   }
 
   function onShipmentMethodChange() {
@@ -32342,6 +32413,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!s) return;
     s.portShipDate    = (document.getElementById('ship-detail-port-ship-date')    || {}).value || '';
     s.portArrivalDate = (document.getElementById('ship-detail-port-arrival-date') || {}).value || '';
+    _updateShipDetailReleaseHint();
+    saveShipments();
+  }
+
+  function onShipmentPortLocationChange() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.portLocation = (document.getElementById('ship-detail-port-location') || {}).value || '';
     saveShipments();
   }
 
@@ -36627,6 +36706,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (typeof saveOrders === 'function') saveOrders();
         if (typeof renderOrdersList     === 'function') renderOrdersList();
         if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
+        if (typeof _renderOrderDetailLaneControls === 'function' && location.hash.startsWith('#/order/')) _renderOrderDetailLaneControls();
       },
     });
   }
@@ -36668,6 +36748,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (typeof saveOrders === 'function') saveOrders();
         if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
         if (typeof renderOrdersList      === 'function' && location.hash === '#/orders')      renderOrdersList();
+        if (typeof _renderOrderDetailLaneControls === 'function' && location.hash.startsWith('#/order/')) _renderOrderDetailLaneControls();
       },
     });
   }
@@ -36710,8 +36791,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (typeof renderShipmentOrders === 'function' && location.hash.startsWith('#/shipment/')) renderShipmentOrders();
         if (typeof renderShipmentUtilization === 'function' && location.hash.startsWith('#/shipment/')) renderShipmentUtilization();
         if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
+        if (typeof renderShipmentsContent === 'function' && location.hash === '#/shipments') renderShipmentsContent();
+        if (typeof _renderOrderDetailLaneControls === 'function' && location.hash.startsWith('#/order/')) _renderOrderDetailLaneControls();
       },
     });
+  }
+
+  // Paint the lane-controls bar inside the order detail view. Shows
+  // the order'\''s current lane + the move-buttons that make sense from
+  // here. Pulls from the same move handlers the dashboard cards use so
+  // behavior + modal copy stay consistent across surfaces.
+  function _renderOrderDetailLaneControls() {
+    const host = document.getElementById('order-detail-lane-controls');
+    if (!host) return;
+    const o = orderData[_currentOrderId];
+    if (!o) { host.innerHTML = ''; return; }
+    const inShipment = (typeof _orderHasAnyWorkbookOnShipment === 'function') && _orderHasAnyWorkbookOnShipment(o);
+    let lane, laneBg, laneFg, laneBd, buttons = '';
+    if (inShipment) {
+      lane = 'In a Shipment'; laneBg = '#dbeafe'; laneFg = '#1d4ed8'; laneBd = '#bfdbfe';
+      buttons = `<button onclick="moveOrderBackToProduction('${_currentOrderId}')"
+                         style="padding:7px 12px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">← Move to Production</button>`;
+    } else if (o.notifiedAt) {
+      lane = 'In Production'; laneBg = '#fef3c7'; laneFg = '#a16207'; laneBd = '#fde68a';
+      buttons = `
+        <button onclick="openPickShipmentForOrder('${_currentOrderId}')"
+                style="padding:7px 12px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Add to Shipment</button>
+        <button onclick="moveOrderBackToOrders('${_currentOrderId}')"
+                style="padding:7px 12px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">← Move to Orders</button>`;
+    } else {
+      lane = 'In Orders Queue'; laneBg = '#eef2ff'; laneFg = '#4f46e5'; laneBd = '#c7d2fe';
+      buttons = `<button onclick="moveOrderToProduction('${_currentOrderId}')"
+                         style="padding:7px 12px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Move to Production</button>`;
+    }
+    host.innerHTML = `
+      <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-right:2px;">Lane</span>
+      <span style="display:inline-flex; align-items:center; padding:3px 10px; border-radius:99px; background:${laneBg}; color:${laneFg}; border:1px solid ${laneBd}; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">${lane}</span>
+      <span style="flex:1;"></span>
+      ${buttons}
+    `;
   }
 
   function setOrderDeadline(orderId, iso) {
@@ -37599,6 +37717,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderOrderSheet();
     renderOrderTieredPricing();
     renderOrderDepositTracking();
+    _renderOrderDetailLaneControls();
     showView('view-order-detail');
 
     // Show or hide the change-request panel
