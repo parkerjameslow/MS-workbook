@@ -9637,6 +9637,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- ── Move Order Lane Modal ─────────────────────────────────────────
+     Lightweight confirmation used for moving an order between lanes
+     (Orders ↔ In Production ↔ Shipment). Parameterized via
+     openMoveOrderModal({ title, body, confirmLabel, onConfirm }) so
+     the same modal serves every direction without sprawling. -->
+<div class="modal-overlay" id="modal-move-order" onclick="if(event.target===this)closeMoveOrderModal()" style="z-index:1000;">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title" id="move-order-modal-title" style="margin-bottom:8px;">Move Order</div>
+    <p id="move-order-modal-body" style="font-size:13px; color:var(--text-muted); line-height:1.5; margin:0 0 18px;"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeMoveOrderModal()">Cancel</button>
+      <button type="button" id="move-order-modal-confirm" class="btn btn-primary" onclick="_confirmMoveOrderModal()">Move</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Pick Shipment for Order Modal (from Production card) ──────────── -->
 <!-- Lightweight picker triggered by the "+ Add to Shipment" button on
      an In Production order card. Lists open shipments (planning +
@@ -32252,7 +32268,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="soc-cost-usd">${usdStr}</span>
               ${rmbStr ? `<span class="soc-cost-rmb">${rmbStr}</span>` : ''}
             </div>
-            <button class="ship-wb-remove" onclick="event.stopPropagation(); removeOrderFromShipment(${idx})" title="Remove">×</button>
+            <button onclick="event.stopPropagation(); moveOrderBackToProduction(${entry.orderId})"
+                    style="padding:6px 10px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
+                    title="Move the entire order back to In Production (removes all of its entries from every shipment)">
+              ← Move to Production
+            </button>
+            <button class="ship-wb-remove" onclick="event.stopPropagation(); removeOrderFromShipment(${idx})" title="Remove this entry from the shipment">×</button>
           </div>
         </div>
         <div class="ship-order-card-body">
@@ -36142,34 +36163,139 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return !!o && !o.notifiedAt;
   }
 
+  // ── Generic Move Order modal ─────────────────────────────────────
+  // Parameterized confirmation dialog used by every lane-move action
+  // (Orders → Production, Production → Orders, Shipment → Production).
+  // Each caller passes { title, body, confirmLabel, onConfirm } and
+  // the modal handles wiring + close. No locking — moves are freely
+  // reversible by the operator.
+  let _moveOrderModalCtx = null;
+  function openMoveOrderModal({ title, body, confirmLabel, onConfirm }) {
+    _moveOrderModalCtx = { onConfirm };
+    document.getElementById('move-order-modal-title').textContent   = title || 'Move Order';
+    document.getElementById('move-order-modal-body').textContent    = body  || '';
+    document.getElementById('move-order-modal-confirm').textContent = confirmLabel || 'Move';
+    document.getElementById('modal-move-order').classList.add('open');
+  }
+  function closeMoveOrderModal() {
+    document.getElementById('modal-move-order').classList.remove('open');
+    _moveOrderModalCtx = null;
+  }
+  function _confirmMoveOrderModal() {
+    const ctx = _moveOrderModalCtx;
+    closeMoveOrderModal();
+    if (ctx && typeof ctx.onConfirm === 'function') ctx.onConfirm();
+  }
+
   // Operator-triggered move from the Orders lane → In Production.
-  // Mirrors the gate that Notify Client uses (stamping notifiedAt is
-  // what _orderIsInFulfillment looks for) so the order disappears from
-  // Orders and shows up in In Production on the next render. Useful
-  // when the operator has already aligned with the client out-of-band
-  // (in-person, on a call, etc.) and just needs to advance the lane
-  // without re-sending the system notification email.
-  //
-  // movedToProductionAt is stamped separately so an audit can tell
-  // "moved manually" from "Notify Client'd". This field is purely
-  // informational — _orderIsInFulfillment only checks notifiedAt.
+  // Stamps notifiedAt (the gate _orderIsInFulfillment checks) and a
+  // separate movedToProductionAt audit field so a later check can tell
+  // "moved manually" from "Notify-Client'd". Reversible via
+  // moveOrderBackToOrders.
   function moveOrderToProduction(orderId) {
     const o = orderData[orderId];
     if (!o) return;
     if (o.notifiedAt) {
-      // Already in production lane — render the Orders list anyway so
-      // the operator sees the card disappear if the state was stale.
       if (typeof renderOrdersList === 'function') renderOrdersList();
       return;
     }
     const wbCount = Array.isArray(o.entries) ? o.entries.length : 0;
-    const proceed = confirm(`Move "${o.name || 'this order'}" to In Production?\n\n${wbCount} workbook${wbCount === 1 ? '' : 's'} will be locked in and the order will leave the Orders lane.`);
-    if (!proceed) return;
-    const stamp = new Date().toISOString();
-    o.notifiedAt = stamp;
-    o.movedToProductionAt = stamp;
-    if (typeof saveOrders === 'function') saveOrders();
-    if (typeof renderOrdersList === 'function') renderOrdersList();
+    openMoveOrderModal({
+      title:        'Move to In Production',
+      body:         `Move “${o.name || 'this order'}” into the In Production lane? ${wbCount} workbook${wbCount === 1 ? '' : 's'} will travel with it. You can move it back to Orders any time.`,
+      confirmLabel: 'Move to Production',
+      onConfirm: () => {
+        const stamp = new Date().toISOString();
+        o.notifiedAt = stamp;
+        o.movedToProductionAt = stamp;
+        if (typeof saveOrders === 'function') saveOrders();
+        if (typeof renderOrdersList     === 'function') renderOrdersList();
+        if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
+      },
+    });
+  }
+
+  // Operator-triggered reverse move: In Production → Orders. Clears
+  // the notifiedAt gate so _orderIsInFulfillment goes false and the
+  // card pops back to the Orders queue on the next render. Refuses
+  // when the order has workbooks on any shipment — those entries
+  // need to be removed first (the shipment lane manages its own
+  // membership; we don't want to silently break a manifest).
+  function moveOrderBackToOrders(orderId) {
+    const o = orderData[orderId];
+    if (!o) return;
+    if (!o.notifiedAt) {
+      // Already in Orders — refresh to clear stale UI state.
+      if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
+      if (typeof renderOrdersList      === 'function' && location.hash === '#/orders')      renderOrdersList();
+      return;
+    }
+    // Block when the order has any workbook on a shipment — the
+    // operator needs to remove those entries first (each shipment
+    // card surfaces the × per entry).
+    if (typeof _orderHasAnyWorkbookOnShipment === 'function' && _orderHasAnyWorkbookOnShipment(o)) {
+      openMoveOrderModal({
+        title:        'Order is in a shipment',
+        body:         `“${o.name || 'this order'}” has workbooks on one or more shipments. Remove those entries from the shipment(s) first, then this order can move back to Orders.`,
+        confirmLabel: 'Got it',
+        onConfirm:    () => {},
+      });
+      return;
+    }
+    openMoveOrderModal({
+      title:        'Move back to Orders',
+      body:         `Move “${o.name || 'this order'}” back to the Orders queue? It will leave the In Production lane until you move it forward again.`,
+      confirmLabel: 'Move to Orders',
+      onConfirm: () => {
+        delete o.notifiedAt;
+        delete o.movedToProductionAt;
+        if (typeof saveOrders === 'function') saveOrders();
+        if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
+        if (typeof renderOrdersList      === 'function' && location.hash === '#/orders')      renderOrdersList();
+      },
+    });
+  }
+
+  // Operator-triggered reverse move: Shipment → In Production.
+  // Strips EVERY entry for this order from EVERY shipment, then the
+  // _orderIsInFulfillment check flips back to true on next render.
+  // Use this when the operator wants to pull an entire order out of
+  // the manifest — the per-entry × on the shipment card still works
+  // for surgical removal of single workbook entries.
+  function moveOrderBackToProduction(orderId) {
+    const o = orderData[orderId];
+    if (!o) return;
+    const oid = parseInt(orderId);
+    // Find which shipments hold this order and how many entries.
+    const hits = [];
+    Object.values(shipmentData || {}).forEach(s => {
+      if (!s || !Array.isArray(s.entries)) return;
+      const count = s.entries.filter(e => e && parseInt(e.orderId) === oid).length;
+      if (count > 0) hits.push({ s, count });
+    });
+    if (hits.length === 0) {
+      // Not in any shipment — render the receiving/shipment view so
+      // the operator sees the current truth.
+      if (typeof renderShipmentOrders === 'function') renderShipmentOrders();
+      return;
+    }
+    const totalEntries = hits.reduce((sum, h) => sum + h.count, 0);
+    const shipNames    = hits.map(h => h.s.name || `Shipment #${h.s.id}`).join(', ');
+    openMoveOrderModal({
+      title:        'Move back to In Production',
+      body:         `Move “${o.name || 'this order'}” back to In Production? This will remove ${totalEntries} entr${totalEntries === 1 ? 'y' : 'ies'} from: ${shipNames}.`,
+      confirmLabel: 'Move to Production',
+      onConfirm: () => {
+        hits.forEach(({ s }) => {
+          s.entries = (s.entries || []).filter(e => !(e && parseInt(e.orderId) === oid));
+        });
+        if (typeof saveShipments === 'function') saveShipments();
+        if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
+        if (typeof renderShipmentOrders === 'function' && location.hash.startsWith('#/shipment/')) renderShipmentOrders();
+        if (typeof renderShipmentUtilization === 'function' && location.hash.startsWith('#/shipment/')) renderShipmentUtilization();
+        if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') renderFulfillmentList();
+      },
+    });
   }
 
   function setOrderDeadline(orderId, iso) {
@@ -36439,6 +36565,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               style="margin-top:10px; padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
               title="Pick a shipment to add this order to, or create a new one">
               + Add to Shipment
+            </button>
+            <button onclick="event.stopPropagation(); moveOrderBackToOrders('${id}')"
+              style="margin-top:6px; padding:6px 12px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
+              title="Send this order back to the Orders queue">
+              ← Move to Orders
             </button>
           </div>
         </div>
