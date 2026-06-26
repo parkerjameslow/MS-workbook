@@ -31671,15 +31671,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const list = document.getElementById('pick-ship-list');
     if (!list) return;
     const orderId = _pendingOrderIdForPicker;
-    // Show EVERY shipment regardless of status — operator wants full
-    // visibility. Each card surfaces its current status pill so the
-    // picker doubles as a quick "where did orders go?" map.
-    // Open shipments (planning + waiting_arrival) sort to the top
-    // since those are the ones the operator usually wants; remaining
-    // statuses fall through in lifecycle order.
-    const statusOrder = ['planning', 'waiting_arrival', 'in_transit', 'delivered', 'received'];
+    // Show shipments across the lifecycle — operator wants visibility
+    // into open AND in-flight containers so the picker doubles as a
+    // "where did orders go?" map. Delivered is hidden explicitly:
+    // once a shipment hits the destination it'\''s no longer a useful
+    // candidate for routing decisions, and the receiving lane already
+    // surfaces those.
+    const hiddenStatuses = new Set(['delivered']);
+    const statusOrder = ['planning', 'waiting_arrival', 'in_transit', 'received'];
     const all = Object.values(shipmentData || {})
-      .filter(s => s && s.id != null)
+      .filter(s => s && s.id != null && !hiddenStatuses.has(s.status))
       .sort((a, b) => {
         const ai = statusOrder.indexOf(a.status); const bi = statusOrder.indexOf(b.status);
         if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
