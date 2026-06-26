@@ -9101,8 +9101,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
 
+    <!-- Shipping method + port dates + tracking management -->
+    <!-- Operator can edit every shipment-level transport attribute in
+         place: which lane it travels (Slow Boat / Fast Boat / Slow Air
+         / Fast Air), Karen's port dates (only meaningful for ocean
+         freight), and one or more tracking numbers with their carrier. -->
+    <div class="section-card" style="margin-top:16px; margin-bottom:0;">
+      <div class="section-header">
+        <span class="section-title">Shipping &amp; Tracking</span>
+      </div>
+      <div class="section-body" style="padding:14px 16px; display:flex; flex-direction:column; gap:14px;">
+        <div style="display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:12px;">
+          <div>
+            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Shipping Method</label>
+            <div class="ship-select-wrap" style="width:100%;">
+              <select id="ship-detail-method" onchange="onShipmentMethodChange()" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:8px 28px 8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer;">
+                <option value="">— Not set —</option>
+                <option value="slow_boat">Slow Boat — Cosco</option>
+                <option value="fast_boat">Fast Boat — Matson</option>
+                <option value="slow_air">Slow Air — Shared Air/Ground</option>
+                <option value="fast_air">Fast Air — Direct</option>
+              </select>
+            </div>
+          </div>
+          <div id="ship-detail-port-ship-wrap" style="display:none;">
+            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Port Ship Date</label>
+            <input type="date" id="ship-detail-port-ship-date" oninput="onShipmentPortDateChange()" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;" />
+          </div>
+          <div id="ship-detail-port-arrival-wrap" style="display:none;">
+            <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Port Arrival Date</label>
+            <input type="date" id="ship-detail-port-arrival-date" oninput="onShipmentPortDateChange()" style="width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;" />
+          </div>
+        </div>
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+            <label style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Trackings</label>
+            <button type="button" onclick="addShipmentTracking()" style="padding:5px 12px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Add Tracking</button>
+          </div>
+          <div id="ship-detail-trackings"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Order entries -->
-    <div class="section-card" style="margin-bottom:0;">
+    <div class="section-card" style="margin-top:16px; margin-bottom:0;">
       <div class="section-header">
         <div style="display:flex; align-items:center; gap:8px;">
           <span class="section-title">Orders in this Shipment</span>
@@ -9612,12 +9654,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <div class="modal-overlay" id="modal-new-shipment" onclick="if(event.target===this)closeNewShipmentModal()" style="z-index:1000;">
-  <div class="modal" style="max-width:400px;">
+  <div class="modal" style="max-width:560px; max-height:90vh; overflow-y:auto;">
     <div class="modal-title">New Shipment</div>
     <form onsubmit="createShipment(event)">
       <div class="modal-field">
         <label>Shipment Name <span class="required">*</span></label>
         <input type="text" id="new-ship-name" placeholder="e.g. May 2026 Container" required />
+      </div>
+      <div class="modal-field">
+        <label>Shipping Method <span class="required">*</span></label>
+        <div class="select-wrap">
+          <select id="new-ship-method" required onchange="_onNewShipMethodChange()">
+            <option value="">— Select method —</option>
+            <option value="slow_boat">Slow Boat — Cosco</option>
+            <option value="fast_boat">Fast Boat — Matson</option>
+            <option value="slow_air">Slow Air — Shared Air/Ground</option>
+            <option value="fast_air">Fast Air — Direct</option>
+          </select>
+        </div>
       </div>
       <div class="modal-field">
         <label>Container Type</label>
@@ -9627,6 +9681,75 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <option value="40ft">40' Standard — 55 CBM · 26,500 kg</option>
             <option value="40hc" selected>40' High Cube — 65 CBM · 26,500 kg</option>
           </select>
+        </div>
+      </div>
+      <!-- Port dates only relevant for ocean freight; show/hide via
+           _onNewShipMethodChange. Hidden by default until method picked. -->
+      <div id="new-ship-port-dates" style="display:none; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Port Ship Date</label>
+          <input type="date" id="new-ship-port-ship-date" />
+        </div>
+        <div class="modal-field" style="margin-bottom:0;">
+          <label>Port Arrival Date</label>
+          <input type="date" id="new-ship-port-arrival-date" />
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1.4fr; gap:10px;">
+        <div class="modal-field">
+          <label>Tracking Carrier <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+          <div class="select-wrap">
+            <select id="new-ship-carrier" style="width:100%;">
+              <option value="">— None yet —</option>
+              <option value="ups">UPS</option>
+              <option value="fedex">FedEx</option>
+              <option value="dhl">DHL</option>
+              <option value="cosco">Cosco</option>
+              <option value="matson">Matson</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-field">
+          <label>Tracking Number <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+          <input type="text" id="new-ship-tracking" placeholder="e.g. 1Z999AA10123456784" autocomplete="off" />
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border); padding-top:14px; margin-bottom:14px;">
+        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text); user-select:none;">
+          <input type="checkbox" id="new-ship-book-truck" onchange="_toggleNewShipBookTruckFields(this.checked)"
+                 style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); margin:0;" />
+          <span>Book a truck with Ivan</span>
+        </label>
+        <p style="margin:6px 0 0 26px; font-size:11px; color:var(--text-muted); line-height:1.4;">
+          Check to capture the BOL so Ivan can dispatch a truck for pickup.
+        </p>
+        <div id="new-ship-bol-fields" style="display:none; flex-direction:column; gap:12px; margin-top:14px; padding:14px; background:rgba(107,147,255,0.06); border:1px solid var(--border); border-radius:10px;">
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Ship From</label>
+            <textarea id="new-ship-bol-ship-from" rows="2" placeholder="Origin address — where Ivan picks up" style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Ship To</label>
+            <textarea id="new-ship-bol-ship-to" rows="2" placeholder="Destination address — final delivery" style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;"># of Stops</label>
+              <input id="new-ship-bol-stops" type="number" min="1" value="1" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);" />
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Pickup Date</label>
+              <input id="new-ship-bol-pickup-date" type="date" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);" />
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Pickup Time</label>
+              <input id="new-ship-bol-pickup-time" type="time" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Notes / Special Instructions</label>
+            <textarea id="new-ship-bol-notes" rows="2" placeholder="Pallet count, weight, dock hours, lift-gate, etc." style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
+          </div>
         </div>
       </div>
       <div class="modal-actions">
@@ -31592,10 +31715,46 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _applyNavBadge(document.getElementById('badge-samples'), sampleActionable, all.length);
   }
 
+  // ── Shipping method catalogue ────────────────────────────────────────
+  // Single source of truth for the 4 shipping lanes. Each entry pairs
+  // an internal key (stored on shipmentData[id].shippingMethod) with a
+  // human label + suggested carrier. Used by:
+  //   • Create Shipment modal dropdown
+  //   • Shipment detail page method selector
+  //   • Picker list status pills (so the operator can see by-the-eye
+  //     which lane each shipment travels)
+  const SHIPPING_METHODS = {
+    slow_boat: { label: 'Slow Boat',  carrier: 'Cosco',             isOcean: true  },
+    fast_boat: { label: 'Fast Boat',  carrier: 'Matson',            isOcean: true  },
+    slow_air:  { label: 'Slow Air',   carrier: 'Shared Air/Ground', isOcean: false },
+    fast_air:  { label: 'Fast Air',   carrier: 'Direct',            isOcean: false },
+  };
+
   // ── Create ────────────────────────────────────────────────────────────
   function openNewShipmentModal() {
-    document.getElementById('new-ship-name').value = '';
-    document.getElementById('new-ship-container').value = '40hc';
+    // Reset every field on every open so a half-filled previous attempt
+    // doesn't bleed into a fresh creation.
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
+    setVal('new-ship-name',              '');
+    setVal('new-ship-method',            '');
+    setVal('new-ship-container',         '40hc');
+    setVal('new-ship-port-ship-date',    '');
+    setVal('new-ship-port-arrival-date', '');
+    setVal('new-ship-carrier',           '');
+    setVal('new-ship-tracking',          '');
+    setVal('new-ship-bol-ship-from',     '');
+    setVal('new-ship-bol-ship-to',       '');
+    setVal('new-ship-bol-stops',         1);
+    setVal('new-ship-bol-pickup-date',   '');
+    setVal('new-ship-bol-pickup-time',   '');
+    setVal('new-ship-bol-notes',         '');
+    // Book-a-Truck checkbox defaults to UNCHECKED per operator preference.
+    const cb = document.getElementById('new-ship-book-truck');
+    if (cb) cb.checked = false;
+    const bol = document.getElementById('new-ship-bol-fields');
+    if (bol) bol.style.display = 'none';
+    const portDates = document.getElementById('new-ship-port-dates');
+    if (portDates) portDates.style.display = 'none';
     document.getElementById('modal-new-shipment').classList.add('open');
     setTimeout(() => document.getElementById('new-ship-name').focus(), 80);
   }
@@ -31603,20 +31762,86 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('modal-new-shipment').classList.remove('open');
   }
 
+  // Shipping-method onChange: show/hide port-date row (only meaningful
+  // for ocean freight). Also pre-fill the tracking carrier when the
+  // method has a known default carrier so the operator just needs to
+  // paste the tracking number.
+  function _onNewShipMethodChange() {
+    const method = document.getElementById('new-ship-method').value;
+    const meta = SHIPPING_METHODS[method];
+    const portDates = document.getElementById('new-ship-port-dates');
+    if (portDates) portDates.style.display = (meta && meta.isOcean) ? 'grid' : 'none';
+    // Suggest the carrier for ocean lanes (cosco/matson are common
+    // carriers — operator can still pick a different one).
+    if (meta && (method === 'slow_boat' || method === 'fast_boat')) {
+      const carrierSel = document.getElementById('new-ship-carrier');
+      if (carrierSel && !carrierSel.value) {
+        const target = method === 'slow_boat' ? 'cosco' : 'matson';
+        if ([...carrierSel.options].some(o => o.value === target)) carrierSel.value = target;
+      }
+    }
+  }
+
+  // BOL section toggle inside the Create Shipment modal. Mirrors the
+  // pattern the tracking modal uses, but on its own DOM ids so the
+  // two modals don't fight over state.
+  function _toggleNewShipBookTruckFields(checked) {
+    const fields = document.getElementById('new-ship-bol-fields');
+    if (!fields) return;
+    fields.style.display = checked ? 'flex' : 'none';
+  }
+
   function createShipment(e) {
     e.preventDefault();
     const name      = document.getElementById('new-ship-name').value.trim();
+    const method    = document.getElementById('new-ship-method').value;
     const container = document.getElementById('new-ship-container').value;
     if (!name) return;
+    if (!method) {
+      alert('Please pick a Shipping Method before creating the shipment.');
+      return;
+    }
+    const meta = SHIPPING_METHODS[method] || {};
     const id = _nextShipmentId++;
+    const portShipDate    = (document.getElementById('new-ship-port-ship-date')    || {}).value || '';
+    const portArrivalDate = (document.getElementById('new-ship-port-arrival-date') || {}).value || '';
+    const carrier   = (document.getElementById('new-ship-carrier')  || {}).value || '';
+    const tracking  = ((document.getElementById('new-ship-tracking') || {}).value || '').trim();
+    const bookTruck = !!(document.getElementById('new-ship-book-truck') || {}).checked;
     shipmentData[id] = {
       id, name,
+      shippingMethod: method,
       containerType: container,
       status: 'planning',
       dateCreated: new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'2-digit'}),
       etd: '', eta: '',
       entries: [],
+      // Port dates — only set when relevant (ocean methods); kept on
+      // the record always so a method change later doesn't lose data.
+      portShipDate:    meta.isOcean ? portShipDate    : '',
+      portArrivalDate: meta.isOcean ? portArrivalDate : '',
+      // First tracking (if provided) seeds both the legacy single-
+      // tracking slots AND the trackings[] array so downstream code
+      // that reads either shape works. trackings[] is the new canonical
+      // model; carrier / trackingNumber are kept for back-compat with
+      // existing UI bits until we migrate every read site.
+      carrier:        carrier,
+      trackingNumber: tracking,
+      trackings:      (carrier && tracking) ? [{ carrier, number: tracking, addedAt: new Date().toISOString() }] : [],
     };
+    if (bookTruck) {
+      const getVal = id2 => { const el = document.getElementById(id2); return el ? el.value : ''; };
+      shipmentData[id].truckBooking = {
+        bookedWith: 'Ivan',
+        bookedAt:   new Date().toISOString(),
+        shipFrom:   getVal('new-ship-bol-ship-from').trim(),
+        shipTo:     getVal('new-ship-bol-ship-to').trim(),
+        stops:      parseInt(getVal('new-ship-bol-stops')) || 1,
+        pickupDate: getVal('new-ship-bol-pickup-date'),
+        pickupTime: getVal('new-ship-bol-pickup-time'),
+        notes:      getVal('new-ship-bol-notes').trim(),
+      };
+    }
     // If this createShipment was triggered from the production-card
     // pick-shipment flow ("+ Create New Shipment" inside the order's
     // shipment picker), auto-attach the pending order entry so the
@@ -32019,6 +32244,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('ship-detail-delivered').value = s.deliveredOn || '';
     document.getElementById('ship-delivered-wrap').style.display = s.status === 'delivered' ? 'flex' : 'none';
 
+    // Shipping method + port-date wiring
+    const methodEl = document.getElementById('ship-detail-method');
+    if (methodEl) methodEl.value = s.shippingMethod || '';
+    _renderShipDetailPortDates(s.shippingMethod);
+    const psd = document.getElementById('ship-detail-port-ship-date');
+    const pad = document.getElementById('ship-detail-port-arrival-date');
+    if (psd) psd.value = s.portShipDate    || '';
+    if (pad) pad.value = s.portArrivalDate || '';
+    _renderShipmentDetailTrackings();
+
     // Container type buttons
     document.querySelectorAll('.container-type-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.type === s.containerType);
@@ -32028,6 +32263,116 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderShipmentUtilization();
     _renderShipmentTrackingSection();
     showView('view-shipment-detail');
+  }
+
+  // ── Shipment detail: shipping method + port dates + trackings ────────
+  function _renderShipDetailPortDates(method) {
+    const meta = SHIPPING_METHODS[method] || null;
+    const isOcean = !!(meta && meta.isOcean);
+    const psw = document.getElementById('ship-detail-port-ship-wrap');
+    const paw = document.getElementById('ship-detail-port-arrival-wrap');
+    if (psw) psw.style.display = isOcean ? '' : 'none';
+    if (paw) paw.style.display = isOcean ? '' : 'none';
+  }
+
+  function onShipmentMethodChange() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.shippingMethod = document.getElementById('ship-detail-method').value || '';
+    _renderShipDetailPortDates(s.shippingMethod);
+    saveShipments();
+  }
+
+  function onShipmentPortDateChange() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    s.portShipDate    = (document.getElementById('ship-detail-port-ship-date')    || {}).value || '';
+    s.portArrivalDate = (document.getElementById('ship-detail-port-arrival-date') || {}).value || '';
+    saveShipments();
+  }
+
+  // Trackings = array of { carrier, number, addedAt }. Migration:
+  // legacy shipments only have s.carrier + s.trackingNumber. The first
+  // time we render, if trackings[] is empty and the legacy fields are
+  // set, seed trackings[] from them. Saves on next change.
+  function _renderShipmentDetailTrackings() {
+    const host = document.getElementById('ship-detail-trackings');
+    if (!host) return;
+    const s = shipmentData[_currentShipmentId];
+    if (!s) { host.innerHTML = ''; return; }
+    if (!Array.isArray(s.trackings)) s.trackings = [];
+    if (s.trackings.length === 0 && s.carrier && s.trackingNumber) {
+      s.trackings.push({ carrier: s.carrier, number: s.trackingNumber, addedAt: s.dateCreated || new Date().toISOString() });
+    }
+    if (s.trackings.length === 0) {
+      host.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:12px; border:1px dashed var(--border); border-radius:8px;">
+        No tracking numbers yet. Use <strong>+ Add Tracking</strong> above to attach one.
+      </div>`;
+      return;
+    }
+    const CARRIERS = [
+      { v: '',       lbl: '— Carrier —' },
+      { v: 'ups',    lbl: 'UPS' },
+      { v: 'fedex',  lbl: 'FedEx' },
+      { v: 'dhl',    lbl: 'DHL' },
+      { v: 'cosco',  lbl: 'Cosco' },
+      { v: 'matson', lbl: 'Matson' },
+    ];
+    host.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px;">${
+      s.trackings.map((t, idx) => `
+        <div style="display:grid; grid-template-columns:160px 1fr auto; gap:8px; align-items:center;">
+          <select onchange="updateShipmentTracking(${idx}, 'carrier', this.value)"
+                  style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:7px 22px 7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;">
+            ${CARRIERS.map(c => `<option value="${c.v}"${c.v === (t.carrier || '') ? ' selected' : ''}>${c.lbl}</option>`).join('')}
+          </select>
+          <input type="text" value="${(t.number || '').replace(/"/g, '&quot;')}" placeholder="Tracking number"
+                 oninput="updateShipmentTracking(${idx}, 'number', this.value)"
+                 style="padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;" />
+          <button onclick="removeShipmentTracking(${idx})" title="Remove this tracking entry"
+                  style="width:30px; height:30px; padding:0; border:1px solid var(--border); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1;">×</button>
+        </div>
+      `).join('')
+    }</div>`;
+  }
+
+  function addShipmentTracking() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    if (!Array.isArray(s.trackings)) s.trackings = [];
+    s.trackings.push({ carrier: '', number: '', addedAt: new Date().toISOString() });
+    saveShipments();
+    _renderShipmentDetailTrackings();
+  }
+
+  function updateShipmentTracking(idx, field, value) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s || !Array.isArray(s.trackings) || !s.trackings[idx]) return;
+    s.trackings[idx][field] = value;
+    // Keep the legacy single-tracking slots in sync with the FIRST
+    // entry so older read sites (status pills, list-page tracking
+    // strip, AI lookup) keep working without a full migration.
+    if (idx === 0) {
+      s.carrier        = s.trackings[0].carrier || '';
+      s.trackingNumber = s.trackings[0].number  || '';
+    }
+    saveShipments();
+  }
+
+  function removeShipmentTracking(idx) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s || !Array.isArray(s.trackings)) return;
+    s.trackings.splice(idx, 1);
+    // Re-seed legacy slots from whatever is now first (or clear them
+    // if no trackings remain).
+    if (s.trackings.length > 0) {
+      s.carrier        = s.trackings[0].carrier || '';
+      s.trackingNumber = s.trackings[0].number  || '';
+    } else {
+      s.carrier        = '';
+      s.trackingNumber = '';
+    }
+    saveShipments();
+    _renderShipmentDetailTrackings();
   }
 
   // ── Tracking helpers (shared by the shipment card + the detail) ──
@@ -32989,7 +33334,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // intended to fill out.
     const tb = (s && s.truckBooking) || null;
     const cb = document.getElementById('tracking-modal-book-truck');
-    const shouldCheck = !!tb || isBookedFlow;
+    // Per operator: default the Book a Truck checkbox to UNCHECKED.
+    // Only auto-check when this shipment already has saved truckBooking
+    // data (so re-opening shows the operator their prior entry).
+    // Previous behavior auto-checked it whenever isBookedFlow was true
+    // — that proved too eager; the operator wants to opt in each time.
+    const shouldCheck = !!tb;
     if (cb) cb.checked = shouldCheck;
     const bolFields = document.getElementById('tracking-modal-bol-fields');
     if (bolFields) bolFields.style.display = shouldCheck ? 'flex' : 'none';
