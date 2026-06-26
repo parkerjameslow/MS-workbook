@@ -32965,6 +32965,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('tracking-modal-carrier').value = s.carrier || '';
     document.getElementById('tracking-modal-number').value = s.trackingNumber || '';
     document.getElementById('tracking-modal-error').style.display = 'none';
+    // Declared up-front so every downstream branch in this function
+    // can read it without hitting a temporal-dead-zone ReferenceError
+    // (an earlier edit referenced isBookedFlow before its declaration,
+    // which threw and killed the whole modal-open path).
+    const isBookedFlow    = (requestedStatus === 'booked');
+    const goesToReceiving = (requestedStatus === 'delivered');
     // Pre-populate the truck-booking section from prior data if the
     // operator already saved a BOL for this shipment. Empty out
     // everything otherwise so a fresh open doesn't show stale state
@@ -33013,8 +33019,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     //     Receiving" and the intro says so explicitly.
     const intro = document.getElementById('tracking-modal-intro');
     const btn   = document.getElementById('tracking-modal-confirm');
-    const goesToReceiving = (requestedStatus === 'delivered');
-    const isBookedFlow    = (requestedStatus === 'booked');
     if (intro) {
       intro.textContent = isBookedFlow
         ? 'Capture the truck booking details below. Carrier + tracking are optional for this status — fill them in when the shipment carrier is confirmed.'
