@@ -5872,8 +5872,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .oc-stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
     .oc-stat-val   { font-size: 12px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .oc-stat-cbm-cap { font-size: 11px; font-weight: 600; color: var(--text-muted); }
-    .oc-cbm-bar      { height: 3px; margin-top: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
-    .oc-cbm-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.2s; }
+    /* CBM capacity bar — visualizes how full the order's volume is
+       against a single 40' HC container (67 m³). Track is a soft
+       muted slab; the fill grows blue and turns amber when the
+       order goes over capacity (color set inline in the card
+       builders). Width is generous so the bar reads as a real
+       progress indicator instead of a hairline. */
+    .oc-cbm-bar      { height: 6px; margin-top: 5px; width: 100%; min-width: 80px; background: rgba(107,147,255,0.18); border-radius: 99px; overflow: hidden; }
+    .oc-cbm-bar-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.25s ease-out; }
     .oc-left { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 130px; flex: 0 0 320px; padding-right: 16px; }
     .oc-client { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
     .oc-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
