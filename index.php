@@ -35170,11 +35170,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : '';
       onboardBtn = `<button class="crm-card-onboard-btn" onclick="event.stopPropagation(); sendCrmOnboarding('${c.id}')">${label}</button>${caption}`;
     }
-    // Labels: small colored pills along the top of the card. Each
-    // uses the bg/fg the operator picked when adding it. Skipped
-    // when the card has no labels.
+    // Labels: small colored pills BELOW the company name so the
+    // operator's eye always lands on the lead name first, then
+    // sees the classification. Each label uses the bg/fg the
+    // operator picked when adding it. Skipped when card has none.
     const labelsHtml = (Array.isArray(c.labels) && c.labels.length)
-      ? `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px;">${
+      ? `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;">${
           c.labels.map(l => `<span style="display:inline-block; padding:2px 8px; border-radius:99px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; background:${l.bg || '#f3f4f6'}; color:${l.fg || '#4b5563'};">${esc(l.name || '')}</span>`).join('')
         }</div>`
       : '';
@@ -35213,8 +35214,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  onclick="openCrmCardModal('${c.id}')"
                  style="position:relative; ${padR ? `padding-right:${padR}px;` : ''}">
       ${assigneeChip}
-      ${labelsHtml}
       <div class="crm-card-company">${esc(company)}</div>
+      ${labelsHtml}
       ${subline ? `<div class="crm-card-contact">${esc(subline)}</div>` : ''}
       ${meta.length ? `<div class="crm-card-meta">${meta.join('')}</div>` : ''}
       ${onboardBtn}
