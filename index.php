@@ -32765,7 +32765,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
         <span class="section-title">Tracking</span>
         <span style="padding:2px 10px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:10px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase;">${esc(carrierLabel)}</span>
-        <a href="${carrierUrl}" target="_blank" rel="noopener" style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);" title="Open carrier tracking page">${esc(s.trackingNumber)} ↗</a>
+        <!-- Tracking number is plain copy-able text — NOT a hyperlink.
+             Was wrapped in <a href="carrierUrl"> so any click on the
+             number opened the carrier's site, blocking operators
+             trying to inspect / edit the number. Carrier-launch
+             behavior moved to a dedicated ↗ button alongside. To
+             change the number, scroll to the Trackings section below
+             (the editable inputs). -->
+        <span style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); user-select:all; cursor:text;" title="Tracking number — edit it in the Trackings section below">${esc(s.trackingNumber)}</span>
+        <a href="${carrierUrl}" target="_blank" rel="noopener"
+           style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; color:var(--text-muted); text-decoration:none; border:1px solid var(--border); border-radius:6px; background:var(--surface2); font-size:12px; line-height:1;"
+           onclick="event.stopPropagation();"
+           title="Open ${esc(carrierLabel)} tracking page in a new tab">↗</a>
         <span style="margin-left:auto; display:flex; gap:8px;">
           <button class="btn btn-ghost" style="font-size:12px;" onclick="refreshTrackingForCurrent(this)">↻ Refresh tracking</button>
         </span>
