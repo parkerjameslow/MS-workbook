@@ -34651,6 +34651,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renderCrmBoard() {
+    // Defensive init — when the router fires renderCrmBoard during
+    // page boot (because the operator refreshed on #/crm), it can
+    // run BEFORE loadCrm() has assigned crmData. The `var` hoist
+    // gets us past the TDZ but leaves crmData as `undefined`, which
+    // would throw on crmData.cards.forEach. Run loadCrm here too so
+    // the data shape is always valid before we render.
+    if (!crmData || typeof crmData !== 'object') {
+      if (typeof loadCrm === 'function') loadCrm();
+      else crmData = { cards: {}, nextId: 1 };
+    }
     document.getElementById('header-title').textContent = 'CRM — Sales Pipeline';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
@@ -34973,7 +34983,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _updateCrmNavBadge() {
     const badge = document.getElementById('badge-crm');
     if (!badge) return;
-    const active = Object.values(crmData.cards || {}).filter(c =>
+    // Same defensive guard as renderCrmBoard — crmData can be the
+    // hoisted-undefined value when this runs from init before loadCrm.
+    const cards = (crmData && crmData.cards) ? crmData.cards : {};
+    const active = Object.values(cards).filter(c =>
       c.column !== 'creating' && c.column !== 'backburner').length;
     if (active > 0) { badge.textContent = active; badge.style.display = ''; }
     else            { badge.textContent = '';      badge.style.display = 'none'; }
