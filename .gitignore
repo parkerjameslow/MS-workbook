@@ -1,0 +1,7 @@
+# Per-deploy override file for secret config (ANTHROPIC_API_KEY etc.).
+# Required by api.php's three-tier key resolution (ENV → api.local.php → empty).
+api.local.php
+
+# Editor / OS noise
+.DS_Store
+*.swp

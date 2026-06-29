@@ -33606,7 +33606,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const s = shipmentData[id];
     if (!s) return false;
     if (!s.carrier || !s.trackingNumber) {
-      alert('No carrier / tracking number on this shipment yet.');
+      // Use the in-app toast instead of the browser alert dialog so the
+      // operator stays in-flow. Same for the error paths below.
+      if (typeof _msToast === 'function') _msToast('No carrier / tracking number on this shipment yet.', 'warning');
       return false;
     }
     if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
@@ -33618,10 +33620,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return true;
       }
       const errMsg = (r && r.error) ? r.error : 'Tracking fetch failed.';
-      alert(`Could not refresh tracking: ${errMsg}`);
+      if (typeof _msToast === 'function') _msToast(`Could not refresh tracking: ${errMsg}`, 'warning');
     } catch (e) {
       console.warn('refreshTracking:', e);
-      alert('Tracking fetch error — see console.');
+      if (typeof _msToast === 'function') _msToast('Tracking fetch error — see console.', 'warning');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh tracking'; }
     }

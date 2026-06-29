@@ -395,17 +395,45 @@ const TWILIO_AUTH_TOKEN  = '';
 const TWILIO_FROM_NUMBER = '';
 
 // ── AI text-action provider (Anthropic Claude) ────────────────────────
-// Drop your Anthropic API key here to enable the ✨ AI button on every
-// rich-text field (Product Description, Quote Notes, Art Notes, etc.).
+// Powers the ✨ AI button on rich-text fields AND the carrier tracking
+// HTML→JSON parser used by fetch_tracking_status. Without a key,
+// tracking refreshes silently fail and AI rewrites are disabled —
+// the rest of the app works fine.
+//
+// THREE WAYS TO SET THE KEY, in priority order:
+//   1. Environment variable: export ANTHROPIC_API_KEY="sk-ant-..."
+//      Best for shared hosting where you can set Apache SetEnv or a
+//      .htaccess SetEnv ANTHROPIC_API_KEY "...".
+//   2. Local override file: create api.local.php (gitignored) next
+//      to api.php with:
+//        <?php define('ANTHROPIC_API_KEY', 'sk-ant-...');
+//      Keeps the key out of git but in a per-deploy spot.
+//   3. Hardcode below (least safe — commits to git): replace the
+//      empty string with your key. Only do this if the repo is
+//      private and you accept the risk.
+//
 // Get a key from https://console.anthropic.com/settings/keys.
-// While the key is empty the AI button still appears but every action
-// returns a "not configured" error so the rest of the app keeps working.
 //
 // Model picks a smart default — Claude Sonnet 3.5 is fast + cheap and
 // great at the rewrite / shorten / fix-grammar tasks the toolbar
 // surfaces. Override via constant if you want to try a different one.
-const ANTHROPIC_API_KEY = '';
-const ANTHROPIC_MODEL   = 'claude-3-5-sonnet-20241022';
+
+// Load api.local.php first if present so it can pre-define the key.
+if (file_exists(__DIR__ . '/api.local.php')) {
+    require_once __DIR__ . '/api.local.php';
+}
+
+// Resolve the key: ENV → already-defined (from api.local.php) → empty.
+if (!defined('ANTHROPIC_API_KEY')) {
+    $envKey = getenv('ANTHROPIC_API_KEY');
+    if ($envKey === false || $envKey === '') {
+        $envKey = $_SERVER['ANTHROPIC_API_KEY'] ?? '';
+    }
+    define('ANTHROPIC_API_KEY', is_string($envKey) ? $envKey : '');
+}
+if (!defined('ANTHROPIC_MODEL')) {
+    define('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022');
+}
 
 function ms_sms_configured(): bool {
     return TWILIO_ACCOUNT_SID !== '' && TWILIO_AUTH_TOKEN !== '' && TWILIO_FROM_NUMBER !== '';
