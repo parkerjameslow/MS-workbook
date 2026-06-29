@@ -2673,12 +2673,35 @@ switch ($action) {
             'primary_contact'   => $form['contact_name']      ?? '',
             'billing_address'   => $form['billing_address']   ?? '',
             'shipping_address'  => $form['shipping_address']  ?? '',
-            'notes'             => trim((string)($form['notes'] ?? '')) .
-                                   (!empty($form['ein'])               ? "\nEIN: " . $form['ein']             : '') .
-                                   (!empty($form['business_type'])     ? "\nBusiness type: " . $form['business_type'] : '') .
-                                   (!empty($form['payment_method'])    ? "\nPreferred payment: " . $form['payment_method'] : '') .
-                                   (!empty($form['net_terms'])         ? "\nNet terms requested: " . $form['net_terms']    : '') .
-                                   (!empty($form['tc721_status'])      ? "\nTC721: " . $form['tc721_status']  : ''),
+            // Notes field becomes the catch-all for every captured
+            // attribute that doesn't have its own clients column.
+            // Includes DBA, year established, contact title, the
+            // detailed TC721 fields (when inline), business + payment
+            // metadata. Built piece-by-piece via a closure so empty
+            // fields drop cleanly.
+            'notes'             => (function () use ($form) {
+                $bits = [];
+                if (!empty($form['notes']))                $bits[] = trim((string)$form['notes']);
+                if (!empty($form['dba']))                  $bits[] = 'DBA: ' . $form['dba'];
+                if (!empty($form['business_type']))        $bits[] = 'Business type: ' . $form['business_type'];
+                if (!empty($form['ein']))                  $bits[] = 'EIN: ' . $form['ein'];
+                if (!empty($form['year_established']))     $bits[] = 'Year established: ' . $form['year_established'];
+                if (!empty($form['contact_title']))        $bits[] = 'Title: ' . $form['contact_title'];
+                if (!empty($form['payment_method']))       $bits[] = 'Preferred payment: ' . $form['payment_method'];
+                if (!empty($form['net_terms']))            $bits[] = 'Net terms requested: ' . $form['net_terms'];
+                $tc = $form['tc721_status'] ?? '';
+                if ($tc === 'upload')          $bits[] = 'TC721: uploaded (file pending Phase 3 storage)';
+                else if ($tc === 'not_applicable') $bits[] = 'TC721: not applicable';
+                else if ($tc === 'inline') {
+                    $tcBits = ['TC721 (inline)'];
+                    if (!empty($form['tc721_license']))     $tcBits[] = '  License: '     . $form['tc721_license'];
+                    if (!empty($form['tc721_state']))       $tcBits[] = '  State: '       . $form['tc721_state'];
+                    if (!empty($form['tc721_type']))        $tcBits[] = '  Reseller: '    . $form['tc721_type'];
+                    if (!empty($form['tc721_description'])) $tcBits[] = '  Description: ' . $form['tc721_description'];
+                    $bits[] = implode("\n", $tcBits);
+                }
+                return implode("\n", $bits);
+            })(),
         ];
         foreach ($cmap as $col => $val) {
             $val = trim((string)$val);
@@ -2697,19 +2720,44 @@ switch ($action) {
         $invite['clientId']      = $clientId;
         $pdo->prepare("UPDATE app_state SET value_json = ? WHERE key_name = ?")
             ->execute([json_encode($invite), 'crm_onboarding_invite_' . $token]);
-        // Notification emails to office@ + parker@
+        // Notification emails to office@ + parker@ — surface every
+        // field the client filled out so the team has the full
+        // picture without having to dig into the client record.
+        // TC721 row dynamically expands to show the actual exemption
+        // fields (license / state / type / description) when the
+        // client picked the inline path.
         $rows = [];
         $rows[] = ['Legal Name',          $legalName];
+        if (!empty($form['dba']))               $rows[] = ['DBA',             $form['dba']];
+        if (!empty($form['business_type']))     $rows[] = ['Business type',   $form['business_type']];
+        if (!empty($form['ein']))               $rows[] = ['EIN',             $form['ein']];
+        if (!empty($form['year_established']))  $rows[] = ['Established',     $form['year_established']];
         if (!empty($form['contact_name']))      $rows[] = ['Primary Contact', $form['contact_name']];
+        if (!empty($form['contact_title']))     $rows[] = ['Title',           $form['contact_title']];
         if (!empty($form['email']))             $rows[] = ['Email',           $form['email']];
         if (!empty($form['phone']))             $rows[] = ['Phone',           $form['phone']];
-        if (!empty($form['ein']))               $rows[] = ['EIN',             $form['ein']];
-        if (!empty($form['business_type']))     $rows[] = ['Business type',   $form['business_type']];
         if (!empty($form['billing_address']))   $rows[] = ['Billing address', $form['billing_address']];
         if (!empty($form['shipping_address']))  $rows[] = ['Shipping addr.',  $form['shipping_address']];
         if (!empty($form['payment_method']))    $rows[] = ['Payment method',  $form['payment_method']];
         if (!empty($form['net_terms']))         $rows[] = ['Net terms',       $form['net_terms']];
-        if (!empty($form['tc721_status']))      $rows[] = ['TC721',           $form['tc721_status']];
+        // TC721: expand the inline path to show the actual exemption
+        // fields the client filled in. Keep the simple summary when
+        // they picked Upload or Not Applicable.
+        $tcStatus = $form['tc721_status'] ?? '';
+        if ($tcStatus === 'inline') {
+            $tcLines = ['Inline (filled out below)'];
+            if (!empty($form['tc721_license']))     $tcLines[] = 'License #: '   . $form['tc721_license'];
+            if (!empty($form['tc721_state']))       $tcLines[] = 'State: '       . $form['tc721_state'];
+            if (!empty($form['tc721_type']))        $tcLines[] = 'Reseller: '    . $form['tc721_type'];
+            if (!empty($form['tc721_description'])) $tcLines[] = 'Description: ' . $form['tc721_description'];
+            $rows[] = ['TC721', implode("\n", $tcLines)];
+        } else if ($tcStatus === 'upload') {
+            $rows[] = ['TC721', 'Uploaded (file storage in Phase 3)'];
+        } else if ($tcStatus === 'not_applicable') {
+            $rows[] = ['TC721', 'Not applicable / not a Utah reseller'];
+        } else if ($tcStatus !== '') {
+            $rows[] = ['TC721', $tcStatus];
+        }
         if (!empty($form['notes']))             $rows[] = ['Notes',           $form['notes']];
         $rowsHtml = implode('', array_map(function ($r) {
             return '<tr><td style="padding:6px 12px 6px 0; vertical-align:top; color:#6b7280; font-size:12px; white-space:nowrap;"><strong>' . htmlspecialchars($r[0]) . '</strong></td>'
@@ -2734,6 +2782,32 @@ switch ($action) {
             $slackText = "*New client onboarded*: *" . $legalName . "*"
                        . (!empty($form['contact_name']) ? " · " . $form['contact_name'] : '')
                        . (!empty($form['email']) ? " · " . $form['email'] : '');
+            // Build the Slack body line-by-line so empty fields drop
+            // cleanly + the TC721 block expands when the client picked
+            // the inline option.
+            $slackLines = ["*" . $legalName . "*"];
+            if (!empty($form['dba']))               $slackLines[] = "DBA: "      . $form['dba'];
+            if (!empty($form['business_type']))     $slackLines[] = "Type: "     . $form['business_type'];
+            if (!empty($form['ein']))               $slackLines[] = "EIN: "      . $form['ein'];
+            if (!empty($form['contact_name']))      $slackLines[] = "Contact: "  . $form['contact_name']
+                                                                  . (!empty($form['contact_title']) ? ' (' . $form['contact_title'] . ')' : '');
+            if (!empty($form['email']))             $slackLines[] = "Email: "    . $form['email'];
+            if (!empty($form['phone']))             $slackLines[] = "Phone: "    . $form['phone'];
+            if (!empty($form['payment_method']))    $slackLines[] = "Payment: "  . $form['payment_method']
+                                                                  . (!empty($form['net_terms']) ? ' / ' . $form['net_terms'] : '');
+            $tcStatus = $form['tc721_status'] ?? '';
+            if ($tcStatus === 'inline') {
+                $tcSummary = 'TC721 inline';
+                if (!empty($form['tc721_license'])) $tcSummary .= ' · license ' . $form['tc721_license'];
+                if (!empty($form['tc721_state']))   $tcSummary .= ' (' . $form['tc721_state'] . ')';
+                if (!empty($form['tc721_type']))    $tcSummary .= ' · ' . $form['tc721_type'];
+                $slackLines[] = $tcSummary;
+            } else if ($tcStatus === 'upload') {
+                $slackLines[] = "TC721: uploaded";
+            } else if ($tcStatus === 'not_applicable') {
+                $slackLines[] = "TC721: n/a";
+            }
+            $slackLines[] = "_Client record auto-created (id " . $clientId . ")._";
             $slackBody = json_encode([
                 'text' => $slackText,
                 'blocks' => [
@@ -2745,12 +2819,7 @@ switch ($action) {
                         'type' => 'section',
                         'text' => [
                             'type' => 'mrkdwn',
-                            'text' => "*" . $legalName . "*"
-                                    . (!empty($form['contact_name']) ? "\nContact: " . $form['contact_name'] : '')
-                                    . (!empty($form['email']) ? "\nEmail: " . $form['email'] : '')
-                                    . (!empty($form['phone']) ? "\nPhone: " . $form['phone'] : '')
-                                    . (!empty($form['tc721_status']) ? "\nTC721: " . $form['tc721_status'] : '')
-                                    . "\n_Client record auto-created (id " . $clientId . ")._"
+                            'text' => implode("\n", $slackLines),
                         ]
                     ]
                 ]
