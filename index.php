@@ -5515,6 +5515,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border: none;
       border-radius: 0;
       display: flex; flex-direction: column;
+      /* min-height so the drop zone extends to the bottom of the
+         visible board area even when the column only has 1-2 cards.
+         Previously the column shrank to its content, so dragging
+         "to the bottom" of a sparse column actually dragged onto
+         the empty board background — no drop fired. */
+      min-height: calc(100vh - 220px);
       max-height: calc(100vh - 130px);
       transition: background 0.15s;
     }
@@ -5561,10 +5567,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .crm-col-body {
       flex: 1 1 auto;
       overflow-y: auto;
-      padding: 8px;
+      padding: 8px 4px;
       display: flex; flex-direction: column; gap: 8px;
       min-height: 80px;
       border-radius: 0 0 10px 10px;
+      /* Drag-over fill highlights the WHOLE column body area, not
+         just the rows that already have cards. Makes the "drop here"
+         affordance unambiguous. */
+    }
+    .crm-column.drag-over .crm-col-body {
+      background: rgba(107,147,255,0.08);
+      border-radius: 10px;
+      outline: 2px dashed rgba(107,147,255,0.35);
+      outline-offset: -2px;
     }
     /* Dark/charcoal cards — sit "in front of" the watermark with a
        deep slate background, light text, and a soft outer shadow so
