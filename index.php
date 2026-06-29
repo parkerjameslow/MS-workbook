@@ -32481,20 +32481,94 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       { v: 'matson', lbl: 'Matson' },
     ];
     host.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px;">${
-      s.trackings.map((t, idx) => `
-        <div style="display:grid; grid-template-columns:160px 1fr auto; gap:8px; align-items:center;">
+      s.trackings.map((t, idx) => {
+        const numEsc = (t.number || '').replace(/"/g, '&quot;');
+        return `
+        <div style="display:grid; grid-template-columns:160px 1fr auto auto; gap:8px; align-items:center;">
           <select onchange="updateShipmentTracking(${idx}, 'carrier', this.value)"
-                  style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:7px 22px 7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;">
+                  style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:7px 22px 7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer;">
             ${CARRIERS.map(c => `<option value="${c.v}"${c.v === (t.carrier || '') ? ' selected' : ''}>${c.lbl}</option>`).join('')}
           </select>
-          <input type="text" value="${(t.number || '').replace(/"/g, '&quot;')}" placeholder="Tracking number"
+          <input type="text" value="${numEsc}" placeholder="Type or paste tracking number — edit any time"
+                 data-tracking-idx="${idx}"
+                 data-tracking-original="${numEsc}"
                  oninput="updateShipmentTracking(${idx}, 'number', this.value)"
-                 style="padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;" />
+                 onfocus="this.select(); this.style.borderColor='var(--accent)';"
+                 onblur="this.style.borderColor='var(--border)'; _onTrackingNumberBlur(${idx}, this);"
+                 title="Click to edit. Tab away to save + re-check status."
+                 style="padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:'SF Mono','Consolas',monospace; transition:border-color 0.15s;" />
+          <button onclick="recheckSingleTracking(${idx}, this)" title="Re-check this tracking number against the carrier"
+                  style="padding:7px 10px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;">↻ Check</button>
           <button onclick="removeShipmentTracking(${idx})" title="Remove this tracking entry"
                   style="width:30px; height:30px; padding:0; border:1px solid var(--border); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1;">×</button>
-        </div>
-      `).join('')
-    }</div>`;
+        </div>`;
+      }).join('')
+    }</div>
+    <div style="margin-top:8px; font-size:11px; color:var(--text-muted); font-style:italic;">
+      Click any tracking number to edit. Tab away (or hit <strong>↻ Check</strong>) to re-fetch the carrier'\''s latest status.
+    </div>`;
+  }
+
+  // Fires when the operator tabs/clicks out of a tracking number
+  // input. If the number actually changed during the edit, we drop
+  // the cached s.tracking (which was for the OLD number) and kick a
+  // fresh fetch — otherwise the auto-refresh would happily show the
+  // old number'\''s status until its 30-min stale window ticked.
+  function _onTrackingNumberBlur(idx, inputEl) {
+    const original = inputEl.getAttribute('data-tracking-original') || '';
+    const current  = (inputEl.value || '').trim();
+    if (original.trim() === current) return;
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    // Number changed — drop the stale status cache so the next render
+    // shows "Not yet checked" instead of the old number'\''s outcome.
+    if (idx === 0) s.tracking = null;
+    inputEl.setAttribute('data-tracking-original', current);
+    if (typeof _msToast === 'function') _msToast('Tracking updated — re-checking carrier…', 'info');
+    saveShipments();
+    // Kick a fresh fetch immediately. Best-effort: failure is fine, the
+    // 5-min auto-refresh will retry, and the operator can still hit ↻ Check.
+    recheckSingleTracking(idx, null);
+  }
+
+  // Manual / blur-triggered re-check for one tracking row. Hits
+  // fetch_tracking_status with the row'\''s CURRENT carrier + number,
+  // writes the result into s.tracking (only for idx 0 — the legacy
+  // s.tracking slot tracks the primary entry), saves, re-renders the
+  // detail section + list strip so the operator sees the fresh
+  // status without a full page reload.
+  async function recheckSingleTracking(idx, btn) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s || !Array.isArray(s.trackings) || !s.trackings[idx]) return;
+    const t = s.trackings[idx];
+    const carrier = t.carrier || '';
+    const number  = (t.number || '').trim();
+    if (!carrier || !number) {
+      if (typeof _msToast === 'function') _msToast('Pick a carrier and a tracking number first.', 'warning');
+      return;
+    }
+    if (btn) { btn.disabled = true; btn.textContent = '↻ Checking…'; }
+    try {
+      const r = await apiCall('fetch_tracking_status', { carrier, tracking_number: number });
+      if (r && r.ok && r.data) {
+        // Only the primary entry (idx 0) maps to the legacy s.tracking
+        // slot that the list strip + status pill read. Secondary
+        // trackings still update locally but we don'\''t override the
+        // primary cache from a secondary row.
+        if (idx === 0) s.tracking = r.data;
+        saveShipments();
+        if (typeof _renderShipmentTrackingSection === 'function') _renderShipmentTrackingSection();
+        if (typeof _msToast === 'function') _msToast(`Tracking refreshed — ${r.data.status || 'status unknown'}`, 'success');
+      } else {
+        const err = (r && r.error) ? r.error : 'No tracking data returned';
+        if (typeof _msToast === 'function') _msToast(`Re-check failed: ${err}`, 'warning');
+      }
+    } catch (e) {
+      console.warn('recheckSingleTracking:', e);
+      if (typeof _msToast === 'function') _msToast('Re-check error — see console.', 'warning');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '↻ Check'; }
+    }
   }
 
   function addShipmentTracking() {
@@ -33717,6 +33791,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!s) { closeTrackingModal(); return; }
     s.carrier = carrier;
     s.trackingNumber = num;
+    // Keep s.trackings[0] in sync with the legacy single-slot fields.
+    // Without this, editing carrier/tracking through the modal'\''s
+    // dropdown + input would NOT update the new trackings[] array,
+    // and the next Trackings-section render would still show the
+    // old number.
+    if (!Array.isArray(s.trackings)) s.trackings = [];
+    if (carrier && num) {
+      if (s.trackings.length === 0) {
+        s.trackings.push({ carrier, number: num, addedAt: new Date().toISOString() });
+      } else {
+        s.trackings[0].carrier = carrier;
+        s.trackings[0].number  = num;
+      }
+    }
     s.status = ctx.requestedStatus;
     s.tracking = s.tracking || null; // will be filled by the AI fetch below
     // Persist (or clear) the truck booking BOL. When the checkbox is
