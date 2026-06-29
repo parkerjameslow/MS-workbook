@@ -5489,7 +5489,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       min-height: 70vh;
     }
     .crm-column {
-      flex: 0 0 280px;
+      flex: 0 0 240px;
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -5516,26 +5516,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-size: 11px; font-weight: 700; color: var(--text-muted);
       flex-shrink: 0;
     }
+    /* "+" add button lives in the column header now (compact icon)
+       instead of a full-width pill at the bottom of the card. Same
+       handler, less vertical space. */
+    .crm-col-add-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; padding: 0; flex-shrink: 0;
+      border: 1px solid var(--border); border-radius: 6px;
+      background: var(--surface);
+      color: var(--text-muted);
+      font-size: 16px; line-height: 1; font-weight: 700;
+      cursor: pointer; font-family: inherit;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .crm-col-add-icon:hover { background: rgba(107,147,255,0.10); color: var(--accent); border-color: var(--accent); }
     .crm-col-body {
       flex: 1 1 auto;
       overflow-y: auto;
       padding: 8px;
       display: flex; flex-direction: column; gap: 8px;
       min-height: 80px;
-    }
-    .crm-col-add {
-      display: flex; align-items: center; justify-content: center; gap: 6px;
-      padding: 8px 12px;
-      border-top: 1px solid var(--border);
-      background: transparent;
-      color: var(--text-muted);
-      font-size: 12px; font-weight: 600;
-      cursor: pointer;
       border-radius: 0 0 10px 10px;
-      flex-shrink: 0;
-      font-family: inherit;
     }
-    .crm-col-add:hover { background: rgba(107,147,255,0.06); color: var(--accent); }
     .crm-card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -34641,9 +34643,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="crm-column-header">
           <span class="crm-col-title" style="background:${col.bg}; color:${col.fg};">${col.label}</span>
           <span class="crm-col-count">${cards.length}</span>
+          <button class="crm-col-add-icon" onclick="openCrmCardModal(null, '${col.id}')" title="Add a lead to ${col.label}">+</button>
         </div>
         <div class="crm-col-body">${cardsHtml}</div>
-        <button class="crm-col-add" onclick="openCrmCardModal(null, '${col.id}')">+ Add lead</button>
       </div>`;
     }).join('');
     _updateCrmNavBadge();
