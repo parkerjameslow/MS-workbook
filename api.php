@@ -461,27 +461,39 @@ if (!defined('SLACK_WEBHOOK_URL')) {
     define('SLACK_WEBHOOK_URL', is_string($envSlack) ? $envSlack : '');
 }
 
-// Per-employee Slack user IDs for @-mentions on CRM assignment.
-// When a card is assigned to someone, the notification posts to the
-// existing SLACK_WEBHOOK_URL channel and tags the person via their
-// Slack user ID so they get a real personal notification (not just
-// channel noise).
+// Per-employee Slack DM webhook URLs. When a CRM card is assigned
+// to someone, the notification posts DIRECTLY to that person's DM
+// (not to a shared channel) using the URL mapped to their name.
 //
-// To find a Slack user ID: open Slack → click the person's profile
-// → "View full profile" → "More" (three-dot menu) → "Copy member ID".
-// Looks like U01ABC2DEF3.
+// How to set up:
+//   1. Go to https://api.slack.com/apps → MarketSculpt CRM
+//   2. Left sidebar → "Incoming Webhooks"
+//   3. Click "Add New Webhook to Workspace"
+//   4. In the channel picker, search for the person's NAME (not
+//      a channel) → pick their direct message thread
+//   5. Slack generates a unique webhook URL for THAT person's DM
+//   6. Repeat for each operator
+//   7. Paste the URLs into api.local.php
 //
 // Set in api.local.php as:
-//   define('CRM_SLACK_USER_IDS', [
-//     'Parker'  => 'U01ABC2DEF3',
-//     'Jackson' => 'U02XYZ...',
-//     'Ron'     => 'U03...',
-//     'Kylie'   => 'U04...',
-//     'Karen'   => 'U05...',
+//   define('CRM_SLACK_USER_WEBHOOKS', [
+//     'Parker'  => 'https://hooks.slack.com/services/T.../B.../parker-dm-url',
+//     'Jackson' => 'https://hooks.slack.com/services/T.../B.../jackson-dm-url',
+//     'Ron'     => 'https://hooks.slack.com/services/T.../B.../ron-dm-url',
+//     'Kylie'   => 'https://hooks.slack.com/services/T.../B.../kylie-dm-url',
+//     'Karen'   => 'https://hooks.slack.com/services/T.../B.../karen-dm-url',
 //   ]);
 //
-// Names that don't have an ID fall back to plain text ("Parker") in
-// the message — still posted, just no @-ping.
+// Anyone without a webhook in the map: when the shared
+// SLACK_WEBHOOK_URL is set, falls back to a channel post with the
+// person's name in bold. No webhook + no fallback channel = no
+// notification (operator still sees the in-app save success).
+if (!defined('CRM_SLACK_USER_WEBHOOKS')) {
+    define('CRM_SLACK_USER_WEBHOOKS', []);
+}
+// Legacy User IDs constant — no longer used after switching to
+// per-person DM webhooks, but kept defined so api.local.php files
+// that still declare it don't error out.
 if (!defined('CRM_SLACK_USER_IDS')) {
     define('CRM_SLACK_USER_IDS', []);
 }
@@ -2528,15 +2540,16 @@ switch ($action) {
         break;
 
     case 'crm_notify_assignment':
-        // Posts a Slack message tagging each newly-assigned operator
-        // with the card details so they see "hey, you've got a new
-        // lead to look at." Called from the frontend on every modal
-        // save that ADDS at least one assignee (the frontend already
-        // diffs old vs new and only sends when there are new names).
+        // Posts a Slack DM directly to each newly-assigned operator
+        // (one message per person, each in their own DM thread) so
+        // notifications are personal, not channel noise. Called from
+        // the frontend on every modal save that ADDS at least one
+        // assignee.
         //
-        // Best-effort: if SLACK_WEBHOOK_URL isn't set we skip silently
-        // and return {ok:true, skipped:true}. The card save itself
-        // doesn't depend on this succeeding.
+        // Per-person DM webhooks live in CRM_SLACK_USER_WEBHOOKS.
+        // Anyone without a webhook in the map falls back to a shared
+        // SLACK_WEBHOOK_URL channel post (with their name in bold)
+        // so the notification still lands somewhere visible.
         $assignees = is_array($input['assignees'] ?? null) ? $input['assignees'] : [];
         $company   = trim((string)($input['company'] ?? ''));
         $contact   = trim((string)($input['contact'] ?? ''));
@@ -2548,25 +2561,16 @@ switch ($action) {
             echo json_encode(['ok' => false, 'error' => 'assignees + company required']);
             break;
         }
-        if (SLACK_WEBHOOK_URL === '') {
-            echo json_encode(['ok' => true, 'skipped' => true, 'reason' => 'slack_not_configured']);
+        $userWebhooks = is_array(CRM_SLACK_USER_WEBHOOKS) ? CRM_SLACK_USER_WEBHOOKS : [];
+        if (empty($userWebhooks) && SLACK_WEBHOOK_URL === '') {
+            echo json_encode(['ok' => true, 'skipped' => true, 'reason' => 'no_slack_configured']);
             break;
         }
-        $userIds = is_array(CRM_SLACK_USER_IDS) ? CRM_SLACK_USER_IDS : [];
-        // Build the "who" line — turn each assignee name into
-        // <@U01ABC...> when we have an ID for them, plain name
-        // otherwise. Plain names still post; just no @-ping.
-        $mentions = array_map(function ($name) use ($userIds) {
-            $id = $userIds[$name] ?? null;
-            return $id ? '<@' . $id . '>' : '*' . $name . '*';
-        }, $assignees);
-        $whoLine = implode(', ', $mentions);
         // Map column id → readable label so the message reads
         // naturally regardless of how the operator labeled the lane.
         $columnLabels = [
             'referrals'    => 'Referrals',
             'prospect_rfq' => 'Prospect RFQ',
-            'cold'         => 'Cold',
             'warm'         => 'Warm',
             'hot'          => 'Hot',
             'onboard'      => 'Onboard',
@@ -2589,35 +2593,70 @@ switch ($action) {
         }
         $portalUrl = rtrim(PUBLIC_BASE_URL, '/') . '/index.php#/crm';
         $bodyLines[] = "<" . $portalUrl . "|Open in CRM →>";
-        $slackBody = json_encode([
-            'text' => 'New CRM assignment: ' . $company . ' (' . $columnLbl . ')',
-            'blocks' => [
-                [ 'type' => 'header', 'text' => ['type' => 'plain_text', 'text' => '👋 New CRM Lead Assigned'] ],
-                [ 'type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => "Hey {$whoLine} — you've been assigned a CRM lead:"] ],
-                [ 'type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $bodyLines)] ],
-            ],
-        ]);
-        $slackStatus = null;
-        $slackErr    = null;
-        if (function_exists('curl_init')) {
-            $ch = curl_init(SLACK_WEBHOOK_URL);
+
+        // Helper: POST a Slack body to a webhook URL. Returns
+        // [ok, status, error]. Best-effort.
+        $postToSlack = function ($url, $body) {
+            if (!function_exists('curl_init') || !$url) return ['ok' => false, 'status' => 0, 'error' => 'curl_or_url_missing'];
+            $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $slackBody,
+                CURLOPT_POSTFIELDS => $body,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 8,
             ]);
             curl_exec($ch);
-            $slackStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $slackErr    = curl_error($ch) ?: null;
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch) ?: null;
             curl_close($ch);
+            return ['ok' => $code >= 200 && $code < 300, 'status' => $code, 'error' => $err];
+        };
+
+        // Send one DM per assignee with a personal greeting. People
+        // without a personal webhook URL get queued for a shared-
+        // channel fallback post below.
+        $results       = [];
+        $fallbackNames = [];
+        foreach ($assignees as $name) {
+            $personalUrl = $userWebhooks[$name] ?? null;
+            if (!$personalUrl) {
+                $fallbackNames[] = $name;
+                $results[$name] = ['ok' => false, 'reason' => 'no_personal_webhook'];
+                continue;
+            }
+            $personalBody = json_encode([
+                'text' => 'New CRM assignment: ' . $company . ' (' . $columnLbl . ')',
+                'blocks' => [
+                    [ 'type' => 'header',  'text' => ['type' => 'plain_text', 'text' => '👋 New CRM Lead Assigned'] ],
+                    [ 'type' => 'section', 'text' => ['type' => 'mrkdwn',     'text' => "Hey {$name} — you've been assigned a CRM lead:"] ],
+                    [ 'type' => 'section', 'text' => ['type' => 'mrkdwn',     'text' => implode("\n", $bodyLines)] ],
+                ],
+            ]);
+            $results[$name] = $postToSlack($personalUrl, $personalBody);
+        }
+
+        // Anyone without a personal DM webhook gets covered by a
+        // single shared-channel post (if SLACK_WEBHOOK_URL is set)
+        // so they're not silently dropped.
+        $fallbackResult = null;
+        if (!empty($fallbackNames) && SLACK_WEBHOOK_URL !== '') {
+            $whoLine = implode(', ', array_map(fn($n) => '*' . $n . '*', $fallbackNames));
+            $fallbackBody = json_encode([
+                'text' => 'New CRM assignment: ' . $company . ' (' . $columnLbl . ')',
+                'blocks' => [
+                    [ 'type' => 'header',  'text' => ['type' => 'plain_text', 'text' => '👋 New CRM Lead Assigned'] ],
+                    [ 'type' => 'section', 'text' => ['type' => 'mrkdwn',     'text' => "Hey {$whoLine} — you've been assigned a CRM lead (no personal DM webhook on file):"] ],
+                    [ 'type' => 'section', 'text' => ['type' => 'mrkdwn',     'text' => implode("\n", $bodyLines)] ],
+                ],
+            ]);
+            $fallbackResult = $postToSlack(SLACK_WEBHOOK_URL, $fallbackBody);
         }
         echo json_encode([
-            'ok'         => $slackStatus >= 200 && $slackStatus < 300,
-            'status'     => $slackStatus,
-            'curl_error' => $slackErr,
-            'mentioned'  => array_keys($userIds),
+            'ok'             => true,
+            'personal_sends' => $results,
+            'fallback_sent'  => $fallbackResult,
+            'fallback_names' => $fallbackNames,
         ]);
         break;
 
