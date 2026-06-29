@@ -27813,6 +27813,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const samplesNav = document.getElementById('nav-samples-link');
     if (samplesNav) samplesNav.classList.add('active');
     showView('view-samples');
+    if (typeof rebuildSamplesNav === 'function') rebuildSamplesNav();
 
     const allSamples = collectAllSamples();
 
@@ -28227,6 +28228,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rfqNav = document.getElementById('nav-rfq-link');
     if (rfqNav) rfqNav.classList.add('active');
     showView('view-rfq');
+    if (typeof rebuildRfqNav === 'function') rebuildRfqNav();
 
     const all = collectAllRfqs();
 
@@ -28539,6 +28541,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const navLink = document.getElementById('nav-review-link');
     if (navLink) navLink.classList.add('active');
     showView('view-review');
+    if (typeof rebuildReviewNav === 'function') rebuildReviewNav();
 
     const all = collectAllReadyForReview();
 
@@ -32335,6 +32338,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (shipNav) shipNav.classList.add('active');
     showView('view-shipments');
     renderShipmentsContent();
+    // Keep nav badges current — rebuildShipmentsNav also refreshes
+    // the Receiving badge since the two are computed together.
+    if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
     if (typeof startTrackingAutoRefresh === 'function') startTrackingAutoRefresh();
   }
 
@@ -33402,6 +33408,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const recNav = document.getElementById('nav-receiving-link');
     if (recNav) recNav.classList.add('active');
     showView('view-receiving');
+    if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
     const host = document.getElementById('receiving-list-content');
     if (!host) return;
     const activeIds   = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'delivered');
@@ -37539,6 +37546,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fNav = document.getElementById('nav-fulfillment-link');
     if (fNav) fNav.classList.add('active');
     showView('view-fulfillment');
+    // rebuildOrdersNav updates BOTH badge-orders and badge-fulfillment
+    // so the Orders + In Production counters stay current whenever
+    // the operator lands on either view.
+    if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav();
     const host = document.getElementById('fulfillment-list-content');
     if (!host) return;
     const ids = Object.keys(orderData).filter(id => _orderIsInFulfillment(orderData[id]));
@@ -37822,6 +37833,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (ordNav) ordNav.classList.add('active');
     showView('view-orders');
     renderOrdersContent();
+    // Refresh the nav badge to match what'\''s actually on this page —
+    // belt-and-suspenders against stale-localStorage-vs-DB drift.
+    if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav();
   }
 
   function filterOrders(status, btn) {
