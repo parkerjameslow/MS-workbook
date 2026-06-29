@@ -5475,6 +5475,94 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .shipment-list-empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
     .shipment-list-empty-sub { font-size: 13px; color: var(--text-muted); }
 
+    /* ─ CRM (Trello-like board) ────────────────────────────────────
+       Horizontal scrolling pipeline. Each column is a fixed-width
+       column-card with a colored header pill, a scrollable card
+       stack, and an "add card" button pinned at the bottom. Cards
+       are HTML5-draggable; columns are drop targets that highlight
+       when a card hovers over them. */
+    .crm-board {
+      display: flex; gap: 12px;
+      padding: 4px 0 16px;
+      overflow-x: auto;
+      align-items: flex-start;
+      min-height: 70vh;
+    }
+    .crm-column {
+      flex: 0 0 280px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex; flex-direction: column;
+      max-height: calc(100vh - 130px);
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .crm-column.drag-over {
+      background: rgba(107,147,255,0.08);
+      border-color: var(--accent);
+    }
+    .crm-column-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .crm-col-title {
+      font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 3px 10px; border-radius: 99px;
+      flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .crm-col-count {
+      font-size: 11px; font-weight: 700; color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .crm-col-body {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 8px;
+      display: flex; flex-direction: column; gap: 8px;
+      min-height: 80px;
+    }
+    .crm-col-add {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 12px; font-weight: 600;
+      cursor: pointer;
+      border-radius: 0 0 10px 10px;
+      flex-shrink: 0;
+      font-family: inherit;
+    }
+    .crm-col-add:hover { background: rgba(107,147,255,0.06); color: var(--accent); }
+    .crm-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      cursor: grab;
+      box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+      transition: box-shadow 0.15s, border-color 0.15s, transform 0.05s;
+    }
+    .crm-card:hover { border-color: var(--accent); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+    .crm-card:active { cursor: grabbing; }
+    .crm-card.dragging { opacity: 0.4; }
+    .crm-card-company { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .crm-card-contact { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+    .crm-card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 10px; color: var(--text-muted); }
+    .crm-card-meta-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 99px; background: var(--surface2); border: 1px solid var(--border); }
+    .crm-card-meta-pill.followup-soon { background: #fef3c7; color: #a16207; border-color: #fde68a; }
+    .crm-card-meta-pill.followup-overdue { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+    .crm-card-onboard-btn {
+      display: block; width: 100%; margin-top: 8px;
+      padding: 6px 10px; border-radius: 6px;
+      background: rgba(124,58,237,0.10); color: #7c3aed; border: 1px solid rgba(124,58,237,0.30);
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+      cursor: pointer; font-family: inherit;
+    }
+    .crm-card-onboard-btn:hover { background: rgba(124,58,237,0.18); }
+
     .shipment-cards { display: flex; flex-direction: column; gap: 6px; }
     .shipment-card {
       background: var(--surface2);
@@ -6485,6 +6573,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
+        <!-- CRM — sales pipeline board (Trello-like). Lives under
+             Internal because it's an operator-facing surface, not a
+             client-facing one. Drag-and-drop cards across the
+             Referrals → Cold → Warm → Hot → Onboard → Creating
+             lifecycle, with a Backburner column for parked leads. -->
+        <a id="nav-crm-link" href="#/crm" onclick="event.preventDefault(); location.hash='#/crm'" class="nav-flat-link">
+          <span>CRM</span>
+          <span class="nav-badge" id="badge-crm"></span>
+        </a>
+
         <!-- Inventory — moved here from a top-level flat link. Stays
              stacked so the "SKUs & Variants" sub-label still sits
              directly under the name. -->
@@ -9245,6 +9343,91 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </main>
 </div><!-- /#view-fulfillment -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: CRM (Trello-like sales pipeline board)
+     Horizontal board with 7 columns covering the full lifecycle from
+     a fresh referral down to a fully-onboarded workbook-ready client.
+     Cards drag freely between columns via HTML5 drag/drop. Each card
+     holds contact info + free-form notes + next-followup date.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-crm" class="view">
+  <main class="container" style="max-width:none; padding:0 16px 16px;">
+    <div id="crm-board" class="crm-board"></div>
+  </main>
+</div><!-- /#view-crm -->
+
+<!-- ── CRM Card Edit Modal ─────────────────────────────────────────────
+     Single modal for creating + editing CRM cards. Reuses the existing
+     .modal-overlay / .modal classes for consistency with every other
+     dialog on the page. Opened via openCrmCardModal(cardId) for an
+     existing card or openCrmCardModal(null, columnId) for a new card
+     in the named column. -->
+<div class="modal-overlay" id="modal-crm-card" onclick="if(event.target===this)closeCrmCardModal()" style="z-index:1000;">
+  <div class="modal" style="max-width:560px; max-height:90vh; overflow-y:auto;">
+    <div class="modal-title" id="crm-card-modal-title" style="margin-bottom:14px;">New Lead</div>
+    <form id="crm-card-form" onsubmit="saveCrmCardModal(event)">
+      <div class="modal-field">
+        <label>Company / Lead Name <span class="required">*</span></label>
+        <input type="text" id="crm-card-company" required autocomplete="off" placeholder="e.g. Acme Co." />
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="modal-field">
+          <label>Contact Name</label>
+          <input type="text" id="crm-card-contact" autocomplete="off" />
+        </div>
+        <div class="modal-field">
+          <label>Title</label>
+          <input type="text" id="crm-card-title" autocomplete="off" />
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="modal-field">
+          <label>Email</label>
+          <input type="email" id="crm-card-email" autocomplete="off" />
+        </div>
+        <div class="modal-field">
+          <label>Phone</label>
+          <input type="tel" id="crm-card-phone" autocomplete="off" />
+        </div>
+      </div>
+      <div class="modal-field">
+        <label>Source</label>
+        <input type="text" id="crm-card-source" autocomplete="off" placeholder="e.g. Referral from Sarah · LinkedIn outreach · Trade show" />
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div class="modal-field">
+          <label>Next Follow-up</label>
+          <input type="date" id="crm-card-followup" />
+        </div>
+        <div class="modal-field">
+          <label>Column</label>
+          <div class="select-wrap">
+            <select id="crm-card-column">
+              <option value="referrals">Referrals</option>
+              <option value="cold">Cold</option>
+              <option value="warm">Warm</option>
+              <option value="hot">Hot</option>
+              <option value="onboard">Onboard</option>
+              <option value="creating">Start Creating Workbooks</option>
+              <option value="backburner">Backburner</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-field">
+        <label>Notes</label>
+        <textarea id="crm-card-notes" rows="4" placeholder="Conversation history, deal context, blockers, anything that matters when we re-engage."
+          style="width:100%; resize:vertical; min-height:90px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
+      </div>
+      <div class="modal-actions" style="display:flex; align-items:center; gap:10px;">
+        <button type="button" id="crm-card-delete-btn" class="btn btn-ghost" style="color:#dc2626; border-color:rgba(220,38,38,0.3); margin-right:auto;" onclick="deleteCrmCardModal()">Delete</button>
+        <button type="button" class="btn btn-ghost" onclick="closeCrmCardModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: INVENTORY
@@ -28485,6 +28668,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/crm — Trello-like sales pipeline board.
+    if (hash === '#/crm') {
+      renderCrmBoard();
+      return;
+    }
+
     // Match: #/reports — list of prebuilt + saved reports
     if (hash === '#/reports') {
       renderReportsView();
@@ -31141,6 +31330,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     loadOrders();
     loadInventory();
     loadCommissions();
+    loadCrm();
+    if (typeof _updateCrmNavBadge === 'function') _updateCrmNavBadge();
     rebuildSidebar();
     rebuildShipmentsNav();
     rebuildOrdersNav();
@@ -34366,6 +34557,245 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _lastOrdersJson = payload; // prevent our own save from triggering a poll re-render
       apiCall('save_app_state', { key: 'ms_orders', value: payload }).catch(() => {});
     }
+  }
+
+  // ── CRM (Trello-like sales pipeline board) ────────────────────────
+  // Data model: crmData = { cards: { [id]: card }, nextId }. Cards
+  // carry contact info, source, notes, next-followup, plus the column
+  // they live in. Persisted via the same save_app_state pattern as
+  // orders / shipments so the data survives across sessions + syncs
+  // across the operator's devices.
+  let crmData = { cards: {}, nextId: 1 };
+  let _crmDragCardId = null;
+  let _crmEditingId  = null;
+  let _lastCrmJson   = '';
+
+  const CRM_COLUMNS = [
+    { id: 'referrals',  label: 'Referrals',                bg: '#e0e7ff', fg: '#3730a3' },
+    { id: 'cold',       label: 'Cold',                     bg: '#dbeafe', fg: '#1e40af' },
+    { id: 'warm',       label: 'Warm',                     bg: '#fef3c7', fg: '#a16207' },
+    { id: 'hot',        label: 'Hot',                      bg: '#fee2e2', fg: '#b91c1c' },
+    { id: 'onboard',    label: 'Onboard',                  bg: '#ede9fe', fg: '#7c3aed' },
+    { id: 'creating',   label: 'Start Creating Workbooks', bg: '#dcfce7', fg: '#15803d' },
+    { id: 'backburner', label: 'Backburner',               bg: '#f3f4f6', fg: '#4b5563' },
+  ];
+
+  function saveCrm() {
+    try { localStorage.setItem('ms_crmData', JSON.stringify(crmData)); } catch(e) {}
+    const payload = JSON.stringify(crmData);
+    _lastCrmJson = payload;
+    apiCall('save_app_state', { key: 'ms_crm', value: payload }).catch(() => {});
+  }
+
+  function loadCrm() {
+    try {
+      const d = localStorage.getItem('ms_crmData');
+      if (d) crmData = JSON.parse(d);
+    } catch(e) { crmData = { cards: {}, nextId: 1 }; }
+    if (!crmData.cards) crmData.cards = {};
+    if (!crmData.nextId || crmData.nextId < 1) crmData.nextId = 1;
+  }
+
+  function renderCrmBoard() {
+    document.getElementById('header-title').textContent = 'CRM — Sales Pipeline';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-crm-link');
+    if (link) link.classList.add('active');
+    showView('view-crm');
+    const board = document.getElementById('crm-board');
+    if (!board) return;
+    // Group cards by column. Cards with an unknown column fall back to
+    // Referrals so nothing ever vanishes off the board.
+    const byCol = {};
+    CRM_COLUMNS.forEach(c => { byCol[c.id] = []; });
+    Object.values(crmData.cards || {}).forEach(card => {
+      const col = (byCol[card.column] !== undefined) ? card.column : 'referrals';
+      byCol[col].push(card);
+    });
+    // Sort each column: cards with an overdue followup float to the
+    // top, then by createdAt descending (newest first within bucket).
+    const _t = Date.now();
+    const _dueRank = c => {
+      if (!c.followup) return 2;
+      const ms = new Date(c.followup).getTime();
+      if (isNaN(ms)) return 2;
+      if (ms <= _t)  return 0; // overdue
+      if (ms - _t <= 7*86400000) return 1; // due within a week
+      return 2;
+    };
+    Object.keys(byCol).forEach(k => {
+      byCol[k].sort((a, b) => {
+        const ra = _dueRank(a), rb = _dueRank(b);
+        if (ra !== rb) return ra - rb;
+        return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+      });
+    });
+    board.innerHTML = CRM_COLUMNS.map(col => {
+      const cards = byCol[col.id] || [];
+      const cardsHtml = cards.map(c => _crmCardHtml(c, col)).join('');
+      return `<div class="crm-column" data-col="${col.id}"
+                   ondragover="event.preventDefault(); this.classList.add('drag-over');"
+                   ondragleave="this.classList.remove('drag-over');"
+                   ondrop="onCrmCardDrop(event, '${col.id}')">
+        <div class="crm-column-header">
+          <span class="crm-col-title" style="background:${col.bg}; color:${col.fg};">${col.label}</span>
+          <span class="crm-col-count">${cards.length}</span>
+        </div>
+        <div class="crm-col-body">${cardsHtml}</div>
+        <button class="crm-col-add" onclick="openCrmCardModal(null, '${col.id}')">+ Add lead</button>
+      </div>`;
+    }).join('');
+    _updateCrmNavBadge();
+  }
+
+  function _crmCardHtml(c, col) {
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const company = c.company || '(unnamed lead)';
+    const contact = c.contact || '';
+    const email   = c.email || '';
+    const phone   = c.phone || '';
+    const subline = [contact, email, phone].filter(Boolean).join(' · ');
+    const meta = [];
+    if (c.followup) {
+      const d = new Date(c.followup);
+      if (!isNaN(d.getTime())) {
+        const lbl = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const ms  = d.getTime();
+        let cls = 'crm-card-meta-pill';
+        if (ms <= Date.now()) cls += ' followup-overdue';
+        else if (ms - Date.now() <= 7*86400000) cls += ' followup-soon';
+        meta.push(`<span class="${cls}" title="Next follow-up">↳ ${lbl}</span>`);
+      }
+    }
+    if (c.source) meta.push(`<span class="crm-card-meta-pill" title="Source">${esc(c.source)}</span>`);
+    const onboardBtn = col.id === 'onboard'
+      ? `<button class="crm-card-onboard-btn" onclick="event.stopPropagation(); sendCrmOnboarding('${c.id}')">Send Onboarding ↗</button>`
+      : '';
+    return `<div class="crm-card" draggable="true"
+                 data-card-id="${c.id}"
+                 ondragstart="onCrmCardDragStart(event, '${c.id}')"
+                 ondragend="onCrmCardDragEnd(event)"
+                 onclick="openCrmCardModal('${c.id}')">
+      <div class="crm-card-company">${esc(company)}</div>
+      ${subline ? `<div class="crm-card-contact">${esc(subline)}</div>` : ''}
+      ${meta.length ? `<div class="crm-card-meta">${meta.join('')}</div>` : ''}
+      ${onboardBtn}
+    </div>`;
+  }
+
+  function onCrmCardDragStart(e, cardId) {
+    _crmDragCardId = cardId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', cardId);
+    e.currentTarget.classList.add('dragging');
+  }
+  function onCrmCardDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    document.querySelectorAll('.crm-column.drag-over').forEach(el => el.classList.remove('drag-over'));
+    _crmDragCardId = null;
+  }
+  function onCrmCardDrop(e, targetCol) {
+    e.preventDefault();
+    document.querySelectorAll('.crm-column.drag-over').forEach(el => el.classList.remove('drag-over'));
+    const cardId = _crmDragCardId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+    if (!cardId) return;
+    const card = crmData.cards[cardId];
+    if (!card) return;
+    if (card.column === targetCol) return;
+    card.column = targetCol;
+    card.lastMovedAt = new Date().toISOString();
+    saveCrm();
+    renderCrmBoard();
+  }
+
+  function openCrmCardModal(cardId, defaultCol) {
+    _crmEditingId = cardId;
+    const card = cardId ? crmData.cards[cardId] : null;
+    document.getElementById('crm-card-modal-title').textContent = card ? 'Edit Lead' : 'New Lead';
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
+    setVal('crm-card-company',  card ? card.company  : '');
+    setVal('crm-card-contact',  card ? card.contact  : '');
+    setVal('crm-card-title',    card ? card.title    : '');
+    setVal('crm-card-email',    card ? card.email    : '');
+    setVal('crm-card-phone',    card ? card.phone    : '');
+    setVal('crm-card-source',   card ? card.source   : '');
+    setVal('crm-card-followup', card ? card.followup : '');
+    setVal('crm-card-notes',    card ? card.notes    : '');
+    setVal('crm-card-column',   card ? card.column   : (defaultCol || 'referrals'));
+    // Delete button only when editing an existing card.
+    const delBtn = document.getElementById('crm-card-delete-btn');
+    if (delBtn) delBtn.style.display = card ? '' : 'none';
+    document.getElementById('modal-crm-card').classList.add('open');
+    setTimeout(() => { try { document.getElementById('crm-card-company').focus(); } catch {} }, 60);
+  }
+  function closeCrmCardModal() {
+    document.getElementById('modal-crm-card').classList.remove('open');
+    _crmEditingId = null;
+  }
+  function saveCrmCardModal(e) {
+    e.preventDefault();
+    const getVal = id => (document.getElementById(id) || {}).value || '';
+    const company = getVal('crm-card-company').trim();
+    if (!company) return;
+    const nowIso = new Date().toISOString();
+    let card;
+    if (_crmEditingId && crmData.cards[_crmEditingId]) {
+      card = crmData.cards[_crmEditingId];
+    } else {
+      const id = `c${crmData.nextId++}`;
+      card = { id, createdAt: nowIso };
+      crmData.cards[id] = card;
+    }
+    card.company  = company;
+    card.contact  = getVal('crm-card-contact').trim();
+    card.title    = getVal('crm-card-title').trim();
+    card.email    = getVal('crm-card-email').trim();
+    card.phone    = getVal('crm-card-phone').trim();
+    card.source   = getVal('crm-card-source').trim();
+    card.followup = getVal('crm-card-followup');
+    card.notes    = getVal('crm-card-notes');
+    card.column   = getVal('crm-card-column') || 'referrals';
+    card.updatedAt = nowIso;
+    saveCrm();
+    closeCrmCardModal();
+    renderCrmBoard();
+  }
+  function deleteCrmCardModal() {
+    if (!_crmEditingId) return;
+    const card = crmData.cards[_crmEditingId];
+    if (!card) { closeCrmCardModal(); return; }
+    const proceed = confirm(`Delete "${card.company || 'this lead'}" from the CRM?\n\nThis cannot be undone.`);
+    if (!proceed) return;
+    delete crmData.cards[_crmEditingId];
+    saveCrm();
+    closeCrmCardModal();
+    renderCrmBoard();
+  }
+
+  // Placeholder for Phase 2 (onboarding portal). For now: toast + log
+  // so the operator can confirm the button wires through. Phase 2 will
+  // generate a security PIN, email the client a portal link, and on
+  // form submission auto-create the client record + email + Slack
+  // notify the team.
+  function sendCrmOnboarding(cardId) {
+    const card = crmData.cards[cardId];
+    if (!card) return;
+    const target = card.email || '(no email on file)';
+    if (typeof _msToast === 'function') {
+      _msToast(`Onboarding flow is Phase 2 — would send to ${target}.`, 'info');
+    } else {
+      alert(`Onboarding flow is Phase 2.\n\nWould send to: ${target}`);
+    }
+  }
+
+  function _updateCrmNavBadge() {
+    const badge = document.getElementById('badge-crm');
+    if (!badge) return;
+    const active = Object.values(crmData.cards || {}).filter(c =>
+      c.column !== 'creating' && c.column !== 'backburner').length;
+    if (active > 0) { badge.textContent = active; badge.style.display = ''; }
+    else            { badge.textContent = '';      badge.style.display = 'none'; }
   }
 
   function loadOrders() {
