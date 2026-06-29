@@ -9413,13 +9413,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      existing card or openCrmCardModal(null, columnId) for a new card
      in the named column. -->
 <div class="modal-overlay" id="modal-crm-card" onclick="if(event.target===this)closeCrmCardModal()" style="z-index:1000;">
-  <div class="modal" style="max-width:960px; max-height:92vh; overflow:hidden; padding:0; display:flex; flex-direction:column;">
-    <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 22px 0;">
+  <div class="modal" style="max-width:1180px; width:96vw; max-height:92vh; overflow:hidden; padding:0; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 24px 0;">
       <div class="modal-title" id="crm-card-modal-title" style="margin:0;">New Lead</div>
     </div>
     <div style="display:flex; flex:1 1 auto; min-height:0; overflow:hidden;">
-      <!-- LEFT: form fields -->
-      <div style="flex:1 1 560px; min-width:0; overflow-y:auto; padding:14px 22px 0;">
+      <!-- LEFT: form fields. min-width keeps the column wide enough
+           for the inputs to render comfortably even when the modal
+           hits its max-width on smaller viewports. -->
+      <div style="flex:1 1 720px; min-width:560px; overflow-y:auto; padding:14px 24px 0;">
         <form id="crm-card-form" onsubmit="saveCrmCardModal(event)">
           <div class="modal-field">
             <label>Company / Lead Name <span class="required">*</span></label>
@@ -9502,7 +9504,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- RIGHT: Comments thread. Independent scroll so a long
            conversation doesn't push the form off-screen. Header is
            pinned; body scrolls; composer pinned at the bottom. -->
-      <div style="flex:0 0 340px; border-left:1px solid var(--border); background:var(--surface2); display:flex; flex-direction:column; min-height:0;">
+      <div style="flex:0 0 380px; border-left:1px solid var(--border); background:var(--surface2); display:flex; flex-direction:column; min-height:0;">
         <div style="padding:14px 16px 8px; flex-shrink:0;">
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="font-size:13px; font-weight:800; color:var(--text); text-transform:uppercase; letter-spacing:0.05em;">Comments</span>
