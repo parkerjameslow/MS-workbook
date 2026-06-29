@@ -2419,6 +2419,55 @@ switch ($action) {
     //      office@ + parker@ + posts a Slack message → returns
     //      ok to the portal.
 
+    case 'crm_slack_test':
+        // Diagnostic — confirms whether SLACK_WEBHOOK_URL was loaded
+        // from api.local.php (or env), then fires a real test message
+        // through the server-side cURL so we know the webhook works
+        // from this host. Returns: { configured, host_chars,
+        // tail_chars, slack_status, slack_response, error }.
+        $url = defined('SLACK_WEBHOOK_URL') ? SLACK_WEBHOOK_URL : '';
+        $configured = ($url !== '');
+        $hostChars  = '';
+        $tailChars  = '';
+        if ($configured) {
+            // First 8 + last 8 chars of the URL so the operator can
+            // eyeball-verify which webhook is loaded without me ever
+            // seeing the full secret in chat / logs.
+            $hostChars = substr($url, 0, 35);  // "https://hooks.slack.com/services/T0..."
+            $tailChars = '…' . substr($url, -8);
+        }
+        $slackStatus  = null;
+        $slackErr     = null;
+        $slackResp    = null;
+        if ($configured && function_exists('curl_init')) {
+            $body = json_encode([
+                'text' => '🧪 *Slack webhook diagnostic from MS-Workbook* — if you see this, server-side Slack is working.',
+            ]);
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 8,
+            ]);
+            $slackResp   = curl_exec($ch);
+            $slackStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $slackErr    = curl_error($ch) ?: null;
+            curl_close($ch);
+        }
+        echo json_encode([
+            'success'       => true,
+            'configured'    => $configured,
+            'webhook_head'  => $hostChars,
+            'webhook_tail'  => $tailChars,
+            'slack_status'  => $slackStatus,
+            'slack_response'=> is_string($slackResp) ? mb_substr($slackResp, 0, 200) : null,
+            'curl_error'    => $slackErr,
+            'curl_available'=> function_exists('curl_init'),
+        ]);
+        break;
+
     case 'crm_send_onboarding':
         $cardId  = trim((string)($input['card_id']  ?? ''));
         $company = trim((string)($input['company']  ?? ''));

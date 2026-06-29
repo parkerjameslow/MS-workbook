@@ -34619,7 +34619,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   var _crmEditingId  = null;
   var _lastCrmJson   = '';
 
-  const CRM_COLUMNS = [
+  // var (not const) to hoist past the TDZ — same reason as crmData
+  // above. renderCrmBoard is called from the router during init when
+  // the user'\''s hash is already #/crm, which sits well before this
+  // declaration in source order. Hoisting protects against the
+  // ReferenceError that previously crashed the CRM render on refresh.
+  var CRM_COLUMNS = [
     { id: 'referrals',  label: 'Referrals',                bg: '#e0e7ff', fg: '#3730a3' },
     { id: 'cold',       label: 'Cold',                     bg: '#dbeafe', fg: '#1e40af' },
     { id: 'warm',       label: 'Warm',                     bg: '#fef3c7', fg: '#a16207' },
