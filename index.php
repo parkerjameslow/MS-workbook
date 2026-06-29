@@ -9444,20 +9444,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label>Source</label>
         <input type="text" id="crm-card-source" autocomplete="off" placeholder="e.g. Referral from Sarah · LinkedIn outreach · Trade show" />
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-        <div class="modal-field">
-          <label>Assigned To</label>
-          <div class="select-wrap">
-            <select id="crm-card-assignee">
-              <option value="">— Unassigned —</option>
-              <option value="Parker">Parker</option>
-              <option value="Jackson">Jackson</option>
-              <option value="Ron">Ron</option>
-              <option value="Kylie">Kylie</option>
-              <option value="Karen">Karen</option>
-            </select>
-          </div>
-        </div>
+      <!-- Assignees — click any chip to toggle. Multiple can be
+           selected. Compact chip row replaces the prior single-
+           select dropdown so the operator can co-assign without
+           giving up either name. -->
+      <div class="modal-field">
+        <label>Assigned To</label>
+        <div id="crm-card-assignees-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:2px;"></div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <div class="modal-field">
           <label>Next Follow-up</label>
           <input type="date" id="crm-card-followup" />
@@ -34646,6 +34641,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   var _crmDragCardId = null;
   var _crmEditingId  = null;
   var _lastCrmJson   = '';
+  // Module-level Set of assignee names selected in the open edit
+  // modal. Replaces the old <select> reference — the chip row UI
+  // mutates this Set on every toggle, and saveCrmCardModal serializes
+  // it to card.assignees on save.
+  var _crmModalAssignees = new Set();
 
   // var (not const) to hoist past the TDZ — same reason as crmData
   // above. renderCrmBoard is called from the router during init when
@@ -34788,6 +34788,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Per-employee avatar colors. Pulled from the same indigo / orange /
   // green / pink / blue palette used elsewhere in the app so the
   // assignee chip reads as a stable identity color across the board.
+  // Order also drives the chip-row rendering in the edit modal.
+  const CRM_ASSIGNEE_ROSTER = ['Parker', 'Jackson', 'Ron', 'Kylie', 'Karen'];
   const CRM_ASSIGNEE_COLORS = {
     Parker:  { bg: '#4f46e5', fg: '#ffffff' }, // indigo
     Jackson: { bg: '#E8751A', fg: '#ffffff' }, // orange (matches brand accent)
@@ -34795,6 +34797,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     Kylie:   { bg: '#ec4899', fg: '#ffffff' }, // pink
     Karen:   { bg: '#0ea5e9', fg: '#ffffff' }, // sky blue
   };
+
+  // Build the toggleable chip row inside the edit modal. Re-rendered
+  // each time the modal opens AND on every chip click so the visual
+  // state stays in sync with the underlying Set.
+  function _renderCrmModalAssigneeChips() {
+    const host = document.getElementById('crm-card-assignees-chips');
+    if (!host) return;
+    host.innerHTML = CRM_ASSIGNEE_ROSTER.map(name => {
+      const col = CRM_ASSIGNEE_COLORS[name];
+      const on  = _crmModalAssignees.has(name);
+      // Selected: filled chip with the assignee's color.
+      // Not selected: muted outline.
+      const style = on
+        ? `background:${col.bg}; color:${col.fg}; border:1px solid ${col.bg}; box-shadow:0 1px 3px rgba(0,0,0,0.18);`
+        : `background:transparent; color:var(--text-muted); border:1px solid var(--border);`;
+      return `<button type="button" onclick="_toggleCrmModalAssignee('${name}')"
+                style="display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:99px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; transition:transform 0.05s; ${style}">
+        <span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:${on ? 'rgba(255,255,255,0.25)' : col.bg}; color:${on ? '#ffffff' : '#ffffff'}; font-size:10px; font-weight:800;">${name.charAt(0)}</span>
+        ${name}
+      </button>`;
+    }).join('');
+  }
+  function _toggleCrmModalAssignee(name) {
+    if (_crmModalAssignees.has(name)) _crmModalAssignees.delete(name);
+    else                              _crmModalAssignees.add(name);
+    _renderCrmModalAssigneeChips();
+  }
 
   // Compact "Updated 5m ago / 3h ago / Jun 28" label. Reads cheap and
   // converts the raw ISO timestamp into something the operator can
@@ -34821,13 +34850,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const email   = c.email || '';
     const phone   = c.phone || '';
     const subline = [contact, email, phone].filter(Boolean).join(' · ');
-    // Assignee chip — initial letter of the assignee name in a
-    // colored circle. Sits in the top-right of the card so the
-    // operator can scan "whose deal is this" without opening it.
-    const assignee = c.assignee || '';
-    const aColors = CRM_ASSIGNEE_COLORS[assignee] || null;
-    const assigneeChip = (assignee && aColors)
-      ? `<span title="Assigned to ${esc(assignee)}" style="position:absolute; top:8px; right:8px; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:${aColors.bg}; color:${aColors.fg}; font-size:10px; font-weight:800; letter-spacing:0; box-shadow:0 1px 3px rgba(0,0,0,0.25);">${esc(assignee.charAt(0).toUpperCase())}</span>`
+    // Assignee chips — stacked initials in the top-right corner so
+    // the operator can scan "whose deal is this" without opening
+    // it. Supports multiple assignees (array). Legacy single-string
+    // card.assignee values still render correctly via the migration
+    // below. Chips overlap GitHub/Slack-style for compactness.
+    let assigneeList = [];
+    if (Array.isArray(c.assignees)) assigneeList = c.assignees.filter(Boolean);
+    else if (typeof c.assignee === 'string' && c.assignee.trim()) assigneeList = [c.assignee.trim()];
+    const assigneeChips = assigneeList.map((name, idx) => {
+      const aCol = CRM_ASSIGNEE_COLORS[name];
+      if (!aCol) return '';
+      // Stack via negative margin-left so chips overlap by ~6px;
+      // first chip gets no overlap. Highest z-index goes to leftmost
+      // so the order reads naturally.
+      const overlapStyle = idx === 0 ? '' : 'margin-left:-6px;';
+      return `<span title="Assigned to ${esc(name)}" style="display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:${aCol.bg}; color:${aCol.fg}; font-size:10px; font-weight:800; letter-spacing:0; box-shadow:0 1px 3px rgba(0,0,0,0.25); border:1.5px solid #1f2937; ${overlapStyle} z-index:${10 - idx};">${esc(name.charAt(0).toUpperCase())}</span>`;
+    }).join('');
+    const assigneeChip = assigneeChips
+      ? `<div style="position:absolute; top:8px; right:8px; display:inline-flex; align-items:center;">${assigneeChips}</div>`
       : '';
     const meta = [];
     if (c.followup) {
@@ -34864,12 +34905,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const updatedFooter = lastTouchRel
       ? `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); font-size:9px; color:#9ca3af; font-weight:600; letter-spacing:0.02em;">Updated ${esc(lastTouchRel)}</div>`
       : '';
+    // Reserve right-padding proportional to the stack of chips so
+    // the company-name text doesn'\''t collide with the avatars on
+    // multi-assigned cards.
+    const padR = assigneeList.length
+      ? 22 + 16 * Math.max(0, assigneeList.length - 1) + 16
+      : 0;
     return `<div class="crm-card" draggable="true"
                  data-card-id="${c.id}"
                  ondragstart="onCrmCardDragStart(event, '${c.id}')"
                  ondragend="onCrmCardDragEnd(event)"
                  onclick="openCrmCardModal('${c.id}')"
-                 style="position:relative; ${assigneeChip ? 'padding-right:36px;' : ''}">
+                 style="position:relative; ${padR ? `padding-right:${padR}px;` : ''}">
       ${assigneeChip}
       <div class="crm-card-company">${esc(company)}</div>
       ${subline ? `<div class="crm-card-contact">${esc(subline)}</div>` : ''}
@@ -34918,7 +34965,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     setVal('crm-card-followup', card ? card.followup : '');
     setVal('crm-card-notes',    card ? card.notes    : '');
     setVal('crm-card-column',   card ? card.column   : (defaultCol || 'referrals'));
-    setVal('crm-card-assignee', card ? (card.assignee || '') : '');
+    // Normalize the existing assignee state into an array. Supports
+    // legacy single-string card.assignee values from before multi-
+    // assign shipped.
+    let initialAssignees = [];
+    if (card) {
+      if (Array.isArray(card.assignees)) initialAssignees = card.assignees.slice();
+      else if (typeof card.assignee === 'string' && card.assignee.trim()) initialAssignees = [card.assignee.trim()];
+    }
+    _crmModalAssignees = new Set(initialAssignees);
+    _renderCrmModalAssigneeChips();
     // Delete button only when editing an existing card.
     const delBtn = document.getElementById('crm-card-delete-btn');
     if (delBtn) delBtn.style.display = card ? '' : 'none';
@@ -34952,7 +35008,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     card.followup = getVal('crm-card-followup');
     card.notes    = getVal('crm-card-notes');
     card.column   = getVal('crm-card-column') || 'referrals';
-    card.assignee = getVal('crm-card-assignee').trim();
+    // Multi-assign: store as array. Also clears the legacy
+    // card.assignee single-string slot so reads-by-array see fresh
+    // truth on the next render.
+    card.assignees = Array.from(_crmModalAssignees || []);
+    delete card.assignee;
     card.updatedAt = nowIso;
     saveCrm();
     closeCrmCardModal();
