@@ -5476,13 +5476,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .shipment-list-empty-sub { font-size: 13px; color: var(--text-muted); }
 
     /* ─ CRM (Trello-like board) ────────────────────────────────────
-       Horizontal scrolling pipeline. Each column is a fixed-width
-       column-card with a colored header pill, a scrollable card
-       stack, and an "add card" button pinned at the bottom. Cards
-       are HTML5-draggable; columns are drop targets that highlight
-       when a card hovers over them. */
+       Horizontal scrolling pipeline. Trello-style "implied columns"
+       — no visible dividers / borders / fills behind the cards.
+       Only the colored column-title pill at the top of each column
+       defines the lane. Cards float over a faint MarketSculpt logo
+       watermark that fills the board area. */
+    /* View backdrop — full-bleed MS logo watermark. Sized large +
+       low-opacity + non-repeating so the cards read as "in front of"
+       the brand mark. The image lives in /assets/logo.png. */
+    #view-crm {
+      background-image: url('assets/logo.png');
+      background-repeat: no-repeat;
+      background-position: center 140px;
+      background-size: 540px auto;
+      background-attachment: scroll;
+      position: relative;
+    }
+    /* Soft fade-out layer over the logo so it doesn't compete with
+       the cards — keeps the watermark visible without distracting. */
+    #view-crm::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.78) 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    #view-crm > .container { position: relative; z-index: 1; }
     .crm-board {
-      display: flex; gap: 12px;
+      display: flex; gap: 14px;
       padding: 4px 0 16px;
       overflow-x: auto;
       align-items: flex-start;
@@ -5490,21 +5511,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .crm-column {
       flex: 0 0 240px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
+      background: transparent;
+      border: none;
+      border-radius: 0;
       display: flex; flex-direction: column;
       max-height: calc(100vh - 130px);
-      transition: background 0.15s, border-color 0.15s;
+      transition: background 0.15s;
     }
     .crm-column.drag-over {
-      background: rgba(107,147,255,0.08);
-      border-color: var(--accent);
+      background: rgba(107,147,255,0.10);
+      border-radius: 10px;
     }
     .crm-column-header {
       display: flex; align-items: center; gap: 8px;
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
+      padding: 6px 4px 10px;
+      border-bottom: none;
       flex-shrink: 0;
     }
     .crm-col-title {
@@ -5538,32 +5559,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       min-height: 80px;
       border-radius: 0 0 10px 10px;
     }
+    /* Dark/charcoal cards — sit "in front of" the watermark with a
+       deep slate background, light text, and a soft outer shadow so
+       they feel floating rather than docked. */
     .crm-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
+      background: #1f2937;
+      border: 1px solid #374151;
       border-radius: 8px;
       padding: 10px 12px;
       cursor: grab;
-      box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.16), 0 1px 0 rgba(0,0,0,0.04);
       transition: box-shadow 0.15s, border-color 0.15s, transform 0.05s;
+      color: #f3f4f6;
     }
-    .crm-card:hover { border-color: var(--accent); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+    .crm-card:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,0.22); transform: translateY(-1px); }
     .crm-card:active { cursor: grabbing; }
     .crm-card.dragging { opacity: 0.4; }
-    .crm-card-company { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .crm-card-contact { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-    .crm-card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 10px; color: var(--text-muted); }
-    .crm-card-meta-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 99px; background: var(--surface2); border: 1px solid var(--border); }
-    .crm-card-meta-pill.followup-soon { background: #fef3c7; color: #a16207; border-color: #fde68a; }
-    .crm-card-meta-pill.followup-overdue { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+    .crm-card-company { font-size: 13px; font-weight: 700; color: #f9fafb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .crm-card-contact { font-size: 11px; color: #9ca3af; margin-top: 1px; }
+    .crm-card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 10px; color: #9ca3af; }
+    .crm-card-meta-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 99px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10); color: #d1d5db; }
+    .crm-card-meta-pill.followup-soon { background: rgba(254,243,199,0.18); color: #fcd34d; border-color: rgba(252,211,77,0.30); }
+    .crm-card-meta-pill.followup-overdue { background: rgba(254,226,226,0.18); color: #fca5a5; border-color: rgba(252,165,165,0.30); }
     .crm-card-onboard-btn {
       display: block; width: 100%; margin-top: 8px;
       padding: 6px 10px; border-radius: 6px;
-      background: rgba(124,58,237,0.10); color: #7c3aed; border: 1px solid rgba(124,58,237,0.30);
+      background: rgba(167,139,250,0.18); color: #c4b5fd; border: 1px solid rgba(167,139,250,0.45);
       font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
       cursor: pointer; font-family: inherit;
     }
-    .crm-card-onboard-btn:hover { background: rgba(124,58,237,0.18); }
+    .crm-card-onboard-btn:hover { background: rgba(167,139,250,0.32); color: #ddd6fe; }
 
     .shipment-cards { display: flex; flex-direction: column; gap: 6px; }
     .shipment-card {
@@ -34607,6 +34632,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     showView('view-crm');
     const board = document.getElementById('crm-board');
     if (!board) return;
+    // Preserve horizontal scroll across re-renders so dragging a card
+    // to a column on the right edge doesn't snap the viewport back to
+    // Referrals. Captures BEFORE innerHTML replacement; restores
+    // immediately after so the operator sees no jump.
+    const _scrollLeft = board.scrollLeft;
     // Group cards by column. Cards with an unknown column fall back to
     // Referrals so nothing ever vanishes off the board.
     const byCol = {};
@@ -34633,7 +34663,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
       });
     });
-    board.innerHTML = CRM_COLUMNS.map(col => {
+    const _newHtml = CRM_COLUMNS.map(col => {
       const cards = byCol[col.id] || [];
       const cardsHtml = cards.map(c => _crmCardHtml(c, col)).join('');
       return `<div class="crm-column" data-col="${col.id}"
@@ -34648,6 +34678,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="crm-col-body">${cardsHtml}</div>
       </div>`;
     }).join('');
+    board.innerHTML = _newHtml;
+    // Restore scroll position. setProperty-style — direct assignment
+    // after innerHTML rebuild works because the board element itself
+    // isn't replaced.
+    board.scrollLeft = _scrollLeft;
     _updateCrmNavBadge();
   }
 
