@@ -9444,7 +9444,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label>Source</label>
         <input type="text" id="crm-card-source" autocomplete="off" placeholder="e.g. Referral from Sarah · LinkedIn outreach · Trade show" />
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+        <div class="modal-field">
+          <label>Assigned To</label>
+          <div class="select-wrap">
+            <select id="crm-card-assignee">
+              <option value="">— Unassigned —</option>
+              <option value="Parker">Parker</option>
+              <option value="Jackson">Jackson</option>
+              <option value="Ron">Ron</option>
+              <option value="Kylie">Kylie</option>
+              <option value="Karen">Karen</option>
+            </select>
+          </div>
+        </div>
         <div class="modal-field">
           <label>Next Follow-up</label>
           <input type="date" id="crm-card-followup" />
@@ -34738,6 +34751,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _updateCrmNavBadge();
   }
 
+  // Per-employee avatar colors. Pulled from the same indigo / orange /
+  // green / pink / blue palette used elsewhere in the app so the
+  // assignee chip reads as a stable identity color across the board.
+  const CRM_ASSIGNEE_COLORS = {
+    Parker:  { bg: '#4f46e5', fg: '#ffffff' }, // indigo
+    Jackson: { bg: '#E8751A', fg: '#ffffff' }, // orange (matches brand accent)
+    Ron:     { bg: '#16a34a', fg: '#ffffff' }, // green
+    Kylie:   { bg: '#ec4899', fg: '#ffffff' }, // pink
+    Karen:   { bg: '#0ea5e9', fg: '#ffffff' }, // sky blue
+  };
+
+  // Compact "Updated 5m ago / 3h ago / Jun 28" label. Reads cheap and
+  // converts the raw ISO timestamp into something the operator can
+  // scan at a glance without doing date math.
+  function _crmRelTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const diffMs  = Date.now() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1)   return 'just now';
+    if (diffMin < 60)  return diffMin + 'm ago';
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr  < 24)  return diffHr + 'h ago';
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay < 7)   return diffDay + 'd ago';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
   function _crmCardHtml(c, col) {
     const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const company = c.company || '(unnamed lead)';
@@ -34745,6 +34787,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const email   = c.email || '';
     const phone   = c.phone || '';
     const subline = [contact, email, phone].filter(Boolean).join(' · ');
+    // Assignee chip — initial letter of the assignee name in a
+    // colored circle. Sits in the top-right of the card so the
+    // operator can scan "whose deal is this" without opening it.
+    const assignee = c.assignee || '';
+    const aColors = CRM_ASSIGNEE_COLORS[assignee] || null;
+    const assigneeChip = (assignee && aColors)
+      ? `<span title="Assigned to ${esc(assignee)}" style="position:absolute; top:8px; right:8px; display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:${aColors.bg}; color:${aColors.fg}; font-size:10px; font-weight:800; letter-spacing:0; box-shadow:0 1px 3px rgba(0,0,0,0.25);">${esc(assignee.charAt(0).toUpperCase())}</span>`
+      : '';
     const meta = [];
     if (c.followup) {
       const d = new Date(c.followup);
@@ -34771,15 +34821,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : '';
       onboardBtn = `<button class="crm-card-onboard-btn" onclick="event.stopPropagation(); sendCrmOnboarding('${c.id}')">${label}</button>${caption}`;
     }
+    // Updated-time footer — reads as "Updated 5m ago" so the operator
+    // can quickly tell which leads are stale. Falls back to createdAt
+    // if updatedAt isn't set (legacy cards from before this field
+    // existed).
+    const lastTouchIso = c.updatedAt || c.createdAt || '';
+    const lastTouchRel = _crmRelTime(lastTouchIso);
+    const updatedFooter = lastTouchRel
+      ? `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); font-size:9px; color:#9ca3af; font-weight:600; letter-spacing:0.02em;">Updated ${esc(lastTouchRel)}</div>`
+      : '';
     return `<div class="crm-card" draggable="true"
                  data-card-id="${c.id}"
                  ondragstart="onCrmCardDragStart(event, '${c.id}')"
                  ondragend="onCrmCardDragEnd(event)"
-                 onclick="openCrmCardModal('${c.id}')">
+                 onclick="openCrmCardModal('${c.id}')"
+                 style="position:relative; ${assigneeChip ? 'padding-right:36px;' : ''}">
+      ${assigneeChip}
       <div class="crm-card-company">${esc(company)}</div>
       ${subline ? `<div class="crm-card-contact">${esc(subline)}</div>` : ''}
       ${meta.length ? `<div class="crm-card-meta">${meta.join('')}</div>` : ''}
       ${onboardBtn}
+      ${updatedFooter}
     </div>`;
   }
 
@@ -34822,6 +34884,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     setVal('crm-card-followup', card ? card.followup : '');
     setVal('crm-card-notes',    card ? card.notes    : '');
     setVal('crm-card-column',   card ? card.column   : (defaultCol || 'referrals'));
+    setVal('crm-card-assignee', card ? (card.assignee || '') : '');
     // Delete button only when editing an existing card.
     const delBtn = document.getElementById('crm-card-delete-btn');
     if (delBtn) delBtn.style.display = card ? '' : 'none';
@@ -34855,6 +34918,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     card.followup = getVal('crm-card-followup');
     card.notes    = getVal('crm-card-notes');
     card.column   = getVal('crm-card-column') || 'referrals';
+    card.assignee = getVal('crm-card-assignee').trim();
     card.updatedAt = nowIso;
     saveCrm();
     closeCrmCardModal();
