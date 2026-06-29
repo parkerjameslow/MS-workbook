@@ -34646,6 +34646,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // mutates this Set on every toggle, and saveCrmCardModal serializes
   // it to card.assignees on save.
   var _crmModalAssignees = new Set();
+  // Snapshot of the assignee Set at the moment the modal opened —
+  // diffed against _crmModalAssignees on save to detect NEWLY added
+  // assignees, which trigger the Slack assignment notification.
+  var _crmModalAssigneesOriginal = new Set();
 
   // var (not const) to hoist past the TDZ — same reason as crmData
   // above. renderCrmBoard is called from the router during init when
@@ -35030,7 +35034,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (Array.isArray(card.assignees)) initialAssignees = card.assignees.slice();
       else if (typeof card.assignee === 'string' && card.assignee.trim()) initialAssignees = [card.assignee.trim()];
     }
-    _crmModalAssignees = new Set(initialAssignees);
+    _crmModalAssignees         = new Set(initialAssignees);
+    _crmModalAssigneesOriginal = new Set(initialAssignees);
     _renderCrmModalAssigneeChips();
     // Delete button only when editing an existing card.
     const delBtn = document.getElementById('crm-card-delete-btn');
@@ -35071,6 +35076,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     card.assignees = Array.from(_crmModalAssignees || []);
     delete card.assignee;
     card.updatedAt = nowIso;
+    // Detect NEWLY-added assignees (members of the new Set that weren'\''t
+    // in the original at modal-open time). Fire a Slack ping for each
+    // so they know there's a card waiting. Best-effort — failures
+    // don'\''t block the save.
+    const newlyAdded = Array.from(_crmModalAssignees || []).filter(name => !_crmModalAssigneesOriginal.has(name));
+    if (newlyAdded.length > 0 && card.company) {
+      apiCall('crm_notify_assignment', {
+        assignees: newlyAdded,
+        company:   card.company || '',
+        contact:   card.contact || '',
+        email:     card.email   || '',
+        column:    card.column  || '',
+        source:    card.source  || '',
+        notes:     card.notes   || '',
+      }).then(r => {
+        if (r && r.ok) {
+          if (typeof _msToast === 'function') _msToast(`Slack ping sent to ${newlyAdded.join(', ')}.`, 'success');
+        } else if (r && r.skipped) {
+          // Slack not configured — silent, no toast noise.
+        } else if (r && r.error) {
+          if (typeof _msToast === 'function') _msToast(`Slack ping failed: ${r.error}`, 'warning');
+        }
+      }).catch(() => { /* swallow — best-effort */ });
+    }
     saveCrm();
     closeCrmCardModal();
     renderCrmBoard();

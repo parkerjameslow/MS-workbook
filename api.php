@@ -461,6 +461,31 @@ if (!defined('SLACK_WEBHOOK_URL')) {
     define('SLACK_WEBHOOK_URL', is_string($envSlack) ? $envSlack : '');
 }
 
+// Per-employee Slack user IDs for @-mentions on CRM assignment.
+// When a card is assigned to someone, the notification posts to the
+// existing SLACK_WEBHOOK_URL channel and tags the person via their
+// Slack user ID so they get a real personal notification (not just
+// channel noise).
+//
+// To find a Slack user ID: open Slack → click the person's profile
+// → "View full profile" → "More" (three-dot menu) → "Copy member ID".
+// Looks like U01ABC2DEF3.
+//
+// Set in api.local.php as:
+//   define('CRM_SLACK_USER_IDS', [
+//     'Parker'  => 'U01ABC2DEF3',
+//     'Jackson' => 'U02XYZ...',
+//     'Ron'     => 'U03...',
+//     'Kylie'   => 'U04...',
+//     'Karen'   => 'U05...',
+//   ]);
+//
+// Names that don't have an ID fall back to plain text ("Parker") in
+// the message — still posted, just no @-ping.
+if (!defined('CRM_SLACK_USER_IDS')) {
+    define('CRM_SLACK_USER_IDS', []);
+}
+
 // Public base URL for onboarding portal links emailed to clients.
 // Falls back to the request scheme+host if not set. Set this in
 // api.local.php if your deployment lives behind a proxy that
@@ -2499,6 +2524,100 @@ switch ($action) {
             // Env var fallback (in case operator used SetEnv)
             'env_slack_from_getenv' => $envSlackFromGet !== '',
             'env_slack_from_server' => $envSlackFromSrv !== '',
+        ]);
+        break;
+
+    case 'crm_notify_assignment':
+        // Posts a Slack message tagging each newly-assigned operator
+        // with the card details so they see "hey, you've got a new
+        // lead to look at." Called from the frontend on every modal
+        // save that ADDS at least one assignee (the frontend already
+        // diffs old vs new and only sends when there are new names).
+        //
+        // Best-effort: if SLACK_WEBHOOK_URL isn't set we skip silently
+        // and return {ok:true, skipped:true}. The card save itself
+        // doesn't depend on this succeeding.
+        $assignees = is_array($input['assignees'] ?? null) ? $input['assignees'] : [];
+        $company   = trim((string)($input['company'] ?? ''));
+        $contact   = trim((string)($input['contact'] ?? ''));
+        $email     = trim((string)($input['email']   ?? ''));
+        $column    = trim((string)($input['column']  ?? ''));
+        $source    = trim((string)($input['source']  ?? ''));
+        $notes     = trim((string)($input['notes']   ?? ''));
+        if (empty($assignees) || $company === '') {
+            echo json_encode(['ok' => false, 'error' => 'assignees + company required']);
+            break;
+        }
+        if (SLACK_WEBHOOK_URL === '') {
+            echo json_encode(['ok' => true, 'skipped' => true, 'reason' => 'slack_not_configured']);
+            break;
+        }
+        $userIds = is_array(CRM_SLACK_USER_IDS) ? CRM_SLACK_USER_IDS : [];
+        // Build the "who" line — turn each assignee name into
+        // <@U01ABC...> when we have an ID for them, plain name
+        // otherwise. Plain names still post; just no @-ping.
+        $mentions = array_map(function ($name) use ($userIds) {
+            $id = $userIds[$name] ?? null;
+            return $id ? '<@' . $id . '>' : '*' . $name . '*';
+        }, $assignees);
+        $whoLine = implode(', ', $mentions);
+        // Map column id → readable label so the message reads
+        // naturally regardless of how the operator labeled the lane.
+        $columnLabels = [
+            'referrals'    => 'Referrals',
+            'prospect_rfq' => 'Prospect RFQ',
+            'cold'         => 'Cold',
+            'warm'         => 'Warm',
+            'hot'          => 'Hot',
+            'onboard'      => 'Onboard',
+            'backburner'   => 'Backburner',
+        ];
+        $columnLbl = $columnLabels[$column] ?? $column;
+        // Body lines — only include fields that have content.
+        $bodyLines = ["*" . $company . "*"];
+        if ($contact !== '') $bodyLines[] = "Contact: " . $contact;
+        if ($email   !== '') $bodyLines[] = "Email: "   . $email;
+        if ($columnLbl !== '') $bodyLines[] = "Column: " . $columnLbl;
+        if ($source  !== '') $bodyLines[] = "Source: "  . $source;
+        if ($notes   !== '') {
+            // Truncate notes to first 240 chars so the Slack message
+            // stays scannable. Operator can open the card for the full
+            // history.
+            $shortNotes = mb_substr($notes, 0, 240);
+            if (mb_strlen($notes) > 240) $shortNotes .= '…';
+            $bodyLines[] = "_Notes:_\n" . $shortNotes;
+        }
+        $portalUrl = rtrim(PUBLIC_BASE_URL, '/') . '/index.php#/crm';
+        $bodyLines[] = "<" . $portalUrl . "|Open in CRM →>";
+        $slackBody = json_encode([
+            'text' => 'New CRM assignment: ' . $company . ' (' . $columnLbl . ')',
+            'blocks' => [
+                [ 'type' => 'header', 'text' => ['type' => 'plain_text', 'text' => '👋 New CRM Lead Assigned'] ],
+                [ 'type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => "Hey {$whoLine} — you've been assigned a CRM lead:"] ],
+                [ 'type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $bodyLines)] ],
+            ],
+        ]);
+        $slackStatus = null;
+        $slackErr    = null;
+        if (function_exists('curl_init')) {
+            $ch = curl_init(SLACK_WEBHOOK_URL);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $slackBody,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 8,
+            ]);
+            curl_exec($ch);
+            $slackStatus = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $slackErr    = curl_error($ch) ?: null;
+            curl_close($ch);
+        }
+        echo json_encode([
+            'ok'         => $slackStatus >= 200 && $slackStatus < 300,
+            'status'     => $slackStatus,
+            'curl_error' => $slackErr,
+            'mentioned'  => array_keys($userIds),
         ]);
         break;
 
