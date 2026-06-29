@@ -35178,12 +35178,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           c.labels.map(l => `<span style="display:inline-block; padding:2px 8px; border-radius:99px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; background:${l.bg || '#f3f4f6'}; color:${l.fg || '#4b5563'};">${esc(l.name || '')}</span>`).join('')
         }</div>`
       : '';
-    // Comment count badge — 💬 N when the card has comments. Sits
-    // in the footer alongside the updated-time so the operator
-    // sees both signals at a glance.
+    // Comment count badge — clean outlined chat-bubble SVG (matches
+    // the visual language of attachment / checklist icons elsewhere
+    // in the app, instead of the prior 💬 emoji which felt out of
+    // place against the dark card chrome).
     const commentCount = Array.isArray(c.comments) ? c.comments.length : 0;
     const commentBadge = commentCount > 0
-      ? `<span title="${commentCount} comment${commentCount === 1 ? '' : 's'}" style="display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:700; color:#9ca3af; margin-left:auto;">💬 ${commentCount}</span>`
+      ? `<span title="${commentCount} comment${commentCount === 1 ? '' : 's'}" style="display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:700; color:#9ca3af; margin-left:auto;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          ${commentCount}
+        </span>`
       : '';
     // Updated-time footer — reads as "Updated 5m ago" so the operator
     // can quickly tell which leads are stale. Falls back to createdAt
