@@ -9463,7 +9463,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <select id="crm-card-column">
               <option value="referrals">Referrals</option>
               <option value="prospect_rfq">Prospect RFQ</option>
-              <option value="cold">Cold</option>
               <option value="warm">Warm</option>
               <option value="hot">Hot</option>
               <option value="onboard">Onboard</option>
@@ -34659,7 +34658,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   var CRM_COLUMNS = [
     { id: 'referrals',    label: 'Referrals',    bg: '#e0e7ff', fg: '#3730a3' },
     { id: 'prospect_rfq', label: 'Prospect RFQ', bg: '#dcfce7', fg: '#15803d' }, // green — active prospect being quoted
-    { id: 'cold',         label: 'Cold',         bg: '#dbeafe', fg: '#1e40af' },
     { id: 'warm',         label: 'Warm',         bg: '#fef3c7', fg: '#a16207' },
     { id: 'hot',          label: 'Hot',          bg: '#fee2e2', fg: '#b91c1c' },
     { id: 'onboard',      label: 'Onboard',      bg: '#ede9fe', fg: '#7c3aed' },
@@ -34683,12 +34681,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!crmData || typeof crmData !== 'object') crmData = { cards: {}, nextId: 1 };
     if (!crmData.cards) crmData.cards = {};
     if (!crmData.nextId || crmData.nextId < 1) crmData.nextId = 1;
-    // One-shot migration: the "creating" column was removed in favor
-    // of dropping fully-onboarded clients off the board entirely.
-    // Move any legacy cards in that bucket to "onboard" so they're
-    // still visible + actionable; operator can re-park as needed.
+    // One-shot migrations for retired columns. Cards in retired
+    // buckets move to a sensible nearby column so nothing is
+    // orphaned in an invisible state:
+    //   'creating' → 'onboard'    (closest active state)
+    //   'cold'     → 'backburner' (parking lot — operator can
+    //                              consciously re-classify)
     Object.values(crmData.cards).forEach(c => {
-      if (c && c.column === 'creating') c.column = 'onboard';
+      if (!c) return;
+      if (c.column === 'creating') c.column = 'onboard';
+      if (c.column === 'cold')     c.column = 'backburner';
     });
     // Async tail: pull whatever the server has under ms_crm and
     // adopt it if it's newer/larger. Handles the "I refreshed on a
