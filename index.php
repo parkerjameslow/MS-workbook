@@ -36467,11 +36467,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </tr>`;
       }).join('');
 
+      // Packaging strip — case pack (units per inner carton) + master
+      // pack (units per outer carton, derived as inner × outer). Adds
+      // logistics context the client wants for receiving / re-orders
+      // without bloating the line-item table. Skipped entirely when
+      // neither cartonInnerCount nor cartonOuterCount is filled, so
+      // workbooks without packaging data render unchanged.
+      const casePack       = parseInt(detail.cartonInnerCount) || 0;
+      const innersPerOuter = parseInt(detail.cartonOuterCount) || 0;
+      const masterPack     = (casePack > 0 && innersPerOuter > 0) ? casePack * innersPerOuter : 0;
+      const packParts = [];
+      if (casePack > 0)        packParts.push(`<span><strong>Case Pack</strong> ${fmtNum(casePack)} ${casePack === 1 ? 'unit' : 'units'} / inner</span>`);
+      if (innersPerOuter > 0)  packParts.push(`<span><strong>Master Pack</strong> ${masterPack > 0 ? fmtNum(masterPack) + ' units / outer (' + fmtNum(innersPerOuter) + ' inner × ' + fmtNum(casePack) + ')' : fmtNum(innersPerOuter) + ' inner / outer'}</span>`);
+      const packagingHtml = packParts.length === 0
+        ? ''
+        : `<div class="wb-pack">${packParts.join('<span class="wb-pack-sep">·</span>')}</div>`;
+
       return `<section class="wb-block">
         <div class="wb-title">
           <span class="wb-dot"></span>
           <span class="wb-name">${esc(product)}</span>
         </div>
+        ${packagingHtml}
         <table class="lines">
           <thead>
             <tr><th>Item</th><th class="num">Qty</th><th class="num">Unit</th><th class="num">Total</th></tr>
@@ -36549,6 +36566,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       .wb-title { display:flex; align-items:center; gap:10px; padding:0 0 12px; }
       .wb-title .wb-name { font-size:14px; font-weight:800; color:#1a1d2e; letter-spacing:-0.01em; }
       .wb-title .wb-dot { width:8px; height:8px; border-radius:50%; background:#E8751A; flex-shrink:0; }
+      /* Packaging strip — under each workbook title, above the line-item
+         table. Compact info row with Case Pack + Master Pack so the
+         client can plan receiving / re-orders. Subtle background tint
+         + small font so it doesn't compete with the line items below. */
+      .wb-pack { display:flex; flex-wrap:wrap; align-items:center; gap:0 10px; padding:8px 12px; margin:0 0 10px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; font-size:11.5px; color:#4b5563; }
+      .wb-pack strong { color:#1a1d2e; font-weight:700; }
+      .wb-pack-sep { color:#d1d5db; padding:0 2px; }
       table.lines { width:100%; border-collapse:collapse; font-size:12.5px; }
       table.lines th { text-align:left; font-size:10px; color:#9ca3af; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; padding:8px 12px; border-bottom:1px solid #e5e7eb; }
       table.lines th.num, table.lines td.num { text-align:right; }
