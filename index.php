@@ -33434,11 +33434,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rebuildShipmentsNav();
   }
 
-  function _carrierLabel(c) { return ({ ups: 'UPS', fedex: 'FedEx', dhl: 'DHL' })[c] || c.toUpperCase(); }
+  function _carrierLabel(c) { return ({ ups: 'UPS', fedex: 'FedEx', dhl: 'DHL', cosco: 'Cosco', matson: 'Matson' })[c] || c.toUpperCase(); }
   function _carrierColor(c) {
-    // UPS brown, FedEx purple, DHL yellow — universally recognized so
-    // the operator scans the lane at a glance.
-    return ({ ups: '#5a3a22', fedex: '#4d148c', dhl: '#d40511' })[c] || 'var(--accent)';
+    // UPS brown, FedEx purple, DHL yellow, Cosco navy, Matson red —
+    // universally recognized so the operator scans the lane at a glance.
+    return ({ ups: '#5a3a22', fedex: '#4d148c', dhl: '#d40511', cosco: '#0d3a78', matson: '#c0392b' })[c] || 'var(--accent)';
   }
   function _esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 

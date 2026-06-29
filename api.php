@@ -2177,41 +2177,91 @@ switch ($action) {
             echo json_encode(['ok' => false, 'error' => 'carrier and tracking_number required']);
             break;
         }
-        $urls = [
-            'ups'   => 'https://www.ups.com/track?tracknum='   . urlencode($tn),
-            'fedex' => 'https://www.fedex.com/fedextrack/?trknbr=' . urlencode($tn),
-            'dhl'   => 'https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=' . urlencode($tn),
+        // Each carrier gets a primary + (optional) fallback URL. The
+        // primary is the human tracking page; the fallback is usually
+        // a mobile / older surface that's less aggressive about bot
+        // detection. We try primary, then fallback on failure.
+        $urlSets = [
+            'ups'    => [
+                'https://www.ups.com/track?tracknum=' . urlencode($tn),
+                'https://wwwapps.ups.com/WebTracking/track?trackNums=' . urlencode($tn) . '&track.x=Track',
+            ],
+            'fedex'  => [
+                'https://www.fedex.com/fedextrack/?trknbr=' . urlencode($tn),
+                'https://www.fedex.com/apps/fedextrack/?action=track&tracknumbers=' . urlencode($tn),
+            ],
+            'dhl'    => [
+                'https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=' . urlencode($tn),
+                'https://www.dhl.com/utapi?trackingNumber=' . urlencode($tn) . '&language=en&source=tt',
+            ],
+            'cosco'  => [
+                'https://elines.coscoshipping.com/ebusiness/cargoTracking?trackingType=BILLOFLADING&number=' . urlencode($tn),
+            ],
+            'matson' => [
+                'https://www.matson.com/track-your-shipment.html?searchType=bookingNo&searchValue=' . urlencode($tn),
+            ],
         ];
-        if (!isset($urls[$carrier])) {
-            echo json_encode(['ok' => false, 'error' => "Unsupported carrier: {$carrier}. Use ups, fedex, or dhl."]);
+        if (!isset($urlSets[$carrier])) {
+            echo json_encode(['ok' => false, 'error' => "Unsupported carrier: {$carrier}. Supported: UPS, FedEx, DHL, Cosco, Matson."]);
             break;
         }
         // Fetch the carrier page server-side with a realistic UA so
         // we don't immediately trip basic bot blocks. Truncate the
         // response to keep the LLM prompt small (carrier pages tend
         // to be 300-800 KB; 80 KB is plenty to find the status text).
+        // Walks the URL list in order — first one that returns useful
+        // HTML wins. Bubbles the most informative error up if every
+        // attempt fails.
         $html = '';
         $fetchErr = '';
+        $attemptDiag = [];
         if (function_exists('curl_init')) {
-            $ch = curl_init($urls[$carrier]);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS      => 4,
-                CURLOPT_TIMEOUT        => 12,
-                CURLOPT_USERAGENT      => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-                CURLOPT_HTTPHEADER     => [
-                    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language: en-US,en;q=0.9',
-                ],
-            ]);
-            $resp = curl_exec($ch);
-            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            if ($resp === false || $code < 200 || $code >= 400) {
-                $fetchErr = "Could not reach carrier page (HTTP {$code})";
-            } else {
-                $html = (string)$resp;
+            foreach ($urlSets[$carrier] as $attemptIdx => $url) {
+                $ch = curl_init($url);
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_MAXREDIRS      => 5,
+                    CURLOPT_TIMEOUT        => 15,
+                    CURLOPT_CONNECTTIMEOUT => 8,
+                    // Some carrier CDNs reject the connection without a full
+                    // browser-y UA + Sec-* hints. The set below mimics a
+                    // recent Chrome on macOS, which is the least-blocked
+                    // signature we've seen.
+                    CURLOPT_USERAGENT      => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                    CURLOPT_HTTPHEADER     => [
+                        'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                        'Accept-Language: en-US,en;q=0.9',
+                        'Accept-Encoding: gzip, deflate, br',
+                        'Sec-Ch-Ua: "Not/A)Brand";v="8", "Chromium";v="126", "Google Chrome";v="126"',
+                        'Sec-Ch-Ua-Mobile: ?0',
+                        'Sec-Ch-Ua-Platform: "macOS"',
+                        'Sec-Fetch-Dest: document',
+                        'Sec-Fetch-Mode: navigate',
+                        'Sec-Fetch-Site: none',
+                        'Sec-Fetch-User: ?1',
+                        'Upgrade-Insecure-Requests: 1',
+                    ],
+                    CURLOPT_ENCODING       => '', // auto-handle gzip/deflate
+                ]);
+                $resp = curl_exec($ch);
+                $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $cerr = curl_error($ch);
+                curl_close($ch);
+                if ($resp !== false && $code >= 200 && $code < 400 && strlen((string)$resp) > 200) {
+                    $html = (string)$resp;
+                    $fetchErr = '';
+                    break;
+                }
+                $attemptDiag[] = "attempt #" . ($attemptIdx + 1) . ": HTTP {$code}" . ($cerr ? " ({$cerr})" : '');
+            }
+            if ($html === '') {
+                // Build a more actionable error. HTTP 0 + carrier blocks
+                // are common enough that the operator should know it
+                // means "carrier blocked us, not your fault."
+                $diag = implode(' · ', $attemptDiag);
+                $carrierName = ['ups' => 'UPS', 'fedex' => 'FedEx', 'dhl' => 'DHL', 'cosco' => 'Cosco', 'matson' => 'Matson'][$carrier] ?? $carrier;
+                $fetchErr = "{$carrierName} blocked the lookup ({$diag}). Try opening the carrier'\''s site directly with the ↗ button.";
             }
         } else {
             $fetchErr = 'Server is missing curl; cannot fetch tracking page.';
@@ -2228,7 +2278,7 @@ switch ($action) {
         $clean = preg_replace('#\s+#', ' ', $clean);
         $clean = mb_substr($clean, 0, 80000);
 
-        $carrierLabel = ['ups' => 'UPS', 'fedex' => 'FedEx', 'dhl' => 'DHL'][$carrier];
+        $carrierLabel = ['ups' => 'UPS', 'fedex' => 'FedEx', 'dhl' => 'DHL', 'cosco' => 'Cosco', 'matson' => 'Matson'][$carrier] ?? $carrier;
         $system = "You parse shipment-tracking page HTML and return ONLY valid JSON. No prose, no markdown, no code fences. " .
                   "Schema: {\"status\": string, \"location\": string, \"eta\": string, \"events\": [{\"time\": string, \"location\": string, \"description\": string}]}. " .
                   "status: one short phrase like 'In Transit', 'Out for Delivery', 'Delivered', 'Label Created', or 'Unknown' if the page doesn't reveal it. " .
