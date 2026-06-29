@@ -32782,19 +32782,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                value="${esc(s.trackingNumber)}"
                data-tracking-idx="0"
                data-tracking-original="${esc(s.trackingNumber)}"
-               size="22"
+               size="${Math.max(12, (s.trackingNumber || '').length + 2)}"
                oninput="updateShipmentTracking(0, 'number', this.value)"
                onfocus="this.select(); this.style.borderColor='var(--accent)'; this.style.background='var(--surface)';"
                onblur="this.style.borderColor='var(--border)'; this.style.background='var(--surface2)'; _onTrackingNumberBlur(0, this);"
                title="Click to edit. Tab away to save + re-check status."
-               style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); cursor:text; min-width:200px; transition:border-color 0.15s, background 0.15s;" />
+               style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); cursor:text; width:auto; transition:border-color 0.15s, background 0.15s;" />
         <a href="${carrierUrl}" target="_blank" rel="noopener"
            style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; color:var(--text-muted); text-decoration:none; border:1px solid var(--border); border-radius:6px; background:var(--surface2); font-size:12px; line-height:1;"
            onclick="event.stopPropagation();"
            title="Open ${esc(carrierLabel)} tracking page in a new tab">↗</a>
-        <span style="margin-left:auto; display:flex; gap:8px;">
-          <button class="btn btn-ghost" style="font-size:12px;" onclick="refreshTrackingForCurrent(this)">↻ Refresh tracking</button>
-        </span>
+        <button id="tracking-section-refresh-btn"
+                onclick="refreshTrackingForCurrent(this)"
+                data-icon-only="1"
+                title="Re-fetch the latest status from ${esc(carrierLabel)}"
+                style="margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; color:var(--text-muted); border:1px solid var(--border); border-radius:6px; background:var(--surface2); font-size:13px; line-height:1; cursor:pointer; font-family:inherit; transition:opacity 0.15s;">↻</button>
       </div>
       <div class="section-body">
         <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; padding-bottom:10px; border-bottom:1px solid var(--border);">
@@ -33611,7 +33613,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (typeof _msToast === 'function') _msToast('No carrier / tracking number on this shipment yet.', 'warning');
       return false;
     }
-    if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
+    // Icon-only buttons (like the 26x26 ↻ pill in the Tracking
+    // section header) shouldn'\''t have their textContent swapped to
+    // "Refreshing…" — that overflows the 26px box and looks broken.
+    // Detect via data-icon-only="1" + just spin the disabled+opacity
+    // states; the title attribute still tells the operator what'\''s
+    // happening on hover. Text buttons keep the verbose label flip.
+    const iconOnly = !!(btn && btn.getAttribute && btn.getAttribute('data-icon-only') === '1');
+    if (btn) {
+      btn.disabled = true;
+      if (iconOnly) { btn.style.opacity = '0.55'; btn.style.cursor = 'wait'; }
+      else          { btn.textContent = '↻ Refreshing…'; }
+    }
     try {
       const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
       if (r && r.ok && r.data) {
@@ -33625,7 +33638,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       console.warn('refreshTracking:', e);
       if (typeof _msToast === 'function') _msToast('Tracking fetch error — see console.', 'warning');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh tracking'; }
+      if (btn) {
+        btn.disabled = false;
+        if (iconOnly) { btn.style.opacity = ''; btn.style.cursor = 'pointer'; }
+        else          { btn.textContent = '↻ Refresh tracking'; }
+      }
     }
     return false;
   }
