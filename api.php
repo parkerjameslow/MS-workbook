@@ -2420,22 +2420,46 @@ switch ($action) {
     //      ok to the portal.
 
     case 'crm_slack_test':
-        // Diagnostic — confirms whether SLACK_WEBHOOK_URL was loaded
-        // from api.local.php (or env), then fires a real test message
-        // through the server-side cURL so we know the webhook works
-        // from this host. Returns: { configured, host_chars,
-        // tail_chars, slack_status, slack_response, error }.
+        // Diagnostic — reports everything we need to debug why
+        // SLACK_WEBHOOK_URL might not be loaded, then fires a real
+        // test message through server-side cURL so we know the
+        // webhook works from this host.
         $url = defined('SLACK_WEBHOOK_URL') ? SLACK_WEBHOOK_URL : '';
         $configured = ($url !== '');
         $hostChars  = '';
         $tailChars  = '';
         if ($configured) {
-            // First 8 + last 8 chars of the URL so the operator can
+            // First 35 + last 8 chars of the URL so the operator can
             // eyeball-verify which webhook is loaded without me ever
             // seeing the full secret in chat / logs.
             $hostChars = substr($url, 0, 35);  // "https://hooks.slack.com/services/T0..."
             $tailChars = '…' . substr($url, -8);
         }
+        // Filesystem diagnostic: where does api.php live, and is
+        // api.local.php sitting next to it? Lists every file in the
+        // same directory so we can spot wrong-filename issues like
+        // "api.local.php.txt" or "API.LOCAL.PHP" at a glance.
+        $apiDir      = __DIR__;
+        $localPath   = $apiDir . '/api.local.php';
+        $localExists = file_exists($localPath);
+        $localReadable = $localExists ? is_readable($localPath) : false;
+        $localSize   = $localExists ? filesize($localPath) : 0;
+        // Scan directory for any file matching api.local.* (case-
+        // insensitive) so we can catch .txt extensions, casing issues,
+        // typos like "api_local.php", etc.
+        $similarFiles = [];
+        if (is_dir($apiDir)) {
+            foreach (scandir($apiDir) as $f) {
+                if ($f === '.' || $f === '..') continue;
+                if (stripos($f, 'api.local') !== false || stripos($f, 'api_local') !== false || stripos($f, 'apilocal') !== false) {
+                    $similarFiles[] = $f;
+                }
+            }
+        }
+        // Env-var fallback path (in case the operator set it via
+        // .htaccess SetEnv instead of api.local.php).
+        $envSlackFromGet = getenv('SLACK_WEBHOOK_URL') ?: '';
+        $envSlackFromSrv = $_SERVER['SLACK_WEBHOOK_URL'] ?? '';
         $slackStatus  = null;
         $slackErr     = null;
         $slackResp    = null;
@@ -2465,6 +2489,16 @@ switch ($action) {
             'slack_response'=> is_string($slackResp) ? mb_substr($slackResp, 0, 200) : null,
             'curl_error'    => $slackErr,
             'curl_available'=> function_exists('curl_init'),
+            // Filesystem diagnostic
+            'api_dir'            => $apiDir,
+            'expected_local'     => $localPath,
+            'local_exists'       => $localExists,
+            'local_readable'     => $localReadable,
+            'local_size_bytes'   => $localSize,
+            'similar_files_in_dir' => $similarFiles,
+            // Env var fallback (in case operator used SetEnv)
+            'env_slack_from_getenv' => $envSlackFromGet !== '',
+            'env_slack_from_server' => $envSlackFromSrv !== '',
         ]);
         break;
 
