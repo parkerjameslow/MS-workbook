@@ -5522,35 +5522,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: rgba(107,147,255,0.10);
       border-radius: 10px;
     }
+    /* Column header IS the column-defining pill — fills the column
+       width, takes the column'\''s color, contains label + count +
+       add-button. No separate inline pill anymore. */
     .crm-column-header {
       display: flex; align-items: center; gap: 8px;
-      padding: 6px 4px 10px;
-      border-bottom: none;
+      padding: 6px 10px;
+      margin-bottom: 10px;
+      border-radius: 99px;
       flex-shrink: 0;
     }
     .crm-col-title {
       font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
-      padding: 3px 10px; border-radius: 99px;
       flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      padding-left: 6px;
     }
     .crm-col-count {
-      font-size: 11px; font-weight: 700; color: var(--text-muted);
+      font-size: 11px; font-weight: 700;
       flex-shrink: 0;
+      opacity: 0.65;
+      padding: 0 2px;
     }
-    /* "+" add button lives in the column header now (compact icon)
-       instead of a full-width pill at the bottom of the card. Same
-       handler, less vertical space. */
+    /* "+" add button — inline in the header pill, inherits color from
+       the parent pill via currentColor so it tints to match the lane. */
     .crm-col-add-icon {
       display: inline-flex; align-items: center; justify-content: center;
       width: 22px; height: 22px; padding: 0; flex-shrink: 0;
-      border: 1px solid var(--border); border-radius: 6px;
-      background: var(--surface);
-      color: var(--text-muted);
+      border: 1px solid currentColor;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.55);
+      color: inherit;
       font-size: 16px; line-height: 1; font-weight: 700;
       cursor: pointer; font-family: inherit;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      transition: background 0.15s, transform 0.05s;
     }
-    .crm-col-add-icon:hover { background: rgba(107,147,255,0.10); color: var(--accent); border-color: var(--accent); }
+    .crm-col-add-icon:hover { background: rgba(255,255,255,0.95); transform: scale(1.05); }
+    .crm-col-add-icon:active { transform: scale(0.97); }
     .crm-col-body {
       flex: 1 1 auto;
       overflow-y: auto;
@@ -34677,8 +34684,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                    ondragover="event.preventDefault(); this.classList.add('drag-over');"
                    ondragleave="this.classList.remove('drag-over');"
                    ondrop="onCrmCardDrop(event, '${col.id}')">
-        <div class="crm-column-header">
-          <span class="crm-col-title" style="background:${col.bg}; color:${col.fg};">${col.label}</span>
+        <div class="crm-column-header" style="background:${col.bg}; color:${col.fg};">
+          <span class="crm-col-title">${col.label}</span>
           <span class="crm-col-count">${cards.length}</span>
           <button class="crm-col-add-icon" onclick="openCrmCardModal(null, '${col.id}')" title="Add a lead to ${col.label}">+</button>
         </div>
