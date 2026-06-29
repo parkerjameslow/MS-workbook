@@ -34847,36 +34847,77 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (typeof _msToast === 'function') _msToast('Add a valid email to this lead before sending onboarding.', 'warning');
       return;
     }
-    const confirmGo = confirm(`Send onboarding link + security PIN to ${card.email}?\n\nThey'll receive an email with a portal link and a 6-digit PIN. The form auto-creates a client record on submit and notifies the team.`);
-    if (!confirmGo) return;
-    try {
-      const r = await apiCall('crm_send_onboarding', {
-        card_id: cardId,
-        company: card.company || '',
-        email:   card.email,
-        contact: card.contact || '',
-      });
-      if (!r || !r.ok) {
-        if (typeof _msToast === 'function') _msToast(`Could not send onboarding: ${(r && r.error) || 'unknown error'}`, 'warning');
-        return;
+    // In-app confirm modal (replaces the previous browser confirm()
+    // dialog which the operator hated). Built inline rather than in a
+    // hidden HTML block since we only need it for this one action.
+    _showCrmSendConfirmModal(card, async () => {
+      try {
+        const r = await apiCall('crm_send_onboarding', {
+          card_id: cardId,
+          company: card.company || '',
+          email:   card.email,
+          contact: card.contact || '',
+        });
+        if (!r || !r.ok) {
+          if (typeof _msToast === 'function') _msToast(`Could not send onboarding: ${(r && r.error) || 'unknown error'}`, 'warning');
+          return;
+        }
+        // Stash on the card so the operator can re-open later to see the
+        // PIN + portal URL without re-sending the email.
+        card.onboarding = {
+          sentAt:    new Date().toISOString(),
+          portalUrl: r.portalUrl,
+          pin:       r.pin,
+          expiresAt: r.expiresAt,
+          emailSent: !!r.emailSent,
+          emailError:r.emailError || null,
+        };
+        saveCrm();
+        renderCrmBoard();
+        _showCrmOnboardingConfirm(card, r);
+      } catch (e) {
+        console.warn('sendCrmOnboarding:', e);
+        if (typeof _msToast === 'function') _msToast('Network error sending onboarding — please try again.', 'warning');
       }
-      // Stash on the card so the operator can re-open later to see the
-      // PIN + portal URL without re-sending the email.
-      card.onboarding = {
-        sentAt:    new Date().toISOString(),
-        portalUrl: r.portalUrl,
-        pin:       r.pin,
-        expiresAt: r.expiresAt,
-        emailSent: !!r.emailSent,
-        emailError:r.emailError || null,
-      };
-      saveCrm();
-      renderCrmBoard();
-      _showCrmOnboardingConfirm(card, r);
-    } catch (e) {
-      console.warn('sendCrmOnboarding:', e);
-      if (typeof _msToast === 'function') _msToast('Network error sending onboarding — please try again.', 'warning');
-    }
+    });
+  }
+
+  // In-app pre-send confirmation. Replaces the native browser confirm()
+  // dialog. Pulls the lead name + email into the body so the operator
+  // sees exactly who they'\''re about to send to. The send button kicks
+  // the onConfirm callback (which does the real apiCall + post-send
+  // modal); Cancel just closes.
+  function _showCrmSendConfirmModal(card, onConfirm) {
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.style.cssText = 'display:flex; z-index:1100;';
+    const close = () => { try { document.body.removeChild(overlay); } catch {} };
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+    const who = card.contact ? `${esc(card.contact)} at ${esc(card.company || '')}` : (esc(card.company) || 'this lead');
+    overlay.innerHTML = `<div class="modal" style="max-width:480px;">
+      <div class="modal-title" style="margin-bottom:10px;">Send onboarding link?</div>
+      <p style="font-size:14px; color:var(--text); line-height:1.5; margin:0 0 8px;">
+        Send the onboarding portal link + a 6-digit security PIN to <strong>${esc(card.email)}</strong>?
+      </p>
+      <p style="font-size:13px; color:var(--text-muted); line-height:1.5; margin:0 0 18px;">
+        ${who} will receive an email with a one-tap portal link. When they finish the form,
+        the system auto-creates a client record and notifies the team via email + Slack.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-act="cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" data-act="send">Send Onboarding Link</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-act="cancel"]').onclick = close;
+    overlay.querySelector('[data-act="send"]').onclick = async () => {
+      // Disable the button to prevent double-clicks while the API call
+      // is in flight; close the modal once it'\''s safely fired.
+      const sendBtn = overlay.querySelector('[data-act="send"]');
+      sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
+      try { await onConfirm(); } finally { close(); }
+    };
   }
 
   // Inline post-send confirmation. Shows the portal URL + PIN so the
