@@ -9413,75 +9413,113 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      existing card or openCrmCardModal(null, columnId) for a new card
      in the named column. -->
 <div class="modal-overlay" id="modal-crm-card" onclick="if(event.target===this)closeCrmCardModal()" style="z-index:1000;">
-  <div class="modal" style="max-width:560px; max-height:90vh; overflow-y:auto;">
-    <div class="modal-title" id="crm-card-modal-title" style="margin-bottom:14px;">New Lead</div>
-    <form id="crm-card-form" onsubmit="saveCrmCardModal(event)">
-      <div class="modal-field">
-        <label>Company / Lead Name <span class="required">*</span></label>
-        <input type="text" id="crm-card-company" required autocomplete="off" placeholder="e.g. Acme Co." />
+  <div class="modal" style="max-width:960px; max-height:92vh; overflow:hidden; padding:0; display:flex; flex-direction:column;">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 22px 0;">
+      <div class="modal-title" id="crm-card-modal-title" style="margin:0;">New Lead</div>
+    </div>
+    <div style="display:flex; flex:1 1 auto; min-height:0; overflow:hidden;">
+      <!-- LEFT: form fields -->
+      <div style="flex:1 1 560px; min-width:0; overflow-y:auto; padding:14px 22px 0;">
+        <form id="crm-card-form" onsubmit="saveCrmCardModal(event)">
+          <div class="modal-field">
+            <label>Company / Lead Name <span class="required">*</span></label>
+            <input type="text" id="crm-card-company" required autocomplete="off" placeholder="e.g. Acme Co." />
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="modal-field">
+              <label>Contact Name</label>
+              <input type="text" id="crm-card-contact" autocomplete="off" />
+            </div>
+            <div class="modal-field">
+              <label>Title</label>
+              <input type="text" id="crm-card-title" autocomplete="off" />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="modal-field">
+              <label>Email</label>
+              <input type="email" id="crm-card-email" autocomplete="off" />
+            </div>
+            <div class="modal-field">
+              <label>Phone</label>
+              <input type="tel" id="crm-card-phone" autocomplete="off" />
+            </div>
+          </div>
+          <div class="modal-field">
+            <label>Source</label>
+            <input type="text" id="crm-card-source" autocomplete="off" placeholder="e.g. Referral from Sarah · LinkedIn outreach · Trade show" />
+          </div>
+          <!-- Labels — operator-defined chips with name + color. Show
+               on the closed card so the board surfaces card metadata
+               at a glance. Multiple can be added per card. -->
+          <div class="modal-field">
+            <label style="display:flex; align-items:center; gap:8px;">
+              Labels
+              <button type="button" onclick="_openCrmLabelMenu(this)"
+                      style="font-size:11px; font-weight:700; text-transform:uppercase; padding:3px 8px; border:1px solid var(--border); border-radius:99px; background:transparent; color:var(--text-muted); cursor:pointer; font-family:inherit;">+ Add</button>
+            </label>
+            <div id="crm-card-labels-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; min-height:24px;"></div>
+          </div>
+          <!-- Assignees — click any chip to toggle. Multiple can be
+               selected. Compact chip row replaces the prior single-
+               select dropdown so the operator can co-assign without
+               giving up either name. -->
+          <div class="modal-field">
+            <label>Assigned To</label>
+            <div id="crm-card-assignees-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:2px;"></div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div class="modal-field">
+              <label>Next Follow-up</label>
+              <input type="date" id="crm-card-followup" />
+            </div>
+            <div class="modal-field">
+              <label>Column</label>
+              <div class="select-wrap">
+                <select id="crm-card-column">
+                  <option value="referrals">Referrals</option>
+                  <option value="prospect_rfq">Prospect RFQ</option>
+                  <option value="warm">Warm</option>
+                  <option value="hot">Hot</option>
+                  <option value="onboard">Onboard</option>
+                  <option value="backburner">Backburner</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="modal-field">
+            <label>Notes</label>
+            <textarea id="crm-card-notes" rows="4" placeholder="Conversation history, deal context, blockers, anything that matters when we re-engage."
+              style="width:100%; resize:vertical; min-height:90px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
+          </div>
+          <div class="modal-actions" style="display:flex; align-items:center; gap:10px; padding-bottom:18px;">
+            <button type="button" id="crm-card-delete-btn" class="btn btn-ghost" style="color:#dc2626; border-color:rgba(220,38,38,0.3); margin-right:auto;" onclick="deleteCrmCardModal()">Delete</button>
+            <button type="button" class="btn btn-ghost" onclick="closeCrmCardModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-        <div class="modal-field">
-          <label>Contact Name</label>
-          <input type="text" id="crm-card-contact" autocomplete="off" />
+      <!-- RIGHT: Comments thread. Independent scroll so a long
+           conversation doesn't push the form off-screen. Header is
+           pinned; body scrolls; composer pinned at the bottom. -->
+      <div style="flex:0 0 340px; border-left:1px solid var(--border); background:var(--surface2); display:flex; flex-direction:column; min-height:0;">
+        <div style="padding:14px 16px 8px; flex-shrink:0;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:13px; font-weight:800; color:var(--text); text-transform:uppercase; letter-spacing:0.05em;">Comments</span>
+            <span id="crm-card-comments-count" style="font-size:11px; color:var(--text-muted); font-weight:700;"></span>
+          </div>
         </div>
-        <div class="modal-field">
-          <label>Title</label>
-          <input type="text" id="crm-card-title" autocomplete="off" />
-        </div>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-        <div class="modal-field">
-          <label>Email</label>
-          <input type="email" id="crm-card-email" autocomplete="off" />
-        </div>
-        <div class="modal-field">
-          <label>Phone</label>
-          <input type="tel" id="crm-card-phone" autocomplete="off" />
-        </div>
-      </div>
-      <div class="modal-field">
-        <label>Source</label>
-        <input type="text" id="crm-card-source" autocomplete="off" placeholder="e.g. Referral from Sarah · LinkedIn outreach · Trade show" />
-      </div>
-      <!-- Assignees — click any chip to toggle. Multiple can be
-           selected. Compact chip row replaces the prior single-
-           select dropdown so the operator can co-assign without
-           giving up either name. -->
-      <div class="modal-field">
-        <label>Assigned To</label>
-        <div id="crm-card-assignees-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:2px;"></div>
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-        <div class="modal-field">
-          <label>Next Follow-up</label>
-          <input type="date" id="crm-card-followup" />
-        </div>
-        <div class="modal-field">
-          <label>Column</label>
-          <div class="select-wrap">
-            <select id="crm-card-column">
-              <option value="referrals">Referrals</option>
-              <option value="prospect_rfq">Prospect RFQ</option>
-              <option value="warm">Warm</option>
-              <option value="hot">Hot</option>
-              <option value="onboard">Onboard</option>
-              <option value="backburner">Backburner</option>
-            </select>
+        <div id="crm-card-comments-list" style="flex:1 1 auto; overflow-y:auto; padding:4px 16px; display:flex; flex-direction:column; gap:10px; min-height:80px;"></div>
+        <div style="border-top:1px solid var(--border); padding:10px 16px; flex-shrink:0; background:var(--surface);">
+          <textarea id="crm-card-comment-input" rows="2" placeholder="Write a comment…"
+            style="width:100%; resize:vertical; min-height:50px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); box-sizing:border-box;"></textarea>
+          <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+            <button type="button" id="crm-card-comment-add-btn" onclick="_addCrmComment()"
+                    style="padding:6px 14px; border-radius:6px; background:var(--accent); color:#fff; border:none; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Add comment</button>
           </div>
         </div>
       </div>
-      <div class="modal-field">
-        <label>Notes</label>
-        <textarea id="crm-card-notes" rows="4" placeholder="Conversation history, deal context, blockers, anything that matters when we re-engage."
-          style="width:100%; resize:vertical; min-height:90px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
-      </div>
-      <div class="modal-actions" style="display:flex; align-items:center; gap:10px;">
-        <button type="button" id="crm-card-delete-btn" class="btn btn-ghost" style="color:#dc2626; border-color:rgba(220,38,38,0.3); margin-right:auto;" onclick="deleteCrmCardModal()">Delete</button>
-        <button type="button" class="btn btn-ghost" onclick="closeCrmCardModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save</button>
-      </div>
-    </form>
+    </div>
   </div>
 </div>
 
@@ -34649,6 +34687,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // diffed against _crmModalAssignees on save to detect NEWLY added
   // assignees, which trigger the Slack assignment notification.
   var _crmModalAssigneesOriginal = new Set();
+  // Working copy of the card's labels in the open modal — array of
+  // {id, name, color}. Mutated by the +Add / × handlers; serialized
+  // back to card.labels on save.
+  var _crmModalLabels = [];
+  // Pre-defined label color palette so the operator gets consistent,
+  // good-looking colors without picking hex codes by hand.
+  var CRM_LABEL_PALETTE = [
+    { name: 'Red',    bg: '#fee2e2', fg: '#b91c1c' },
+    { name: 'Orange', bg: '#fed7aa', fg: '#c2410c' },
+    { name: 'Yellow', bg: '#fef3c7', fg: '#a16207' },
+    { name: 'Green',  bg: '#dcfce7', fg: '#15803d' },
+    { name: 'Teal',   bg: '#ccfbf1', fg: '#0f766e' },
+    { name: 'Blue',   bg: '#dbeafe', fg: '#1e40af' },
+    { name: 'Indigo', bg: '#e0e7ff', fg: '#3730a3' },
+    { name: 'Purple', bg: '#ede9fe', fg: '#7c3aed' },
+    { name: 'Pink',   bg: '#fce7f3', fg: '#be185d' },
+    { name: 'Gray',   bg: '#f3f4f6', fg: '#4b5563' },
+  ];
 
   // var (not const) to hoist past the TDZ — same reason as crmData
   // above. renderCrmBoard is called from the router during init when
@@ -34888,6 +34944,150 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _renderCrmModalAssigneeChips();
   }
 
+  // ── LABELS ───────────────────────────────────────────────────────
+  function _renderCrmModalLabelChips() {
+    const host = document.getElementById('crm-card-labels-chips');
+    if (!host) return;
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    if (!_crmModalLabels.length) {
+      host.innerHTML = '<span style="font-size:11px; color:var(--text-muted); font-style:italic;">No labels yet — click + Add to create one.</span>';
+      return;
+    }
+    host.innerHTML = _crmModalLabels.map((l, idx) =>
+      `<span style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:99px; background:${l.bg || '#f3f4f6'}; color:${l.fg || '#4b5563'}; font-size:11px; font-weight:700;">
+        ${esc(l.name || '')}
+        <button type="button" onclick="_removeCrmModalLabel(${idx})" title="Remove label"
+          style="background:transparent; border:none; padding:0; margin:0; color:inherit; cursor:pointer; font-size:13px; line-height:1; opacity:0.7;">×</button>
+      </span>`
+    ).join('');
+  }
+  function _removeCrmModalLabel(idx) {
+    _crmModalLabels.splice(idx, 1);
+    _renderCrmModalLabelChips();
+  }
+  // Inline color-picker menu next to the +Add button. Opens a small
+  // floating panel with the palette + name input. Clicking a color
+  // commits the label immediately so the operator can rapid-fire
+  // multiple labels without a chained "save" step.
+  function _openCrmLabelMenu(triggerBtn) {
+    // Close any existing menu first.
+    const existing = document.getElementById('crm-label-menu-popover');
+    if (existing) { existing.remove(); return; }
+    const menu = document.createElement('div');
+    menu.id = 'crm-label-menu-popover';
+    menu.style.cssText = 'position:absolute; z-index:1100; background:var(--surface); border:1px solid var(--border); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.18); padding:10px; width:260px;';
+    menu.innerHTML = `
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">New label</div>
+      <input type="text" id="crm-label-new-name" placeholder="Label name (e.g. High value)"
+             style="width:100%; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; margin-bottom:8px; box-sizing:border-box;" />
+      <div style="font-size:10px; font-weight:700; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px;">Pick a color</div>
+      <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">
+        ${CRM_LABEL_PALETTE.map((c, i) => `
+          <button type="button" onclick="_commitCrmLabelFromMenu(${i})" title="${c.name}"
+            style="display:flex; align-items:center; justify-content:center; height:28px; border-radius:6px; background:${c.bg}; color:${c.fg}; border:1px solid ${c.fg}33; font-size:10px; font-weight:700; cursor:pointer; font-family:inherit;">${c.name}</button>
+        `).join('')}
+      </div>
+    `;
+    // Position the menu below the trigger button.
+    const rect = triggerBtn.getBoundingClientRect();
+    document.body.appendChild(menu);
+    menu.style.top  = (rect.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = (rect.left   + window.scrollX) + 'px';
+    setTimeout(() => { try { document.getElementById('crm-label-new-name').focus(); } catch {} }, 50);
+    // Click-outside to close.
+    setTimeout(() => {
+      document.addEventListener('mousedown', _crmLabelMenuOutsideClickClose, true);
+    }, 0);
+  }
+  function _crmLabelMenuOutsideClickClose(e) {
+    const menu = document.getElementById('crm-label-menu-popover');
+    if (!menu) {
+      document.removeEventListener('mousedown', _crmLabelMenuOutsideClickClose, true);
+      return;
+    }
+    if (!menu.contains(e.target) && !e.target.closest('[onclick*="_openCrmLabelMenu"]')) {
+      menu.remove();
+      document.removeEventListener('mousedown', _crmLabelMenuOutsideClickClose, true);
+    }
+  }
+  function _commitCrmLabelFromMenu(paletteIdx) {
+    const nameInput = document.getElementById('crm-label-new-name');
+    const name = (nameInput?.value || '').trim();
+    if (!name) { try { nameInput.focus(); } catch {} return; }
+    const col = CRM_LABEL_PALETTE[paletteIdx] || CRM_LABEL_PALETTE[CRM_LABEL_PALETTE.length - 1];
+    _crmModalLabels.push({
+      id: `lbl${Date.now().toString(36)}${Math.floor(Math.random()*1e4).toString(36)}`,
+      name,
+      bg: col.bg,
+      fg: col.fg,
+    });
+    _renderCrmModalLabelChips();
+    const menu = document.getElementById('crm-label-menu-popover');
+    if (menu) menu.remove();
+    document.removeEventListener('mousedown', _crmLabelMenuOutsideClickClose, true);
+  }
+
+  // ── COMMENTS ─────────────────────────────────────────────────────
+  function _renderCrmModalComments(card) {
+    const host    = document.getElementById('crm-card-comments-list');
+    const countEl = document.getElementById('crm-card-comments-count');
+    if (!host) return;
+    const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const comments = (card && Array.isArray(card.comments)) ? card.comments : [];
+    if (countEl) countEl.textContent = comments.length > 0 ? `(${comments.length})` : '';
+    if (comments.length === 0) {
+      host.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic; padding:8px 0;">No comments yet. Start the conversation below.</div>';
+      return;
+    }
+    const me = (typeof window.MS_SESSION === 'object' && window.MS_SESSION) ? (window.MS_SESSION.name || window.MS_SESSION.username || '') : '';
+    host.innerHTML = comments.slice().reverse().map(c => {
+      const isMine = c.author && me && c.author.toLowerCase() === String(me).toLowerCase();
+      const when = c.createdAt ? _crmRelTime(c.createdAt) : '';
+      return `<div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px;">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+          <span style="font-size:11px; font-weight:800; color:var(--text);">${esc(c.author || 'Unknown')}</span>
+          <span style="font-size:10px; color:var(--text-muted);">${esc(when)}</span>
+          ${isMine ? `<button type="button" onclick="_deleteCrmComment('${c.id}')" title="Delete this comment" style="margin-left:auto; background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; padding:0;">×</button>` : ''}
+        </div>
+        <div style="font-size:12px; color:var(--text); line-height:1.5; white-space:pre-wrap;">${esc(c.text || '')}</div>
+      </div>`;
+    }).join('');
+  }
+  function _addCrmComment() {
+    if (!_crmEditingId) {
+      if (typeof _msToast === 'function') _msToast('Save the lead first, then add comments.', 'warning');
+      return;
+    }
+    const card  = crmData.cards[_crmEditingId];
+    if (!card) return;
+    const input = document.getElementById('crm-card-comment-input');
+    const text  = (input?.value || '').trim();
+    if (!text) return;
+    if (!Array.isArray(card.comments)) card.comments = [];
+    const author = (typeof window.MS_SESSION === 'object' && window.MS_SESSION) ? (window.MS_SESSION.name || window.MS_SESSION.username || 'Operator') : 'Operator';
+    card.comments.push({
+      id: `cm${Date.now().toString(36)}${Math.floor(Math.random()*1e4).toString(36)}`,
+      author,
+      text,
+      createdAt: new Date().toISOString(),
+    });
+    card.updatedAt = new Date().toISOString();
+    saveCrm();
+    if (input) input.value = '';
+    _renderCrmModalComments(card);
+    renderCrmBoard();
+  }
+  function _deleteCrmComment(commentId) {
+    if (!_crmEditingId) return;
+    const card = crmData.cards[_crmEditingId];
+    if (!card || !Array.isArray(card.comments)) return;
+    card.comments = card.comments.filter(c => c.id !== commentId);
+    card.updatedAt = new Date().toISOString();
+    saveCrm();
+    _renderCrmModalComments(card);
+    renderCrmBoard();
+  }
+
   // Compact "Updated 5m ago / 3h ago / Jun 28" label. Reads cheap and
   // converts the raw ISO timestamp into something the operator can
   // scan at a glance without doing date math.
@@ -34959,14 +35159,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : '';
       onboardBtn = `<button class="crm-card-onboard-btn" onclick="event.stopPropagation(); sendCrmOnboarding('${c.id}')">${label}</button>${caption}`;
     }
+    // Labels: small colored pills along the top of the card. Each
+    // uses the bg/fg the operator picked when adding it. Skipped
+    // when the card has no labels.
+    const labelsHtml = (Array.isArray(c.labels) && c.labels.length)
+      ? `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px;">${
+          c.labels.map(l => `<span style="display:inline-block; padding:2px 8px; border-radius:99px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; background:${l.bg || '#f3f4f6'}; color:${l.fg || '#4b5563'};">${esc(l.name || '')}</span>`).join('')
+        }</div>`
+      : '';
+    // Comment count badge — 💬 N when the card has comments. Sits
+    // in the footer alongside the updated-time so the operator
+    // sees both signals at a glance.
+    const commentCount = Array.isArray(c.comments) ? c.comments.length : 0;
+    const commentBadge = commentCount > 0
+      ? `<span title="${commentCount} comment${commentCount === 1 ? '' : 's'}" style="display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:700; color:#9ca3af; margin-left:auto;">💬 ${commentCount}</span>`
+      : '';
     // Updated-time footer — reads as "Updated 5m ago" so the operator
     // can quickly tell which leads are stale. Falls back to createdAt
     // if updatedAt isn't set (legacy cards from before this field
-    // existed).
+    // existed). Comment badge sits in the same row.
     const lastTouchIso = c.updatedAt || c.createdAt || '';
     const lastTouchRel = _crmRelTime(lastTouchIso);
-    const updatedFooter = lastTouchRel
-      ? `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); font-size:9px; color:#9ca3af; font-weight:600; letter-spacing:0.02em;">Updated ${esc(lastTouchRel)}</div>`
+    const updatedFooter = (lastTouchRel || commentBadge)
+      ? `<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; gap:6px; font-size:9px; color:#9ca3af; font-weight:600; letter-spacing:0.02em;">${lastTouchRel ? `Updated ${esc(lastTouchRel)}` : '<span></span>'}${commentBadge}</div>`
       : '';
     // Reserve right-padding proportional to the stack of chips so
     // the company-name text doesn'\''t collide with the avatars on
@@ -34981,6 +35196,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  onclick="openCrmCardModal('${c.id}')"
                  style="position:relative; ${padR ? `padding-right:${padR}px;` : ''}">
       ${assigneeChip}
+      ${labelsHtml}
       <div class="crm-card-company">${esc(company)}</div>
       ${subline ? `<div class="crm-card-contact">${esc(subline)}</div>` : ''}
       ${meta.length ? `<div class="crm-card-meta">${meta.join('')}</div>` : ''}
@@ -35069,6 +35285,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _crmModalAssignees         = new Set(initialAssignees);
     _crmModalAssigneesOriginal = new Set(initialAssignees);
     _renderCrmModalAssigneeChips();
+    // Labels: editable inline chip row. Stored as card.labels =
+    // [{id, name, color}, …]
+    if (card && Array.isArray(card.labels)) {
+      _crmModalLabels = card.labels.slice();
+    } else {
+      _crmModalLabels = [];
+    }
+    _renderCrmModalLabelChips();
+    // Comments thread: render whatever's saved + clear the composer
+    // for a fresh write.
+    _renderCrmModalComments(card);
+    const composer = document.getElementById('crm-card-comment-input');
+    if (composer) composer.value = '';
     // Delete button only when editing an existing card.
     const delBtn = document.getElementById('crm-card-delete-btn');
     if (delBtn) delBtn.style.display = card ? '' : 'none';
@@ -35109,6 +35338,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // truth on the next render.
     card.assignees = Array.from(_crmModalAssignees || []);
     delete card.assignee;
+    card.labels   = Array.isArray(_crmModalLabels) ? _crmModalLabels.slice() : [];
     card.updatedAt = nowIso;
     // Detect NEWLY-added assignees (members of the new Set that weren'\''t
     // in the original at modal-open time). Fire a Slack ping for each
