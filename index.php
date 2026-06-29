@@ -9462,11 +9462,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="select-wrap">
             <select id="crm-card-column">
               <option value="referrals">Referrals</option>
+              <option value="prospect_rfq">Prospect RFQ</option>
               <option value="cold">Cold</option>
               <option value="warm">Warm</option>
               <option value="hot">Hot</option>
               <option value="onboard">Onboard</option>
-              <option value="creating">Start Creating Workbooks</option>
               <option value="backburner">Backburner</option>
             </select>
           </div>
@@ -34653,13 +34653,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // declaration in source order. Hoisting protects against the
   // ReferenceError that previously crashed the CRM render on refresh.
   var CRM_COLUMNS = [
-    { id: 'referrals',  label: 'Referrals',                bg: '#e0e7ff', fg: '#3730a3' },
-    { id: 'cold',       label: 'Cold',                     bg: '#dbeafe', fg: '#1e40af' },
-    { id: 'warm',       label: 'Warm',                     bg: '#fef3c7', fg: '#a16207' },
-    { id: 'hot',        label: 'Hot',                      bg: '#fee2e2', fg: '#b91c1c' },
-    { id: 'onboard',    label: 'Onboard',                  bg: '#ede9fe', fg: '#7c3aed' },
-    { id: 'creating',   label: 'Start Creating Workbooks', bg: '#dcfce7', fg: '#15803d' },
-    { id: 'backburner', label: 'Backburner',               bg: '#f3f4f6', fg: '#4b5563' },
+    { id: 'referrals',    label: 'Referrals',    bg: '#e0e7ff', fg: '#3730a3' },
+    { id: 'prospect_rfq', label: 'Prospect RFQ', bg: '#dcfce7', fg: '#15803d' }, // green — active prospect being quoted
+    { id: 'cold',         label: 'Cold',         bg: '#dbeafe', fg: '#1e40af' },
+    { id: 'warm',         label: 'Warm',         bg: '#fef3c7', fg: '#a16207' },
+    { id: 'hot',          label: 'Hot',          bg: '#fee2e2', fg: '#b91c1c' },
+    { id: 'onboard',      label: 'Onboard',      bg: '#ede9fe', fg: '#7c3aed' },
+    { id: 'backburner',   label: 'Backburner',   bg: '#f3f4f6', fg: '#4b5563' },
   ];
 
   function saveCrm() {
@@ -34679,6 +34679,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!crmData || typeof crmData !== 'object') crmData = { cards: {}, nextId: 1 };
     if (!crmData.cards) crmData.cards = {};
     if (!crmData.nextId || crmData.nextId < 1) crmData.nextId = 1;
+    // One-shot migration: the "creating" column was removed in favor
+    // of dropping fully-onboarded clients off the board entirely.
+    // Move any legacy cards in that bucket to "onboard" so they're
+    // still visible + actionable; operator can re-park as needed.
+    Object.values(crmData.cards).forEach(c => {
+      if (c && c.column === 'creating') c.column = 'onboard';
+    });
     // Async tail: pull whatever the server has under ms_crm and
     // adopt it if it's newer/larger. Handles the "I refreshed on a
     // different browser / cleared cache" path where localStorage is
@@ -34782,7 +34789,57 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // after innerHTML rebuild works because the board element itself
     // isn't replaced.
     board.scrollLeft = _scrollLeft;
+    _attachCrmBoardGrabScroll(board);
     _updateCrmNavBadge();
+  }
+
+  // Trello-style click-and-drag scrolling for mouse users (trackpads
+  // already handle two-finger horizontal scroll natively). Grab any
+  // empty area of the board — gaps between columns, empty column
+  // body space, the column header pill background — and drag to
+  // pan horizontally. Cards stay HTML5-draggable to other columns
+  // because the grab detector skips card targets.
+  var _crmBoardGrabAttached = false;
+  function _attachCrmBoardGrabScroll(board) {
+    if (!board || _crmBoardGrabAttached) return;
+    _crmBoardGrabAttached = true;
+    let isDown = false, startX = 0, startScroll = 0, didDrag = false;
+    board.style.cursor = 'grab';
+    board.addEventListener('mousedown', (e) => {
+      // Only respond to primary mouse button.
+      if (e.button !== 0) return;
+      // Skip when the operator is targeting something interactive —
+      // a card (HTML5-draggable), a button, an input, a select, or
+      // an anchor. Otherwise we'd steal click + drag events from
+      // those elements.
+      if (e.target.closest('.crm-card, button, input, select, a, [draggable="true"]')) return;
+      isDown = true;
+      didDrag = false;
+      startX = e.pageX;
+      startScroll = board.scrollLeft;
+      board.style.cursor = 'grabbing';
+      // Prevent text selection mid-drag.
+      e.preventDefault();
+    });
+    // Document-level move + up so the grab survives the mouse
+    // leaving the board area mid-drag.
+    document.addEventListener('mousemove', (e) => {
+      if (!isDown) return;
+      const dx = e.pageX - startX;
+      if (Math.abs(dx) > 3) didDrag = true;
+      board.scrollLeft = startScroll - dx;
+    });
+    document.addEventListener('mouseup', () => {
+      if (!isDown) return;
+      isDown = false;
+      board.style.cursor = 'grab';
+    });
+    // Suppress the click that fires at the end of a real drag so a
+    // grab-and-pan never accidentally opens a card or clicks a
+    // button when the mouse releases over one.
+    board.addEventListener('click', (e) => {
+      if (didDrag) { e.preventDefault(); e.stopPropagation(); didDrag = false; }
+    }, true);
   }
 
   // Per-employee avatar colors. Pulled from the same indigo / orange /
@@ -35160,7 +35217,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // hoisted-undefined value when this runs from init before loadCrm.
     const cards = (crmData && crmData.cards) ? crmData.cards : {};
     const active = Object.values(cards).filter(c =>
-      c.column !== 'creating' && c.column !== 'backburner').length;
+      c.column !== 'backburner').length;
     if (active > 0) { badge.textContent = active; badge.style.display = ''; }
     else            { badge.textContent = '';      badge.style.display = 'none'; }
   }
