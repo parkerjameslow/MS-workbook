@@ -2675,6 +2675,124 @@ switch ($action) {
         ]);
         break;
 
+    case 'crm_notify_column_move':
+        // Posts a Slack DM to each currently-assigned operator on a
+        // card whose column just changed. Same per-person DM webhook
+        // routing as crm_notify_assignment, just a different message
+        // shape ("Hey Parker — a card you're assigned to moved from
+        // Warm to Hot").
+        $assignees  = is_array($input['assignees'] ?? null) ? $input['assignees'] : [];
+        $company    = trim((string)($input['company']     ?? ''));
+        $contact    = trim((string)($input['contact']     ?? ''));
+        $email      = trim((string)($input['email']       ?? ''));
+        $source     = trim((string)($input['source']      ?? ''));
+        $notes      = trim((string)($input['notes']       ?? ''));
+        $fromCol    = trim((string)($input['from_column'] ?? ''));
+        $toCol      = trim((string)($input['to_column']   ?? ''));
+        if (empty($assignees) || $company === '' || $fromCol === '' || $toCol === '' || $fromCol === $toCol) {
+            echo json_encode(['ok' => false, 'error' => 'assignees + company + from_column + to_column (different) required']);
+            break;
+        }
+        $userWebhooks = is_array(CRM_SLACK_USER_WEBHOOKS) ? CRM_SLACK_USER_WEBHOOKS : [];
+        if (empty($userWebhooks) && SLACK_WEBHOOK_URL === '') {
+            echo json_encode(['ok' => true, 'skipped' => true, 'reason' => 'no_slack_configured']);
+            break;
+        }
+        // Reusable column-id → label lookup (matches the frontend
+        // CRM_COLUMNS list).
+        $columnLabels = [
+            'referrals'    => 'Referrals',
+            'prospect_rfq' => 'Prospect RFQ',
+            'warm'         => 'Warm',
+            'hot'          => 'Hot',
+            'onboard'      => 'Onboard',
+            'backburner'   => 'Backburner',
+        ];
+        $fromLbl = $columnLabels[$fromCol] ?? $fromCol;
+        $toLbl   = $columnLabels[$toCol]   ?? $toCol;
+        // Pick an emoji that reflects the move direction. Pipeline
+        // order matches CRM_COLUMNS: referrals → prospect_rfq →
+        // warm → hot → onboard. Backburner sits outside that
+        // sequence (parking lot). Forward = 📈, backward = 📉,
+        // sideways / to-or-from backburner = 📋.
+        $order = ['referrals', 'prospect_rfq', 'warm', 'hot', 'onboard'];
+        $fromIdx = array_search($fromCol, $order, true);
+        $toIdx   = array_search($toCol,   $order, true);
+        $emoji = '📋';
+        if ($fromIdx !== false && $toIdx !== false) {
+            if ($toIdx > $fromIdx) $emoji = '📈';
+            else                   $emoji = '📉';
+        }
+        $bodyLines = ["*" . $company . "*"];
+        $bodyLines[] = "Moved: *" . $fromLbl . "* → *" . $toLbl . "*";
+        if ($contact !== '') $bodyLines[] = "Contact: " . $contact;
+        if ($email   !== '') $bodyLines[] = "Email: "   . $email;
+        if ($source  !== '') $bodyLines[] = "Source: "  . $source;
+        if ($notes   !== '') {
+            $shortNotes = mb_substr($notes, 0, 200);
+            if (mb_strlen($notes) > 200) $shortNotes .= '…';
+            $bodyLines[] = "_Notes:_ " . $shortNotes;
+        }
+        $portalUrl = rtrim(PUBLIC_BASE_URL, '/') . '/index.php#/crm';
+        $bodyLines[] = "<" . $portalUrl . "|Open in CRM →>";
+
+        // Reuse the same postToSlack helper shape from
+        // crm_notify_assignment.
+        $postToSlack = function ($url, $body) {
+            if (!function_exists('curl_init') || !$url) return ['ok' => false, 'status' => 0, 'error' => 'curl_or_url_missing'];
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 8,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS      => 3,
+                CURLOPT_POSTREDIR      => 7,
+            ]);
+            $resp = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch) ?: null;
+            curl_close($ch);
+            return ['ok' => $code >= 200 && $code < 300, 'status' => $code, 'error' => $err, 'response' => is_string($resp) ? mb_substr($resp, 0, 200) : null];
+        };
+        $results       = [];
+        $fallbackNames = [];
+        foreach ($assignees as $name) {
+            $personalUrl = $userWebhooks[$name] ?? null;
+            if (!$personalUrl) { $fallbackNames[] = $name; $results[$name] = ['ok' => false, 'reason' => 'no_personal_webhook']; continue; }
+            $body = json_encode([
+                'text' => 'CRM card moved: ' . $company . ' (' . $fromLbl . ' → ' . $toLbl . ')',
+                'blocks' => [
+                    [ 'type' => 'header',  'text' => ['type' => 'plain_text', 'text' => $emoji . ' CRM Card Moved'] ],
+                    [ 'type' => 'section', 'text' => ['type' => 'mrkdwn',     'text' => "Hey {$name} — a card you're assigned to moved:"] ],
+                    [ 'type' => 'section', 'text' => ['type' => 'mrkdwn',     'text' => implode("\n", $bodyLines)] ],
+                ],
+            ]);
+            $results[$name] = $postToSlack($personalUrl, $body);
+        }
+        $fallbackResult = null;
+        if (!empty($fallbackNames) && SLACK_WEBHOOK_URL !== '') {
+            $whoLine = implode(', ', array_map(fn($n) => '*' . $n . '*', $fallbackNames));
+            $body = json_encode([
+                'text' => 'CRM card moved: ' . $company . ' (' . $fromLbl . ' → ' . $toLbl . ')',
+                'blocks' => [
+                    [ 'type' => 'header',  'text' => ['type' => 'plain_text', 'text' => $emoji . ' CRM Card Moved'] ],
+                    [ 'type' => 'section', 'text' => ['type' => 'mrkdwn',     'text' => "Hey {$whoLine} — a card you're assigned to moved (no personal DM webhook on file):"] ],
+                    [ 'type' => 'section', 'text' => ['type' => 'mrkdwn',     'text' => implode("\n", $bodyLines)] ],
+                ],
+            ]);
+            $fallbackResult = $postToSlack(SLACK_WEBHOOK_URL, $body);
+        }
+        echo json_encode([
+            'ok'             => true,
+            'personal_sends' => $results,
+            'fallback_sent'  => $fallbackResult,
+            'fallback_names' => $fallbackNames,
+        ]);
+        break;
+
     case 'crm_send_onboarding':
         $cardId  = trim((string)($input['card_id']  ?? ''));
         $company = trim((string)($input['company']  ?? ''));

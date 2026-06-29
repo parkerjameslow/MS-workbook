@@ -35008,10 +35008,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const card = crmData.cards[cardId];
     if (!card) return;
     if (card.column === targetCol) return;
+    const fromCol = card.column;
     card.column = targetCol;
     card.lastMovedAt = new Date().toISOString();
     saveCrm();
     renderCrmBoard();
+    // Notify assignees that the card moved. Same per-person DM
+    // routing as crm_notify_assignment. Skipped silently when the
+    // card has no assignees or Slack isn'\''t configured.
+    _maybeNotifyCrmColumnMove(card, fromCol, targetCol);
+  }
+
+  // Shared helper — fires the column-move Slack notification when
+  // a card with assignees moves between columns. Used by both the
+  // drag-drop handler and the modal save flow.
+  function _maybeNotifyCrmColumnMove(card, fromCol, toCol) {
+    if (!card || !fromCol || !toCol || fromCol === toCol) return;
+    const assignees = Array.isArray(card.assignees) && card.assignees.length
+      ? card.assignees
+      : (typeof card.assignee === 'string' && card.assignee.trim() ? [card.assignee.trim()] : []);
+    if (!assignees.length || !card.company) return;
+    apiCall('crm_notify_column_move', {
+      assignees:   assignees,
+      company:     card.company || '',
+      contact:     card.contact || '',
+      email:       card.email   || '',
+      source:      card.source  || '',
+      notes:       card.notes   || '',
+      from_column: fromCol,
+      to_column:   toCol,
+    }).then(r => {
+      if (r && r.ok && !r.skipped) {
+        if (typeof _msToast === 'function') _msToast(`Slack: ${assignees.join(', ')} notified of move.`, 'success');
+      }
+    }).catch(() => { /* best-effort */ });
   }
 
   function openCrmCardModal(cardId, defaultCol) {
@@ -35056,8 +35086,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!company) return;
     const nowIso = new Date().toISOString();
     let card;
+    let priorColumn = null;
     if (_crmEditingId && crmData.cards[_crmEditingId]) {
       card = crmData.cards[_crmEditingId];
+      priorColumn = card.column || null;
     } else {
       const id = `c${crmData.nextId++}`;
       card = { id, createdAt: nowIso };
@@ -35105,6 +35137,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveCrm();
     closeCrmCardModal();
     renderCrmBoard();
+    // After save: if the operator changed the column via the modal
+    // (not via drag-drop), notify the card'\''s assignees the same way
+    // the drop handler does. priorColumn captures the pre-save state;
+    // only fires when there's a real change AND the card already had
+    // assignees BEFORE this save (avoids notifying brand-new cards
+    // about being placed for the first time).
+    if (priorColumn && card.column !== priorColumn) {
+      _maybeNotifyCrmColumnMove(card, priorColumn, card.column);
+    }
   }
   function deleteCrmCardModal() {
     if (!_crmEditingId) return;
