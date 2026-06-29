@@ -2595,7 +2595,12 @@ switch ($action) {
         $bodyLines[] = "<" . $portalUrl . "|Open in CRM →>";
 
         // Helper: POST a Slack body to a webhook URL. Returns
-        // [ok, status, error]. Best-effort.
+        // [ok, status, error, final_url]. Best-effort.
+        // CURLOPT_FOLLOWLOCATION + CURLOPT_POSTREDIR=7 makes cURL
+        // follow 30x redirects (Slack occasionally redirects when
+        // URLs are off by a character; without follow we'd just see
+        // the 302 and never reach the real endpoint). 7 = follow
+        // 301/302/303 with the same POST method.
         $postToSlack = function ($url, $body) {
             if (!function_exists('curl_init') || !$url) return ['ok' => false, 'status' => 0, 'error' => 'curl_or_url_missing'];
             $ch = curl_init($url);
@@ -2605,12 +2610,22 @@ switch ($action) {
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 8,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS      => 3,
+                CURLOPT_POSTREDIR      => 7, // 1+2+4 → keep POST on 301/302/303
             ]);
-            curl_exec($ch);
+            $resp = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $finalUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
             $err  = curl_error($ch) ?: null;
             curl_close($ch);
-            return ['ok' => $code >= 200 && $code < 300, 'status' => $code, 'error' => $err];
+            return [
+                'ok'        => $code >= 200 && $code < 300,
+                'status'    => $code,
+                'error'     => $err,
+                'final_url' => $finalUrl !== $url ? $finalUrl : null,
+                'response'  => is_string($resp) ? mb_substr($resp, 0, 200) : null,
+            ];
         };
 
         // Send one DM per assignee with a personal greeting. People
