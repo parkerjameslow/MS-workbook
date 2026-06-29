@@ -352,7 +352,7 @@ $tokenIsValid = $token !== '' && preg_match('/^[a-f0-9]{32}$/i', $token);
     try {
       const r = await fetch('api.php?action=crm_validate_pin', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ token: TOKEN, pin })
       }).then(r => r.json());
       if (!r.ok) { _err('pin-err', r.error || 'Could not validate PIN.'); return; }
@@ -399,7 +399,7 @@ $tokenIsValid = $token !== '' && preg_match('/^[a-f0-9]{32}$/i', $token);
     try {
       const r = await fetch('api.php?action=crm_submit_onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ token: TOKEN, pin: validatedPin, form: obj })
       }).then(r => r.json());
       if (!r.ok) {

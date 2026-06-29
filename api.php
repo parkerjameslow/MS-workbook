@@ -34,8 +34,25 @@ if (!empty($_GET['msid']) && preg_match('/^[A-Za-z0-9,\-]{8,64}$/', $_GET['msid'
 }
 
 require_once __DIR__ . '/auth.php';
-requireAuth();
-$sessionUser = getSessionUser();
+
+// Public-action allowlist — endpoints that intentionally serve
+// unauthenticated requests because they're hit from public-facing
+// surfaces (e.g. the client onboarding portal at onboarding.php).
+// Everything ELSE still goes through requireAuth as before.
+//
+// Note: crm_send_onboarding is NOT on this list — only the
+// operator-facing app should be able to mint invites. The client
+// portal only needs to validate a PIN + submit the form, both of
+// which carry the token + PIN as proof-of-invite.
+$_publicActions = [
+    'crm_validate_pin'      => true,
+    'crm_submit_onboarding' => true,
+];
+$_requestedAction = $_GET['action'] ?? ($_POST['action'] ?? '');
+if (!isset($_publicActions[$_requestedAction])) {
+    requireAuth();
+}
+$sessionUser = function_exists('getSessionUser') ? getSessionUser() : ['id' => 0, 'username' => 'public'];
 
 // Auto-create revisions table if not exists
 $pdo->exec("CREATE TABLE IF NOT EXISTS workbook_revisions (
