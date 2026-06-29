@@ -32526,6 +32526,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     inputEl.setAttribute('data-tracking-original', current);
     if (typeof _msToast === 'function') _msToast('Tracking updated — re-checking carrier…', 'info');
     saveShipments();
+    // Re-render the Trackings section editor too so a header edit
+    // propagates to the inline editor inputs below (and vice versa).
+    // Skip when this very input is in that section already to avoid
+    // wiping the operator'\''s caret mid-keystroke; the inputs share
+    // s.trackings[0].number so the data model is in sync either way.
+    if (typeof _renderShipmentDetailTrackings === 'function') _renderShipmentDetailTrackings();
     // Kick a fresh fetch immediately. Best-effort: failure is fine, the
     // 5-min auto-refresh will retry, and the operator can still hit ↻ Check.
     recheckSingleTracking(idx, null);
@@ -32765,14 +32771,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
         <span class="section-title">Tracking</span>
         <span style="padding:2px 10px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:10px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase;">${esc(carrierLabel)}</span>
-        <!-- Tracking number is plain copy-able text — NOT a hyperlink.
-             Was wrapped in <a href="carrierUrl"> so any click on the
-             number opened the carrier's site, blocking operators
-             trying to inspect / edit the number. Carrier-launch
-             behavior moved to a dedicated ↗ button alongside. To
-             change the number, scroll to the Trackings section below
-             (the editable inputs). -->
-        <span style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); user-select:all; cursor:text;" title="Tracking number — edit it in the Trackings section below">${esc(s.trackingNumber)}</span>
+        <!-- Tracking number is editable in place. Styled to look like
+             a pill until focused, then shows the accent border so the
+             operator can tell it'\''s interactive. Wires into the same
+             update + blur handlers the Trackings section editor uses,
+             so an edit here is identical to editing in the editor
+             below — cache invalidation + immediate re-check included.
+             Carrier-launch behavior lives on its own ↗ button. -->
+        <input type="text" id="tracking-section-header-number"
+               value="${esc(s.trackingNumber)}"
+               data-tracking-idx="0"
+               data-tracking-original="${esc(s.trackingNumber)}"
+               size="22"
+               oninput="updateShipmentTracking(0, 'number', this.value)"
+               onfocus="this.select(); this.style.borderColor='var(--accent)'; this.style.background='var(--surface)';"
+               onblur="this.style.borderColor='var(--border)'; this.style.background='var(--surface2)'; _onTrackingNumberBlur(0, this);"
+               title="Click to edit. Tab away to save + re-check status."
+               style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); cursor:text; min-width:200px; transition:border-color 0.15s, background 0.15s;" />
         <a href="${carrierUrl}" target="_blank" rel="noopener"
            style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; color:var(--text-muted); text-decoration:none; border:1px solid var(--border); border-radius:6px; background:var(--surface2); font-size:12px; line-height:1;"
            onclick="event.stopPropagation();"
