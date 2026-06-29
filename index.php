@@ -32204,20 +32204,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const kgPct     = spec.maxKg     > 0 ? Math.round((tot.kg      / spec.maxKg)     * 100) : 0;
       const palletPct = spec.maxPallets > 0 ? Math.round((tot.pallets / spec.maxPallets) * 100) : 0;
       const isDelivered = s.status === 'delivered';
-      // ETA fallback chain: tracking-derived ETA (most authoritative)
-      // → manual s.eta → port arrival date → "—". Was only reading
-      // s.eta, so shipments with a Slow Boat port arrival date set
-      // displayed "—" on the card. ETA label flips to "Released" when
-      // delivered for a clearer at-a-glance read.
-      const _trackingEta = (s.tracking && s.tracking.eta) ? s.tracking.eta : '';
+      // ETA fallback chain (post-tracking-removal): manual s.eta →
+      // port arrival date → "—". Tracking-derived ETA was dropped
+      // when the carrier-fetch machinery came out; operators now
+      // open the carrier site directly via the ↗ launch button.
       const _etaResolved = isDelivered ? (s.deliveredOn || '')
-                          : (_trackingEta || s.eta || s.portArrivalDate || '');
-      const _etaColor = isDelivered ? '#34d399'
-                       : (_trackingEta ? '#1d4ed8' : '');
+                          : (s.eta || s.portArrivalDate || '');
+      const _etaColor = isDelivered ? '#34d399' : '';
       const eta = _etaResolved
         ? `<strong${_etaColor ? ` style="color:${_etaColor};"` : ''}>${_etaResolved}</strong>`
         : '—';
-      const etaLabel = isDelivered ? 'Delivered' : (_trackingEta ? 'ETA (tracked)' : 'ETA');
+      const etaLabel = isDelivered ? 'Delivered' : 'ETA';
       const entries = s.entries || [];
       const orderEntries = entries.filter(e => e.orderId);
       const shipHasChangeRequest = orderEntries.some(e => orderData[e.orderId]?.changeRequested);
@@ -32480,102 +32477,64 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       { v: 'cosco',  lbl: 'Cosco' },
       { v: 'matson', lbl: 'Matson' },
     ];
+    const _trackingUrlFor = (carrier, number) => {
+      if (!carrier || !number) return '';
+      const enc = encodeURIComponent(number);
+      const map = {
+        ups:    `https://www.ups.com/track?tracknum=${enc}`,
+        fedex:  `https://www.fedex.com/fedextrack/?trknbr=${enc}`,
+        dhl:    `https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=${enc}`,
+        cosco:  `https://elines.coscoshipping.com/ebusiness/cargoTracking?trackingType=BILLOFLADING&number=${enc}`,
+        matson: `https://www.matson.com/track-your-shipment.html?searchType=bookingNo&searchValue=${enc}`,
+      };
+      return map[carrier] || '';
+    };
     host.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px;">${
       s.trackings.map((t, idx) => {
-        const numEsc = (t.number || '').replace(/"/g, '&quot;');
+        const numEsc  = (t.number || '').replace(/"/g, '&quot;');
+        const url     = _trackingUrlFor(t.carrier, t.number);
+        const canOpen = !!url;
         return `
         <div style="display:grid; grid-template-columns:160px 1fr auto auto; gap:8px; align-items:center;">
-          <select onchange="updateShipmentTracking(${idx}, 'carrier', this.value)"
+          <select onchange="updateShipmentTracking(${idx}, 'carrier', this.value); _renderShipmentDetailTrackings();"
                   style="appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:7px 22px 7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer;">
             ${CARRIERS.map(c => `<option value="${c.v}"${c.v === (t.carrier || '') ? ' selected' : ''}>${c.lbl}</option>`).join('')}
           </select>
           <input type="text" value="${numEsc}" placeholder="Type or paste tracking number — edit any time"
                  data-tracking-idx="${idx}"
-                 data-tracking-original="${numEsc}"
                  oninput="updateShipmentTracking(${idx}, 'number', this.value)"
                  onfocus="this.select(); this.style.borderColor='var(--accent)';"
-                 onblur="this.style.borderColor='var(--border)'; _onTrackingNumberBlur(${idx}, this);"
-                 title="Click to edit. Tab away to save + re-check status."
+                 onblur="this.style.borderColor='var(--border)'; _renderShipmentDetailTrackings();"
+                 title="Click to edit. Tab away to save."
                  style="padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:'SF Mono','Consolas',monospace; transition:border-color 0.15s;" />
-          <button onclick="recheckSingleTracking(${idx}, this)" title="Re-check this tracking number against the carrier"
-                  style="padding:7px 10px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;">↻ Check</button>
+          ${canOpen
+            ? `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation();"
+                  title="Open carrier tracking page in a new tab"
+                  style="display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; color:var(--accent); text-decoration:none; border:1px solid var(--accent); border-radius:var(--radius-sm); background:rgba(107,147,255,0.10); font-size:14px; line-height:1;">↗</a>`
+            : `<span title="Pick a carrier + enter a tracking number to enable the launch button"
+                  style="display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; padding:0; color:var(--text-muted); border:1px dashed var(--border); border-radius:var(--radius-sm); background:transparent; font-size:14px; line-height:1; opacity:0.45; cursor:not-allowed;">↗</span>`}
           <button onclick="removeShipmentTracking(${idx})" title="Remove this tracking entry"
                   style="width:30px; height:30px; padding:0; border:1px solid var(--border); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1;">×</button>
         </div>`;
       }).join('')
     }</div>
     <div style="margin-top:8px; font-size:11px; color:var(--text-muted); font-style:italic;">
-      Click any tracking number to edit. Tab away (or hit <strong>↻ Check</strong>) to re-fetch the carrier'\''s latest status.
+      Click any tracking number to edit. Hit <strong>↗</strong> to open the carrier'\''s tracking page in a new tab.
     </div>`;
   }
 
-  // Fires when the operator tabs/clicks out of a tracking number
-  // input. If the number actually changed during the edit, we drop
-  // the cached s.tracking (which was for the OLD number) and kick a
-  // fresh fetch — otherwise the auto-refresh would happily show the
-  // old number'\''s status until its 30-min stale window ticked.
+  // Kept as a thin wire to updateShipmentTracking for back-compat with
+  // surfaces that still call it; no carrier fetch (that machinery was
+  // removed). The input'\''s oninput already drives the save.
   function _onTrackingNumberBlur(idx, inputEl) {
-    const original = inputEl.getAttribute('data-tracking-original') || '';
-    const current  = (inputEl.value || '').trim();
-    if (original.trim() === current) return;
-    const s = shipmentData[_currentShipmentId];
-    if (!s) return;
-    // Number changed — drop the stale status cache so the next render
-    // shows "Not yet checked" instead of the old number'\''s outcome.
-    if (idx === 0) s.tracking = null;
-    inputEl.setAttribute('data-tracking-original', current);
-    if (typeof _msToast === 'function') _msToast('Tracking updated — re-checking carrier…', 'info');
-    saveShipments();
-    // Re-render the Trackings section editor too so a header edit
-    // propagates to the inline editor inputs below (and vice versa).
-    // Skip when this very input is in that section already to avoid
-    // wiping the operator'\''s caret mid-keystroke; the inputs share
-    // s.trackings[0].number so the data model is in sync either way.
-    if (typeof _renderShipmentDetailTrackings === 'function') _renderShipmentDetailTrackings();
-    // Kick a fresh fetch immediately. Best-effort: failure is fine, the
-    // 5-min auto-refresh will retry, and the operator can still hit ↻ Check.
-    recheckSingleTracking(idx, null);
+    /* no-op — carrier re-check removed; saving happens on input */
   }
 
-  // Manual / blur-triggered re-check for one tracking row. Hits
-  // fetch_tracking_status with the row'\''s CURRENT carrier + number,
-  // writes the result into s.tracking (only for idx 0 — the legacy
-  // s.tracking slot tracks the primary entry), saves, re-renders the
-  // detail section + list strip so the operator sees the fresh
-  // status without a full page reload.
-  async function recheckSingleTracking(idx, btn) {
-    const s = shipmentData[_currentShipmentId];
-    if (!s || !Array.isArray(s.trackings) || !s.trackings[idx]) return;
-    const t = s.trackings[idx];
-    const carrier = t.carrier || '';
-    const number  = (t.number || '').trim();
-    if (!carrier || !number) {
-      if (typeof _msToast === 'function') _msToast('Pick a carrier and a tracking number first.', 'warning');
-      return;
-    }
-    if (btn) { btn.disabled = true; btn.textContent = '↻ Checking…'; }
-    try {
-      const r = await apiCall('fetch_tracking_status', { carrier, tracking_number: number });
-      if (r && r.ok && r.data) {
-        // Only the primary entry (idx 0) maps to the legacy s.tracking
-        // slot that the list strip + status pill read. Secondary
-        // trackings still update locally but we don'\''t override the
-        // primary cache from a secondary row.
-        if (idx === 0) s.tracking = r.data;
-        saveShipments();
-        if (typeof _renderShipmentTrackingSection === 'function') _renderShipmentTrackingSection();
-        if (typeof _msToast === 'function') _msToast(`Tracking refreshed — ${r.data.status || 'status unknown'}`, 'success');
-      } else {
-        const err = (r && r.error) ? r.error : 'No tracking data returned';
-        if (typeof _msToast === 'function') _msToast(`Re-check failed: ${err}`, 'warning');
-      }
-    } catch (e) {
-      console.warn('recheckSingleTracking:', e);
-      if (typeof _msToast === 'function') _msToast('Re-check error — see console.', 'warning');
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '↻ Check'; }
-    }
-  }
+  // Removed — kept as a no-op so any leftover surface that still
+  // calls recheckSingleTracking doesn'\''t throw.
+  async function recheckSingleTracking(idx, btn) { /* removed */ }
+
+  // (recheckSingleTracking removed — see no-op stub above)
 
   function addShipmentTracking() {
     const s = shipmentData[_currentShipmentId];
@@ -32689,26 +32648,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return `<div style="display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:6px; align-items:center;">${lines.join('')}</div>`;
   }
 
+  // Minimal carrier + tracking-number strip on each shipment list
+  // card. No status / location / ETA / events — that machinery was
+  // removed when the operator switched to the "click ↗ to open the
+  // carrier'\''s site" pattern. Just shows what carrier + number is
+  // on file plus the launch button. Hidden when neither is set.
   function _renderShipmentTrackingCardStrip(s) {
     if (!s || !s.carrier || !s.trackingNumber) return '';
-    const tk = s.tracking || {};
     const carrierLabel = _carrierLabel(s.carrier);
     const carrierColor = _carrierColor(s.carrier);
-    const statusText = tk.status || 'Not yet checked';
-    const statusColor = _trackingStatusColor(statusText);
-    const eta = tk.eta || s.eta || '';
-    const lastChecked = tk.fetchedAt ? new Date(tk.fetchedAt) : null;
-    const lastCheckedStr = lastChecked && !isNaN(lastChecked.getTime())
-      ? lastChecked.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-      : 'never';
+    const carrierUrls = {
+      ups:    `https://www.ups.com/track?tracknum=${encodeURIComponent(s.trackingNumber)}`,
+      fedex:  `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(s.trackingNumber)}`,
+      dhl:    `https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=${encodeURIComponent(s.trackingNumber)}`,
+      cosco:  `https://elines.coscoshipping.com/ebusiness/cargoTracking?trackingType=BILLOFLADING&number=${encodeURIComponent(s.trackingNumber)}`,
+      matson: `https://www.matson.com/track-your-shipment.html?searchType=bookingNo&searchValue=${encodeURIComponent(s.trackingNumber)}`,
+    };
+    const carrierUrl = carrierUrls[s.carrier] || '#';
     const esc = (str) => String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    return `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); font-size:11px;">
+    return `<div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px; padding-top:6px; border-top:1px dashed var(--border); font-size:11px;">
       <span style="padding:2px 8px; border-radius:99px; background:${carrierColor}; color:#fff; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; font-size:9px;">${esc(carrierLabel)}</span>
-      <span style="font-family:'SF Mono','Consolas',monospace; color:var(--text-muted); font-size:10px;">${esc(s.trackingNumber)}</span>
-      <span style="color:${statusColor}; font-weight:700;">${esc(statusText)}</span>
-      ${tk.location ? `<span style="color:var(--text-muted);">· ${esc(tk.location)}</span>` : ''}
-      ${eta ? `<span style="color:var(--text-muted);">· ETA <strong style="color:var(--text);">${esc(eta)}</strong></span>` : ''}
-      <span style="margin-left:auto; color:var(--text-muted); font-style:italic;">checked ${esc(lastCheckedStr)}</span>
+      <span style="font-family:'SF Mono','Consolas',monospace; color:var(--text); font-size:11px;">${esc(s.trackingNumber)}</span>
+      <a href="${carrierUrl}" target="_blank" rel="noopener"
+         onclick="event.stopPropagation();"
+         title="Open ${esc(carrierLabel)} tracking page in a new tab"
+         style="display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; color:var(--text-muted); text-decoration:none; border:1px solid var(--border); border-radius:5px; background:var(--surface2); font-size:11px; line-height:1;">↗</a>
     </div>`;
   }
 
@@ -32718,120 +32682,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // and a Refresh button. When no carrier/tracking is set, the
   // section hides entirely so it doesn't clutter shipments that
   // haven't been routed yet.
+  // Tracking section card was removed per operator: scraping carrier
+  // pages was unreliable (UPS blocked entirely, others required an
+  // AI key for HTML parsing) and the operator preferred a simpler
+  // "click the ↗ to open the carrier'\''s site" pattern. The function
+  // is kept as a no-op that hides any leftover DOM from prior renders
+  // so a hot-reload doesn'\''t leave a ghost card on screen.
   function _renderShipmentTrackingSection() {
-    let section = document.getElementById('ship-tracking-section');
-    const s = shipmentData[_currentShipmentId];
-    // Lazily create the section the first time we need it — easier
-    // than hand-authoring an empty <div> in the template, since the
-    // section's entire visibility hinges on whether the shipment
-    // has tracking.
-    if (!section) {
-      section = document.createElement('div');
-      section.id = 'ship-tracking-section';
-      section.className = 'section-card';
-      section.style.cssText = 'margin:16px 0 0;';
-      // Insert above Orders so the operator sees status before
-      // diving into the order list.
-      const orderCard = document.querySelector('#view-shipment-detail .section-card');
-      if (orderCard) orderCard.parentNode.insertBefore(section, orderCard);
-      else document.querySelector('#view-shipment-detail main')?.appendChild(section);
-    }
-    if (!s || !s.carrier || !s.trackingNumber) {
-      section.style.display = 'none';
-      return;
-    }
-    section.style.display = '';
-    const tk = s.tracking || {};
-    const carrierLabel = _carrierLabel(s.carrier);
-    const carrierColor = _carrierColor(s.carrier);
-    const statusText = tk.status || 'Not yet checked';
-    const statusColor = _trackingStatusColor(statusText);
-    const lastChecked = tk.fetchedAt ? new Date(tk.fetchedAt) : null;
-    const lastCheckedStr = lastChecked && !isNaN(lastChecked.getTime())
-      ? lastChecked.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-      : 'never';
-    const carrierUrls = {
-      ups:   `https://www.ups.com/track?tracknum=${encodeURIComponent(s.trackingNumber)}`,
-      fedex: `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(s.trackingNumber)}`,
-      dhl:   `https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=${encodeURIComponent(s.trackingNumber)}`,
-    };
-    const carrierUrl = carrierUrls[s.carrier] || '#';
-    const esc = (str) => String(str == null ? '' : str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const eventsHtml = (Array.isArray(tk.events) && tk.events.length > 0)
-      ? tk.events.slice(0, 8).map(ev => `
-          <div style="display:flex; gap:12px; padding:8px 0; border-top:1px dashed var(--border); font-size:12px;">
-            <div style="flex:0 0 130px; color:var(--text-muted); font-variant-numeric:tabular-nums;">${esc(ev.time || '')}</div>
-            <div style="flex:1; min-width:0;">
-              <div style="font-weight:600;">${esc(ev.description || '')}</div>
-              ${ev.location ? `<div style="color:var(--text-muted); font-size:11px; margin-top:1px;">${esc(ev.location)}</div>` : ''}
-            </div>
-          </div>`).join('')
-      : `<div style="padding:10px 0; font-size:12px; color:var(--text-muted); font-style:italic;">No tracking events yet — click <strong>Refresh tracking</strong> to fetch the latest from ${esc(carrierLabel)}.</div>`;
-    section.innerHTML = `
-      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
-        <span class="section-title">Tracking</span>
-        <span style="padding:2px 10px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:10px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase;">${esc(carrierLabel)}</span>
-        <!-- Tracking number is editable in place. Styled to look like
-             a pill until focused, then shows the accent border so the
-             operator can tell it'\''s interactive. Wires into the same
-             update + blur handlers the Trackings section editor uses,
-             so an edit here is identical to editing in the editor
-             below — cache invalidation + immediate re-check included.
-             Carrier-launch behavior lives on its own ↗ button. -->
-        <input type="text" id="tracking-section-header-number"
-               value="${esc(s.trackingNumber)}"
-               data-tracking-idx="0"
-               data-tracking-original="${esc(s.trackingNumber)}"
-               size="${Math.max(12, (s.trackingNumber || '').length + 2)}"
-               oninput="updateShipmentTracking(0, 'number', this.value)"
-               onfocus="this.select(); this.style.borderColor='var(--accent)'; this.style.background='var(--surface)';"
-               onblur="this.style.borderColor='var(--border)'; this.style.background='var(--surface2)'; _onTrackingNumberBlur(0, this);"
-               title="Click to edit. Tab away to save + re-check status."
-               style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2); cursor:text; width:auto; transition:border-color 0.15s, background 0.15s;" />
-        <a href="${carrierUrl}" target="_blank" rel="noopener"
-           style="display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; color:var(--text-muted); text-decoration:none; border:1px solid var(--border); border-radius:6px; background:var(--surface2); font-size:12px; line-height:1;"
-           onclick="event.stopPropagation();"
-           title="Open ${esc(carrierLabel)} tracking page in a new tab">↗</a>
-        <button id="tracking-section-refresh-btn"
-                onclick="refreshTrackingForCurrent(this)"
-                data-icon-only="1"
-                title="Re-fetch the latest status from ${esc(carrierLabel)}"
-                style="margin-left:auto; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; padding:0; color:var(--text-muted); border:1px solid var(--border); border-radius:6px; background:var(--surface2); font-size:13px; line-height:1; cursor:pointer; font-family:inherit; transition:opacity 0.15s;">↻</button>
-      </div>
-      <div class="section-body">
-        <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; padding-bottom:10px; border-bottom:1px solid var(--border);">
-          <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Status</div>
-            <div style="font-size:15px; font-weight:700; color:${statusColor}; margin-top:3px;">${esc(statusText)}</div>
-          </div>
-          <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Last known location</div>
-            <div style="font-size:13px; margin-top:3px;">${esc(tk.location || '—')}</div>
-          </div>
-          <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">ETA</div>
-            <div style="font-size:13px; font-weight:600; margin-top:3px;">${esc(tk.eta || '—')}</div>
-          </div>
-          <div style="margin-left:auto; font-size:11px; color:var(--text-muted);">
-            Last checked: ${esc(lastCheckedStr)}
-          </div>
-        </div>
-        <div style="margin-top:10px;">
-          <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Tracking events</div>
-          ${eventsHtml}
-        </div>
-      </div>`;
+    const section = document.getElementById('ship-tracking-section');
+    if (section) section.remove();
   }
-
-  // Refresh handler for the detail-view button. Thin wrapper over the
-  // existing refreshTrackingFor(id, btn) used on the Receiving cards —
-  // same code path, just pulls the current shipment id from
-  // _currentShipmentId and re-renders the section after the fetch.
-  async function refreshTrackingForCurrent(btn) {
-    if (!_currentShipmentId) return;
-    await refreshTrackingFor(String(_currentShipmentId), btn);
-    _renderShipmentTrackingSection();
-  }
+  // Refresh handler kept as a no-op so older surfaces (e.g. Receiving
+  // cards still pointing at refreshTrackingForCurrent) don'\''t throw
+  // on click. Action surfaces have been removed from the new UI.
+  async function refreshTrackingForCurrent(btn) { /* removed — no carrier fetch */ }
 
   function renderShipmentOrders() {
     const s = shipmentData[_currentShipmentId];
@@ -33539,70 +33403,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Previously called renderReceivingList() unconditionally, which
   // would yank an operator off the shipment detail view if they hit
   // Refresh from there.
-  // ── Auto-refresh tracking for visible shipments ─────────────────────
-  // When the operator lands on the Shipments lane (#/shipments) we
-  // kick a soft background refresh for every shipment that has a
-  // carrier + tracking number AND whose last fetch is older than the
-  // STALE_MS threshold. Findings save back into s.tracking and the
-  // list re-renders so the operator sees fresh status without a
-  // manual button press. Throttled so we don'\''t hammer the carrier
-  // APIs every time the user touches the page.
-  const _TRACKING_STALE_MS = 30 * 60 * 1000;   // 30 minutes
-  const _TRACKING_POLL_MS  = 5  * 60 * 1000;   //  5 minutes (periodic)
-  let _trackingPollTimer = null;
-
-  function _isTrackingStale(s) {
-    if (!s || !s.carrier || !s.trackingNumber) return false;
-    const tk = s.tracking || {};
-    if (!tk.fetchedAt) return true;
-    const last = new Date(tk.fetchedAt).getTime();
-    if (isNaN(last)) return true;
-    return (Date.now() - last) >= _TRACKING_STALE_MS;
-  }
-
-  async function _refreshStaleTrackings() {
-    // Only act when the operator is actively looking at a shipments
-    // surface; refreshing in the background while they'\''re elsewhere
-    // wastes API calls + can fight with their concurrent edits.
-    const onShipments = location.hash === '#/shipments' || location.hash.startsWith('#/shipment/');
-    if (!onShipments) return;
-    const ids = Object.keys(shipmentData || {}).filter(id => {
-      const s = shipmentData[id];
-      // Skip closed-lane shipments — tracking doesn'\''t change after
-      // delivered / received and the operator can'\''t act on it anyway.
-      if (!s || s.status === 'delivered' || s.status === 'received') return false;
-      return _isTrackingStale(s);
-    });
-    if (ids.length === 0) return;
-    let anyChanged = false;
-    for (const id of ids) {
-      const s = shipmentData[id];
-      try {
-        const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
-        if (r && r.ok && r.data) {
-          s.tracking = r.data;
-          anyChanged = true;
-        }
-      } catch { /* swallow — periodic refresh is best-effort */ }
-    }
-    if (anyChanged) {
-      saveShipments();
-      // Re-render the list / detail so the operator sees fresh status.
-      if (typeof renderShipmentsContent === 'function' && location.hash === '#/shipments') renderShipmentsContent();
-      if (typeof _renderShipmentTrackingSection === 'function' && location.hash.startsWith('#/shipment/')) _renderShipmentTrackingSection();
-    }
-  }
-
-  function startTrackingAutoRefresh() {
-    if (_trackingPollTimer) return;
-    // Kick once shortly after page lands so the operator sees current
-    // data without waiting a full poll cycle.
-    setTimeout(_refreshStaleTrackings, 1500);
-    _trackingPollTimer = setInterval(_refreshStaleTrackings, _TRACKING_POLL_MS);
-  }
-  function stopTrackingAutoRefresh() {
-    if (_trackingPollTimer) { clearInterval(_trackingPollTimer); _trackingPollTimer = null; }
-  }
+  // Auto-refresh polling was removed when the operator switched to
+  // the "click ↗ to open the carrier'\''s site" pattern. Stubs kept
+  // so any leftover call sites don'\''t throw.
+  function startTrackingAutoRefresh() { /* removed */ }
+  function stopTrackingAutoRefresh()  { /* removed */ }
 
   async function refreshTrackingFor(id, btn) {
     const s = shipmentData[id];
