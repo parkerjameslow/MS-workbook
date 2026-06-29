@@ -34670,12 +34670,46 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function loadCrm() {
+    // Sync fast path: localStorage first so the board renders
+    // immediately without waiting on a network round-trip.
     try {
       const d = localStorage.getItem('ms_crmData');
       if (d) crmData = JSON.parse(d);
     } catch(e) { crmData = { cards: {}, nextId: 1 }; }
+    if (!crmData || typeof crmData !== 'object') crmData = { cards: {}, nextId: 1 };
     if (!crmData.cards) crmData.cards = {};
     if (!crmData.nextId || crmData.nextId < 1) crmData.nextId = 1;
+    // Async tail: pull whatever the server has under ms_crm and
+    // adopt it if it's newer/larger. Handles the "I refreshed on a
+    // different browser / cleared cache" path where localStorage is
+    // empty but the DB has the cards. Best-effort — silently ignores
+    // network errors since the sync fast path already gave us
+    // *something* to render.
+    if (typeof apiCall === 'function') {
+      apiCall('get_app_state', { key: 'ms_crm' }).then(res => {
+        if (!res || !res.success || !res.value) return;
+        let dbCrm;
+        try { dbCrm = JSON.parse(res.value); } catch { return; }
+        if (!dbCrm || typeof dbCrm !== 'object') return;
+        const dbCount    = dbCrm.cards ? Object.keys(dbCrm.cards).length : 0;
+        const localCount = crmData.cards ? Object.keys(crmData.cards).length : 0;
+        // Adopt the DB version when it has MORE cards than local
+        // (typical "fresh browser" case) OR when local is empty.
+        // Doesn't touch local state when local already has equal/
+        // more cards — operator's in-flight edits win.
+        if (dbCount > localCount) {
+          crmData = dbCrm;
+          if (!crmData.cards)  crmData.cards  = {};
+          if (!crmData.nextId) crmData.nextId = 1;
+          _lastCrmJson = res.value;
+          try { localStorage.setItem('ms_crmData', JSON.stringify(crmData)); } catch {}
+          // Re-render any visible CRM surface so the just-loaded
+          // cards appear without requiring a manual refresh.
+          if (typeof renderCrmBoard      === 'function' && location.hash === '#/crm') renderCrmBoard();
+          if (typeof _updateCrmNavBadge  === 'function') _updateCrmNavBadge();
+        }
+      }).catch(() => {});
+    }
   }
 
   function renderCrmBoard() {
