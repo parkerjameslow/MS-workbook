@@ -9414,8 +9414,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      in the named column. -->
 <div class="modal-overlay" id="modal-crm-card" onclick="if(event.target===this)closeCrmCardModal()" style="z-index:1000;">
   <div class="modal" style="max-width:1180px; width:96vw; max-height:92vh; overflow:hidden; padding:0; display:flex; flex-direction:column;">
-    <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 24px 0;">
+    <!-- Header bar — title on the left, action buttons pinned at top
+         right so the operator never has to scroll down to save or
+         delete. Form submission still works via the hidden submit
+         button at the bottom of the form (kept for Enter-key
+         submission); the top Save button triggers the same flow. -->
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 24px 14px; border-bottom:1px solid var(--border); gap:12px;">
       <div class="modal-title" id="crm-card-modal-title" style="margin:0;">New Lead</div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" id="crm-card-delete-btn" class="btn btn-ghost" style="color:#dc2626; border-color:rgba(220,38,38,0.3);" onclick="deleteCrmCardModal()">Delete</button>
+        <button type="button" class="btn btn-ghost" onclick="closeCrmCardModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('crm-card-form').requestSubmit();">Save</button>
+      </div>
     </div>
     <div style="display:flex; flex:1 1 auto; min-height:0; overflow:hidden;">
       <!-- LEFT: form fields. min-width keeps the column wide enough
@@ -9451,24 +9461,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <label>Source</label>
             <input type="text" id="crm-card-source" autocomplete="off" placeholder="e.g. Referral from Sarah · LinkedIn outreach · Trade show" />
           </div>
-          <!-- Labels — operator-defined chips with name + color. Show
-               on the closed card so the board surfaces card metadata
-               at a glance. Multiple can be added per card. -->
-          <div class="modal-field">
-            <label style="display:flex; align-items:center; gap:8px;">
-              Labels
-              <button type="button" onclick="_openCrmLabelMenu(this)"
-                      style="font-size:11px; font-weight:700; text-transform:uppercase; padding:3px 8px; border:1px solid var(--border); border-radius:99px; background:transparent; color:var(--text-muted); cursor:pointer; font-family:inherit;">+ Add</button>
-            </label>
-            <div id="crm-card-labels-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; min-height:24px;"></div>
-          </div>
-          <!-- Assignees — click any chip to toggle. Multiple can be
-               selected. Compact chip row replaces the prior single-
-               select dropdown so the operator can co-assign without
-               giving up either name. -->
-          <div class="modal-field">
-            <label>Assigned To</label>
-            <div id="crm-card-assignees-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:2px;"></div>
+          <!-- Labels + Assignees share a row so the modal stays
+               compact. Both are inline chip UIs; pairing them
+               horizontally avoids two stacked half-empty rows. -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+            <div class="modal-field">
+              <label style="display:flex; align-items:center; gap:8px;">
+                Labels
+                <button type="button" onclick="_openCrmLabelMenu(this)"
+                        style="font-size:11px; font-weight:700; text-transform:uppercase; padding:3px 8px; border:1px solid var(--border); border-radius:99px; background:transparent; color:var(--text-muted); cursor:pointer; font-family:inherit;">+ Add</button>
+              </label>
+              <div id="crm-card-labels-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; min-height:24px;"></div>
+            </div>
+            <div class="modal-field">
+              <label>Assigned To</label>
+              <div id="crm-card-assignees-chips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:2px;"></div>
+            </div>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <div class="modal-field">
@@ -9494,11 +9502,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <textarea id="crm-card-notes" rows="4" placeholder="Conversation history, deal context, blockers, anything that matters when we re-engage."
               style="width:100%; resize:vertical; min-height:90px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
           </div>
-          <div class="modal-actions" style="display:flex; align-items:center; gap:10px; padding-bottom:18px;">
-            <button type="button" id="crm-card-delete-btn" class="btn btn-ghost" style="color:#dc2626; border-color:rgba(220,38,38,0.3); margin-right:auto;" onclick="deleteCrmCardModal()">Delete</button>
-            <button type="button" class="btn btn-ghost" onclick="closeCrmCardModal()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save</button>
-          </div>
+          <!-- Hidden submit so Enter inside any text input still
+               submits the form (Delete/Cancel/Save buttons live in
+               the top header now). padding-bottom keeps the last
+               textarea from butting against the modal floor. -->
+          <button type="submit" style="display:none;" aria-hidden="true"></button>
+          <div style="padding-bottom:18px;"></div>
         </form>
       </div>
       <!-- RIGHT: Comments thread. Independent scroll so a long
