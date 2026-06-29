@@ -431,6 +431,37 @@ if (!defined('ANTHROPIC_API_KEY')) {
     }
     define('ANTHROPIC_API_KEY', is_string($envKey) ? $envKey : '');
 }
+// Slack webhook for CRM onboarding completion notifications. Same
+// 3-way resolve as ANTHROPIC_API_KEY (env → api.local.php → empty).
+// Set up an Incoming Webhook at https://api.slack.com/apps and paste
+// the URL here. Empty string = skip Slack send (logs only); the
+// office@ + parker@ emails still fire.
+if (!defined('SLACK_WEBHOOK_URL')) {
+    $envSlack = getenv('SLACK_WEBHOOK_URL');
+    if ($envSlack === false || $envSlack === '') {
+        $envSlack = $_SERVER['SLACK_WEBHOOK_URL'] ?? '';
+    }
+    define('SLACK_WEBHOOK_URL', is_string($envSlack) ? $envSlack : '');
+}
+
+// Public base URL for onboarding portal links emailed to clients.
+// Falls back to the request scheme+host if not set. Set this in
+// api.local.php if your deployment lives behind a proxy that
+// scrambles the request host (so emailed links always land on the
+// canonical domain).
+if (!defined('PUBLIC_BASE_URL')) {
+    $envBase = getenv('PUBLIC_BASE_URL');
+    if ($envBase === false || $envBase === '') {
+        $envBase = $_SERVER['PUBLIC_BASE_URL'] ?? '';
+    }
+    if ($envBase === '') {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host   = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
+        $envBase = $scheme . '://' . $host;
+    }
+    define('PUBLIC_BASE_URL', $envBase);
+}
+
 if (!defined('ANTHROPIC_MODEL')) {
     define('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022');
 }
@@ -2352,6 +2383,301 @@ switch ($action) {
             }
         }
         echo json_encode(['ok' => true, 'data' => $out]);
+        break;
+
+    // ─── CRM ONBOARDING ────────────────────────────────────────────────
+    //
+    // Three-step flow:
+    //   1. Operator clicks "Send Onboarding" on a CRM card →
+    //      crm_send_onboarding mints a token + 6-digit PIN, stores
+    //      the invite in app_state, emails the client a portal link
+    //      ("MarketSculpt Client Onboarding") with the PIN, returns
+    //      ok to the UI.
+    //   2. Client visits the portal link → onboarding.php loads,
+    //      asks for the PIN → submits to crm_validate_pin → on
+    //      match, the form unlocks with the invite metadata.
+    //   3. Client fills the form + (optionally) uploads TC721 →
+    //      submits to crm_submit_onboarding → server auto-creates
+    //      the client record + sends notification emails to
+    //      office@ + parker@ + posts a Slack message → returns
+    //      ok to the portal.
+
+    case 'crm_send_onboarding':
+        $cardId  = trim((string)($input['card_id']  ?? ''));
+        $company = trim((string)($input['company']  ?? ''));
+        $email   = trim((string)($input['email']    ?? ''));
+        $contact = trim((string)($input['contact']  ?? ''));
+        if ($cardId === '' || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['ok' => false, 'error' => 'card_id + a valid email are required']);
+            break;
+        }
+        // Token = 32 hex chars (16 random bytes), PIN = 6 digits
+        try { $token = bin2hex(random_bytes(16)); } catch (Exception $e) { $token = md5(uniqid('', true) . $email); }
+        try { $pin = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT); } catch (Exception $e) { $pin = str_pad((string)mt_rand(0, 999999), 6, '0', STR_PAD_LEFT); }
+        $now = date('c');
+        $expiresAt = date('c', strtotime('+30 days'));
+        $invite = [
+            'token'     => $token,
+            'pin'       => $pin,
+            'cardId'    => $cardId,
+            'company'   => $company,
+            'email'     => $email,
+            'contact'   => $contact,
+            'createdAt' => $now,
+            'expiresAt' => $expiresAt,
+            'status'    => 'pending',
+            'submittedData' => null,
+            'submittedAt'   => null,
+        ];
+        $pdo->prepare("INSERT INTO app_state (key_name, value_json) VALUES (?, ?)
+                       ON DUPLICATE KEY UPDATE value_json = VALUES(value_json)")
+            ->execute(['crm_onboarding_invite_' . $token, json_encode($invite)]);
+        // Email the client. Best-effort: even if SMTP fails we still
+        // return the token + pin so the operator can copy them to the
+        // client out-of-band.
+        $portalUrl = rtrim(PUBLIC_BASE_URL, '/') . '/onboarding.php?token=' . urlencode($token);
+        $greeting  = $contact !== '' ? 'Hi ' . htmlspecialchars($contact, ENT_QUOTES, 'UTF-8') . ',' : 'Hello,';
+        $companyHtml = $company !== '' ? '<strong>' . htmlspecialchars($company, ENT_QUOTES, 'UTF-8') . '</strong>' : 'your company';
+        $html = '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif; max-width:560px; margin:0 auto; padding:24px;">'
+              . '<div style="border-left:4px solid #E8751A; padding:0 0 0 14px; margin-bottom:24px;">'
+              . '<div style="font-size:22px; font-weight:800; color:#1a1d2e;">Market Sculpt</div>'
+              . '<div style="font-size:13px; color:#6b7280; margin-top:2px;">Client Onboarding</div>'
+              . '</div>'
+              . '<p style="font-size:15px; color:#1a1d2e; line-height:1.5;">' . $greeting . '</p>'
+              . '<p style="font-size:14px; color:#1a1d2e; line-height:1.6;">'
+              . 'We\'re excited to get ' . $companyHtml . ' set up as a MarketSculpt client. '
+              . 'To finish onboarding, please complete the short form at the secure link below. '
+              . 'It takes about 5 minutes and you can upload your TC721 (or fill it out inline) if applicable.'
+              . '</p>'
+              . '<div style="text-align:center; margin:28px 0;">'
+              . '<a href="' . htmlspecialchars($portalUrl, ENT_QUOTES, 'UTF-8') . '" style="display:inline-block; padding:14px 28px; border-radius:8px; background:#4f46e5; color:#fff; text-decoration:none; font-weight:700; font-size:15px;">Start Onboarding →</a>'
+              . '</div>'
+              . '<div style="background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin:20px 0;">'
+              . '<div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#6b7280;">Your Security PIN</div>'
+              . '<div style="font-size:32px; font-weight:800; color:#1a1d2e; font-family:SF Mono,Consolas,monospace; letter-spacing:0.15em; margin-top:6px;">' . $pin . '</div>'
+              . '<div style="font-size:11px; color:#6b7280; margin-top:6px;">You\'ll be asked for this PIN when the portal loads. Treat it like a password — don\'t share it.</div>'
+              . '</div>'
+              . '<p style="font-size:12px; color:#6b7280; line-height:1.5;">'
+              . 'This link is unique to ' . $companyHtml . ' and expires on '
+              . htmlspecialchars(date('M j, Y', strtotime($expiresAt)), ENT_QUOTES, 'UTF-8')
+              . '. If you didn\'t expect this email, please ignore it or reply to let us know.'
+              . '</p>'
+              . '<p style="font-size:13px; color:#1a1d2e; margin-top:24px;">Thanks,<br/>The MarketSculpt Team</p>'
+              . '</div>';
+        $mailResult = ms_smtp_send([$email], 'MarketSculpt Onboarding — Security PIN inside', $html);
+        echo json_encode([
+            'ok'        => true,
+            'token'     => $token,
+            'pin'       => $pin,
+            'portalUrl' => $portalUrl,
+            'expiresAt' => $expiresAt,
+            'emailSent' => !empty($mailResult['ok']),
+            'emailError'=> $mailResult['ok'] ? null : ($mailResult['error'] ?? 'unknown'),
+        ]);
+        break;
+
+    case 'crm_validate_pin':
+        $token = trim((string)($input['token'] ?? ''));
+        $pin   = trim((string)($input['pin']   ?? ''));
+        if ($token === '' || $pin === '') {
+            echo json_encode(['ok' => false, 'error' => 'token + pin required']);
+            break;
+        }
+        $row = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ?");
+        $row->execute(['crm_onboarding_invite_' . $token]);
+        $raw = $row->fetchColumn();
+        if (!$raw) {
+            echo json_encode(['ok' => false, 'error' => 'Invite not found or expired.']);
+            break;
+        }
+        $invite = json_decode($raw, true);
+        if (!is_array($invite)) {
+            echo json_encode(['ok' => false, 'error' => 'Invite data corrupted.']);
+            break;
+        }
+        if (!empty($invite['expiresAt']) && strtotime($invite['expiresAt']) < time()) {
+            echo json_encode(['ok' => false, 'error' => 'This invite has expired. Please ask MarketSculpt for a fresh link.']);
+            break;
+        }
+        if (($invite['status'] ?? '') === 'submitted') {
+            echo json_encode(['ok' => false, 'error' => 'This onboarding form has already been submitted. Contact MarketSculpt if you need to update info.']);
+            break;
+        }
+        if (!hash_equals((string)($invite['pin'] ?? ''), $pin)) {
+            echo json_encode(['ok' => false, 'error' => 'PIN does not match. Check the email we sent for the correct 6-digit code.']);
+            break;
+        }
+        // Return safe-to-display invite fields (omit pin from response).
+        echo json_encode([
+            'ok'      => true,
+            'company' => (string)($invite['company'] ?? ''),
+            'contact' => (string)($invite['contact'] ?? ''),
+            'email'   => (string)($invite['email']   ?? ''),
+            'expiresAt' => (string)($invite['expiresAt'] ?? ''),
+        ]);
+        break;
+
+    case 'crm_submit_onboarding':
+        $token = trim((string)($input['token'] ?? ''));
+        $pin   = trim((string)($input['pin']   ?? ''));
+        $form  = is_array($input['form'] ?? null) ? $input['form'] : null;
+        if ($token === '' || $pin === '' || !$form) {
+            echo json_encode(['ok' => false, 'error' => 'token, pin, and form required']);
+            break;
+        }
+        $row = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ?");
+        $row->execute(['crm_onboarding_invite_' . $token]);
+        $raw = $row->fetchColumn();
+        if (!$raw) {
+            echo json_encode(['ok' => false, 'error' => 'Invite not found.']);
+            break;
+        }
+        $invite = json_decode($raw, true);
+        if (!is_array($invite) || !hash_equals((string)($invite['pin'] ?? ''), $pin)) {
+            echo json_encode(['ok' => false, 'error' => 'PIN mismatch or invalid invite.']);
+            break;
+        }
+        if (($invite['status'] ?? '') === 'submitted') {
+            echo json_encode(['ok' => false, 'error' => 'This form has already been submitted.']);
+            break;
+        }
+        $legalName = trim((string)($form['legal_name'] ?? $invite['company'] ?? ''));
+        if ($legalName === '') {
+            echo json_encode(['ok' => false, 'error' => 'Legal business name is required.']);
+            break;
+        }
+        // Auto-create the client record. If a client with this name
+        // already exists, we update its detail instead of inserting a
+        // duplicate.
+        $clientId = null;
+        $existing = $pdo->prepare("SELECT id FROM clients WHERE name = ? AND deleted_at IS NULL");
+        $existing->execute([$legalName]);
+        $existingId = $existing->fetchColumn();
+        if ($existingId) {
+            $clientId = (int)$existingId;
+        } else {
+            try {
+                $pdo->prepare("INSERT INTO clients (name) VALUES (?)")->execute([$legalName]);
+                $clientId = (int)$pdo->lastInsertId();
+            } catch (PDOException $e) {
+                echo json_encode(['ok' => false, 'error' => 'Could not create client: ' . $e->getMessage()]);
+                break;
+            }
+        }
+        // Map onboarding form fields → save_client_detail columns.
+        $update = [];
+        $params = [];
+        $cmap = [
+            'email'             => $form['email']             ?? '',
+            'phone'             => $form['phone']             ?? '',
+            'primary_contact'   => $form['contact_name']      ?? '',
+            'billing_address'   => $form['billing_address']   ?? '',
+            'shipping_address'  => $form['shipping_address']  ?? '',
+            'notes'             => trim((string)($form['notes'] ?? '')) .
+                                   (!empty($form['ein'])               ? "\nEIN: " . $form['ein']             : '') .
+                                   (!empty($form['business_type'])     ? "\nBusiness type: " . $form['business_type'] : '') .
+                                   (!empty($form['payment_method'])    ? "\nPreferred payment: " . $form['payment_method'] : '') .
+                                   (!empty($form['net_terms'])         ? "\nNet terms requested: " . $form['net_terms']    : '') .
+                                   (!empty($form['tc721_status'])      ? "\nTC721: " . $form['tc721_status']  : ''),
+        ];
+        foreach ($cmap as $col => $val) {
+            $val = trim((string)$val);
+            if ($val === '') continue;
+            $update[] = "$col = ?";
+            $params[] = $val;
+        }
+        if (!empty($update)) {
+            $params[] = $clientId;
+            $pdo->prepare("UPDATE clients SET " . implode(', ', $update) . " WHERE id = ?")->execute($params);
+        }
+        // Mark invite as submitted + stash the full form for audit.
+        $invite['status']        = 'submitted';
+        $invite['submittedData'] = $form;
+        $invite['submittedAt']   = date('c');
+        $invite['clientId']      = $clientId;
+        $pdo->prepare("UPDATE app_state SET value_json = ? WHERE key_name = ?")
+            ->execute([json_encode($invite), 'crm_onboarding_invite_' . $token]);
+        // Notification emails to office@ + parker@
+        $rows = [];
+        $rows[] = ['Legal Name',          $legalName];
+        if (!empty($form['contact_name']))      $rows[] = ['Primary Contact', $form['contact_name']];
+        if (!empty($form['email']))             $rows[] = ['Email',           $form['email']];
+        if (!empty($form['phone']))             $rows[] = ['Phone',           $form['phone']];
+        if (!empty($form['ein']))               $rows[] = ['EIN',             $form['ein']];
+        if (!empty($form['business_type']))     $rows[] = ['Business type',   $form['business_type']];
+        if (!empty($form['billing_address']))   $rows[] = ['Billing address', $form['billing_address']];
+        if (!empty($form['shipping_address']))  $rows[] = ['Shipping addr.',  $form['shipping_address']];
+        if (!empty($form['payment_method']))    $rows[] = ['Payment method',  $form['payment_method']];
+        if (!empty($form['net_terms']))         $rows[] = ['Net terms',       $form['net_terms']];
+        if (!empty($form['tc721_status']))      $rows[] = ['TC721',           $form['tc721_status']];
+        if (!empty($form['notes']))             $rows[] = ['Notes',           $form['notes']];
+        $rowsHtml = implode('', array_map(function ($r) {
+            return '<tr><td style="padding:6px 12px 6px 0; vertical-align:top; color:#6b7280; font-size:12px; white-space:nowrap;"><strong>' . htmlspecialchars($r[0]) . '</strong></td>'
+                 . '<td style="padding:6px 0; vertical-align:top; color:#1a1d2e; font-size:13px;">' . nl2br(htmlspecialchars($r[1])) . '</td></tr>';
+        }, $rows));
+        $notifyHtml = '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif; max-width:560px; margin:0 auto; padding:20px;">'
+                    . '<div style="border-left:4px solid #16a34a; padding:0 0 0 14px; margin-bottom:18px;">'
+                    . '<div style="font-size:18px; font-weight:800; color:#1a1d2e;">New Client Onboarded</div>'
+                    . '<div style="font-size:12px; color:#6b7280; margin-top:2px;">' . htmlspecialchars($legalName) . ' just finished the onboarding form.</div>'
+                    . '</div>'
+                    . '<table style="width:100%; border-collapse:collapse;">' . $rowsHtml . '</table>'
+                    . '<div style="margin-top:20px; padding-top:14px; border-top:1px solid #e5e7eb; font-size:12px; color:#6b7280;">'
+                    . 'Client record auto-created (id ' . $clientId . '). They\'ll show up under <strong>Clients</strong> in the left nav with these details pre-filled.'
+                    . '</div>'
+                    . '</div>';
+        $internalRecipients = ['office@marketsculpt.com', 'parker@marketsculpt.com'];
+        $mailResult = ms_smtp_send($internalRecipients, 'New Client Onboarded — ' . $legalName, $notifyHtml);
+        // Slack notification (best-effort, only if webhook is configured)
+        $slackSent = false;
+        $slackErr  = null;
+        if (SLACK_WEBHOOK_URL !== '') {
+            $slackText = "*New client onboarded*: *" . $legalName . "*"
+                       . (!empty($form['contact_name']) ? " · " . $form['contact_name'] : '')
+                       . (!empty($form['email']) ? " · " . $form['email'] : '');
+            $slackBody = json_encode([
+                'text' => $slackText,
+                'blocks' => [
+                    [
+                        'type' => 'header',
+                        'text' => ['type' => 'plain_text', 'text' => '🎉 New Client Onboarded']
+                    ],
+                    [
+                        'type' => 'section',
+                        'text' => [
+                            'type' => 'mrkdwn',
+                            'text' => "*" . $legalName . "*"
+                                    . (!empty($form['contact_name']) ? "\nContact: " . $form['contact_name'] : '')
+                                    . (!empty($form['email']) ? "\nEmail: " . $form['email'] : '')
+                                    . (!empty($form['phone']) ? "\nPhone: " . $form['phone'] : '')
+                                    . (!empty($form['tc721_status']) ? "\nTC721: " . $form['tc721_status'] : '')
+                                    . "\n_Client record auto-created (id " . $clientId . ")._"
+                        ]
+                    ]
+                ]
+            ]);
+            if (function_exists('curl_init')) {
+                $ch = curl_init(SLACK_WEBHOOK_URL);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true,
+                    CURLOPT_POSTFIELDS => $slackBody,
+                    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_TIMEOUT => 8,
+                ]);
+                $resp = curl_exec($ch);
+                $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $slackErr = curl_error($ch) ?: null;
+                curl_close($ch);
+                $slackSent = ($code >= 200 && $code < 300);
+            }
+        }
+        echo json_encode([
+            'ok'         => true,
+            'clientId'   => $clientId,
+            'emailSent'  => !empty($mailResult['ok']),
+            'slackSent'  => $slackSent,
+            'slackError' => $slackErr,
+        ]);
         break;
 
     case 'upload_client_logo':

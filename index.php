@@ -34669,9 +34669,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
     if (c.source) meta.push(`<span class="crm-card-meta-pill" title="Source">${esc(c.source)}</span>`);
-    const onboardBtn = col.id === 'onboard'
-      ? `<button class="crm-card-onboard-btn" onclick="event.stopPropagation(); sendCrmOnboarding('${c.id}')">Send Onboarding ↗</button>`
-      : '';
+    // Onboarding button: "Send" until an invite goes out, then "Resend"
+    // with a small "✓ Sent <date>" caption so the operator can tell at
+    // a glance whether this lead has an active invite.
+    let onboardBtn = '';
+    if (col.id === 'onboard') {
+      const sent = c.onboarding && c.onboarding.sentAt;
+      const sentDate = sent ? new Date(c.onboarding.sentAt).toLocaleDateString('en-US', {month:'short', day:'numeric'}) : '';
+      const label = sent ? `Resend Onboarding ↗` : `Send Onboarding ↗`;
+      const caption = sent
+        ? `<div style="font-size:9px; color:#16a34a; text-align:center; margin-top:3px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase;">✓ Sent ${sentDate}</div>`
+        : '';
+      onboardBtn = `<button class="crm-card-onboard-btn" onclick="event.stopPropagation(); sendCrmOnboarding('${c.id}')">${label}</button>${caption}`;
+    }
     return `<div class="crm-card" draggable="true"
                  data-card-id="${c.id}"
                  ondragstart="onCrmCardDragStart(event, '${c.id}')"
@@ -34773,20 +34783,86 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderCrmBoard();
   }
 
-  // Placeholder for Phase 2 (onboarding portal). For now: toast + log
-  // so the operator can confirm the button wires through. Phase 2 will
-  // generate a security PIN, email the client a portal link, and on
-  // form submission auto-create the client record + email + Slack
-  // notify the team.
-  function sendCrmOnboarding(cardId) {
+  // Phase 2: actually send the onboarding invite. Hits api.php
+  // crm_send_onboarding which mints a token + PIN, persists to
+  // app_state, and SMTP-emails the client a portal link with the PIN
+  // baked in. The PIN is also returned to the frontend so the
+  // operator can read it back to the client over the phone if the
+  // email gets stuck in spam.
+  async function sendCrmOnboarding(cardId) {
     const card = crmData.cards[cardId];
     if (!card) return;
-    const target = card.email || '(no email on file)';
-    if (typeof _msToast === 'function') {
-      _msToast(`Onboarding flow is Phase 2 — would send to ${target}.`, 'info');
-    } else {
-      alert(`Onboarding flow is Phase 2.\n\nWould send to: ${target}`);
+    if (!card.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(card.email)) {
+      if (typeof _msToast === 'function') _msToast('Add a valid email to this lead before sending onboarding.', 'warning');
+      return;
     }
+    const confirmGo = confirm(`Send onboarding link + security PIN to ${card.email}?\n\nThey'll receive an email with a portal link and a 6-digit PIN. The form auto-creates a client record on submit and notifies the team.`);
+    if (!confirmGo) return;
+    try {
+      const r = await apiCall('crm_send_onboarding', {
+        card_id: cardId,
+        company: card.company || '',
+        email:   card.email,
+        contact: card.contact || '',
+      });
+      if (!r || !r.ok) {
+        if (typeof _msToast === 'function') _msToast(`Could not send onboarding: ${(r && r.error) || 'unknown error'}`, 'warning');
+        return;
+      }
+      // Stash on the card so the operator can re-open later to see the
+      // PIN + portal URL without re-sending the email.
+      card.onboarding = {
+        sentAt:    new Date().toISOString(),
+        portalUrl: r.portalUrl,
+        pin:       r.pin,
+        expiresAt: r.expiresAt,
+        emailSent: !!r.emailSent,
+        emailError:r.emailError || null,
+      };
+      saveCrm();
+      renderCrmBoard();
+      _showCrmOnboardingConfirm(card, r);
+    } catch (e) {
+      console.warn('sendCrmOnboarding:', e);
+      if (typeof _msToast === 'function') _msToast('Network error sending onboarding — please try again.', 'warning');
+    }
+  }
+
+  // Inline post-send confirmation. Shows the portal URL + PIN so the
+  // operator can copy/paste either to the client out-of-band (text,
+  // phone) if the email gets filtered.
+  function _showCrmOnboardingConfirm(card, r) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.style.cssText = 'display:flex; z-index:1100;';
+    overlay.onclick = (e) => { if (e.target === overlay) document.body.removeChild(overlay); };
+    const emailLine = r.emailSent
+      ? `<div style="background:#dcfce7; border:1px solid #86efac; color:#15803d; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px;">✓ Email sent to <strong>${card.email}</strong>.</div>`
+      : `<div style="background:#fef3c7; border:1px solid #fde68a; color:#a16207; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px;">⚠ Email send failed (${r.emailError || 'unknown'}). Copy the link + PIN below and send it to the client manually.</div>`;
+    overlay.innerHTML = `<div class="modal" style="max-width:520px;">
+      <div class="modal-title" style="margin-bottom:8px;">Onboarding link sent</div>
+      <p style="font-size:13px; color:var(--text-muted); line-height:1.5; margin:0 0 14px;">
+        Share these with ${card.contact || card.company || 'the client'} if they need a backup channel.
+      </p>
+      ${emailLine}
+      <div class="modal-field">
+        <label>Portal URL</label>
+        <input type="text" readonly value="${(r.portalUrl || '').replace(/"/g, '&quot;')}" onclick="this.select();"
+               style="font-family:'SF Mono','Consolas',monospace; font-size:12px; cursor:text;" />
+      </div>
+      <div class="modal-field">
+        <label>Security PIN</label>
+        <input type="text" readonly value="${r.pin}" onclick="this.select();"
+               style="font-family:'SF Mono','Consolas',monospace; font-size:22px; letter-spacing:0.3em; text-align:center; cursor:text;" />
+      </div>
+      <p style="font-size:11px; color:var(--text-muted); line-height:1.4; margin:0 0 14px;">
+        Link expires ${r.expiresAt ? new Date(r.expiresAt).toLocaleDateString('en-US', {year:'numeric',month:'short',day:'numeric'}) : 'in 30 days'}.
+      </p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" onclick="document.body.removeChild(this.closest('.modal-overlay'));">Done</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
   }
 
   function _updateCrmNavBadge() {
