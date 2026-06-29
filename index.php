@@ -34606,10 +34606,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // they live in. Persisted via the same save_app_state pattern as
   // orders / shipments so the data survives across sessions + syncs
   // across the operator's devices.
-  let crmData = { cards: {}, nextId: 1 };
-  let _crmDragCardId = null;
-  let _crmEditingId  = null;
-  let _lastCrmJson   = '';
+  // var (not let) so these hoist to the top of the IIFE — loadCrm
+  // and _updateCrmNavBadge are called from the init() flow which
+  // runs BEFORE this line is reached during top-down script
+  // evaluation. With `let` here, those init calls hit a temporal
+  // dead zone (ReferenceError: Cannot access 'crmData' before
+  // initialization) which crashed the rest of init and prevented
+  // every downstream load (workbooks, badges, etc.). var is
+  // hoisted as undefined → loadCrm initializes it cleanly.
+  var crmData = { cards: {}, nextId: 1 };
+  var _crmDragCardId = null;
+  var _crmEditingId  = null;
+  var _lastCrmJson   = '';
 
   const CRM_COLUMNS = [
     { id: 'referrals',  label: 'Referrals',                bg: '#e0e7ff', fg: '#3730a3' },
