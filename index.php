@@ -6627,6 +6627,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              client-facing one. Drag-and-drop cards across the
              Referrals → Cold → Warm → Hot → Onboard → Creating
              lifecycle, with a Backburner column for parked leads. -->
+        <!-- AI Assistant — Claude-powered chat with tools that read
+             MS-Workbook data (clients / orders / shipments / CRM /
+             workbooks) and can send Slack DMs to any operator. -->
+        <a id="nav-assistant-link" href="#/assistant" onclick="event.preventDefault(); location.hash='#/assistant'" class="nav-flat-link">
+          <span>AI Assistant</span>
+        </a>
+
         <a id="nav-crm-link" href="#/crm" onclick="event.preventDefault(); location.hash='#/crm'" class="nav-flat-link">
           <span>CRM</span>
           <span class="nav-badge" id="badge-crm"></span>
@@ -9405,6 +9412,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="crm-board" class="crm-board"></div>
   </main>
 </div><!-- /#view-crm -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: AI ASSISTANT
+     Claude-powered chat, backed by server-side tools that read every
+     MS-Workbook data source (clients / orders / shipments / CRM cards /
+     workbooks). Can also send Slack DMs via existing per-person
+     webhooks. Chat state persists to localStorage per operator.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-assistant" class="view">
+  <main class="container" style="max-width:900px; padding:16px 20px; display:flex; flex-direction:column; height:calc(100vh - 100px);">
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-shrink:0;">
+      <div style="font-size:16px; font-weight:800; color:var(--text);">AI Assistant</div>
+      <span style="font-size:11px; color:var(--text-muted);">Ask about clients, orders, shipments, CRM, or send a Slack DM.</span>
+      <button onclick="_asstNewConversation()" style="margin-left:auto; padding:6px 12px; border-radius:6px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:700; cursor:pointer; font-family:inherit;">↻ New chat</button>
+    </div>
+    <div id="assistant-messages" style="flex:1 1 auto; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; min-height:200px;">
+      <div id="assistant-empty" style="font-size:13px; color:var(--text-muted); font-style:italic; text-align:center; padding:60px 0;">Ask me anything about your MS-Workbook data.<br/>Try: <em>"which orders are in production"</em> · <em>"summarize the CRM Hot column"</em> · <em>"draft a Slack DM to Jackson about the Nut Garden shipment"</em></div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:12px; flex-shrink:0;">
+      <textarea id="assistant-composer" rows="2" placeholder="Ask a question or give an instruction…"
+        onkeydown="_asstComposerKeydown(event)"
+        style="flex:1 1 auto; resize:none; min-height:52px; max-height:200px; font-family:inherit; font-size:13px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); outline:none;"></textarea>
+      <button onclick="_asstSend()" id="assistant-send-btn"
+        style="flex-shrink:0; padding:0 18px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;">Send →</button>
+    </div>
+    <div style="font-size:10px; color:var(--text-muted); margin-top:6px; text-align:right;">Enter to send · Shift+Enter for newline</div>
+  </main>
+</div><!-- /#view-assistant -->
 
 <!-- ── CRM Card Edit Modal ─────────────────────────────────────────────
      Single modal for creating + editing CRM cards. Reuses the existing
@@ -28782,6 +28817,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/assistant — Claude-powered chat assistant.
+    if (hash === '#/assistant') {
+      renderAssistantView();
+      return;
+    }
+
     // Match: #/reports — list of prebuilt + saved reports
     if (hash === '#/reports') {
       renderReportsView();
@@ -35528,6 +35569,136 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>`;
     document.body.appendChild(overlay);
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // AI ASSISTANT
+  // Chat panel + Claude API integration. Conversation history lives in
+  // localStorage per operator (key includes MS_SESSION.name so two
+  // operators sharing a browser don'\''t collide). Each send fires
+  // apiCall('assistant_chat', {messages}) which runs the Claude tool
+  // loop server-side and returns the final assistant text plus a
+  // rundown of tool calls that were made along the way.
+  // ══════════════════════════════════════════════════════════════════
+  var _asstMessages = [];         // [{role:'user'|'assistant', content:string, tools?:[]}]
+  var _asstBusy     = false;
+
+  function _asstStorageKey() {
+    var who = (window.MS_SESSION && window.MS_SESSION.name) || 'anon';
+    return 'ms_asst_history_' + who;
+  }
+  function _asstLoad() {
+    try { var s = localStorage.getItem(_asstStorageKey()); if (s) _asstMessages = JSON.parse(s) || []; } catch(e) { _asstMessages = []; }
+    if (!Array.isArray(_asstMessages)) _asstMessages = [];
+  }
+  function _asstSave() {
+    try { localStorage.setItem(_asstStorageKey(), JSON.stringify(_asstMessages)); } catch(e) {}
+  }
+
+  function renderAssistantView() {
+    document.getElementById('header-title').textContent = 'AI Assistant';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    var link = document.getElementById('nav-assistant-link');
+    if (link) link.classList.add('active');
+    showView('view-assistant');
+    _asstLoad();
+    _asstRenderMessages();
+    setTimeout(function () {
+      var c = document.getElementById('assistant-composer');
+      if (c) c.focus();
+    }, 40);
+  }
+
+  function _asstRenderMessages() {
+    var host = document.getElementById('assistant-messages');
+    if (!host) return;
+    var empty = document.getElementById('assistant-empty');
+    if (_asstMessages.length === 0) {
+      if (empty) empty.style.display = '';
+      // Wipe any non-empty leftovers.
+      Array.from(host.children).forEach(function (n) { if (n.id !== 'assistant-empty') n.remove(); });
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    // Clean rebuild — simple and reliable for a chat this small.
+    Array.from(host.children).forEach(function (n) { if (n.id !== 'assistant-empty') n.remove(); });
+    var esc = function (s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+    _asstMessages.forEach(function (m) {
+      var wrap = document.createElement('div');
+      if (m.role === 'user') {
+        wrap.style.cssText = 'display:flex; justify-content:flex-end;';
+        wrap.innerHTML = '<div style="max-width:80%; background:var(--accent); color:#fff; padding:9px 13px; border-radius:14px 14px 4px 14px; font-size:13px; line-height:1.5; white-space:pre-wrap;">' + esc(m.content) + '</div>';
+      } else {
+        wrap.style.cssText = 'display:flex; justify-content:flex-start;';
+        var toolsHtml = '';
+        if (Array.isArray(m.tools) && m.tools.length) {
+          toolsHtml = '<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:6px;">' +
+            m.tools.map(function (t) {
+              return '<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:99px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid rgba(107,147,255,0.30); font-size:10px; font-weight:700;">🔧 ' + esc(t) + '</span>';
+            }).join('') + '</div>';
+        }
+        wrap.innerHTML = '<div style="max-width:80%; background:var(--surface); color:var(--text); padding:9px 13px; border-radius:14px 14px 14px 4px; font-size:13px; line-height:1.55; white-space:pre-wrap; border:1px solid var(--border);">' + esc(m.content) + toolsHtml + '</div>';
+      }
+      host.appendChild(wrap);
+    });
+    host.scrollTop = host.scrollHeight;
+  }
+
+  function _asstComposerKeydown(e) {
+    // Enter to send, Shift+Enter for newline.
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      _asstSend();
+    }
+  }
+
+  async function _asstSend() {
+    if (_asstBusy) return;
+    var input = document.getElementById('assistant-composer');
+    var btn   = document.getElementById('assistant-send-btn');
+    if (!input) return;
+    var text = (input.value || '').trim();
+    if (!text) return;
+    _asstBusy = true;
+    if (btn) { btn.disabled = true; btn.textContent = 'Thinking…'; btn.style.opacity = '0.6'; }
+    input.value = '';
+    _asstMessages.push({ role: 'user', content: text });
+    _asstSave();
+    _asstRenderMessages();
+    try {
+      // Send the ROLLING message history so multi-turn reasoning works.
+      // Trim to last 30 turns to keep the token bill reasonable.
+      var payload = _asstMessages.slice(-30).map(function (m) {
+        return { role: m.role, content: m.content };
+      });
+      var r = await apiCall('assistant_chat', { messages: payload });
+      if (r && r.ok) {
+        _asstMessages.push({ role: 'assistant', content: r.text || '(no response)', tools: r.tools_used || [] });
+      } else {
+        var err = (r && r.error) || 'Assistant request failed.';
+        _asstMessages.push({ role: 'assistant', content: '⚠ ' + err, tools: [] });
+      }
+      _asstSave();
+      _asstRenderMessages();
+    } catch (e) {
+      _asstMessages.push({ role: 'assistant', content: '⚠ Network error — please try again.', tools: [] });
+      _asstSave();
+      _asstRenderMessages();
+    } finally {
+      _asstBusy = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Send →'; btn.style.opacity = ''; }
+      input.focus();
+    }
+  }
+
+  function _asstNewConversation() {
+    if (_asstMessages.length && !confirm('Start a new conversation? The current thread will be cleared.')) return;
+    _asstMessages = [];
+    _asstSave();
+    _asstRenderMessages();
+    var c = document.getElementById('assistant-composer');
+    if (c) c.focus();
   }
 
   function _updateCrmNavBadge() {

@@ -657,6 +657,377 @@ function ms_anthropic_send(string $system, string $userMsg, int $maxTokens = 102
 }
 
 // ── Email helpers ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════
+// AI ASSISTANT — Anthropic API + tool-use loop + local tool impls
+// ═══════════════════════════════════════════════════════════════════
+
+// Wraps a single call to Anthropic's Messages API with tool definitions.
+// Returns ['ok'=>true, 'response'=>decoded_json] on success, or
+// ['ok'=>false, 'error'=>string, 'detail'=>string?] on failure. The
+// caller manages the tool-use loop.
+function ms_anthropic_call_with_tools(string $system, array $messages, array $tools, int $maxTokens = 2048): array {
+    if (ANTHROPIC_API_KEY === '') {
+        return ['ok' => false, 'error' => 'AI is not configured. Add ANTHROPIC_API_KEY in api.local.php.'];
+    }
+    $payload = json_encode([
+        'model'      => ANTHROPIC_MODEL,
+        'max_tokens' => $maxTokens,
+        'system'     => $system,
+        'messages'   => $messages,
+        'tools'      => $tools,
+    ]);
+    $url = 'https://api.anthropic.com/v1/messages';
+    $headers = [
+        'x-api-key: ' . ANTHROPIC_API_KEY,
+        'anthropic-version: 2023-06-01',
+        'content-type: application/json',
+    ];
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_TIMEOUT        => 90,
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+        if ($resp === false) return ['ok' => false, 'error' => 'curl: ' . $err];
+        if ($code < 200 || $code >= 300) {
+            return ['ok' => false, 'error' => "Anthropic HTTP {$code}", 'detail' => substr((string)$resp, 0, 800)];
+        }
+        $decoded = json_decode((string)$resp, true);
+        if (!is_array($decoded)) return ['ok' => false, 'error' => 'Non-JSON response from Anthropic'];
+        return ['ok' => true, 'response' => $decoded];
+    }
+    return ['ok' => false, 'error' => 'curl not available'];
+}
+
+// System prompt — sets up context about MS-Workbook + the assistant's
+// scope + the operators' names + the tools available.
+function ms_assistant_system_prompt(): string {
+    return "You are the AI assistant embedded inside MS-Workbook, a B2B sourcing / manufacturing workbook + quoting tool run by MarketSculpt (Parker Low, based in Lindon UT). The team is Parker, Jackson, Ron, Kylie, and Karen.\n\n"
+         . "You have tools that read the operator's LIVE data: clients, workbooks (product/quote sheets), orders, shipments, and CRM sales-pipeline cards. You also have tools that SEND Slack messages — either DM one of the team or post to the shared #onboard channel.\n\n"
+         . "When the operator asks a data question, use the read tools to look things up before answering — don't guess or fabricate. Prefer specific, actionable summaries. If a result set is large, summarize the top few and offer to drill deeper.\n\n"
+         . "When drafting Slack messages, keep them concise and professional. Confirm before actually sending unless the operator explicitly says to send.\n\n"
+         . "The current operator (based on their session) is: " . (function_exists('getSessionUser') ? ((getSessionUser()['display_name'] ?: getSessionUser()['username']) ?: 'unknown') : 'unknown') . ". Use their name when it's relevant.\n\n"
+         . "Today's date: " . date('Y-m-d') . ".";
+}
+
+// Tool schemas exposed to Claude. Each name maps to a case in
+// ms_assistant_execute_tool below.
+function ms_assistant_tool_defs(): array {
+    return [
+        [
+            'name' => 'search_clients',
+            'description' => 'Search MarketSculpt clients by partial name, email, or contact person. Returns matching client records with contact info + a workbook count.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Partial name, email, or contact to search for. Empty string returns all clients (capped at 40).'],
+                ],
+                'required' => ['query'],
+            ],
+        ],
+        [
+            'name' => 'get_client_details',
+            'description' => 'Get the full detail record for a specific client by exact name. Returns contact info, addresses, notes, payment terms, and their workbooks.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'client_name' => ['type' => 'string', 'description' => 'Exact client name (as returned by search_clients).'],
+                ],
+                'required' => ['client_name'],
+            ],
+        ],
+        [
+            'name' => 'list_orders',
+            'description' => 'List orders in the system. Optionally filter by status (draft, confirmed, complete). Returns id, client, name, status, dateCreated, notifiedAt.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'status' => ['type' => 'string', 'description' => 'Optional status filter: draft, confirmed, complete, or "queue" (unnotified), "production" (notified, no shipments yet), "shipped" (has workbooks on a shipment). Blank = all.'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'list_shipments',
+            'description' => 'List shipments with their status (planning, booked, in_transit, waiting_arrival, delivered, received). Returns id, name, status, shipping method, carrier, tracking number, port info, order count.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'status' => ['type' => 'string', 'description' => 'Optional status filter. Blank = all non-archived.'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'list_crm_cards',
+            'description' => 'List CRM sales-pipeline cards. Optionally filter by column (referrals, prospect_rfq, warm, hot, onboard, backburner) or by assignee name. Returns company, contact, email, followup date, assignees, comment count.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'column'   => ['type' => 'string', 'description' => 'Optional column filter: referrals, prospect_rfq, warm, hot, onboard, backburner.'],
+                    'assignee' => ['type' => 'string', 'description' => 'Optional assignee first-name filter: Parker, Jackson, Ron, Kylie, Karen.'],
+                ],
+            ],
+        ],
+        [
+            'name' => 'search_workbooks',
+            'description' => 'Search workbooks by partial product name. Returns id, client, product, description, dateCreated.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Partial product name to search for. Empty = recent 40.'],
+                ],
+                'required' => ['query'],
+            ],
+        ],
+        [
+            'name' => 'send_slack_dm',
+            'description' => 'Send a Slack direct message to one operator (Parker, Jackson, Ron, Kylie, or Karen). Uses their per-person webhook. Confirm with the user before sending.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'person'  => ['type' => 'string', 'description' => 'First name: Parker, Jackson, Ron, Kylie, or Karen.'],
+                    'message' => ['type' => 'string', 'description' => 'The message text.'],
+                ],
+                'required' => ['person', 'message'],
+            ],
+        ],
+        [
+            'name' => 'send_slack_channel',
+            'description' => 'Post a message to the shared #onboard Slack channel (visible to whole team). Confirm with the user before sending.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'message' => ['type' => 'string', 'description' => 'The message text.'],
+                ],
+                'required' => ['message'],
+            ],
+        ],
+    ];
+}
+
+// Dispatch a tool call to its PHP implementation. Returns a value that
+// will be JSON-encoded and sent back to Claude as the tool result.
+function ms_assistant_execute_tool(string $name, array $input) {
+    switch ($name) {
+        case 'search_clients':        return ms_asst_tool_search_clients($input);
+        case 'get_client_details':    return ms_asst_tool_get_client_details($input);
+        case 'list_orders':           return ms_asst_tool_list_orders($input);
+        case 'list_shipments':        return ms_asst_tool_list_shipments($input);
+        case 'list_crm_cards':        return ms_asst_tool_list_crm_cards($input);
+        case 'search_workbooks':      return ms_asst_tool_search_workbooks($input);
+        case 'send_slack_dm':         return ms_asst_tool_send_slack_dm($input);
+        case 'send_slack_channel':    return ms_asst_tool_send_slack_channel($input);
+        default: return ['error' => 'Unknown tool: ' . $name];
+    }
+}
+
+// Helper: read a JSON blob from the app_state table.
+function ms_asst_read_app_state(string $key) {
+    global $pdo;
+    try {
+        $s = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ? LIMIT 1");
+        $s->execute([$key]);
+        $raw = $s->fetchColumn();
+        if (!$raw) return null;
+        $decoded = json_decode((string)$raw, true);
+        return is_array($decoded) ? $decoded : null;
+    } catch (\Throwable $e) { return null; }
+}
+
+function ms_asst_tool_search_clients(array $input) {
+    global $pdo;
+    $q = trim((string)($input['query'] ?? ''));
+    try {
+        if ($q === '') {
+            $stmt = $pdo->query("SELECT id, name, contact_name, email, phone FROM clients WHERE deleted_at IS NULL ORDER BY name LIMIT 40");
+        } else {
+            $like = '%' . $q . '%';
+            $stmt = $pdo->prepare("SELECT id, name, contact_name, email, phone FROM clients WHERE deleted_at IS NULL AND (name LIKE ? OR email LIKE ? OR contact_name LIKE ?) ORDER BY name LIMIT 40");
+            $stmt->execute([$like, $like, $like]);
+        }
+        $clients = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        // Attach workbook count per client.
+        foreach ($clients as &$c) {
+            $wbStmt = $pdo->prepare("SELECT COUNT(*) FROM workbooks WHERE client_id = ? AND (deleted_at IS NULL OR deleted_at = '')");
+            $wbStmt->execute([$c['id']]);
+            $c['workbook_count'] = (int)$wbStmt->fetchColumn();
+        }
+        return ['count' => count($clients), 'clients' => $clients];
+    } catch (\Throwable $e) { return ['error' => $e->getMessage()]; }
+}
+
+function ms_asst_tool_get_client_details(array $input) {
+    global $pdo;
+    $name = trim((string)($input['client_name'] ?? ''));
+    if ($name === '') return ['error' => 'client_name required'];
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+        $stmt->execute([$name]);
+        $client = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$client) return ['error' => 'No client found with that exact name. Try search_clients first.'];
+        $wbStmt = $pdo->prepare("SELECT id, product_name, description, created_at FROM workbooks WHERE client_id = ? AND (deleted_at IS NULL OR deleted_at = '') ORDER BY created_at DESC LIMIT 30");
+        $wbStmt->execute([$client['id']]);
+        $client['workbooks'] = $wbStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return $client;
+    } catch (\Throwable $e) { return ['error' => $e->getMessage()]; }
+}
+
+function ms_asst_tool_list_orders(array $input) {
+    $state = ms_asst_read_app_state('ms_orders');
+    if (!$state || empty($state['data'])) return ['count' => 0, 'orders' => []];
+    $data = is_string($state['data']) ? json_decode($state['data'], true) : $state['data'];
+    if (!is_array($data)) return ['count' => 0, 'orders' => []];
+    $filter = strtolower(trim((string)($input['status'] ?? '')));
+    $out = [];
+    foreach ($data as $id => $o) {
+        if (!is_array($o)) continue;
+        $hasNotified = !empty($o['notifiedAt']);
+        $isShipped   = false;
+        // Rough shipped detection: any workbook of this order sits in
+        // a shipment. We don'\''t fully derive it here — trust the
+        // notifiedAt + status field for a first pass.
+        if ($filter !== '') {
+            if ($filter === 'queue'      && $hasNotified)     continue;
+            if ($filter === 'production' && !$hasNotified)    continue;
+            if (in_array($filter, ['draft','confirmed','complete'], true) && strtolower((string)($o['status'] ?? '')) !== $filter) continue;
+        }
+        $out[] = [
+            'id'          => $o['id'] ?? $id,
+            'client'      => $o['clientName'] ?? '',
+            'name'        => $o['name'] ?? '',
+            'status'      => $o['status'] ?? '',
+            'lane'        => $hasNotified ? 'production_or_shipped' : 'orders_queue',
+            'dateCreated' => $o['dateCreated'] ?? '',
+            'notifiedAt'  => $o['notifiedAt'] ?? '',
+            'entries'     => is_array($o['entries'] ?? null) ? count($o['entries']) : 0,
+        ];
+    }
+    // Cap to 30 for context size.
+    return ['count' => count($out), 'orders' => array_slice($out, 0, 30)];
+}
+
+function ms_asst_tool_list_shipments(array $input) {
+    $state = ms_asst_read_app_state('ms_shipments');
+    if (!$state) return ['count' => 0, 'shipments' => []];
+    $data = null;
+    if (isset($state['data']))          $data = is_string($state['data']) ? json_decode($state['data'], true) : $state['data'];
+    else if (isset($state['ms_shipmentData'])) $data = $state['ms_shipmentData'];
+    if (!is_array($data)) return ['count' => 0, 'shipments' => []];
+    $filter = strtolower(trim((string)($input['status'] ?? '')));
+    $out = [];
+    foreach ($data as $id => $s) {
+        if (!is_array($s)) continue;
+        if ($filter !== '' && strtolower((string)($s['status'] ?? '')) !== $filter) continue;
+        $out[] = [
+            'id'              => $s['id'] ?? $id,
+            'name'            => $s['name'] ?? '',
+            'status'          => $s['status'] ?? '',
+            'shippingMethod'  => $s['shippingMethod'] ?? '',
+            'carrier'         => $s['carrier'] ?? '',
+            'trackingNumber'  => $s['trackingNumber'] ?? '',
+            'portLocation'    => $s['portLocation'] ?? '',
+            'portShipDate'    => $s['portShipDate'] ?? '',
+            'portArrivalDate' => $s['portArrivalDate'] ?? '',
+            'orderCount'      => is_array($s['entries'] ?? null)
+                                    ? count(array_filter($s['entries'], fn($e) => is_array($e) && !empty($e['orderId'])))
+                                    : 0,
+        ];
+    }
+    return ['count' => count($out), 'shipments' => array_slice($out, 0, 30)];
+}
+
+function ms_asst_tool_list_crm_cards(array $input) {
+    $state = ms_asst_read_app_state('ms_crm');
+    if (!$state || empty($state['cards'])) return ['count' => 0, 'cards' => []];
+    $columnFilter   = strtolower(trim((string)($input['column'] ?? '')));
+    $assigneeFilter = trim((string)($input['assignee'] ?? ''));
+    $out = [];
+    foreach ($state['cards'] as $c) {
+        if (!is_array($c)) continue;
+        if ($columnFilter !== '' && strtolower((string)($c['column'] ?? '')) !== $columnFilter) continue;
+        $assignees = is_array($c['assignees'] ?? null) ? $c['assignees'] : [];
+        if ($assigneeFilter !== '' && !in_array($assigneeFilter, $assignees, true)) continue;
+        $out[] = [
+            'id'         => $c['id'] ?? '',
+            'company'    => $c['company'] ?? '',
+            'contact'    => $c['contact'] ?? '',
+            'email'      => $c['email'] ?? '',
+            'column'     => $c['column'] ?? '',
+            'assignees'  => $assignees,
+            'labels'     => array_map(fn($l) => $l['name'] ?? '', is_array($c['labels'] ?? null) ? $c['labels'] : []),
+            'followup'   => $c['followup'] ?? '',
+            'source'     => $c['source'] ?? '',
+            'notes'      => mb_substr((string)($c['notes'] ?? ''), 0, 240),
+            'comments'   => is_array($c['comments'] ?? null) ? count($c['comments']) : 0,
+            'updatedAt'  => $c['updatedAt'] ?? '',
+        ];
+    }
+    return ['count' => count($out), 'cards' => array_slice($out, 0, 30)];
+}
+
+function ms_asst_tool_search_workbooks(array $input) {
+    global $pdo;
+    $q = trim((string)($input['query'] ?? ''));
+    try {
+        if ($q === '') {
+            $stmt = $pdo->query("SELECT w.id, w.product_name, w.description, w.created_at, c.name AS client_name FROM workbooks w LEFT JOIN clients c ON c.id = w.client_id WHERE (w.deleted_at IS NULL OR w.deleted_at = '') ORDER BY w.created_at DESC LIMIT 40");
+        } else {
+            $like = '%' . $q . '%';
+            $stmt = $pdo->prepare("SELECT w.id, w.product_name, w.description, w.created_at, c.name AS client_name FROM workbooks w LEFT JOIN clients c ON c.id = w.client_id WHERE (w.deleted_at IS NULL OR w.deleted_at = '') AND (w.product_name LIKE ? OR w.description LIKE ? OR c.name LIKE ?) ORDER BY w.created_at DESC LIMIT 40");
+            $stmt->execute([$like, $like, $like]);
+        }
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        return ['count' => count($rows), 'workbooks' => $rows];
+    } catch (\Throwable $e) { return ['error' => $e->getMessage()]; }
+}
+
+function ms_asst_tool_send_slack_dm(array $input) {
+    $person = trim((string)($input['person']  ?? ''));
+    $text   = trim((string)($input['message'] ?? ''));
+    if ($person === '' || $text === '') return ['error' => 'person and message required'];
+    $webhooks = is_array(CRM_SLACK_USER_WEBHOOKS) ? CRM_SLACK_USER_WEBHOOKS : [];
+    $url = $webhooks[$person] ?? null;
+    if (!$url) return ['error' => "No personal webhook configured for {$person}. Ask Parker to add their URL to api.local.php."];
+    if (!function_exists('curl_init')) return ['error' => 'curl not available'];
+    $body = json_encode(['text' => $text]);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
+        CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 3, CURLOPT_POSTREDIR => 7,
+    ]);
+    curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ['ok' => $code >= 200 && $code < 300, 'status' => $code, 'sent_to' => $person];
+}
+
+function ms_asst_tool_send_slack_channel(array $input) {
+    $text = trim((string)($input['message'] ?? ''));
+    if ($text === '') return ['error' => 'message required'];
+    if (SLACK_WEBHOOK_URL === '') return ['error' => 'SLACK_WEBHOOK_URL not configured.'];
+    if (!function_exists('curl_init')) return ['error' => 'curl not available'];
+    $body = json_encode(['text' => $text]);
+    $ch = curl_init(SLACK_WEBHOOK_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
+        CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 3, CURLOPT_POSTREDIR => 7,
+    ]);
+    curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ['ok' => $code >= 200 && $code < 300, 'status' => $code];
+}
+
 function ms_smtp_send(array $to, string $subject, string $html): array {
     $host  = 'smtp.gmail.com';
     $port  = 587;
@@ -2455,6 +2826,89 @@ switch ($action) {
     //      the client record + sends notification emails to
     //      office@ + parker@ + posts a Slack message → returns
     //      ok to the portal.
+
+    case 'assistant_chat':
+        // Claude-powered chat with tools. Runs the tool-use loop
+        // server-side: sends the conversation to Claude, if the model
+        // asks for a tool we execute it locally and loop, until the
+        // model returns a plain-text answer. Returns
+        // {ok, text, tools_used[]}.
+        $msgs = $input['messages'] ?? [];
+        if (!is_array($msgs) || empty($msgs)) {
+            echo json_encode(['ok' => false, 'error' => 'messages array required']);
+            break;
+        }
+        if (ANTHROPIC_API_KEY === '') {
+            echo json_encode(['ok' => false, 'error' => 'AI is not configured. Add ANTHROPIC_API_KEY in api.local.php.']);
+            break;
+        }
+        // Normalize to the Anthropic messages shape. Each item is
+        // {role: 'user'|'assistant', content: string}.
+        $anthMessages = [];
+        foreach ($msgs as $m) {
+            $role = ($m['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
+            $text = trim((string)($m['content'] ?? ''));
+            if ($text === '') continue;
+            $anthMessages[] = ['role' => $role, 'content' => $text];
+        }
+        if (empty($anthMessages)) {
+            echo json_encode(['ok' => false, 'error' => 'no non-empty messages']);
+            break;
+        }
+        // System prompt — orients the model to MS-Workbook + the tools.
+        $system = ms_assistant_system_prompt();
+        $tools  = ms_assistant_tool_defs();
+        // Tool-use loop: up to 6 rounds so a single request can'\''t spin
+        // forever (each tool call = one round trip to the API).
+        $toolsUsed = [];
+        $finalText = '';
+        for ($round = 0; $round < 6; $round++) {
+            $r = ms_anthropic_call_with_tools($system, $anthMessages, $tools, 2048);
+            if (!$r['ok']) {
+                echo json_encode(['ok' => false, 'error' => $r['error'] ?? 'AI call failed', 'detail' => $r['detail'] ?? null]);
+                break 2;
+            }
+            $resp = $r['response'];
+            $stopReason = $resp['stop_reason'] ?? '';
+            // Append the assistant'\''s response into the running message
+            // history so a subsequent tool result can reference it.
+            $assistantContent = $resp['content'] ?? [];
+            $anthMessages[] = ['role' => 'assistant', 'content' => $assistantContent];
+            if ($stopReason !== 'tool_use') {
+                // Model returned a final text answer.
+                foreach ($assistantContent as $block) {
+                    if (($block['type'] ?? '') === 'text') $finalText .= $block['text'];
+                }
+                break;
+            }
+            // Execute each tool call the model asked for + queue results.
+            $toolResults = [];
+            foreach ($assistantContent as $block) {
+                if (($block['type'] ?? '') !== 'tool_use') continue;
+                $tName  = $block['name'] ?? '';
+                $tInput = $block['input'] ?? [];
+                $tId    = $block['id'] ?? '';
+                $toolsUsed[] = $tName;
+                $tResult = ms_assistant_execute_tool($tName, $tInput);
+                $toolResults[] = [
+                    'type' => 'tool_result',
+                    'tool_use_id' => $tId,
+                    'content' => is_string($tResult) ? $tResult : json_encode($tResult, JSON_UNESCAPED_SLASHES),
+                ];
+            }
+            if (!empty($toolResults)) {
+                $anthMessages[] = ['role' => 'user', 'content' => $toolResults];
+            }
+        }
+        if ($finalText === '') {
+            $finalText = 'I hit my tool-call limit before finishing. Try asking the question in smaller steps.';
+        }
+        echo json_encode([
+            'ok'         => true,
+            'text'       => $finalText,
+            'tools_used' => array_values(array_unique($toolsUsed)),
+        ]);
+        break;
 
     case 'crm_slack_test':
         // Diagnostic — reports everything we need to debug why
