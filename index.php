@@ -17396,20 +17396,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const price = perUnitRmb > 0 ? perUnitRmb.toFixed(3) : '';
     // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
     rows.forEach(row => { row.dataset.price = price; });
-    // Sync qty into first tier row from the RFQ Grand Total qty
-    // (sum across every line item + every variant). This is the single
-    // source of truth — never just "the first row's qty," which was an
-    // accidental legacy: a workbook with two RFQ rows summing to 110,000
-    // would otherwise paint tier 1 with just the first row's qty.
-    // Fallback to first row only when ps hasn't been computed yet.
-    let rfqQty = '';
-    if (ps && ps.grandQty > 0) {
-      rfqQty = String(ps.grandQty);
-    } else {
-      const rfqFirstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):first-child');
-      const rfqInputs = rfqFirstRow ? rfqFirstRow.querySelectorAll('input:not([type="checkbox"])') : [];
-      rfqQty = rfqInputs[2]?.value || '';
-    }
+    // Sync qty into the first tier row from ONLY the FIRST RFQ line
+    // item's qty — NOT the grand total across every line item. Per user:
+    // multi-item workbooks price their tiers off the lead line item's
+    // volume. Example (Karl Malone cooler): the first line item is 1,500
+    // units while later items push the RFQ grand total to 7,500 — the top
+    // tier must read 1,500, not 7,500.
+    //
+    // The first parent row's qty input already reflects its own variants
+    // (syncParentQtyFromVariants sums them into the parent), so this reads
+    // "the first item's qty" whether or not that item has variants.
+    const rfqFirstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):first-child');
+    const rfqInputs = rfqFirstRow ? rfqFirstRow.querySelectorAll('input:not([type="checkbox"])') : [];
+    const rfqQty = rfqInputs[2]?.value || '';
     // Tier 1 qty input is type="text" with inputmode="numeric" (so it can
     // hold thousands-separator commas). Grab the first <input> in the row
     // — that's always the qty cell. Setting .value on a readonly input
@@ -18077,7 +18076,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                onfocus="_msStripCommasOnFocus(this)"
                onblur="_msFmtIntOnBlur(this); recalcWbTier(${id})"
                style="width:110px;${isFirst ? ' background:var(--surface2); color:var(--text-muted); cursor:not-allowed;' : ''}"
-               ${isFirst ? 'readonly title="Auto-populated from Quote Details qty"' : ''} />
+               ${isFirst ? 'readonly title="Auto-populated from the first RFQ line item\'s qty"' : ''} />
       </td>
       ${rmbCell}
       <td class="tier-col-usd" id="wb-tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
