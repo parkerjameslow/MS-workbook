@@ -22366,12 +22366,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               });
             });
             const _sumUsd = _fxUsdFromRmb(_sumRmb);
+            // Sale price for the kit: the operator's Sale Per (per kit) when
+            // set, else the summed component cost. Keeps this line — and the
+            // order total / profit — on the SALE side once a price is typed.
+            const _saleUnit = _cqHaveSalePer ? _cqSalePer : _sumUsd;
             const _primaryDid = _combineGroupPrimaryDomId.get(_combineG.id);
             const _primaryRow = _primaryDid ? document.getElementById(_primaryDid) : null;
             const _primaryIns = _primaryRow ? _primaryRow.querySelectorAll('input:not([type="checkbox"])') : null;
             const _primaryRawQty = _primaryIns ? _msIntFromInput(_primaryIns[2]) : 0;
             const _primaryQty = _scaleQty(_primaryRawQty);
-            const _lineTotal = _primaryQty > 0 && _sumUsd > 0 ? _msCeil2(_primaryQty * _sumUsd) : 0;
+            const _lineTotal = _primaryQty > 0 && _saleUnit > 0 ? _msCeil2(_primaryQty * _saleUnit) : 0;
             const _escLabel = _escCombine(_combineG.label);
             const _memberCount = (_combineG.itemIdxs || []).length;
             // Combined line is now expandable — clicking reveals the member
@@ -22388,7 +22392,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <span style="font-size:10px; color:#6b93ff; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:1px 6px; background:rgba(107,147,255,0.10); border:1px solid rgba(107,147,255,0.25); border-radius:9px; margin-left:8px; vertical-align:middle;">Combined · ${_memberCount}</span>
               </td>
               <td style="text-align:right;">${_primaryQty > 0 ? _primaryQty.toLocaleString('en-US') : '—'}</td>
-              <td style="text-align:right;">${_sumUsd > 0 ? '$' + _fmt3(_sumUsd) : '—'}</td>
+              <td style="text-align:right;">${_saleUnit > 0 ? '$' + _fmt3(_saleUnit) : '—'}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${_lineTotal > 0 ? '$' + _fmt2(_lineTotal) : '—'}</td>
             </tr>`;
             // Member sub-rows — hidden until the combined line is expanded.
@@ -23118,8 +23122,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const pDom = _allPDomIds[g.primaryIdx];
           const pRow = pDom ? document.getElementById(pDom) : null;
           const pQty = pRow ? _scaleQty(_msIntFromInput(pRow.querySelectorAll('input:not([type="checkbox"])')[2])) : 0;
-          if (pQty > 0 && sumUsd > 0) {
-            _itemsSubtotal += _msCeil2(pQty * sumUsd);
+          // The combined KIT sells at the operator's Sale Per (per kit)
+          // when one is set — the summed component cost (sumUsd) is the
+          // COST basis, not the customer price. Falling back to sumUsd
+          // here (as before) is what made the order total read as cost
+          // and the profit go negative once a Sale Per was entered.
+          const _kitUnit = (!isNaN(salePer) && salePer > 0) ? salePer : sumUsd;
+          if (pQty > 0 && _kitUnit > 0) {
+            _itemsSubtotal += _msCeil2(pQty * _kitUnit);
             _itemsQty      += pQty;
           }
         } else {
