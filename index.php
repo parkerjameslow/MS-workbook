@@ -2432,6 +2432,112 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .rfq-add-variant-link:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    /* ── RFQ line-item images ──────────────────────────────────────────
+       Each RFQ line can have one or more product images "assigned" to it
+       (picked from the workbook's Product Images gallery). The assign
+       link + thumbnail strip live inside the ITEM cell, below the
+       "+ Add Variant" link. */
+    .rfq-assign-img-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin: 6px 0 0 4px;
+      padding: 2px 6px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1.2;
+      cursor: pointer;
+      font-family: inherit;
+      letter-spacing: 0.2px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .rfq-assign-img-link:hover { color: var(--accent); background: rgba(232,117,26,0.08); }
+    .rfq-assign-img-link:disabled { opacity: 0.4; cursor: not-allowed; }
+    .rfq-assign-img-link svg { flex-shrink: 0; }
+
+    .rfq-line-images {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin: 6px 0 0 4px;
+    }
+    .rfq-line-images:empty { display: none; }
+    .rfq-line-thumb {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .rfq-line-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .rfq-line-thumb .rfq-thumb-remove {
+      position: absolute;
+      top: -5px; right: -5px;
+      width: 15px; height: 15px;
+      border-radius: 50%;
+      background: #c0392b;
+      color: #fff;
+      font-size: 10px;
+      line-height: 15px;
+      text-align: center;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.12s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .rfq-line-thumb:hover .rfq-thumb-remove { opacity: 1; }
+
+    /* RFQ image-picker modal grid */
+    .rfq-imgpick-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+      gap: 10px;
+      max-height: 52vh;
+      overflow-y: auto;
+      padding: 2px;
+    }
+    .rfq-imgpick-item {
+      position: relative;
+      aspect-ratio: 1;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid var(--border);
+      cursor: pointer;
+      transition: border-color 0.12s, transform 0.12s;
+    }
+    .rfq-imgpick-item:hover { transform: translateY(-1px); }
+    .rfq-imgpick-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .rfq-imgpick-item.selected { border-color: var(--accent); }
+    .rfq-imgpick-item.selected::after {
+      content: '✓';
+      position: absolute;
+      top: 4px; right: 4px;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 20px;
+      text-align: center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    }
+    .rfq-imgpick-empty {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      padding: 40px 20px;
+      line-height: 1.5;
+    }
+
     /* Pallet view manual-mode checkbox — sits at the top of the pallet
        section. Compact pill so it doesn't compete with the canvas. */
     .pallet-manual-toggle {
@@ -10223,6 +10329,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- ── RFQ line-item image picker ──────────────────────────────────────
+     Pick one or more of the workbook's Product Images to assign to a
+     single RFQ line item. Clicking a tile toggles it on/off for the
+     target line live; changes autosave immediately. -->
+<div class="modal-overlay" id="rfq-image-picker-modal" onclick="if(event.target===this)closeRfqImagePicker()" style="z-index:1100;">
+  <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden;">
+    <div class="modal-title" style="flex-shrink:0;">Assign Images to Line Item</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-10px 0 16px; flex-shrink:0;">
+      Tap an image to attach or remove it from <strong id="rfq-imgpick-item-name">this line item</strong>. Images come from the Product Images gallery on the Workbook tab.
+    </p>
+    <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
+    <div class="modal-actions" style="margin-top:18px; flex-shrink:0;">
+      <button type="button" class="btn btn-primary" onclick="closeRfqImagePicker()">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Create Order Modal ─────────────────────────────────────────────── -->
 <!-- ── Notification Modal ──────────────────────────────────────────────────── -->
 <div class="modal-overlay nq-overlay" id="modal-notify" onclick="if(event.target===this)closeNotifyModal()" style="z-index:1100;">
@@ -11169,6 +11292,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Delete file from server
     try { await apiCall('delete_image', { url: img.url }); } catch (err) { /* ignore */ }
     _productImages.splice(idx, 1);
+    _pruneRfqImage(img.url);   // drop it from any RFQ line item that referenced it
     renderImageGallery();
     saveImageList();
   }
@@ -16721,7 +16845,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return out;
   }
 
-  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = []) {
+  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = []) {
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
@@ -16761,6 +16885,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
+        <button type="button" class="rfq-assign-img-link" onclick="openRfqImagePicker(${id})" title="Assign product image(s) to this line item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Assign image</button>
+        <div class="rfq-line-images" id="rfq-imgs-${id}"></div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
             oninput="recalcRfqRow(${id})"
@@ -16779,9 +16905,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove line item">&times;</span>
       </td>
     `;
+    tr.dataset.images = JSON.stringify(Array.isArray(images) ? images : []);
     tbody.appendChild(tr);
     variants.forEach(v => addRfqVariantRow(id, v.variant, v.qty, v.priceRmb, v.leadTime, v.sku || ''));
     _updateVarAddRow(id);   // place trailing button below last variant (or parent if none)
+    renderRfqLineImages(id); // draw assigned-image thumbnails (before the lock pass below)
     recalcRfqTotals();
     if (_wbLocked) {
       tr.querySelectorAll('input, select, textarea, button, span.remove-tier').forEach(el => {
@@ -16789,6 +16917,103 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         else { el.disabled = true; el.style.opacity = '0.6'; el.style.cursor = 'not-allowed'; }
       });
     }
+  }
+
+  // ── RFQ line-item images ─────────────────────────────────────────────
+  // Each RFQ line stores its assigned image URLs as a JSON array on the
+  // row (tr.dataset.images). URLs reference the workbook's Product Images
+  // gallery (_productImages), so no new upload/storage path is needed.
+  let _rfqPickerTargetId = null;
+
+  function getRfqRowImages(id) {
+    const tr = document.getElementById(`rfq-${id}`);
+    if (!tr) return [];
+    try { const a = JSON.parse(tr.dataset.images || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+
+  function setRfqRowImages(id, urls) {
+    const tr = document.getElementById(`rfq-${id}`);
+    if (!tr) return;
+    tr.dataset.images = JSON.stringify(urls);
+    renderRfqLineImages(id);
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  function renderRfqLineImages(id) {
+    const strip = document.getElementById(`rfq-imgs-${id}`);
+    if (!strip) return;
+    const urls = getRfqRowImages(id);
+    strip.innerHTML = urls.map(url => `
+      <div class="rfq-line-thumb" onclick="openLightbox('${url}')" title="Click to view · × to unassign">
+        <img src="${url}" alt="Line item image" />
+        <span class="rfq-thumb-remove" onclick="event.stopPropagation(); removeRfqLineImage(${id}, '${url.replace(/'/g, "\\'")}')" title="Unassign">&times;</span>
+      </div>`).join('');
+    if (_wbLocked) {
+      strip.querySelectorAll('.rfq-thumb-remove').forEach(el => { el.style.pointerEvents = 'none'; el.style.display = 'none'; });
+    }
+  }
+
+  function removeRfqLineImage(id, url) {
+    if (_wbLocked) return;
+    setRfqRowImages(id, getRfqRowImages(id).filter(u => u !== url));
+    // Keep the open picker (if any) in sync
+    if (_rfqPickerTargetId === id) renderRfqImagePickerGrid();
+  }
+
+  function openRfqImagePicker(id) {
+    if (_wbLocked) return;
+    _rfqPickerTargetId = id;
+    // Label the modal with the line item's name (or its row number)
+    const tr = document.getElementById(`rfq-${id}`);
+    const itemInput = tr ? tr.querySelectorAll('input:not([type="checkbox"])')[1] : null;
+    const name = (itemInput && itemInput.value.trim()) ? `"${itemInput.value.trim()}"` : `line item #${id}`;
+    const nameEl = document.getElementById('rfq-imgpick-item-name');
+    if (nameEl) nameEl.textContent = name;
+    renderRfqImagePickerGrid();
+    document.getElementById('rfq-image-picker-modal').classList.add('open');
+  }
+
+  function renderRfqImagePickerGrid() {
+    const grid = document.getElementById('rfq-imgpick-grid');
+    if (!grid) return;
+    if (!_productImages || _productImages.length === 0) {
+      grid.innerHTML = `<div class="rfq-imgpick-empty">No product images yet.<br/>Add images in the <strong>Product Images</strong> gallery on the Workbook tab, then assign them here.</div>`;
+      return;
+    }
+    const assigned = new Set(getRfqRowImages(_rfqPickerTargetId));
+    grid.innerHTML = _productImages.map(img => {
+      const sel = assigned.has(img.url) ? ' selected' : '';
+      return `<div class="rfq-imgpick-item${sel}" onclick="toggleRfqPickImage('${img.url.replace(/'/g, "\\'")}')" title="${assigned.has(img.url) ? 'Assigned — tap to remove' : 'Tap to assign'}">
+        <img src="${img.url}" alt="Product image" />
+      </div>`;
+    }).join('');
+  }
+
+  function toggleRfqPickImage(url) {
+    if (_rfqPickerTargetId == null) return;
+    const current = getRfqRowImages(_rfqPickerTargetId);
+    const next = current.includes(url) ? current.filter(u => u !== url) : [...current, url];
+    setRfqRowImages(_rfqPickerTargetId, next);
+    renderRfqImagePickerGrid();
+  }
+
+  function closeRfqImagePicker() {
+    document.getElementById('rfq-image-picker-modal').classList.remove('open');
+    _rfqPickerTargetId = null;
+  }
+
+  // When a product image is deleted from the gallery, drop it from any RFQ
+  // line item that referenced it so no line shows a broken thumbnail.
+  function _pruneRfqImage(url) {
+    document.querySelectorAll('#rfq-body tr[id^="rfq-"]').forEach(tr => {
+      const id = parseInt(tr.id.replace('rfq-', ''));
+      const imgs = getRfqRowImages(id);
+      if (imgs.includes(url)) {
+        tr.dataset.images = JSON.stringify(imgs.filter(u => u !== url));
+        renderRfqLineImages(id);
+      }
+    });
   }
 
   function removeRfqRow(id) {
@@ -17482,7 +17707,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         priceRmb: _msStripCommasStr(inputs[3]?.value),
         leadTime: inputs[4]?.value || '',
         sample: sampleCheck?.checked || false,
-        variants
+        variants,
+        images: getRfqRowImages(id)   // assigned product-image URLs
       });
     });
     return items;
@@ -27347,13 +27573,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       document.getElementById('rfq-body').innerHTML = '';
       rfqCount = 0;
       const hasRfqData = data.rfqItems && Array.isArray(data.rfqItems) && data.rfqItems.length > 0
-        && data.rfqItems.some(i => i.item || i.sku || i.qty || i.priceRmb || i.leadTime);
+        && data.rfqItems.some(i => i.item || i.sku || i.qty || i.priceRmb || i.leadTime || (i.images && i.images.length));
       if (hasRfqData) {
         data.rfqItems.forEach((rfqItem, idx) => {
           // First row: replace empty or old "Main Item" placeholder with the actual product name
           let itemName = rfqItem.item;
           if (idx === 0 && (!itemName || itemName === 'Main Item')) itemName = data.product || '';
-          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || []);
+          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || []);
         });
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
