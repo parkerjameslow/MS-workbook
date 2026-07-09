@@ -7347,11 +7347,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <col style="width:58px;">
           <col style="width:40px;">
           <col style="width:64px;">
+          <col style="width:12%;">
+          <col style="width:20%;">
+          <col style="width:9%;">
           <col style="width:13%;">
-          <col style="width:14%;">
-          <col style="width:8%;">
-          <col style="width:15%;">
-          <col style="width:13%;">
+          <col style="width:12%;">
           <col style="width:14%;">
           <col style="width:11%;">
           <col style="width:36px;">
@@ -7388,21 +7388,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </td>
           </tr>
           <tr style="background:var(--surface2);">
-            <th colspan="5" style="padding:10px 14px 10px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:left;">Item</th>
-            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">QTY</th>
-            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">UNIT PRICE (RMB)</th>
+            <th colspan="3" style="padding:10px 14px 10px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:left;">SKU</th>
+            <th colspan="2" style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:left;">Item</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:right;">QTY</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:right;">UNIT PRICE (RMB)</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:right;">UNIT PRICE (USD)</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:right;">TOTAL (USD)</th>
-            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">LEAD TIME</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:right;">LEAD TIME</th>
             <th style="border-bottom:1px solid var(--border);"></th>
           </tr>
           <tr id="rfq-totals" style="border-top:2px solid var(--border); font-weight:700; background:rgba(232, 117, 26, 0.08);">
             <td id="rfq-totals-label" colspan="5" style="font-weight:700; color:#374151; padding-left:16px;">TOTALS</td>
-            <td id="rfq-total-qty" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
-            <td id="rfq-total-rmb" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
+            <td id="rfq-total-qty" style="color:#374151; font-weight:700; text-align:right;">—</td>
+            <td id="rfq-total-rmb" style="color:#374151; font-weight:700; text-align:right;">—</td>
             <td id="rfq-total-usd-sum" style="color:#374151; font-weight:700; text-align:right;">—</td>
             <td id="rfq-total-usd" style="color:#374151; font-weight:700; text-align:right;">—</td>
-            <td id="rfq-max-lead" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
+            <td id="rfq-max-lead" style="color:#374151; font-weight:700; text-align:right;">—</td>
             <td></td>
           </tr>
         </tfoot>
@@ -17599,28 +17600,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const tr = document.createElement('tr');
         tr.className = 'rfq-item-subtotal';
         tr.style.borderTop = '1px solid var(--border)';
-        // SKU rides in front of the item name (as a chip) when the line
-        // has one — matches how the operator entered it (SKU before Item).
-        const _skuChip = item.sku
-          ? `<span style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:#E8751A; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:4px; padding:1px 6px; margin-right:8px; font-weight:600;">${String(item.sku).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`
-          : '';
+        // SKU lives in its own column in front of Item (chip when set,
+        // muted dash when the line has none).
+        const _skuCell = item.sku
+          ? `<span style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:#E8751A; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:4px; padding:1px 7px; font-weight:600;">${String(item.sku).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`
+          : `<span style="color:var(--text-muted);">—</span>`;
         tr.innerHTML = `
-          <td colspan="5" style="font-size:12px;color:var(--text);padding:7px 8px 7px 16px;font-weight:500;">
-            ${_skuChip}${item.label}
+          <td colspan="3" style="font-size:12px;padding:7px 8px 7px 16px;">
+            ${_skuCell}
           </td>
-          <td style="font-size:12px;color:var(--text);font-weight:700;padding:7px 8px 7px 26px;">
+          <td colspan="2" style="font-size:12px;color:var(--text);padding:7px 8px;font-weight:500;">
+            ${item.label}
+          </td>
+          <td style="font-size:12px;color:var(--text);font-weight:700;text-align:right;padding:7px 14px 7px 8px;">
             ${item.qty ? item.qty.toLocaleString('en-US') : '—'}
           </td>
-          <td style="font-size:12px;color:var(--text-muted);padding:7px 8px 7px 26px;">
+          <td style="font-size:12px;color:var(--text-muted);text-align:right;padding:7px 14px 7px 8px;">
             ${item.rmbText !== undefined ? item.rmbText : (item.rmb ? '¥' + fmt(item.rmb) : '—')}
           </td>
-          <td style="font-size:12px;color:var(--text-muted);text-align:right;padding:7px 12px 7px 8px;">
+          <td style="font-size:12px;color:var(--text-muted);text-align:right;padding:7px 14px 7px 8px;">
             ${item.usdText !== undefined ? item.usdText : (itemUsdPrecise ? '$' + fmt3sub(itemUsdPrecise) : '—')}
           </td>
-          <td style="font-size:12px;color:var(--text);font-weight:700;text-align:right;padding:7px 12px 7px 8px;">
+          <td style="font-size:12px;color:var(--text);font-weight:700;text-align:right;padding:7px 14px 7px 8px;">
             ${itemTotalPrecise ? '$' + fmt(itemTotalPrecise) : (item.total ? '$' + fmt(item.total) : '—')}
           </td>
-          <td style="font-size:12px;color:var(--text-muted);padding:7px 8px 7px 26px;">
+          <td style="font-size:12px;color:var(--text-muted);text-align:right;padding:7px 14px 7px 8px;">
             ${item.lead ? item.lead + ' days' : '—'}
           </td>
           <td></td>`;
