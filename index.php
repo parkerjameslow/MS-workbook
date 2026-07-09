@@ -7391,11 +7391,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <th style="border-bottom:1px solid var(--border);"></th>
           </tr>
           <tr id="rfq-totals" style="border-top:2px solid var(--border); font-weight:700; background:rgba(232, 117, 26, 0.08);">
-            <td></td>
-            <td></td>
-            <td></td>
-            <td></td>
-            <td id="rfq-totals-label" style="font-weight:700; color:#374151; padding-left:26px;">TOTALS</td>
+            <td id="rfq-totals-label" colspan="5" style="font-weight:700; color:#374151; padding-left:16px;">TOTALS</td>
             <td id="rfq-total-qty" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
             <td id="rfq-total-rmb" style="color:#374151; font-weight:700; padding-left:26px;">—</td>
             <td id="rfq-total-usd-sum" style="color:#374151; font-weight:700; text-align:right;">—</td>
@@ -17496,8 +17492,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         tr.className = 'rfq-item-subtotal';
         tr.style.borderTop = '1px solid var(--border)';
         tr.innerHTML = `
-          <td></td><td></td><td></td><td></td>
-          <td style="font-size:12px;color:var(--text);padding:7px 8px 7px 26px;font-weight:500;">
+          <td colspan="5" style="font-size:12px;color:var(--text);padding:7px 8px 7px 16px;font-weight:500;">
             ${item.label}
           </td>
           <td style="font-size:12px;color:var(--text);font-weight:700;padding:7px 8px 7px 26px;">
