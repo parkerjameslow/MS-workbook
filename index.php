@@ -17249,6 +17249,106 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (restored && typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
   }
 
+  // ── One-time recovery of clobbered line-item images / combine groups ──
+  // Earlier co-editor saves could wipe the per-line images + combine groups
+  // from the DB (see the failsafe above). The server auto-snapshots the
+  // prior state before every overwrite, so those assignments still live in
+  // workbook_revisions. When a workbook opens that HAS a product-image
+  // gallery but has lost all its line-item images, we scan history for the
+  // most recent revision that still had them and merge them back — matched
+  // by SKU/name so an added/removed line (e.g. LABOR) doesn't misalign it.
+  // Runs at most once per workbook per browser (localStorage flag).
+  const _rfqRecoveryChecked = new Set();
+  function _histKeyOf(it) { return String((it && (it.sku || it.item)) || '').trim().toLowerCase(); }
+  function _remapGroupFromHistory(histGroup, histItems, curItems) {
+    const curKeyToIdx = new Map();
+    curItems.forEach((it, i) => { const k = _histKeyOf(it); if (k && !curKeyToIdx.has(k)) curKeyToIdx.set(k, i); });
+    const newIdxs = [];
+    (histGroup.itemIdxs || []).forEach(hi => {
+      const k = _histKeyOf(histItems[hi]);
+      if (k && curKeyToIdx.has(k)) newIdxs.push(curKeyToIdx.get(k));
+    });
+    if (newIdxs.length < 2) return null;   // can't form a valid group anymore
+    const pk = _histKeyOf(histItems[histGroup.primaryIdx]);
+    const primaryIdx = (pk && curKeyToIdx.has(pk)) ? curKeyToIdx.get(pk) : newIdxs[0];
+    return { id: histGroup.id, label: histGroup.label, primaryIdx, itemIdxs: newIdxs };
+  }
+  async function _recoverRfqAssetsFromHistory() {
+    try {
+      if (!currentClient || !currentWorkbookId) return;
+      const key = `${currentClient}|${currentWorkbookId}`;
+      const dbId = dbWorkbookMap[key] || currentWorkbookId;
+      if (_rfqRecoveryChecked.has(dbId)) return;
+      _rfqRecoveryChecked.add(dbId);
+      try { if (localStorage.getItem('msRfqRecovered_' + dbId)) return; } catch (_) {}
+
+      const cur = collectRfqItems();
+      const hasRealItems  = cur.some(i => i.item || i.sku);
+      const hasImagesNow  = cur.some(i => (i.images || []).length);
+      const hasGalleryImgs = Array.isArray(_productImages) && _productImages.length > 0;
+      // Only a candidate if there are gallery images that could have been
+      // assigned but none currently are. (Combine groups are recovered
+      // alongside when this fires.)
+      if (!hasRealItems || !hasGalleryImgs || hasImagesNow) return;
+
+      const res = await fetch('api.php?action=get_revisions&workbook_id=' + encodeURIComponent(dbId))
+        .then(r => r.json()).catch(() => null);
+      const revs = (res && res.success && Array.isArray(res.data)) ? res.data : null;
+      if (!revs || !revs.length) { try { localStorage.setItem('msRfqRecovered_' + dbId, '1'); } catch (_) {} return; }
+
+      const hasGroupsNow = Array.isArray(_combineGroups) && _combineGroups.length > 0;
+      let imgByKey = null, groups = null, histForGroups = null;
+      for (const rev of revs) {   // newest-first
+        let d; try { d = JSON.parse(rev.detail_json || '{}'); } catch { continue; }
+        const items = Array.isArray(d.rfqItems) ? d.rfqItems : [];
+        if (!imgByKey) {
+          const m = new Map();
+          items.forEach(it => {
+            const k = _histKeyOf(it);
+            const imgs = Array.isArray(it.images) ? it.images : [];
+            if (k && imgs.length) m.set(k, imgs);
+          });
+          if (m.size) imgByKey = m;
+        }
+        if (!groups && !hasGroupsNow && Array.isArray(d.combineGroups) && d.combineGroups.length) {
+          groups = d.combineGroups; histForGroups = items;
+        }
+        if (imgByKey && (groups || hasGroupsNow)) break;
+      }
+
+      let changed = 0;
+      if (imgByKey) {
+        document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])').forEach(row => {
+          const id = parseInt(row.id.replace('rfq-', ''));
+          if (getRfqRowImages(id).length) return;
+          const inputs = row.querySelectorAll('input:not([type="checkbox"])');
+          const kSku  = String(inputs[0]?.value || '').trim().toLowerCase();
+          const kItem = String(inputs[1]?.value || '').trim().toLowerCase();
+          const imgs  = (kSku && imgByKey.get(kSku)) || (kItem && imgByKey.get(kItem));
+          if (imgs && imgs.length) {
+            row.dataset.images = JSON.stringify(imgs.slice());
+            renderRfqLineImages(id);
+            changed++;
+          }
+        });
+      }
+      if (groups && histForGroups) {
+        const curItems = collectRfqItems();
+        const restoredGroups = groups.map(g => _remapGroupFromHistory(g, histForGroups, curItems)).filter(Boolean);
+        if (restoredGroups.length) { _combineGroups = restoredGroups; updateRfqGroupsBar(); changed += restoredGroups.length; }
+      }
+
+      try { localStorage.setItem('msRfqRecovered_' + dbId, '1'); } catch (_) {}
+      if (changed) {
+        recalcRfqTotals();
+        autoSaveWorkbook();   // persist the recovery back to the DB
+        if (typeof showToast === 'function') showToast(`Recovered ${changed} image/group assignment${changed === 1 ? '' : 's'} from history`, 'success');
+      }
+    } catch (e) {
+      console.debug('[rfq-recovery]', e);
+    }
+  }
+
   function removeRfqRow(id) {
     const row = document.getElementById(`rfq-${id}`);
     if (row) row.remove();
@@ -27952,6 +28052,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _productImages = [];
       }
       renderImageGallery();
+      // If this workbook lost its per-line images / combine groups to an
+      // earlier co-editor clobber, quietly restore them from revision
+      // history once the load settles (non-blocking, at most once ever).
+      setTimeout(() => { try { _recoverRfqAssetsFromHistory(); } catch (_) {} }, 1200);
       // Product videos
       _productVideos = (data.productVideos && Array.isArray(data.productVideos)) ? data.productVideos.slice() : [];
       renderVideoGallery();
