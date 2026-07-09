@@ -17168,9 +17168,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function _reconcileRfqFromRemote(detail) {
     if (!detail || !Array.isArray(detail.rfqItems)) return;
+    // FAILSAFE 1 — never reconcile while a local save is queued or in
+    // flight. Otherwise a poll carrying pre-save server state could
+    // rebuild the RFQ and drop images / combine groups we just added but
+    // haven't persisted yet. We resume once our own save round-trips.
+    if (_wbSavePending) return;
     // Never clobber an in-progress edit: bail if focus is inside the RFQ
-    // table or any RFQ input is locally dirty. The next broadcast tick
-    // reconciles once the operator is idle.
+    // table or any RFQ input is locally dirty.
     const active = document.activeElement;
     if (active && active.closest && active.closest('#rfq-body')) return;
     if (document.querySelector('#rfq-body [data-local-dirty="1"]')) return;
@@ -17181,8 +17185,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const imgPicker = document.getElementById('rfq-image-picker-modal');
     if (imgPicker && imgPicker.classList.contains('open')) return;
 
-    const incoming = detail.rfqItems;
     const localItems = (typeof collectRfqItems === 'function') ? collectRfqItems() : [];
+
+    // FAILSAFE 2 — self-heal line-item images. Another operator's browser
+    // may still be on a version of this workbook that predates our image
+    // assignments; when they save, their payload drops those images. Before
+    // rebuilding from the incoming rows, re-attach any images WE hold that
+    // the incoming row is missing (matched by SKU, else item name). If we
+    // put anything back, flag a re-save so the DB is corrected too.
+    let restored = false;
+    const localImgByKey = new Map();
+    localItems.forEach(it => {
+      const key = String(it.sku || it.item || '').trim().toLowerCase();
+      const imgs = Array.isArray(it.images) ? it.images : [];
+      if (key && imgs.length) localImgByKey.set(key, imgs);
+    });
+    const incoming = detail.rfqItems.map(it => {
+      const inImgs = Array.isArray(it.images) ? it.images : [];
+      if (inImgs.length === 0) {
+        const key = String(it.sku || it.item || '').trim().toLowerCase();
+        const locImgs = key ? localImgByKey.get(key) : null;
+        if (locImgs && locImgs.length) { restored = true; return { ...it, images: locImgs.slice() }; }
+      }
+      return it;
+    });
+
     if (_rfqStructureSig(localItems) !== _rfqStructureSig(incoming)) {
       const hasData = incoming.length > 0 && incoming.some(i =>
         i.item || i.sku || i.qty || i.priceRmb || i.leadTime || (i.images && i.images.length));
@@ -17205,12 +17232,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
       }
     }
-    // Keep combine groups (Client Quote rollup) in step with the remote —
-    // cheap and independent of whether rows were rebuilt.
+
+    // FAILSAFE 3 — combine groups. Adopt the remote's groups, but NEVER let
+    // an empty remote wipe groups we hold locally (that's the exact clobber
+    // an active co-editor who never combined would otherwise cause). Keep
+    // ours and re-save so the DB is corrected.
     if (Array.isArray(detail.combineGroups)) {
-      _combineGroups = detail.combineGroups.slice();
-      if (typeof updateRfqGroupsBar === 'function') updateRfqGroupsBar();
+      if (detail.combineGroups.length > 0) {
+        _combineGroups = detail.combineGroups.slice();
+        if (typeof updateRfqGroupsBar === 'function') updateRfqGroupsBar();
+      } else if (Array.isArray(_combineGroups) && _combineGroups.length > 0) {
+        restored = true;   // remote dropped our groups — hold + re-persist
+      } else if (typeof updateRfqGroupsBar === 'function') {
+        updateRfqGroupsBar();
+      }
     }
+
+    // If we re-attached images or held onto combine groups the remote had
+    // dropped, push the corrected full state back so the DB self-heals.
+    if (restored && typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
   }
 
   function removeRfqRow(id) {
@@ -29788,8 +29828,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return collectTiersFrom('wb-tier-body');
   }
 
+  // True from the moment a local change queues a save until that save's
+  // server round-trip completes. The live-broadcast reconcile checks this
+  // so an incoming poll can't rebuild the RFQ (and drop just-added images
+  // or combine groups) out from under a change we haven't persisted yet.
+  let _wbSavePending = false;
+
   function autoSaveWorkbook() {
     if (!currentClient || !currentWorkbookId || _filling || !_appReady) return;
+    _wbSavePending = true;
     // Two-tier save: write to localStorage IMMEDIATELY so a hard
     // refresh within the next second never loses data, then debounce
     // the slower API call so we don't hammer the server on every
@@ -29818,6 +29865,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       showSaveStatus('saving');
       apiCall('save_workbook_detail', { id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: false })
         .then(r => {
+          _wbSavePending = false;   // server round-trip done — reconcile may resume
           showSaveStatus(r && r.success ? 'saved' : 'error');
           if (r && r.success) {
             // Clear the live-broadcast local-dirty flag on every input
@@ -29832,7 +29880,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             // re-poll on the next 2s tick, which will baseline against
             // the server's updated_at and skip-self via updated_by.
           }
-        });
+        })
+        .catch(() => { _wbSavePending = false; showSaveStatus('error'); });
 
       syncClientDataName(currentClient, currentWorkbookId, detail);
 
