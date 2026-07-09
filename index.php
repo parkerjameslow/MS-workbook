@@ -2748,6 +2748,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-top: 1px solid var(--border);
       margin: 4px 0;
     }
+    /* Pounds + ounces pair — two compact number boxes sharing the single
+       "lb" grid column so weight can be entered precisely (e.g. 2 lb 6 oz)
+       instead of an imprecise decimal pound. */
+    .specs-lboz {
+      display: flex;
+      gap: 5px;
+      width: 100%;
+    }
+    .specs-lboz .specs-input-wrap { flex: 1 1 0; min-width: 0; }
+    .specs-lboz .specs-input-wrap input { padding-right: 22px; }
+    .specs-lboz .specs-unit-tag { right: 6px; opacity: 0.6; }
+    /* Two boxes share one narrow column — drop the number spinners so the
+       value + unit tag stay legible. */
+    .specs-lboz input::-webkit-outer-spin-button,
+    .specs-lboz input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .specs-lboz input { -moz-appearance: textfield; appearance: textfield; }
     .specs-full-row {
       grid-column: 1 / -1;
     }
@@ -7510,10 +7526,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
-            <div class="specs-unit-header">lb</div>
+            <div class="specs-unit-header">lb · oz</div>
             <div class="specs-row-label">Weight</div>
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="dim-weight-kg" oninput="convertWeight('dim-weight-kg','dim-weight-lbs','kg'); autoCalcCartons(); renderPalletViz()" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="text" placeholder="—" id="dim-weight-lbs" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-lboz">
+              <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="dim-weight-lbs" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
+              <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="dim-weight-oz" oninput="convertWeight('dim-weight-lbs','dim-weight-kg','lbs'); renderPalletViz()" /><span class="specs-unit-tag">oz</span></div>
+            </div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Packaging Type</div>
               <div class="select-wrapper">
@@ -7558,17 +7577,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div class="specs-dim-grid" style="margin-top:8px;">
                 <div></div>
                 <div class="specs-unit-header">kg</div>
-                <div class="specs-unit-header">lb</div>
+                <div class="specs-unit-header">lb · oz</div>
                 <div class="specs-row-label">Weight</div>
                 <div class="specs-input-wrap">
                   <input type="number" step="0.001" min="0" placeholder="—" id="weight-only-kg" disabled
                     oninput="convertWeight('weight-only-kg','weight-only-lbs','kg'); onWeightOnlyChanged()" />
                   <span class="specs-unit-tag">kg</span>
                 </div>
-                <div class="specs-input-wrap">
-                  <input type="text" placeholder="—" id="weight-only-lbs" disabled
-                    oninput="convertWeight('weight-only-lbs','weight-only-kg','lbs'); onWeightOnlyChanged()" />
-                  <span class="specs-unit-tag">lb</span>
+                <div class="specs-lboz">
+                  <div class="specs-input-wrap">
+                    <input type="number" step="1" min="0" placeholder="—" id="weight-only-lbs" disabled
+                      oninput="convertWeight('weight-only-lbs','weight-only-kg','lbs'); onWeightOnlyChanged()" />
+                    <span class="specs-unit-tag">lb</span>
+                  </div>
+                  <div class="specs-input-wrap">
+                    <input type="number" step="0.1" min="0" max="16" placeholder="—" id="weight-only-oz" disabled
+                      oninput="convertWeight('weight-only-lbs','weight-only-kg','lbs'); onWeightOnlyChanged()" />
+                    <span class="specs-unit-tag">oz</span>
+                  </div>
                 </div>
               </div>
               <div id="weight-only-actual-hint" style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
@@ -7603,10 +7629,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
-            <div class="specs-unit-header">lb</div>
+            <div class="specs-unit-header">lb · oz</div>
             <div class="specs-row-label">Weight</div>
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-inner-weight" oninput="convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg'); updateOuterWeightHint()" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs'); updateOuterWeightHint()" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-lboz">
+              <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="carton-inner-weight-lbs" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs'); updateOuterWeightHint()" /><span class="specs-unit-tag">lb</span></div>
+              <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="carton-inner-weight-oz" oninput="convertWeight('carton-inner-weight-lbs','carton-inner-weight','lbs'); updateOuterWeightHint()" /><span class="specs-unit-tag">oz</span></div>
+            </div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units per Inner Carton)</span></div>
               <input type="number" min="0" placeholder="auto" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
@@ -7708,12 +7737,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <hr class="specs-dim-divider" />
                 <div></div>
                 <div class="specs-unit-header">kg</div>
-                <div class="specs-unit-header">lb</div>
+                <div class="specs-unit-header">lb · oz</div>
                 <div class="specs-row-label">Weight</div>
                 <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="case-only-weight-kg" disabled
                   oninput="convertWeight('case-only-weight-kg','case-only-weight-lbs','kg'); onCaseOnlyChanged()" /><span class="specs-unit-tag">kg</span></div>
-                <div class="specs-input-wrap"><input type="text" placeholder="—" id="case-only-weight-lbs" disabled
-                  oninput="convertWeight('case-only-weight-lbs','case-only-weight-kg','lbs'); onCaseOnlyChanged()" /><span class="specs-unit-tag">lb</span></div>
+                <div class="specs-lboz">
+                  <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="case-only-weight-lbs" disabled
+                    oninput="convertWeight('case-only-weight-lbs','case-only-weight-kg','lbs'); onCaseOnlyChanged()" /><span class="specs-unit-tag">lb</span></div>
+                  <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="case-only-weight-oz" disabled
+                    oninput="convertWeight('case-only-weight-lbs','case-only-weight-kg','lbs'); onCaseOnlyChanged()" /><span class="specs-unit-tag">oz</span></div>
+                </div>
               </div>
               <div id="case-only-hint" style="margin-top:8px; font-size:11px; color:var(--text-muted); line-height:1.5;">
                 Enter Products/Case + Cases/Order + case L × W × H to drive the pallet view.
@@ -7747,10 +7780,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
-            <div class="specs-unit-header">lb</div>
+            <div class="specs-unit-header">lb · oz</div>
             <div class="specs-row-label">Weight</div>
             <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg'); renderPalletViz()" /><span class="specs-unit-tag">kg</span></div>
-            <div class="specs-input-wrap"><input type="text" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
+            <div class="specs-lboz">
+              <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
+              <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="carton-outer-weight-oz" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">oz</span></div>
+            </div>
             <!-- Two qty fields. Both are user-editable:
                  • Inner-per-Outer  — manual or auto-derived from arrangement.
                  • Units-per-Outer  — the user can type a target here and we
@@ -12933,7 +12969,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!cb) return;
     const on = !!cb.checked;
     ['dim-cm-l', 'dim-in-l', 'dim-cm-w', 'dim-in-w',
-     'dim-cm-h', 'dim-in-h', 'dim-weight-kg', 'dim-weight-lbs'
+     'dim-cm-h', 'dim-in-h', 'dim-weight-kg', 'dim-weight-lbs', 'dim-weight-oz'
     ].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = on;
@@ -12961,7 +12997,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       fields.style.opacity = on ? '' : '0.45';
       fields.style.pointerEvents = on ? '' : 'none';
     }
-    ['weight-only-qty', 'weight-only-kg', 'weight-only-lbs'].forEach(id => {
+    ['weight-only-qty', 'weight-only-kg', 'weight-only-lbs', 'weight-only-oz'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = !on;
     });
@@ -13042,7 +13078,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     ['case-only-products-per', 'case-only-cases-order',
      'case-only-l-cm', 'case-only-l-in', 'case-only-w-cm', 'case-only-w-in',
      'case-only-h-cm', 'case-only-h-in',
-     'case-only-weight-kg', 'case-only-weight-lbs'
+     'case-only-weight-kg', 'case-only-weight-lbs', 'case-only-weight-oz'
     ].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = !on;
@@ -15478,34 +15514,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (_appReady) autoSaveWorkbook();
   }
 
+  // Weight now uses TWO imperial inputs — a whole-pounds box and an
+  // ounces box — so an operator can enter "2 lb 6 oz" precisely instead
+  // of a decimal pound that never rounds cleanly. kg stays the single
+  // source of truth (persisted); lb + oz are always derived from it on
+  // load. The ounces field's id is the pounds field's id with the
+  // trailing "-lbs" swapped for "-oz" (e.g. dim-weight-lbs → dim-weight-oz).
+  function _ozIdFor(lbsId) { return lbsId.replace(/-lbs$/, '-oz'); }
+
   function convertWeight(sourceId, targetId, sourceUnit) {
     if (convertingWeight) return;
     convertingWeight = true;
     const sourceEl = document.getElementById(sourceId);
     const targetEl = document.getElementById(targetId);
     if (sourceUnit === 'kg') {
+      // kg → lb + oz. targetId is the pounds box; its ounces sibling is
+      // derived (may be absent, e.g. the hidden carton-unit-weight-lbs).
+      const ozEl = document.getElementById(_ozIdFor(targetId));
       const val = parseFloat(sourceEl.value);
       if (isNaN(val)) {
         targetEl.value = '';
+        if (ozEl) ozEl.value = '';
       } else {
         const totalLbs = val * KG_TO_LBS;
-        const wholeLbs = Math.floor(totalLbs);
-        const oz = Math.round((totalLbs - wholeLbs) * 16 * 10) / 10;
-        targetEl.value = wholeLbs + ' lbs ' + oz.toFixed(1) + ' oz';
+        let wholeLbs = Math.floor(totalLbs);
+        let oz = Math.round((totalLbs - wholeLbs) * 16 * 10) / 10;
+        if (oz >= 16) { oz -= 16; wholeLbs += 1; }  // rounding carry
+        targetEl.value = wholeLbs;
+        if (ozEl) ozEl.value = oz;
       }
     } else {
-      const raw = sourceEl.value.trim();
-      const parsed = raw.match(/^(\d+(?:\.\d+)?)\s*lbs?\s*(\d+(?:\.\d+)?)\s*oz/i);
-      let totalLbs;
-      if (parsed) {
-        totalLbs = parseFloat(parsed[1]) + parseFloat(parsed[2]) / 16;
-      } else {
-        totalLbs = parseFloat(raw);
-      }
-      if (isNaN(totalLbs)) {
+      // lb + oz → kg. sourceId is the pounds box; read its ounces sibling.
+      const ozEl = document.getElementById(_ozIdFor(sourceId));
+      const lbs = parseFloat(sourceEl.value);
+      const ozVal = ozEl ? parseFloat(ozEl.value) : NaN;
+      if (isNaN(lbs) && isNaN(ozVal)) {
         targetEl.value = '';
       } else {
-        targetEl.value = (totalLbs / KG_TO_LBS).toFixed(2);
+        const totalLbs = (isNaN(lbs) ? 0 : lbs) + (isNaN(ozVal) ? 0 : ozVal) / 16;
+        targetEl.value = (totalLbs / KG_TO_LBS).toFixed(3);
       }
     }
     convertingWeight = false;
@@ -25207,12 +25254,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     product: {
       label: 'Product Dimensions',
       inputs: ['dim-cm-l','dim-in-l','dim-cm-w','dim-in-w','dim-cm-h','dim-in-h',
-               'dim-weight-kg','dim-weight-lbs','dim-packaging']
+               'dim-weight-kg','dim-weight-lbs','dim-weight-oz','dim-packaging']
     },
     inner: {
       label: 'Inner Carton',
       inputs: ['carton-inner-l-cm','carton-inner-l-in','carton-inner-w-cm','carton-inner-w-in',
-               'carton-inner-h-cm','carton-inner-h-in','carton-inner-weight','carton-inner-weight-lbs',
+               'carton-inner-h-cm','carton-inner-h-in','carton-inner-weight','carton-inner-weight-lbs','carton-inner-weight-oz',
                'carton-inner-count','carton-inner-row','carton-inner-side','carton-inner-stack'],
       // Single-wall by default for inner cartons
       selects: { 'carton-inner-wall': '1' }
@@ -25220,7 +25267,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     outer: {
       label: 'Outer Carton',
       inputs: ['carton-outer-l-cm','carton-outer-l-in','carton-outer-w-cm','carton-outer-w-in',
-               'carton-outer-h-cm','carton-outer-h-in','carton-outer-weight','carton-outer-weight-lbs',
+               'carton-outer-h-cm','carton-outer-h-in','carton-outer-weight','carton-outer-weight-lbs','carton-outer-weight-oz',
                'carton-outer-count','carton-outer-units','carton-outer-row','carton-outer-side','carton-outer-stack'],
       // Double-wall by default for outer/shipping cartons
       selects: { 'carton-outer-wall': '2' }
@@ -27396,14 +27443,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Workbook tab — dims + categories
       'dim-in-l','dim-in-w','dim-in-h','dim-cm-l','dim-cm-w','dim-cm-h',
       'dim-mm-l','dim-mm-w','dim-mm-h',
-      'dim-weight-kg','dim-weight-lbs','dim-packaging',
+      'dim-weight-kg','dim-weight-lbs','dim-weight-oz','dim-packaging',
       'product-category','product-category-2','materials','pantone-text','cmyk','color-notes',
       // Carton — inner
       'carton-inner-l-in','carton-inner-l-cm','carton-inner-w-in','carton-inner-w-cm','carton-inner-h-in','carton-inner-h-cm',
-      'carton-inner-weight','carton-inner-weight-lbs','carton-inner-count','carton-inner-row','carton-inner-side','carton-inner-stack','carton-inner-wall',
+      'carton-inner-weight','carton-inner-weight-lbs','carton-inner-weight-oz','carton-inner-count','carton-inner-row','carton-inner-side','carton-inner-stack','carton-inner-wall',
       // Carton — outer
       'carton-outer-l-in','carton-outer-l-cm','carton-outer-w-in','carton-outer-w-cm','carton-outer-h-in','carton-outer-h-cm',
-      'carton-outer-weight','carton-outer-weight-lbs','carton-outer-count','carton-outer-row','carton-outer-side','carton-outer-stack','carton-outer-wall',
+      'carton-outer-weight','carton-outer-weight-lbs','carton-outer-weight-oz','carton-outer-count','carton-outer-row','carton-outer-side','carton-outer-stack','carton-outer-wall',
       'carton-unit-weight','carton-unit-weight-lbs','pallet-total-cartons',
       // Shipping
       'freight-mode','freight-hs-code',
@@ -27530,6 +27577,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('weight-only-qty', data.weightOnlyCaseQty);
       _s('weight-only-kg',  data.weightOnlyKg);
       _s('weight-only-lbs', data.weightOnlyLbs);
+      // Derive lb + oz from the kg source of truth (legacy saved lb was a
+      // free-text string that won't fit the new numeric boxes).
+      if (data.weightOnlyKg) convertWeight('weight-only-kg','weight-only-lbs','kg');
       const weightOnlyEl = document.getElementById('weight-only-override');
       if (weightOnlyEl) {
         weightOnlyEl.checked = !!data.weightOnlyOverride;
@@ -27548,6 +27598,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _s('case-only-h-in',         data.caseOnlyHIn);
       _s('case-only-weight-kg',    data.caseOnlyWeightKg);
       _s('case-only-weight-lbs',   data.caseOnlyWeightLbs);
+      if (data.caseOnlyWeightKg) convertWeight('case-only-weight-kg','case-only-weight-lbs','kg');
       const caseOnlyEl = document.getElementById('case-only-override');
       if (caseOnlyEl) {
         caseOnlyEl.checked = !!data.caseOnlyOverride;
