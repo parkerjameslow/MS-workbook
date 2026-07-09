@@ -7378,11 +7378,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </td>
           </tr>
           <tr style="background:var(--surface2);">
-            <th style="border-bottom:1px solid var(--border);"></th>
-            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">#</th>
-            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:center;" title="Assigned product image">IMAGE</th>
-            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">SKU</th>
-            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">ITEM</th>
+            <th colspan="5" style="padding:10px 14px 10px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:left;">Item</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">QTY</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">UNIT PRICE (RMB)</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:right;">UNIT PRICE (USD)</th>
@@ -17455,6 +17451,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     parentRows.forEach(row => {
       const id      = parseInt(row.id.replace('rfq-', ''));
       const inputs  = row.querySelectorAll('input:not([type="checkbox"])');
+      const sku     = inputs[0]?.value?.trim() || '';
       const name    = inputs[1]?.value?.trim() || '';
       const qty     = _msNumFromInput(inputs[2]);
       const rmb     = _msNumFromInput(inputs[3]);  // the "original" price
@@ -17524,6 +17521,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           grandUsd     += totUsd;
           itemSummaries.push({
             label: name || ('Item ' + id),
+            sku,
             qty: totQty,
             rmb: 0, usd: 0,
             rmbText, usdText,
@@ -17549,7 +17547,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
 
         if (name || qty || rmb) {
-          itemSummaries.push({ label: name || ('Item ' + id), qty, rmb, usd, total, lead, isVariant: false });
+          itemSummaries.push({ label: name || ('Item ' + id), sku, qty, rmb, usd, total, lead, isVariant: false });
         }
       }
     });
@@ -17591,9 +17589,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const tr = document.createElement('tr');
         tr.className = 'rfq-item-subtotal';
         tr.style.borderTop = '1px solid var(--border)';
+        // SKU rides in front of the item name (as a chip) when the line
+        // has one — matches how the operator entered it (SKU before Item).
+        const _skuChip = item.sku
+          ? `<span style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:#E8751A; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:4px; padding:1px 6px; margin-right:8px; font-weight:600;">${String(item.sku).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`
+          : '';
         tr.innerHTML = `
           <td colspan="5" style="font-size:12px;color:var(--text);padding:7px 8px 7px 16px;font-weight:500;">
-            ${item.label}
+            ${_skuChip}${item.label}
           </td>
           <td style="font-size:12px;color:var(--text);font-weight:700;padding:7px 8px 7px 26px;">
             ${item.qty ? item.qty.toLocaleString('en-US') : '—'}
