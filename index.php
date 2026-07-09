@@ -23188,8 +23188,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Total Landed Cost displayed on the card stays at landedTotal
     // (override amount) — that's "what gets billed", not the cost
     // basis. Profit reflects the markup separately, here.
-    const _trueLandedCost = landedTotalBase + _appliedFeesAsIsTotal;
-    const orderProfit     = !isNaN(totalUsd) ? totalUsd - _trueLandedCost : NaN;
+    // Order Profit = Total USD − Total Landed Cost, using the SAME figures
+    // shown on the card (totalUsd and landedTotal) so the number always
+    // reconciles with a plain on-screen subtraction. It reads negative only
+    // when Total USD is below the landed cost — i.e. Sale Per is blank (Total
+    // USD falls back to the component cost) or set below the landed per-unit.
+    const orderProfit = !isNaN(totalUsd) ? totalUsd - landedTotal : NaN;
 
     // ─── Render cells ────────────────────────────────────────────────
     // fmtRange formats per-unit prices at three decimals (raw value,
