@@ -7334,7 +7334,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="overflow-x:auto; -webkit-overflow-scrolling:touch;">
       <table class="tier-table" id="rfq-table" style="min-width:900px; border-collapse:collapse;">
         <colgroup>
-          <col style="width:36px;">
+          <col style="width:58px;">
           <col style="width:40px;">
           <col style="width:64px;">
           <col style="width:13%;">
@@ -7351,8 +7351,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <th style="text-align:center;">
               <input type="checkbox" id="rfq-header-checkbox"
                      onchange="toggleAllRfqRows(this.checked)"
-                     title="Select all parent line items"
+                     title="Select all line items to combine"
                      style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
+              <div style="font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); margin-top:2px; line-height:1;">Combine</div>
             </th>
             <th>#</th>
             <th style="text-align:center;" title="Assigned product image">IMAGE</th>
@@ -16625,6 +16626,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
   function toggleAllRfqRows(checked) {
     document.querySelectorAll('#rfq-body .rfq-row-checkbox').forEach(cb => {
+      if (cb.disabled) return;   // rows already in a combined group can't be selected
       cb.checked = checked;
       const idAttr = parseInt(cb.getAttribute('data-rfq-id'), 10);
       if (!isFinite(idAttr)) return;
@@ -16669,6 +16671,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pluralEl = document.getElementById('rfq-groups-plural');
     if (countEl)  countEl.textContent = String(n);
     if (pluralEl) pluralEl.textContent = n === 1 ? '' : 's';
+    _refreshRfqCombineMembership();
+  }
+
+  // Disable the combine checkbox on any line item that's already a member
+  // of a combined group — it can't be combined again until it's removed
+  // from that group (via Manage). Membership is positional: itemIdxs index
+  // into the parent rows in DOM order (same enumeration collectRfqItems
+  // uses), so we map index → group label and lock those rows.
+  function _refreshRfqCombineMembership() {
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const labelByIdx = new Map();
+    (Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => {
+      (g.itemIdxs || []).forEach(idx => labelByIdx.set(idx, g.label || 'a combined group'));
+    });
+    parents.forEach((row, idx) => {
+      const cb = row.querySelector('.rfq-row-checkbox');
+      if (!cb) return;
+      if (labelByIdx.has(idx)) {
+        cb.checked = false;
+        cb.disabled = true;
+        cb.title = `Already combined into "${labelByIdx.get(idx)}" — remove it from that group (Manage) to re-combine`;
+        cb.style.opacity = '0.35';
+        cb.style.cursor = 'not-allowed';
+        const rid = parseInt(cb.getAttribute('data-rfq-id'), 10);
+        if (isFinite(rid)) _rfqSelected.delete(rid);
+      } else {
+        cb.disabled = false;
+        cb.title = 'Select to combine this line with others into one Client Quote line';
+        cb.style.opacity = '';
+        cb.style.cursor = 'pointer';
+      }
+    });
+    _syncRfqHeaderCheckbox();
+    updateRfqBulkBar();
   }
 
   // Map an in-memory rfq row id to its corresponding position in
@@ -16958,17 +16994,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td style="text-align:center; vertical-align:middle; padding:0 4px;">
         <input type="checkbox" class="rfq-row-checkbox" data-rfq-id="${id}"
                onchange="toggleRfqRowSelection(${id}, this.checked)"
-               title="Select for bulk action (Combine Items)"
+               title="Select to combine this line with others into one Client Quote line"
                style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
       </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
       <td style="text-align:center; padding:6px 4px;"><div class="rfq-img-cell" id="rfq-imgcell-${id}"></div></td>
-      <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" /></td>
+      <td>
+        <input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" />
+        <div class="rfq-item-links">
+          <label class="rfq-sample-toggle" title="Mark this line as a sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /> Sample</label>
+        </div>
+      </td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <div class="rfq-item-links">
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
-          <label class="rfq-sample-toggle" title="Mark this line as a sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /> Sample</label>
         </div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
@@ -22176,7 +22216,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 name: (ins[1]?.value || '').trim(),
                 sku:  (ins[0]?.value || '').trim(),
                 qty:  _scaleQty(_msIntFromInput(ins[2])),
-                usd:  _fxUsdFromRmb(mRmb),
               });
             });
             const _sumUsd = _fxUsdFromRmb(_sumRmb);
@@ -22213,15 +22252,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 ? `<span style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:#E8751A; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:4px; padding:1px 6px; margin-right:8px; font-weight:600;">${_escCombine(m.sku)}</span>`
                 : '';
               const nameTxt = m.name ? `<span style="color:var(--text);">${_escCombine(m.name)}</span>` : `<span style="color:var(--text-muted); font-style:italic;">(unnamed)</span>`;
+              // Members list what's INSIDE the group — deliberately no
+              // pricing (no Sale Price, no Total). The group's single
+              // rolled-up line carries the price; exposing per-member
+              // prices here would defeat the point of combining.
               html += `<tr class="cq-variant-row cq-combine-member hidden" data-cq-variant-of="${_cgKey}">
                 <td></td>
                 <td style="padding-left:32px;">
                   <span style="color:var(--text-muted); font-family:'SF Mono','Consolas',monospace; margin-right:8px;">${branch}</span>
                   ${skuChip}${nameTxt}
                 </td>
-                <td style="text-align:right; color:var(--text-muted);">${m.qty > 0 ? m.qty.toLocaleString('en-US') : '—'}</td>
-                <td style="text-align:right; color:var(--text-muted);">${m.usd > 0 ? '$' + _fmt3(m.usd) : '—'}</td>
-                <td style="text-align:right; color:var(--text-muted); font-weight:500;">—</td>
+                <td style="text-align:right; color:var(--text-muted);">${m.qty > 0 ? m.qty.toLocaleString('en-US') : ''}</td>
+                <td></td>
+                <td></td>
               </tr>`;
             });
             return;
