@@ -22096,13 +22096,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             // Sum member unit RMB → derive summed USD. Primary's qty
             // drives the line qty (per the user's "1,000 plushies, not
             // 5,000 component pieces" example).
+            const _escCombine = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            // Walk the members once — accumulate the summed RMB AND collect
+            // each member's details for the expandable breakdown below.
             let _sumRmb = 0;
+            const _members = [];
             (_combineG.itemIdxs || []).forEach(idx => {
               const did = _allParentDomIds[idx];
               const row = did ? document.getElementById(did) : null;
               if (!row) return;
               const ins = row.querySelectorAll('input:not([type="checkbox"])');
-              _sumRmb += _msNumFromInput(ins[3]);
+              const mRmb = _msNumFromInput(ins[3]);
+              _sumRmb += mRmb;
+              _members.push({
+                name: (ins[1]?.value || '').trim(),
+                sku:  (ins[0]?.value || '').trim(),
+                qty:  _scaleQty(_msIntFromInput(ins[2])),
+                usd:  _fxUsdFromRmb(mRmb),
+              });
             });
             const _sumUsd = _fxUsdFromRmb(_sumRmb);
             const _primaryDid = _combineGroupPrimaryDomId.get(_combineG.id);
@@ -22111,15 +22122,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const _primaryRawQty = _primaryIns ? _msIntFromInput(_primaryIns[2]) : 0;
             const _primaryQty = _scaleQty(_primaryRawQty);
             const _lineTotal = _primaryQty > 0 && _sumUsd > 0 ? _msCeil2(_primaryQty * _sumUsd) : 0;
-            const _escLabel = String(_combineG.label || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const _escLabel = _escCombine(_combineG.label);
             const _memberCount = (_combineG.itemIdxs || []).length;
-            html += `<tr class="cq-parent-row no-variants">
-              <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
-              <td style="font-weight:500;">${_escLabel} <span style="font-size:10px; color:#6b93ff; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:1px 6px; background:rgba(107,147,255,0.10); border:1px solid rgba(107,147,255,0.25); border-radius:9px; margin-left:6px; vertical-align:middle;">Combined · ${_memberCount}</span></td>
+            // Combined line is now expandable — clicking reveals the member
+            // items that were rolled up, so the client (and operator) can
+            // see what's inside the group. Reuses the variant chevron +
+            // _cqToggleVariants toggle with a "cg<id>" key.
+            const _cgKey = 'cg' + _combineG.id;
+            html += `<tr class="cq-parent-row" data-cq-parent="${_cgKey}" onclick="_cqToggleVariants('${_cgKey}')">
+              <td style="color:var(--text-muted); width:32px;">
+                <span class="cq-chevron" style="display:inline-block; margin-right:4px; color:var(--text-muted); font-size:10px; transition:transform 0.15s;">▸</span>${groupIdx}
+              </td>
+              <td>
+                <span style="font-weight:700;">${_escLabel}</span>
+                <span style="font-size:10px; color:#6b93ff; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:1px 6px; background:rgba(107,147,255,0.10); border:1px solid rgba(107,147,255,0.25); border-radius:9px; margin-left:8px; vertical-align:middle;">Combined · ${_memberCount}</span>
+              </td>
               <td style="text-align:right;">${_primaryQty > 0 ? _primaryQty.toLocaleString('en-US') : '—'}</td>
               <td style="text-align:right;">${_sumUsd > 0 ? '$' + _fmt3(_sumUsd) : '—'}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${_lineTotal > 0 ? '$' + _fmt2(_lineTotal) : '—'}</td>
             </tr>`;
+            // Member sub-rows — hidden until the combined line is expanded.
+            _members.forEach((m, mIdx) => {
+              const isLast = mIdx === _members.length - 1;
+              const branch = isLast ? '└' : '├';
+              const skuChip = m.sku
+                ? `<span style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:#E8751A; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:4px; padding:1px 6px; margin-right:8px; font-weight:600;">${_escCombine(m.sku)}</span>`
+                : '';
+              const nameTxt = m.name ? `<span style="color:var(--text);">${_escCombine(m.name)}</span>` : `<span style="color:var(--text-muted); font-style:italic;">(unnamed)</span>`;
+              html += `<tr class="cq-variant-row cq-combine-member hidden" data-cq-variant-of="${_cgKey}">
+                <td></td>
+                <td style="padding-left:32px;">
+                  <span style="color:var(--text-muted); font-family:'SF Mono','Consolas',monospace; margin-right:8px;">${branch}</span>
+                  ${skuChip}${nameTxt}
+                </td>
+                <td style="text-align:right; color:var(--text-muted);">${m.qty > 0 ? m.qty.toLocaleString('en-US') : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${m.usd > 0 ? '$' + _fmt3(m.usd) : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted); font-weight:500;">—</td>
+              </tr>`;
+            });
             return;
           }
 
@@ -23212,6 +23252,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const item = { kind: 'parent', label: cellText(1), qty: cellText(2), sale: cellText(3), total: cellText(4) };
         lineItems.push(item);
         if (isExpandable && parentId) variantParents[parentId] = item;
+        return;
+      }
+      if (tr.classList.contains('cq-combine-member')) {
+        // Combined-group members are an on-screen breakdown only — the
+        // exported quote / PDF keeps the group as ONE line, so skip them.
         return;
       }
       if (tr.classList.contains('cq-variant-row') && variantOf) {
