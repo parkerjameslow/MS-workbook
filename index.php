@@ -2459,6 +2459,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rfq-assign-img-link:disabled { opacity: 0.4; cursor: not-allowed; }
     .rfq-assign-img-link svg { flex-shrink: 0; }
 
+    /* In-row image cell — a single tile that sits in front of SKU. Empty
+       state is a dashed "+" add tile styled like the Product Images
+       gallery add button; populated state shows the first assigned image
+       as a thumbnail with a "+N" badge when more than one is attached.
+       Clicking either opens the same product-image picker. */
+    .rfq-img-cell { display: flex; align-items: center; justify-content: center; }
+    .rfq-img-tile {
+      position: relative; width: 52px; height: 52px; border-radius: 8px;
+      overflow: hidden; cursor: pointer; flex-shrink: 0; box-sizing: border-box;
+    }
+    .rfq-img-tile.rfq-img-thumb { border: 1px solid var(--border); background: var(--surface2); }
+    .rfq-img-tile.rfq-img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .rfq-img-add {
+      border: 2px dashed var(--border); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 1px; transition: all 0.15s;
+    }
+    .rfq-img-add:hover { border-color: var(--accent); background: var(--accent-glow); }
+    .rfq-img-add .add-icon { font-size: 18px; line-height: 1; color: var(--text-muted); }
+    .rfq-img-add .add-text { font-size: 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+    .rfq-img-badge {
+      position: absolute; bottom: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px;
+      background: rgba(0,0,0,0.72); color: #fff; font-size: 10px; font-weight: 700; line-height: 16px;
+      border-radius: 8px; text-align: center; box-sizing: border-box;
+    }
+    /* Inline "Sample" toggle relocated into the ITEM cell, sitting next to
+       the "+ Add Variant" link. */
+    .rfq-item-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 2px; }
+    .rfq-sample-toggle {
+      display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+      font-size: 11px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.2px;
+      user-select: none;
+    }
+    .rfq-sample-toggle input { width: 14px; height: 14px; cursor: pointer; accent-color: var(--accent); margin: 0; }
+    .rfq-sample-toggle:hover { color: var(--accent); }
+
     .rfq-line-images {
       display: flex;
       flex-wrap: wrap;
@@ -7301,7 +7336,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <colgroup>
           <col style="width:36px;">
           <col style="width:40px;">
-          <col style="width:50px;">
+          <col style="width:64px;">
           <col style="width:13%;">
           <col style="width:14%;">
           <col style="width:8%;">
@@ -7320,7 +7355,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                      style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
             </th>
             <th>#</th>
-            <th style="text-align:center;" title="Sample Request">SAMPLE</th>
+            <th style="text-align:center;" title="Assigned product image">IMAGE</th>
             <th>SKU</th>
             <th>ITEM</th>
             <th>QTY</th>
@@ -7344,7 +7379,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr style="background:var(--surface2);">
             <th style="border-bottom:1px solid var(--border);"></th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">#</th>
-            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:center;" title="Sample Request">SAMPLE</th>
+            <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border); text-align:center;" title="Assigned product image">IMAGE</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">SKU</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">ITEM</th>
             <th style="padding:10px 14px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); border-bottom:1px solid var(--border);">QTY</th>
@@ -16927,13 +16962,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
       </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="text-align:center; padding:24px 8px 4px;"><label class="rfq-sample-label" title="Mark as sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /></label></td>
+      <td style="text-align:center; padding:6px 4px;"><div class="rfq-img-cell" id="rfq-imgcell-${id}"></div></td>
       <td><input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" /></td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
-        <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
-        <button type="button" class="rfq-assign-img-link" onclick="openRfqImagePicker(${id})" title="Assign product image(s) to this line item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Assign image</button>
-        <div class="rfq-line-images" id="rfq-imgs-${id}"></div>
+        <div class="rfq-item-links">
+          <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
+          <label class="rfq-sample-toggle" title="Mark this line as a sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /> Sample</label>
+        </div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
             oninput="recalcRfqRow(${id})"
@@ -16988,16 +17024,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renderRfqLineImages(id) {
-    const strip = document.getElementById(`rfq-imgs-${id}`);
-    if (!strip) return;
+    // Renders the single image tile that sits in front of the SKU field.
+    // Empty → a dashed "+ Photo" add tile (mirrors the Product Images
+    // gallery add button); populated → the first assigned image as a
+    // thumbnail with a "+N" badge for the rest. Either opens the picker.
+    const cell = document.getElementById(`rfq-imgcell-${id}`);
+    if (!cell) return;
     const urls = getRfqRowImages(id);
-    strip.innerHTML = urls.map(url => `
-      <div class="rfq-line-thumb" onclick="openLightbox('${url}')" title="Click to view · × to unassign">
-        <img src="${url}" alt="Line item image" />
-        <span class="rfq-thumb-remove" onclick="event.stopPropagation(); removeRfqLineImage(${id}, '${url.replace(/'/g, "\\'")}')" title="Unassign">&times;</span>
-      </div>`).join('');
+    if (!urls.length) {
+      cell.innerHTML = `<div class="rfq-img-tile rfq-img-add" onclick="openRfqImagePicker(${id})" title="Assign product image(s) to this line item">
+          <div class="add-icon">+</div><div class="add-text">Photo</div>
+        </div>`;
+    } else {
+      const first = urls[0];
+      const badge = urls.length > 1 ? `<span class="rfq-img-badge">+${urls.length - 1}</span>` : '';
+      cell.innerHTML = `<div class="rfq-img-tile rfq-img-thumb" onclick="openRfqImagePicker(${id})" title="${urls.length} image${urls.length === 1 ? '' : 's'} assigned — click to manage">
+          <img src="${first}" alt="Line item image" />${badge}
+        </div>`;
+    }
     if (_wbLocked) {
-      strip.querySelectorAll('.rfq-thumb-remove').forEach(el => { el.style.pointerEvents = 'none'; el.style.display = 'none'; });
+      cell.querySelectorAll('.rfq-img-tile').forEach(el => { el.style.pointerEvents = 'none'; el.style.opacity = '0.5'; });
     }
   }
 
@@ -17377,24 +17423,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Unit Price (USD) — precise (non-ceiled) conversion shown at 3
     // decimals so ¥0.30 reads as $0.044 like the math actually gives,
-    // not the cent-ceiled $0.05 the old path produced. Uses the qty-
-    // weighted RMB so multi-row / variant workbooks average correctly.
+    // not the cent-ceiled $0.05 the old path produced.
     const fmt3 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-    const perUnitUsdPrecise = (grandRmbQty > 0 && USD_TO_RMB > 0)
-      ? (grandRmbQtyXPrice / grandRmbQty) / USD_TO_RMB
-      : 0;
     const grandUsdPrecise = (USD_TO_RMB > 0) ? (grandRmbQtyXPrice / USD_TO_RMB) : 0;
     const usdCell = document.getElementById('rfq-total-usd-sum');
     if (usdCell) {
-      if (hasVariants && pricedItems.length > 0 && isRange) {
-        // Mixed-price variants — keep the min–max range using the
-        // precise per-unit values for both ends, displayed at 3
-        // decimals to match the per-line UNIT PRICE (USD) cells.
-        const uMinPrecise = (USD_TO_RMB > 0) ? rmbMin / USD_TO_RMB : 0;
-        const uMaxPrecise = (USD_TO_RMB > 0) ? rmbMax / USD_TO_RMB : 0;
-        usdCell.textContent = '$' + fmt3(uMinPrecise) + '–$' + fmt3(uMaxPrecise);
+      // Mirror the UNIT PRICE (RMB) grand cell exactly so the two columns
+      // agree: variant workbooks show the single per-unit price (or a
+      // min–max range); multi-line non-variant workbooks show the SUM of
+      // the per-unit prices (a "one of each component" kit price). The USD
+      // value is just that same RMB figure converted, never the qty-
+      // weighted average (which read $4.975 next to a ¥203.30 sum).
+      if (hasVariants && pricedItems.length > 0) {
+        if (isRange) {
+          const uMinPrecise = (USD_TO_RMB > 0) ? rmbMin / USD_TO_RMB : 0;
+          const uMaxPrecise = (USD_TO_RMB > 0) ? rmbMax / USD_TO_RMB : 0;
+          usdCell.textContent = '$' + fmt3(uMinPrecise) + '–$' + fmt3(uMaxPrecise);
+        } else {
+          const uPrecise = (USD_TO_RMB > 0) ? rmbMin / USD_TO_RMB : 0;
+          usdCell.textContent = uPrecise > 0 ? '$' + fmt3(uPrecise) : '—';
+        }
       } else {
-        usdCell.textContent = perUnitUsdPrecise > 0 ? '$' + fmt3(perUnitUsdPrecise) : '—';
+        const sumUsdPrecise = (USD_TO_RMB > 0) ? grandRmb / USD_TO_RMB : 0;
+        usdCell.textContent = sumUsdPrecise > 0 ? '$' + fmt3(sumUsdPrecise) : '—';
       }
     }
 
