@@ -22366,10 +22366,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               });
             });
             const _sumUsd = _fxUsdFromRmb(_sumRmb);
-            // Sale price for the kit: the operator's Sale Per (per kit) when
-            // set, else the summed component cost. Keeps this line — and the
-            // order total / profit — on the SALE side once a price is typed.
-            const _saleUnit = _cqHaveSalePer ? _cqSalePer : _sumUsd;
+            // The combined kit is shown at its component COST (sum of the
+            // members' unit prices) — per the operator's direction the Client
+            // Quote line reflects the true cost of the kit, not a marked-up
+            // Sale Per. (Order Profit therefore reads cost − landed.)
+            const _saleUnit = _sumUsd;
             const _primaryDid = _combineGroupPrimaryDomId.get(_combineG.id);
             const _primaryRow = _primaryDid ? document.getElementById(_primaryDid) : null;
             const _primaryIns = _primaryRow ? _primaryRow.querySelectorAll('input:not([type="checkbox"])') : null;
@@ -23122,14 +23123,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const pDom = _allPDomIds[g.primaryIdx];
           const pRow = pDom ? document.getElementById(pDom) : null;
           const pQty = pRow ? _scaleQty(_msIntFromInput(pRow.querySelectorAll('input:not([type="checkbox"])')[2])) : 0;
-          // The combined KIT sells at the operator's Sale Per (per kit)
-          // when one is set — the summed component cost (sumUsd) is the
-          // COST basis, not the customer price. Falling back to sumUsd
-          // here (as before) is what made the order total read as cost
-          // and the profit go negative once a Sale Per was entered.
-          const _kitUnit = (!isNaN(salePer) && salePer > 0) ? salePer : sumUsd;
-          if (pQty > 0 && _kitUnit > 0) {
-            _itemsSubtotal += _msCeil2(pQty * _kitUnit);
+          // Combined kit total uses the component COST sum (matches the
+          // Client Quote line, which shows cost per the operator's
+          // direction). Order Profit is therefore cost − landed.
+          if (pQty > 0 && sumUsd > 0) {
+            _itemsSubtotal += _msCeil2(pQty * sumUsd);
             _itemsQty      += pQty;
           }
         } else {
