@@ -2464,6 +2464,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        gallery add button; populated state shows the first assigned image
        as a thumbnail with a "+N" badge when more than one is attached.
        Clicking either opens the same product-image picker. */
+    /* Input rows: top-align every cell so the boxed fields + image tile
+       share one top line instead of drifting to the middle of a row made
+       tall by the Sample / + Add Variant sub-lines. The number, checkbox,
+       USD, TOTAL and remove cells get a top pad so their single line sits
+       centered on the ~44px input box. */
+    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]) > td { vertical-align: top; }
+    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]) .tier-col-num { padding-top: 22px; }
+    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]) .tier-col-usd,
+    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]) .total-cell { padding-top: 24px; }
+
     .rfq-img-cell { display: flex; align-items: center; justify-content: center; }
     .rfq-img-tile {
       position: relative; width: 52px; height: 52px; border-radius: 8px;
@@ -16983,14 +16993,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const handleAttr = isFirstRow ? '' : `draggable="true" onmousedown="this.closest('tr').draggable=true" onmouseup="this.closest('tr').draggable=false" ondragstart="event.dataTransfer.setData('text/plain','${id}'); this.closest('tr').style.opacity='0.4'" ondragend="this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false"`;
     tr.innerHTML = `
-      <td style="text-align:center; vertical-align:middle; padding:0 4px;">
+      <td style="text-align:center; padding:22px 4px 0;">
         <input type="checkbox" class="rfq-row-checkbox" data-rfq-id="${id}"
                onchange="toggleRfqRowSelection(${id}, this.checked)"
                title="Select to combine this line with others into one Client Quote line"
                style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
       </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="text-align:center; padding:6px 4px;"><div class="rfq-img-cell" id="rfq-imgcell-${id}"></div></td>
+      <td style="text-align:center; padding:10px 4px 0;"><div class="rfq-img-cell" id="rfq-imgcell-${id}"></div></td>
       <td>
         <input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" />
         <div class="rfq-item-links">
@@ -17016,7 +17026,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—'}</td>
       <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
-      <td style="white-space:nowrap; text-align:center;">
+      <td style="white-space:nowrap; text-align:center; padding-top:22px;">
         <span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove line item">&times;</span>
       </td>
     `;
@@ -23365,6 +23375,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // _salePerDisplay = operator's typed Sale Per by default; replaced
     // by a weighted-avg unit price when combine groups exist so the
     // header value matches what's rendered in the Client Quote table.
+    //
+    // Fallback — if the Sale Per / combine math above didn't yield header
+    // stats (e.g. an all-combined quote with no Sale Per typed yet), derive
+    // them straight from the line totals we just rendered in the table so
+    // the header never reads "—" while the table shows real numbers. Sums
+    // every cq-parent-row (combined + single lines); member sub-rows are
+    // cq-variant-row and are excluded.
+    if ((isNaN(totalUsd) || !(_salePerDisplay > 0)) && refEl) {
+      let _sumT = 0, _sumQ = 0;
+      refEl.querySelectorAll('tr.cq-parent-row').forEach(tr => {
+        const tds = tr.querySelectorAll('td');
+        const q = parseInt(String(tds[2]?.textContent || '').replace(/[^\d]/g, '')) || 0;
+        const t = parseFloat(String(tds[4]?.textContent || '').replace(/[^\d.]/g, '')) || 0;
+        if (t > 0) { _sumT += t; _sumQ += q; }
+      });
+      if (_sumT > 0) {
+        if (isNaN(totalUsd))          totalUsd        = _msCeil2(_sumT + (_appliedFeesTotal || 0));
+        if (!(_salePerDisplay > 0) && _sumQ > 0) _salePerDisplay = _sumT / _sumQ;
+      }
+    }
     setQrs('usd',   (!isNaN(_salePerDisplay) && _salePerDisplay > 0) ? '$' + fmt3(_salePerDisplay) : '—');
     setQrs('total', !isNaN(totalUsd)                                ? '$' + fmt2(totalUsd)        : '—');
 
