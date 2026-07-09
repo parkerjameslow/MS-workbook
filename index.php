@@ -17456,7 +17456,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         tr.className = 'rfq-item-subtotal';
         tr.style.borderTop = '1px solid var(--border)';
         tr.innerHTML = `
-          <td></td><td></td><td></td>
+          <td></td><td></td><td></td><td></td>
           <td style="font-size:12px;color:var(--text);padding:7px 8px 7px 26px;font-weight:500;">
             ${item.label}
           </td>
@@ -17570,31 +17570,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rows = document.querySelectorAll('#wb-tier-body tr');
     if (!rows.length) return;
     // Per-unit RMB price stored on each tier row's dataset.price.
-    // Single source of truth: ps.grandRmbWeighted — the qty-weighted
-    // average of every priced unit (parents + variants) on the RFQ:
-    //   weightedRmb = Σ(qty × rmb) / Σ(qty)
-    // Stays in RMB throughout — no USD round-trip and no ceil-to-cent
-    // inflation, so an entered ¥0.30 displays as ¥0.300 here, not
-    // ¥0.34. Falls back to the legacy totalRmb arg only when the price
-    // summary hasn't been built yet (first render before
-    // _lastRfqPriceSummary is set).
+    // The RFQ line items combine into ONE quoted product (a kit — one of
+    // each component per unit), so the per-unit price is the SUM of the
+    // component prices (ps.grandRmb). That's the same figure the RFQ
+    // Grand Total UNIT PRICE shows (e.g. ¥205.30 / $30.146), and it makes
+    // tier 1 total = qty × kit price tie out with the RFQ grand total.
     //
-    // Note on the legacy fallback: the prior `totalRmb` (= grandRmb)
-    // was the SUM of parent RMB values across all line items. With
-    // multiple line items it inflated tier RMB to the sum (e.g. two
-    // rows at ¥0.30 → tier showed ¥0.60). The weighted-average path
-    // handles every shape correctly: single row, multi-row, variants,
-    // mixed prices.
+    // A single product with size/colour VARIANTS is the exception: there
+    // there's only one item and the per-unit price is the qty-weighted
+    // average across its variants (ps.grandRmbWeighted), NOT a sum.
     //
     // 3-decimal precision so sub-cent prices (¥0.075, ¥0.123) aren't
     // silently truncated and re-inflated on the next render.
     const ps = _lastRfqPriceSummary;
     let perUnitRmb = 0;
-    if (ps && ps.grandRmbWeighted > 0) {
-      perUnitRmb = ps.grandRmbWeighted;
-    } else {
-      perUnitRmb = parseFloat(totalRmb) || 0;
+    if (ps) {
+      if (ps.hasVariants && ps.grandRmbWeighted > 0)      perUnitRmb = ps.grandRmbWeighted;
+      else if (ps.grandRmb > 0)                           perUnitRmb = ps.grandRmb;
+      else if (ps.grandRmbWeighted > 0)                   perUnitRmb = ps.grandRmbWeighted;
     }
+    if (!perUnitRmb) perUnitRmb = parseFloat(totalRmb) || 0;
     const price = perUnitRmb > 0 ? perUnitRmb.toFixed(3) : '';
     // Cascade price to ALL tier rows (all are view-only, all show the same unit cost)
     rows.forEach(row => { row.dataset.price = price; });
