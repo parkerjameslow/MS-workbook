@@ -17109,6 +17109,70 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
   }
 
+  // ── Live-broadcast RFQ reconciliation ────────────────────────────────
+  // The remote-detail apply path syncs scalar inputs by id, but RFQ line
+  // items aren't 1:1 DOM inputs — a row another operator ADDS (e.g. a
+  // "LABOR" line from Jackson) or removes never reached other sessions
+  // until a full reload. This rebuilds the #rfq-body rows from the
+  // incoming rfqItems when (and only when) the structure differs AND the
+  // local operator isn't mid-edit, so new/changed lines appear live and
+  // each row's assigned images ride along (addRfqRow's 8th arg).
+  function _rfqStructureSig(items) {
+    return (items || []).map(i => [
+      i.item || '', i.sku || '', i.qty || '', i.priceRmb || '', i.leadTime || '',
+      i.sample ? 1 : 0,
+      (i.variants || []).map(v => [v.variant||'', v.qty||'', v.priceRmb||'', v.leadTime||'', v.sku||''].join('~')).join(';'),
+      (i.images || []).join(',')
+    ].join('|')).join('¬');
+  }
+
+  function _reconcileRfqFromRemote(detail) {
+    if (!detail || !Array.isArray(detail.rfqItems)) return;
+    // Never clobber an in-progress edit: bail if focus is inside the RFQ
+    // table or any RFQ input is locally dirty. The next broadcast tick
+    // reconciles once the operator is idle.
+    const active = document.activeElement;
+    if (active && active.closest && active.closest('#rfq-body')) return;
+    if (document.querySelector('#rfq-body [data-local-dirty="1"]')) return;
+    // Don't rebuild out from under an open combine or image-picker modal —
+    // both reference live row ids that a rebuild would invalidate.
+    const combineModal = document.getElementById('combine-rfq-modal');
+    if (combineModal && combineModal.style.display === 'flex') return;
+    const imgPicker = document.getElementById('rfq-image-picker-modal');
+    if (imgPicker && imgPicker.classList.contains('open')) return;
+
+    const incoming = detail.rfqItems;
+    const localItems = (typeof collectRfqItems === 'function') ? collectRfqItems() : [];
+    if (_rfqStructureSig(localItems) !== _rfqStructureSig(incoming)) {
+      const hasData = incoming.length > 0 && incoming.some(i =>
+        i.item || i.sku || i.qty || i.priceRmb || i.leadTime || (i.images && i.images.length));
+      if (hasData) {
+        const prevFilling = _filling;
+        _filling = true;   // suppress per-row autosave during the rebuild
+        try {
+          document.getElementById('rfq-body').innerHTML = '';
+          rfqCount = 0;
+          incoming.forEach(rfqItem => {
+            addRfqRow(rfqItem.item || '', rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb,
+                      rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || []);
+          });
+          while (document.querySelectorAll('#rfq-body tr').length < 3) addRfqRow();
+        } finally { _filling = prevFilling; }
+        // Rebuild recreated every checkbox — the old selection ids are
+        // stale, so reset the bulk-select chrome.
+        if (typeof _rfqSelected !== 'undefined') _rfqSelected.clear();
+        if (typeof updateRfqBulkBar === 'function') updateRfqBulkBar();
+        if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
+      }
+    }
+    // Keep combine groups (Client Quote rollup) in step with the remote —
+    // cheap and independent of whether rows were rebuilt.
+    if (Array.isArray(detail.combineGroups)) {
+      _combineGroups = detail.combineGroups.slice();
+      if (typeof updateRfqGroupsBar === 'function') updateRfqGroupsBar();
+    }
+  }
+
   function removeRfqRow(id) {
     const row = document.getElementById(`rfq-${id}`);
     if (row) row.remove();
@@ -36952,6 +37016,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       });
       if (typeof renderShipmentSplits === 'function') renderShipmentSplits();
     }
+
+    // Reconcile RFQ line-item rows (adds/removes/edits from another
+    // operator) BEFORE the downstream renders so the totals + Client
+    // Quote below reflect any newly-appeared lines. Self-guards against
+    // clobbering an in-progress local edit.
+    try { _reconcileRfqFromRemote(detail); } catch (e) { console.debug('[wb-broadcast] rfq reconcile', e); }
 
     // Trigger downstream renders so any open tab reflects the new
     // values. These are all idempotent re-renders that read from the
