@@ -2059,9 +2059,14 @@ switch ($action) {
             if ($action === 'rfq') {
                 $detail['sentToRfq']   = true;
                 $detail['sentToRfqAt'] = $now;
-                // Ensure at least "Quote Submitted" so it enters the queue,
-                // without pulling an already-advanced workbook backwards.
-                $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 1), updated_at = NOW() WHERE id = ?");
+                // Ensure at least "Quote Submitted" so it enters the RFQ
+                // Queue, without pulling an already-advanced workbook
+                // backwards. flow_step is 1-indexed against flowSteps
+                // (quoteChina=1, quoteSubmitted=2, ...) and the client
+                // derives flow.quoteSubmitted as (index 1 < flow_step),
+                // i.e. it's only true when flow_step >= 2 — so we must bump
+                // to 2, not 1, or the queue filter never matches it.
+                $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 2), updated_at = NOW() WHERE id = ?");
                 $upd->execute([json_encode($detail), $id]);
             } else { // samples
                 if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
