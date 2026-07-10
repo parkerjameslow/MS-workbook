@@ -29642,6 +29642,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       .rfq-row:hover td { color: var(--text); }
       .rfq-review-btn:hover { opacity: 0.9; }
       .rfq-review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      /* Active hand-off: the row flashes green then slides out toward the
+         Ready-for-Review nav so the operator sees it physically leave the
+         queue instead of silently vanishing. */
+      .rfq-row.rfq-row-sending td { background: rgba(16,185,129,0.10); transition: background 0.2s ease; }
+      .rfq-row.rfq-row-flyout {
+        animation: rfqRowFlyout 0.75s cubic-bezier(.45,0,.2,1) forwards;
+      }
+      .rfq-row.rfq-row-flyout td { border-bottom-color: transparent !important; }
+      @keyframes rfqRowFlyout {
+        0%   { transform: translateX(0);    opacity: 1; background: rgba(16,185,129,0.16); }
+        35%  { transform: translateX(0);    opacity: 1; background: rgba(16,185,129,0.20); }
+        100% { transform: translateX(80px); opacity: 0; background: rgba(16,185,129,0);    }
+      }
+      /* Review badge pops when a workbook lands in that queue. */
+      .nav-badge.badge-pulse { animation: navBadgePulse 0.7s ease; }
+      @keyframes navBadgePulse {
+        0%   { transform: scale(1);    }
+        30%  { transform: scale(1.45); }
+        60%  { transform: scale(0.92); }
+        100% { transform: scale(1);    }
+      }
+      #nav-review-link.nav-flash { background: rgba(16,185,129,0.12); transition: background 0.3s ease; }
     `;
     document.head.appendChild(s);
   })();
@@ -29725,7 +29747,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // double-clicks don't fire twice.
   async function submitWorkbookForReview(workbookId, clientName, productName, btn) {
     if (!workbookId) return;
+    const row = btn ? btn.closest('tr') : null;
     if (btn) { btn.disabled = true; const old = btn.textContent; btn.dataset.oldLabel = old; btn.textContent = 'Sending…'; }
+    if (row) row.classList.add('rfq-row-sending');   // gentle green wash while the request is in flight
     try {
       const res = await apiCall('submit_for_review', {
         workbook_id: workbookId,
@@ -29738,19 +29762,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           btn.style.background = 'var(--success, #10b981)';
           btn.style.color = '#fff';
         }
-        // Refresh the queue so the row drops out (workbook advanced
-        // past quoteSubmitted → no longer qualifies).
-        if (typeof renderRfqDashboard === 'function') {
-          setTimeout(renderRfqDashboard, 600);
-        }
+        // Active hand-off animation: pulse the Ready-for-Review nav badge +
+        // flash the link (the workbook "lands" there), slide the row out of
+        // the queue, then re-render so counts/empty-state settle.
+        _animateReviewHandoff(row, productName);
       } else {
+        if (row) row.classList.remove('rfq-row-sending');
         alert((res && res.error) ? res.error : 'Couldn\'t send for review — try again.');
         if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
       }
     } catch (e) {
       console.error('[submitWorkbookForReview]', e);
+      if (row) row.classList.remove('rfq-row-sending');
       alert('Network error sending for review — try again.');
       if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldLabel || 'Send for Review'; }
+    }
+  }
+
+  // Shared "moved to Ready for Review" feedback used by the single-row RFQ
+  // button. Pulses the nav badge, flashes the nav link, slides the row out,
+  // then refreshes the queue + review nav once the animation finishes.
+  function _animateReviewHandoff(row, productName) {
+    const badge = document.getElementById('badge-review');
+    const navLink = document.getElementById('nav-review-link');
+    // Bump the Review badge count up front so the number the operator sees
+    // land is already correct, then make it pop.
+    try { rebuildReviewNav(); } catch (_) {}
+    if (badge) { badge.classList.remove('badge-pulse'); void badge.offsetWidth; badge.classList.add('badge-pulse'); }
+    if (navLink) { navLink.classList.add('nav-flash'); setTimeout(() => navLink.classList.remove('nav-flash'), 650); }
+    try { showToast(`${productName ? '"' + productName + '"' : 'Workbook'} moved to Ready for Review`, 'success'); } catch (_) {}
+    if (row) {
+      row.classList.remove('rfq-row-sending');
+      row.classList.add('rfq-row-flyout');
+      setTimeout(() => { if (typeof renderRfqDashboard === 'function') renderRfqDashboard(); }, 780);
+    } else if (typeof renderRfqDashboard === 'function') {
+      setTimeout(renderRfqDashboard, 600);
     }
   }
 
