@@ -2569,6 +2569,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .rfq-imgpick-item:hover { transform: translateY(-1px); }
     .rfq-imgpick-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    /* Non-image source (art file: PDF/CAD/etc.) — icon tile instead of a photo */
+    .rfq-imgpick-file { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; background:var(--surface2); padding:4px; box-sizing:border-box; }
+    .rfq-imgpick-ext { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rfq-imgpick-tag { position:absolute; bottom:3px; left:3px; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:#fff; background:rgba(0,0,0,0.55); border-radius:5px; padding:1px 5px; }
     .rfq-imgpick-item.selected { border-color: var(--accent); }
     .rfq-imgpick-item.selected::after {
       content: '✓';
@@ -2585,6 +2589,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: 0 1px 4px rgba(0,0,0,0.35);
     }
     .rfq-imgpick-empty {
+      grid-column: 1 / -1;   /* span the whole grid so the text doesn't wrap into a 1-word column */
       text-align: center;
       color: var(--text-muted);
       font-size: 13px;
@@ -6988,9 +6993,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <table class="dash-table" id="dash-table">
           <thead>
             <tr>
-              <th style="width:56px; text-align:center;">
-                <input type="checkbox" id="dash-head-cb" onchange="toggleAllClientWb(this.checked)" title="Select all to move to RFQ / Samples" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" />
-                <div style="font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); margin-top:2px; line-height:1;">Select</div>
+              <th style="width:56px; text-align:center; vertical-align:middle;">
+                <input type="checkbox" id="dash-head-cb" onchange="toggleAllClientWb(this.checked)" title="Select all to move to RFQ / Samples" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle; margin-top:4px;" />
+                <div style="font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); margin-top:2px; line-height:1;">Move</div>
               </th>
               <th class="sortable" onclick="sortClientTable('product')">Product <span class="sort-arrow"></span></th>
               <th class="col-landed sortable" onclick="sortClientTable('landed')">Client Quote Total <span class="sort-arrow"></span></th>
@@ -10440,9 +10445,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      target line live; changes autosave immediately. -->
 <div class="modal-overlay" id="rfq-image-picker-modal" onclick="if(event.target===this)closeRfqImagePicker()" style="z-index:1100;">
   <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden;">
-    <div class="modal-title" style="flex-shrink:0;">Assign Images to Line Item</div>
+    <div class="modal-title" style="flex-shrink:0;">Assign Files to Line Item</div>
     <p style="color:var(--text-muted); font-size:13px; margin:-10px 0 16px; flex-shrink:0;">
-      Tap an image to attach or remove it from <strong id="rfq-imgpick-item-name">this line item</strong>. Images come from the Product Images gallery on the Workbook tab.
+      Tap to attach or remove a file from <strong id="rfq-imgpick-item-name">this line item</strong>. These come from the <strong>Product Images</strong> gallery (Workbook tab) and the <strong>Art</strong> tab.
     </p>
     <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
     <div class="modal-actions" style="margin-top:18px; flex-shrink:0;">
@@ -17308,9 +17313,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>`;
     } else {
       const first = urls[0];
+      const isImg = (typeof _artFileKind !== 'function') || _artFileKind(first) === 'image';
       const badge = urls.length > 1 ? `<span class="rfq-img-badge">+${urls.length - 1}</span>` : '';
-      cell.innerHTML = `<div class="rfq-img-tile rfq-img-thumb" onclick="openRfqImagePicker(${id})" title="${urls.length} image${urls.length === 1 ? '' : 's'} assigned — click to manage">
-          <img src="${first}" alt="Line item image" />${badge}
+      const inner = isImg
+        ? `<img src="${first}" alt="Line item image" />`
+        : `<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; background:var(--surface2);"><span style="font-size:20px; line-height:1;">${_artFileIcon(_artFileKind(first))}</span><span style="font-size:8px; color:var(--text-muted); font-weight:700;">${_artFileBasename(first)}</span></div>`;
+      cell.innerHTML = `<div class="rfq-img-tile rfq-img-thumb" onclick="openRfqImagePicker(${id})" title="${urls.length} file${urls.length === 1 ? '' : 's'} assigned — click to manage">
+          ${inner}${badge}
         </div>`;
     }
     if (_wbLocked) {
@@ -17338,18 +17347,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.getElementById('rfq-image-picker-modal').classList.add('open');
   }
 
+  // Everything an operator can attach to a line item: the Product Images
+  // gallery PLUS any files uploaded on the Art tab (images render as
+  // thumbnails; other art files — PDF/CAD/etc — show as an icon tile).
+  function _rfqPickerSources() {
+    const out = [], seen = new Set();
+    (Array.isArray(_productImages) ? _productImages : []).forEach(i => {
+      if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: 'image', from: 'product' }); }
+    });
+    (Array.isArray(_artImages) ? _artImages : []).forEach(i => {
+      if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: (typeof _artFileKind === 'function' ? _artFileKind(i.url) : 'image'), from: 'art' }); }
+    });
+    return out;
+  }
   function renderRfqImagePickerGrid() {
     const grid = document.getElementById('rfq-imgpick-grid');
     if (!grid) return;
-    if (!_productImages || _productImages.length === 0) {
-      grid.innerHTML = `<div class="rfq-imgpick-empty">No product images yet.<br/>Add images in the <strong>Product Images</strong> gallery on the Workbook tab, then assign them here.</div>`;
+    const sources = _rfqPickerSources();
+    if (!sources.length) {
+      grid.innerHTML = `<div class="rfq-imgpick-empty">Nothing to attach yet. Add images in the <strong>Product Images</strong> gallery on the Workbook tab, or upload files on the <strong>Art</strong> tab — they'll all show up here to choose from.</div>`;
       return;
     }
     const assigned = new Set(getRfqRowImages(_rfqPickerTargetId));
-    grid.innerHTML = _productImages.map(img => {
-      const sel = assigned.has(img.url) ? ' selected' : '';
-      return `<div class="rfq-imgpick-item${sel}" onclick="toggleRfqPickImage('${img.url.replace(/'/g, "\\'")}')" title="${assigned.has(img.url) ? 'Assigned — tap to remove' : 'Tap to assign'}">
-        <img src="${img.url}" alt="Product image" />
+    grid.innerHTML = sources.map(s => {
+      const sel = assigned.has(s.url) ? ' selected' : '';
+      const esc = s.url.replace(/'/g, "\\'");
+      const tag = s.from === 'art' ? `<span class="rfq-imgpick-tag">Art</span>` : '';
+      const inner = (s.kind === 'image')
+        ? `<img src="${s.url}" alt="" />`
+        : `<div class="rfq-imgpick-file"><div style="font-size:26px; line-height:1;">${_artFileIcon(s.kind)}</div><div class="rfq-imgpick-ext">${_artFileBasename(s.url)}</div></div>`;
+      return `<div class="rfq-imgpick-item${sel}" onclick="toggleRfqPickImage('${esc}')" title="${assigned.has(s.url) ? 'Assigned — tap to remove' : 'Tap to assign'}">
+        ${inner}${tag}
       </div>`;
     }).join('');
   }
