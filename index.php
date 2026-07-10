@@ -11545,11 +11545,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) { applyOutlineTo.style.outline = ''; applyOutlineTo.style.outlineOffset = ''; } });
       el.addEventListener('drop', async e => {
         e.preventDefault();
-        // The gallery AND its enclosing section-card are BOTH wired as drop
-        // targets (bigger forgiving zone). A drop on the gallery bubbles to
-        // the card too, firing this handler twice → the file uploaded (and
-        // shown) twice. stopPropagation keeps a single drop to one handler.
-        e.stopPropagation();
+        // Guarantee a single handler per drop — stopImmediatePropagation
+        // blocks both bubbling to another wired ancestor AND any duplicate
+        // listener on this same element. Fixes the file uploading twice.
+        e.stopImmediatePropagation();
         applyOutlineTo.style.outline = '';
         applyOutlineTo.style.outlineOffset = '';
         // Diagnostic toast — surfaces what the browser saw in the
@@ -11730,8 +11729,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       });
     };
-    wireDropTarget(artGalleryEl, artGalleryEl);
-    if (dropZone !== artGalleryEl) wireDropTarget(dropZone, artGalleryEl);
+    // Wire the drop on ONE target only — the section card (which contains
+    // the gallery, so it still catches drops on the grid) or the gallery
+    // itself as a fallback. Previously BOTH were wired, so a drop fired two
+    // handlers → the file uploaded and showed up twice.
+    wireDropTarget(dropZone, artGalleryEl);
   }
 
   // Clipboard paste — upload images when workbook is open
