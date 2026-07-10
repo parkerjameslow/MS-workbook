@@ -29730,14 +29730,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     for (const r of rows) {
       try {
         const res = await apiCall('submit_for_review', { workbook_id: r.workbookId, client_name: r.clientName || '', product_name: r.product || '' });
-        if (res && res.success) ok++; else fail++;
+        if (res && res.success) { ok++; _markSentForReviewLocal(r.clientName, r.workbookId); } else fail++;
       } catch (e) { fail++; }
     }
+    try { saveToLocalStorage(); } catch (_) {}
     if (btn) { btn.disabled = false; btn.textContent = 'Send to Review'; }
     closeBulkReviewModal();
     clearRfqQueueSelection();
+    try { rebuildReviewNav(); } catch (_) {}
     if (typeof renderRfqDashboard === 'function') setTimeout(renderRfqDashboard, 400);
     showToast(`Sent ${ok} workbook${ok === 1 ? '' : 's'} to review${fail ? ` · ${fail} failed` : ''}`, fail ? 'warn' : 'success');
+  }
+
+  // submit_for_review sets sentForReview in the DB but does NOT come back
+  // through a full reload, so the local workbookDetail must be updated too
+  // or collectAllRfqs() still sees the workbook (sentForReview divides the
+  // RFQ Queue from Ready-for-Review) and the row never leaves on re-render.
+  function _markSentForReviewLocal(clientName, workbookId) {
+    const key = `${clientName}|${workbookId}`;
+    let wd = workbookDetail[key];
+    if (!wd) {
+      const found = Object.entries(workbookDetail).find(([k]) => k.endsWith('|' + workbookId));
+      wd = found ? found[1] : null;
+    }
+    if (wd) {
+      wd.sentForReview = true;
+      if (!wd.sentForReviewAt) wd.sentForReviewAt = new Date().toISOString();
+    }
+    return !!wd;
   }
 
   // Per-row "Send for Review" action on the RFQ Queue. Tells the server
@@ -29762,6 +29782,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           btn.style.background = 'var(--success, #10b981)';
           btn.style.color = '#fff';
         }
+        // Update local state so the workbook actually leaves the RFQ Queue
+        // (and enters Ready-for-Review) when we re-render — the server flag
+        // isn't reloaded here.
+        _markSentForReviewLocal(clientName, workbookId);
+        try { saveToLocalStorage(); } catch (_) {}
         // Active hand-off animation: pulse the Ready-for-Review nav badge +
         // flash the link (the workbook "lands" there), slide the row out of
         // the queue, then re-render so counts/empty-state settle.
