@@ -1721,14 +1721,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        the dashboard table picks them up. The workbook table's
        colgroup widths win on its own. */
     .dash-table#rfq-table { table-layout: fixed; }
-    .dash-table#rfq-table th:nth-child(1), .dash-table#rfq-table td:nth-child(1) { width: 11%; }   /* Client */
-    .dash-table#rfq-table th:nth-child(2), .dash-table#rfq-table td:nth-child(2) { width: 22%; }   /* Workbook */
-    .dash-table#rfq-table th:nth-child(3), .dash-table#rfq-table td:nth-child(3) { width: 10%; }   /* Submitted */
-    .dash-table#rfq-table th:nth-child(4), .dash-table#rfq-table td:nth-child(4) { width: 7%;  }   /* Lines */
-    .dash-table#rfq-table th:nth-child(5), .dash-table#rfq-table td:nth-child(5) { width: 9%;  }   /* Qty */
-    .dash-table#rfq-table th:nth-child(6), .dash-table#rfq-table td:nth-child(6) { width: 11%; }   /* RMB */
-    .dash-table#rfq-table th:nth-child(7), .dash-table#rfq-table td:nth-child(7) { width: 12%; }   /* USD */
-    .dash-table#rfq-table th:nth-child(8), .dash-table#rfq-table td:nth-child(8) { width: 18%; }   /* Action */
+    .dash-table#rfq-table th:nth-child(1), .dash-table#rfq-table td:nth-child(1) { width: 40px; text-align: center; padding-left: 6px; padding-right: 6px; }  /* Select */
+    .dash-table#rfq-table th:nth-child(2), .dash-table#rfq-table td:nth-child(2) { width: 11%; }   /* Client */
+    .dash-table#rfq-table th:nth-child(3), .dash-table#rfq-table td:nth-child(3) { width: 20%; }   /* Workbook */
+    .dash-table#rfq-table th:nth-child(4), .dash-table#rfq-table td:nth-child(4) { width: 10%; }   /* Submitted */
+    .dash-table#rfq-table th:nth-child(5), .dash-table#rfq-table td:nth-child(5) { width: 7%;  }   /* Lines */
+    .dash-table#rfq-table th:nth-child(6), .dash-table#rfq-table td:nth-child(6) { width: 9%;  }   /* Qty */
+    .dash-table#rfq-table th:nth-child(7), .dash-table#rfq-table td:nth-child(7) { width: 11%; }   /* RMB */
+    .dash-table#rfq-table th:nth-child(8), .dash-table#rfq-table td:nth-child(8) { width: 12%; }   /* USD */
+    .dash-table#rfq-table th:nth-child(9), .dash-table#rfq-table td:nth-child(9) { width: 18%; }   /* Action */
     .dash-table#rfq-table th, .dash-table#rfq-table td { padding-left: 12px; padding-right: 12px; }
 
     /* Ready-for-Review table — 7 columns, no per-row action (the row
@@ -8962,12 +8963,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
         <span class="section-title" style="margin-right:auto;">Submitted RFQs</span>
+        <div id="rfq-queue-bulk-bar" style="display:none; align-items:center; gap:10px;">
+          <strong style="font-size:13px; color:var(--accent);"><span id="rfq-queue-bulk-count">0</span> selected</strong>
+          <button class="btn btn-ghost" style="font-size:12px; padding:6px 12px;" onclick="clearRfqQueueSelection()">Clear</button>
+          <button class="btn btn-primary" style="font-size:12px; padding:6px 14px;" onclick="openBulkReviewPrompt()">Send to Review →</button>
+        </div>
       </div>
       <div class="section-body" style="padding:0;">
         <div class="table-scroll-wrapper">
         <table class="dash-table" id="rfq-table" style="width:100%;">
           <thead>
             <tr>
+              <th style="text-align:center;"><input type="checkbox" id="rfq-queue-head-cb" onchange="toggleAllRfqQueue(this.checked)" title="Select all" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></th>
               <th>CLIENT</th>
               <th>WORKBOOK</th>
               <th>SUBMITTED</th>
@@ -10442,6 +10449,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
       <button type="button" class="btn btn-ghost" onclick="closeEmailPreview()">Cancel</button>
       <button type="button" class="btn btn-primary" id="email-preview-send-btn" onclick="_emailPreviewConfirm()">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk "Send to Review" confirmation (RFQ Queue) ─────────────────── -->
+<div class="modal-overlay" id="bulk-review-modal" onclick="if(event.target===this)closeBulkReviewModal()" style="z-index:1200;">
+  <div class="modal" style="max-width:480px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Send <span id="bulk-review-count">0</span> to Review</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 12px; flex-shrink:0;">These workbooks will be marked ready for review and moved out of the RFQ queue. Jackson will be emailed (Parker cc'd) to approve each one.</p>
+    <ul id="bulk-review-list" style="list-style:none; padding:0; margin:0; overflow-y:auto; flex:1 1 auto; font-size:13px;"></ul>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
+      <button type="button" class="btn btn-ghost" onclick="closeBulkReviewModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="bulk-review-confirm-btn" onclick="confirmBulkReview()">Send to Review</button>
     </div>
   </div>
 </div>
@@ -29214,8 +29234,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (emptyEl) emptyEl.style.display = 'none';
     if (tableEl) tableEl.style.display = '';
 
+    _rfqQueueRows = all;  // remembered for the bulk-review prompt
+
     tbody.innerHTML = all.map(r => {
       const wbHref = `#/client/${encodeURIComponent(r.clientName)}/workbook/${r.workbookId}`;
+      const _checked = _rfqQueueSelected.has(r.workbookId) ? 'checked' : '';
       const rmb = r.totalRmb > 0 ? `¥${Math.round(r.totalRmb).toLocaleString('en-US')}` : '—';
       const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
       // Whole row is the affordance to open the workbook so Karen can
@@ -29225,6 +29248,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const productEsc = String(r.product || '').replace(/'/g, "\\'");
       return `
         <tr class="rfq-row" style="cursor:pointer;" onclick="location.hash='${wbHref.substring(1)}'">
+          <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="rfq-queue-cb" data-wb-id="${r.workbookId}" ${_checked} onclick="event.stopPropagation();" onchange="toggleRfqQueueSelection(${r.workbookId}, this.checked)" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></td>
           <td><span class="rfq-client-name" title="${clientEsc}">${r.clientName}</span></td>
           <td style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.product}<span style="font-size:11px; color:var(--text-muted); margin-left:8px; font-weight:500;">→ open</span></td>
           <td style="color:var(--text-muted); font-size:12px;" title="${r.sentToRfqAt || ''}">${_rfqTimeAgo(r.sentToRfqAt)}</td>
@@ -29259,6 +29283,78 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     `;
     document.head.appendChild(s);
   })();
+
+  // ── RFQ Queue bulk-select → Send to Review ───────────────────────────
+  // Karen can tick multiple queued workbooks and send them all to review
+  // in one go (each fires submit_for_review → emails Jackson, cc Parker).
+  const _rfqQueueSelected = new Set();
+  let _rfqQueueRows = [];
+  function toggleRfqQueueSelection(wbId, checked) {
+    if (checked) _rfqQueueSelected.add(wbId); else _rfqQueueSelected.delete(wbId);
+    _updateRfqQueueBulkBar();
+    _syncRfqQueueHeadCb();
+  }
+  function toggleAllRfqQueue(checked) {
+    document.querySelectorAll('#rfq-tbody .rfq-queue-cb').forEach(cb => {
+      cb.checked = checked;
+      const id = parseInt(cb.getAttribute('data-wb-id'), 10);
+      if (!isFinite(id)) return;
+      if (checked) _rfqQueueSelected.add(id); else _rfqQueueSelected.delete(id);
+    });
+    _updateRfqQueueBulkBar();
+  }
+  function clearRfqQueueSelection() {
+    _rfqQueueSelected.clear();
+    document.querySelectorAll('#rfq-tbody .rfq-queue-cb').forEach(cb => { cb.checked = false; });
+    const h = document.getElementById('rfq-queue-head-cb'); if (h) { h.checked = false; h.indeterminate = false; }
+    _updateRfqQueueBulkBar();
+  }
+  function _updateRfqQueueBulkBar() {
+    const bar = document.getElementById('rfq-queue-bulk-bar');
+    const cnt = document.getElementById('rfq-queue-bulk-count');
+    const n = _rfqQueueSelected.size;
+    if (bar) bar.style.display = n > 0 ? 'flex' : 'none';
+    if (cnt) cnt.textContent = String(n);
+  }
+  function _syncRfqQueueHeadCb() {
+    const h = document.getElementById('rfq-queue-head-cb'); if (!h) return;
+    const rows = document.querySelectorAll('#rfq-tbody .rfq-queue-cb');
+    if (!rows.length) { h.checked = false; h.indeterminate = false; return; }
+    let n = 0; rows.forEach(cb => { if (cb.checked) n++; });
+    if (n === 0)                 { h.checked = false; h.indeterminate = false; }
+    else if (n === rows.length)  { h.checked = true;  h.indeterminate = false; }
+    else                         { h.checked = false; h.indeterminate = true;  }
+  }
+  function openBulkReviewPrompt() {
+    const rows = _rfqQueueRows.filter(r => _rfqQueueSelected.has(r.workbookId));
+    if (!rows.length) return;
+    document.getElementById('bulk-review-count').textContent = String(rows.length);
+    document.getElementById('bulk-review-list').innerHTML = rows.map(r =>
+      `<li style="padding:5px 0; border-bottom:1px solid var(--border);"><strong>${_escHtml(r.product || 'Untitled')}</strong> <span style="color:var(--text-muted);">— ${_escHtml(r.clientName || '')}</span></li>`
+    ).join('');
+    document.getElementById('bulk-review-modal').classList.add('open');
+  }
+  function closeBulkReviewModal() {
+    const m = document.getElementById('bulk-review-modal'); if (m) m.classList.remove('open');
+  }
+  async function confirmBulkReview() {
+    const rows = _rfqQueueRows.filter(r => _rfqQueueSelected.has(r.workbookId));
+    if (!rows.length) { closeBulkReviewModal(); return; }
+    const btn = document.getElementById('bulk-review-confirm-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    let ok = 0, fail = 0;
+    for (const r of rows) {
+      try {
+        const res = await apiCall('submit_for_review', { workbook_id: r.workbookId, client_name: r.clientName || '', product_name: r.product || '' });
+        if (res && res.success) ok++; else fail++;
+      } catch (e) { fail++; }
+    }
+    if (btn) { btn.disabled = false; btn.textContent = 'Send to Review'; }
+    closeBulkReviewModal();
+    clearRfqQueueSelection();
+    if (typeof renderRfqDashboard === 'function') setTimeout(renderRfqDashboard, 400);
+    showToast(`Sent ${ok} workbook${ok === 1 ? '' : 's'} to review${fail ? ` · ${fail} failed` : ''}`, fail ? 'warn' : 'success');
+  }
 
   // Per-row "Send for Review" action on the RFQ Queue. Tells the server
   // to advance this workbook past quoteSubmitted (so it leaves the queue)

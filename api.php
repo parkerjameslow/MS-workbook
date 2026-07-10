@@ -1924,7 +1924,9 @@ switch ($action) {
         $clientName  = trim((string)($input['client_name']  ?? ''));
         $productName = trim((string)($input['product_name'] ?? ''));
         $reviewer    = trim((string)($_SESSION['username']  ?? ($_SESSION['email'] ?? 'Someone')));
-        $internal    = ['jackson@marketsculpt.com', 'parker@marketsculpt.com'];
+        // Jackson is the reviewer/approver; Parker is cc'd.
+        $internal    = ['jackson@marketsculpt.com'];
+        $reviewCc    = ['parker@marketsculpt.com'];
 
         $hostBase = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com');
         $clientSafe = rawurlencode($clientName);
@@ -1946,7 +1948,7 @@ switch ($action) {
                   : '<p style="color:#666; font-size:12px; margin-top:20px;">Open the workbook and advance the status when you\'re ready to push it to the client.</p>')
               . '</body></html>';
 
-        $mail = ms_smtp_send($internal, $subject, $html);
+        $mail = ms_smtp_send($internal, $subject, $html, $reviewCc);
 
         echo json_encode([
             'success'    => true,
@@ -1955,7 +1957,7 @@ switch ($action) {
             're_sent'    => $reSent,
             'email_sent' => !empty($mail['ok']),
             'email_error'=> empty($mail['ok']) ? ($mail['error'] ?? 'unknown') : null,
-            'reviewers'  => $internal,
+            'reviewers'  => array_merge($internal, $reviewCc),
         ]);
         break;
     }
