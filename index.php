@@ -2091,6 +2091,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .image-add-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
     .image-add-btn .add-icon { font-size: 24px; color: var(--text-muted); }
     .image-add-btn .add-text { font-size: 10px; color: var(--text-muted); }
+    /* Art upload in-progress tile + spinner */
+    .art-uploading-tile { width: 120px; height: 120px; border-radius: var(--radius); border: 1px solid var(--border); overflow: hidden; flex-shrink: 0; position: relative; }
+    .art-spinner {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      animation: art-spin 0.7s linear infinite;
+    }
+    @keyframes art-spin { to { transform: rotate(360deg); } }
     /* Lightbox */
     .lightbox-overlay {
       display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -11537,6 +11545,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) { applyOutlineTo.style.outline = ''; applyOutlineTo.style.outlineOffset = ''; } });
       el.addEventListener('drop', async e => {
         e.preventDefault();
+        // The gallery AND its enclosing section-card are BOTH wired as drop
+        // targets (bigger forgiving zone). A drop on the gallery bubbles to
+        // the card too, firing this handler twice → the file uploaded (and
+        // shown) twice. stopPropagation keeps a single drop to one handler.
+        e.stopPropagation();
         applyOutlineTo.style.outline = '';
         applyOutlineTo.style.outlineOffset = '';
         // Diagnostic toast — surfaces what the browser saw in the
@@ -12041,6 +12054,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Art Tab ─────────────────────────────────────────────────────────────── */
   let _artImages = [];
+  let _artUploadingCount = 0; // in-flight art uploads → spinner tiles in the gallery
 
   // Per-client logo upload — replaces the prior per-workbook Client
   // Logo section on the Art tab. Triggered from the edit-pencil
@@ -12111,6 +12125,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!files.length || !currentWorkbookId) return;
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     for (const file of files) {
+      // Show an "Uploading…" spinner tile in the gallery for the duration
+      // of this file's upload so a slow (multi-MB) drop gives immediate
+      // feedback instead of looking frozen.
+      _artUploadingCount++;
+      renderArtGallery();
       const formData = new FormData();
       formData.append('file', file);
       formData.append('workbook_id', dbId);
@@ -12119,7 +12138,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const data = await res.json();
         if (data.success) {
           _artImages.push({ url: data.url });
-          renderArtGallery();
           saveArtList();
         } else if (data.error) {
           // Surface the server's reason (usually "Unsupported file type:
@@ -12128,6 +12146,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           alert(`Could not upload ${file.name}: ${data.error}`);
         }
       } catch (err) { console.warn('Art upload failed:', err); }
+      finally {
+        _artUploadingCount = Math.max(0, _artUploadingCount - 1);
+        renderArtGallery();
+      }
     }
     e.target.value = '';
   }
@@ -12270,6 +12292,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       gallery.insertBefore(item, addBtn);
     });
+    // Spinner tile(s) for uploads still in flight — gives the operator a
+    // clear "working…" signal during slow (multi-MB) uploads.
+    for (let i = 0; i < _artUploadingCount; i++) {
+      const load = document.createElement('div');
+      load.className = 'image-gallery-item art-uploading-tile';
+      load.innerHTML = `<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; background:var(--surface2);">
+        <div class="art-spinner"></div>
+        <span style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Uploading…</span>
+      </div>`;
+      gallery.insertBefore(load, addBtn);
+    }
   }
 
   // Unified art preview modal — handles image / PDF / video inline,
