@@ -2073,6 +2073,15 @@ switch ($action) {
                     foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = true; }
                     unset($it);
                 }
+                // Moving to Samples means leaving the RFQ / Review stages —
+                // clear those dividers so the workbook actually shows in the
+                // Samples list (sentToRfq / sentForReview otherwise keep it in
+                // those queues AND gate it out of Samples). flow_step is left
+                // as-is so we never pull a workbook destructively backwards.
+                $detail['sentToRfq']     = false;
+                $detail['sentToRfqAt']   = null;
+                $detail['sentForReview'] = false;
+                $detail['sentForReviewAt'] = null;
                 $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
                 $upd->execute([json_encode($detail), $id]);
             }

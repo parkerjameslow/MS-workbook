@@ -1737,14 +1737,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        reflow cleanly inside the card. Same hover/cursor treatment as
        the RFQ rows so the affordance reads the same. */
     #review-table { table-layout: fixed; }
-    #review-table th:nth-child(1), #review-table td:nth-child(1) { width: 14%; } /* Client */
-    #review-table th:nth-child(2), #review-table td:nth-child(2) { width: 28%; } /* Workbook */
-    #review-table th:nth-child(3), #review-table td:nth-child(3) { width: 14%; } /* Sent */
-    #review-table th:nth-child(4), #review-table td:nth-child(4) { width: 8%;  } /* Lines */
-    #review-table th:nth-child(5), #review-table td:nth-child(5) { width: 10%; } /* Qty */
-    #review-table th:nth-child(6), #review-table td:nth-child(6) { width: 12%; } /* RMB */
-    #review-table th:nth-child(7), #review-table td:nth-child(7) { width: 14%; } /* USD */
+    #review-table th:nth-child(1), #review-table td:nth-child(1) { width: 40px; text-align: center; padding-left: 6px; padding-right: 6px; } /* Select */
+    #review-table th:nth-child(2), #review-table td:nth-child(2) { width: 14%; overflow: hidden; } /* Client */
+    #review-table th:nth-child(3), #review-table td:nth-child(3) { width: 26%; overflow: hidden; } /* Workbook */
+    #review-table th:nth-child(4), #review-table td:nth-child(4) { width: 14%; } /* Sent */
+    #review-table th:nth-child(5), #review-table td:nth-child(5) { width: 8%;  } /* Lines */
+    #review-table th:nth-child(6), #review-table td:nth-child(6) { width: 10%; } /* Qty */
+    #review-table th:nth-child(7), #review-table td:nth-child(7) { width: 12%; } /* RMB */
+    #review-table th:nth-child(8), #review-table td:nth-child(8) { width: 14%; } /* USD */
     #review-table th, #review-table td { padding-left: 12px; padding-right: 12px; }
+    #review-table .review-client-name { display: block; max-width: 100%; }
     #review-table .review-client-name {
       font-size: 13px;
       font-weight: 600;
@@ -9061,6 +9063,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <!-- Stats Row -->
     <div id="review-stats-row" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px;"></div>
 
+    <!-- Bulk-select action bar (appears once 1+ rows are checked) -->
+    <div id="review-bulk-bar" style="display:none; align-items:center; gap:12px; padding:10px 16px; background:rgba(232,117,26,0.10); border:1px solid rgba(232,117,26,0.30); border-radius:10px; margin-bottom:12px;">
+      <strong style="font-size:13px; color:var(--accent);"><span id="review-bulk-count">0</span> selected</strong>
+      <button class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllReview()">Deselect all</button>
+      <span style="margin-left:auto; display:flex; gap:8px;">
+        <button class="btn btn-ghost" style="font-size:12px; border-color:var(--accent); color:var(--accent);" onclick="openReviewToSamplesPrompt()">→ Move to Samples</button>
+      </span>
+    </div>
+
     <!-- Review Table -->
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
@@ -9071,6 +9082,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <table class="dash-table" id="review-table" style="width:100%;">
           <thead>
             <tr>
+              <th style="text-align:center;"><input type="checkbox" id="review-head-cb" onchange="toggleAllReview(this.checked)" title="Select all" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></th>
               <th>CLIENT</th>
               <th>WORKBOOK</th>
               <th>SENT FOR REVIEW</th>
@@ -10510,6 +10522,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closeSamplesToRfqModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="_doSamplesToRfq()">→ Move to RFQ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk "Move to Samples" from Ready for Review ───────────────────── -->
+<div class="modal-overlay" id="review-samples-modal" onclick="if(event.target===this)closeReviewToSamplesModal()" style="z-index:1200;">
+  <div class="modal" style="max-width:460px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Move <span id="review-samples-modal-count">0</span> workbook(s) to Samples</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 12px; flex-shrink:0;">Their line items are flagged as sample requests and the workbook(s) move out of <strong>Ready for Review</strong> into the <strong>Samples</strong> view. They stay in the client view as usual.</p>
+    <ul id="review-samples-modal-list" style="list-style:none; padding:0; margin:0; overflow-y:auto; flex:1 1 auto; font-size:13px;"></ul>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
+      <button type="button" class="btn btn-ghost" onclick="closeReviewToSamplesModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="_doReviewToSamples()">→ Move to Samples</button>
     </div>
   </div>
 </div>
@@ -30049,10 +30074,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tableEl = document.getElementById('review-table');
     if (!tbody) return;
 
+    // Remember the rows on screen for the bulk-select prompt, and drop
+    // any stale selections that are no longer visible.
+    _reviewRows = all;
+    const visible = new Set(all.map(r => r.workbookId));
+    Array.from(_reviewSelected).forEach(id => { if (!visible.has(id)) _reviewSelected.delete(id); });
+
     if (all.length === 0) {
       tbody.innerHTML = '';
       if (emptyEl) emptyEl.style.display = '';
       if (tableEl) tableEl.style.display = 'none';
+      updateReviewBulkBar();
+      _syncReviewHeadCb();
       return;
     }
     if (emptyEl) emptyEl.style.display = 'none';
@@ -30063,8 +30096,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const rmb = r.totalRmb > 0 ? `¥${Math.round(r.totalRmb).toLocaleString('en-US')}` : '—';
       const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
       const clientEsc = String(r.clientName || '').replace(/'/g, "\\'");
+      const checked = _reviewSelected.has(r.workbookId) ? 'checked' : '';
       return `
         <tr class="review-row" onclick="location.hash='${wbHref.substring(1)}'">
+          <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="review-row-cb" data-wb-id="${r.workbookId}" ${checked} onclick="event.stopPropagation();" onchange="toggleReviewSelection(${r.workbookId}, this.checked)" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></td>
           <td><span class="review-client-name" title="${clientEsc}">${r.clientName}</span></td>
           <td style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.product}<span style="font-size:11px; color:var(--text-muted); margin-left:8px; font-weight:500;">→ open</span></td>
           <td style="color:var(--text-muted); font-size:12px;" title="${r.sentForReviewAt || ''}">${_rfqTimeAgo(r.sentForReviewAt)}</td>
@@ -30075,6 +30110,99 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </tr>
       `;
     }).join('');
+    updateReviewBulkBar();
+    _syncReviewHeadCb();
+  }
+
+  // ── Ready-for-Review bulk select → Move to Samples ────────────────
+  // Same pattern as the RFQ Queue / client-view bulk actions: tick rows,
+  // then push the whole workbook(s) back to the Samples stage.
+  let _reviewRows = [];
+  const _reviewSelected = new Set();
+
+  function toggleReviewSelection(workbookId, checked) {
+    if (checked) _reviewSelected.add(workbookId);
+    else         _reviewSelected.delete(workbookId);
+    updateReviewBulkBar();
+    _syncReviewHeadCb();
+  }
+  function toggleAllReview(checked) {
+    document.querySelectorAll('.review-row-cb').forEach(cb => {
+      cb.checked = checked;
+      const id = parseInt(cb.getAttribute('data-wb-id'), 10);
+      if (Number.isNaN(id)) return;
+      if (checked) _reviewSelected.add(id);
+      else         _reviewSelected.delete(id);
+    });
+    updateReviewBulkBar();
+  }
+  function deselectAllReview() {
+    _reviewSelected.clear();
+    document.querySelectorAll('.review-row-cb').forEach(cb => { cb.checked = false; });
+    const h = document.getElementById('review-head-cb');
+    if (h) { h.checked = false; h.indeterminate = false; }
+    updateReviewBulkBar();
+  }
+  function updateReviewBulkBar() {
+    const bar = document.getElementById('review-bulk-bar');
+    if (!bar) return;
+    const n = _reviewSelected.size;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    const cnt = document.getElementById('review-bulk-count');
+    if (cnt) cnt.textContent = String(n);
+  }
+  function _syncReviewHeadCb() {
+    const h = document.getElementById('review-head-cb');
+    if (!h) return;
+    const rows = document.querySelectorAll('.review-row-cb');
+    if (!rows.length) { h.checked = false; h.indeterminate = false; return; }
+    let n = 0; rows.forEach(cb => { if (cb.checked) n++; });
+    if (n === 0)                { h.checked = false; h.indeterminate = false; }
+    else if (n === rows.length) { h.checked = true;  h.indeterminate = false; }
+    else                        { h.checked = false; h.indeterminate = true;  }
+  }
+  function openReviewToSamplesPrompt() {
+    const rows = _reviewRows.filter(r => _reviewSelected.has(r.workbookId));
+    if (!rows.length) return;
+    document.getElementById('review-samples-modal-count').textContent = String(rows.length);
+    document.getElementById('review-samples-modal-list').innerHTML = rows.map(r =>
+      `<li style="padding:5px 0; border-bottom:1px solid var(--border);"><strong>${_escHtml(r.product || 'Untitled')}</strong> <span style="color:var(--text-muted);">— ${_escHtml(r.clientName || '')}</span></li>`).join('');
+    document.getElementById('review-samples-modal').classList.add('open');
+  }
+  function closeReviewToSamplesModal() {
+    const m = document.getElementById('review-samples-modal'); if (m) m.classList.remove('open');
+  }
+  async function _doReviewToSamples() {
+    const rows = _reviewRows.filter(r => _reviewSelected.has(r.workbookId));
+    if (!rows.length) { closeReviewToSamplesModal(); return; }
+    const modal = document.getElementById('review-samples-modal');
+    const btns = modal ? Array.from(modal.querySelectorAll('.btn')) : [];
+    btns.forEach(b => b.disabled = true);
+    const dbIds = rows.map(r => dbWorkbookMap[`${r.clientName}|${r.workbookId}`] || r.workbookId);
+    let res;
+    try { res = await apiCall('bulk_workbook_action', { ids: dbIds, action: 'samples' }); }
+    catch (e) { btns.forEach(b => b.disabled = false); showToast('Move to Samples failed (network error)', 'error'); return; }
+    btns.forEach(b => b.disabled = false);
+    // Mirror the server change locally so the rows leave Review immediately
+    // without waiting for a full reload.
+    rows.forEach(r => {
+      const key = `${r.clientName}|${r.workbookId}`;
+      let wd = workbookDetail[key];
+      if (!wd) { const f = Object.entries(workbookDetail).find(([k]) => k.endsWith('|' + r.workbookId)); wd = f ? f[1] : null; }
+      if (wd) {
+        wd.sentForReview = false; wd.sentForReviewAt = null;
+        wd.sentToRfq = false; wd.sentToRfqAt = null;
+        if (Array.isArray(wd.rfqItems)) wd.rfqItems.forEach(it => { if (it) it.sample = true; });
+      }
+    });
+    try { saveToLocalStorage(); } catch (_) {}
+    closeReviewToSamplesModal();
+    const n = (res && res.updated) || rows.length;
+    deselectAllReview();
+    try { renderReviewDashboard(); } catch (_) {}
+    try { rebuildSamplesNav(); } catch (_) {}
+    try { rebuildReviewNav(); } catch (_) {}
+    showToast(`Moved ${n} workbook${n === 1 ? '' : 's'} to Samples`, (res && res.success) ? 'success' : 'warn');
   }
 
   function router() {
