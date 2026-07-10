@@ -19887,6 +19887,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return list;
   }
 
+  // EVERY workbook fee for the Client Quote — checked or not. Checked fees
+  // carry their billed amount; unchecked fees are "Complimentary" (shown at
+  // $0.00 so the client sees the value they're getting for free). Synthetic
+  // shipment-upgrade fees only appear when actually applied (billed).
+  function allFeesForQuote() {
+    const out = collectWorkbookFees().map(f => ({
+      ...f,
+      applied: _appliedFees.has(f.id),
+      amount:  _appliedFees.has(f.id) ? _getAppliedFeeAmount(f) : 0,
+    }));
+    _shipmentUpgradeFees().forEach(f => {
+      if (_appliedFees.has(f.id)) out.push({ ...f, applied: true, amount: _getAppliedFeeAmount(f) });
+    });
+    return out;
+  }
+
   // Build the Apply Additional Fees picker on the Pricing tab. One row
   // per fee that exists on the Workbook tab, with a checkbox bound to
   // _appliedFees. Empty state shown when no fees have been entered.
@@ -21290,7 +21306,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Applied additional fees (Added Shipping Cost for Air + UPS,
     // tooling fees, etc.) read via the same appliedFeesList helper the
     // on-screen Client Quote uses.
-    const fees = (typeof appliedFeesList === 'function') ? appliedFeesList() : [];
+    const fees = (typeof allFeesForQuote === 'function') ? allFeesForQuote() : [];
 
     // Quote number + date for the email subject / metadata row.
     const now = new Date();
@@ -21321,12 +21337,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       `<tr class="nq-fees-header"><td colspan="5">Additional Fees</td></tr>` +
       fees.map(f => {
         const desc = f.desc ? ` — <span style="color:var(--text-muted); font-weight:400;">${_escHtml(f.desc)}</span>` : '';
+        if (f.applied) {
+          return `<tr class="nq-fee-row">
+            <td class="nq-num-cell">+</td>
+            <td>${_escHtml(f.label)}${desc}</td>
+            <td class="nq-right" style="color:var(--text-muted);">—</td>
+            <td class="nq-right" style="color:var(--text-muted);">—</td>
+            <td class="nq-right nq-total-cell">${f.amount > 0 ? '$' + fmt2(f.amount) : '—'}</td>
+          </tr>`;
+        }
+        // Complimentary — shown so the client sees the value, billed at $0.
         return `<tr class="nq-fee-row">
-          <td class="nq-num-cell">+</td>
-          <td>${_escHtml(f.label)}${desc}</td>
+          <td class="nq-num-cell" style="color:#6b7280;">—</td>
+          <td>${_escHtml(f.label)}${desc} <span style="display:inline-block; margin-left:6px; padding:1px 7px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#16a34a; background:rgba(22,163,74,0.10); border:1px solid rgba(22,163,74,0.35); border-radius:9px;">Complimentary</span></td>
           <td class="nq-right" style="color:var(--text-muted);">—</td>
           <td class="nq-right" style="color:var(--text-muted);">—</td>
-          <td class="nq-right nq-total-cell">${f.usd > 0 ? '$' + fmt2(f.usd) : '—'}</td>
+          <td class="nq-right nq-total-cell" style="color:#16a34a;">$0.00</td>
         </tr>`;
       }).join('');
 
@@ -22575,9 +22601,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // were silently included). When fees ARE applied, each ticked
         // fee gets its own indented line item under the divider.
         html += `<tr class="cq-fees-divider-row"><td colspan="5" style="padding:6px 12px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#E8751A; background:rgba(232,117,26,0.06); border-top:2px solid rgba(232,117,26,0.25);">Additional Fees</td></tr>`;
-        if (_appliedFeesArr.length === 0) {
-          // No fees applied — emit a single zero-value row so the client
-          // can see "$0.00" plainly.
+        // Show EVERY workbook fee — ticked ones are billed, un-ticked ones
+        // are Complimentary (shown at $0.00 with a badge). Only when the
+        // workbook has no fees defined at all do we fall back to the plain
+        // "No additional fees" row.
+        const _quoteFees = (typeof allFeesForQuote === 'function') ? allFeesForQuote() : [];
+        if (_quoteFees.length === 0) {
           html += `<tr class="cq-fee-row cq-fee-zero-row" style="background:rgba(232,117,26,0.04);">
             <td style="color:var(--text-muted); width:24px; font-weight:700;">—</td>
             <td style="font-weight:500; color:var(--text-muted);">No additional fees</td>
@@ -22586,16 +22615,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <td style="text-align:right; font-weight:600; color:var(--accent);">$0.00</td>
           </tr>`;
         } else {
-          _appliedFeesArr.forEach(f => {
-            const escFee = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const escFee = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const _compBadge = `<span style="display:inline-block; margin-left:8px; padding:1px 7px; font-size:9.5px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; color:#16a34a; background:rgba(22,163,74,0.10); border:1px solid rgba(22,163,74,0.35); border-radius:9px; vertical-align:middle;">Complimentary</span>`;
+          _quoteFees.forEach(f => {
             const desc = f.desc ? `<span style="color:var(--text-muted); font-weight:400;"> — ${escFee(f.desc)}</span>` : '';
-            html += `<tr class="cq-fee-row" style="background:rgba(232,117,26,0.04);">
-              <td style="color:#E8751A; width:24px; font-weight:700;">+</td>
-              <td style="font-weight:500;">${escFee(f.label)}${desc}</td>
-              <td style="text-align:right; color:var(--text-muted);">—</td>
-              <td style="text-align:right; color:var(--text-muted);">—</td>
-              <td style="text-align:right; font-weight:600; color:var(--accent);">${f.usd > 0 ? '$' + _fmt2(f.usd) : '—'}</td>
-            </tr>`;
+            if (f.applied) {
+              html += `<tr class="cq-fee-row" style="background:rgba(232,117,26,0.04);">
+                <td style="color:#E8751A; width:24px; font-weight:700;">+</td>
+                <td style="font-weight:500;">${escFee(f.label)}${desc}</td>
+                <td style="text-align:right; color:var(--text-muted);">—</td>
+                <td style="text-align:right; color:var(--text-muted);">—</td>
+                <td style="text-align:right; font-weight:600; color:var(--accent);">${f.amount > 0 ? '$' + _fmt2(f.amount) : '—'}</td>
+              </tr>`;
+            } else {
+              html += `<tr class="cq-fee-row cq-fee-comp-row">
+                <td style="color:var(--text-muted); width:24px; font-weight:700;">—</td>
+                <td style="font-weight:500;">${escFee(f.label)}${desc}${_compBadge}</td>
+                <td style="text-align:right; color:var(--text-muted);">—</td>
+                <td style="text-align:right; color:var(--text-muted);">—</td>
+                <td style="text-align:right; font-weight:600; color:#16a34a;">$0.00</td>
+              </tr>`;
+            }
           });
         }
 
