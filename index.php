@@ -28009,7 +28009,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function renderDashboard(clientName) {
     _clientWbBulkClient = clientName;   // remembered for the bulk RFQ/Samples action
-    const items = [...(clientData[clientName] || [])];
+    // Workbooks stay in the client view through the whole process, then
+    // auto-exit once every shipment carrying them is marked received
+    // (after the receiving audit). Display-only filter — the workbook
+    // data is never deleted, so un-marking a shipment brings it back.
+    const items = [...(clientData[clientName] || [])]
+      .filter(it => !_wbFullyReceived(clientName, it.id));
     const tbody = document.getElementById('dash-tbody');
     const emptyState = document.getElementById('dash-empty');
     const table = document.getElementById('dash-table');
@@ -28988,11 +28993,61 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // doesn't lose their selection mid-flow.
   const _samplesSelected = new Set();
 
+  // ── Workbook stage / fulfillment predicates ───────────────────────
+  // A workbook flows Samples → RFQ → Review → Order → Shipment →
+  // Receiving. It should live in exactly ONE nav location (its furthest
+  // stage) while still appearing in the client view until it's received
+  // and moved out. RFQ / Review already gate on flow; these helpers give
+  // the earlier Samples list — and the client view — the same awareness.
+  function _wbInAnyOrder(clientName, workbookId) {
+    const match = e => e && e.clientName === clientName && String(e.workbookId) === String(workbookId);
+    return Object.values(orderData || {}).some(o => (o.entries || []).some(match));
+  }
+  function _wbShipmentsFor(clientName, workbookId) {
+    // Shipment entries take several shapes: a direct {clientName,workbookId},
+    // an order reference {orderId} (resolve through orderData), or a sample
+    // reference {sampleKey,...}. sampleEntries always carry clientName/workbookId.
+    const wantKey = `${clientName}|${workbookId}`;
+    const direct = e => e && e.clientName === clientName && String(e.workbookId) === String(workbookId);
+    const viaOrder = e => {
+      if (!e || e.orderId == null) return false;
+      const o = orderData[e.orderId];
+      return !!o && (o.entries || []).some(direct);
+    };
+    const viaSample = e => e && e.sampleKey && e.sampleKey === wantKey;
+    return Object.values(shipmentData || {}).filter(s =>
+      (s.entries || []).some(e => direct(e) || viaOrder(e) || viaSample(e)) ||
+      (s.sampleEntries || []).some(direct));
+  }
+  // True once the workbook has been pushed forward out of the Samples
+  // stage — sent to RFQ / review, advanced past Quote Submitted in the
+  // flow, or placed into an order or a shipment.
+  function _wbAdvancedPastSamples(clientName, workbookId, detail) {
+    if (detail && (detail.sentToRfq || detail.sentForReview)) return true;
+    const items = clientData[clientName] || [];
+    const item = items.find(i => String(i.id) === String(workbookId));
+    if (item && item.flow && (item.flow.quoteClient || item.flow.clientApproved ||
+        item.flow.officeInvoice || item.flow.confirmedPayment || item.flow.orderChina)) return true;
+    if (_wbInAnyOrder(clientName, workbookId)) return true;
+    if (_wbShipmentsFor(clientName, workbookId).length) return true;
+    return false;
+  }
+  // Fully received = it's in at least one shipment and every shipment
+  // carrying it has been marked received (after the receiving audit).
+  // This is the trigger to drop the workbook out of the client view.
+  function _wbFullyReceived(clientName, workbookId) {
+    const ships = _wbShipmentsFor(clientName, workbookId);
+    return ships.length > 0 && ships.every(s => s && s.status === 'received');
+  }
+
   function collectAllSamples() {
     const results = [];
     for (const [key, detail] of Object.entries(workbookDetail)) {
       if (!detail || !detail.rfqItems) continue;
       const [clientName, workbookId] = key.split('|');
+      // Whole-workbook rule: once it moves forward it leaves the Samples
+      // nav entirely, even if its line items are still flagged sample.
+      if (_wbAdvancedPastSamples(clientName, workbookId, detail)) continue;
       detail.rfqItems.forEach((item, idx) => {
         if (!item.sample) return;
         const status = (detail.sampleStatuses && detail.sampleStatuses[idx]) || 'pending';
@@ -35441,6 +35496,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // class is filtered by renderShipmentsContent).
     if (ctx.returnTo === 'card' && typeof renderShipmentsContent === 'function') renderShipmentsContent();
     rebuildShipmentsNav();
+    // A newly-received workbook auto-exits the client view and any stage
+    // nav lists. Repaint the client dashboard if it's the current view so
+    // the operator sees it drop out without a manual refresh.
+    try { rebuildSamplesNav(); } catch (_) {}
+    try {
+      const dashView = document.getElementById('view-dashboard');
+      if (dashView && dashView.classList.contains('active') && _clientWbBulkClient) {
+        renderDashboard(_clientWbBulkClient);
+      }
+    } catch (_) {}
   }
 
   // Inline status change from the shipment card pill on the
