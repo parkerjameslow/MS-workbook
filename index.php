@@ -8922,6 +8922,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllSamples()">Deselect all</button>
       <span style="margin-left:auto; display:flex; gap:8px;">
         <button class="btn btn-ghost" style="font-size:12px; border-color:var(--accent); color:var(--accent);" onclick="openSamplesToRfqPrompt()">→ Move to RFQ</button>
+        <button class="btn btn-ghost" style="font-size:12px; border-color:var(--accent); color:var(--accent);" onclick="openSamplesToOrdersPrompt()">→ Move to Orders</button>
         <button class="btn btn-primary" style="font-size:12px;" onclick="openCreateSampleShipmentModal()">+ Create Shipment</button>
       </span>
     </div>
@@ -9592,6 +9593,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 ═══════════════════════════════════════════════════════════════════════ -->
 <div id="view-orders" class="view">
   <main class="container">
+    <!-- Ready to Order — workbooks moved here from Samples, not yet in an
+         order. Populated by renderOrdersStaging(); hidden when empty. -->
+    <div id="orders-staging" style="display:none;"></div>
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
         <span class="section-title" style="margin-right:auto;">Orders</span>
@@ -10522,6 +10526,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closeSamplesToRfqModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="_doSamplesToRfq()">→ Move to RFQ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add staged workbooks to an existing order ──────────────────────── -->
+<div class="modal-overlay" id="staged-add-order-modal" onclick="if(event.target===this)closeStagedAddOrderModal()" style="z-index:1200;">
+  <div class="modal" style="max-width:480px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Add to existing order</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 12px; flex-shrink:0;" id="staged-add-order-sub">Choose an order to add the selected workbook(s) to.</p>
+    <ul id="staged-add-order-list" style="list-style:none; padding:0; margin:0; overflow-y:auto; flex:1 1 auto; font-size:13px;"></ul>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
+      <button type="button" class="btn btn-ghost" onclick="closeStagedAddOrderModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk "Move to Orders" from Samples ─────────────────────────────── -->
+<div class="modal-overlay" id="samples-orders-modal" onclick="if(event.target===this)closeSamplesToOrdersModal()" style="z-index:1200;">
+  <div class="modal" style="max-width:460px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Move <span id="samples-orders-modal-count">0</span> workbook(s) to Orders</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 12px; flex-shrink:0;">The workbook(s) move out of Samples into the <strong>Orders</strong> area's <strong>Ready to Order</strong> list, where you can add them to a new or existing order. They stay in the client view as usual.</p>
+    <ul id="samples-orders-modal-list" style="list-style:none; padding:0; margin:0; overflow-y:auto; flex:1 1 auto; font-size:13px;"></ul>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
+      <button type="button" class="btn btn-ghost" onclick="closeSamplesToOrdersModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="_doSamplesToOrders()">→ Move to Orders</button>
     </div>
   </div>
 </div>
@@ -29050,7 +29079,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // stage — sent to RFQ / review, advanced past Quote Submitted in the
   // flow, or placed into an order or a shipment.
   function _wbAdvancedPastSamples(clientName, workbookId, detail) {
-    if (detail && (detail.sentToRfq || detail.sentForReview)) return true;
+    if (detail && (detail.sentToRfq || detail.sentForReview || detail.movedToOrders)) return true;
     const items = clientData[clientName] || [];
     const item = items.find(i => String(i.id) === String(workbookId));
     if (item && item.flow && (item.flow.quoteClient || item.flow.clientApproved ||
@@ -29361,6 +29390,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { renderSamplesDashboard(); } catch (_) {}
     try { if (typeof rebuildSidebar === 'function') rebuildSidebar(); } catch (_) {}
     showToast(`Moved ${n} workbook${n === 1 ? '' : 's'} to RFQ`, (res && res.success) ? 'success' : 'warn');
+  }
+
+  // ── Move to Orders from Samples ───────────────────────────────────
+  // Stages the workbook(s) into the Orders area (Ready to Order), leaving
+  // the Samples stage. From Orders the operator adds them to a new or
+  // existing order.
+  function openSamplesToOrdersPrompt() {
+    if (!_samplesSelected.size) return;
+    const wbs = _selectedSampleWorkbooks();
+    if (!wbs.length) return;
+    document.getElementById('samples-orders-modal-count').textContent = String(wbs.length);
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    document.getElementById('samples-orders-modal-list').innerHTML = wbs.map(w =>
+      `<li style="padding:5px 0; border-bottom:1px solid var(--border);">${esc(w.name || 'Untitled')}</li>`).join('');
+    document.getElementById('samples-orders-modal').classList.add('open');
+  }
+  function closeSamplesToOrdersModal() {
+    const m = document.getElementById('samples-orders-modal'); if (m) m.classList.remove('open');
+  }
+  async function _doSamplesToOrders() {
+    const wbs = _selectedSampleWorkbooks();
+    if (!wbs.length) { closeSamplesToOrdersModal(); return; }
+    const modal = document.getElementById('samples-orders-modal');
+    const btns = modal ? Array.from(modal.querySelectorAll('.btn')) : [];
+    btns.forEach(b => b.disabled = true);
+    let res;
+    try { res = await apiCall('bulk_workbook_action', { ids: wbs.map(w => w.dbId), action: 'orders' }); }
+    catch (e) { btns.forEach(b => b.disabled = false); showToast('Move to Orders failed (network error)', 'error'); return; }
+    btns.forEach(b => b.disabled = false);
+    closeSamplesToOrdersModal();
+    const n = (res && res.updated) || 0;
+    deselectAllSamples();
+    try { await loadFromDatabase(); } catch (_) {}
+    try { renderSamplesDashboard(); } catch (_) {}
+    try { rebuildOrdersNav(); } catch (_) {}
+    try { if (typeof rebuildSidebar === 'function') rebuildSidebar(); } catch (_) {}
+    showToast(`Moved ${n} workbook${n === 1 ? '' : 's'} to Orders`, (res && res.success) ? 'success' : 'warn');
   }
 
   function updateSamplesBulkActionBar() {
@@ -38778,10 +38844,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // (not yet Notify-Client'd). Notified orders live in the
     // Fulfillment badge below so the two nav numbers don't overlap.
     const queueIds = ids.filter(id => _orderIsInOrdersQueue(orderData[id]));
+    // Workbooks staged into Orders (moved from Samples, not yet in an order)
+    // count toward the badge so the operator sees them arrive.
+    const stagedCount = (typeof collectStagedForOrders === 'function') ? collectStagedForOrders().length : 0;
     _applyNavBadge(
       document.getElementById('badge-orders'),
       queueIds.filter(id => orderData[id].changeRequested).length,
-      queueIds.length
+      queueIds.length + stagedCount
     );
     // Fulfillment badge — orders that have been notified but whose
     // workbooks haven't landed on a Shipment yet.
@@ -40168,6 +40237,151 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>`;
   }
 
+  // ── Orders staging ("Ready to Order") ─────────────────────────────
+  // Workbooks moved into Orders from Samples that aren't yet placed in an
+  // order. The operator bulk-selects and either creates a new order or
+  // adds them to an existing one. Once in an order they leave this list.
+  const _stagedOrderSelected = new Set();
+
+  function collectStagedForOrders() {
+    const out = [];
+    for (const [key, detail] of Object.entries(workbookDetail)) {
+      if (!detail || !detail.movedToOrders) continue;
+      const [clientName, workbookId] = key.split('|');
+      if (_wbInAnyOrder(clientName, workbookId)) continue;   // already placed
+      out.push({ key, clientName, workbookId, product: detail.product || 'Untitled', movedAt: detail.movedToOrdersAt || null });
+    }
+    out.sort((a, b) => (a.movedAt ? new Date(a.movedAt).getTime() : 0) - (b.movedAt ? new Date(b.movedAt).getTime() : 0));
+    return out;
+  }
+
+  function _stagedSelectedList() {
+    return collectStagedForOrders().filter(s => _stagedOrderSelected.has(s.key));
+  }
+
+  function renderOrdersStaging() {
+    const host = document.getElementById('orders-staging');
+    if (!host) return;
+    const staged = collectStagedForOrders();
+    const vis = new Set(staged.map(s => s.key));
+    Array.from(_stagedOrderSelected).forEach(k => { if (!vis.has(k)) _stagedOrderSelected.delete(k); });
+    if (!staged.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+    host.style.display = '';
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const n = _stagedOrderSelected.size;
+    const rows = staged.map(s => {
+      const checked = _stagedOrderSelected.has(s.key) ? 'checked' : '';
+      const keyAttr = esc(s.key).replace(/'/g, "\\'");
+      return `<label class="staged-row" style="display:flex; align-items:center; gap:12px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer;">
+        <input type="checkbox" class="staged-cb" data-key="${esc(s.key)}" ${checked} onchange="toggleStagedSelection('${keyAttr}', this.checked)" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;" />
+        <span style="flex:1; min-width:0; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(s.product)}</span>
+        <span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}">${esc(s.clientName)}</span>
+      </label>`;
+    }).join('');
+    host.innerHTML = `
+      <div class="section-card" style="margin-bottom:20px;">
+        <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+          <span class="section-title" style="margin-right:auto;">Ready to Order <span style="color:var(--text-muted); font-weight:500;">· ${staged.length}</span></span>
+        </div>
+        <div id="staged-bulk-bar" style="display:${n > 0 ? 'flex' : 'none'}; align-items:center; gap:12px; padding:10px 16px; background:rgba(232,117,26,0.10); border-bottom:1px solid var(--border);">
+          <strong style="font-size:13px; color:var(--accent);"><span id="staged-bulk-count">${n}</span> selected</strong>
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllStaged()">Deselect all</button>
+          <span style="margin-left:auto; display:flex; gap:8px;">
+            <button class="btn btn-ghost" style="font-size:12px; border-color:var(--accent); color:var(--accent);" onclick="openStagedAddOrderModal()">+ Add to existing order</button>
+            <button class="btn btn-primary" style="font-size:12px;" onclick="createOrderFromStaged()">+ Create new order</button>
+          </span>
+        </div>
+        <div class="section-body" style="padding:0;">${rows}</div>
+      </div>`;
+  }
+
+  function toggleStagedSelection(key, checked) {
+    if (checked) _stagedOrderSelected.add(key); else _stagedOrderSelected.delete(key);
+    const bar = document.getElementById('staged-bulk-bar');
+    const cnt = document.getElementById('staged-bulk-count');
+    const n = _stagedOrderSelected.size;
+    if (bar) bar.style.display = n > 0 ? 'flex' : 'none';
+    if (cnt) cnt.textContent = String(n);
+  }
+  function deselectAllStaged() { _stagedOrderSelected.clear(); renderOrdersStaging(); }
+
+  function createOrderFromStaged() {
+    const sel = _stagedSelectedList();
+    if (!sel.length) return;
+    // Orders are per-client — group the selection by client and mint one
+    // order per client.
+    const byClient = {};
+    sel.forEach(s => { (byClient[s.clientName] = byClient[s.clientName] || []).push(s); });
+    const clients = Object.keys(byClient);
+    let firstId = null;
+    clients.forEach(clientName => {
+      const id  = _nextOrderId++;
+      const num = String(id).padStart(3, '0');
+      orderData[id] = {
+        id, name: `Order #${num}`, clientName, status: 'draft',
+        dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
+        poNumber: '', depositPct: 50, notes: '',
+        entries: byClient[clientName].map(s => ({ clientName, workbookId: s.workbookId })),
+      };
+      if (firstId == null) firstId = id;
+    });
+    saveOrders();
+    _stagedOrderSelected.clear();
+    rebuildOrdersNav();
+    if (clients.length === 1 && firstId != null) {
+      location.hash = `#/order/${firstId}`;
+    } else {
+      renderOrdersStaging();
+      renderOrdersContent();
+      showToast(`Created ${clients.length} orders`, 'success');
+    }
+  }
+
+  function openStagedAddOrderModal() {
+    const sel = _stagedSelectedList();
+    if (!sel.length) return;
+    const listEl = document.getElementById('staged-add-order-list');
+    const subEl  = document.getElementById('staged-add-order-sub');
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const clients = new Set(sel.map(s => s.clientName));
+    if (clients.size > 1) {
+      subEl.textContent = 'Select workbooks from a single client to add them to an existing order (create separate new orders instead).';
+      listEl.innerHTML = '';
+    } else {
+      const clientName = sel[0].clientName;
+      const orders = Object.values(orderData).filter(o => o && o.clientName === clientName);
+      subEl.textContent = `Add ${sel.length} workbook${sel.length === 1 ? '' : 's'} to one of ${clientName}'s orders.`;
+      if (!orders.length) {
+        listEl.innerHTML = `<li style="padding:12px 2px; color:var(--text-muted);">No existing orders for ${esc(clientName)} — use “Create new order”.</li>`;
+      } else {
+        listEl.innerHTML = orders.map(o =>
+          `<li><button class="btn btn-ghost" style="width:100%; text-align:left; justify-content:flex-start; margin:4px 0;" onclick="_addStagedToOrder(${o.id})">
+            <strong>${esc(o.name || ('Order #' + o.id))}</strong> <span style="color:var(--text-muted); margin-left:6px;">· ${(o.entries || []).length} item(s) · ${esc(o.status || 'draft')}</span>
+          </button></li>`).join('');
+      }
+    }
+    document.getElementById('staged-add-order-modal').classList.add('open');
+  }
+  function closeStagedAddOrderModal() {
+    const m = document.getElementById('staged-add-order-modal'); if (m) m.classList.remove('open');
+  }
+  function _addStagedToOrder(orderId) {
+    const o = orderData[orderId];
+    if (!o) { closeStagedAddOrderModal(); return; }
+    const sel = _stagedSelectedList().filter(s => s.clientName === o.clientName);
+    if (!sel.length) { closeStagedAddOrderModal(); return; }
+    o.entries = o.entries || [];
+    sel.forEach(s => {
+      const dupe = o.entries.some(e => String(e.workbookId) === String(s.workbookId) && e.clientName === s.clientName);
+      if (!dupe) o.entries.push({ clientName: s.clientName, workbookId: s.workbookId });
+    });
+    saveOrders();
+    _stagedOrderSelected.clear();
+    closeStagedAddOrderModal();
+    rebuildOrdersNav();
+    location.hash = `#/order/${orderId}`;
+  }
+
   function renderOrdersList() {
     document.getElementById('header-title').textContent = 'Orders';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
@@ -40175,6 +40389,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const ordNav = document.getElementById('nav-orders-link');
     if (ordNav) ordNav.classList.add('active');
     showView('view-orders');
+    renderOrdersStaging();
     renderOrdersContent();
     // Refresh the nav badge to match what'\''s actually on this page —
     // belt-and-suspenders against stale-localStorage-vs-DB drift.

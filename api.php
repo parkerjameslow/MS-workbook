@@ -2040,8 +2040,8 @@ switch ($action) {
     case 'bulk_workbook_action': {
         $ids    = $input['ids'] ?? [];
         $action = $input['action'] ?? '';
-        if (!is_array($ids) || !count($ids) || !in_array($action, ['rfq', 'samples'], true)) {
-            echo json_encode(['success' => false, 'error' => 'ids and a valid action (rfq|samples) required']);
+        if (!is_array($ids) || !count($ids) || !in_array($action, ['rfq', 'samples', 'orders'], true)) {
+            echo json_encode(['success' => false, 'error' => 'ids and a valid action (rfq|samples|orders) required']);
             break;
         }
         $now = gmdate('c');
@@ -2056,7 +2056,15 @@ switch ($action) {
             $detail = json_decode($row['detail_json'] ?: '{}', true);
             if (!is_array($detail)) $detail = [];
 
-            if ($action === 'rfq') {
+            if ($action === 'orders') {
+                // Stage the workbook into the Orders area — it leaves the
+                // Samples stage and appears in the Orders "Ready to Order"
+                // list, where the operator adds it to a new or existing order.
+                $detail['movedToOrders']   = true;
+                $detail['movedToOrdersAt'] = $now;
+                $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
+                $upd->execute([json_encode($detail), $id]);
+            } elseif ($action === 'rfq') {
                 $detail['sentToRfq']   = true;
                 $detail['sentToRfqAt'] = $now;
                 // Ensure at least "Quote Submitted" so it enters the RFQ
