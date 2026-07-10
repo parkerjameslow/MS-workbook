@@ -6976,6 +6976,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
         <span class="section-title" style="margin-right:auto;">Workbooks</span>
+        <div id="client-wb-bulk-bar" style="display:none; align-items:center; gap:10px;">
+          <strong style="font-size:13px; color:var(--accent);"><span id="client-wb-bulk-count">0</span> selected</strong>
+          <button class="btn btn-ghost" style="font-size:12px; padding:6px 12px;" onclick="clearClientWbSelection()">Clear</button>
+          <button class="btn btn-primary" style="font-size:12px; padding:6px 14px;" onclick="openClientWbBulkPrompt()">Move to → </button>
+        </div>
         <button class="btn-create" onclick="openNewWorkbookModal()" style="font-size:13px; padding:8px 16px;">+ Add Workbook</button>
       </div>
       <div class="section-body" style="padding:0;">
@@ -6983,6 +6988,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <table class="dash-table" id="dash-table">
           <thead>
             <tr>
+              <th style="width:36px; text-align:center;"><input type="checkbox" id="dash-head-cb" onchange="toggleAllClientWb(this.checked)" title="Select all" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></th>
               <th class="sortable" onclick="sortClientTable('product')">Product <span class="sort-arrow"></span></th>
               <th class="col-landed sortable" onclick="sortClientTable('landed')">Client Quote Total <span class="sort-arrow"></span></th>
               <th class="col-date-created sortable" onclick="sortClientTable('date')">Date Created <span class="sort-arrow"></span></th>
@@ -10457,6 +10463,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
       <button type="button" class="btn btn-ghost" onclick="closeEmailPreview()">Cancel</button>
       <button type="button" class="btn btn-primary" id="email-preview-send-btn" onclick="_emailPreviewConfirm()">Send</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk move workbooks → RFQ / Samples (client Workbooks view) ────── -->
+<div class="modal-overlay" id="client-wb-bulk-modal" onclick="if(event.target===this)closeClientWbBulkModal()" style="z-index:1200;">
+  <div class="modal" style="max-width:460px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Move <span id="client-wb-bulk-modal-count">0</span> workbook(s)</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 12px; flex-shrink:0;">Where should these go? <strong>RFQ</strong> sends them to the RFQ Queue (Quote Submitted). <strong>Samples</strong> marks their line items as sample requests so they show in the Samples view.</p>
+    <ul id="client-wb-bulk-modal-list" style="list-style:none; padding:0; margin:0; overflow-y:auto; flex:1 1 auto; font-size:13px;"></ul>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
+      <button type="button" class="btn btn-ghost" onclick="closeClientWbBulkModal()">Cancel</button>
+      <button type="button" class="btn btn-ghost" onclick="_doClientWbBulk('samples')" style="border-color:var(--accent); color:var(--accent);">→ Samples</button>
+      <button type="button" class="btn btn-primary" onclick="_doClientWbBulk('rfq')">→ RFQ</button>
     </div>
   </div>
 </div>
@@ -27831,7 +27851,81 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // ── Client Workbooks bulk-select → RFQ / Samples ─────────────────────
+  const _clientWbSelected = new Set();
+  let _clientWbBulkClient = '';
+  function toggleClientWbSelection(wbId, checked) {
+    if (checked) _clientWbSelected.add(wbId); else _clientWbSelected.delete(wbId);
+    _updateClientWbBulkBar(); _syncDashHeadCb();
+  }
+  function toggleAllClientWb(checked) {
+    document.querySelectorAll('#dash-tbody .client-wb-cb').forEach(cb => {
+      cb.checked = checked;
+      const id = parseInt(cb.getAttribute('data-wb-id'), 10);
+      if (!isFinite(id)) return;
+      if (checked) _clientWbSelected.add(id); else _clientWbSelected.delete(id);
+    });
+    _updateClientWbBulkBar();
+  }
+  function clearClientWbSelection() {
+    _clientWbSelected.clear();
+    document.querySelectorAll('#dash-tbody .client-wb-cb').forEach(cb => { cb.checked = false; });
+    const h = document.getElementById('dash-head-cb'); if (h) { h.checked = false; h.indeterminate = false; }
+    _updateClientWbBulkBar();
+  }
+  function _updateClientWbBulkBar() {
+    const bar = document.getElementById('client-wb-bulk-bar');
+    const cnt = document.getElementById('client-wb-bulk-count');
+    const n = _clientWbSelected.size;
+    if (bar) bar.style.display = n > 0 ? 'flex' : 'none';
+    if (cnt) cnt.textContent = String(n);
+  }
+  function _syncDashHeadCb() {
+    const h = document.getElementById('dash-head-cb'); if (!h) return;
+    const rows = document.querySelectorAll('#dash-tbody .client-wb-cb');
+    if (!rows.length) { h.checked = false; h.indeterminate = false; return; }
+    let n = 0; rows.forEach(cb => { if (cb.checked) n++; });
+    if (n === 0)                { h.checked = false; h.indeterminate = false; }
+    else if (n === rows.length) { h.checked = true;  h.indeterminate = false; }
+    else                        { h.checked = false; h.indeterminate = true;  }
+  }
+  function openClientWbBulkPrompt() {
+    if (!_clientWbSelected.size) return;
+    const names = Array.from(document.querySelectorAll('#dash-tbody .client-wb-cb'))
+      .filter(cb => cb.checked)
+      .map(cb => cb.getAttribute('data-wb-product') || 'Untitled');
+    document.getElementById('client-wb-bulk-modal-count').textContent = String(_clientWbSelected.size);
+    document.getElementById('client-wb-bulk-modal-list').innerHTML = names.map(n =>
+      `<li style="padding:5px 0; border-bottom:1px solid var(--border);">${_escHtml(n)}</li>`).join('');
+    document.getElementById('client-wb-bulk-modal').classList.add('open');
+  }
+  function closeClientWbBulkModal() {
+    const m = document.getElementById('client-wb-bulk-modal'); if (m) m.classList.remove('open');
+  }
+  async function _doClientWbBulk(action) {
+    const ids = Array.from(_clientWbSelected);
+    if (!ids.length) { closeClientWbBulkModal(); return; }
+    const dbIds = ids.map(id => dbWorkbookMap[`${_clientWbBulkClient}|${id}`] || id);
+    const modal = document.getElementById('client-wb-bulk-modal');
+    const btns = modal ? Array.from(modal.querySelectorAll('.btn')) : [];
+    btns.forEach(b => b.disabled = true);
+    let res;
+    try { res = await apiCall('bulk_workbook_action', { ids: dbIds, action }); }
+    catch (e) { btns.forEach(b => b.disabled = false); showToast('Bulk move failed (network error)', 'error'); return; }
+    btns.forEach(b => b.disabled = false);
+    closeClientWbBulkModal();
+    const n = (res && res.updated) || 0;
+    clearClientWbSelection();
+    // Refresh from the server so flow / RFQ queue / Samples reflect it.
+    try { await loadFromDatabase(); } catch (_) {}
+    try { renderDashboard(_clientWbBulkClient); } catch (_) {}
+    try { if (typeof rebuildSidebar === 'function') rebuildSidebar(); } catch (_) {}
+    const dest = action === 'rfq' ? 'RFQ' : 'Samples';
+    showToast(`Moved ${n} workbook${n === 1 ? '' : 's'} to ${dest}`, (res && res.success) ? 'success' : 'warn');
+  }
+
   function renderDashboard(clientName) {
+    _clientWbBulkClient = clientName;   // remembered for the bulk RFQ/Samples action
     const items = [...(clientData[clientName] || [])];
     const tbody = document.getElementById('dash-tbody');
     const emptyState = document.getElementById('dash-empty');
@@ -27940,6 +28034,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       return `
       <tr class="${complete ? 'row-complete' : ''}${pendingReview ? ' row-pending-review' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
+        <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="client-wb-cb" data-wb-id="${item.id}" data-wb-product="${String(item.product||'').replace(/"/g,'&quot;')}" ${_clientWbSelected.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleClientWbSelection(${item.id}, this.checked)" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></td>
         <td class="product-name">${item.product}${pendingBadge}</td>
         <td class="col-landed">${landedCell}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
@@ -27959,6 +28054,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `}).join('');
+
+    // Keep the bulk-select bar + header checkbox in step with any
+    // selection carried across a re-render.
+    _updateClientWbBulkBar();
+    _syncDashHeadCb();
 
     document.getElementById('header-title').textContent = clientName + ' — Workbooks';
     updateSidebarActive(clientName);

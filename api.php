@@ -2030,6 +2030,53 @@ switch ($action) {
         break;
     }
 
+    /**
+     * bulk_workbook_action — move N workbooks at once from the client
+     * Workbooks view. action='rfq' flags each sentToRfq + nudges flow_step
+     * to at least Quote Submitted so it lands in the RFQ Queue. action=
+     * 'samples' marks every RFQ line item as a sample so the workbook's
+     * items show in the Samples view.
+     */
+    case 'bulk_workbook_action': {
+        $ids    = $input['ids'] ?? [];
+        $action = $input['action'] ?? '';
+        if (!is_array($ids) || !count($ids) || !in_array($action, ['rfq', 'samples'], true)) {
+            echo json_encode(['success' => false, 'error' => 'ids and a valid action (rfq|samples) required']);
+            break;
+        }
+        $now = gmdate('c');
+        $updated = 0;
+        foreach ($ids as $rawId) {
+            $id = (int)$rawId;
+            if ($id <= 0) continue;
+            $sel = $pdo->prepare("SELECT detail_json FROM workbooks WHERE id = ? AND deleted_at IS NULL");
+            $sel->execute([$id]);
+            $row = $sel->fetch();
+            if (!$row) continue;
+            $detail = json_decode($row['detail_json'] ?: '{}', true);
+            if (!is_array($detail)) $detail = [];
+
+            if ($action === 'rfq') {
+                $detail['sentToRfq']   = true;
+                $detail['sentToRfqAt'] = $now;
+                // Ensure at least "Quote Submitted" so it enters the queue,
+                // without pulling an already-advanced workbook backwards.
+                $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 1), updated_at = NOW() WHERE id = ?");
+                $upd->execute([json_encode($detail), $id]);
+            } else { // samples
+                if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
+                    foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = true; }
+                    unset($it);
+                }
+                $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
+                $upd->execute([json_encode($detail), $id]);
+            }
+            $updated++;
+        }
+        echo json_encode(['success' => true, 'updated' => $updated, 'action' => $action]);
+        break;
+    }
+
     case 'delete_workbook':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
