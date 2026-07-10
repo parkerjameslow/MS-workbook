@@ -2573,6 +2573,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rfq-imgpick-file { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; background:var(--surface2); padding:4px; box-sizing:border-box; }
     .rfq-imgpick-ext { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .rfq-imgpick-tag { position:absolute; bottom:3px; left:3px; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:#fff; background:rgba(0,0,0,0.55); border-radius:5px; padding:1px 5px; }
+    /* Live PDF / video thumbnail — mirrors the Art-tab tile so a file that
+       previews there also previews here instead of falling back to an icon. */
+    .rfq-imgpick-embed { position:absolute; inset:0; background:#fff; pointer-events:none; }
+    .rfq-imgpick-embed embed, .rfq-imgpick-embed video { width:100%; height:100%; pointer-events:none; display:block; }
+    .rfq-imgpick-embed video { object-fit:cover; background:#000; }
+    .rfq-imgpick-badge { position:absolute; top:3px; right:3px; font-size:8px; font-weight:800; letter-spacing:0.04em; color:#fff; background:rgba(0,0,0,0.55); border-radius:5px; padding:1px 5px; }
+    /* Transparent hit layer so a click on the embed/video (which eats
+       pointer events in Safari) still reaches the tile's toggle handler. */
+    .rfq-imgpick-hit { position:absolute; inset:0; background:rgba(0,0,0,0.001); cursor:pointer; }
     .rfq-imgpick-item.selected { border-color: var(--accent); }
     .rfq-imgpick-item.selected::after {
       content: '✓';
@@ -17313,11 +17322,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>`;
     } else {
       const first = urls[0];
-      const isImg = (typeof _artFileKind !== 'function') || _artFileKind(first) === 'image';
+      const kind = (typeof _artFileKind === 'function') ? _artFileKind(first) : 'image';
       const badge = urls.length > 1 ? `<span class="rfq-img-badge">+${urls.length - 1}</span>` : '';
-      const inner = isImg
-        ? `<img src="${first}" alt="Line item image" />`
-        : `<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; background:var(--surface2);"><span style="font-size:20px; line-height:1;">${_artFileIcon(_artFileKind(first))}</span><span style="font-size:8px; color:var(--text-muted); font-weight:700;">${_artFileBasename(first)}</span></div>`;
+      let inner;
+      if (kind === 'image') {
+        inner = `<img src="${first}" alt="Line item image" />`;
+      } else if (kind === 'pdf') {
+        inner = `<div style="position:absolute; inset:0; background:#fff; pointer-events:none;"><embed src="${first}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1" type="application/pdf" style="width:100%; height:100%; pointer-events:none;" /></div>`;
+      } else if (kind === 'video') {
+        inner = `<div style="position:absolute; inset:0; background:#000; pointer-events:none;"><video src="${first}" muted preload="metadata" playsinline style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video></div>`;
+      } else {
+        inner = `<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; background:var(--surface2);"><span style="font-size:20px; line-height:1;">${_artFileIcon(kind)}</span><span style="font-size:8px; color:var(--text-muted); font-weight:700;">${_artFileBasename(first)}</span></div>`;
+      }
       cell.innerHTML = `<div class="rfq-img-tile rfq-img-thumb" onclick="openRfqImagePicker(${id})" title="${urls.length} file${urls.length === 1 ? '' : 's'} assigned — click to manage">
           ${inner}${badge}
         </div>`;
@@ -17385,9 +17401,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const sel = assigned.has(s.url) ? ' selected' : '';
       const esc = s.url.replace(/'/g, "\\'");
       const tag = s.from === 'art' ? `<span class="rfq-imgpick-tag">Art</span>` : '';
-      const inner = (s.kind === 'image')
-        ? `<img src="${s.url}" alt="" />`
-        : `<div class="rfq-imgpick-file"><div style="font-size:26px; line-height:1;">${_artFileIcon(s.kind)}</div><div class="rfq-imgpick-ext">${_artFileBasename(s.url)}</div></div>`;
+      let inner;
+      if (s.kind === 'image') {
+        inner = `<img src="${s.url}" alt="" />`;
+      } else if (s.kind === 'pdf') {
+        // Render the first PDF page as a real thumbnail, same as the Art tab.
+        inner = `<div class="rfq-imgpick-embed"><embed src="${s.url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1" type="application/pdf" /></div>`
+              + `<span class="rfq-imgpick-badge">PDF</span><span class="rfq-imgpick-hit"></span>`;
+      } else if (s.kind === 'video') {
+        inner = `<div class="rfq-imgpick-embed"><video src="${s.url}" muted preload="metadata" playsinline></video></div>`
+              + `<span class="rfq-imgpick-badge">VIDEO</span><span class="rfq-imgpick-hit"></span>`;
+      } else {
+        inner = `<div class="rfq-imgpick-file"><div style="font-size:26px; line-height:1;">${_artFileIcon(s.kind)}</div><div class="rfq-imgpick-ext">${_artFileBasename(s.url)}</div></div>`;
+      }
       return `<div class="rfq-imgpick-item${sel}" onclick="toggleRfqPickImage('${esc}')" title="${assigned.has(s.url) ? 'Assigned — tap to remove' : 'Tap to assign'}">
         ${inner}${tag}
       </div>`;
