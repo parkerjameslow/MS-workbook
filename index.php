@@ -17352,11 +17352,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // thumbnails; other art files — PDF/CAD/etc — show as an icon tile).
   function _rfqPickerSources() {
     const out = [], seen = new Set();
+    const kindOf = (url) => (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
     (Array.isArray(_productImages) ? _productImages : []).forEach(i => {
       if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: 'image', from: 'product' }); }
     });
     (Array.isArray(_artImages) ? _artImages : []).forEach(i => {
-      if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: (typeof _artFileKind === 'function' ? _artFileKind(i.url) : 'image'), from: 'art' }); }
+      if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: kindOf(i.url), from: 'art' }); }
+    });
+    // Also surface anything already assigned to ANY RFQ line item. Images
+    // attached earlier live on the row (tr.dataset.images) and may no longer
+    // be in the galleries above — without this they'd be invisible in the
+    // picker for a new line even though they exist in the workbook.
+    document.querySelectorAll('#rfq-body tr[id^="rfq-"]').forEach(tr => {
+      const id = parseInt(tr.id.replace('rfq-', ''), 10);
+      if (Number.isNaN(id)) return;
+      getRfqRowImages(id).forEach(url => {
+        if (url && !seen.has(url)) { seen.add(url); out.push({ url, kind: kindOf(url), from: 'used' }); }
+      });
     });
     return out;
   }
