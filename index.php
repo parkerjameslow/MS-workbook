@@ -40268,14 +40268,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!staged.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
     host.style.display = '';
     const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const int   = n => (Number(n) || 0).toLocaleString('en-US');
     const n = _stagedOrderSelected.size;
     const rows = staged.map(s => {
       const checked = _stagedOrderSelected.has(s.key) ? 'checked' : '';
       const keyAttr = esc(s.key).replace(/'/g, "\\'");
-      return `<label class="staged-row" style="display:flex; align-items:center; gap:12px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer;">
-        <input type="checkbox" class="staged-cb" data-key="${esc(s.key)}" ${checked} onchange="toggleStagedSelection('${keyAttr}', this.checked)" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;" />
-        <span style="flex:1; min-width:0; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(s.product)}</span>
-        <span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}">${esc(s.clientName)}</span>
+      const detail = workbookDetail[s.key] || {};
+      const st = (typeof _wbStatsForPicker === 'function') ? _wbStatsForPicker(detail) : {};
+      const lineCount = Array.isArray(detail.rfqItems) ? detail.rfqItems.filter(i => i && (i.item || i.qty || i.priceRmb)).length : 0;
+      // Left meta line — the operational facts for grouping into an order.
+      const meta = [
+        `${lineCount} line${lineCount === 1 ? '' : 's'}`,
+        st.units > 0 ? `${int(st.units)} units` : null,
+        st.leadDays > 0 ? `${st.leadDays}d lead` : null,
+        st.cbm > 0 ? `${st.cbm.toFixed(2)} CBM` : null,
+        st.weightKg > 0 ? `${int(Math.round(st.weightKg))} kg` : null,
+      ].filter(Boolean).join(' · ');
+      // Right block — customer value (falls back to our cost) so the
+      // operator can size the order.
+      const hasPrice = st.price > 0;
+      const valTop = hasPrice ? money(st.price) : (st.cost > 0 ? money(st.cost) : '—');
+      const valSub = hasPrice ? 'customer' : (st.cost > 0 ? 'our cost' : '');
+      return `<label class="staged-row" style="display:flex; align-items:center; gap:14px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer;">
+        <input type="checkbox" class="staged-cb" data-key="${esc(s.key)}" ${checked} onchange="toggleStagedSelection('${keyAttr}', this.checked)" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;" />
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(s.product)}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${meta || 'no pricing yet'}</div>
+        </div>
+        <div style="text-align:right; flex-shrink:0; min-width:96px;">
+          <div style="font-weight:700; color:var(--text); font-size:13px;">${valTop}</div>
+          ${valSub ? `<div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em;">${valSub}</div>` : ''}
+        </div>
+        <span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}; flex-shrink:0;">${esc(s.clientName)}</span>
       </label>`;
     }).join('');
     host.innerHTML = `
