@@ -6988,7 +6988,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <table class="dash-table" id="dash-table">
           <thead>
             <tr>
-              <th style="width:36px; text-align:center;"><input type="checkbox" id="dash-head-cb" onchange="toggleAllClientWb(this.checked)" title="Select all" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></th>
+              <th style="width:56px; text-align:center;">
+                <input type="checkbox" id="dash-head-cb" onchange="toggleAllClientWb(this.checked)" title="Select all to move to RFQ / Samples" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" />
+                <div style="font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); margin-top:2px; line-height:1;">Select</div>
+              </th>
               <th class="sortable" onclick="sortClientTable('product')">Product <span class="sort-arrow"></span></th>
               <th class="col-landed sortable" onclick="sortClientTable('landed')">Client Quote Total <span class="sort-arrow"></span></th>
               <th class="col-date-created sortable" onclick="sortClientTable('date')">Date Created <span class="sort-arrow"></span></th>
@@ -28034,7 +28037,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       return `
       <tr class="${complete ? 'row-complete' : ''}${pendingReview ? ' row-pending-review' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
-        <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="client-wb-cb" data-wb-id="${item.id}" data-wb-product="${String(item.product||'').replace(/"/g,'&quot;')}" ${_clientWbSelected.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleClientWbSelection(${item.id}, this.checked)" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></td>
+        <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="client-wb-cb" data-wb-id="${item.id}" data-wb-product="${String(item.product||'').replace(/"/g,'&quot;')}" ${_clientWbSelected.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleClientWbSelection(${item.id}, this.checked)" title="Select to bulk-move to RFQ / Samples" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></td>
         <td class="product-name">${item.product}${pendingBadge}</td>
         <td class="col-landed">${landedCell}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
