@@ -8707,6 +8707,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-header" style="display:flex; align-items:center; gap:8px;">
       <span class="section-title">Art</span>
       <span class="section-presence-bar" data-section-bar="art" onclick="event.stopPropagation()"></span>
+      <button type="button" id="art-send-update-btn" class="btn btn-primary" onclick="event.stopPropagation(); openArtUpdatePreview()" disabled
+              title="Upload new art to enable"
+              style="margin-left:auto; font-size:12px; padding:7px 14px; display:inline-flex; align-items:center; gap:6px; opacity:0.5;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Send Art Update
+      </button>
     </div>
     <div class="section-body">
       <p style="color:var(--text-muted); margin-bottom:16px;">Upload artwork files, logos, and design assets for this product.</p>
@@ -10417,6 +10423,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
     <div class="modal-actions" style="margin-top:18px; flex-shrink:0;">
       <button type="button" class="btn btn-primary" onclick="closeRfqImagePicker()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Reusable Email Preview Modal ────────────────────────────────────
+     Shows exactly what an outgoing notification email will look like
+     (rendered in an iframe, plus To/Cc/Subject) before it's sent. Any
+     feature that emails from the app can drive this via showEmailPreview().
+-->
+<div class="modal-overlay" id="email-preview-modal" onclick="if(event.target===this)closeEmailPreview()" style="z-index:1200;">
+  <div class="modal" style="max-width:660px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" id="email-preview-title" style="flex-shrink:0;">Email Preview</div>
+    <div id="email-preview-meta" style="font-size:12px; color:var(--text-muted); margin:-8px 0 12px; flex-shrink:0; line-height:1.6; word-break:break-word;"></div>
+    <div style="border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#fff; flex:1 1 auto; min-height:220px; display:flex;">
+      <iframe id="email-preview-frame" sandbox="allow-same-origin" title="Email preview" style="width:100%; height:100%; min-height:320px; border:none; background:#fff;"></iframe>
+    </div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
+      <button type="button" class="btn btn-ghost" onclick="closeEmailPreview()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="email-preview-send-btn" onclick="_emailPreviewConfirm()">Send</button>
     </div>
   </div>
 </div>
@@ -12354,6 +12379,98 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const detail = collectWorkbookDetail();
     apiCall('save_workbook_detail', { id: dbId, detail: detail });
     saveToLocalStorage();
+    _updateArtSendBtn();
+  }
+
+  // ── Reusable email preview modal ─────────────────────────────────────
+  // showEmailPreview({title, subject, to[], cc[], html, sendLabel, onConfirm})
+  // renders the exact email HTML in an iframe with To/Cc/Subject, and wires
+  // the Send button to onConfirm (an async fn that actually sends).
+  let _emailPreviewOnConfirm = null;
+  function showEmailPreview(opts) {
+    opts = opts || {};
+    const titleEl = document.getElementById('email-preview-title');
+    const metaEl  = document.getElementById('email-preview-meta');
+    const frame   = document.getElementById('email-preview-frame');
+    const sendBtn = document.getElementById('email-preview-send-btn');
+    if (!titleEl || !frame || !sendBtn) return;
+    titleEl.textContent = opts.title || 'Email Preview';
+    const meta = [];
+    if (opts.subject)            meta.push(`<strong>Subject:</strong> ${_escHtml(opts.subject)}`);
+    if (opts.to && opts.to.length) meta.push(`<strong>To:</strong> ${_escHtml(opts.to.join(', '))}`);
+    if (opts.cc && opts.cc.length) meta.push(`<strong>Cc:</strong> ${_escHtml(opts.cc.join(', '))}`);
+    if (metaEl) metaEl.innerHTML = meta.join(' &nbsp;·&nbsp; ');
+    frame.srcdoc = opts.html || '';
+    sendBtn.textContent = opts.sendLabel || 'Send';
+    sendBtn.disabled = false;
+    _emailPreviewOnConfirm = opts.onConfirm || null;
+    document.getElementById('email-preview-modal').classList.add('open');
+  }
+  function closeEmailPreview() {
+    const m = document.getElementById('email-preview-modal');
+    if (m) m.classList.remove('open');
+    _emailPreviewOnConfirm = null;
+  }
+  async function _emailPreviewConfirm() {
+    const btn = document.getElementById('email-preview-send-btn');
+    if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = 'Sending…'; }
+    const fn = _emailPreviewOnConfirm;
+    try { if (fn) await fn(); }
+    finally {
+      if (btn && document.getElementById('email-preview-modal')?.classList.contains('open')) {
+        btn.disabled = false; btn.textContent = btn.dataset.label || 'Send';
+      }
+    }
+  }
+
+  // ── Send Art Update (→ Karen, cc Parker) ─────────────────────────────
+  // Tracks which art URLs were last sent so the button only lights up when
+  // there's genuinely new art since the last update. Persisted in the
+  // workbook detail as artLastSentUrls.
+  let _artLastSentUrls = [];
+  function _artHasNewUpload() {
+    return Array.isArray(_artImages) && _artImages.some(a => a && a.url && !_artLastSentUrls.includes(a.url));
+  }
+  function _updateArtSendBtn() {
+    const btn = document.getElementById('art-send-update-btn');
+    if (!btn) return;
+    const has = _artHasNewUpload();
+    btn.disabled = !has;
+    btn.style.opacity = has ? '' : '0.5';
+    btn.style.cursor  = has ? 'pointer' : 'not-allowed';
+    btn.title = has
+      ? 'Preview & email Karen that new art is ready for approval'
+      : 'No new art since the last update — upload art to enable';
+  }
+  async function openArtUpdatePreview() {
+    if (!currentClient || !currentWorkbookId || !_artHasNewUpload()) return;
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    const productName = document.getElementById('product-name')?.value || '';
+    let res;
+    try {
+      res = await apiCall('send_art_update', { workbook_id: dbId, client_name: currentClient, product_name: productName, preview: true });
+    } catch (e) { showToast('Could not build the email preview (network error)', 'error'); return; }
+    if (!res || !res.success) { showToast('Could not build the email preview', 'error'); return; }
+    showEmailPreview({
+      title: 'Send Art Update',
+      subject: res.subject, to: res.to, cc: res.cc, html: res.html,
+      sendLabel: 'Send to Karen',
+      onConfirm: async () => {
+        let send;
+        try { send = await apiCall('send_art_update', { workbook_id: dbId, client_name: currentClient, product_name: productName }); }
+        catch (e) { showToast('Could not send (network error)', 'error'); return; }
+        if (send && send.success && send.email_sent) {
+          _artLastSentUrls = _artImages.map(a => a.url);
+          if (typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
+          _updateArtSendBtn();
+          closeEmailPreview();
+          showToast('Art update sent to Karen (cc Parker)', 'success');
+        } else {
+          closeEmailPreview();
+          showToast('Could not send art update: ' + ((send && send.email_error) || 'email failed'), 'error');
+        }
+      }
+    });
   }
 
   /* ── Dimension Conversion ──────────────────────────────────────────────── */
@@ -28259,7 +28376,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       } else {
         _artImages = [];
       }
+      _artLastSentUrls = Array.isArray(data.artLastSentUrls) ? data.artLastSentUrls.slice() : [];
       renderArtGallery();
+      _updateArtSendBtn();
       setTimeout(renderPalletViz, 50);
     } else {
       // Fill with basic info from the client list
@@ -28279,7 +28398,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _productVideos = [];
       renderVideoGallery();
       _artImages = [];
+      _artLastSentUrls = [];
       renderArtGallery();
+      _updateArtSendBtn();
       // Apply any category suggested during creation
       if (_pendingWorkbookCategory) {
         const pend = _pendingWorkbookCategory;
@@ -29927,6 +30048,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       artDueDate: _v('art-due-date'),
       artNotes: _v('art-notes'),
       artImages: _artImages.length > 0 ? _artImages.map(i => i.url) : (existing.artImages || []),
+      // Which art URLs were last emailed to Karen — drives the "Send Art
+      // Update" button's enabled state (new art since last send).
+      artLastSentUrls: Array.isArray(_artLastSentUrls) ? _artLastSentUrls.slice() : (existing.artLastSentUrls || []),
       // Preserve any legacy per-workbook clientLogo so old detail_json
       // entries still feed getClientLogo()'s fallback chain. New logo
       // uploads live on clients.logo_url instead (see the edit-pencil

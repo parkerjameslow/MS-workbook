@@ -1028,7 +1028,7 @@ function ms_asst_tool_send_slack_channel(array $input) {
     return ['ok' => $code >= 200 && $code < 300, 'status' => $code];
 }
 
-function ms_smtp_send(array $to, string $subject, string $html): array {
+function ms_smtp_send(array $to, string $subject, string $html, array $cc = []): array {
     $host  = 'smtp.gmail.com';
     $port  = 587;
     $user  = 'parker@marketsculpt.com';
@@ -1060,11 +1060,15 @@ function ms_smtp_send(array $to, string $subject, string $html): array {
 
     fwrite($fp, "MAIL FROM:<{$user}>\r\n"); fgets($fp, 512);
     foreach ($to as $addr) { fwrite($fp, "RCPT TO:<{$addr}>\r\n"); fgets($fp, 512); }
+    // Cc recipients also get a RCPT TO so they actually receive the mail;
+    // the Cc: header (added below) is what makes them show as cc'd.
+    foreach ($cc as $addr) { fwrite($fp, "RCPT TO:<{$addr}>\r\n"); fgets($fp, 512); }
     fwrite($fp, "DATA\r\n"); fgets($fp, 512);
 
     $bnd  = md5(uniqid('ms', true));
     $plain = wordwrap(strip_tags(preg_replace('/<[^>]+>/', ' ', $html)), 76, "\r\n");
     $msg  = "From: {$fname} <{$user}>\r\nTo: " . implode(', ', $to) . "\r\n"
+          . (!empty($cc) ? "Cc: " . implode(', ', $cc) . "\r\n" : '')
           . "Subject: {$subject}\r\nMIME-Version: 1.0\r\n"
           . "Content-Type: multipart/alternative; boundary=\"{$bnd}\"\r\n"
           . "X-Mailer: MarketSculptWorkbook/1.0\r\n\r\n"
@@ -1952,6 +1956,74 @@ switch ($action) {
             'email_sent' => !empty($mail['ok']),
             'email_error'=> empty($mail['ok']) ? ($mail['error'] ?? 'unknown') : null,
             'reviewers'  => $internal,
+        ]);
+        break;
+    }
+
+    /**
+     * send_art_update — the operator uploaded new art and wants Karen to
+     * review/approve it. Emails Karen (cc Parker) with the client, product,
+     * art file count, art status/notes, and a link straight to the workbook.
+     * Pass preview=true to get the rendered subject/html/recipients back
+     * WITHOUT sending (drives the in-app email preview window).
+     */
+    case 'send_art_update': {
+        if (empty($input['workbook_id'])) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id required']);
+            break;
+        }
+        $wbId = (int)$input['workbook_id'];
+        $stmt = $pdo->prepare("SELECT product_name, detail_json, deleted_at FROM workbooks WHERE id = ?");
+        $stmt->execute([$wbId]);
+        $wb = $stmt->fetch();
+        if (!$wb) { echo json_encode(['success' => false, 'error' => 'Workbook not found']); break; }
+        if (!empty($wb['deleted_at'])) { echo json_encode(['success' => false, 'error' => 'This workbook has been archived.']); break; }
+
+        $detail    = json_decode($wb['detail_json'] ?: '{}', true) ?: [];
+        $artImages = (isset($detail['artImages']) && is_array($detail['artImages'])) ? $detail['artImages'] : [];
+        $artCount  = count($artImages);
+        $artStatus = trim((string)($detail['artStatus'] ?? ''));
+        $artNotes  = trim((string)($detail['artNotes']  ?? ''));
+
+        $clientName  = trim((string)($input['client_name']  ?? ''));
+        $productName = trim((string)($input['product_name'] ?? ($wb['product_name'] ?? '')));
+        $sender      = trim((string)($_SESSION['username'] ?? ($_SESSION['email'] ?? 'Someone')));
+
+        $to = ['karen@marketsculpt.com'];
+        $cc = ['parker@marketsculpt.com'];
+
+        $hostBase   = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com');
+        $wbUrl      = $hostBase . '/#/client/' . rawurlencode($clientName) . '/workbook/' . $wbId;
+        $esc        = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
+
+        $subject = 'New art needs approval: ' . ($productName !== '' ? $productName : ('Workbook #' . $wbId))
+                 . ($clientName !== '' ? ' — ' . $clientName : '');
+        $html = '<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif; font-size:14px; color:#1a1a1a; max-width:560px;">'
+              . '<p>' . $esc($sender) . ' uploaded new art that needs your review &amp; approval.</p>'
+              . '<table style="border-collapse:collapse; margin:14px 0; font-size:13px;">'
+              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Client</td><td style="padding:4px 0; font-weight:600;">' . $esc($clientName !== '' ? $clientName : '—') . '</td></tr>'
+              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Product</td><td style="padding:4px 0; font-weight:600;">' . $esc($productName !== '' ? $productName : ('#' . $wbId)) . '</td></tr>'
+              . '<tr><td style="padding:4px 12px 4px 0; color:#666;">Art&nbsp;files</td><td style="padding:4px 0;">' . (int)$artCount . ' file' . ($artCount === 1 ? '' : 's') . '</td></tr>'
+              . ($artStatus !== '' ? '<tr><td style="padding:4px 12px 4px 0; color:#666;">Status</td><td style="padding:4px 0;">' . $esc($artStatus) . '</td></tr>' : '')
+              . '</table>'
+              . ($artNotes !== '' ? '<p style="color:#444; background:#f7f7f5; border-radius:6px; padding:10px 12px;"><strong>Art notes:</strong><br>' . nl2br($esc($artNotes)) . '</p>' : '')
+              . '<p><a href="' . $esc($wbUrl) . '" style="display:inline-block; background:#E8751A; color:#fff; padding:9px 18px; border-radius:6px; text-decoration:none; font-weight:600;">Review Art</a></p>'
+              . '<p style="color:#666; font-size:12px; margin-top:20px;">Open the workbook\'s Art tab to review and approve the uploaded artwork.</p>'
+              . '</body></html>';
+
+        if (!empty($input['preview'])) {
+            echo json_encode(['success' => true, 'preview' => true, 'subject' => $subject, 'html' => $html, 'to' => $to, 'cc' => $cc]);
+            break;
+        }
+
+        $mail = ms_smtp_send($to, $subject, $html, $cc);
+        echo json_encode([
+            'success'     => true,
+            'email_sent'  => !empty($mail['ok']),
+            'email_error' => empty($mail['ok']) ? ($mail['error'] ?? 'unknown') : null,
+            'to'          => $to,
+            'cc'          => $cc,
+            'art_count'   => $artCount,
         ]);
         break;
     }
