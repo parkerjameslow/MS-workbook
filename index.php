@@ -12054,7 +12054,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Art Tab ─────────────────────────────────────────────────────────────── */
   let _artImages = [];
-  let _artUploadingCount = 0; // in-flight art uploads → spinner tiles in the gallery
+  let _artUploads = [];     // in-flight art uploads: { id, name, pct } → progress tiles
+  let _artUploadSeq = 0;
 
   // Per-client logo upload — replaces the prior per-workbook Client
   // Logo section on the Art tab. Triggered from the edit-pencil
@@ -12120,36 +12121,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function saveClientLogo() {
   }
 
+  // Upload one art file via XHR (fetch can't report upload progress).
+  // Resolves with the parsed server JSON; onProgress(pct) fires 0→100 as
+  // the bytes go up so the gallery tile can show a live progress bar.
+  function _uploadArtFileXhr(file, dbId, onProgress) {
+    return new Promise((resolve) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('workbook_id', dbId);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'api.php?action=upload_art_file');
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable && onProgress) onProgress(Math.min(100, Math.round((ev.loaded / ev.total) * 100)));
+      };
+      xhr.onload = () => {
+        let data = null;
+        try { data = JSON.parse(xhr.responseText); } catch (_) {}
+        resolve(data || { success: false, error: 'Bad server response (HTTP ' + xhr.status + ')' });
+      };
+      xhr.onerror = () => resolve({ success: false, error: 'Network error' });
+      resolve.__xhr = xhr;
+      xhr.send(fd);
+    });
+  }
+  // Lightweight progress paint — updates the in-flight tiles' bars/labels
+  // without rebuilding the whole gallery on every progress event.
+  function _renderArtUploadProgress() {
+    _artUploads.forEach(up => {
+      const bar = document.getElementById('art-up-bar-' + up.id);
+      const pct = document.getElementById('art-up-pct-' + up.id);
+      if (bar) bar.style.width = up.pct + '%';
+      if (pct) pct.textContent = up.pct;
+    });
+  }
+
   async function handleArtFiles(e) {
     const files = Array.from(e.target.files);
     if (!files.length || !currentWorkbookId) return;
     const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
     for (const file of files) {
-      // Show an "Uploading…" spinner tile in the gallery for the duration
-      // of this file's upload so a slow (multi-MB) drop gives immediate
-      // feedback instead of looking frozen.
-      _artUploadingCount++;
+      // Add a live progress tile for this file so a slow (multi-MB) upload
+      // shows an obvious bar climbing 0→100% instead of looking frozen.
+      const up = { id: ++_artUploadSeq, name: file.name, pct: 0 };
+      _artUploads.push(up);
       renderArtGallery();
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('workbook_id', dbId);
-      try {
-        const res = await fetch('api.php?action=upload_art_file', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.success) {
-          _artImages.push({ url: data.url });
-          saveArtList();
-        } else if (data.error) {
-          // Surface the server's reason (usually "Unsupported file type:
-          // .xyz" or "File too large") so the operator knows which file
-          // and why it didn't land.
-          alert(`Could not upload ${file.name}: ${data.error}`);
-        }
-      } catch (err) { console.warn('Art upload failed:', err); }
-      finally {
-        _artUploadingCount = Math.max(0, _artUploadingCount - 1);
-        renderArtGallery();
+      const data = await _uploadArtFileXhr(file, dbId, (pct) => { up.pct = pct; _renderArtUploadProgress(); });
+      const i = _artUploads.indexOf(up);
+      if (i >= 0) _artUploads.splice(i, 1);
+      if (data && data.success) {
+        _artImages.push({ url: data.url });
+        saveArtList();
+      } else if (data && data.error) {
+        // Surface the server's reason (usually "Unsupported file type:
+        // .xyz" or "File too large") so the operator knows which file
+        // and why it didn't land.
+        alert(`Could not upload ${file.name}: ${data.error}`);
       }
+      renderArtGallery();
     }
     e.target.value = '';
   }
@@ -12292,17 +12320,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       gallery.insertBefore(item, addBtn);
     });
-    // Spinner tile(s) for uploads still in flight — gives the operator a
-    // clear "working…" signal during slow (multi-MB) uploads.
-    for (let i = 0; i < _artUploadingCount; i++) {
+    // Progress tile(s) for uploads still in flight — spinner + a live
+    // 0→100% bar so slow (multi-MB) uploads clearly read as "working".
+    _artUploads.forEach(up => {
       const load = document.createElement('div');
       load.className = 'image-gallery-item art-uploading-tile';
-      load.innerHTML = `<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:9px; background:var(--surface2);">
+      load.innerHTML = `<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; background:var(--surface2); padding:0 10px; box-sizing:border-box;">
         <div class="art-spinner"></div>
-        <span style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Uploading…</span>
+        <div style="width:100%; text-align:center;">
+          <div style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Uploading <span id="art-up-pct-${up.id}">${up.pct}</span>%</div>
+          <div style="margin-top:5px; height:5px; background:var(--border); border-radius:99px; overflow:hidden;">
+            <div id="art-up-bar-${up.id}" style="height:100%; width:${up.pct}%; background:var(--accent); border-radius:99px; transition:width 0.15s;"></div>
+          </div>
+        </div>
       </div>`;
       gallery.insertBefore(load, addBtn);
-    }
+    });
   }
 
   // Unified art preview modal — handles image / PDF / video inline,
