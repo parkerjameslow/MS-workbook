@@ -8917,6 +8917,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <strong style="font-size:13px; color:var(--accent);"><span id="samples-bulk-count">0 samples</span> selected</strong>
       <button class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllSamples()">Deselect all</button>
       <span style="margin-left:auto; display:flex; gap:8px;">
+        <button class="btn btn-ghost" style="font-size:12px; border-color:var(--accent); color:var(--accent);" onclick="openSamplesToRfqPrompt()">→ Move to RFQ</button>
         <button class="btn btn-primary" style="font-size:12px;" onclick="openCreateSampleShipmentModal()">+ Create Shipment</button>
       </span>
     </div>
@@ -10494,6 +10495,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button type="button" class="btn btn-ghost" onclick="closeClientWbBulkModal()">Cancel</button>
       <button type="button" class="btn btn-ghost" onclick="_doClientWbBulk('samples')" style="border-color:var(--accent); color:var(--accent);">→ Samples</button>
       <button type="button" class="btn btn-primary" onclick="_doClientWbBulk('rfq')">→ RFQ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Bulk "Move to RFQ" from Samples ────────────────────────────────── -->
+<div class="modal-overlay" id="samples-rfq-modal" onclick="if(event.target===this)closeSamplesToRfqModal()" style="z-index:1200;">
+  <div class="modal" style="max-width:460px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Move <span id="samples-rfq-modal-count">0</span> workbook(s) to RFQ</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 12px; flex-shrink:0;">The workbook(s) behind the selected sample(s) will be sent to the <strong>RFQ Queue</strong> (Quote Submitted). The sample flags stay as-is — this just adds them to the RFQ flow.</p>
+    <ul id="samples-rfq-modal-list" style="list-style:none; padding:0; margin:0; overflow-y:auto; flex:1 1 auto; font-size:13px;"></ul>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
+      <button type="button" class="btn btn-ghost" onclick="closeSamplesToRfqModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="_doSamplesToRfq()">→ Move to RFQ</button>
     </div>
   </div>
 </div>
@@ -29211,6 +29225,60 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const h = document.getElementById('samples-header-checkbox');
     if (h) { h.checked = false; h.indeterminate = false; }
     updateSamplesBulkActionBar();
+  }
+
+  // ── Move to RFQ from Samples ──────────────────────────────────────
+  // Mirrors the client-view bulk "→ RFQ": the workbook(s) behind the
+  // selected sample rows are sent to the RFQ Queue via bulk_workbook_action.
+  // Selected samples can span multiple line items of the same workbook, so
+  // we dedupe down to the distinct parent workbooks first.
+  function _selectedSampleWorkbooks() {
+    // Map of composite s.key -> { key, dbId, name } for each distinct
+    // workbook that owns at least one selected sample row.
+    const out = new Map();
+    collectAllSamples().forEach(s => {
+      const compKey = `${s.key}|${s.rowIndex}`;
+      if (!_samplesSelected.has(compKey)) return;
+      if (out.has(s.key)) return;
+      const [, workbookId] = s.key.split('|');
+      out.set(s.key, { key: s.key, dbId: dbWorkbookMap[s.key] || workbookId, name: s.product });
+    });
+    return Array.from(out.values());
+  }
+
+  function openSamplesToRfqPrompt() {
+    if (!_samplesSelected.size) return;
+    const wbs = _selectedSampleWorkbooks();
+    if (!wbs.length) return;
+    document.getElementById('samples-rfq-modal-count').textContent = String(wbs.length);
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    document.getElementById('samples-rfq-modal-list').innerHTML = wbs.map(w =>
+      `<li style="padding:5px 0; border-bottom:1px solid var(--border);">${esc(w.name || 'Untitled')}</li>`).join('');
+    document.getElementById('samples-rfq-modal').classList.add('open');
+  }
+
+  function closeSamplesToRfqModal() {
+    const m = document.getElementById('samples-rfq-modal'); if (m) m.classList.remove('open');
+  }
+
+  async function _doSamplesToRfq() {
+    const wbs = _selectedSampleWorkbooks();
+    if (!wbs.length) { closeSamplesToRfqModal(); return; }
+    const modal = document.getElementById('samples-rfq-modal');
+    const btns = modal ? Array.from(modal.querySelectorAll('.btn')) : [];
+    btns.forEach(b => b.disabled = true);
+    let res;
+    try { res = await apiCall('bulk_workbook_action', { ids: wbs.map(w => w.dbId), action: 'rfq' }); }
+    catch (e) { btns.forEach(b => b.disabled = false); showToast('Move to RFQ failed (network error)', 'error'); return; }
+    btns.forEach(b => b.disabled = false);
+    closeSamplesToRfqModal();
+    const n = (res && res.updated) || 0;
+    deselectAllSamples();
+    // Refresh from the server so the RFQ queue / flow reflect it.
+    try { await loadFromDatabase(); } catch (_) {}
+    try { renderSamplesDashboard(); } catch (_) {}
+    try { if (typeof rebuildSidebar === 'function') rebuildSidebar(); } catch (_) {}
+    showToast(`Moved ${n} workbook${n === 1 ? '' : 's'} to RFQ`, (res && res.success) ? 'success' : 'warn');
   }
 
   function updateSamplesBulkActionBar() {
