@@ -35832,6 +35832,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // hoisted as undefined → loadCrm initializes it cleanly.
   var crmData = { cards: {}, nextId: 1 };
   var _crmDragCardId = null;
+  var _crmSavePending = false;   // a local CRM save is queued/in flight
   var _crmEditingId  = null;
   var _lastCrmJson   = '';
   // Module-level Set of assignee names selected in the open edit
@@ -35880,7 +35881,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { localStorage.setItem('ms_crmData', JSON.stringify(crmData)); } catch(e) {}
     const payload = JSON.stringify(crmData);
     _lastCrmJson = payload;
-    apiCall('save_app_state', { key: 'ms_crm', value: payload }).catch(() => {});
+    // Mark a save in flight so the live poll can't adopt a stale server
+    // copy over the change we just made but haven't persisted yet.
+    _crmSavePending = true;
+    apiCall('save_app_state', { key: 'ms_crm', value: payload })
+      .then(() => { _crmSavePending = false; })
+      .catch(() => { _crmSavePending = false; });
   }
 
   function loadCrm() {
@@ -35915,27 +35921,59 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (!res || !res.success || !res.value) return;
         let dbCrm;
         try { dbCrm = JSON.parse(res.value); } catch { return; }
-        if (!dbCrm || typeof dbCrm !== 'object') return;
-        const dbCount    = dbCrm.cards ? Object.keys(dbCrm.cards).length : 0;
+        if (!dbCrm || typeof dbCrm !== 'object' || !dbCrm.cards) return;
+        const dbCount    = Object.keys(dbCrm.cards).length;
         const localCount = crmData.cards ? Object.keys(crmData.cards).length : 0;
-        // Adopt the DB version when it has MORE cards than local
-        // (typical "fresh browser" case) OR when local is empty.
-        // Doesn't touch local state when local already has equal/
-        // more cards — operator's in-flight edits win.
-        if (dbCount > localCount) {
+        // Adopt the shared server copy whenever it DIFFERS from what we
+        // have — that covers column moves, edits, adds AND deletes, not
+        // just "more cards" (a card moved to Warm keeps the same count).
+        // Guards: skip while our own save is in flight, and never let an
+        // empty server blob wipe a populated local board.
+        if (!_crmSavePending && res.value !== _lastCrmJson && !(dbCount === 0 && localCount > 0)) {
           crmData = dbCrm;
           if (!crmData.cards)  crmData.cards  = {};
           if (!crmData.nextId) crmData.nextId = 1;
           _lastCrmJson = res.value;
           try { localStorage.setItem('ms_crmData', JSON.stringify(crmData)); } catch {}
-          // Re-render any visible CRM surface so the just-loaded
-          // cards appear without requiring a manual refresh.
           if (typeof renderCrmBoard      === 'function' && location.hash === '#/crm') renderCrmBoard();
           if (typeof _updateCrmNavBadge  === 'function') _updateCrmNavBadge();
         }
       }).catch(() => {});
     }
   }
+
+  // ── Live CRM board sync ──────────────────────────────────────────────
+  // The CRM board is a single shared blob (app_state 'ms_crm') saved on
+  // every move/edit. Poll it while the board is open so a card another
+  // operator moves (e.g. Jackson dragging a lead to Warm) appears on
+  // everyone's board within a few seconds — no manual refresh.
+  let _crmPollInflight = false;
+  async function _pollCrm() {
+    if (location.hash !== '#/crm') return;                 // only while viewing the board
+    if (_crmPollInflight || _crmSavePending) return;        // our own change in flight
+    if (_crmDragCardId) return;                             // mid-drag — don't yank the board
+    const modal = document.getElementById('modal-crm-card');
+    if (modal && modal.classList.contains('open')) return;  // mid-edit
+    _crmPollInflight = true;
+    try {
+      const res = await apiCall('get_app_state', { key: 'ms_crm' });
+      if (!res || !res.success || !res.value) return;
+      if (res.value === _lastCrmJson) return;                // nothing changed since our last sync
+      let dbCrm; try { dbCrm = JSON.parse(res.value); } catch { return; }
+      if (!dbCrm || typeof dbCrm !== 'object' || !dbCrm.cards) return;
+      const dbCount    = Object.keys(dbCrm.cards).length;
+      const localCount = (crmData && crmData.cards) ? Object.keys(crmData.cards).length : 0;
+      if (dbCount === 0 && localCount > 0) return;            // don't let a stray empty read wipe the board
+      crmData = dbCrm;
+      if (!crmData.nextId) crmData.nextId = 1;
+      _lastCrmJson = res.value;
+      try { localStorage.setItem('ms_crmData', JSON.stringify(crmData)); } catch {}
+      renderCrmBoard();
+      if (typeof _updateCrmNavBadge === 'function') _updateCrmNavBadge();
+    } catch (e) { /* network blip — try again next tick */ }
+    finally { _crmPollInflight = false; }
+  }
+  setInterval(_pollCrm, 4000);
 
   function renderCrmBoard() {
     // Defensive init — when the router fires renderCrmBoard during
