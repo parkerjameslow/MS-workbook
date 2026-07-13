@@ -6747,9 +6747,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <nav class="sidebar-nav" id="sidebar-nav">
 
-    <!-- All Workbooks — opens the Pipeline board (every workbook by stage). -->
+    <!-- Workbook Pipeline — opens the Pipeline board (every workbook by stage). -->
     <a id="nav-all-workbooks" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
-      <span>All Workbooks</span>
+      <span>Workbook Pipeline</span>
     </a>
 
     <!-- ★ Starred -->
