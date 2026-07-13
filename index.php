@@ -5713,6 +5713,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
     .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
     .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
+    /* Entity cards (orders / shipments) — the title is the order client or
+       the shipment name, with a drill-down list of what's inside. */
+    .pl-entity .pl-card-sub { color: #cbd5e1; }
+    .pl-children { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 2px; }
+    .pl-child-group { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; margin-top: 5px; }
+    .pl-child { font-size: 11px; color: #e5e7eb; padding: 3px 6px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+    .pl-child:hover { background: rgba(255,255,255,0.07); }
+    .pl-child-val { color: #a7f3d0; font-weight: 600; flex-shrink: 0; }
     .crm-board {
       display: flex; gap: 14px;
       padding: 4px 0 16px;
@@ -39869,71 +39877,115 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // = the Review list, Samples = the Samples list) and orders/shipments are
   // derived straight from their records (so an order like "BAM" always
   // shows, even if the workbook has no detail cached). Furthest stage wins.
-  function collectPipeline() {
-    const RANK = { unstaged:0, samples:1, rfq:2, review:3, orders:4, production:5, shipments:6, receiving:7 };
-    const stageOf = {}, meta = {}, doneCache = {};
-    const isDone = (cn, wid) => {
-      const k = `${cn}|${wid}`;
-      if (doneCache[k] !== undefined) return doneCache[k];
-      const ships = (typeof _wbShipmentsFor === 'function') ? _wbShipmentsFor(cn, wid) : [];
-      const done = ships.length > 0 && ships.every(s => s && s.status === 'received');
-      doneCache[k] = done;
-      return done;
+  // Resolve a workbook's product name from detail or the client list.
+  function _wbProduct(cn, wid) {
+    const d = workbookDetail[`${cn}|${wid}`];
+    if (d && d.product) return d.product;
+    const it = (clientData[cn] || []).find(i => String(i.id) === String(wid));
+    return (it && it.product) || `Workbook #${wid}`;
+  }
+  // Resolve a shipment's contents into [{label, workbooks:[{cn,wid,product}]}]
+  // grouped by the owning order (shipment → order → workbooks), matching the
+  // hierarchy the operator sees in the Shipments view.
+  function _shipmentGroups(s) {
+    const groups = [];
+    const addWb = (label, cn, wid) => {
+      if (cn == null || wid == null) return;
+      let g = groups.find(x => x.label === label);
+      if (!g) { g = { label, workbooks: [] }; groups.push(g); }
+      if (!g.workbooks.some(w => w.cn === cn && String(w.wid) === String(wid)))
+        g.workbooks.push({ cn, wid, product: _wbProduct(cn, wid) });
     };
+    (s.entries || []).forEach(e => {
+      if (!e) return;
+      if (e.orderId != null && orderData[e.orderId]) {
+        const o = orderData[e.orderId];
+        const label = `${o.clientName || ''} · ${o.name || ('Order #' + o.id)}`;
+        (o.entries || []).forEach(oe => oe && addWb(label, oe.clientName, oe.workbookId));
+      } else if (e.clientName != null && e.workbookId != null) {
+        addWb(e.clientName || '', e.clientName, e.workbookId);
+      } else if (e.sampleKey) {
+        const [cn, wid] = String(e.sampleKey).split('|'); addWb((cn || '') + ' · sample', cn, wid);
+      }
+    });
+    (s.sampleEntries || []).forEach(e => { if (e) addWb((e.clientName || '') + ' · sample', e.clientName, e.workbookId); });
+    return groups;
+  }
+
+  // Build the board. Early stages (Unstaged/RFQ/Review/Samples + Orders
+  // staging) are per-WORKBOOK cards, drawn from the same collectors the
+  // dashboards use. The entity stages (Orders queue / In Production /
+  // Shipments / Receiving) are per-ENTITY cards (an order or a shipment)
+  // with a drill-down of their contents — matching those left-nav views
+  // exactly. Workbooks owned by an entity are not also shown as loose cards.
+  function collectPipeline() {
+    const cards = [];
+    const claimed = new Set();  // "cn|wid" represented by an entity card
+    const claim = (cn, wid) => { if (cn != null && wid != null) claimed.add(`${cn}|${wid}`); };
+
+    // ── Shipments (page) + Receiving (delivered) → shipment cards ──
+    Object.values(shipmentData || {}).forEach(s => {
+      if (!s || s.id == null) return;
+      let stage = null;
+      if (s.status === 'delivered') stage = 'receiving';
+      else if (s.status && s.status !== 'received' && !(typeof _isArchiveCompleted === 'function' && _isArchiveCompleted(s))) stage = 'shipments';
+      if (!stage) return;
+      const groups = _shipmentGroups(s);
+      groups.forEach(g => g.workbooks.forEach(w => claim(w.cn, w.wid)));
+      const units = groups.reduce((n, g) => n + g.workbooks.length, 0);
+      cards.push({ kind: 'shipment', stage, id: s.id, title: s.name || `Shipment #${s.id}`,
+                   sub: [(s.carrier || '').toUpperCase(), _SHIP_STATUS_LABEL(s.status)].filter(Boolean).join(' · '),
+                   groups, count: units });
+    });
+
+    // ── Orders queue + In Production (fulfillment) → order cards ──
+    Object.values(orderData || {}).forEach(o => {
+      if (!o || o.id == null) return;
+      let stage = null;
+      if (_orderIsInFulfillment(o)) stage = 'production';
+      else if (_orderIsInOrdersQueue(o)) stage = 'orders';
+      if (!stage) return;   // notified + already shipped → lives on shipment cards
+      const entries = (o.entries || []).filter(Boolean);
+      entries.forEach(e => claim(e.clientName, e.workbookId));
+      const tot = (typeof orderTotals === 'function') ? orderTotals(o) : { totalUsd: 0 };
+      cards.push({ kind: 'order', stage, id: o.id, title: o.clientName || 'Order',
+                   sub: `${o.name || ('Order #' + o.id)} · ${entries.length} workbook${entries.length === 1 ? '' : 's'}`,
+                   totalUsd: tot.totalUsd || 0,
+                   workbooks: entries.map(e => ({ cn: e.clientName, wid: e.workbookId, product: _wbProduct(e.clientName, e.workbookId) })) });
+    });
+
+    // ── Early workbook stages (exclude entity-claimed + fully-received) ──
+    const wbStage = {}, meta = {};
+    const RANK = { unstaged: 0, samples: 1, rfq: 2, review: 3, orders: 4 };
     const consider = (cn, wid, stage) => {
       if (cn == null || wid == null) return;
-      if (isDone(cn, wid)) return;                 // fully received → off the board
       const key = `${cn}|${wid}`;
-      if (!meta[key]) {
-        const detail = workbookDetail[key] || {};
-        let product = detail.product;
-        if (!product) {
-          const it = (clientData[cn] || []).find(i => String(i.id) === String(wid));
-          product = (it && it.product) || `Workbook #${wid}`;
-        }
-        meta[key] = { key, clientName: cn, workbookId: wid, product, detail };
-      }
-      if (stageOf[key] === undefined || RANK[stage] > RANK[stageOf[key]]) stageOf[key] = stage;
+      if (claimed.has(key)) return;
+      if (!meta[key]) meta[key] = { key, clientName: cn, workbookId: wid, product: _wbProduct(cn, wid), detail: workbookDetail[key] || {} };
+      if (wbStage[key] === undefined || RANK[stage] > RANK[wbStage[key]]) wbStage[key] = stage;
     };
-
-    // Base: every known workbook starts Unstaged (skips fully-received).
     for (const [key, detail] of Object.entries(workbookDetail)) {
       if (!detail) continue;
       const [cn, wid] = key.split('|');
+      if (claimed.has(key)) continue;
+      const ships = (typeof _wbShipmentsFor === 'function') ? _wbShipmentsFor(cn, wid) : [];
+      if (ships.length && ships.every(sh => sh && sh.status === 'received')) continue; // done
       consider(cn, wid, 'unstaged');
     }
-    // Exact dashboard membership for the flag-based stages.
     try { (collectAllSamples() || []).forEach(s => consider(s.clientName, s.workbookId, 'samples')); } catch (_) {}
     try { (collectAllRfqs() || []).forEach(r => consider(r.clientName, r.workbookId, 'rfq')); } catch (_) {}
     try { (collectAllReadyForReview() || []).forEach(r => consider(r.clientName, r.workbookId, 'review')); } catch (_) {}
     try { (collectStagedForOrders() || []).forEach(s => consider(s.clientName, s.workbookId, 'orders')); } catch (_) {}
-    // Orders / In Production — straight from the order records.
-    Object.values(orderData || {}).forEach(o => {
-      if (!o) return;
-      const stage = _orderIsInFulfillment(o) ? 'production' : 'orders';
-      (o.entries || []).forEach(e => { if (e) consider(e.clientName, e.workbookId, stage); });
-    });
-    // Shipments / Receiving — resolve every shipment-entry shape to workbooks.
-    Object.values(shipmentData || {}).forEach(s => {
-      if (!s) return;
-      let stage = null;
-      if (s.status === 'delivered') stage = 'receiving';
-      else if (s.status && s.status !== 'received') stage = 'shipments';
-      if (!stage) return;
-      (s.entries || []).forEach(e => {
-        if (!e) return;
-        if (e.clientName != null && e.workbookId != null) consider(e.clientName, e.workbookId, stage);
-        else if (e.orderId != null && orderData[e.orderId]) (orderData[e.orderId].entries || []).forEach(oe => oe && consider(oe.clientName, oe.workbookId, stage));
-        else if (e.sampleKey) { const [cn, wid] = String(e.sampleKey).split('|'); consider(cn, wid, stage); }
-      });
-      (s.sampleEntries || []).forEach(e => { if (e) consider(e.clientName, e.workbookId, stage); });
-    });
-
-    return Object.keys(stageOf).map(key => {
+    Object.keys(wbStage).forEach(key => {
       const m = meta[key];
-      const stage = stageOf[key];
-      return { ...m, stage, movable: _pipelineCardMovable(m.clientName, m.workbookId, stage) };
+      cards.push({ kind: 'wb', stage: wbStage[key], key, clientName: m.clientName, workbookId: m.workbookId,
+                   product: m.product, detail: m.detail, movable: _pipelineCardMovable(m.clientName, m.workbookId, wbStage[key]) });
     });
+    return cards;
+  }
+
+  function _SHIP_STATUS_LABEL(st) {
+    return ({ planning:'Planning', booked:'Booked', in_transit:'In Transit', waiting_arrival:'Waiting Arrival', delivered:'Delivered', received:'Received' })[st] || (st || '');
   }
 
   function renderPipelineBoard() {
@@ -39949,10 +40001,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const byCol = {};
     PIPELINE_COLUMNS.forEach(c => { byCol[c.id] = []; });
     collectPipeline().forEach(card => { (byCol[card.stage] = byCol[card.stage] || []).push(card); });
-    Object.keys(byCol).forEach(k => byCol[k].sort((a, b) => a.product.localeCompare(b.product)));
+    const _t = c => String(c.title || c.product || '');
+    Object.keys(byCol).forEach(k => byCol[k].sort((a, b) => _t(a).localeCompare(_t(b))));
     board.innerHTML = PIPELINE_COLUMNS.map(col => {
       const cards = byCol[col.id] || [];
-      const cardsHtml = cards.map(c => _pipelineCardHtml(c)).join('');
+      const cardsHtml = cards.map(c =>
+        c.kind === 'order' ? _pipelineOrderCardHtml(c)
+        : c.kind === 'shipment' ? _pipelineShipmentCardHtml(c)
+        : _pipelineCardHtml(c)
+      ).join('');
       return `<div class="crm-column" data-col="${col.id}"
                    ondragover="event.preventDefault(); this.classList.add('drag-over');"
                    ondragleave="this.classList.remove('drag-over');"
@@ -39969,24 +40026,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _updatePipelineNavBadge();
   }
 
+  const _plEsc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  function _pipelineChildLine(w) {
+    const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
+    return `<div class="pl-child" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}">
+      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">→ ${_plEsc(w.product)}</span></div>`;
+  }
+
+  // Workbook card (early stages).
   function _pipelineCardHtml(c) {
-    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     const st = (typeof _wbStatsForPicker === 'function') ? _wbStatsForPicker(c.detail) : {};
     const units = (st.units > 0) ? `${st.units.toLocaleString('en-US')} units` : '';
     const salePer = parseFloat(c.detail.pricingSalePer) || 0;
     const val = (salePer > 0 && st.price > 0)
       ? `$${st.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
-    const sub = [esc(c.clientName), units].filter(Boolean).join(' · ');
+    const sub = [_plEsc(c.clientName), units].filter(Boolean).join(' · ');
     const wbHref = `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`;
-    const lockHint = c.movable ? '' : `<div class="pl-lock-hint">Managed from its own view</div>`;
     const dragAttrs = c.movable
-      ? `draggable="true" ondragstart="onPipelineDragStart(event,'${esc(c.key)}')" ondragend="onPipelineDragEnd(event)"`
+      ? `draggable="true" ondragstart="onPipelineDragStart(event,'${_plEsc(c.key)}')" ondragend="onPipelineDragEnd(event)"`
       : '';
     return `<div class="crm-card pl-card ${c.movable ? '' : 'pl-locked'}" ${dragAttrs}
                  onclick="location.hash='${wbHref}'" title="Open workbook">
-      <div class="pl-card-title">${esc(c.product)}</div>
+      <div class="pl-card-title">${_plEsc(c.product)}</div>
       <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
-      ${lockHint}
+    </div>`;
+  }
+
+  // Order entity card (Orders queue / In Production) — titled by client,
+  // drills down to its workbooks. Click header → open the order.
+  function _pipelineOrderCardHtml(c) {
+    const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
+    const children = (c.workbooks || []).map(_pipelineChildLine).join('');
+    return `<div class="crm-card pl-card pl-locked pl-entity" onclick="location.hash='#/order/${c.id}'" title="Open order">
+      <div class="pl-card-title">${_plEsc(c.title)}</div>
+      <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
+      ${children ? `<div class="pl-children">${children}</div>` : ''}
+    </div>`;
+  }
+
+  // Shipment entity card (Shipments / Receiving) — titled by shipment name,
+  // drills down shipment → order → workbooks. Click header → open shipment.
+  function _pipelineShipmentCardHtml(c) {
+    const body = (c.groups || []).map(g =>
+      `<div class="pl-child-group">${_plEsc(g.label)}</div>${g.workbooks.map(_pipelineChildLine).join('')}`
+    ).join('');
+    return `<div class="crm-card pl-card pl-locked pl-entity" onclick="location.hash='#/shipment/${c.id}'" title="Open shipment">
+      <div class="pl-card-title">${_plEsc(c.title)}</div>
+      <div class="pl-card-sub">${_plEsc(c.sub) || `${c.count} workbook${c.count === 1 ? '' : 's'}`}</div>
+      ${body ? `<div class="pl-children">${body}</div>` : ''}
     </div>`;
   }
 
