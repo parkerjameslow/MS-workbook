@@ -2113,8 +2113,8 @@ switch ($action) {
     case 'set_pipeline_stage': {
         $wbId  = (int)($input['workbook_id'] ?? 0);
         $stage = $input['stage'] ?? '';
-        if ($wbId <= 0 || !in_array($stage, ['samples', 'rfq', 'review', 'orders'], true)) {
-            echo json_encode(['success' => false, 'error' => 'workbook_id and a valid stage (samples|rfq|review|orders) required']);
+        if ($wbId <= 0 || !in_array($stage, ['unstaged', 'samples', 'rfq', 'review', 'orders'], true)) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id and a valid stage (unstaged|samples|rfq|review|orders) required']);
             break;
         }
         $sel = $pdo->prepare("SELECT detail_json, flow_step FROM workbooks WHERE id = ? AND deleted_at IS NULL");
@@ -2131,7 +2131,14 @@ switch ($action) {
         // rfq/review need flow_step >= 2 (quoteSubmitted) to enter their
         // queues; samples/orders leave flow_step untouched.
         $bumpFlow = false;
-        if ($stage === 'samples') {
+        if ($stage === 'unstaged') {
+            // No stage at all — clear the dividers (already done) and un-flag
+            // every sample line so it doesn't fall back into Samples.
+            if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
+                foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = false; }
+                unset($it);
+            }
+        } elseif ($stage === 'samples') {
             if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
                 foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = true; }
                 unset($it);

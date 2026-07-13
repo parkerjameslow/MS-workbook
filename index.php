@@ -39813,6 +39813,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // later stages are backed by orders/shipments and are read-only here —
   // managed from their own views (Orders / Shipments / Receiving).
   const PIPELINE_COLUMNS = [
+    { id: 'unstaged',   label: 'Unstaged',         bg: '#f3f4f6', fg: '#4b5563' },
     { id: 'rfq',        label: 'RFQ',              bg: '#dbeafe', fg: '#1e40af' },
     { id: 'review',     label: 'Ready For Review', bg: '#e0e7ff', fg: '#3730a3' },
     { id: 'samples',    label: 'Samples',          bg: '#dcfce7', fg: '#15803d' },
@@ -39821,7 +39822,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     { id: 'shipments',  label: 'Shipments',        bg: '#cffafe', fg: '#0e7490' },
     { id: 'receiving',  label: 'Receiving',        bg: '#f3e8ff', fg: '#7c3aed' },
   ];
-  const PIPELINE_FLAG_STAGES = new Set(['rfq', 'review', 'samples', 'orders']);
+  // Stages you can freely drag a card to/from (pure flag flips). Unstaged
+  // clears every stage flag; the others set exactly one.
+  const PIPELINE_FLAG_STAGES = new Set(['unstaged', 'rfq', 'review', 'samples', 'orders']);
   let _pipelineDragKey = null;
 
   function _wbOrdersFor(clientName, workbookId) {
@@ -39847,7 +39850,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (detail && detail.sentForReview) return 'review';
     if (detail && detail.sentToRfq)      return 'rfq';
     if (detail && Array.isArray(detail.rfqItems) && detail.rfqItems.some(i => i && i.sample)) return 'samples';
-    return null;
+    // Nothing started → Unstaged (still on the board). Note: the fully-
+    // received case above returns null (done, exited) — NOT unstaged.
+    return 'unstaged';
   }
 
   // Freely movable (flag flip) only when the stage is flag-based AND the
@@ -39970,7 +39975,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     detail.sentToRfq = false; detail.sentToRfqAt = null;
     detail.sentForReview = false; detail.sentForReviewAt = null;
     detail.movedToOrders = false; detail.movedToOrdersAt = null;
-    if (targetStage === 'samples') {
+    if (targetStage === 'unstaged') {
+      // Clear every stage flag AND un-flag samples so it truly has no stage.
+      if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = false; });
+    } else if (targetStage === 'samples') {
       if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = true; });
     } else if (targetStage === 'rfq') {
       detail.sentToRfq = true; detail.sentToRfqAt = now;
