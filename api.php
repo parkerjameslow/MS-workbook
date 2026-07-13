@@ -2090,6 +2090,9 @@ switch ($action) {
                 $detail['sentToRfqAt']   = null;
                 $detail['sentForReview'] = false;
                 $detail['sentForReviewAt'] = null;
+                // Also un-stage from Orders — Samples is the earliest stage.
+                $detail['movedToOrders']   = false;
+                $detail['movedToOrdersAt'] = null;
                 $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
                 $upd->execute([json_encode($detail), $id]);
             }

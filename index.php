@@ -40341,6 +40341,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div id="staged-bulk-bar" style="display:${n > 0 ? 'flex' : 'none'}; align-items:center; gap:12px; padding:10px 16px; background:rgba(232,117,26,0.10); border-bottom:1px solid var(--border);">
           <strong style="font-size:13px; color:var(--accent);"><span id="staged-bulk-count">${n}</span> selected</strong>
           <button class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllStaged()">Deselect all</button>
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="sendSelectedStagedBackToSamples()" title="Not ready — move the selected workbook(s) back to Samples">↩ Send back to Samples</button>
           <span style="margin-left:auto; display:flex; gap:8px;">
             <button class="btn btn-ghost" style="font-size:12px; border-color:var(--accent); color:var(--accent);" onclick="openStagedAddOrderModal()">+ Add to existing order</button>
             <button class="btn btn-primary" style="font-size:12px;" onclick="createOrderFromStaged()">+ Create new order</button>
@@ -40360,25 +40361,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
   function deselectAllStaged() { _stagedOrderSelected.clear(); renderOrdersStaging(); }
 
-  // "Not ready" — send a staged workbook back to Samples. Clears the
-  // movedToOrders flag and re-flags its line items as samples so it
-  // reappears in the Samples list. Updates locally first, then persists.
-  async function sendStagedBackToSamples(key) {
-    const wd = workbookDetail[key];
-    if (wd) {
-      wd.movedToOrders = false; wd.movedToOrdersAt = null;
-      if (Array.isArray(wd.rfqItems)) wd.rfqItems.forEach(it => { if (it) it.sample = true; });
-    }
-    _stagedOrderSelected.delete(key);
+  // "Not ready" — send staged workbook(s) back to Samples. Clears the
+  // movedToOrders flag and re-flags line items as samples so they reappear
+  // in the Samples list. Updates locally first, then persists (the server
+  // 'samples' action also clears movedToOrders). Shared by the per-row
+  // button and the bulk-bar action.
+  async function _sendKeysBackToSamples(keys) {
+    if (!keys.length) return;
+    const dbIds = [];
+    keys.forEach(key => {
+      const wd = workbookDetail[key];
+      if (wd) {
+        wd.movedToOrders = false; wd.movedToOrdersAt = null;
+        if (Array.isArray(wd.rfqItems)) wd.rfqItems.forEach(it => { if (it) it.sample = true; });
+      }
+      _stagedOrderSelected.delete(key);
+      const [, workbookId] = key.split('|');
+      dbIds.push(dbWorkbookMap[key] || workbookId);
+    });
     try { saveToLocalStorage(); } catch (_) {}
     renderOrdersStaging();
     try { rebuildOrdersNav(); } catch (_) {}
     try { rebuildSamplesNav(); } catch (_) {}
-    const [, workbookId] = key.split('|');
-    const dbId = dbWorkbookMap[key] || workbookId;
-    try { await apiCall('bulk_workbook_action', { ids: [dbId], action: 'samples' }); }
+    try { await apiCall('bulk_workbook_action', { ids: dbIds, action: 'samples' }); }
     catch (_) { showToast('Saved locally — server sync failed', 'warn'); return; }
-    showToast('Sent back to Samples', 'success');
+    const n = keys.length;
+    showToast(`Sent ${n} back to Samples`, 'success');
+  }
+  function sendStagedBackToSamples(key) { return _sendKeysBackToSamples([key]); }
+  function sendSelectedStagedBackToSamples() {
+    return _sendKeysBackToSamples(_stagedSelectedList().map(s => s.key));
   }
 
   function createOrderFromStaged() {
