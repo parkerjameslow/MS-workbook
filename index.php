@@ -22760,11 +22760,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             });
             const _sumUsd = _fxUsdFromRmb(_sumRmb);
             // Sale price for the kit = the operator's Sale Per (per kit) when
-            // one is entered in the Total Landed Cost section; otherwise the
-            // summed component cost. So the Client Quote line + Total reflect
-            // whatever Sale Per the operator commits to, and fall back to the
-            // kit cost when Sale Per is blank.
-            const _saleUnit = _cqHaveSalePer ? _cqSalePer : _sumUsd;
+            // one is entered in the Total Landed Cost section; otherwise —
+            // (no committed price). Consistent with single lines: the quote
+            // never shows a fabricated price until a Sale Per is set.
+            const _saleUnit = _cqHaveSalePer ? _cqSalePer : 0;
             const _primaryDid = _combineGroupPrimaryDomId.get(_combineG.id);
             const _primaryRow = _primaryDid ? document.getElementById(_primaryDid) : null;
             const _primaryIns = _primaryRow ? _primaryRow.querySelectorAll('input:not([type="checkbox"])') : null;
@@ -22834,11 +22833,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               pSale  = _cqSalePer;
               pTotal = pQty > 0 ? _msCeil2(pQty * pSale) : 0;
             } else {
-              const pRmb    = _msNumFromInput(pInputs[3]);
-              const pUsd    = _fxUsdFromRmb(pRmb);
-              const pLanded = pUsd + _ctxShipPerUnit;
-              pSale  = pLanded * _ctxWbMarginMul;
-              pTotal = _msCeil2(pQty * pSale);
+              // No Sale Per committed → show — (0 renders as a dash below).
+              // The quote must not display a fabricated price the operator
+              // hasn't set — no landed×margin, no cost fallback.
+              pSale  = 0;
+              pTotal = 0;
             }
             const pitchBadge = (_cqQtyScale !== 1 && pQty > pRawQty)
               ? ` <span style="color:#10b981; font-weight:700; font-size:10px;">(+${(pQty - pRawQty).toLocaleString('en-US')})</span>`
@@ -22879,10 +22878,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               if (_cqHaveSalePer) {
                 vSale = _cqSalePer;
               } else {
-                const vRmb    = _msNumFromInput(vi[2]);
-                const vUsd    = _fxUsdFromRmb(vRmb);
-                const vLanded = vUsd + _ctxShipPerUnit;
-                vSale         = vLanded * _ctxWbMarginMul;
+                // No Sale Per committed → no price (renders as — below).
+                vSale = 0;
               }
               const vTotal  = vQty > 0 && vSale > 0 ? _msCeil2(vQty * vSale) : 0;
 
@@ -23532,9 +23529,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const pRow = pDom ? document.getElementById(pDom) : null;
           const pQty = pRow ? _scaleQty(_msIntFromInput(pRow.querySelectorAll('input:not([type="checkbox"])')[2])) : 0;
           // Total for the combined kit uses the operator's Sale Per (per kit)
-          // when entered, else the component cost sum — matching the Client
-          // Quote line. So Total USD reflects the Sale Per once it's set.
-          const _kitUnit = (!isNaN(salePer) && salePer > 0) ? salePer : sumUsd;
+          // when entered, else 0 (no committed price → the line + header read
+          // —). Matches the Client Quote table render.
+          const _kitUnit = (!isNaN(salePer) && salePer > 0) ? salePer : 0;
           if (pQty > 0 && _kitUnit > 0) {
             _itemsSubtotal += _msCeil2(pQty * _kitUnit);
             _itemsQty      += pQty;
