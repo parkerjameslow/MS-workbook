@@ -39864,17 +39864,76 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return true;
   }
 
+  // Build the board from the SAME data the individual views use so each
+  // column matches its dashboard exactly (RFQ = RFQ Queue, Ready For Review
+  // = the Review list, Samples = the Samples list) and orders/shipments are
+  // derived straight from their records (so an order like "BAM" always
+  // shows, even if the workbook has no detail cached). Furthest stage wins.
   function collectPipeline() {
-    const out = [];
+    const RANK = { unstaged:0, samples:1, rfq:2, review:3, orders:4, production:5, shipments:6, receiving:7 };
+    const stageOf = {}, meta = {}, doneCache = {};
+    const isDone = (cn, wid) => {
+      const k = `${cn}|${wid}`;
+      if (doneCache[k] !== undefined) return doneCache[k];
+      const ships = (typeof _wbShipmentsFor === 'function') ? _wbShipmentsFor(cn, wid) : [];
+      const done = ships.length > 0 && ships.every(s => s && s.status === 'received');
+      doneCache[k] = done;
+      return done;
+    };
+    const consider = (cn, wid, stage) => {
+      if (cn == null || wid == null) return;
+      if (isDone(cn, wid)) return;                 // fully received → off the board
+      const key = `${cn}|${wid}`;
+      if (!meta[key]) {
+        const detail = workbookDetail[key] || {};
+        let product = detail.product;
+        if (!product) {
+          const it = (clientData[cn] || []).find(i => String(i.id) === String(wid));
+          product = (it && it.product) || `Workbook #${wid}`;
+        }
+        meta[key] = { key, clientName: cn, workbookId: wid, product, detail };
+      }
+      if (stageOf[key] === undefined || RANK[stage] > RANK[stageOf[key]]) stageOf[key] = stage;
+    };
+
+    // Base: every known workbook starts Unstaged (skips fully-received).
     for (const [key, detail] of Object.entries(workbookDetail)) {
       if (!detail) continue;
-      const [clientName, workbookId] = key.split('|');
-      const stage = _pipelineStageFor(clientName, workbookId, detail);
-      if (!stage) continue;
-      out.push({ key, clientName, workbookId, product: detail.product || 'Untitled', stage,
-                 movable: _pipelineCardMovable(clientName, workbookId, stage), detail });
+      const [cn, wid] = key.split('|');
+      consider(cn, wid, 'unstaged');
     }
-    return out;
+    // Exact dashboard membership for the flag-based stages.
+    try { (collectAllSamples() || []).forEach(s => consider(s.clientName, s.workbookId, 'samples')); } catch (_) {}
+    try { (collectAllRfqs() || []).forEach(r => consider(r.clientName, r.workbookId, 'rfq')); } catch (_) {}
+    try { (collectAllReadyForReview() || []).forEach(r => consider(r.clientName, r.workbookId, 'review')); } catch (_) {}
+    try { (collectStagedForOrders() || []).forEach(s => consider(s.clientName, s.workbookId, 'orders')); } catch (_) {}
+    // Orders / In Production — straight from the order records.
+    Object.values(orderData || {}).forEach(o => {
+      if (!o) return;
+      const stage = _orderIsInFulfillment(o) ? 'production' : 'orders';
+      (o.entries || []).forEach(e => { if (e) consider(e.clientName, e.workbookId, stage); });
+    });
+    // Shipments / Receiving — resolve every shipment-entry shape to workbooks.
+    Object.values(shipmentData || {}).forEach(s => {
+      if (!s) return;
+      let stage = null;
+      if (s.status === 'delivered') stage = 'receiving';
+      else if (s.status && s.status !== 'received') stage = 'shipments';
+      if (!stage) return;
+      (s.entries || []).forEach(e => {
+        if (!e) return;
+        if (e.clientName != null && e.workbookId != null) consider(e.clientName, e.workbookId, stage);
+        else if (e.orderId != null && orderData[e.orderId]) (orderData[e.orderId].entries || []).forEach(oe => oe && consider(oe.clientName, oe.workbookId, stage));
+        else if (e.sampleKey) { const [cn, wid] = String(e.sampleKey).split('|'); consider(cn, wid, stage); }
+      });
+      (s.sampleEntries || []).forEach(e => { if (e) consider(e.clientName, e.workbookId, stage); });
+    });
+
+    return Object.keys(stageOf).map(key => {
+      const m = meta[key];
+      const stage = stageOf[key];
+      return { ...m, stage, movable: _pipelineCardMovable(m.clientName, m.workbookId, stage) };
+    });
   }
 
   function renderPipelineBoard() {
