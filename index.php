@@ -11519,8 +11519,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
     // Render + persist whatever DID land so partial successes survive.
+    // Refresh both galleries so the new image also shows on the Art tab.
     if (uploaded > 0) {
-      renderImageGallery();
+      _renderBothGalleries();
       saveImageList();
     }
     if (failures.length) {
@@ -11541,21 +11542,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveImageList();
   }
 
-  function renderImageGallery() {
-    const gallery = document.getElementById('imageGallery');
-    const addBtn = gallery.querySelector('.image-add-btn');
-    // Remove existing image items
-    gallery.querySelectorAll('.image-gallery-item').forEach(el => el.remove());
-    // Add image items before the add button
-    _productImages.forEach((img, idx) => {
-      const item = document.createElement('div');
-      item.className = 'image-gallery-item';
-      item.innerHTML = `
-        <img src="${img.url}" alt="Product image ${idx+1}" onclick="openLightbox('${img.url}')" />
-        <button class="img-remove" onclick="removeGalleryImage(${idx}, event)" title="Remove">✕</button>
-      `;
-      gallery.insertBefore(item, addBtn);
-    });
+  // Product Images gallery now renders the SAME unified pool as the Art
+  // gallery (see _renderFileGallery), so a file added on either tab shows
+  // on both. Kept as a named function since many callers reference it.
+  function renderImageGallery() { _renderFileGallery('imageGallery'); }
+
+  // Refresh both galleries together — used after any add/remove so the two
+  // tabs stay mirrored.
+  function _renderBothGalleries() {
+    if (typeof renderImageGallery === 'function') renderImageGallery();
+    if (typeof renderArtGallery === 'function') renderArtGallery();
   }
 
   function openLightbox(url) {
@@ -12266,10 +12262,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // without rebuilding the whole gallery on every progress event.
   function _renderArtUploadProgress() {
     _artUploads.forEach(up => {
-      const bar = document.getElementById('art-up-bar-' + up.id);
-      const pct = document.getElementById('art-up-pct-' + up.id);
-      if (bar) bar.style.width = up.pct + '%';
-      if (pct) pct.textContent = up.pct;
+      // The progress tile can appear in both galleries — update every match.
+      document.querySelectorAll(`.art-up-bar[data-up="${up.id}"]`).forEach(bar => { bar.style.width = up.pct + '%'; });
+      document.querySelectorAll(`.art-up-pct[data-up="${up.id}"]`).forEach(pct => { pct.textContent = up.pct; });
     });
   }
 
@@ -12282,7 +12277,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // shows an obvious bar climbing 0→100% instead of looking frozen.
       const up = { id: ++_artUploadSeq, name: file.name, pct: 0 };
       _artUploads.push(up);
-      renderArtGallery();
+      _renderBothGalleries();
       const data = await _uploadArtFileXhr(file, dbId, (pct) => { up.pct = pct; _renderArtUploadProgress(); });
       const i = _artUploads.indexOf(up);
       if (i >= 0) _artUploads.splice(i, 1);
@@ -12295,7 +12290,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // and why it didn't land.
         alert(`Could not upload ${file.name}: ${data.error}`);
       }
-      renderArtGallery();
+      // Refresh both galleries so the new art file also shows on the
+      // Workbook tab's Product Images gallery.
+      _renderBothGalleries();
     }
     e.target.value = '';
   }
@@ -12344,116 +12341,113 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return m ? `.${m[1]}` : last;
   }
 
-  function renderArtGallery() {
-    const gallery = document.getElementById('artGallery');
+  // ── Unified workbook files ────────────────────────────────────────
+  // Product Images (Workbook tab) and Art Files (Art tab) are two upload
+  // targets but ONE shared pool: a file added on either tab shows on both.
+  // Both galleries render the deduped union with the same type-aware tile,
+  // and removal clears the URL from whichever array holds it.
+  function _unifiedWbFiles() {
+    const seen = new Set(), out = [];
+    (Array.isArray(_productImages) ? _productImages : []).forEach(i => {
+      if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push(i); }
+    });
+    (Array.isArray(_artImages) ? _artImages : []).forEach(i => {
+      if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push(i); }
+    });
+    return out;
+  }
+
+  // Build the inner HTML for one file tile (image preview / PDF / video /
+  // 3D / generic file card), type-detected from the URL. removeBtnHtml is
+  // the × button markup so the caller controls the remove handler.
+  function _buildFileTileInner(url, removeBtnHtml) {
+    const kind = _artFileKind(url);
+    const urlAttr = String(url).replace(/'/g, "\\'");
+    if (kind === 'image') {
+      return `<img src="${url}" alt="File" onclick="openArtPreview('${urlAttr}')" />${removeBtnHtml}`;
+    } else if (kind === 'pdf') {
+      return `<div style="position:absolute; inset:0; background:#fff; pointer-events:none;">
+          <embed src="${url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1" type="application/pdf" style="width:100%; height:100%; pointer-events:none;" />
+          <div class="art-tile-badge art-tile-badge--light">PDF</div>
+        </div>
+        <button type="button" class="art-tile-clicker" data-art-url="${urlAttr}" title="Click to preview"></button>${removeBtnHtml}`;
+    } else if (kind === 'video') {
+      return `<div style="position:absolute; inset:0; background:#000; pointer-events:none;">
+          <video src="${url}" muted preload="metadata" playsinline style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
+          <div class="art-tile-play"><span>▶</span></div>
+          <div class="art-tile-badge art-tile-badge--dark">VIDEO</div>
+        </div>
+        <button type="button" class="art-tile-clicker" data-art-url="${urlAttr}" title="Click to preview"></button>${removeBtnHtml}`;
+    } else if (kind === '3d') {
+      const label = _artFileBasename(url).toUpperCase();
+      return `<div style="position:absolute; inset:0; background:var(--surface2); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; pointer-events:none;">
+          <span style="font-size:34px; line-height:1;">🧊</span>
+          <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; padding:0 6px;">${label}</span>
+          <div class="art-tile-badge art-tile-badge--light">3D</div>
+        </div>
+        <button type="button" class="art-tile-clicker" data-art-url="${urlAttr}" title="Click to open in 3D viewer"></button>${removeBtnHtml}`;
+    }
+    const icon = _artFileIcon(kind);
+    const label = _artFileBasename(url).toUpperCase();
+    return `<a href="${url}" target="_blank" rel="noopener" download
+         style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; width:100%; height:100%; text-decoration:none; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px; box-sizing:border-box;"
+         title="${label} — click to open / download">
+        <span style="font-size:34px; line-height:1;">${icon}</span>
+        <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;">${label}</span>
+      </a>${removeBtnHtml}`;
+  }
+
+  // Render the unified file pool into a gallery container (#imageGallery or
+  // #artGallery). Both call this so they mirror each other.
+  function _renderFileGallery(containerId) {
+    const gallery = document.getElementById(containerId);
+    if (!gallery) return;
     const addBtn = gallery.querySelector('.image-add-btn');
     gallery.querySelectorAll('.image-gallery-item').forEach(el => el.remove());
-    _artImages.forEach((img, idx) => {
+    _unifiedWbFiles().forEach(img => {
       const item = document.createElement('div');
       item.className = 'image-gallery-item';
-      const kind = _artFileKind(img.url);
       const urlAttr = String(img.url).replace(/'/g, "\\'");
-      const removeBtn = `<button class="img-remove" onclick="removeArtImage(${idx}, event)" title="Remove">✕</button>`;
-      if (kind === 'image') {
-        // Native image preview, click opens the art preview modal.
-        item.innerHTML = `
-          <img src="${img.url}" alt="Art file ${idx+1}" onclick="openArtPreview('${urlAttr}')" />
-          ${removeBtn}
-        `;
-      } else if (kind === 'pdf') {
-        // <embed> renders the first PDF page as a real thumbnail in
-        // every modern browser. A <button> overlay sits ON TOP at a
-        // higher z-index than the × remove button so clicks
-        // reliably reach openArtPreview — <div onclick> + an inline
-        // onclick attr wasn't firing across all browsers (the embed
-        // / PDF plugin was eating events even with pointer-events:
-        // none). A real <button> is the most reliable hit target.
-        // The 0.01 rgba background gives it an actual hit-test
-        // rectangle in Safari, where fully-transparent elements can
-        // sometimes be skipped for hit testing.
-        item.innerHTML = `
-          <div style="position:absolute; inset:0; background:#fff; pointer-events:none;">
-            <embed src="${img.url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1"
-                   type="application/pdf"
-                   style="width:100%; height:100%; pointer-events:none;" />
-            <div class="art-tile-badge art-tile-badge--light">PDF</div>
-          </div>
-          <button type="button" class="art-tile-clicker"
-                  data-art-url="${urlAttr}"
-                  title="Click to preview"></button>
-          ${removeBtn}
-        `;
-      } else if (kind === 'video') {
-        // Same click-capture pattern as PDF (button overlay above
-        // the media). <video> is generally cooperative but using the
-        // same pattern keeps behavior consistent across all
-        // previewable tile types.
-        item.innerHTML = `
-          <div style="position:absolute; inset:0; background:#000; pointer-events:none;">
-            <video src="${img.url}" muted preload="metadata" playsinline
-                   style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
-            <div class="art-tile-play"><span>▶</span></div>
-            <div class="art-tile-badge art-tile-badge--dark">VIDEO</div>
-          </div>
-          <button type="button" class="art-tile-clicker"
-                  data-art-url="${urlAttr}"
-                  title="Click to preview"></button>
-          ${removeBtn}
-        `;
-      } else if (kind === '3d') {
-        // 3D-renderable formats (STL/STEP/OBJ/3MF/etc.). Tile shows
-        // an icon + extension; clicking opens the modal which lazy-
-        // loads online-3d-viewer to render the model interactively.
-        // Same click-capture overlay pattern as PDF/video so the
-        // operator's click always reaches openArtPreview regardless
-        // of browser quirks.
-        const label = _artFileBasename(img.url).toUpperCase();
-        item.innerHTML = `
-          <div style="position:absolute; inset:0; background:var(--surface2); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; pointer-events:none;">
-            <span style="font-size:34px; line-height:1;">🧊</span>
-            <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; padding:0 6px;">${label}</span>
-            <div class="art-tile-badge art-tile-badge--light">3D</div>
-          </div>
-          <button type="button" class="art-tile-clicker"
-                  data-art-url="${urlAttr}"
-                  title="Click to open in 3D viewer"></button>
-          ${removeBtn}
-        `;
-      } else {
-        // Adobe / CAD (non-3D) / docs / archives — no native preview
-        // is possible in-browser. Keep the file-icon card; click
-        // opens the file in a new tab (browser downloads binary
-        // formats).
-        const icon = _artFileIcon(kind);
-        const label = _artFileBasename(img.url).toUpperCase();
-        item.innerHTML = `
-          <a href="${img.url}" target="_blank" rel="noopener" download
-             style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; width:100%; height:100%; text-decoration:none; color:var(--text); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px; box-sizing:border-box;"
-             title="${label} — click to open / download">
-            <span style="font-size:34px; line-height:1;">${icon}</span>
-            <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;">${label}</span>
-          </a>
-          ${removeBtn}
-        `;
-      }
+      const removeBtn = `<button class="img-remove" onclick="removeWbFile('${urlAttr}', event)" title="Remove">✕</button>`;
+      item.innerHTML = _buildFileTileInner(img.url, removeBtn);
       gallery.insertBefore(item, addBtn);
     });
-    // Progress tile(s) for uploads still in flight — spinner + a live
-    // 0→100% bar so slow (multi-MB) uploads clearly read as "working".
-    _artUploads.forEach(up => {
+    // In-flight upload progress tiles (Art-tab XHR uploads) — show on both
+    // galleries so the operator sees the upload wherever they're looking.
+    (Array.isArray(_artUploads) ? _artUploads : []).forEach(up => {
       const load = document.createElement('div');
       load.className = 'image-gallery-item art-uploading-tile';
       load.innerHTML = `<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; background:var(--surface2); padding:0 10px; box-sizing:border-box;">
         <div class="art-spinner"></div>
         <div style="width:100%; text-align:center;">
-          <div style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Uploading <span id="art-up-pct-${up.id}">${up.pct}</span>%</div>
+          <div style="font-size:10px; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">Uploading <span class="art-up-pct" data-up="${up.id}">${up.pct}</span>%</div>
           <div style="margin-top:5px; height:5px; background:var(--border); border-radius:99px; overflow:hidden;">
-            <div id="art-up-bar-${up.id}" style="height:100%; width:${up.pct}%; background:var(--accent); border-radius:99px; transition:width 0.15s;"></div>
+            <div class="art-up-bar" data-up="${up.id}" style="height:100%; width:${up.pct}%; background:var(--accent); border-radius:99px; transition:width 0.15s;"></div>
           </div>
         </div>
       </div>`;
       gallery.insertBefore(load, addBtn);
     });
+  }
+
+  function renderArtGallery() { _renderFileGallery('artGallery'); }
+
+  // Remove a file from the shared pool — clears the URL from BOTH arrays
+  // (it lives in only one, but check both), deletes the server file once,
+  // drops it from any RFQ line item, then re-renders both galleries + saves.
+  async function removeWbFile(url, e) {
+    if (e) e.stopPropagation();
+    try { await apiCall('delete_image', { url }); } catch (err) { /* ignore */ }
+    const pi = _productImages.findIndex(i => i && i.url === url);
+    if (pi >= 0) _productImages.splice(pi, 1);
+    const ai = _artImages.findIndex(i => i && i.url === url);
+    if (ai >= 0) _artImages.splice(ai, 1);
+    if (typeof _pruneRfqImage === 'function') _pruneRfqImage(url);
+    renderImageGallery();
+    renderArtGallery();
+    // saveImageList() persists the full detail (both productImages + the
+    // artImages captured by collectWorkbookDetail), so one save covers both.
+    saveImageList();
   }
 
   // Unified art preview modal — handles image / PDF / video inline,
@@ -28733,7 +28727,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _artImages = [];
       }
       _artLastSentUrls = Array.isArray(data.artLastSentUrls) ? data.artLastSentUrls.slice() : [];
-      renderArtGallery();
+      // Re-render BOTH galleries now that _artImages is loaded — the image
+      // gallery rendered earlier (before art loaded) and would otherwise
+      // miss the art files in the shared pool.
+      _renderBothGalleries();
       _updateArtSendBtn();
       setTimeout(renderPalletViz, 50);
     } else {
