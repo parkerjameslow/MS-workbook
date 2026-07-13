@@ -7392,13 +7392,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <col style="width:58px;">
           <col style="width:40px;">
           <col style="width:64px;">
-          <col style="width:12%;">
-          <col style="width:20%;">
-          <col style="width:9%;">
-          <col style="width:13%;">
+          <col style="width:10%;">
+          <col style="width:15%;">
+          <col style="width:15%;">
+          <col style="width:14%;">
           <col style="width:12%;">
           <col style="width:14%;">
-          <col style="width:11%;">
+          <col style="width:10%;">
           <col style="width:36px;">
         </colgroup>
         <thead>
@@ -17297,7 +17297,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Slightly taller row — bumped vertical padding from 10px to 12px so
     // the row has room for the inline "+ Add Variant" link below the
     // Item input without feeling cramped.
-    const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-size:13px; box-sizing:border-box;';
+    const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:12px 10px; font-size:13px; box-sizing:border-box;';
     if (isFirstRow) {
       tr.style.background = 'rgba(232, 117, 26, 0.08)';
       tr.ondragover = null;
@@ -18235,7 +18235,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const usdVal = priceRmb ? _fxUsdFromRmbPrecise(priceRmb).toFixed(3) : '';
     const totalVal = (qty && usdVal) ? (parseFloat(qty) * parseFloat(usdVal)).toFixed(2) : '';
-    const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:13px; box-sizing:border-box; background:var(--surface2); color:var(--text); font-family:inherit;';
+    const inputStyle = 'width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 10px; font-size:13px; box-sizing:border-box; background:var(--surface2); color:var(--text); font-family:inherit;';
     const tr = document.createElement('tr');
     tr.id = `rfq-var-${vid}`;
     tr.classList.add('rfq-variant-row');
