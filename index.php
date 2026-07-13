@@ -6747,8 +6747,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <nav class="sidebar-nav" id="sidebar-nav">
 
-    <!-- All Workbooks -->
-    <a id="nav-all-workbooks" href="#/" onclick="event.preventDefault(); location.hash='#/'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+    <!-- All Workbooks — opens the Pipeline board (every workbook by stage). -->
+    <a id="nav-all-workbooks" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
       <span>All Workbooks</span>
     </a>
 
@@ -40007,6 +40007,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const link = document.getElementById('nav-pipeline-link');
     if (link) link.classList.add('active');
+    // Both the Pipeline link and All Workbooks open this board — highlight both.
+    const allWb = document.getElementById('nav-all-workbooks');
+    if (allWb) allWb.classList.add('active');
     showView('view-pipeline');
     const board = document.getElementById('pipeline-board');
     if (!board) return;
