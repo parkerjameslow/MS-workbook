@@ -5707,9 +5707,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #view-crm > .container, #view-pipeline > .container { position: relative; z-index: 1; }
     /* Pipeline cards — workbook cards, lighter than CRM lead cards so
        they read as "records" not "leads". Reuse the crm-card layout. */
-    .pl-card { cursor: pointer; }
+    .pl-card { cursor: pointer; position: relative; }
     .pl-card.pl-locked { cursor: default; opacity: 0.92; }
-    .pl-card .pl-card-title { font-size: 13px; font-weight: 700; color: #f9fafb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pl-card .pl-card-title { font-size: 13px; font-weight: 700; color: #f9fafb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 42px; }
+    /* Time-in-stage badge (top-right) — count-up of days in the current
+       stage, escalating color the longer a card sits. */
+    .pl-stage-age { position: absolute; top: 8px; right: 8px; font-size: 9px; font-weight: 800; letter-spacing: 0.02em; padding: 2px 7px; border-radius: 99px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.12); }
+    .pl-stage-age.age-warn { background: rgba(234,179,8,0.18); color: #fcd34d; border-color: rgba(252,211,77,0.35); }
+    .pl-stage-age.age-old  { background: rgba(239,68,68,0.18); color: #fca5a5; border-color: rgba(252,165,165,0.35); }
     .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
     .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
     .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
@@ -39933,9 +39938,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const groups = _shipmentGroups(s);
       groups.forEach(g => g.workbooks.forEach(w => claim(w.cn, w.wid)));
       const units = groups.reduce((n, g) => n + g.workbooks.length, 0);
+      const since = (stage === 'receiving') ? (s.deliveredOn || s.createdAt) : s.createdAt;
       cards.push({ kind: 'shipment', stage, id: s.id, title: s.name || `Shipment #${s.id}`,
                    sub: [(s.carrier || '').toUpperCase(), _SHIP_STATUS_LABEL(s.status)].filter(Boolean).join(' · '),
-                   groups, count: units });
+                   groups, count: units, since });
     });
 
     // ── Orders queue + In Production (fulfillment) → order cards ──
@@ -39948,9 +39954,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const entries = (o.entries || []).filter(Boolean);
       entries.forEach(e => claim(e.clientName, e.workbookId));
       const tot = (typeof orderTotals === 'function') ? orderTotals(o) : { totalUsd: 0 };
+      const since = (stage === 'production') ? (o.notifiedAt || o.createdAt || o.dateCreated) : (o.createdAt || o.dateCreated);
       cards.push({ kind: 'order', stage, id: o.id, title: o.clientName || 'Order',
                    sub: `${o.name || ('Order #' + o.id)} · ${entries.length} workbook${entries.length === 1 ? '' : 's'}`,
-                   totalUsd: tot.totalUsd || 0,
+                   totalUsd: tot.totalUsd || 0, since,
                    workbooks: entries.map(e => ({ cn: e.clientName, wid: e.workbookId, product: _wbProduct(e.clientName, e.workbookId) })) });
     });
 
@@ -39977,9 +39984,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { (collectAllReadyForReview() || []).forEach(r => consider(r.clientName, r.workbookId, 'review')); } catch (_) {}
     try { (collectStagedForOrders() || []).forEach(s => consider(s.clientName, s.workbookId, 'orders')); } catch (_) {}
     Object.keys(wbStage).forEach(key => {
-      const m = meta[key];
-      cards.push({ kind: 'wb', stage: wbStage[key], key, clientName: m.clientName, workbookId: m.workbookId,
-                   product: m.product, detail: m.detail, movable: _pipelineCardMovable(m.clientName, m.workbookId, wbStage[key]) });
+      const m = meta[key], stg = wbStage[key], d = m.detail;
+      let since = stg === 'rfq' ? d.sentToRfqAt
+                : stg === 'review' ? d.sentForReviewAt
+                : stg === 'orders' ? d.movedToOrdersAt : null;
+      // samples / unstaged have no stage timestamp — fall back to the
+      // workbook's creation date so the badge still shows an age.
+      if (!since) { const it = (clientData[m.clientName] || []).find(i => String(i.id) === String(m.workbookId)); since = it && it.dateCreated; }
+      cards.push({ kind: 'wb', stage: stg, key, clientName: m.clientName, workbookId: m.workbookId,
+                   product: m.product, detail: d, since, movable: _pipelineCardMovable(m.clientName, m.workbookId, stg) });
     });
     return cards;
   }
@@ -40027,6 +40040,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   const _plEsc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  // Days a card has been in its current stage. Handles ISO, YYYY-MM-DD, and
+  // the app's "22 Jun 26" display format. null when no timestamp is known.
+  function _pipelineDaysSince(v) {
+    if (!v) return null;
+    const s = String(v);
+    let t;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) t = new Date(s).getTime();
+    else if (/^\d{1,2}\s+[A-Za-z]{3}\s+\d{2}$/.test(s)) {
+      const M = { Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11 };
+      const p = s.split(/\s+/); t = new Date(2000 + parseInt(p[2], 10), M[p[1]] ?? 0, parseInt(p[0], 10)).getTime();
+    } else t = new Date(s).getTime();
+    if (isNaN(t)) return null;
+    const d = Math.floor((Date.now() - t) / 86400000);
+    return d < 0 ? 0 : d;
+  }
+  function _pipelineAgeBadge(since) {
+    const d = _pipelineDaysSince(since);
+    if (d === null) return '';
+    const label = d <= 0 ? 'today' : `${d}d`;
+    const cls = d >= 14 ? ' age-old' : (d >= 7 ? ' age-warn' : '');
+    return `<span class="pl-stage-age${cls}" title="In this stage ${d <= 0 ? 'since today' : d + ' day' + (d === 1 ? '' : 's')}">${label}</span>`;
+  }
   function _pipelineChildLine(w) {
     const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
     return `<div class="pl-child" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}">
@@ -40047,6 +40082,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       : '';
     return `<div class="crm-card pl-card ${c.movable ? '' : 'pl-locked'}" ${dragAttrs}
                  onclick="location.hash='${wbHref}'" title="Open workbook">
+      ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.product)}</div>
       <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
     </div>`;
@@ -40058,6 +40094,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
     const children = (c.workbooks || []).map(_pipelineChildLine).join('');
     return `<div class="crm-card pl-card pl-locked pl-entity" onclick="location.hash='#/order/${c.id}'" title="Open order">
+      ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
       ${children ? `<div class="pl-children">${children}</div>` : ''}
@@ -40071,6 +40108,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       `<div class="pl-child-group">${_plEsc(g.label)}</div>${g.workbooks.map(_pipelineChildLine).join('')}`
     ).join('');
     return `<div class="crm-card pl-card pl-locked pl-entity" onclick="location.hash='#/shipment/${c.id}'" title="Open shipment">
+      ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub) || `${c.count} workbook${c.count === 1 ? '' : 's'}`}</div>
       ${body ? `<div class="pl-children">${body}</div>` : ''}
