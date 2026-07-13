@@ -2102,6 +2102,58 @@ switch ($action) {
         break;
     }
 
+    /*
+     * set_pipeline_stage — move ONE workbook to a flag-based pipeline stage
+     * (samples | rfq | review | orders) from the Pipeline board. Resets all
+     * four stage dividers, then sets the target's flags so stage membership
+     * is exclusive. Only the flag-based stages are handled here; the
+     * entity-backed stages (production/shipments/receiving) are driven by
+     * orders/shipments, not this flag.
+     */
+    case 'set_pipeline_stage': {
+        $wbId  = (int)($input['workbook_id'] ?? 0);
+        $stage = $input['stage'] ?? '';
+        if ($wbId <= 0 || !in_array($stage, ['samples', 'rfq', 'review', 'orders'], true)) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id and a valid stage (samples|rfq|review|orders) required']);
+            break;
+        }
+        $sel = $pdo->prepare("SELECT detail_json, flow_step FROM workbooks WHERE id = ? AND deleted_at IS NULL");
+        $sel->execute([$wbId]);
+        $row = $sel->fetch();
+        if (!$row) { echo json_encode(['success' => false, 'error' => 'Workbook not found']); break; }
+        $detail = json_decode($row['detail_json'] ?: '{}', true);
+        if (!is_array($detail)) $detail = [];
+        $now = gmdate('c');
+        // Reset every flag-based divider so the workbook lands in exactly one.
+        $detail['sentToRfq']       = false; $detail['sentToRfqAt']     = null;
+        $detail['sentForReview']   = false; $detail['sentForReviewAt'] = null;
+        $detail['movedToOrders']   = false; $detail['movedToOrdersAt'] = null;
+        // rfq/review need flow_step >= 2 (quoteSubmitted) to enter their
+        // queues; samples/orders leave flow_step untouched.
+        $bumpFlow = false;
+        if ($stage === 'samples') {
+            if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
+                foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = true; }
+                unset($it);
+            }
+        } elseif ($stage === 'rfq') {
+            $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now; $bumpFlow = true;
+        } elseif ($stage === 'review') {
+            $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now;
+            $detail['sentForReview'] = true; $detail['sentForReviewAt'] = $now; $bumpFlow = true;
+        } elseif ($stage === 'orders') {
+            $detail['movedToOrders'] = true; $detail['movedToOrdersAt'] = $now;
+        }
+        if ($bumpFlow) {
+            $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 2), updated_at = NOW() WHERE id = ?");
+        } else {
+            $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
+        }
+        $upd->execute([json_encode($detail), $wbId]);
+        echo json_encode(['success' => true, 'stage' => $stage]);
+        break;
+    }
+
     case 'delete_workbook':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);

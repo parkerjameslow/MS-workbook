@@ -5687,7 +5687,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* View backdrop — full-bleed MS logo watermark. Sized large +
        low-opacity + non-repeating so the cards read as "in front of"
        the brand mark. The image lives in /assets/logo.png. */
-    #view-crm {
+    #view-crm, #view-pipeline {
       background-image: url('assets/logo.png');
       background-repeat: no-repeat;
       background-position: center 140px;
@@ -5697,14 +5697,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     /* Soft fade-out layer over the logo so it doesn't compete with
        the cards — keeps the watermark visible without distracting. */
-    #view-crm::before {
+    #view-crm::before, #view-pipeline::before {
       content: '';
       position: absolute; inset: 0;
       background: linear-gradient(180deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.78) 100%);
       pointer-events: none;
       z-index: 0;
     }
-    #view-crm > .container { position: relative; z-index: 1; }
+    #view-crm > .container, #view-pipeline > .container { position: relative; z-index: 1; }
+    /* Pipeline cards — workbook cards, lighter than CRM lead cards so
+       they read as "records" not "leads". Reuse the crm-card layout. */
+    .pl-card { cursor: pointer; }
+    .pl-card.pl-locked { cursor: default; opacity: 0.92; }
+    .pl-card .pl-card-title { font-size: 13px; font-weight: 700; color: #f9fafb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
+    .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
     .crm-board {
       display: flex; gap: 14px;
       padding: 4px 0 16px;
@@ -6840,6 +6848,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <a id="nav-crm-link" href="#/crm" onclick="event.preventDefault(); location.hash='#/crm'" class="nav-flat-link">
           <span>CRM</span>
           <span class="nav-badge" id="badge-crm"></span>
+        </a>
+
+        <!-- Pipeline — kanban board of every workbook by its current
+             stage (RFQ → Ready for Review → Samples → Orders → In
+             Production → Shipments → Receiving). Drag cards between the
+             flag-based early stages; the entity-backed later stages are
+             managed from their own views. -->
+        <a id="nav-pipeline-link" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link">
+          <span>Pipeline</span>
+          <span class="nav-badge" id="badge-pipeline"></span>
         </a>
 
         <!-- Inventory — moved here from a top-level flat link. Stays
@@ -9665,6 +9683,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="crm-board" class="crm-board"></div>
   </main>
 </div><!-- /#view-crm -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: PIPELINE (workbook stage board)
+     Kanban of every workbook placed in its current stage column. Drag a
+     card between the flag-based early stages (RFQ / Ready for Review /
+     Samples / Orders) to move it; the entity-backed later stages (In
+     Production / Shipments / Receiving) are read-only here and managed
+     from their own views.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-pipeline" class="view">
+  <main class="container" style="max-width:none; padding:0 16px 16px;">
+    <div style="display:flex; align-items:center; gap:12px; padding:18px 0 6px; position:relative; z-index:1;">
+      <h1 style="font-size:20px; font-weight:700; color:var(--text); margin:0;">Pipeline</h1>
+      <span style="font-size:12px; color:var(--text-muted);">Every workbook by stage — drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.</span>
+    </div>
+    <div id="pipeline-board" class="crm-board"></div>
+  </main>
+</div><!-- /#view-pipeline -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: AI ASSISTANT
@@ -30390,6 +30426,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/pipeline — workbook stage kanban board.
+    if (hash === '#/pipeline') {
+      renderPipelineBoard();
+      return;
+    }
+
     // Match: #/assistant — Claude-powered chat assistant.
     if (hash === '#/assistant') {
       renderAssistantView();
@@ -33078,6 +33120,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rebuildSamplesNav();
     rebuildRfqNav();
     rebuildReviewNav();
+    if (typeof _updatePipelineNavBadge === 'function') _updatePipelineNavBadge();
     restoreNavSectionStates();
     // Wrap in try/catch so a crash inside fillWorkbook never prevents loadFromDatabase() from running
     try { router(); } catch(e) { console.error('[MS Router] init render error:', e); }
@@ -39762,6 +39805,206 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // moves the order out of Orders and into Fulfillment.
   function _orderIsInOrdersQueue(o) {
     return !!o && !o.notifiedAt;
+  }
+
+  // ═══ Pipeline board ═══════════════════════════════════════════════
+  // Kanban of every workbook by its current stage. The early stages are
+  // flag-based (draggable, pure flag flips via set_pipeline_stage); the
+  // later stages are backed by orders/shipments and are read-only here —
+  // managed from their own views (Orders / Shipments / Receiving).
+  const PIPELINE_COLUMNS = [
+    { id: 'rfq',        label: 'RFQ',              bg: '#dbeafe', fg: '#1e40af' },
+    { id: 'review',     label: 'Ready For Review', bg: '#e0e7ff', fg: '#3730a3' },
+    { id: 'samples',    label: 'Samples',          bg: '#dcfce7', fg: '#15803d' },
+    { id: 'orders',     label: 'Orders',           bg: '#fef3c7', fg: '#a16207' },
+    { id: 'production', label: 'In Production',     bg: '#ffedd5', fg: '#c2410c' },
+    { id: 'shipments',  label: 'Shipments',        bg: '#cffafe', fg: '#0e7490' },
+    { id: 'receiving',  label: 'Receiving',        bg: '#f3e8ff', fg: '#7c3aed' },
+  ];
+  const PIPELINE_FLAG_STAGES = new Set(['rfq', 'review', 'samples', 'orders']);
+  let _pipelineDragKey = null;
+
+  function _wbOrdersFor(clientName, workbookId) {
+    const match = e => e && e.clientName === clientName && String(e.workbookId) === String(workbookId);
+    return Object.values(orderData || {}).filter(o => o && (o.entries || []).some(match));
+  }
+
+  // Derive a workbook's single current stage (furthest wins), or null when
+  // it isn't in the pipeline (nothing started, or fully received/done).
+  function _pipelineStageFor(clientName, workbookId, detail) {
+    const ships = (typeof _wbShipmentsFor === 'function') ? _wbShipmentsFor(clientName, workbookId) : [];
+    if (ships.length) {
+      if (ships.some(s => s && s.status === 'delivered')) return 'receiving';
+      if (ships.some(s => s && s.status && s.status !== 'received' && s.status !== 'delivered')) return 'shipments';
+      if (ships.every(s => s && s.status === 'received')) return null; // done, exited pipeline
+    }
+    const orders = _wbOrdersFor(clientName, workbookId);
+    if (orders.length) {
+      if (orders.some(o => _orderIsInFulfillment(o))) return 'production';
+      return 'orders'; // in-queue or otherwise placed in an order
+    }
+    if (detail && detail.movedToOrders) return 'orders';
+    if (detail && detail.sentForReview) return 'review';
+    if (detail && detail.sentToRfq)      return 'rfq';
+    if (detail && Array.isArray(detail.rfqItems) && detail.rfqItems.some(i => i && i.sample)) return 'samples';
+    return null;
+  }
+
+  // Freely movable (flag flip) only when the stage is flag-based AND the
+  // workbook isn't tied to a real order or shipment.
+  function _pipelineCardMovable(clientName, workbookId, stage) {
+    if (!PIPELINE_FLAG_STAGES.has(stage)) return false;
+    if ((typeof _wbInAnyOrder === 'function') && _wbInAnyOrder(clientName, workbookId)) return false;
+    if ((typeof _wbShipmentsFor === 'function') && _wbShipmentsFor(clientName, workbookId).length) return false;
+    return true;
+  }
+
+  function collectPipeline() {
+    const out = [];
+    for (const [key, detail] of Object.entries(workbookDetail)) {
+      if (!detail) continue;
+      const [clientName, workbookId] = key.split('|');
+      const stage = _pipelineStageFor(clientName, workbookId, detail);
+      if (!stage) continue;
+      out.push({ key, clientName, workbookId, product: detail.product || 'Untitled', stage,
+                 movable: _pipelineCardMovable(clientName, workbookId, stage), detail });
+    }
+    return out;
+  }
+
+  function renderPipelineBoard() {
+    document.getElementById('header-title').textContent = 'Pipeline';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-pipeline-link');
+    if (link) link.classList.add('active');
+    showView('view-pipeline');
+    const board = document.getElementById('pipeline-board');
+    if (!board) return;
+    const _scrollLeft = board.scrollLeft;
+    const byCol = {};
+    PIPELINE_COLUMNS.forEach(c => { byCol[c.id] = []; });
+    collectPipeline().forEach(card => { (byCol[card.stage] = byCol[card.stage] || []).push(card); });
+    Object.keys(byCol).forEach(k => byCol[k].sort((a, b) => a.product.localeCompare(b.product)));
+    board.innerHTML = PIPELINE_COLUMNS.map(col => {
+      const cards = byCol[col.id] || [];
+      const cardsHtml = cards.map(c => _pipelineCardHtml(c)).join('');
+      return `<div class="crm-column" data-col="${col.id}"
+                   ondragover="event.preventDefault(); this.classList.add('drag-over');"
+                   ondragleave="this.classList.remove('drag-over');"
+                   ondrop="onPipelineDrop(event, '${col.id}')">
+        <div class="crm-column-header" style="background:${col.bg}; color:${col.fg};">
+          <span class="crm-col-title">${col.label}</span>
+          <span class="crm-col-count">${cards.length}</span>
+        </div>
+        <div class="crm-col-body">${cardsHtml || `<div style="font-size:11px; color:#9ca3af; padding:8px 4px;">—</div>`}</div>
+      </div>`;
+    }).join('');
+    board.scrollLeft = _scrollLeft;
+    if (typeof _attachCrmBoardGrabScroll === 'function') _attachCrmBoardGrabScroll(board);
+    _updatePipelineNavBadge();
+  }
+
+  function _pipelineCardHtml(c) {
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const st = (typeof _wbStatsForPicker === 'function') ? _wbStatsForPicker(c.detail) : {};
+    const units = (st.units > 0) ? `${st.units.toLocaleString('en-US')} units` : '';
+    const salePer = parseFloat(c.detail.pricingSalePer) || 0;
+    const val = (salePer > 0 && st.price > 0)
+      ? `$${st.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
+    const sub = [esc(c.clientName), units].filter(Boolean).join(' · ');
+    const wbHref = `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`;
+    const lockHint = c.movable ? '' : `<div class="pl-lock-hint">Managed from its own view</div>`;
+    const dragAttrs = c.movable
+      ? `draggable="true" ondragstart="onPipelineDragStart(event,'${esc(c.key)}')" ondragend="onPipelineDragEnd(event)"`
+      : '';
+    return `<div class="crm-card pl-card ${c.movable ? '' : 'pl-locked'}" ${dragAttrs}
+                 onclick="location.hash='${wbHref}'" title="Open workbook">
+      <div class="pl-card-title">${esc(c.product)}</div>
+      <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
+      ${lockHint}
+    </div>`;
+  }
+
+  function onPipelineDragStart(e, key) {
+    _pipelineDragKey = key;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', key);
+    e.currentTarget.classList.add('dragging');
+  }
+  function onPipelineDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    document.querySelectorAll('.crm-column.drag-over').forEach(el => el.classList.remove('drag-over'));
+    _pipelineDragKey = null;
+  }
+  function onPipelineDrop(e, targetCol) {
+    e.preventDefault();
+    document.querySelectorAll('.crm-column.drag-over').forEach(el => el.classList.remove('drag-over'));
+    const key = _pipelineDragKey || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+    _pipelineDragKey = null;
+    if (!key) return;
+    const [clientName, workbookId] = key.split('|');
+    const detail = workbookDetail[key];
+    if (!detail) return;
+    const fromStage = _pipelineStageFor(clientName, workbookId, detail);
+    if (fromStage === targetCol) return;
+    const lbl = (id) => (PIPELINE_COLUMNS.find(c => c.id === id) || {}).label || id;
+    if (!PIPELINE_FLAG_STAGES.has(targetCol)) {
+      showToast(`${lbl(targetCol)} is managed from its own view — advance the order/shipment there.`, 'warn');
+      return;
+    }
+    if (!_pipelineCardMovable(clientName, workbookId, fromStage)) {
+      showToast('This workbook is in an order or shipment — move it from that view.', 'warn');
+      return;
+    }
+    _doPipelineMove(clientName, workbookId, targetCol);
+  }
+
+  async function _doPipelineMove(clientName, workbookId, targetStage) {
+    const key = `${clientName}|${workbookId}`;
+    const detail = workbookDetail[key];
+    if (!detail) return;
+    const now = new Date().toISOString();
+    // Reset all four flag-stage dividers, then set the target — mirrors the
+    // server set_pipeline_stage so the board updates without a reload.
+    detail.sentToRfq = false; detail.sentToRfqAt = null;
+    detail.sentForReview = false; detail.sentForReviewAt = null;
+    detail.movedToOrders = false; detail.movedToOrdersAt = null;
+    if (targetStage === 'samples') {
+      if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = true; });
+    } else if (targetStage === 'rfq') {
+      detail.sentToRfq = true; detail.sentToRfqAt = now;
+    } else if (targetStage === 'review') {
+      detail.sentToRfq = true; detail.sentToRfqAt = now;
+      detail.sentForReview = true; detail.sentForReviewAt = now;
+    } else if (targetStage === 'orders') {
+      detail.movedToOrders = true; detail.movedToOrdersAt = now;
+    }
+    // Keep the local flow in sync so the RFQ / Review queues include it
+    // without a reload (the server bumps flow_step for rfq/review).
+    if (targetStage === 'rfq' || targetStage === 'review') {
+      const items = clientData[clientName] || [];
+      const item = items.find(i => String(i.id) === String(workbookId));
+      if (item && item.flow) { item.flow.quoteChina = true; item.flow.quoteSubmitted = true; }
+    }
+    try { saveToLocalStorage(); } catch (_) {}
+    renderPipelineBoard();
+    try { rebuildRfqNav(); } catch (_) {}
+    try { rebuildReviewNav(); } catch (_) {}
+    try { rebuildSamplesNav(); } catch (_) {}
+    try { rebuildOrdersNav(); } catch (_) {}
+    const dbId = dbWorkbookMap[key] || workbookId;
+    try { await apiCall('set_pipeline_stage', { workbook_id: dbId, stage: targetStage }); }
+    catch (_) { showToast('Saved locally — server sync failed', 'warn'); return; }
+    const lbl = (PIPELINE_COLUMNS.find(c => c.id === targetStage) || {}).label || targetStage;
+    showToast(`Moved to ${lbl}`, 'success');
+  }
+
+  function _updatePipelineNavBadge() {
+    try {
+      const n = collectPipeline().length;
+      if (typeof _applyNavBadge === 'function') _applyNavBadge(document.getElementById('badge-pipeline'), 0, n);
+    } catch (_) {}
   }
 
   // ── Generic Move Order modal ─────────────────────────────────────
