@@ -40420,14 +40420,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (firstId == null) firstId = id;
     });
     saveOrders();
+    const movedCount = sel.length;
     _stagedOrderSelected.clear();
     rebuildOrdersNav();
     if (clients.length === 1 && firstId != null) {
+      // Toast fires before navigation — it's a fixed overlay, so it rides
+      // across the view change and confirms on the new order page.
+      showToast(`Created ${orderData[firstId].name} · ${movedCount} workbook${movedCount === 1 ? '' : 's'}`, 'success');
       location.hash = `#/order/${firstId}`;
     } else {
       renderOrdersStaging();
       renderOrdersContent();
-      showToast(`Created ${clients.length} orders`, 'success');
+      showToast(`Created ${clients.length} orders · ${movedCount} workbook${movedCount === 1 ? '' : 's'}`, 'success');
     }
   }
 
@@ -40465,14 +40469,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sel = _stagedSelectedList().filter(s => s.clientName === o.clientName);
     if (!sel.length) { closeStagedAddOrderModal(); return; }
     o.entries = o.entries || [];
+    let added = 0;
     sel.forEach(s => {
       const dupe = o.entries.some(e => String(e.workbookId) === String(s.workbookId) && e.clientName === s.clientName);
-      if (!dupe) o.entries.push({ clientName: s.clientName, workbookId: s.workbookId });
+      if (!dupe) { o.entries.push({ clientName: s.clientName, workbookId: s.workbookId }); added++; }
     });
     saveOrders();
     _stagedOrderSelected.clear();
     closeStagedAddOrderModal();
     rebuildOrdersNav();
+    showToast(`Added ${added} workbook${added === 1 ? '' : 's'} to ${o.name || ('Order #' + o.id)}`, 'success');
     location.hash = `#/order/${orderId}`;
   }
 
