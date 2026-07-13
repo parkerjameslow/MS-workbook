@@ -30876,6 +30876,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // outlined ready state).
       sentForReview:   !!existing.sentForReview,
       sentForReviewAt: existing.sentForReviewAt || null,
+      // "Moved to Orders" staging flag (managed via the Samples → Orders
+      // bulk action, not DOM-driven). Preserve it or opening a staged
+      // workbook + navigating away would save a detail without it and
+      // silently drop the workbook out of the Orders "Ready to Order" list.
+      movedToOrders:   !!existing.movedToOrders,
+      movedToOrdersAt: existing.movedToOrdersAt || null,
       // Per-step milestone watchers — managed by the Watchers modal, not
       // DOM-driven. Preserve the live in-memory value from existing so
       // an autosave after add/remove doesn't clobber it.
