@@ -28123,10 +28123,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // what the order COSTS us.
     const _landedFor = it => {
       const d = workbookDetail[`${clientName}|${it.id}`] || {};
+      // Client Quote Total only exists once the operator commits a Sale Per
+      // (or bills additional fees). Without that there is no client-facing
+      // price, so show — rather than a stale cached quote OR the landed
+      // COST (pricingLandedTotal) — the old fallback showed our cost in a
+      // column labelled "Client Quote", which read as a phantom quote on
+      // workbooks where nothing was entered.
+      const salePer    = parseFloat(d.pricingSalePer) || 0;
+      const feesBilled = parseFloat(d.pricingAppliedFeesAsIs) || 0;
+      if (salePer <= 0 && feesBilled <= 0) return 0;
       const quote = parseFloat(d.pricingClientQuoteTotal);
-      if (!isNaN(quote) && quote > 0) return quote;
-      const landed = parseFloat(d.pricingLandedTotal);
-      return (!isNaN(landed) && landed > 0) ? landed : 0;
+      return (!isNaN(quote) && quote > 0) ? quote : 0;
     };
 
     const dir = _clientSortDir === 'asc' ? 1 : -1;
