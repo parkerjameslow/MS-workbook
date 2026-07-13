@@ -1747,6 +1747,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #review-table th:nth-child(8), #review-table td:nth-child(8) { width: 14%; } /* USD */
     #review-table th, #review-table td { padding-left: 12px; padding-right: 12px; }
     #review-table .review-client-name { display: block; max-width: 100%; }
+
+    /* Orders "Ready to Order" staging rows — clickable to open the workbook */
+    .staged-row:hover { background: rgba(110, 140, 255, 0.06); }
+    .staged-notready-btn {
+      flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 4px 9px;
+      border: 1px solid var(--border); border-radius: 6px; background: var(--surface, #fff);
+      color: var(--text-muted); cursor: pointer; white-space: nowrap;
+    }
+    .staged-notready-btn:hover { border-color: #ef4444; color: #ef4444; background: rgba(239,68,68,0.06); }
     #review-table .review-client-name {
       font-size: 13px;
       font-weight: 600;
@@ -28336,8 +28345,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       'inv-number','inv-date','inv-due-date','inv-qty','inv-unit-price','inv-shipping','inv-status','inv-method','inv-notes',
       // Art
       'art-status','art-due-date','art-notes',
+      // Additional Fees — standard rows. Omitting these let a brand-new
+      // workbook (no-data branch) inherit the previously-open workbook's
+      // fees (e.g. Salt's Plate Fees showing on a fresh workbook).
+      'fee-sample-desc','fee-sample-rmb','fee-sample-usd',
+      'fee-tooling-desc','fee-tooling-rmb','fee-tooling-usd',
+      'fee-die-desc','fee-die-rmb','fee-die-usd',
+      'fee-plate-desc','fee-plate-rmb','fee-plate-usd',
+      'fee-design-desc','fee-design-usd',
     ];
     _clearIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // Additional Fees — custom rows. Reset the backing array + counter and
+    // clear the rendered rows so they don't carry over either. The data
+    // branch re-populates from data.extraFeeRows when present.
+    _extraFeeRows = [];
+    _extraFeeCounter = 0;
+    const _extraFeeHost = document.getElementById('extra-fee-rows');
+    if (_extraFeeHost) _extraFeeHost.innerHTML = '';
     // Subcategory selects rebuild themselves on category change; reset
     // their option lists so a stale category's subs don't appear.
     const _subA = document.getElementById('product-subcategory');
@@ -40290,8 +40314,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const hasPrice = st.price > 0;
       const valTop = hasPrice ? money(st.price) : (st.cost > 0 ? money(st.cost) : '—');
       const valSub = hasPrice ? 'customer' : (st.cost > 0 ? 'our cost' : '');
-      return `<label class="staged-row" style="display:flex; align-items:center; gap:14px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer;">
-        <input type="checkbox" class="staged-cb" data-key="${esc(s.key)}" ${checked} onchange="toggleStagedSelection('${keyAttr}', this.checked)" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;" />
+      const wbHref = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
+      // Whole row opens the workbook; the checkbox + "Not ready" button
+      // stopPropagation so they don't also navigate.
+      return `<div class="staged-row" onclick="location.hash='${wbHref}'" title="Open workbook" style="display:flex; align-items:center; gap:14px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer;">
+        <span onclick="event.stopPropagation();" style="display:inline-flex; flex-shrink:0;">
+          <input type="checkbox" class="staged-cb" data-key="${esc(s.key)}" ${checked} onclick="event.stopPropagation();" onchange="toggleStagedSelection('${keyAttr}', this.checked)" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;" />
+        </span>
         <div style="flex:1; min-width:0;">
           <div style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(s.product)}</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${meta || 'no pricing yet'}</div>
@@ -40301,7 +40330,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${valSub ? `<div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em;">${valSub}</div>` : ''}
         </div>
         <span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}; flex-shrink:0;">${esc(s.clientName)}</span>
-      </label>`;
+        <button class="staged-notready-btn" onclick="event.stopPropagation(); sendStagedBackToSamples('${keyAttr}')" title="Not ready — send back to Samples">Not ready</button>
+      </div>`;
     }).join('');
     host.innerHTML = `
       <div class="section-card" style="margin-bottom:20px;">
@@ -40329,6 +40359,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (cnt) cnt.textContent = String(n);
   }
   function deselectAllStaged() { _stagedOrderSelected.clear(); renderOrdersStaging(); }
+
+  // "Not ready" — send a staged workbook back to Samples. Clears the
+  // movedToOrders flag and re-flags its line items as samples so it
+  // reappears in the Samples list. Updates locally first, then persists.
+  async function sendStagedBackToSamples(key) {
+    const wd = workbookDetail[key];
+    if (wd) {
+      wd.movedToOrders = false; wd.movedToOrdersAt = null;
+      if (Array.isArray(wd.rfqItems)) wd.rfqItems.forEach(it => { if (it) it.sample = true; });
+    }
+    _stagedOrderSelected.delete(key);
+    try { saveToLocalStorage(); } catch (_) {}
+    renderOrdersStaging();
+    try { rebuildOrdersNav(); } catch (_) {}
+    try { rebuildSamplesNav(); } catch (_) {}
+    const [, workbookId] = key.split('|');
+    const dbId = dbWorkbookMap[key] || workbookId;
+    try { await apiCall('bulk_workbook_action', { ids: [dbId], action: 'samples' }); }
+    catch (_) { showToast('Saved locally — server sync failed', 'warn'); return; }
+    showToast('Sent back to Samples', 'success');
+  }
 
   function createOrderFromStaged() {
     const sel = _stagedSelectedList();
