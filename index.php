@@ -5748,13 +5748,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .crm-col-total { font-size: 10px; font-weight: 800; opacity: 0.85; margin-left: 6px; white-space: nowrap; }
     /* Column focus flash when jumped to from the nav drill-down. */
     .crm-column.pl-focus { background: rgba(107,147,255,0.14); border-radius: 10px; }
-    /* Pipeline filter bar. */
-    .pl-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 0 12px; position: relative; z-index: 1; }
+    /* Pipeline filter bar — compact + inline so the board stays above the
+       fold. Explicit widths because the global form styling stretches
+       inputs to 100%, which stacked each control onto its own row. */
+    .pl-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; position: relative; z-index: 1; }
     .pl-filters select, .pl-filters input {
-      border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+      border: 1px solid var(--border); border-radius: 7px; padding: 4px 8px;
       font-size: 12px; font-family: inherit; background: var(--surface); color: var(--text);
+      height: 28px; box-sizing: border-box; flex: 0 0 auto;
     }
-    .pl-filters input { min-width: 200px; }
+    .pl-filters select { width: 150px; }
+    .pl-filters input  { width: 210px; min-width: 0; }
+    .pl-filters .btn { padding: 4px 10px; font-size: 12px; height: 28px; }
     /* Assignee avatars on a pipeline card + note indicator. */
     .pl-assignees { display: flex; align-items: center; gap: 0; margin-top: 8px; }
     .pl-avatar {
@@ -9772,17 +9777,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 ══════════════════════════════════════════════════════════════════════ -->
 <div id="view-pipeline" class="view">
   <main class="container" style="max-width:none; padding:0 16px 16px;">
-    <div style="display:flex; align-items:center; gap:12px; padding:18px 0 6px; position:relative; z-index:1;">
-      <h1 style="font-size:20px; font-weight:700; color:var(--text); margin:0;">Pipeline</h1>
-      <span style="font-size:12px; color:var(--text-muted);">Every workbook by stage — drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.</span>
-    </div>
-    <div class="pl-filters">
-      <select id="pl-client-filter" onchange="onPipelineFilterChange()" title="Filter the board to one client">
-        <option value="">All clients</option>
-      </select>
-      <input type="text" id="pl-search" placeholder="Search workbook, order or shipment…" oninput="onPipelineFilterChange()" autocomplete="off" />
-      <button class="btn btn-ghost" style="font-size:12px;" onclick="clearPipelineFilters()">Clear</button>
-      <span id="pl-filter-note" style="font-size:11px; color:var(--text-muted);"></span>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 0 8px; position:relative; z-index:1;">
+      <h1 style="font-size:18px; font-weight:700; color:var(--text); margin:0;">Pipeline</h1>
+      <span style="font-size:11px; color:var(--text-muted);" title="Drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.">Every workbook by stage</span>
+      <div class="pl-filters" style="margin-left:auto;">
+        <select id="pl-client-filter" onchange="onPipelineFilterChange()" title="Filter the board to one client">
+          <option value="">All clients</option>
+        </select>
+        <input type="text" id="pl-search" placeholder="Search…" oninput="onPipelineFilterChange()" autocomplete="off" title="Search workbook, order or shipment" />
+        <button class="btn btn-ghost" onclick="clearPipelineFilters()">Clear</button>
+        <span id="pl-filter-note" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></span>
+      </div>
     </div>
     <div id="pipeline-board" class="crm-board"></div>
   </main>
