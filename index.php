@@ -18192,7 +18192,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Pricing). The grand-total unit price reconciles to TOTAL ÷ this, so a
     // component at a different qty (e.g. 2 sleeves per kit) can't make the
     // unit price understate the real per-kit price.
-    let primaryQty = 0, primaryName = '';
+    let primaryQty = 0, primaryName = '', primaryId = null;
+    // Every priced line, so the operator can pick which one is the primary
+    // (the divisor for the per-unit price) instead of it being an invisible
+    // "first priced line" guess.
+    const pricedLines = [];   // { id, name, qty }
     const itemSummaries = [];  // { label, qty, rmb, usd, total, lead, isVariant }
 
     parentRows.forEach(row => {
@@ -18263,7 +18267,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             }
           }
           grandQty     += totQty;
-          if (primaryQty === 0 && totQty > 0) { primaryQty = totQty; primaryName = name || ('Item ' + id); }
+          if (totQty > 0) pricedLines.push({ id, name: name || ('Item ' + id), qty: totQty });
           if (minRmb !== Infinity) grandRmb += minRmb; // keep prior shape
           grandUsdUnit += avgUsdForGrand;
           grandUsd     += totUsd;
@@ -18291,7 +18295,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           grandUsd          += total;
           grandRmbQtyXPrice += qty * rmb;
           grandRmbQty       += qty;
-          if (primaryQty === 0) { primaryQty = qty; primaryName = name || ('Item ' + id); }
+          pricedLines.push({ id, name: name || ('Item ' + id), qty });
         }
         if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
 
@@ -18390,6 +18394,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // USD so ceil-to-cent rounding can't inflate it (e.g. ¥0.30 stays
     // ¥0.30, not ¥0.34). Tiered Pricing reads this directly.
     const grandRmbWeighted = grandRmbQty > 0 ? (grandRmbQtyXPrice / grandRmbQty) : 0;
+    // Resolve the primary line: the operator's explicit choice
+    // (_rfqPrimaryId) when it's still a priced line, else the first priced
+    // line. This is the divisor for the per-unit price.
+    let _primaryLine = pricedLines.find(l => String(l.id) === String(_rfqPrimaryId));
+    if (!_primaryLine) _primaryLine = pricedLines[0] || null;
+    if (_primaryLine) { primaryQty = _primaryLine.qty; primaryName = _primaryLine.name; primaryId = _primaryLine.id; }
+
     // Reconciled per-primary-unit RMB = TOTAL RMB ÷ primary qty — the same
     // basis the grand-total UNIT PRICE now shows. Equals grandRmb (sum of
     // component prices) when every component shares the primary qty, but is
@@ -18398,7 +18409,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const grandRmbPerPrimary = (primaryQty > 0 && grandRmbQtyXPrice > 0) ? (grandRmbQtyXPrice / primaryQty) : grandRmb;
     _lastRfqPriceSummary = {
       hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange,
-      grandQty, grandRmb, grandRmbPerPrimary, primaryQty, primaryName,
+      grandQty, grandRmb, grandRmbPerPrimary, primaryQty, primaryName, primaryId,
       grandRmbWeighted, grandUsdUnit, grandUsd
     };
 
@@ -18487,20 +18498,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const f2 = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       const qStr = primaryQty.toLocaleString('en-US');
-      // Name the primary line so it's obvious WHICH line drives the divisor —
-      // it's the first priced line item in the table, not a hidden setting.
-      const pStr = `<strong>${esc(primaryName || 'first line')}</strong> · ${qStr}`;
+      // Primary is a real, changeable choice — render a dropdown of the
+      // priced lines so the operator can set which one drives the divisor,
+      // instead of it being an invisible "first line" guess.
+      const opts = pricedLines.map(l =>
+        `<option value="${esc(l.id)}"${String(l.id) === String(primaryId) ? ' selected' : ''}>${esc(l.name)} · ${l.qty.toLocaleString('en-US')}</option>`).join('');
+      const picker = pricedLines.length > 1
+        ? `<select onchange="setRfqPrimary(this.value)" title="Which line is the primary (the divisor for the per-unit price)?" style="font-family:inherit; font-size:11px; padding:1px 4px; border:1px solid var(--border); border-radius:5px; margin:0 2px; vertical-align:baseline;">${opts}</select>`
+        : `<strong>${esc(primaryName || 'first line')}</strong> · ${qStr}`;
       const diff = Math.abs(impliedUsd - sumUsd) > 0.005;
-      if (diff) {
-        mathEl.innerHTML =
-          `<span style="color:#a16207; font-weight:800;">&#9888; Unit price adjusted</span> — `
-          + `total ${f2(grandUsdPrecise)} &divide; primary qty (${pStr}) = <strong>${f3(impliedUsd)}/unit</strong>, `
-          + `not the raw sum of component prices (${f3(sumUsd)}). A component runs at a different qty than the primary, so sum-of-parts understates the true per-unit price.`;
-      } else {
-        mathEl.innerHTML =
-          `Unit price = total ${f2(grandUsdPrecise)} &divide; primary qty (${pStr}) = <strong>${f3(impliedUsd)}/unit</strong> `
-          + `<span style="opacity:0.75;">(matches the sum of component prices). Primary = the first priced line.</span>`;
-      }
+      const prefix = diff
+        ? `<span style="color:#a16207; font-weight:800;">&#9888; Unit price adjusted</span> — `
+        : '';
+      const suffix = diff
+        ? `, not the raw sum of component prices (${f3(sumUsd)}). A component runs at a different qty than the primary, so sum-of-parts understates the true per-unit price.`
+        : ` <span style="opacity:0.75;">(matches the sum of component prices).</span>`;
+      mathEl.innerHTML = prefix
+        + `total ${f2(grandUsdPrecise)} &divide; primary (${picker}) = <strong>${f3(impliedUsd)}/unit</strong>`
+        + suffix;
       mathRow.style.display = '';
     })();
 
@@ -19184,6 +19199,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Computed inside _recalcRfqTotalsInner; null until first run.
   // Shape: { hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange, grandQty, grandRmb, grandUsdUnit }
   let _lastRfqPriceSummary = null;
+  // Operator-chosen primary RFQ line (the divisor for the per-unit kit price).
+  // null → fall back to the first priced line. Persisted as rfqPrimaryId.
+  let _rfqPrimaryId = null;
+  function setRfqPrimary(id) {
+    _rfqPrimaryId = (id === '' || id == null) ? null : id;
+    if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
 
   function addWbTierRow(qty = '', unitPrice = '') {
     wbTierCount++;
@@ -28761,6 +28784,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Applied additional-fees state is per-workbook too.
     _appliedFees = new Set();
     _appliedFeeOverrides = Object.create(null);
+    _rfqPrimaryId = null;   // reset the primary-line choice per workbook (data branch reloads it)
 
     function _s(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
 
@@ -28961,6 +28985,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // refresh the bulk-select chrome + groups summary bar so the
       // operator immediately sees how many groups this workbook has.
       _combineGroups = Array.isArray(data.combineGroups) ? data.combineGroups.slice() : [];
+      _rfqPrimaryId = (data.rfqPrimaryId != null) ? data.rfqPrimaryId : null;
       _rfqSelected.clear();
       updateRfqBulkBar();
       updateRfqGroupsBar();
@@ -31079,6 +31104,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // drag-reorder may invalidate references; warned in the modal
       // copy). Stored as {id, label, primaryIdx, itemIdxs}.
       combineGroups: Array.isArray(_combineGroups) ? _combineGroups.slice() : [],
+      rfqPrimaryId: _rfqPrimaryId,
       qcNotes: _v('quote-qc'),
       feeSampleDesc:  _v('fee-sample-desc'),
       // Money fields are now comma-formatted text inputs — strip the
