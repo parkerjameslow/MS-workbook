@@ -5769,6 +5769,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .pl-avatar + .pl-avatar { margin-left: -6px; }
     .pl-note-dot { margin-left: 6px; font-size: 10px; color: #93c5fd; }
+    /* Comment / note count pills on a card — readable at a glance. */
+    .pl-meta-pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 99px;
+      background: rgba(255,255,255,0.10); color: #cbd5e1;
+      border: 1px solid rgba(255,255,255,0.16); line-height: 1.5;
+    }
+    .pl-meta-pill.has-comments { background: rgba(147,197,253,0.18); color: #bfdbfe; border-color: rgba(147,197,253,0.35); }
+    .pl-assignees .pl-meta-pill { margin-left: 6px; }
+    .pl-assignees .pl-meta-pill:first-child { margin-left: 0; }
     /* Pipeline detail modal — facts grid. */
     .pl-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 4px 0 14px; }
     .pl-fact { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
@@ -40488,8 +40498,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
       return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
     }).join('');
-    const noteDot = note ? `<span class="pl-note-dot" title="Has notes">&#9998;</span>` : '';
-    const cmtDot  = nComments ? `<span class="pl-note-dot" title="${nComments} comment${nComments === 1 ? '' : 's'}">&#128172; ${nComments}</span>` : '';
+    const noteDot = note ? `<span class="pl-meta-pill" title="Has notes">&#9998;</span>` : '';
+    const cmtDot  = nComments
+      ? `<span class="pl-meta-pill has-comments" title="${nComments} comment${nComments === 1 ? '' : 's'}">&#128172; ${nComments}</span>`
+      : '';
     return `<div class="pl-assignees">${chips}${noteDot}${cmtDot}</div>`;
   }
 
