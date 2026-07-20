@@ -5755,6 +5755,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-size: 12px; font-family: inherit; background: var(--surface); color: var(--text);
     }
     .pl-filters input { min-width: 200px; }
+    /* Assignee avatars on a pipeline card + note indicator. */
+    .pl-assignees { display: flex; align-items: center; gap: 0; margin-top: 8px; }
+    .pl-avatar {
+      width: 20px; height: 20px; border-radius: 50%; font-size: 10px; font-weight: 800;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 1.5px solid #1f2937; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    }
+    .pl-avatar + .pl-avatar { margin-left: -6px; }
+    .pl-note-dot { margin-left: 6px; font-size: 10px; color: #93c5fd; }
+    /* Pipeline detail modal — facts grid. */
+    .pl-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 4px 0 14px; }
+    .pl-fact { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    .pl-fact-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    .pl-fact-value { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 2px; }
+    .pl-modal-list { list-style: none; padding: 0; margin: 0 0 14px; font-size: 13px; }
+    .pl-modal-list li { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 10px; }
+    .pl-modal-group { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding-top: 10px; }
     .crm-board {
       display: flex; gap: 14px;
       padding: 4px 0 16px;
@@ -10640,6 +10657,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closeSamplesToRfqModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="_doSamplesToRfq()">→ Move to RFQ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Pipeline card detail modal ─────────────────────────────────────── -->
+<div class="modal-overlay" id="pl-card-modal" onclick="if(event.target===this)closePipelineCardModal()" style="z-index:1250;">
+  <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div style="flex-shrink:0;">
+      <div class="modal-title" id="pl-modal-title" style="margin-bottom:4px;">Card</div>
+      <div id="pl-modal-stage" style="font-size:12px; color:var(--text-muted); margin-bottom:14px;"></div>
+    </div>
+    <div style="overflow-y:auto; flex:1 1 auto;">
+      <div class="pl-facts" id="pl-modal-facts"></div>
+      <div id="pl-modal-contents"></div>
+      <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Assigned to</div>
+      <div id="pl-modal-assignees" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
+      <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Notes</div>
+      <textarea id="pl-modal-note" rows="3" placeholder="Decision notes, blockers, next step…"
+        style="width:100%; border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; resize:vertical;"></textarea>
+    </div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
+      <button type="button" class="btn btn-ghost" onclick="closePipelineCardModal()">Close</button>
+      <button type="button" class="btn btn-ghost" id="pl-modal-open-btn" style="border-color:var(--accent); color:var(--accent);">Open</button>
+      <button type="button" class="btn btn-primary" onclick="savePipelineCardModal()">Save</button>
     </div>
   </div>
 </div>
@@ -40117,7 +40158,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const board = document.getElementById('pipeline-board');
     if (!board) return;
     const _scrollLeft = board.scrollLeft;
+    _ensurePlMetaLoaded();
     const all = collectPipeline();
+    // Remember every card by id so the detail modal can look one up.
+    _plLastCards = {};
+    all.forEach(c => { _plLastCards[_plCardId(c)] = c; });
 
     // Client filter options — rebuilt from whatever is on the board.
     const sel = document.getElementById('pl-client-filter');
@@ -40247,11 +40292,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const dragAttrs = c.movable
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'${_plEsc(c.key)}')" ondragend="onPipelineDragEnd(event)"`
       : '';
+    const cid = _plCardId(c);
     return `<div class="crm-card pl-card ${c.movable ? '' : 'pl-locked'}" ${dragAttrs}
-                 onclick="location.hash='${wbHref}'" title="Open workbook">
+                 onclick="openPipelineCardModal('${_plEsc(cid).replace(/'/g, "\\'")}')" title="View details">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.product)}</div>
       <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
+      ${_plAssigneeChips(cid)}
     </div>`;
   }
 
@@ -40261,13 +40308,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
     const wbs = c.workbooks || [];
     const children = wbs.map(_pipelineChildLine).join('');
-    return `<div class="crm-card pl-card pl-locked pl-entity" onclick="location.hash='#/order/${c.id}'" title="Open order">
+    const cid = _plCardId(c);
+    return `<div class="crm-card pl-card pl-locked pl-entity" onclick="openPipelineCardModal('${cid}')" title="View details">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${children ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${wbs.length} workbook${wbs.length === 1 ? '' : 's'}</button>
       <div class="pl-children">${children}</div>` : ''}
+      ${_plAssigneeChips(cid)}
     </div>`;
   }
 
@@ -40277,13 +40326,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const body = (c.groups || []).map(g =>
       `<div class="pl-child-group">${_plEsc(g.label)}</div>${g.workbooks.map(_pipelineChildLine).join('')}`
     ).join('');
-    return `<div class="crm-card pl-card pl-locked pl-entity" onclick="location.hash='#/shipment/${c.id}'" title="Open shipment">
+    const cid = _plCardId(c);
+    return `<div class="crm-card pl-card pl-locked pl-entity" onclick="openPipelineCardModal('${cid}')" title="View details">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub) || `${c.count} workbook${c.count === 1 ? '' : 's'}`}</div>
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${c.count} workbook${c.count === 1 ? '' : 's'}</button>
       <div class="pl-children">${body}</div>` : ''}
+      ${_plAssigneeChips(cid)}
     </div>`;
   }
 
@@ -40362,6 +40413,135 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     catch (_) { showToast('Saved locally — server sync failed', 'warn'); return; }
     const lbl = (PIPELINE_COLUMNS.find(c => c.id === targetStage) || {}).label || targetStage;
     showToast(`Moved to ${lbl}`, 'success');
+  }
+
+  // ── Pipeline card meta (assignees + notes) ────────────────────────
+  // One shared app_state blob (ms_pipeline_meta) keyed by card id, so an
+  // assignment persists without touching workbook/order/shipment saves —
+  // and can't be clobbered by a concurrent full-detail workbook save.
+  let _plMeta = {}, _plMetaLoaded = false, _plLastCards = {}, _plModalId = null;
+  const _plModalAssignees = new Set();
+
+  function _plCardId(c) { return c.kind === 'wb' ? `wb:${c.key}` : `${c.kind}:${c.id}`; }
+
+  async function _ensurePlMetaLoaded() {
+    if (_plMetaLoaded) return;
+    _plMetaLoaded = true;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_pipeline_meta' });
+      let v = null;
+      if (r && r.value) { try { v = JSON.parse(r.value); } catch (e) {} }
+      _plMeta = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    } catch (e) { _plMeta = {}; }
+    if (location.hash === '#/pipeline') { try { renderPipelineBoard(); } catch (_) {} }
+  }
+  function _persistPlMeta() {
+    try { apiCall('save_app_state', { key: 'ms_pipeline_meta', value: JSON.stringify(_plMeta || {}) }).catch(() => {}); } catch (e) {}
+  }
+  function _plAssigneeChips(id) {
+    const m = _plMeta[id] || {};
+    const list = m.assignees || [], note = m.note || '';
+    if (!list.length && !note) return '';
+    const chips = list.map(n => {
+      const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
+      return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
+    }).join('');
+    return `<div class="pl-assignees">${chips}${note ? `<span class="pl-note-dot" title="Has notes">&#9998;</span>` : ''}</div>`;
+  }
+
+  function openPipelineCardModal(id) {
+    const c = _plLastCards[id];
+    if (!c) return;
+    _plModalId = id;
+    const meta = _plMeta[id] || {};
+    _plModalAssignees.clear();
+    (meta.assignees || []).forEach(n => _plModalAssignees.add(n));
+    const col = PIPELINE_COLUMNS.find(x => x.id === c.stage) || {};
+    const days = _pipelineDaysSince(c.since);
+    const money = v => '$' + (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById('pl-modal-title').textContent = c.title || c.product || 'Card';
+    document.getElementById('pl-modal-stage').innerHTML =
+      `<span style="display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; background:${col.bg || '#eee'}; color:${col.fg || '#333'};">${_plEsc(col.label || c.stage)}</span>`
+      + (days === null ? '' : ` <span style="margin-left:8px;">in this stage ${days <= 0 ? 'since today' : days + ' day' + (days === 1 ? '' : 's')}</span>`);
+
+    const facts = [];
+    if (c.kind === 'wb') {
+      const st = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(c.detail) || {}) : {};
+      const lines = Array.isArray(c.detail.rfqItems) ? c.detail.rfqItems.filter(i => i && (i.item || i.qty || i.priceRmb)).length : 0;
+      facts.push(['Client', c.clientName]);
+      facts.push(['Units', st.units > 0 ? st.units.toLocaleString('en-US') : '—']);
+      facts.push(['Customer value', c.value > 0 ? money(c.value) : '—']);
+      facts.push(['Our cost', st.cost > 0 ? money(st.cost) : '—']);
+      facts.push(['Lead time', st.leadDays > 0 ? `${st.leadDays} days` : '—']);
+      facts.push(['Line items', String(lines)]);
+    } else if (c.kind === 'order') {
+      facts.push(['Client', c.title]);
+      facts.push(['Order', String(c.sub || '').split(' · ')[0] || '—']);
+      facts.push(['Workbooks', String((c.workbooks || []).length)]);
+      facts.push(['Total', c.totalUsd > 0 ? money(c.totalUsd) : '—']);
+      if (c.flagged) facts.push(['Flag', 'Change requested']);
+    } else {
+      const s = shipmentData[c.id] || {};
+      facts.push(['Carrier', (s.carrier || '—').toUpperCase()]);
+      facts.push(['Tracking', s.trackingNumber || '—']);
+      facts.push(['Status', _SHIP_STATUS_LABEL(s.status)]);
+      facts.push(['ETA', (s.tracking && s.tracking.eta) || s.eta || '—']);
+      facts.push(['Workbooks', String(c.count || 0)]);
+      facts.push(['Value', c.value > 0 ? money(c.value) : '—']);
+    }
+    document.getElementById('pl-modal-facts').innerHTML = facts.map(([l, v]) =>
+      `<div class="pl-fact"><div class="pl-fact-label">${_plEsc(l)}</div><div class="pl-fact-value">${_plEsc(v)}</div></div>`).join('');
+
+    const row = w => `<li><span>${_plEsc(w.product)}</span><a href="#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}" onclick="closePipelineCardModal()" style="color:var(--accent); font-size:12px; white-space:nowrap;">open &rarr;</a></li>`;
+    let contents = '';
+    if (c.kind === 'order' && (c.workbooks || []).length) {
+      contents = `<div class="pl-modal-group">Workbooks</div><ul class="pl-modal-list">${c.workbooks.map(row).join('')}</ul>`;
+    } else if (c.kind === 'shipment' && (c.groups || []).length) {
+      contents = c.groups.map(g => `<div class="pl-modal-group">${_plEsc(g.label)}</div><ul class="pl-modal-list">${g.workbooks.map(row).join('')}</ul>`).join('');
+    }
+    document.getElementById('pl-modal-contents').innerHTML = contents;
+    document.getElementById('pl-modal-note').value = meta.note || '';
+    _renderPlModalAssignees();
+
+    const openBtn = document.getElementById('pl-modal-open-btn');
+    const target = c.kind === 'wb' ? `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`
+                 : c.kind === 'order' ? `#/order/${c.id}` : `#/shipment/${c.id}`;
+    openBtn.textContent = c.kind === 'wb' ? 'Open workbook' : (c.kind === 'order' ? 'Open order' : 'Open shipment');
+    openBtn.onclick = () => { savePipelineCardModal(true); closePipelineCardModal(); location.hash = target; };
+    document.getElementById('pl-card-modal').classList.add('open');
+  }
+
+  function _renderPlModalAssignees() {
+    const host = document.getElementById('pl-modal-assignees');
+    if (!host) return;
+    const roster = (typeof CRM_ASSIGNEE_ROSTER !== 'undefined') ? CRM_ASSIGNEE_ROSTER : ['Parker','Jackson','Ron','Kylie','Karen'];
+    host.innerHTML = roster.map(name => {
+      const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[name]) || { bg: '#4b5563', fg: '#fff' };
+      const on = _plModalAssignees.has(name);
+      const style = on ? `background:${col.bg}; color:${col.fg}; border:1px solid ${col.bg};`
+                       : `background:transparent; color:var(--text-muted); border:1px solid var(--border);`;
+      return `<button type="button" onclick="_togglePlAssignee('${_plEsc(name)}')" style="display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:99px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; ${style}">
+        <span style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:${on ? 'rgba(255,255,255,0.25)' : col.bg}; color:#fff; font-size:10px; font-weight:800;">${_plEsc(name.charAt(0))}</span>${_plEsc(name)}</button>`;
+    }).join('');
+  }
+  function _togglePlAssignee(name) {
+    if (_plModalAssignees.has(name)) _plModalAssignees.delete(name);
+    else _plModalAssignees.add(name);
+    _renderPlModalAssignees();
+  }
+  function closePipelineCardModal() {
+    const m = document.getElementById('pl-card-modal'); if (m) m.classList.remove('open');
+    _plModalId = null;
+  }
+  function savePipelineCardModal(silent) {
+    if (!_plModalId) { if (!silent) closePipelineCardModal(); return; }
+    const note = ((document.getElementById('pl-modal-note') || {}).value || '').trim();
+    const assignees = Array.from(_plModalAssignees);
+    if (!assignees.length && !note) delete _plMeta[_plModalId];
+    else _plMeta[_plModalId] = { assignees, note };
+    _persistPlMeta();
+    if (!silent) { closePipelineCardModal(); showToast('Saved', 'success'); }
+    try { renderPipelineBoard(); } catch (_) {}
   }
 
   function _updatePipelineNavBadge() {
