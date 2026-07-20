@@ -10720,13 +10720,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="margin:16px 0 6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
         Comments <span id="pl-modal-comment-count" style="color:var(--accent);"></span>
       </div>
-      <div id="pl-modal-comments" class="pl-comments"></div>
-      <div style="display:flex; gap:8px; margin-top:8px;">
-        <input type="text" id="pl-comment-input" placeholder="Add a comment…" autocomplete="off"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();addPipelineComment();}"
-          style="flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;" />
-        <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addPipelineComment()">Post</button>
-      </div>
+      <div id="pl-modal-comments" class="pl-comments" onclick="_focusPlCommentInput()" title="Click to add a comment"></div>
+    </div>
+    <!-- Comment composer lives OUTSIDE the scrollable body so it's always
+         visible and clickable — previously it sat at the bottom of the
+         scroll area and could be out of reach. -->
+    <div style="flex-shrink:0; display:flex; gap:8px; margin-top:10px;">
+      <input type="text" id="pl-comment-input" placeholder="Add a comment…" autocomplete="off"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();addPipelineComment();}"
+        style="flex:1 1 auto; min-width:0; width:auto; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; pointer-events:auto;" />
+      <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addPipelineComment()">Post</button>
     </div>
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closePipelineCardModal()">Close</button>
@@ -40636,6 +40639,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }).join('');
     // Keep the newest comment in view.
     host.scrollTop = host.scrollHeight;
+  }
+  // The comments list reads like a text box, so clicking it focuses the
+  // composer rather than doing nothing.
+  function _focusPlCommentInput() {
+    const el = document.getElementById('pl-comment-input');
+    if (el) { try { el.focus(); } catch (_) {} }
   }
   function addPipelineComment() {
     if (!_plModalId) return;
