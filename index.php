@@ -5816,6 +5816,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-comment-text { font-size: 13px; color: var(--text); white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
     .pl-comment-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; padding: 0 2px; }
     .pl-comment-del:hover { color: #dc2626; }
+
+    /* ══ Local search results (AI Assistant view) ═══════════════════════ */
+    .ms-sr-group { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 12px 0 6px; }
+    .ms-sr-group:first-child { margin-top: 0; }
+    .ms-sr-row {
+      display: flex; align-items: baseline; gap: 8px; padding: 8px 10px;
+      border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+    }
+    .ms-sr-row:hover { background: var(--surface); border-color: var(--border); }
+    .ms-sr-title { font-size: 13px; font-weight: 700; color: var(--text); flex-shrink: 0; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ms-sr-sub { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+    .ms-sr-snip { font-size: 11px; color: var(--text-muted); margin-left: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46%; }
+    .ms-sr-snip mark { background: rgba(232,117,26,0.28); color: var(--text); border-radius: 3px; padding: 0 2px; }
+    .ms-sr-empty { font-size: 13px; color: var(--text-muted); font-style: italic; text-align: center; padding: 40px 0; }
+    .ms-sr-more { font-size: 11px; color: var(--text-muted); padding: 4px 10px; font-style: italic; }
     .crm-board {
       display: flex; gap: 14px;
       padding: 4px 0 16px;
@@ -9848,6 +9863,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span style="font-size:11px; color:var(--text-muted);">Ask about clients, orders, shipments, CRM, or send a Slack DM.</span>
       <button onclick="_asstNewConversation()" style="margin-left:auto; padding:6px 12px; border-radius:6px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:700; cursor:pointer; font-family:inherit;">↻ New chat</button>
     </div>
+    <!-- Local search — scans everything already loaded in the browser
+         (workbooks, line items, prices, clients, orders, shipments, CRM,
+         pipeline notes/comments). Runs entirely client-side: no API key,
+         no cost, instant. Works even when the Claude chat below is down. -->
+    <div style="display:flex; gap:8px; margin-bottom:10px; flex-shrink:0;">
+      <input type="text" id="asst-search" autocomplete="off"
+        placeholder="Search everything — product, SKU, price, client, order, shipment, person, comment…"
+        oninput="_runWorkbookSearch()"
+        onkeydown="if(event.key==='Escape'){_clearWorkbookSearch();}"
+        style="flex:1 1 auto; min-width:0; font-family:inherit; font-size:13px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); outline:none; box-sizing:border-box;" />
+      <button onclick="_clearWorkbookSearch()"
+        style="flex-shrink:0; padding:0 14px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Clear</button>
+    </div>
+    <div id="assistant-search-results" style="display:none; flex:1 1 auto; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px 14px;"></div>
+
     <div id="assistant-messages" style="flex:1 1 auto; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; min-height:200px;">
       <div id="assistant-empty" style="font-size:13px; color:var(--text-muted); font-style:italic; text-align:center; padding:60px 0;">Ask me anything about your MS-Workbook data.<br/>Try: <em>"which orders are in production"</em> · <em>"summarize the CRM Hot column"</em> · <em>"draft a Slack DM to Jackson about the Nut Garden shipment"</em></div>
     </div>
@@ -37448,6 +37478,160 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { localStorage.setItem(_asstStorageKey(), JSON.stringify(_asstMessages)); } catch(e) {}
   }
 
+  // ══ Local search — no Anthropic, no network ════════════════════════
+  // Scans every store already loaded in the browser. Records are indexed by
+  // a generic deep-walk rather than a hand-written field list, so any new
+  // field added to a workbook / order / card becomes searchable for free.
+  function _msPrettyKey(k) {
+    return String(k).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase()).trim();
+  }
+  function _msWalkFields(obj, fields, prefix, depth) {
+    if (obj == null || depth > 4 || fields.length > 400) return;
+    if (Array.isArray(obj)) { obj.forEach(v => _msWalkFields(v, fields, prefix, depth + 1)); return; }
+    if (typeof obj === 'object') {
+      Object.keys(obj).forEach(k => {
+        // Skip binary-ish / plumbing keys — they'd only add noise.
+        if (/image|url|logo|base64|token|thumb/i.test(k)) return;
+        if (/^id$/.test(k) || /At$/.test(k)) return;   // ids + ISO timestamps
+        _msWalkFields(obj[k], fields, prefix ? prefix + ' › ' + _msPrettyKey(k) : _msPrettyKey(k), depth + 1);
+      });
+      return;
+    }
+    if (typeof obj === 'boolean') return;
+    const s = String(obj).trim();
+    if (!s || s === '0' || s.length > 400) return;
+    fields.push({ label: prefix || 'Field', value: s });
+  }
+
+  function _msBuildSearchRecords() {
+    const recs = [];
+    const add = (type, title, subtitle, href, source) => {
+      const fields = [];
+      _msWalkFields(source, fields, '', 0);
+      if (!fields.length) return;
+      recs.push({ type, title: title || '(untitled)', subtitle: subtitle || '', href, fields });
+    };
+    // Workbooks — product, description, line items, SKUs, qty, prices, notes.
+    for (const [key, d] of Object.entries(workbookDetail || {})) {
+      if (!d) continue;
+      const i = key.lastIndexOf('|');
+      const cn = key.slice(0, i), wid = key.slice(i + 1);
+      add('Workbooks', d.product || `Workbook #${wid}`, cn,
+          `#/client/${encodeURIComponent(cn)}/workbook/${wid}`, d);
+    }
+    // Clients
+    Object.keys(clientData || {}).forEach(name => {
+      const det = (typeof clientDetails !== 'undefined' && clientDetails[name]) || {};
+      const n = (clientData[name] || []).length;
+      add('Clients', name, `${n} workbook${n === 1 ? '' : 's'}`,
+          `#/client/${encodeURIComponent(name)}`, Object.assign({ name }, det));
+    });
+    // Orders
+    Object.values(orderData || {}).forEach(o => {
+      if (!o) return;
+      add('Orders', o.name || `Order #${o.id}`, o.clientName || '', `#/order/${o.id}`, o);
+    });
+    // Shipments
+    Object.values(shipmentData || {}).forEach(s => {
+      if (!s) return;
+      add('Shipments', s.name || `Shipment #${s.id}`,
+          (typeof _SHIP_STATUS_LABEL === 'function' ? _SHIP_STATUS_LABEL(s.status) : ''),
+          `#/shipment/${s.id}`, s);
+    });
+    // CRM cards (incl. their comments)
+    const cards = (typeof crmData === 'object' && crmData && crmData.cards) || {};
+    Object.values(cards).forEach(c => {
+      if (!c) return;
+      add('CRM', c.company || '(unnamed lead)', c.contact || '', '#/crm', c);
+    });
+    // Pipeline notes + comments — resolved back to their underlying record.
+    Object.keys(_plMeta || {}).forEach(cid => {
+      const m = _plMeta[cid];
+      if (!m) return;
+      let title = cid, sub = 'Pipeline', href = '#/pipeline';
+      if (cid.indexOf('wb:') === 0) {
+        const k = cid.slice(3), i = k.lastIndexOf('|');
+        const cn = k.slice(0, i), wid = k.slice(i + 1);
+        title = _wbProduct(cn, wid); sub = cn;
+        href = `#/client/${encodeURIComponent(cn)}/workbook/${wid}`;
+      } else if (cid.indexOf('order:') === 0) {
+        const oid = cid.slice(6), o = orderData[oid];
+        title = (o && (o.name || ('Order #' + o.id))) || cid; sub = (o && o.clientName) || 'Order';
+        href = `#/order/${oid}`;
+      } else if (cid.indexOf('shipment:') === 0) {
+        const sid = cid.slice(9), s = shipmentData[sid];
+        title = (s && s.name) || cid; sub = 'Shipment';
+        href = `#/shipment/${sid}`;
+      }
+      add('Notes & comments', title, sub, href,
+          { note: m.note, comments: m.comments, assignees: m.assignees });
+    });
+    return recs;
+  }
+
+  let _msSearchTimer = null;
+  function _runWorkbookSearch() {
+    clearTimeout(_msSearchTimer);
+    _msSearchTimer = setTimeout(_msDoSearch, 120);
+  }
+  function _msSnippet(value, q) {
+    const v = String(value);
+    const i = v.toLowerCase().indexOf(q);
+    if (i < 0) return _plEsc(v.slice(0, 60));
+    const start = Math.max(0, i - 24);
+    const end   = Math.min(v.length, i + q.length + 34);
+    return (start > 0 ? '…' : '') + _plEsc(v.slice(start, i))
+         + '<mark>' + _plEsc(v.slice(i, i + q.length)) + '</mark>'
+         + _plEsc(v.slice(i + q.length, end)) + (end < v.length ? '…' : '');
+  }
+  function _msGoSearchResult(href) { location.hash = href; }
+  function _msDoSearch() {
+    const box  = document.getElementById('asst-search');
+    const out  = document.getElementById('assistant-search-results');
+    const chat = document.getElementById('assistant-messages');
+    if (!box || !out) return;
+    const raw = (box.value || '').trim();
+    const q = raw.toLowerCase();
+    if (!q) { out.style.display = 'none'; out.innerHTML = ''; if (chat) chat.style.display = ''; return; }
+    if (chat) chat.style.display = 'none';
+    out.style.display = '';
+    const hits = [];
+    _msBuildSearchRecords().forEach(r => {
+      const f = r.fields.find(x => x.value.toLowerCase().includes(q));
+      if (f) hits.push({ r, f });
+    });
+    if (!hits.length) {
+      out.innerHTML = `<div class="ms-sr-empty">No matches for &ldquo;${_plEsc(raw)}&rdquo;.</div>`;
+      return;
+    }
+    const byType = {};
+    hits.forEach(h => { (byType[h.r.type] = byType[h.r.type] || []).push(h); });
+    const order = ['Workbooks', 'Clients', 'Orders', 'Shipments', 'CRM', 'Notes & comments'];
+    let html = '';
+    order.forEach(t => {
+      const list = byType[t];
+      if (!list || !list.length) return;
+      html += `<div class="ms-sr-group">${_plEsc(t)} · ${list.length}</div>`;
+      list.slice(0, 12).forEach(h => {
+        const href = String(h.r.href).replace(/'/g, "\\'");
+        html += `<div class="ms-sr-row" onclick="_msGoSearchResult('${href}')" title="Matched in ${_plEsc(h.f.label)}">
+          <span class="ms-sr-title">${_plEsc(h.r.title)}</span>
+          ${h.r.subtitle ? `<span class="ms-sr-sub">${_plEsc(h.r.subtitle)}</span>` : ''}
+          <span class="ms-sr-snip">${_plEsc(h.f.label)}: ${_msSnippet(h.f.value, q)}</span>
+        </div>`;
+      });
+      if (list.length > 12) html += `<div class="ms-sr-more">+ ${list.length - 12} more in ${_plEsc(t)}…</div>`;
+    });
+    out.innerHTML = html;
+  }
+  function _clearWorkbookSearch() {
+    const box = document.getElementById('asst-search');
+    if (box) box.value = '';
+    _msDoSearch();
+    if (box) box.focus();
+  }
+
   function renderAssistantView() {
     document.getElementById('header-title').textContent = 'AI Assistant';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
@@ -37455,6 +37639,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     var link = document.getElementById('nav-assistant-link');
     if (link) link.classList.add('active');
     showView('view-assistant');
+    // Make sure the searchable stores are populated even if the CRM /
+    // Pipeline views haven't been opened yet this session.
+    try { if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded(); } catch (_) {}
+    try {
+      if (typeof loadCrm === 'function' && (!crmData || !crmData.cards || !Object.keys(crmData.cards).length)) loadCrm();
+    } catch (_) {}
+    // Reset the search box so the chat is what you land on.
+    var sb = document.getElementById('asst-search');
+    if (sb) sb.value = '';
+    try { _msDoSearch(); } catch (_) {}
     _asstLoad();
     _asstRenderMessages();
     setTimeout(function () {
