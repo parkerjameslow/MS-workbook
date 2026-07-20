@@ -7566,6 +7566,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <strong style="font-size:13px; color:var(--accent);"><span id="rfq-bulk-count">0 items</span> selected</strong>
         <button type="button" class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllRfqRows()">Deselect all</button>
         <span style="margin-left:auto; display:flex; gap:8px;">
+          <!-- Add-to-existing shows only when groups exist. Without it the
+               only way to get a newly-added line into a group was to delete
+               the group and rebuild it. -->
+          <button type="button" id="rfq-add-to-group-btn" class="btn btn-ghost" style="display:none; font-size:12px; border-color:#6b93ff; color:#6b93ff;" onclick="openAddToGroupModal()">↳ Add to Existing Group</button>
           <button type="button" class="btn btn-primary" style="font-size:12px;" onclick="openCombineRfqModal()">+ Combine Items</button>
         </span>
       </div>
@@ -7577,6 +7581,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span id="rfq-groups-count">0</span> combined group<span id="rfq-groups-plural">s</span>
         </span>
         <span style="color:var(--text-muted);">Client Quote rolls them up into single lines with summed unit prices.</span>
+        <!-- Lines left outside a group are priced as their own full-price
+             units and ADD to the order qty — the silent doubling that made
+             a 500-unit kit quote as 1,000. -->
+        <span id="rfq-ungrouped-warn" style="display:none; align-items:center; gap:6px; padding:2px 9px; border-radius:99px; background:rgba(234,179,8,0.16); color:#a16207; font-weight:700; font-size:11px;"></span>
         <button type="button" class="btn btn-ghost" style="margin-left:auto; font-size:12px;" onclick="openManageRfqGroupsModal()">Manage</button>
       </div>
 
@@ -10758,6 +10766,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closeSamplesToRfqModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="_doSamplesToRfq()">→ Move to RFQ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add selected RFQ lines to an existing combine group ───────────── -->
+<div class="modal-overlay" id="add-to-group-modal" onclick="if(event.target===this)closeAddToGroupModal()" style="z-index:1200;">
+  <div class="modal" style="max-width:460px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Add to existing group</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 12px; flex-shrink:0;" id="add-to-group-sub">Pick the group these line item(s) belong to.</p>
+    <ul id="add-to-group-list" style="list-style:none; padding:0; margin:0; overflow-y:auto; flex:1 1 auto; font-size:13px;"></ul>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
+      <button type="button" class="btn btn-ghost" onclick="closeAddToGroupModal()">Cancel</button>
     </div>
   </div>
 </div>
@@ -17230,6 +17250,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     bar.style.display = n > 0 ? 'flex' : 'none';
     const countEl = document.getElementById('rfq-bulk-count');
     if (countEl) countEl.textContent = n === 1 ? '1 item' : `${n} items`;
+    // "Add to Existing Group" only makes sense once a group exists.
+    const addBtn = document.getElementById('rfq-add-to-group-btn');
+    if (addBtn) addBtn.style.display = (n > 0 && (_combineGroups || []).length) ? '' : 'none';
   }
   function _syncRfqHeaderCheckbox() {
     const h = document.getElementById('rfq-header-checkbox');
@@ -17253,6 +17276,77 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (countEl)  countEl.textContent = String(n);
     if (pluralEl) pluralEl.textContent = n === 1 ? '' : 's';
     _refreshRfqCombineMembership();
+    _refreshUngroupedWarning();
+  }
+
+  // Any priced line left OUTSIDE a group is quoted as its own full-price
+  // unit and its qty ADDS to the order total. That's what silently turned a
+  // 500-unit kit into 1,000 when a component (foam sleeves) was added after
+  // the group was built. Surface it instead of letting it hide in the math.
+  function _refreshUngroupedWarning() {
+    const el = document.getElementById('rfq-ungrouped-warn');
+    if (!el) return;
+    const groups = Array.isArray(_combineGroups) ? _combineGroups : [];
+    if (!groups.length) { el.style.display = 'none'; return; }
+    const inGroup = new Set();
+    groups.forEach(g => (g.itemIdxs || []).forEach(i => inGroup.add(i)));
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    let loose = 0;
+    parents.forEach((row, idx) => {
+      if (inGroup.has(idx)) return;
+      const ins = row.querySelectorAll('input:not([type="checkbox"])');
+      const qty = _msIntFromInput(ins[2]);
+      const nm  = (ins[1]?.value || '').trim();
+      if (qty > 0 || nm) loose++;               // a real line, not a blank row
+    });
+    if (!loose) { el.style.display = 'none'; return; }
+    el.style.display = 'inline-flex';
+    el.textContent = `⚠ ${loose} line${loose === 1 ? '' : 's'} outside your group${groups.length === 1 ? '' : 's'} — priced separately`;
+    el.title = 'These lines are quoted as their own units and their qty adds to the order total. '
+             + 'If they belong inside a kit, select them and use “Add to Existing Group”.';
+  }
+
+  // ── Add selected lines to an existing group ───────────────────────
+  function openAddToGroupModal() {
+    const groups = Array.isArray(_combineGroups) ? _combineGroups : [];
+    if (!groups.length || !_rfqSelected.size) return;
+    const listEl = document.getElementById('add-to-group-list');
+    const subEl  = document.getElementById('add-to-group-sub');
+    const n = _rfqSelected.size;
+    if (subEl) subEl.textContent = `Add ${n} selected line item${n === 1 ? '' : 's'} to which group?`;
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    listEl.innerHTML = groups.map(g =>
+      `<li><button type="button" class="btn btn-ghost" style="width:100%; text-align:left; justify-content:flex-start; margin:4px 0;" onclick="_addSelectedToGroup('${g.id}')">
+        <strong>${esc(g.label || 'Combined group')}</strong>
+        <span style="color:var(--text-muted); margin-left:6px;">· ${(g.itemIdxs || []).length} item(s)</span>
+      </button></li>`).join('');
+    document.getElementById('add-to-group-modal').classList.add('open');
+    document.getElementById('add-to-group-modal').style.display = 'flex';
+  }
+  function closeAddToGroupModal() {
+    const m = document.getElementById('add-to-group-modal');
+    if (m) { m.classList.remove('open'); m.style.display = 'none'; }
+  }
+  function _addSelectedToGroup(gid) {
+    const g = (_combineGroups || []).find(x => x && x.id === gid);
+    if (!g) { closeAddToGroupModal(); return; }
+    if (!Array.isArray(g.itemIdxs)) g.itemIdxs = [];
+    let added = 0;
+    Array.from(_rfqSelected).forEach(domId => {
+      const idx = _rfqIdxFromDomId(domId);
+      if (idx < 0 || g.itemIdxs.includes(idx)) return;
+      g.itemIdxs.push(idx);
+      added++;
+    });
+    g.itemIdxs.sort((a, b) => a - b);
+    closeAddToGroupModal();
+    deselectAllRfqRows();
+    updateRfqGroupsBar();
+    if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+    if (typeof showToast === 'function') {
+      showToast(`Added ${added} line${added === 1 ? '' : 's'} to "${g.label || 'group'}"`, added ? 'success' : 'warn');
+    }
   }
 
   // Disable the combine checkbox on any line item that's already a member
