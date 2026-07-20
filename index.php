@@ -433,6 +433,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .app-content {
       margin-left: var(--sidebar-width);
       flex: 1;
+      /* Flex items default to min-width:auto, so a wide child (the CRM /
+         Pipeline board) stretched this past the viewport and made the whole
+         PAGE scroll sideways — which dragged the sticky header's FX calc /
+         Pallet Calc / user menu out of view. min-width:0 lets the board's
+         own overflow-x:auto do the scrolling and keeps the header put. */
+      min-width: 0;
     }
 
     .app-header {
