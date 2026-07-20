@@ -9779,8 +9779,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <main class="container" style="max-width:none; padding:0 16px 16px;">
     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 0 8px; position:relative; z-index:1;">
       <h1 style="font-size:18px; font-weight:700; color:var(--text); margin:0;">Pipeline</h1>
-      <span style="font-size:11px; color:var(--text-muted);" title="Drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.">Every workbook by stage</span>
-      <div class="pl-filters" style="margin-left:auto;">
+      <!-- Filters sit on the LEFT, right after the title. Right-aligning them
+           pushed them off-screen because the board area runs past the viewport. -->
+      <div class="pl-filters">
         <select id="pl-client-filter" onchange="onPipelineFilterChange()" title="Filter the board to one client">
           <option value="">All clients</option>
         </select>
@@ -9788,6 +9789,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="btn btn-ghost" onclick="clearPipelineFilters()">Clear</button>
         <span id="pl-filter-note" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></span>
       </div>
+      <span style="font-size:11px; color:var(--text-muted);" title="Drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.">Every workbook by stage</span>
     </div>
     <div id="pipeline-board" class="crm-board"></div>
   </main>
