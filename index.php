@@ -37529,7 +37529,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (r && r.ok) {
         _asstMessages.push({ role: 'assistant', content: r.text || '(no response)', tools: r.tools_used || [] });
       } else {
+        // Surface Anthropic's actual message (api.php returns it in .detail)
+        // instead of just "Anthropic HTTP 401" — otherwise the operator has
+        // no way to tell an auth failure from a rate limit or bad request.
         var err = (r && r.error) || 'Assistant request failed.';
+        var det = r && r.detail;
+        if (det) {
+          var msg = '';
+          try { var j = JSON.parse(det); msg = (j && j.error && j.error.message) || ''; } catch (e) {}
+          if (!msg) msg = String(det).slice(0, 200);
+          if (msg) err += ' — ' + msg;
+        }
+        if (/\b401\b/.test(String((r && r.error) || ''))) {
+          err += '\n\nThe Anthropic API key was rejected. Set a valid key in api.local.php ' +
+                 '(define(\'ANTHROPIC_API_KEY\', …)) or the ANTHROPIC_API_KEY env var on the server, ' +
+                 'then retry. Keys are managed at console.anthropic.com/settings/keys.';
+        }
         _asstMessages.push({ role: 'assistant', content: '⚠ ' + err, tools: [] });
       }
       _asstSave();
