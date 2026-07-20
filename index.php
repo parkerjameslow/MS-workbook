@@ -23375,7 +23375,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pitchSuffix = (_pitchOn && _pitchDelta > 0)
       ? ` <span style="color:#10b981; font-weight:700; font-size:11px;">(Full Container +${_pitchDelta.toLocaleString()})</span>`
       : '';
-    if (e('ps-qty'))          e('ps-qty').innerHTML          = effectiveQty > 0 ? effectiveQty.toLocaleString('en-US') + ' units' + pitchSuffix : '—';
+    // Label WHERE this qty came from. Total Order = Sale Per × this number,
+    // and it is the selected TIER's qty (or the pitch override) — not the RFQ
+    // line qty — which is easy to mistake when the two differ.
+    const _qtySrc = _pitchOn && _pitchQty > tierQty
+      ? 'Full Container Pitch'
+      : (_tierIdForLookup != null && tierRow ? 'Tier ' + _tierIdForLookup : 'no tier selected');
+    const _qtySrcHtml = ` <span style="color:var(--text-muted); font-weight:600; font-size:11px;" title="Total Order = Sale Per × this quantity">· ${_qtySrc}</span>`;
+    if (e('ps-qty'))          e('ps-qty').innerHTML          = effectiveQty > 0 ? effectiveQty.toLocaleString('en-US') + ' units' + pitchSuffix + _qtySrcHtml : '—';
     if (e('ps-product-total')) e('ps-product-total').textContent = fmtUsd(productTotal);
     // Total Product Cost (RMB) = qty × precise per-unit RMB. Stays
     // entirely in RMB so a 75,000 × ¥0.30 entry shows the honest
