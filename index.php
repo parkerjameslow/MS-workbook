@@ -23002,6 +23002,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _cqSalePerRaw = (document.getElementById('ps-sale-per')?.value || '').trim();
     const _cqSalePer    = _cqSalePerRaw === '' ? NaN : parseFloat(_cqSalePerRaw);
     const _cqHaveSalePer = !isNaN(_cqSalePer) && _cqSalePer > 0;
+    // Running sum of the quote lines AS RENDERED. Total Order is derived from
+    // these below, so the header can never disagree with the table the client
+    // sees (it used to be Sale Per × the selected TIER's qty, which drifted
+    // from the line items whenever the two quantities differed).
+    let _cqLineTotalSum = 0, _cqLineQtySum = 0;
     const refEl = document.getElementById('pricing-quote-ref-body');
     if (refEl) {
       const allRows = document.querySelectorAll('#rfq-body tr');
@@ -23127,6 +23132,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const _primaryRawQty = _primaryIns ? _msIntFromInput(_primaryIns[2]) : 0;
             const _primaryQty = _scaleQty(_primaryRawQty);
             const _lineTotal = _primaryQty > 0 && _saleUnit > 0 ? _msCeil2(_primaryQty * _saleUnit) : 0;
+            if (_lineTotal > 0) { _cqLineTotalSum += _lineTotal; _cqLineQtySum += _primaryQty; }
             const _escLabel = _escCombine(_combineG.label);
             const _memberCount = (_combineG.itemIdxs || []).length;
             // Combined line is now expandable — clicking reveals the member
@@ -23196,6 +23202,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               pSale  = 0;
               pTotal = 0;
             }
+            if (pTotal > 0) { _cqLineTotalSum += pTotal; _cqLineQtySum += pQty; }
             const pitchBadge = (_cqQtyScale !== 1 && pQty > pRawQty)
               ? ` <span style="color:#10b981; font-weight:700; font-size:10px;">(+${(pQty - pRawQty).toLocaleString('en-US')})</span>`
               : '';
@@ -23255,6 +23262,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               variantData.push({ name: vName, sku: vSku, qty: vQty, sale: vSale, total: vTotal, lead: vLead });
             });
 
+            if (totalSale > 0) { _cqLineTotalSum += totalSale; _cqLineQtySum += totalQty; }
             // When Sale Per is typed, every variant shares the same
             // price so there's no range to display — force isRange
             // off regardless of any rounding-derived spread.
@@ -23840,84 +23848,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Per × qty), the total still populates from applied fees alone —
     // operator can use a workbook as 'tooling fee only' without
     // forcing an RFQ line item.
-    const saleProductTotal = (!isNaN(salePer) && salePer > 0 && effectiveQty > 0) ? _msCeil2(salePer * effectiveQty) : NaN;
+    // Total Order = the quote lines AS RENDERED + applied fees. Deriving it
+    // from the table (rather than Sale Per × the selected tier's qty) means
+    // the header can never contradict what the client sees — and a line the
+    // operator didn't expect to be counted shows up in both places or
+    // neither. _cqLineTotalSum is accumulated during the table render above.
     let totalUsd;
-    if (!isNaN(saleProductTotal)) {
-      totalUsd = _msCeil2(saleProductTotal + _appliedFeesTotal);
+    if (_cqLineTotalSum > 0) {
+      totalUsd = _msCeil2(_cqLineTotalSum + _appliedFeesTotal);
     } else if (_appliedFeesTotal > 0) {
       totalUsd = _msCeil2(_appliedFeesTotal);
     } else {
       totalUsd = NaN;
     }
 
-    // ── Combine-groups adjustment ───────────────────────────────────
-    // When the operator has defined combine groups, the Client Quote
-    // table renders each group as ONE collapsed line using primary
-    // qty × summed unit price (Phase 2). The legacy totalUsd above
-    // computes salePer × effectiveQty, which over-counts (treats
-    // component qtys individually + ignores the sum-of-unit-prices
-    // rule). Recompute totalUsd + the displayed Sale Per so the
-    // header stats match what the operator sees in the table.
-    //
-    // _salePerDisplay defaults to the operator-typed salePer; only
-    // replaced when combine groups exist (with the weighted-avg
-    // across all rendered lines).
+    // Header Sale Price (USD). Defaults to the operator's committed Sale
+    // Per; when lines price differently (e.g. combined kits at their own
+    // unit) fall back to the weighted average of the lines actually
+    // rendered, so the header never disagrees with the table beneath it.
+    // The old block here recomputed totalUsd a second way (Sale Per × each
+    // parent's qty) which is exactly how the header and the table drifted
+    // apart — totalUsd is now derived once, from the rendered lines.
     let _salePerDisplay = salePer;
-    if (Array.isArray(_combineGroups) && _combineGroups.length > 0) {
-      const _allPDomIds = Array.from(document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])')).map(r => r.id);
-      const _idxToGroup = new Map();
-      _combineGroups.forEach(g => { (g.itemIdxs || []).forEach(idx => _idxToGroup.set(idx, g)); });
-      const _emittedG = new Set();
-      let _itemsSubtotal = 0;
-      let _itemsQty      = 0;
-      _allPDomIds.forEach((domId, idx) => {
-        const row = document.getElementById(domId);
-        if (!row) return;
-        const ins = row.querySelectorAll('input:not([type="checkbox"])');
-        const g = _idxToGroup.get(idx);
-        if (g) {
-          if (_emittedG.has(g.id)) return; // group already counted
-          _emittedG.add(g.id);
-          // Sum every member's unit RMB -> USD
-          let sumRmb = 0;
-          (g.itemIdxs || []).forEach(mIdx => {
-            const mDom = _allPDomIds[mIdx];
-            const mRow = mDom ? document.getElementById(mDom) : null;
-            if (!mRow) return;
-            const mIns = mRow.querySelectorAll('input:not([type="checkbox"])');
-            sumRmb += _msNumFromInput(mIns[3]);
-          });
-          const sumUsd = (USD_TO_RMB > 0) ? sumRmb / USD_TO_RMB : 0;
-          // Primary's qty drives the line
-          const pDom = _allPDomIds[g.primaryIdx];
-          const pRow = pDom ? document.getElementById(pDom) : null;
-          const pQty = pRow ? _scaleQty(_msIntFromInput(pRow.querySelectorAll('input:not([type="checkbox"])')[2])) : 0;
-          // Total for the combined kit uses the operator's Sale Per (per kit)
-          // when entered, else 0 (no committed price → the line + header read
-          // —). Matches the Client Quote table render.
-          const _kitUnit = (!isNaN(salePer) && salePer > 0) ? salePer : 0;
-          if (pQty > 0 && _kitUnit > 0) {
-            _itemsSubtotal += _msCeil2(pQty * _kitUnit);
-            _itemsQty      += pQty;
-          }
-        } else {
-          // Uncombined parent — use Sale Per × its qty (matches the
-          // single-line render path in the table).
-          const itemQty = _scaleQty(_msIntFromInput(ins[2]));
-          if (itemQty > 0 && !isNaN(salePer) && salePer > 0) {
-            _itemsSubtotal += _msCeil2(itemQty * salePer);
-            _itemsQty      += itemQty;
-          }
-        }
-      });
-      if (_itemsSubtotal > 0 || _appliedFeesTotal > 0) {
-        totalUsd = _msCeil2(_itemsSubtotal + _appliedFeesTotal);
-      }
-      // Weighted-avg unit price across the rendered lines so the
-      // header Sale Price doesn't lie next to the table.
-      if (_itemsQty > 0 && _itemsSubtotal > 0) {
-        _salePerDisplay = _itemsSubtotal / _itemsQty;
-      }
+    if (!(_salePerDisplay > 0) && _cqLineQtySum > 0 && _cqLineTotalSum > 0) {
+      _salePerDisplay = _cqLineTotalSum / _cqLineQtySum;
     }
 
     // Cache the Client Quote Total (sale × qty + fees) so the Add to
@@ -24162,25 +24116,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // by a weighted-avg unit price when combine groups exist so the
     // header value matches what's rendered in the Client Quote table.
     //
-    // Fallback — if the Sale Per / combine math above didn't yield header
-    // stats (e.g. an all-combined quote with no Sale Per typed yet), derive
-    // them straight from the line totals we just rendered in the table so
-    // the header never reads "—" while the table shows real numbers. Sums
-    // every cq-parent-row (combined + single lines); member sub-rows are
-    // cq-variant-row and are excluded.
-    if ((isNaN(totalUsd) || !(_salePerDisplay > 0)) && refEl) {
-      let _sumT = 0, _sumQ = 0;
-      refEl.querySelectorAll('tr.cq-parent-row').forEach(tr => {
-        const tds = tr.querySelectorAll('td');
-        const q = parseInt(String(tds[2]?.textContent || '').replace(/[^\d]/g, '')) || 0;
-        const t = parseFloat(String(tds[4]?.textContent || '').replace(/[^\d.]/g, '')) || 0;
-        if (t > 0) { _sumT += t; _sumQ += q; }
-      });
-      if (_sumT > 0) {
-        if (isNaN(totalUsd))          totalUsd        = _msCeil2(_sumT + (_appliedFeesTotal || 0));
-        if (!(_salePerDisplay > 0) && _sumQ > 0) _salePerDisplay = _sumT / _sumQ;
-      }
-    }
+    // (No DOM-scraping fallback here any more: totalUsd and _salePerDisplay
+    // are both derived from _cqLineTotalSum / _cqLineQtySum, accumulated as
+    // the very same lines were rendered. One source of truth = the header
+    // and the table cannot drift apart.)
     setQrs('usd',   (!isNaN(_salePerDisplay) && _salePerDisplay > 0) ? '$' + fmt3(_salePerDisplay) : '—');
     setQrs('total', !isNaN(totalUsd)                                ? '$' + fmt2(totalUsd)        : '—');
 
