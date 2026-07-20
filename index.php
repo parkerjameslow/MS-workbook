@@ -18192,7 +18192,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Pricing). The grand-total unit price reconciles to TOTAL ÷ this, so a
     // component at a different qty (e.g. 2 sleeves per kit) can't make the
     // unit price understate the real per-kit price.
-    let primaryQty = 0;
+    let primaryQty = 0, primaryName = '';
     const itemSummaries = [];  // { label, qty, rmb, usd, total, lead, isVariant }
 
     parentRows.forEach(row => {
@@ -18263,7 +18263,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             }
           }
           grandQty     += totQty;
-          if (primaryQty === 0 && totQty > 0) primaryQty = totQty;
+          if (primaryQty === 0 && totQty > 0) { primaryQty = totQty; primaryName = name || ('Item ' + id); }
           if (minRmb !== Infinity) grandRmb += minRmb; // keep prior shape
           grandUsdUnit += avgUsdForGrand;
           grandUsd     += totUsd;
@@ -18291,7 +18291,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           grandUsd          += total;
           grandRmbQtyXPrice += qty * rmb;
           grandRmbQty       += qty;
-          if (primaryQty === 0) primaryQty = qty;
+          if (primaryQty === 0) { primaryQty = qty; primaryName = name || ('Item ' + id); }
         }
         if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
 
@@ -18478,17 +18478,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       const f3 = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       const f2 = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       const qStr = primaryQty.toLocaleString('en-US');
+      // Name the primary line so it's obvious WHICH line drives the divisor —
+      // it's the first priced line item in the table, not a hidden setting.
+      const pStr = `<strong>${esc(primaryName || 'first line')}</strong> · ${qStr}`;
       const diff = Math.abs(impliedUsd - sumUsd) > 0.005;
       if (diff) {
         mathEl.innerHTML =
           `<span style="color:#a16207; font-weight:800;">&#9888; Unit price adjusted</span> — `
-          + `total ${f2(grandUsdPrecise)} &divide; primary qty ${qStr} = <strong>${f3(impliedUsd)}/unit</strong>, `
+          + `total ${f2(grandUsdPrecise)} &divide; primary qty (${pStr}) = <strong>${f3(impliedUsd)}/unit</strong>, `
           + `not the raw sum of component prices (${f3(sumUsd)}). A component runs at a different qty than the primary, so sum-of-parts understates the true per-unit price.`;
       } else {
         mathEl.innerHTML =
-          `Unit price = total ${f2(grandUsdPrecise)} &divide; primary qty ${qStr} = <strong>${f3(impliedUsd)}/unit</strong> `
-          + `<span style="opacity:0.75;">(matches the sum of component prices).</span>`;
+          `Unit price = total ${f2(grandUsdPrecise)} &divide; primary qty (${pStr}) = <strong>${f3(impliedUsd)}/unit</strong> `
+          + `<span style="opacity:0.75;">(matches the sum of component prices). Primary = the first priced line.</span>`;
       }
       mathRow.style.display = '';
     })();
