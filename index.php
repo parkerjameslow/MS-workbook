@@ -5831,6 +5831,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .ms-sr-snip mark { background: rgba(232,117,26,0.28); color: var(--text); border-radius: 3px; padding: 0 2px; }
     .ms-sr-empty { font-size: 13px; color: var(--text-muted); font-style: italic; text-align: center; padding: 40px 0; }
     .ms-sr-more { font-size: 11px; color: var(--text-muted); padding: 4px 10px; font-style: italic; }
+    .ms-sr-count { font-size: 11px; font-weight: 800; color: var(--accent); margin-bottom: 2px; }
     .crm-board {
       display: flex; gap: 14px;
       padding: 4px 0 16px;
@@ -9859,36 +9860,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div id="view-assistant" class="view">
   <main class="container" style="max-width:900px; padding:16px 20px; display:flex; flex-direction:column; height:calc(100vh - 100px);">
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-shrink:0;">
-      <div style="font-size:16px; font-weight:800; color:var(--text);">AI Assistant</div>
-      <span style="font-size:11px; color:var(--text-muted);">Ask about clients, orders, shipments, CRM, or send a Slack DM.</span>
-      <button onclick="_asstNewConversation()" style="margin-left:auto; padding:6px 12px; border-radius:6px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:700; cursor:pointer; font-family:inherit;">↻ New chat</button>
+      <div style="font-size:16px; font-weight:800; color:var(--text);">Search</div>
+      <span style="font-size:11px; color:var(--text-muted);">Everything — products, SKUs, prices, clients, orders, shipments, people, notes &amp; comments.</span>
+      <button onclick="_asstNewConversation()" style="margin-left:auto; padding:6px 12px; border-radius:6px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:700; cursor:pointer; font-family:inherit;">↻ Clear thread</button>
     </div>
-    <!-- Local search — scans everything already loaded in the browser
-         (workbooks, line items, prices, clients, orders, shipments, CRM,
-         pipeline notes/comments). Runs entirely client-side: no API key,
-         no cost, instant. Works even when the Claude chat below is down. -->
-    <div style="display:flex; gap:8px; margin-bottom:10px; flex-shrink:0;">
-      <input type="text" id="asst-search" autocomplete="off"
-        placeholder="Search everything — product, SKU, price, client, order, shipment, person, comment…"
-        oninput="_runWorkbookSearch()"
-        onkeydown="if(event.key==='Escape'){_clearWorkbookSearch();}"
-        style="flex:1 1 auto; min-width:0; font-family:inherit; font-size:13px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); outline:none; box-sizing:border-box;" />
-      <button onclick="_clearWorkbookSearch()"
-        style="flex-shrink:0; padding:0 14px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Clear</button>
-    </div>
-    <div id="assistant-search-results" style="display:none; flex:1 1 auto; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px 14px;"></div>
-
     <div id="assistant-messages" style="flex:1 1 auto; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px; display:flex; flex-direction:column; gap:12px; min-height:200px;">
-      <div id="assistant-empty" style="font-size:13px; color:var(--text-muted); font-style:italic; text-align:center; padding:60px 0;">Ask me anything about your MS-Workbook data.<br/>Try: <em>"which orders are in production"</em> · <em>"summarize the CRM Hot column"</em> · <em>"draft a Slack DM to Jackson about the Nut Garden shipment"</em></div>
+      <div id="assistant-empty" style="font-size:13px; color:var(--text-muted); font-style:italic; text-align:center; padding:60px 0;">Search everything in your workbooks.<br/>Try: <em>Karen</em> · <em>candy pan</em> · <em>290</em> · <em>PO number</em> · <em>a tracking number</em><br/><span style="font-size:11px;">Each search stays in the thread below, so you can compare as you go.</span></div>
     </div>
     <div style="display:flex; gap:8px; margin-top:12px; flex-shrink:0;">
-      <textarea id="assistant-composer" rows="2" placeholder="Ask a question or give an instruction…"
+      <textarea id="assistant-composer" rows="2" placeholder="Search — product, SKU, price, client, order, shipment, person, comment…"
         onkeydown="_asstComposerKeydown(event)"
         style="flex:1 1 auto; resize:none; min-height:52px; max-height:200px; font-family:inherit; font-size:13px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); outline:none;"></textarea>
       <button onclick="_asstSend()" id="assistant-send-btn"
-        style="flex-shrink:0; padding:0 18px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;">Send →</button>
+        style="flex-shrink:0; padding:0 18px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;">Search</button>
     </div>
-    <div style="font-size:10px; color:var(--text-muted); margin-top:6px; text-align:right;">Enter to send · Shift+Enter for newline</div>
+    <div style="font-size:10px; color:var(--text-muted); margin-top:6px; text-align:right;">Enter to search · Shift+Enter for newline</div>
   </main>
 </div><!-- /#view-assistant -->
 
@@ -37570,66 +37556,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return recs;
   }
 
-  let _msSearchTimer = null;
-  function _runWorkbookSearch() {
-    clearTimeout(_msSearchTimer);
-    _msSearchTimer = setTimeout(_msDoSearch, 120);
-  }
   function _msSnippet(value, q) {
     const v = String(value);
     const i = v.toLowerCase().indexOf(q);
     if (i < 0) return _plEsc(v.slice(0, 60));
     const start = Math.max(0, i - 24);
     const end   = Math.min(v.length, i + q.length + 34);
-    return (start > 0 ? '…' : '') + _plEsc(v.slice(start, i))
+    return (start > 0 ? '\u2026' : '') + _plEsc(v.slice(start, i))
          + '<mark>' + _plEsc(v.slice(i, i + q.length)) + '</mark>'
-         + _plEsc(v.slice(i + q.length, end)) + (end < v.length ? '…' : '');
+         + _plEsc(v.slice(i + q.length, end)) + (end < v.length ? '\u2026' : '');
   }
   function _msGoSearchResult(href) { location.hash = href; }
-  function _msDoSearch() {
-    const box  = document.getElementById('asst-search');
-    const out  = document.getElementById('assistant-search-results');
-    const chat = document.getElementById('assistant-messages');
-    if (!box || !out) return;
-    const raw = (box.value || '').trim();
-    const q = raw.toLowerCase();
-    if (!q) { out.style.display = 'none'; out.innerHTML = ''; if (chat) chat.style.display = ''; return; }
-    if (chat) chat.style.display = 'none';
-    out.style.display = '';
-    const hits = [];
-    _msBuildSearchRecords().forEach(r => {
-      const f = r.fields.find(x => x.value.toLowerCase().includes(q));
-      if (f) hits.push({ r, f });
-    });
+
+  // Render one search's results as a block inside the running thread.
+  function _msResultsHtml(hits, rawQuery) {
+    const q = String(rawQuery || '').trim().toLowerCase();
     if (!hits.length) {
-      out.innerHTML = `<div class="ms-sr-empty">No matches for &ldquo;${_plEsc(raw)}&rdquo;.</div>`;
-      return;
+      return '<div class="ms-sr-empty">No matches for &ldquo;' + _plEsc(rawQuery) + '&rdquo;.</div>';
     }
     const byType = {};
-    hits.forEach(h => { (byType[h.r.type] = byType[h.r.type] || []).push(h); });
+    hits.forEach(h => { (byType[h.type] = byType[h.type] || []).push(h); });
     const order = ['Workbooks', 'Clients', 'Orders', 'Shipments', 'CRM', 'Notes & comments'];
-    let html = '';
+    let html = '<div class="ms-sr-count">' + hits.length + ' match' + (hits.length === 1 ? '' : 'es')
+             + ' for &ldquo;' + _plEsc(rawQuery) + '&rdquo;</div>';
     order.forEach(t => {
       const list = byType[t];
       if (!list || !list.length) return;
-      html += `<div class="ms-sr-group">${_plEsc(t)} · ${list.length}</div>`;
+      html += '<div class="ms-sr-group">' + _plEsc(t) + ' \u00b7 ' + list.length + '</div>';
       list.slice(0, 12).forEach(h => {
-        const href = String(h.r.href).replace(/'/g, "\\'");
-        html += `<div class="ms-sr-row" onclick="_msGoSearchResult('${href}')" title="Matched in ${_plEsc(h.f.label)}">
-          <span class="ms-sr-title">${_plEsc(h.r.title)}</span>
-          ${h.r.subtitle ? `<span class="ms-sr-sub">${_plEsc(h.r.subtitle)}</span>` : ''}
-          <span class="ms-sr-snip">${_plEsc(h.f.label)}: ${_msSnippet(h.f.value, q)}</span>
-        </div>`;
+        const href = String(h.href).replace(/'/g, "\\'");
+        html += '<div class="ms-sr-row" onclick="_msGoSearchResult(\'' + href + '\')" title="Matched in ' + _plEsc(h.label) + '">'
+              + '<span class="ms-sr-title">' + _plEsc(h.title) + '</span>'
+              + (h.subtitle ? '<span class="ms-sr-sub">' + _plEsc(h.subtitle) + '</span>' : '')
+              + '<span class="ms-sr-snip">' + _plEsc(h.label) + ': ' + _msSnippet(h.value, q) + '</span>'
+              + '</div>';
       });
-      if (list.length > 12) html += `<div class="ms-sr-more">+ ${list.length - 12} more in ${_plEsc(t)}…</div>`;
+      if (list.length > 12) html += '<div class="ms-sr-more">+ ' + (list.length - 12) + ' more in ' + _plEsc(t) + '\u2026</div>';
     });
-    out.innerHTML = html;
-  }
-  function _clearWorkbookSearch() {
-    const box = document.getElementById('asst-search');
-    if (box) box.value = '';
-    _msDoSearch();
-    if (box) box.focus();
+    return html;
   }
 
   function renderAssistantView() {
@@ -37645,10 +37609,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try {
       if (typeof loadCrm === 'function' && (!crmData || !crmData.cards || !Object.keys(crmData.cards).length)) loadCrm();
     } catch (_) {}
-    // Reset the search box so the chat is what you land on.
-    var sb = document.getElementById('asst-search');
-    if (sb) sb.value = '';
-    try { _msDoSearch(); } catch (_) {}
     _asstLoad();
     _asstRenderMessages();
     setTimeout(function () {
@@ -37676,6 +37636,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (m.role === 'user') {
         wrap.style.cssText = 'display:flex; justify-content:flex-end;';
         wrap.innerHTML = '<div style="max-width:80%; background:var(--accent); color:#fff; padding:9px 13px; border-radius:14px 14px 4px 14px; font-size:13px; line-height:1.5; white-space:pre-wrap;">' + esc(m.content) + '</div>';
+      } else if (m.role === 'results') {
+        wrap.style.cssText = 'display:flex; justify-content:flex-start;';
+        wrap.innerHTML = '<div style="max-width:92%; width:92%; background:var(--surface); color:var(--text); padding:10px 12px; border-radius:14px 14px 14px 4px; border:1px solid var(--border);">'
+                       + _msResultsHtml(m.hits || [], m.content || '') + '</div>';
       } else {
         wrap.style.cssText = 'display:flex; justify-content:flex-start;';
         var toolsHtml = '';
@@ -37700,58 +37664,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
   }
 
-  async function _asstSend() {
-    if (_asstBusy) return;
+  // The composer now drives LOCAL SEARCH (no Anthropic call). Each search
+  // appends to the running thread: your query, then its grouped results —
+  // so you can compare several searches side by side as you work.
+  function _asstSend() {
     var input = document.getElementById('assistant-composer');
-    var btn   = document.getElementById('assistant-send-btn');
     if (!input) return;
     var text = (input.value || '').trim();
     if (!text) return;
-    _asstBusy = true;
-    if (btn) { btn.disabled = true; btn.textContent = 'Thinking…'; btn.style.opacity = '0.6'; }
     input.value = '';
+    var hits = _msSearchHits(text);
     _asstMessages.push({ role: 'user', content: text });
+    _asstMessages.push({ role: 'results', content: text, hits: hits });
+    // Keep the thread from growing without bound.
+    if (_asstMessages.length > 60) _asstMessages = _asstMessages.slice(-60);
     _asstSave();
     _asstRenderMessages();
-    try {
-      // Send the ROLLING message history so multi-turn reasoning works.
-      // Trim to last 30 turns to keep the token bill reasonable.
-      var payload = _asstMessages.slice(-30).map(function (m) {
-        return { role: m.role, content: m.content };
-      });
-      var r = await apiCall('assistant_chat', { messages: payload });
-      if (r && r.ok) {
-        _asstMessages.push({ role: 'assistant', content: r.text || '(no response)', tools: r.tools_used || [] });
-      } else {
-        // Surface Anthropic's actual message (api.php returns it in .detail)
-        // instead of just "Anthropic HTTP 401" — otherwise the operator has
-        // no way to tell an auth failure from a rate limit or bad request.
-        var err = (r && r.error) || 'Assistant request failed.';
-        var det = r && r.detail;
-        if (det) {
-          var msg = '';
-          try { var j = JSON.parse(det); msg = (j && j.error && j.error.message) || ''; } catch (e) {}
-          if (!msg) msg = String(det).slice(0, 200);
-          if (msg) err += ' — ' + msg;
-        }
-        if (/\b401\b/.test(String((r && r.error) || ''))) {
-          err += '\n\nThe Anthropic API key was rejected. Set a valid key in api.local.php ' +
-                 '(define(\'ANTHROPIC_API_KEY\', …)) or the ANTHROPIC_API_KEY env var on the server, ' +
-                 'then retry. Keys are managed at console.anthropic.com/settings/keys.';
-        }
-        _asstMessages.push({ role: 'assistant', content: '⚠ ' + err, tools: [] });
-      }
-      _asstSave();
-      _asstRenderMessages();
-    } catch (e) {
-      _asstMessages.push({ role: 'assistant', content: '⚠ Network error — please try again.', tools: [] });
-      _asstSave();
-      _asstRenderMessages();
-    } finally {
-      _asstBusy = false;
-      if (btn) { btn.disabled = false; btn.textContent = 'Send →'; btn.style.opacity = ''; }
-      input.focus();
-    }
+    input.focus();
+  }
+
+  // Run the index and return plain result rows (kept serialisable so the
+  // thread survives a reload via _asstSave).
+  function _msSearchHits(raw) {
+    var q = String(raw || '').trim().toLowerCase();
+    if (!q) return [];
+    var out = [];
+    _msBuildSearchRecords().forEach(function (r) {
+      var f = r.fields.find(function (x) { return x.value.toLowerCase().includes(q); });
+      if (f) out.push({ type: r.type, title: r.title, subtitle: r.subtitle, href: r.href, label: f.label, value: f.value });
+    });
+    return out;
   }
 
   function _asstNewConversation() {
