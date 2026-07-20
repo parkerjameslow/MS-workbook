@@ -5796,10 +5796,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Comments — append-only running thread, scrollable. Distinct from the
        single free-form Notes field above it. */
     .pl-comments {
-      max-height: 180px; overflow-y: auto; border: 1px solid var(--border);
-      border-radius: 8px; padding: 10px; background: var(--surface2);
+      /* min-height so the list can't collapse to a sliver when the modal
+         body is short — it was being squeezed to ~nothing. */
+      min-height: 132px; max-height: 240px; flex-shrink: 0;
+      overflow-y: auto; border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px; background: var(--surface);
       display: flex; flex-direction: column; gap: 11px;
+      scrollbar-width: thin;
+      /* Soft fade at top/bottom = a visual cue that there's more to scroll. */
+      background-image:
+        linear-gradient(var(--surface) 30%, rgba(255,255,255,0)),
+        linear-gradient(rgba(255,255,255,0), var(--surface) 70%),
+        radial-gradient(farthest-side at 50% 0, rgba(0,0,0,0.10), rgba(0,0,0,0)),
+        radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,0.10), rgba(0,0,0,0));
+      background-repeat: no-repeat;
+      background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+      background-position: 0 0, 0 100%, 0 0, 0 100%;
+      background-attachment: local, local, scroll, scroll;
     }
+    /* Always-visible scrollbar so it reads as a scroll area. */
+    .pl-comments::-webkit-scrollbar { width: 10px; }
+    .pl-comments::-webkit-scrollbar-track { background: transparent; }
+    .pl-comments::-webkit-scrollbar-thumb {
+      background: rgba(0,0,0,0.20); border-radius: 99px;
+      border: 3px solid var(--surface);
+    }
+    .pl-comments::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.32); }
+    /* Section header for Comments — louder than the plain Notes label. */
+    .pl-comments-head {
+      display: flex; align-items: center; gap: 8px; margin: 18px 0 7px;
+      font-size: 12px; font-weight: 800; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--text);
+      padding-top: 14px; border-top: 1px solid var(--border);
+    }
+    .pl-comments-count {
+      background: var(--accent); color: #fff; border-radius: 99px;
+      padding: 1px 8px; font-size: 11px; font-weight: 800;
+    }
+    .pl-comments-hint { margin-left: auto; font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: none; letter-spacing: 0; font-style: italic; }
     .pl-comments:empty::after {
       content: 'No comments yet — add the first one below.';
       color: var(--text-muted); font-size: 12px; font-style: italic;
@@ -10739,8 +10773,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <textarea id="pl-modal-note" rows="3" placeholder="Decision notes, blockers, next step…"
         style="width:100%; border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; resize:vertical;"></textarea>
 
-      <div style="margin:16px 0 6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
-        Comments <span id="pl-modal-comment-count" style="color:var(--accent);"></span>
+      <div class="pl-comments-head">
+        <span>&#128172; Comments</span>
+        <span class="pl-comments-count" id="pl-modal-comment-count">0</span>
+        <span class="pl-comments-hint" id="pl-modal-comment-hint"></span>
       </div>
       <div id="pl-modal-comments" class="pl-comments" onclick="_focusPlCommentInput()" title="Click to add a comment"></div>
     </div>
@@ -37588,7 +37624,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         html += '<div class="ms-sr-row" onclick="_msGoSearchResult(\'' + href + '\')" title="Matched in ' + _plEsc(h.label) + '">'
               + '<span class="ms-sr-title">' + _plEsc(h.title) + '</span>'
               + (h.subtitle ? '<span class="ms-sr-sub">' + _plEsc(h.subtitle) + '</span>' : '')
-              + '<span class="ms-sr-snip">' + _plEsc(h.label) + ': ' + _msSnippet(h.value, q) + '</span>'
+              + '<span class="ms-sr-snip">' + _plEsc(h.label) + ': ' + _msSnippet(h.value, h.term || q) + '</span>'
               + '</div>';
       });
       if (list.length > 12) html += '<div class="ms-sr-more">+ ' + (list.length - 12) + ' more in ' + _plEsc(t) + '\u2026</div>';
@@ -37685,14 +37721,34 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // Run the index and return plain result rows (kept serialisable so the
   // thread survives a reload via _asstSave).
+  // Matching is deliberately lenient ("contains"):
+  //   1. the whole phrase inside one field  → best match
+  //   2. otherwise EVERY word of the query somewhere in the record, even if
+  //      spread across different fields
+  // Without (2), searching "This is a test" missed a workbook called "This is
+  // Test 3" (the extra word "a") and never matched a phrase split across a
+  // title and a comment.
   function _msSearchHits(raw) {
-    var q = String(raw || '').trim().toLowerCase();
-    if (!q) return [];
+    var phrase = String(raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!phrase) return [];
+    var tokens = phrase.split(' ').filter(Boolean);
     var out = [];
     _msBuildSearchRecords().forEach(function (r) {
-      var f = r.fields.find(function (x) { return x.value.toLowerCase().includes(q); });
-      if (f) out.push({ type: r.type, title: r.title, subtitle: r.subtitle, href: r.href, label: f.label, value: f.value });
+      var f = r.fields.find(function (x) { return x.value.toLowerCase().includes(phrase); });
+      var score, term;
+      if (f) { score = 100; term = phrase; }
+      else if (tokens.length > 1) {
+        var hay = r.fields.map(function (x) { return x.value; }).join(' \n ').toLowerCase();
+        if (!tokens.every(function (t) { return hay.includes(t); })) return;
+        // Snippet from the field holding the most distinctive (longest) word.
+        term = tokens.slice().sort(function (a, b) { return b.length - a.length; })[0];
+        f = r.fields.find(function (x) { return x.value.toLowerCase().includes(term); }) || r.fields[0];
+        score = 50;
+      } else return;
+      out.push({ type: r.type, title: r.title, subtitle: r.subtitle, href: r.href,
+                 label: f.label, value: f.value, term: term, score: score });
     });
+    out.sort(function (a, b) { return b.score - a.score; });
     return out;
   }
 
@@ -40779,7 +40835,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const list = ((_plMeta[_plModalId] || {}).comments || []).slice()
       .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
     const cnt = document.getElementById('pl-modal-comment-count');
-    if (cnt) cnt.textContent = list.length ? `(${list.length})` : '';
+    if (cnt) cnt.textContent = String(list.length);
     host.innerHTML = list.map(c => {
       const who = c.author || 'Someone';
       const rel = (typeof _crmRelTime === 'function') ? _crmRelTime(c.at) : '';
@@ -40794,8 +40850,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>`;
     }).join('');
-    // Keep the newest comment in view.
+    // Keep the newest comment in view, and say so when there's history
+    // above the fold — otherwise it isn't obvious the list scrolls.
     host.scrollTop = host.scrollHeight;
+    const hint = document.getElementById('pl-modal-comment-hint');
+    if (hint) {
+      hint.textContent = (host.scrollHeight > host.clientHeight + 4)
+        ? '↕ scroll for earlier comments' : '';
+    }
   }
   // The comments list reads like a text box, so clicking it focuses the
   // composer rather than doing nothing.
