@@ -7653,6 +7653,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <td id="rfq-max-lead" style="color:#374151; font-weight:700; text-align:right;">—</td>
             <td></td>
           </tr>
+          <!-- How the grand-total unit price was calculated — shown so the
+               operator can see the math, and flagged when the reconciled
+               per-unit price differs from the raw sum of component prices. -->
+          <tr id="rfq-total-math-row" style="display:none; background:rgba(232, 117, 26, 0.04);">
+            <td colspan="9" id="rfq-total-math" style="padding:6px 16px 10px; font-size:11px; color:var(--text-muted); font-weight:500;"></td>
+          </tr>
         </tfoot>
       </table>
       </div>
@@ -18453,6 +18459,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // out with the per-line totals (which also use precise USD now).
     document.getElementById('rfq-total-usd').textContent = grandUsdPrecise > 0 ? '$' + fmt(grandUsdPrecise) : '—';
     document.getElementById('rfq-max-lead').textContent  = maxLead  ? maxLead + ' days'   : '—';
+
+    // ── Grand-total math explainer / discrepancy call-out ──────────────
+    // Show exactly how the grand unit price was derived, and flag when the
+    // reconciled per-unit (TOTAL ÷ primary qty) differs from the raw sum of
+    // the component unit prices — so the operator can see what's happening
+    // instead of the number just changing silently.
+    (function () {
+      const mathRow = document.getElementById('rfq-total-math-row');
+      const mathEl  = document.getElementById('rfq-total-math');
+      if (!mathRow || !mathEl) return;
+      const sumUsd = (USD_TO_RMB > 0) ? grandRmb / USD_TO_RMB : 0;
+      const impliedUsd = (primaryQty > 0 && grandUsdPrecise > 0) ? grandUsdPrecise / primaryQty : 0;
+      // Only meaningful for the non-variant multi-component (kit) path.
+      if (hasVariants || primaryQty <= 0 || grandUsdPrecise <= 0) {
+        mathRow.style.display = 'none';
+        return;
+      }
+      const f3 = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      const f2 = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const qStr = primaryQty.toLocaleString('en-US');
+      const diff = Math.abs(impliedUsd - sumUsd) > 0.005;
+      if (diff) {
+        mathEl.innerHTML =
+          `<span style="color:#a16207; font-weight:800;">&#9888; Unit price adjusted</span> — `
+          + `total ${f2(grandUsdPrecise)} &divide; primary qty ${qStr} = <strong>${f3(impliedUsd)}/unit</strong>, `
+          + `not the raw sum of component prices (${f3(sumUsd)}). A component runs at a different qty than the primary, so sum-of-parts understates the true per-unit price.`;
+      } else {
+        mathEl.innerHTML =
+          `Unit price = total ${f2(grandUsdPrecise)} &divide; primary qty ${qStr} = <strong>${f3(impliedUsd)}/unit</strong> `
+          + `<span style="opacity:0.75;">(matches the sum of component prices).</span>`;
+      }
+      mathRow.style.display = '';
+    })();
 
     applyRfqRmbToTiers(grandRmb);
     // Keep the collapsed RFQ + Tiered Pricing summary lines in sync.
