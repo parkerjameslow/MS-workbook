@@ -5726,6 +5726,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-child { font-size: 11px; color: #e5e7eb; padding: 3px 6px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
     .pl-child:hover { background: rgba(255,255,255,0.07); }
     .pl-child-val { color: #a7f3d0; font-weight: 600; flex-shrink: 0; }
+    /* Collapsible drill-down — children hidden until the toggle is clicked. */
+    .pl-children { display: none; }
+    .pl-card.pl-open .pl-children { display: flex; }
+    .pl-drill-toggle {
+      margin-top: 7px; background: transparent; border: none; padding: 2px 0;
+      color: #93c5fd; font-size: 10px; font-weight: 700; cursor: pointer;
+      font-family: inherit; letter-spacing: 0.02em;
+    }
+    .pl-drill-toggle:hover { color: #bfdbfe; text-decoration: underline; }
+    .pl-drill-toggle::before { content: '\25B8  '; }
+    .pl-card.pl-open .pl-drill-toggle::before { content: '\25BE  '; }
+    /* Change-request flag on an order / shipment card. */
+    .pl-flag {
+      display: inline-block; margin-top: 6px; font-size: 9px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 7px;
+      border-radius: 99px; background: rgba(239,68,68,0.20); color: #fca5a5;
+      border: 1px solid rgba(252,165,165,0.35);
+    }
+    /* Column header total (customer value in that stage). */
+    .crm-col-total { font-size: 10px; font-weight: 800; opacity: 0.85; margin-left: 6px; white-space: nowrap; }
+    /* Column focus flash when jumped to from the nav drill-down. */
+    .crm-column.pl-focus { background: rgba(107,147,255,0.14); border-radius: 10px; }
+    /* Pipeline filter bar. */
+    .pl-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 4px 0 12px; position: relative; z-index: 1; }
+    .pl-filters select, .pl-filters input {
+      border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+      font-size: 12px; font-family: inherit; background: var(--surface); color: var(--text);
+    }
+    .pl-filters input { min-width: 200px; }
     .crm-board {
       display: flex; gap: 14px;
       padding: 4px 0 16px;
@@ -6166,6 +6195,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .nav-shipment-dot.booked     { background: #f59e0b; }
     .nav-shipment-dot.in_transit { background: #4ade80; }
     .nav-shipment-dot.delivered  { background: #34d399; }
+
+    /* ══ Pipeline nav drill-down (stage list under Workbook Pipeline) ═══ */
+    .nav-pl-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 10px 4px 18px; border-radius: var(--radius-sm);
+      color: var(--text-muted); font-size: 12px; cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+    }
+    .nav-pl-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-pl-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .nav-pl-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nav-pl-count { font-weight: 700; font-size: 11px; color: var(--text); }
+    /* Aging flags — how many cards in this stage are past 7d / 14d. */
+    .nav-pl-age { font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 99px; }
+    .nav-pl-age.warn { background: rgba(234,179,8,0.18); color: #a16207; }
+    .nav-pl-age.old  { background: rgba(239,68,68,0.16); color: #b91c1c; }
 
     /* ══ Orders ═════════════════════════════════════════════════════════ */
     .order-list-empty {
@@ -6747,10 +6792,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <nav class="sidebar-nav" id="sidebar-nav">
 
-    <!-- Workbook Pipeline — opens the Pipeline board (every workbook by stage). -->
+    <!-- Workbook Pipeline — opens the Pipeline board (every workbook by stage).
+         The stage list below is a drill-down: counts + aging per stage,
+         clicking one jumps the board to that column. -->
     <a id="nav-all-workbooks" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
       <span>Workbook Pipeline</span>
     </a>
+    <div id="pipeline-nav-list"></div>
 
     <!-- ★ Starred -->
     <div class="nav-section" id="nav-section-starred">
@@ -9710,6 +9758,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div style="display:flex; align-items:center; gap:12px; padding:18px 0 6px; position:relative; z-index:1;">
       <h1 style="font-size:20px; font-weight:700; color:var(--text); margin:0;">Pipeline</h1>
       <span style="font-size:12px; color:var(--text-muted);">Every workbook by stage — drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.</span>
+    </div>
+    <div class="pl-filters">
+      <select id="pl-client-filter" onchange="onPipelineFilterChange()" title="Filter the board to one client">
+        <option value="">All clients</option>
+      </select>
+      <input type="text" id="pl-search" placeholder="Search workbook, order or shipment…" oninput="onPipelineFilterChange()" autocomplete="off" />
+      <button class="btn btn-ghost" style="font-size:12px;" onclick="clearPipelineFilters()">Clear</button>
+      <span id="pl-filter-note" style="font-size:11px; color:var(--text-muted);"></span>
     </div>
     <div id="pipeline-board" class="crm-board"></div>
   </main>
@@ -33134,6 +33190,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rebuildRfqNav();
     rebuildReviewNav();
     if (typeof _updatePipelineNavBadge === 'function') _updatePipelineNavBadge();
+    if (typeof rebuildPipelineNav === 'function') rebuildPipelineNav();
     restoreNavSectionStates();
     // Wrap in try/catch so a crash inside fillWorkbook never prevents loadFromDatabase() from running
     try { router(); } catch(e) { console.error('[MS Router] init render error:', e); }
@@ -39939,9 +39996,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       groups.forEach(g => g.workbooks.forEach(w => claim(w.cn, w.wid)));
       const units = groups.reduce((n, g) => n + g.workbooks.length, 0);
       const since = (stage === 'receiving') ? (s.deliveredOn || s.createdAt) : s.createdAt;
+      const value = groups.reduce((sum, g) => sum + g.workbooks.reduce((n, w) => n + _plWbValue(workbookDetail[`${w.cn}|${w.wid}`]), 0), 0);
+      const flagged = (s.entries || []).some(e => e && e.orderId != null && orderData[e.orderId] && orderData[e.orderId].changeRequested);
       cards.push({ kind: 'shipment', stage, id: s.id, title: s.name || `Shipment #${s.id}`,
                    sub: [(s.carrier || '').toUpperCase(), _SHIP_STATUS_LABEL(s.status)].filter(Boolean).join(' · '),
-                   groups, count: units, since });
+                   groups, count: units, since, value, flagged,
+                   search: [s.name, s.carrier, s.trackingNumber].concat(groups.map(g => g.label)).concat(groups.flatMap(g => g.workbooks.map(w => w.product + ' ' + w.cn))).join(' ').toLowerCase(),
+                   clients: Array.from(new Set(groups.flatMap(g => g.workbooks.map(w => w.cn)))) });
     });
 
     // ── Orders queue + In Production (fulfillment) → order cards ──
@@ -39955,10 +40016,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       entries.forEach(e => claim(e.clientName, e.workbookId));
       const tot = (typeof orderTotals === 'function') ? orderTotals(o) : { totalUsd: 0 };
       const since = (stage === 'production') ? (o.notifiedAt || o.createdAt || o.dateCreated) : (o.createdAt || o.dateCreated);
+      const wbs = entries.map(e => ({ cn: e.clientName, wid: e.workbookId, product: _wbProduct(e.clientName, e.workbookId) }));
       cards.push({ kind: 'order', stage, id: o.id, title: o.clientName || 'Order',
                    sub: `${o.name || ('Order #' + o.id)} · ${entries.length} workbook${entries.length === 1 ? '' : 's'}`,
-                   totalUsd: tot.totalUsd || 0, since,
-                   workbooks: entries.map(e => ({ cn: e.clientName, wid: e.workbookId, product: _wbProduct(e.clientName, e.workbookId) })) });
+                   totalUsd: tot.totalUsd || 0, value: tot.totalUsd || 0, since,
+                   flagged: !!o.changeRequested, workbooks: wbs,
+                   search: [o.clientName, o.name, o.poNumber].concat(wbs.map(w => w.product)).join(' ').toLowerCase(),
+                   clients: o.clientName ? [o.clientName] : [] });
     });
 
     // ── Early workbook stages (exclude entity-claimed + fully-received) ──
@@ -39991,14 +40055,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // samples / unstaged have no stage timestamp — fall back to the
       // workbook's creation date so the badge still shows an age.
       if (!since) { const it = (clientData[m.clientName] || []).find(i => String(i.id) === String(m.workbookId)); since = it && it.dateCreated; }
+      const st = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(d) || {}) : {};
       cards.push({ kind: 'wb', stage: stg, key, clientName: m.clientName, workbookId: m.workbookId,
-                   product: m.product, detail: d, since, movable: _pipelineCardMovable(m.clientName, m.workbookId, stg) });
+                   product: m.product, detail: d, since, units: st.units || 0, value: _plWbValue(d),
+                   search: `${m.product} ${m.clientName}`.toLowerCase(), clients: [m.clientName],
+                   movable: _pipelineCardMovable(m.clientName, m.workbookId, stg) });
     });
     return cards;
   }
 
+  // Customer value of a workbook — only counts once a Sale Per is committed
+  // (matches the Client Quote rule: no committed price → no value).
+  function _plWbValue(detail) {
+    const d = detail || {};
+    const st = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(d) || {}) : {};
+    const salePer = parseFloat(d.pricingSalePer) || 0;
+    return (salePer > 0 && st.price > 0) ? st.price : 0;
+  }
+
   function _SHIP_STATUS_LABEL(st) {
     return ({ planning:'Planning', booked:'Booked', in_transit:'In Transit', waiting_arrival:'Waiting Arrival', delivered:'Delivered', received:'Received' })[st] || (st || '');
+  }
+
+  // ── Board filters (client + free-text search) ─────────────────────
+  let _plClientFilter = '', _plSearch = '', _pipelineFocusStage = null;
+  function onPipelineFilterChange() {
+    _plClientFilter = (document.getElementById('pl-client-filter') || {}).value || '';
+    _plSearch = ((document.getElementById('pl-search') || {}).value || '').trim().toLowerCase();
+    renderPipelineBoard();
+  }
+  function clearPipelineFilters() {
+    _plClientFilter = ''; _plSearch = '';
+    const c = document.getElementById('pl-client-filter'); if (c) c.value = '';
+    const s = document.getElementById('pl-search'); if (s) s.value = '';
+    renderPipelineBoard();
+  }
+  function _plCardMatches(c) {
+    if (_plClientFilter && !(c.clients || []).includes(_plClientFilter)) return false;
+    if (_plSearch && !String(c.search || '').includes(_plSearch)) return false;
+    return true;
+  }
+  const _plMoney = n => '$' + (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+  // Jump the board to a stage column (from the nav drill-down).
+  function focusPipelineStage(stage) {
+    _pipelineFocusStage = stage;
+    if (location.hash !== '#/pipeline') location.hash = '#/pipeline';
+    else renderPipelineBoard();
   }
 
   function renderPipelineBoard() {
@@ -40014,32 +40117,95 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const board = document.getElementById('pipeline-board');
     if (!board) return;
     const _scrollLeft = board.scrollLeft;
+    const all = collectPipeline();
+
+    // Client filter options — rebuilt from whatever is on the board.
+    const sel = document.getElementById('pl-client-filter');
+    if (sel) {
+      const names = Array.from(new Set(all.flatMap(c => c.clients || []).filter(Boolean))).sort();
+      const cur = _plClientFilter;
+      sel.innerHTML = '<option value="">All clients</option>' +
+        names.map(n => `<option value="${_plEsc(n)}"${n === cur ? ' selected' : ''}>${_plEsc(n)}</option>`).join('');
+      sel.value = cur;
+    }
+
+    const shown = all.filter(_plCardMatches);
+    const note = document.getElementById('pl-filter-note');
+    if (note) note.textContent = (shown.length === all.length)
+      ? `${all.length} card${all.length === 1 ? '' : 's'}`
+      : `${shown.length} of ${all.length} shown`;
+
     const byCol = {};
     PIPELINE_COLUMNS.forEach(c => { byCol[c.id] = []; });
-    collectPipeline().forEach(card => { (byCol[card.stage] = byCol[card.stage] || []).push(card); });
-    const _t = c => String(c.title || c.product || '');
-    Object.keys(byCol).forEach(k => byCol[k].sort((a, b) => _t(a).localeCompare(_t(b))));
+    shown.forEach(card => { (byCol[card.stage] = byCol[card.stage] || []).push(card); });
+    // Oldest-in-stage first so bottlenecks float to the top.
+    const _age = c => { const d = _pipelineDaysSince(c.since); return d === null ? -1 : d; };
+    Object.keys(byCol).forEach(k => byCol[k].sort((a, b) => _age(b) - _age(a)));
+
     board.innerHTML = PIPELINE_COLUMNS.map(col => {
       const cards = byCol[col.id] || [];
+      const total = cards.reduce((n, c) => n + (Number(c.value) || 0), 0);
       const cardsHtml = cards.map(c =>
         c.kind === 'order' ? _pipelineOrderCardHtml(c)
         : c.kind === 'shipment' ? _pipelineShipmentCardHtml(c)
         : _pipelineCardHtml(c)
       ).join('');
-      return `<div class="crm-column" data-col="${col.id}"
+      const focusCls = (_pipelineFocusStage === col.id) ? ' pl-focus' : '';
+      return `<div class="crm-column${focusCls}" data-col="${col.id}"
                    ondragover="event.preventDefault(); this.classList.add('drag-over');"
                    ondragleave="this.classList.remove('drag-over');"
                    ondrop="onPipelineDrop(event, '${col.id}')">
         <div class="crm-column-header" style="background:${col.bg}; color:${col.fg};">
           <span class="crm-col-title">${col.label}</span>
+          ${total > 0 ? `<span class="crm-col-total">${_plMoney(total)}</span>` : ''}
           <span class="crm-col-count">${cards.length}</span>
         </div>
         <div class="crm-col-body">${cardsHtml || `<div style="font-size:11px; color:#9ca3af; padding:8px 4px;">—</div>`}</div>
       </div>`;
     }).join('');
     board.scrollLeft = _scrollLeft;
+    // Scroll the focused column into view, then clear the focus flag so it
+    // doesn't stick across later renders.
+    if (_pipelineFocusStage) {
+      const colEl = board.querySelector(`.crm-column[data-col="${_pipelineFocusStage}"]`);
+      if (colEl) { try { colEl.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }); } catch (_) {} }
+      const stage = _pipelineFocusStage;
+      setTimeout(() => {
+        if (_pipelineFocusStage !== stage) return;
+        _pipelineFocusStage = null;
+        const el = board.querySelector(`.crm-column[data-col="${stage}"]`);
+        if (el) el.classList.remove('pl-focus');
+      }, 1600);
+    }
     if (typeof _attachCrmBoardGrabScroll === 'function') _attachCrmBoardGrabScroll(board);
     _updatePipelineNavBadge();
+    rebuildPipelineNav();
+  }
+
+  // Left-nav drill-down: one row per stage with its count and how many
+  // cards are aging past 7d (warn) / 14d (old). Click jumps to the column.
+  function rebuildPipelineNav() {
+    const host = document.getElementById('pipeline-nav-list');
+    if (!host) return;
+    let all;
+    try { all = collectPipeline(); } catch (_) { host.innerHTML = ''; return; }
+    const byCol = {};
+    PIPELINE_COLUMNS.forEach(c => { byCol[c.id] = []; });
+    all.forEach(c => { (byCol[c.stage] = byCol[c.stage] || []).push(c); });
+    host.innerHTML = PIPELINE_COLUMNS.map(col => {
+      const cards = byCol[col.id] || [];
+      if (!cards.length) return '';
+      let warn = 0, old = 0;
+      cards.forEach(c => { const d = _pipelineDaysSince(c.since); if (d === null) return; if (d >= 14) old++; else if (d >= 7) warn++; });
+      const flags = (old ? `<span class="nav-pl-age old" title="${old} past 14 days">${old}</span>` : '')
+                  + (warn ? `<span class="nav-pl-age warn" title="${warn} past 7 days">${warn}</span>` : '');
+      return `<div class="nav-pl-item" onclick="focusPipelineStage('${col.id}')" title="${_plEsc(col.label)} — jump to this column">
+        <span class="nav-pl-dot" style="background:${col.fg};"></span>
+        <span class="nav-pl-label">${_plEsc(col.label)}</span>
+        ${flags}
+        <span class="nav-pl-count">${cards.length}</span>
+      </div>`;
+    }).join('');
   }
 
   const _plEsc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -40073,11 +40239,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // Workbook card (early stages).
   function _pipelineCardHtml(c) {
-    const st = (typeof _wbStatsForPicker === 'function') ? _wbStatsForPicker(c.detail) : {};
-    const units = (st.units > 0) ? `${st.units.toLocaleString('en-US')} units` : '';
-    const salePer = parseFloat(c.detail.pricingSalePer) || 0;
-    const val = (salePer > 0 && st.price > 0)
-      ? `$${st.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
+    const units = (c.units > 0) ? `${c.units.toLocaleString('en-US')} units` : '';
+    const val = (c.value > 0)
+      ? `$${c.value.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
     const sub = [_plEsc(c.clientName), units].filter(Boolean).join(' · ');
     const wbHref = `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`;
     const dragAttrs = c.movable
@@ -40095,12 +40259,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // drills down to its workbooks. Click header → open the order.
   function _pipelineOrderCardHtml(c) {
     const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
-    const children = (c.workbooks || []).map(_pipelineChildLine).join('');
+    const wbs = c.workbooks || [];
+    const children = wbs.map(_pipelineChildLine).join('');
     return `<div class="crm-card pl-card pl-locked pl-entity" onclick="location.hash='#/order/${c.id}'" title="Open order">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
-      ${children ? `<div class="pl-children">${children}</div>` : ''}
+      ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
+      ${children ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${wbs.length} workbook${wbs.length === 1 ? '' : 's'}</button>
+      <div class="pl-children">${children}</div>` : ''}
     </div>`;
   }
 
@@ -40114,7 +40281,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub) || `${c.count} workbook${c.count === 1 ? '' : 's'}`}</div>
-      ${body ? `<div class="pl-children">${body}</div>` : ''}
+      ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
+      ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${c.count} workbook${c.count === 1 ? '' : 's'}</button>
+      <div class="pl-children">${body}</div>` : ''}
     </div>`;
   }
 
