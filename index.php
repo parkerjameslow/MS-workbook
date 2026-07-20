@@ -18390,9 +18390,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // USD so ceil-to-cent rounding can't inflate it (e.g. ¥0.30 stays
     // ¥0.30, not ¥0.34). Tiered Pricing reads this directly.
     const grandRmbWeighted = grandRmbQty > 0 ? (grandRmbQtyXPrice / grandRmbQty) : 0;
+    // Reconciled per-primary-unit RMB = TOTAL RMB ÷ primary qty — the same
+    // basis the grand-total UNIT PRICE now shows. Equals grandRmb (sum of
+    // component prices) when every component shares the primary qty, but is
+    // higher when a component runs at a different qty. Tiered Pricing uses
+    // this so the tier price matches the RFQ grand total + Client Quote.
+    const grandRmbPerPrimary = (primaryQty > 0 && grandRmbQtyXPrice > 0) ? (grandRmbQtyXPrice / primaryQty) : grandRmb;
     _lastRfqPriceSummary = {
       hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange,
-      grandQty, grandRmb, grandRmbWeighted, grandUsdUnit, grandUsd
+      grandQty, grandRmb, grandRmbPerPrimary, primaryQty, primaryName,
+      grandRmbWeighted, grandUsdUnit, grandUsd
     };
 
     document.getElementById('rfq-total-qty').textContent = grandQty ? grandQty.toLocaleString('en-US') : '—';
@@ -18524,7 +18531,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const ps = _lastRfqPriceSummary;
     let perUnitRmb = 0;
     if (ps) {
+      // Kit path now uses the per-PRIMARY-unit price (TOTAL ÷ primary qty),
+      // matching the RFQ grand-total UNIT PRICE — not the raw sum of
+      // component prices, which understated it when a component ran at a
+      // different qty (e.g. tier showed ¥187 instead of the true ¥248).
       if (ps.hasVariants && ps.grandRmbWeighted > 0)      perUnitRmb = ps.grandRmbWeighted;
+      else if (ps.grandRmbPerPrimary > 0)                 perUnitRmb = ps.grandRmbPerPrimary;
       else if (ps.grandRmb > 0)                           perUnitRmb = ps.grandRmb;
       else if (ps.grandRmbWeighted > 0)                   perUnitRmb = ps.grandRmbWeighted;
     }
@@ -18544,7 +18556,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // "the first item's qty" whether or not that item has variants.
     const rfqFirstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):first-child');
     const rfqInputs = rfqFirstRow ? rfqFirstRow.querySelectorAll('input:not([type="checkbox"])') : [];
-    const rfqQty = rfqInputs[2]?.value || '';
+    // Use the PRIMARY line's qty (same basis as the per-primary-unit price
+    // above) so tier total = qty × price ties out with the RFQ grand total.
+    // Falls back to the first row's qty when no summary yet.
+    let rfqQty = rfqInputs[2]?.value || '';
+    if (ps && ps.primaryQty > 0) rfqQty = String(ps.primaryQty);
     // Tier 1 qty input is type="text" with inputmode="numeric" (so it can
     // hold thousands-separator commas). Grab the first <input> in the row
     // — that's always the qty cell. Setting .value on a readonly input
