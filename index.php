@@ -5777,6 +5777,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-modal-list { list-style: none; padding: 0; margin: 0 0 14px; font-size: 13px; }
     .pl-modal-list li { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 10px; }
     .pl-modal-group { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding-top: 10px; }
+    /* Comments — append-only running thread, scrollable. Distinct from the
+       single free-form Notes field above it. */
+    .pl-comments {
+      max-height: 180px; overflow-y: auto; border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px; background: var(--surface2);
+      display: flex; flex-direction: column; gap: 11px;
+    }
+    .pl-comments:empty::after {
+      content: 'No comments yet — add the first one below.';
+      color: var(--text-muted); font-size: 12px; font-style: italic;
+    }
+    .pl-comment { display: flex; gap: 8px; }
+    .pl-comment-avatar {
+      width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 800; color: #fff;
+    }
+    .pl-comment-body { flex: 1; min-width: 0; }
+    .pl-comment-meta { font-size: 10px; color: var(--text-muted); font-weight: 700; }
+    .pl-comment-who { color: var(--text); font-weight: 800; }
+    .pl-comment-text { font-size: 13px; color: var(--text); white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
+    .pl-comment-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; padding: 0 2px; }
+    .pl-comment-del:hover { color: #dc2626; }
     .crm-board {
       display: flex; gap: 14px;
       padding: 4px 0 16px;
@@ -10683,6 +10706,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Notes</div>
       <textarea id="pl-modal-note" rows="3" placeholder="Decision notes, blockers, next step…"
         style="width:100%; border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; resize:vertical;"></textarea>
+
+      <div style="margin:16px 0 6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
+        Comments <span id="pl-modal-comment-count" style="color:var(--accent);"></span>
+      </div>
+      <div id="pl-modal-comments" class="pl-comments"></div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <input type="text" id="pl-comment-input" placeholder="Add a comment…" autocomplete="off"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();addPipelineComment();}"
+          style="flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;" />
+        <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addPipelineComment()">Post</button>
+      </div>
     </div>
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closePipelineCardModal()">Close</button>
@@ -40448,12 +40482,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _plAssigneeChips(id) {
     const m = _plMeta[id] || {};
     const list = m.assignees || [], note = m.note || '';
-    if (!list.length && !note) return '';
+    const nComments = Array.isArray(m.comments) ? m.comments.length : 0;
+    if (!list.length && !note && !nComments) return '';
     const chips = list.map(n => {
       const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
       return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
     }).join('');
-    return `<div class="pl-assignees">${chips}${note ? `<span class="pl-note-dot" title="Has notes">&#9998;</span>` : ''}</div>`;
+    const noteDot = note ? `<span class="pl-note-dot" title="Has notes">&#9998;</span>` : '';
+    const cmtDot  = nComments ? `<span class="pl-note-dot" title="${nComments} comment${nComments === 1 ? '' : 's'}">&#128172; ${nComments}</span>` : '';
+    return `<div class="pl-assignees">${chips}${noteDot}${cmtDot}</div>`;
   }
 
   function openPipelineCardModal(id) {
@@ -40508,7 +40545,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     document.getElementById('pl-modal-contents').innerHTML = contents;
     document.getElementById('pl-modal-note').value = meta.note || '';
+    const cin = document.getElementById('pl-comment-input'); if (cin) cin.value = '';
     _renderPlModalAssignees();
+    _renderPlComments();
 
     const openBtn = document.getElementById('pl-modal-open-btn');
     const target = c.kind === 'wb' ? `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`
@@ -40544,10 +40583,75 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!_plModalId) { if (!silent) closePipelineCardModal(); return; }
     const note = ((document.getElementById('pl-modal-note') || {}).value || '').trim();
     const assignees = Array.from(_plModalAssignees);
-    if (!assignees.length && !note) delete _plMeta[_plModalId];
-    else _plMeta[_plModalId] = { assignees, note };
+    // Comments are appended separately (and persisted on post) — carry them
+    // through so Save never wipes the thread.
+    const comments = (_plMeta[_plModalId] || {}).comments || [];
+    if (!assignees.length && !note && !comments.length) delete _plMeta[_plModalId];
+    else _plMeta[_plModalId] = { assignees, note, comments };
     _persistPlMeta();
     if (!silent) { closePipelineCardModal(); showToast('Saved', 'success'); }
+    try { renderPipelineBoard(); } catch (_) {}
+  }
+
+  // ── Comments: append-only running thread (author + timestamp) ──────
+  function _plCommentColor(author) {
+    const c = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[author]) || null;
+    if (c) return c.bg;
+    // Stable fallback color for anyone outside the roster.
+    let h = 0; for (let i = 0; i < String(author).length; i++) h = (h * 31 + String(author).charCodeAt(i)) % 360;
+    return `hsl(${h}, 45%, 42%)`;
+  }
+  function _renderPlComments() {
+    const host = document.getElementById('pl-modal-comments');
+    if (!host) return;
+    const list = ((_plMeta[_plModalId] || {}).comments || []).slice()
+      .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    const cnt = document.getElementById('pl-modal-comment-count');
+    if (cnt) cnt.textContent = list.length ? `(${list.length})` : '';
+    host.innerHTML = list.map(c => {
+      const who = c.author || 'Someone';
+      const rel = (typeof _crmRelTime === 'function') ? _crmRelTime(c.at) : '';
+      const abs = c.at ? new Date(c.at).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+      return `<div class="pl-comment">
+        <span class="pl-comment-avatar" style="background:${_plCommentColor(who)};">${_plEsc(String(who).charAt(0).toUpperCase())}</span>
+        <div class="pl-comment-body">
+          <div class="pl-comment-meta"><span class="pl-comment-who">${_plEsc(who)}</span> · <span title="${_plEsc(abs)}">${_plEsc(rel || abs)}</span>
+            <button class="pl-comment-del" title="Delete comment" onclick="deletePipelineComment('${_plEsc(c.id)}')">&times;</button>
+          </div>
+          <div class="pl-comment-text">${_plEsc(c.text)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    // Keep the newest comment in view.
+    host.scrollTop = host.scrollHeight;
+  }
+  function addPipelineComment() {
+    if (!_plModalId) return;
+    const input = document.getElementById('pl-comment-input');
+    const text = ((input || {}).value || '').trim();
+    if (!text) return;
+    const meta = _plMeta[_plModalId] || (_plMeta[_plModalId] = { assignees: [], note: '', comments: [] });
+    if (!Array.isArray(meta.comments)) meta.comments = [];
+    meta.comments.push({
+      id: 'c' + Date.now() + Math.floor(Math.random() * 1000),
+      text,
+      author: (typeof getCurrentUser === 'function' && getCurrentUser()) || 'Someone',
+      at: new Date().toISOString(),
+    });
+    // Persist immediately — a comment shouldn't be lost if the modal is closed
+    // without hitting Save.
+    _persistPlMeta();
+    if (input) input.value = '';
+    _renderPlComments();
+    try { renderPipelineBoard(); } catch (_) {}
+  }
+  function deletePipelineComment(id) {
+    if (!_plModalId) return;
+    const meta = _plMeta[_plModalId];
+    if (!meta || !Array.isArray(meta.comments)) return;
+    meta.comments = meta.comments.filter(c => c && c.id !== id);
+    _persistPlMeta();
+    _renderPlComments();
     try { renderPipelineBoard(); } catch (_) {}
   }
 
