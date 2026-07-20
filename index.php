@@ -5866,6 +5866,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .ms-sr-empty { font-size: 13px; color: var(--text-muted); font-style: italic; text-align: center; padding: 40px 0; }
     .ms-sr-more { font-size: 11px; color: var(--text-muted); padding: 4px 10px; font-style: italic; }
     .ms-sr-count { font-size: 11px; font-weight: 800; color: var(--accent); margin-bottom: 2px; }
+    .ms-sr-live {
+      font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--accent); margin-bottom: 6px; opacity: 0.85;
+    }
     .crm-board {
       display: flex; gap: 14px;
       padding: 4px 0 16px;
@@ -9903,12 +9907,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
     <div style="display:flex; gap:8px; margin-top:12px; flex-shrink:0;">
       <textarea id="assistant-composer" rows="2" placeholder="Search — product, SKU, price, client, order, shipment, person, comment…"
+        oninput="_asstLiveSearch()"
         onkeydown="_asstComposerKeydown(event)"
         style="flex:1 1 auto; resize:none; min-height:52px; max-height:200px; font-family:inherit; font-size:13px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); outline:none;"></textarea>
       <button onclick="_asstSend()" id="assistant-send-btn"
         style="flex-shrink:0; padding:0 18px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;">Search</button>
     </div>
-    <div style="font-size:10px; color:var(--text-muted); margin-top:6px; text-align:right;">Enter to search · Shift+Enter for newline</div>
+    <div style="font-size:10px; color:var(--text-muted); margin-top:6px; text-align:right;">Results appear as you type · Enter to keep a search in the thread</div>
   </main>
 </div><!-- /#view-assistant -->
 
@@ -37661,6 +37666,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (empty) empty.style.display = '';
       // Wipe any non-empty leftovers.
       Array.from(host.children).forEach(function (n) { if (n.id !== 'assistant-empty') n.remove(); });
+      _asstRenderLive();   // a live preview can exist with an empty thread
       return;
     }
     if (empty) empty.style.display = 'none';
@@ -37689,6 +37695,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
       host.appendChild(wrap);
     });
+    _asstRenderLive();   // re-attach the in-progress preview after the rebuild
     host.scrollTop = host.scrollHeight;
   }
 
@@ -37703,12 +37710,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // The composer now drives LOCAL SEARCH (no Anthropic call). Each search
   // appends to the running thread: your query, then its grouped results —
   // so you can compare several searches side by side as you work.
+  // Live results while typing. Renders a dashed "preview" block at the
+  // bottom of the thread WITHOUT committing it, so the thread only keeps
+  // the searches you actually press Enter on.
+  var _asstLiveQuery = '';
+  var _asstLiveTimer = null;
+  function _asstLiveSearch() {
+    clearTimeout(_asstLiveTimer);
+    _asstLiveTimer = setTimeout(function () {
+      var input = document.getElementById('assistant-composer');
+      _asstLiveQuery = input ? (input.value || '').trim() : '';
+      _asstRenderLive();
+    }, 110);
+  }
+  function _asstRenderLive() {
+    var host = document.getElementById('assistant-messages');
+    if (!host) return;
+    var node  = document.getElementById('assistant-live');
+    var empty = document.getElementById('assistant-empty');
+    if (!_asstLiveQuery) {
+      if (node) node.remove();
+      if (empty) empty.style.display = _asstMessages.length ? 'none' : '';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+    if (!node) {
+      node = document.createElement('div');
+      node.id = 'assistant-live';
+      node.style.cssText = 'display:flex; justify-content:flex-start;';
+    }
+    host.appendChild(node);   // always keep the preview last
+    var hits = _msSearchHits(_asstLiveQuery);
+    node.innerHTML = '<div style="max-width:92%; width:92%; background:var(--surface); color:var(--text); padding:10px 12px; border-radius:14px; border:1px dashed var(--accent);">'
+      + '<div class="ms-sr-live">Live &middot; press Enter to keep this search</div>'
+      + _msResultsHtml(hits, _asstLiveQuery) + '</div>';
+    host.scrollTop = host.scrollHeight;
+  }
+
   function _asstSend() {
     var input = document.getElementById('assistant-composer');
     if (!input) return;
     var text = (input.value || '').trim();
     if (!text) return;
     input.value = '';
+    _asstLiveQuery = '';                 // committed — drop the preview
+    clearTimeout(_asstLiveTimer);
     var hits = _msSearchHits(text);
     _asstMessages.push({ role: 'user', content: text });
     _asstMessages.push({ role: 'results', content: text, hits: hits });
