@@ -18181,6 +18181,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // path back-calculated RMB from the already-ceiled grandUsd.
     let grandRmbQtyXPrice = 0;   // Σ qty × rmb across priced units
     let grandRmbQty       = 0;   // Σ qty for those same priced units
+    // Primary qty = the FIRST priced line item's qty (the kit's per-unit
+    // basis, mirroring the "very first item's qty" convention used by Tiered
+    // Pricing). The grand-total unit price reconciles to TOTAL ÷ this, so a
+    // component at a different qty (e.g. 2 sleeves per kit) can't make the
+    // unit price understate the real per-kit price.
+    let primaryQty = 0;
     const itemSummaries = [];  // { label, qty, rmb, usd, total, lead, isVariant }
 
     parentRows.forEach(row => {
@@ -18251,6 +18257,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             }
           }
           grandQty     += totQty;
+          if (primaryQty === 0 && totQty > 0) primaryQty = totQty;
           if (minRmb !== Infinity) grandRmb += minRmb; // keep prior shape
           grandUsdUnit += avgUsdForGrand;
           grandUsd     += totUsd;
@@ -18278,6 +18285,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           grandUsd          += total;
           grandRmbQtyXPrice += qty * rmb;
           grandRmbQty       += qty;
+          if (primaryQty === 0) primaryQty = qty;
         }
         if (!isNaN(leadNum) && leadNum > maxLead) maxLead = leadNum;
 
@@ -18397,7 +18405,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ? '¥ ' + fmt(rmbMin) + '–¥ ' + fmt(rmbMax)
           : '¥ ' + fmt(rmbMin);
       } else {
-        rmbCell.textContent = grandRmb ? '¥ ' + fmt(grandRmb) : '—';
+        // Reconcile to TOTAL ÷ primary qty (Σ qty×rmb ÷ primary), which equals
+        // the sum-of-unit-prices when every component shares the primary qty
+        // but corrects it when they don't.
+        const impliedRmb = (primaryQty > 0 && grandRmbQtyXPrice > 0) ? grandRmbQtyXPrice / primaryQty : 0;
+        const showRmb = impliedRmb > 0 ? impliedRmb : grandRmb;
+        rmbCell.textContent = showRmb ? '¥ ' + fmt(showRmb) : '—';
       }
     }
 
@@ -18424,8 +18437,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           usdCell.textContent = uPrecise > 0 ? '$' + fmt3(uPrecise) : '—';
         }
       } else {
+        // Per-primary-unit kit price = TOTAL ÷ primary qty (= grandUsdPrecise
+        // ÷ primaryQty). Equals the sum of component unit prices when every
+        // component shares the primary qty; corrects it (e.g. $26.171 →
+        // $34.82 for a kit with 2 sleeves per unit) when they differ, so the
+        // unit price and the TOTAL always reconcile against the primary qty.
         const sumUsdPrecise = (USD_TO_RMB > 0) ? grandRmb / USD_TO_RMB : 0;
-        usdCell.textContent = sumUsdPrecise > 0 ? '$' + fmt3(sumUsdPrecise) : '—';
+        const impliedUsd    = (primaryQty > 0 && grandUsdPrecise > 0) ? grandUsdPrecise / primaryQty : 0;
+        const showUsd = impliedUsd > 0 ? impliedUsd : sumUsdPrecise;
+        usdCell.textContent = showUsd > 0 ? '$' + fmt3(showUsd) : '—';
       }
     }
 
