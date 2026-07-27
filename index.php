@@ -1204,6 +1204,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .currency-rmb::before { content: '¥'; }
     .currency-usd::before { content: '$'; }
 
+    /* ── Client conversations (imported transcripts) ─────────────────── */
+    .cc-count { background: var(--accent); color: #fff; border-radius: 99px; padding: 1px 8px; font-size: 11px; font-weight: 800; }
+    .cc-item { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+    .cc-item-head { display: flex; align-items: center; gap: 8px; padding: 9px 10px; background: var(--surface2); }
+    .cc-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; background: none; border: none; cursor: pointer; font-family: inherit; text-align: left; padding: 0; }
+    .cc-chev { color: var(--text-muted); font-size: 10px; transition: transform 0.12s; }
+    .cc-item.open .cc-chev { transform: rotate(90deg); }
+    .cc-title { font-size: 13px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cc-meta { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+    .cc-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; }
+    .cc-del:hover { color: #dc2626; }
+    .cc-body { display: none; padding: 10px; }
+    .cc-item.open .cc-body { display: block; }
+    .cc-text { width: 100%; min-height: 160px; max-height: 340px; resize: vertical; box-sizing: border-box; font-family: inherit; font-size: 12.5px; line-height: 1.5; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+
     /* ── Client Detail Card ─────────────────────────────── */
     .client-detail-card {
       background: var(--surface);
@@ -27046,6 +27061,140 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Async-populate the intake status line ("Pending — sent 3 days ago")
     // without blocking the initial card render.
     hydrateIntakeStatus(clientName);
+
+    // Conversations (Plaud PDF transcripts etc.) — appended below the card.
+    const _convoWrap = document.createElement('div');
+    _convoWrap.id = 'client-convos-wrap';
+    wrap.appendChild(_convoWrap);
+    renderClientConvos(clientName);
+  }
+
+  // ── Client conversations (imported transcripts) ───────────────────
+  // Per-client conversation transcripts (e.g. Plaud PDF exports). Stored
+  // in ONE app_state blob (ms_client_convos) keyed by client name, loaded
+  // lazily. The extracted text is what makes them searchable in the
+  // assistant. The original PDF binary is NOT retained (keeps storage
+  // light) — the text is the durable, editable artifact.
+  let _clientConvos = {}, _clientConvosLoaded = false;
+  async function _ensureClientConvosLoaded() {
+    if (_clientConvosLoaded) return;
+    _clientConvosLoaded = true;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_client_convos' });
+      let v = null; if (r && r.value) { try { v = JSON.parse(r.value); } catch (e) {} }
+      _clientConvos = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    } catch (e) { _clientConvos = {}; }
+  }
+  function _persistClientConvos() {
+    try { apiCall('save_app_state', { key: 'ms_client_convos', value: JSON.stringify(_clientConvos || {}) }).catch(() => {}); } catch (e) {}
+  }
+
+  // Lazy-load pdf.js (legacy UMD build) the same way the 3D viewer loads.
+  let _pdfjsLoading = null;
+  function _ensurePdfJs() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if (_pdfjsLoading) return _pdfjsLoading;
+    _pdfjsLoading = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js';
+      s.onload = () => {
+        try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js'; } catch (e) {}
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = () => { _pdfjsLoading = null; reject(new Error('Could not load the PDF reader.')); };
+      document.head.appendChild(s);
+    });
+    return _pdfjsLoading;
+  }
+  async function _extractPdfText(file) {
+    const lib = await _ensurePdfJs();
+    const buf = await file.arrayBuffer();
+    const pdf = await lib.getDocument({ data: buf }).promise;
+    let out = '';
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      out += content.items.map(i => i.str).join(' ') + '\n\n';
+    }
+    return out.trim();
+  }
+
+  function renderClientConvos(clientName) {
+    const host = document.getElementById('client-convos-wrap');
+    if (!host) return;
+    _ensureClientConvosLoaded().then(() => {
+      if (host.id !== 'client-convos-wrap') return;   // client changed mid-load
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      const enc = encodeURIComponent(clientName);
+      const list = (_clientConvos[clientName] || []).slice()
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      const rows = list.map(c => {
+        const when = c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+        const words = c.text ? c.text.trim().split(/\s+/).length : 0;
+        const meta = [when, words ? words.toLocaleString('en-US') + ' words' : 'no text — click to paste'].filter(Boolean).join(' · ');
+        return `<div class="cc-item">
+          <div class="cc-item-head">
+            <button type="button" class="cc-toggle" onclick="this.closest('.cc-item').classList.toggle('open')">
+              <span class="cc-chev">▸</span><span class="cc-title">${esc(c.title || 'Conversation')}</span>
+            </button>
+            <span class="cc-meta">${esc(meta)}</span>
+            <button type="button" class="cc-del" title="Delete" onclick="deleteClientConvo('${enc}', '${esc(c.id)}')">&times;</button>
+          </div>
+          <div class="cc-body">
+            <textarea class="cc-text" placeholder="Transcript text (paste here if the PDF had none)…"
+              onchange="updateClientConvoText('${enc}', '${esc(c.id)}', this.value)">${esc(c.text || '')}</textarea>
+          </div>
+        </div>`;
+      }).join('');
+      host.innerHTML = `
+        <div class="section-card" data-section="convos" style="margin-top:16px;">
+          <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+            <span class="section-title">Conversations</span>
+            <span class="cc-count">${list.length}</span>
+            <button type="button" class="btn btn-primary" style="margin-left:auto; font-size:12px;"
+              onclick="document.getElementById('client-convo-file').click()">+ Upload transcript (PDF)</button>
+            <input type="file" id="client-convo-file" accept="application/pdf,.pdf" style="display:none"
+              onchange="handleClientConvoUpload('${enc}', this.files[0]); this.value='';" />
+          </div>
+          <div class="section-body">
+            <p style="font-size:12px; color:var(--text-muted); margin:0 0 12px;">Upload a Plaud (or other) PDF export of a client call. The text is extracted and becomes searchable in the assistant. You can edit or paste text directly too.</p>
+            ${rows || `<div style="font-size:13px; color:var(--text-muted); font-style:italic; padding:14px 4px;">No conversations yet.</div>`}
+          </div>
+        </div>`;
+    });
+  }
+
+  async function handleClientConvoUpload(encName, file) {
+    const clientName = decodeURIComponent(encName);
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') { alert('Please upload a PDF file.'); return; }
+    showToast('Reading PDF…', 'info');
+    let text = '';
+    try { text = await _extractPdfText(file); }
+    catch (e) { alert('Could not read the PDF text (' + (e.message || e) + '). It\'s been added — paste the transcript into the box manually.'); }
+    await _ensureClientConvosLoaded();
+    if (!_clientConvos[clientName]) _clientConvos[clientName] = [];
+    _clientConvos[clientName].push({
+      id: 'cv' + Date.now() + Math.floor(Math.random() * 1000),
+      title: file.name.replace(/\.pdf$/i, ''),
+      date: new Date().toISOString(),
+      text: text || '',
+    });
+    _persistClientConvos();
+    renderClientConvos(clientName);
+    showToast(text ? 'Conversation added — searchable now' : 'Added — paste the transcript to make it searchable', text ? 'success' : 'warn');
+  }
+  function updateClientConvoText(encName, id, text) {
+    const clientName = decodeURIComponent(encName);
+    const c = (_clientConvos[clientName] || []).find(x => x && x.id === id);
+    if (c) { c.text = text; _persistClientConvos(); }
+  }
+  function deleteClientConvo(encName, id) {
+    const clientName = decodeURIComponent(encName);
+    if (!confirm('Delete this conversation? This cannot be undone.')) return;
+    _clientConvos[clientName] = (_clientConvos[clientName] || []).filter(c => c && c.id !== id);
+    _persistClientConvos();
+    renderClientConvos(clientName);
   }
 
   // ── Client-portal RFQ intake helpers ─────────────────────────────────
@@ -37905,6 +38054,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (!c) return;
       add('CRM', c.company || '(unnamed lead)', c.contact || '', '#/crm', c);
     });
+    // Client conversations (imported transcripts). Added with explicit
+    // fields (not the deep-walk) so the full transcript text is indexed —
+    // the walk skips values > 400 chars, which a transcript always exceeds.
+    Object.keys(_clientConvos || {}).forEach(cn => {
+      (_clientConvos[cn] || []).forEach(c => {
+        if (!c) return;
+        const fields = [];
+        if (c.title) fields.push({ label: 'Title', value: String(c.title) });
+        if (c.text)  fields.push({ label: 'Transcript', value: String(c.text) });
+        if (!fields.length) return;
+        recs.push({ type: 'Conversations', title: c.title || 'Conversation', subtitle: cn,
+                    href: `#/client/${encodeURIComponent(cn)}`, fields });
+      });
+    });
     // Pipeline notes + comments — resolved back to their underlying record.
     Object.keys(_plMeta || {}).forEach(cid => {
       const m = _plMeta[cid];
@@ -37950,7 +38113,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     const byType = {};
     hits.forEach(h => { (byType[h.type] = byType[h.type] || []).push(h); });
-    const order = ['Workbooks', 'Clients', 'Orders', 'Shipments', 'CRM', 'Notes & comments'];
+    const order = ['Workbooks', 'Clients', 'Conversations', 'Orders', 'Shipments', 'CRM', 'Notes & comments'];
     let html = '<div class="ms-sr-count">' + hits.length + ' match' + (hits.length === 1 ? '' : 'es')
              + ' for &ldquo;' + _plEsc(rawQuery) + '&rdquo;</div>';
     order.forEach(t => {
@@ -37980,6 +38143,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Make sure the searchable stores are populated even if the CRM /
     // Pipeline views haven't been opened yet this session.
     try { if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded(); } catch (_) {}
+    try { if (typeof _ensureClientConvosLoaded === 'function') _ensureClientConvosLoaded(); } catch (_) {}
     try {
       if (typeof loadCrm === 'function' && (!crmData || !crmData.cards || !Object.keys(crmData.cards).length)) loadCrm();
     } catch (_) {}
