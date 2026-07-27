@@ -9038,6 +9038,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
   </div>
+
+  <!-- ── Card: Quality Control (placeholder / coming soon) ──────────────
+       Not wired up yet. Signals the intended direction: a per-workbook QC
+       checklist that can also be shared to the client via a portal so they
+       sign off on quality before production/shipment. Kept visually inert
+       (dashed, muted, disabled controls) so it never reads as functional. -->
+  <div class="section-card" data-section="qc" style="border-style:dashed; opacity:0.92;">
+    <div class="section-header" style="display:flex; align-items:center; gap:8px;">
+      <span class="section-title">Quality Control</span>
+      <span style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:#6b93ff; background:rgba(107,147,255,0.12); border:1px solid rgba(107,147,255,0.30); border-radius:99px; padding:2px 8px;">Coming soon</span>
+    </div>
+    <div class="section-body">
+      <p style="font-size:13px; color:var(--text-muted); margin:0 0 14px; max-width:640px; line-height:1.55;">
+        A place to run quality control on this workbook — a checklist of items to verify against the art and specs,
+        pass/fail per item, notes, and a photo of the received/proof sample. In the future this can be shared to the
+        <strong>client via a QC portal</strong> so they review and sign off on quality before it goes to production or ships.
+      </p>
+      <!-- Inert preview of the intended checklist. Purely illustrative. -->
+      <div style="border:1px solid var(--border); border-radius:10px; overflow:hidden; max-width:640px; pointer-events:none;">
+        <div style="display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--border); background:var(--surface2);">
+          <span style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">QC Checklist</span>
+          <span style="margin-left:auto; font-size:11px; color:var(--text-muted);">example</span>
+        </div>
+        <div style="display:flex; flex-direction:column;">
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--border);">
+            <input type="checkbox" disabled style="width:16px; height:16px; accent-color:var(--accent);" />
+            <span style="font-size:13px; color:var(--text);">Colors match approved Pantone / CMYK</span>
+            <span style="margin-left:auto; font-size:10px; font-weight:800; text-transform:uppercase; color:#a16207; background:rgba(234,179,8,0.16); border-radius:99px; padding:1px 8px;">Pending</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--border);">
+            <input type="checkbox" disabled style="width:16px; height:16px; accent-color:var(--accent);" />
+            <span style="font-size:13px; color:var(--text);">Logo placement &amp; sizing per spec</span>
+            <span style="margin-left:auto; font-size:10px; font-weight:800; text-transform:uppercase; color:#a16207; background:rgba(234,179,8,0.16); border-radius:99px; padding:1px 8px;">Pending</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 12px;">
+            <input type="checkbox" disabled style="width:16px; height:16px; accent-color:var(--accent);" />
+            <span style="font-size:13px; color:var(--text);">No print defects, smudging, or misalignment</span>
+            <span style="margin-left:auto; font-size:10px; font-weight:800; text-transform:uppercase; color:#a16207; background:rgba(234,179,8,0.16); border-radius:99px; padding:1px 8px;">Pending</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button type="button" class="btn btn-ghost" disabled title="Not available yet" style="opacity:0.55; cursor:not-allowed; font-size:12px;">+ Add QC item</button>
+        <button type="button" class="btn btn-ghost" disabled title="Not available yet" style="opacity:0.55; cursor:not-allowed; font-size:12px;">Share QC portal with client</button>
+      </div>
+    </div>
+  </div>
   </div><!-- /#wb-tab-art -->
 
   <!-- ── Tab: Office Invoice ── -->
