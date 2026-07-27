@@ -38102,37 +38102,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Find the earliest position in the ORIGINAL text where any query token
   // appears, matching on apostrophe/punct-stripped words so "dans" locates
   // "Dan's". Returns the real index + matched-word length so the highlight aligns.
-  function _msLocate(value, terms) {
-    const re = /[A-Za-z0-9][A-Za-z0-9'\u2019]*/g;
-    let m;
-    while ((m = re.exec(value)) !== null) {
+  // Rank the SENTENCES of a transcript by how many DISTINCT query words each
+  // contains, and return the top N (in document order). Sentence-level (not
+  // char-window) so two adjacent sentences don't get merged — the 'Dan's DC …
+  // 750,000 sq ft' sentence (2 words) beats a stray earlier 'the DC' (1 word).
+  function _msRankedSentences(value, terms, n) {
+    const v = String(value);
+    const parts = [];
+    const re = /[^.!?\n]+[.!?]*/g; let m;
+    while ((m = re.exec(v)) !== null) {
+      const text = m[0];
+      if (text.trim().length < 3) continue;
+      parts.push({ text: text, index: m.index });
+    }
+    const scoreOf = (txt) => {
+      const words = (txt.toLowerCase().replace(/['\u2019]/g, '').match(/[a-z0-9]+/g)) || [];
+      let sc = 0;
+      terms.forEach(t => { if (t && words.some(w => w === t || w.indexOf(t) >= 0)) sc++; });
+      return sc;
+    };
+    const scored = parts.map(p => ({ text: p.text, index: p.index, score: scoreOf(p.text) })).filter(p => p.score > 0);
+    if (!scored.length) return [];
+    // Best-match first (most query words), ties broken by document order —
+    // so the sentence with the answer leads the list.
+    scored.sort((a, b) => (b.score - a.score) || (a.index - b.index));
+    return scored.slice(0, n || 3);
+  }
+  // Highlight the first matching word within a sentence.
+  function _msHighlightSentence(text, terms) {
+    const re = /[A-Za-z0-9][A-Za-z0-9'\u2019]*/g; let m;
+    while ((m = re.exec(text)) !== null) {
       const w = m[0].toLowerCase().replace(/['\u2019]/g, '');
-      for (let k = 0; k < terms.length; k++) {
-        const t = terms[k];
-        if (t && (w === t || w.indexOf(t) >= 0)) return { index: m.index, len: m[0].length };
+      if (terms.some(t => t && (w === t || w.indexOf(t) >= 0))) {
+        const i = m.index, wl = m[0].length;
+        return _plEsc(text.slice(0, i)) + '<mark>' + _plEsc(text.slice(i, i + wl)) + '</mark>' + _plEsc(text.slice(i + wl));
       }
     }
-    return null;
+    return _plEsc(text);
   }
-  // A readable, SENTENCE-bounded snippet around the match — so the line with
-  // the answer (a number / name) shows in full, not clipped to a few chars.
-  function _msSnippet(value, terms) {
-    const v = String(value);
+  // Up to N best sentences — for transcripts, so you get a LIST of the
+  // relevant lines (incl. the one with the answer), best first.
+  function _msSnippets(value, terms, n) {
     const list = (Array.isArray(terms) ? terms : [String(terms)]).filter(Boolean);
-    const loc = _msLocate(v, list);
-    if (!loc) return _plEsc(v.slice(0, 160));
-    const i = loc.index, wlen = loc.len;
-    let s = Math.max(0, i - 220), e = Math.min(v.length, i + wlen + 320);
-    const back = v.slice(s, i);
-    const bMatch = back.match(/[.!?\n][^.!?\n]*$/);
-    if (bMatch) s = s + bMatch.index + 1;
-    const fwd = v.slice(i + wlen, e);
-    const fMatch = fwd.search(/[.!?\n]/);
-    if (fMatch >= 0) e = i + wlen + fMatch + 1;
-    return (s > 0 ? '\u2026' : '') + _plEsc(v.slice(s, i).replace(/^\s+/, ''))
-         + '<mark>' + _plEsc(v.slice(i, i + wlen)) + '</mark>'
-         + _plEsc(v.slice(i + wlen, e).replace(/\s+$/, '')) + (e < v.length ? '\u2026' : '');
+    const sents = _msRankedSentences(String(value), list, n || 3);
+    if (!sents.length) return [_plEsc(String(value).slice(0, 160))];
+    return sents.map(s => _msHighlightSentence(s.text.trim(), list));
   }
+  // Single best passage (one-line results).
+  function _msSnippet(value, terms) { return _msSnippets(value, terms, 1)[0]; }
   function _msGoSearchResult(href) { location.hash = href; }
 
   // Render one search's results as a block inside the running thread.
@@ -38157,10 +38174,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // sentence with the answer is readable — not clipped to one line.
         const isLong = t === 'Conversations' || (h.value && String(h.value).length > 160);
         if (isLong) {
+          // Show the top few relevant passages (ranked by word density) so
+          // the answer surfaces even when it's not the first mention.
+          const passages = _msSnippets(h.value, h.terms || [h.term || q], 3);
           html += '<div class="ms-sr-row ms-sr-row--long" onclick="_msGoSearchResult(\'' + href + '\')" title="Open ' + _plEsc(h.subtitle || h.title) + '">'
                 + '<div class="ms-sr-longhead"><span class="ms-sr-title">' + _plEsc(h.title) + '</span>'
                 + (h.subtitle ? '<span class="ms-sr-sub">' + _plEsc(h.subtitle) + '</span>' : '') + '</div>'
-                + '<div class="ms-sr-passage">' + snip + '</div></div>';
+                + passages.map(p => '<div class="ms-sr-passage">' + p + '</div>').join('') + '</div>';
         } else {
           html += '<div class="ms-sr-row" onclick="_msGoSearchResult(\'' + href + '\')" title="Matched in ' + _plEsc(h.label) + '">'
                 + '<span class="ms-sr-title">' + _plEsc(h.title) + '</span>'
