@@ -5905,8 +5905,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .ms-sr-count { font-size: 11px; font-weight: 800; color: var(--accent); margin-bottom: 2px; }
     /* Long/transcript result — readable passage on its own lines. */
     .ms-sr-row--long { flex-direction: column; align-items: stretch; gap: 4px; }
-    .ms-sr-longhead { display: flex; align-items: baseline; gap: 8px; }
-    .ms-sr-longhead .ms-sr-title { max-width: none; }
+    .ms-sr-longhead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    /* Transcript-result title wraps instead of running off the right edge. */
+    .ms-sr-longhead .ms-sr-title { max-width: 100%; white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35; }
     .ms-sr-passage { font-size: 12.5px; line-height: 1.55; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; white-space: normal; }
     .ms-sr-passage mark { background: rgba(232,117,26,0.28); color: var(--text); border-radius: 3px; padding: 0 2px; }
     .ms-sr-live {
