@@ -5290,6 +5290,46 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
+    case 'mint_order_tracking':
+        // Create (or reuse) a persistent public tracking link for one order.
+        // The client-facing page is track.php, which reads LIVE order +
+        // shipment state each visit (unlike portal.php's frozen snapshot).
+        // One stable token per order, so the same link keeps working from
+        // "Ordered" all the way through "Delivered".
+        $trkOrderId = (string)($input['order_id'] ?? '');
+        $trkClient  = (string)($input['client_name'] ?? '');
+        if ($trkOrderId === '') { echo json_encode(['success' => false, 'error' => 'order_id required']); break; }
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS tracking_tokens (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            token CHAR(64) NOT NULL,
+            order_id VARCHAR(32) NOT NULL,
+            client_name VARCHAR(255) DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_trk_token (token),
+            UNIQUE KEY uq_trk_order (order_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        // Reuse the existing token for this order if one was already minted
+        $stmtTrk = $pdo->prepare("SELECT token FROM tracking_tokens WHERE order_id = ?");
+        $stmtTrk->execute([$trkOrderId]);
+        $trkRow = $stmtTrk->fetch();
+        if ($trkRow) {
+            $trkToken = $trkRow['token'];
+            if ($trkClient !== '') {
+                $pdo->prepare("UPDATE tracking_tokens SET client_name = ? WHERE order_id = ?")
+                    ->execute([$trkClient, $trkOrderId]);
+            }
+        } else {
+            $trkToken = bin2hex(random_bytes(32));
+            $pdo->prepare("INSERT INTO tracking_tokens (token, order_id, client_name) VALUES (?, ?, ?)")
+                ->execute([$trkToken, $trkOrderId, $trkClient]);
+        }
+        $trkScheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $trkHost   = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
+        echo json_encode(['success' => true, 'token' => $trkToken, 'url' => "{$trkScheme}://{$trkHost}/track.php?t={$trkToken}"]);
+        break;
+
     case 'get_fx_rate':
         // Returns USD→CNY mid-market rate.
         // Tries XE.com first (parses __NEXT_DATA__ for CNY→USD, then inverts),

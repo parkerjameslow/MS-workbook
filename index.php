@@ -10422,6 +10422,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span id="btn-notify-order-label">Notify Client</span>
           </button>
         </div>
+        <button class="btn btn-ghost" id="btn-share-tracking" onclick="shareOrderTracking(_currentOrderId)" title="Create a live tracking link the client can open to watch this order move from Ordered to Delivered" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Share Tracking
+        </button>
         <button class="btn btn-ghost" onclick="exportOrderCsv(_currentOrderId)" title="Export this order to CSV (spreadsheet)" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export CSV
@@ -22900,6 +22904,76 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     m.addEventListener('click', e => { if (e.target === m) m.remove(); });
     // Auto-select the URL
     setTimeout(() => { const el = document.getElementById('portal-url-input'); if (el) el.select(); }, 50);
+  }
+
+  // Mint (or reuse) a persistent, live tracking link for this order and show a
+  // copy-ready modal. The link points at track.php, which reads current order +
+  // shipment state each visit — so the same link keeps working from "Ordered"
+  // through "Delivered". Progress only: no pricing, no tracking numbers.
+  async function shareOrderTracking(orderId) {
+    if (!orderId) orderId = _currentOrderId;
+    const ord = orderData[orderId];
+    if (!ord) { if (typeof _msToast === 'function') _msToast('Order not found.', 'error'); return; }
+    const btn = document.getElementById('btn-share-tracking');
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Creating link…'; }
+    try {
+      const res = await apiCall('mint_order_tracking', {
+        order_id:    String(orderId),
+        client_name: ord.clientName || '',
+      });
+      if (res && res.success && res.url) {
+        _showTrackingUrl(res.url);
+      } else {
+        if (typeof _msToast === 'function') _msToast('Could not create tracking link.', 'error');
+      }
+    } catch (e) {
+      console.error('[MS mint_order_tracking]', e);
+      if (typeof _msToast === 'function') _msToast('Could not create tracking link: ' + e.message, 'error');
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+
+  function _showTrackingUrl(url) {
+    const existing = document.getElementById('tracking-url-modal');
+    if (existing) existing.remove();
+    const m = document.createElement('div');
+    m.id = 'tracking-url-modal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px;';
+    m.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:rgba(232,117,26,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E8751A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div style="font-size:16px;font-weight:800;color:var(--text);">Client Tracking Link</div>
+        </div>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 20px;line-height:1.6;">Share this link with your client. It's a live page — it shows their order moving through <strong>Ordered → In Production → Shipped → In Transit → Arriving → Delivered</strong> and updates on its own as you advance the order. No pricing or tracking numbers are shown. The same link stays valid the whole way through.</p>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px;">Tracking Link</div>
+        <div style="display:flex;gap:8px;align-items:stretch;">
+          <input id="tracking-url-input" type="text" value="${url}" readonly
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;font-family:ui-monospace,monospace;color:var(--text);outline:none;min-width:0;" />
+          <button onclick="(function(){const el=document.getElementById('tracking-url-input');el.select();document.execCommand('copy');const b=document.getElementById('copy-tracking-btn');b.textContent='Copied!';b.style.background='var(--success)';setTimeout(()=>{b.textContent='Copy';b.style.background='var(--accent)';},2000);})()"
+            id="copy-tracking-btn"
+            style="background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:0 16px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;">
+            Copy
+          </button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;gap:10px;">
+          <a href="${url}" target="_blank" rel="noopener"
+            style="font-size:12px;color:var(--accent);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Preview
+          </a>
+          <button onclick="document.getElementById('tracking-url-modal').remove()"
+            style="background:none;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-size:13px;font-weight:600;padding:8px 18px;cursor:pointer;font-family:inherit;">
+            Done
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    setTimeout(() => { const el = document.getElementById('tracking-url-input'); if (el) el.select(); }, 50);
   }
 
   function lockWorkbookTab(locked) {
