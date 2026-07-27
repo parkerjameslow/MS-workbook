@@ -38095,10 +38095,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function _msSnippet(value, q) {
     const v = String(value);
-    const i = v.toLowerCase().indexOf(q);
-    if (i < 0) return _plEsc(v.slice(0, 60));
-    const start = Math.max(0, i - 24);
-    const end   = Math.min(v.length, i + q.length + 34);
+    const i = _msNorm(v).indexOf(_msNorm(q));
+    if (i < 0) return _plEsc(v.slice(0, 80));
+    // Bias the window AFTER the match — for a question, the answer (a number,
+    // a name) usually follows the matched word.
+    const start = Math.max(0, i - 18);
+    const end   = Math.min(v.length, i + q.length + 72);
     return (start > 0 ? '\u2026' : '') + _plEsc(v.slice(start, i))
          + '<mark>' + _plEsc(v.slice(i, i + q.length)) + '</mark>'
          + _plEsc(v.slice(i + q.length, end)) + (end < v.length ? '\u2026' : '');
@@ -38271,27 +38273,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Without (2), searching "This is a test" missed a workbook called "This is
   // Test 3" (the extra word "a") and never matched a phrase split across a
   // title and a comment.
+  // Filler words dropped so a natural-language question ("what was the sq
+  // footage of Dan's DC") matches on its meaningful words (sq, footage, dan,
+  // dc) instead of failing because 'what/was/of' aren't in the record.
+  const _MS_STOP = new Set(['a','an','the','of','to','in','on','for','and','or','is','are','was','were','be','been','what','whats','which','who','whom','how','when','where','why','did','do','does','you','your','my','me','i','it','its','that','this','these','those','with','at','by','from','as','has','have','had','can','could','would','should','will','about','any','some','there','their','they','we','our','us','many','much','number','lot','lots','get','got','tell','show','find','give']);
+  function _msNorm(s) { return String(s).toLowerCase().replace(/[‘’']/g, ''); }
   function _msSearchHits(raw) {
-    var phrase = String(raw || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const phrase = _msNorm(String(raw || '').trim()).replace(/\s+/g, ' ');
     if (!phrase) return [];
-    var tokens = phrase.split(' ').filter(Boolean);
-    var out = [];
+    const allTokens = phrase.split(/[^a-z0-9]+/i).filter(Boolean);
+    const tokens = allTokens.filter(t => t.length >= 2 && !_MS_STOP.has(t));
+    // All-filler / too-short query → nothing meaningful to search.
+    if (!tokens.length) return [];
+    const out = [];
     _msBuildSearchRecords().forEach(function (r) {
-      var f = r.fields.find(function (x) { return x.value.toLowerCase().includes(phrase); });
-      var score, term;
+      // 1. whole phrase inside one field → strongest match.
+      let f = r.fields.find(x => _msNorm(x.value).includes(phrase));
+      let score, term;
       if (f) { score = 100; term = phrase; }
-      else if (tokens.length > 1) {
-        var hay = r.fields.map(function (x) { return x.value; }).join(' \n ').toLowerCase();
-        if (!tokens.every(function (t) { return hay.includes(t); })) return;
-        // Snippet from the field holding the most distinctive (longest) word.
-        term = tokens.slice().sort(function (a, b) { return b.length - a.length; })[0];
-        f = r.fields.find(function (x) { return x.value.toLowerCase().includes(term); }) || r.fields[0];
-        score = 50;
-      } else return;
+      else {
+        // 2. meaningful-word match, tolerant of extra words: every word for
+        //    a 1-word query, else ≥60% of the words (so a question with a
+        //    word the record doesn't use still matches). Ranked by coverage.
+        const hay = _msNorm(r.fields.map(x => x.value).join(' \n '));
+        const present = tokens.filter(t => hay.includes(t));
+        if (!present.length) return;
+        const frac = present.length / tokens.length;
+        // 1-word query needs its word; longer queries need ≥2 distinct
+        // words or half of them (whichever is more) — forgiving of the
+        // filler/synonyms a spoken question carries that the record lacks.
+        const need = tokens.length === 1 ? 1 : Math.max(2, Math.ceil(tokens.length * 0.5));
+        if (present.length < need) return;
+        term = present.slice().sort((a, b) => b.length - a.length)[0];
+        f = r.fields.find(x => _msNorm(x.value).includes(term)) || r.fields[0];
+        score = Math.round(20 + frac * 60);   // 20–80
+      }
       out.push({ type: r.type, title: r.title, subtitle: r.subtitle, href: r.href,
                  label: f.label, value: f.value, term: term, score: score });
     });
-    out.sort(function (a, b) { return b.score - a.score; });
+    out.sort((a, b) => b.score - a.score);
     return out;
   }
 
