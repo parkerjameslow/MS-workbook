@@ -4455,6 +4455,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text-muted);
     }
     .qr-sum-val { font-size: 13px; font-weight: 700; color: var(--text); }
+    /* ── Quote preflight pill (Ready to Send) ─────────────────────────── */
+    .cq-preflight {
+      display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+      font-size: 11px; font-weight: 800; letter-spacing: 0.02em;
+      padding: 3px 10px; border-radius: 99px; border: 1px solid transparent;
+      white-space: nowrap; user-select: none; transition: filter 0.12s;
+    }
+    .cq-preflight:hover { filter: brightness(1.05); }
+    .cq-preflight.pf-ok    { background: rgba(22,163,74,0.14);  color: #15803d; border-color: rgba(22,163,74,0.35); }
+    .cq-preflight.pf-warn  { background: rgba(234,179,8,0.18);  color: #a16207; border-color: rgba(234,179,8,0.40); }
+    .cq-preflight.pf-block { background: rgba(239,68,68,0.16);  color: #b91c1c; border-color: rgba(239,68,68,0.40); }
+    /* Preflight issue list (modal). */
+    .pf-issue { display: flex; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 8px; background: var(--surface2); }
+    .pf-issue-icon { flex-shrink: 0; font-size: 15px; line-height: 1.3; }
+    .pf-issue-body { flex: 1; min-width: 0; }
+    .pf-issue-title { font-size: 13px; font-weight: 700; color: var(--text); }
+    .pf-issue-detail { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .pf-issue.lvl-block { border-color: rgba(239,68,68,0.40); }
+    .pf-issue.lvl-block .pf-issue-icon { color: #b91c1c; }
+    .pf-issue.lvl-warn  .pf-issue-icon { color: #a16207; }
+    .pf-empty { text-align: center; padding: 24px 8px; color: #15803d; font-weight: 700; font-size: 14px; }
+
     /* Client Quote summary bar — used in BOTH the section header and as
        a footer at the bottom of the body so the operator never has to
        scroll back up to see the totals. Bold accent-blue band makes the
@@ -8803,6 +8825,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="cq-summary-bar cq-summary-bar--header" style="width:100%; margin:0;">
         <div class="cq-summary-title-wrap">
           <span class="cq-summary-title">Client Quote</span>
+          <span class="cq-preflight pf-ok" id="cq-preflight-header" onclick="event.stopPropagation(); openQuotePreflightModal()" title="Pre-send checks — click for details">✓ Ready to send</span>
           <div class="cq-action-btns">
             <button type="button" class="cq-send-btn" onclick="event.stopPropagation(); openNotifyModal('quote_ready')" title="Email this quote to the client">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -8842,6 +8865,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="cq-summary-bar cq-summary-bar--footer">
         <div class="cq-summary-title-wrap">
           <span class="cq-summary-title">Client Quote</span>
+          <span class="cq-preflight pf-ok" id="cq-preflight-footer" onclick="openQuotePreflightModal()" title="Pre-send checks — click for details">✓ Ready to send</span>
           <div class="cq-action-btns">
             <button type="button" class="cq-send-btn" onclick="openNotifyModal('quote_ready')" title="Email this quote to the client">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -10772,6 +10796,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closeSamplesToRfqModal()">Cancel</button>
       <button type="button" class="btn btn-primary" onclick="_doSamplesToRfq()">→ Move to RFQ</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Client Quote preflight (Ready to Send) ───────────────────────── -->
+<div class="modal-overlay" id="quote-preflight-modal" onclick="if(event.target===this)closeQuotePreflightModal()" style="z-index:1200;">
+  <div class="modal" style="max-width:520px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Ready to send?</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 12px; flex-shrink:0;">Checks the quote's numbers tie out before it reaches the client.</p>
+    <div id="quote-preflight-list" style="overflow-y:auto; flex:1 1 auto;"></div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
+      <button type="button" class="btn btn-ghost" onclick="closeQuotePreflightModal()">Close</button>
     </div>
   </div>
 </div>
@@ -24243,6 +24279,111 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       totalLeadText = (tMin === tMax) ? tMin + ' days' : tMin + '-' + tMax + ' days';
     }
     setQrs('total-lead', totalLeadText);
+
+    // ── Ready-to-Send preflight ───────────────────────────────────────
+    // Reuse the values just computed so the check reflects exactly what
+    // the client would see. Stored globally for the pill + modal.
+    try {
+      _lastQuotePreflight = _buildQuotePreflight({
+        salePer, haveSalePer: _cqHaveSalePer,
+        lineTotalSum: _cqLineTotalSum, lineQtySum: _cqLineQtySum,
+        totalUsd, feesTotal: _appliedFeesTotal, landedAvg,
+      });
+      _paintQuotePreflight(_lastQuotePreflight);
+    } catch (e) { /* never let the preflight break the render */ }
+  }
+
+  // Assemble the list of pre-send issues from the live quote values.
+  let _lastQuotePreflight = { level: 'ok', issues: [] };
+  function _buildQuotePreflight(v) {
+    const issues = [];
+    const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money3 = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const hasFees = (v.feesTotal || 0) > 0;
+
+    // 1. No committed price at all.
+    if (!v.haveSalePer && v.lineTotalSum <= 0 && !hasFees) {
+      issues.push({ level: 'block', title: 'No sale price set',
+        detail: 'The Client Quote shows “—”. Enter a Sale Per (USD) in the Total Landed Cost card before sending.' });
+    }
+    // 2. Priced below landed cost — losing money per unit.
+    if (v.haveSalePer && v.landedAvg > 0 && v.salePer <= v.landedAvg) {
+      issues.push({ level: 'block', title: 'Sale price is below cost',
+        detail: `Sale Per ${money3(v.salePer)} ≤ landed cost ${money3(v.landedAvg)} — losing ${money3(v.landedAvg - v.salePer)}/unit.` });
+    }
+    // 3. RFQ lines with a qty but no supplier price.
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    let noPrice = 0;
+    parents.forEach(row => {
+      const ins = row.querySelectorAll('input:not([type="checkbox"])');
+      const qty = _msIntFromInput(ins[2]);
+      const rmb = _msNumFromInput(ins[3]);
+      const nm  = (ins[1]?.value || '').trim();
+      if (qty > 0 && rmb <= 0 && nm) noPrice++;
+    });
+    if (noPrice > 0) {
+      issues.push({ level: 'warn', title: `${noPrice} line${noPrice === 1 ? '' : 's'} missing a supplier price`,
+        detail: 'A line has a quantity but no Unit Price (RMB), so it contributes $0 to the quote.' });
+    }
+    // 4. Lines outside a combine group (the silent doubling risk).
+    const groups = Array.isArray(_combineGroups) ? _combineGroups : [];
+    if (groups.length) {
+      const inGroup = new Set();
+      groups.forEach(g => (g.itemIdxs || []).forEach(i => inGroup.add(i)));
+      let loose = 0;
+      parents.forEach((row, idx) => {
+        if (inGroup.has(idx)) return;
+        const ins = row.querySelectorAll('input:not([type="checkbox"])');
+        if (_msIntFromInput(ins[2]) > 0 || (ins[1]?.value || '').trim()) loose++;
+      });
+      if (loose > 0) {
+        issues.push({ level: 'warn', title: `${loose} line${loose === 1 ? '' : 's'} outside your combine group`,
+          detail: 'These are quoted as their own units and their qty adds to the order total. Use “Add to Existing Group” if they belong in the kit.' });
+      }
+    }
+    // 5. A fee ticked as billed but with a $0 amount.
+    if (typeof collectWorkbookFees === 'function') {
+      const applied = (typeof _appliedFees !== 'undefined') ? _appliedFees : new Set();
+      let zeroFee = 0;
+      (collectWorkbookFees() || []).forEach(f => {
+        if (applied.has(f.id) && !((f.usd || 0) > 0)) zeroFee++;
+      });
+      if (zeroFee > 0) {
+        issues.push({ level: 'warn', title: `${zeroFee} billed fee${zeroFee === 1 ? '' : 's'} at $0`,
+          detail: 'A fee is applied to the quote but has no amount — set its price or untick it.' });
+      }
+    }
+
+    const level = issues.some(i => i.level === 'block') ? 'block'
+                : issues.length ? 'warn' : 'ok';
+    return { level, issues };
+  }
+  function _paintQuotePreflight(res) {
+    const label = res.level === 'block' ? '⚠ Not ready to send'
+                : res.level === 'warn'  ? `⚠ ${res.issues.length} to review`
+                : '✓ Ready to send';
+    ['cq-preflight-header', 'cq-preflight-footer'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = 'cq-preflight pf-' + res.level;
+      el.textContent = label;
+    });
+  }
+  function openQuotePreflightModal() {
+    const host = document.getElementById('quote-preflight-list');
+    if (host) {
+      const res = _lastQuotePreflight || { issues: [] };
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      host.innerHTML = res.issues.length
+        ? res.issues.map(i =>
+            `<div class="pf-issue lvl-${i.level}"><span class="pf-issue-icon">${i.level === 'block' ? '&#9940;' : '&#9888;'}</span>`
+            + `<div class="pf-issue-body"><div class="pf-issue-title">${esc(i.title)}</div><div class="pf-issue-detail">${esc(i.detail)}</div></div></div>`).join('')
+        : `<div class="pf-empty">&#10003; Everything checks out — this quote is ready to send.</div>`;
+    }
+    const m = document.getElementById('quote-preflight-modal'); if (m) m.classList.add('open');
+  }
+  function closeQuotePreflightModal() {
+    const m = document.getElementById('quote-preflight-modal'); if (m) m.classList.remove('open');
   }
 
   // Parse a lead-time field — accepts "10" (single) or "7-10" (range).
