@@ -5903,6 +5903,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .ms-sr-empty { font-size: 13px; color: var(--text-muted); font-style: italic; text-align: center; padding: 40px 0; }
     .ms-sr-more { font-size: 11px; color: var(--text-muted); padding: 4px 10px; font-style: italic; }
     .ms-sr-count { font-size: 11px; font-weight: 800; color: var(--accent); margin-bottom: 2px; }
+    /* Long/transcript result — readable passage on its own lines. */
+    .ms-sr-row--long { flex-direction: column; align-items: stretch; gap: 4px; }
+    .ms-sr-longhead { display: flex; align-items: baseline; gap: 8px; }
+    .ms-sr-longhead .ms-sr-title { max-width: none; }
+    .ms-sr-passage { font-size: 12.5px; line-height: 1.55; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; white-space: normal; }
+    .ms-sr-passage mark { background: rgba(232,117,26,0.28); color: var(--text); border-radius: 3px; padding: 0 2px; }
     .ms-sr-live {
       font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
       color: var(--accent); margin-bottom: 6px; opacity: 0.85;
@@ -38093,17 +38099,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return recs;
   }
 
-  function _msSnippet(value, q) {
+  // Find the earliest position in the ORIGINAL text where any query token
+  // appears, matching on apostrophe/punct-stripped words so "dans" locates
+  // "Dan's". Returns the real index + matched-word length so the highlight aligns.
+  function _msLocate(value, terms) {
+    const re = /[A-Za-z0-9][A-Za-z0-9'\u2019]*/g;
+    let m;
+    while ((m = re.exec(value)) !== null) {
+      const w = m[0].toLowerCase().replace(/['\u2019]/g, '');
+      for (let k = 0; k < terms.length; k++) {
+        const t = terms[k];
+        if (t && (w === t || w.indexOf(t) >= 0)) return { index: m.index, len: m[0].length };
+      }
+    }
+    return null;
+  }
+  // A readable, SENTENCE-bounded snippet around the match — so the line with
+  // the answer (a number / name) shows in full, not clipped to a few chars.
+  function _msSnippet(value, terms) {
     const v = String(value);
-    const i = _msNorm(v).indexOf(_msNorm(q));
-    if (i < 0) return _plEsc(v.slice(0, 80));
-    // Bias the window AFTER the match — for a question, the answer (a number,
-    // a name) usually follows the matched word.
-    const start = Math.max(0, i - 18);
-    const end   = Math.min(v.length, i + q.length + 72);
-    return (start > 0 ? '\u2026' : '') + _plEsc(v.slice(start, i))
-         + '<mark>' + _plEsc(v.slice(i, i + q.length)) + '</mark>'
-         + _plEsc(v.slice(i + q.length, end)) + (end < v.length ? '\u2026' : '');
+    const list = (Array.isArray(terms) ? terms : [String(terms)]).filter(Boolean);
+    const loc = _msLocate(v, list);
+    if (!loc) return _plEsc(v.slice(0, 160));
+    const i = loc.index, wlen = loc.len;
+    let s = Math.max(0, i - 220), e = Math.min(v.length, i + wlen + 320);
+    const back = v.slice(s, i);
+    const bMatch = back.match(/[.!?\n][^.!?\n]*$/);
+    if (bMatch) s = s + bMatch.index + 1;
+    const fwd = v.slice(i + wlen, e);
+    const fMatch = fwd.search(/[.!?\n]/);
+    if (fMatch >= 0) e = i + wlen + fMatch + 1;
+    return (s > 0 ? '\u2026' : '') + _plEsc(v.slice(s, i).replace(/^\s+/, ''))
+         + '<mark>' + _plEsc(v.slice(i, i + wlen)) + '</mark>'
+         + _plEsc(v.slice(i + wlen, e).replace(/\s+$/, '')) + (e < v.length ? '\u2026' : '');
   }
   function _msGoSearchResult(href) { location.hash = href; }
 
@@ -38124,11 +38152,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       html += '<div class="ms-sr-group">' + _plEsc(t) + ' \u00b7 ' + list.length + '</div>';
       list.slice(0, 12).forEach(h => {
         const href = String(h.href).replace(/'/g, "\\'");
-        html += '<div class="ms-sr-row" onclick="_msGoSearchResult(\'' + href + '\')" title="Matched in ' + _plEsc(h.label) + '">'
-              + '<span class="ms-sr-title">' + _plEsc(h.title) + '</span>'
-              + (h.subtitle ? '<span class="ms-sr-sub">' + _plEsc(h.subtitle) + '</span>' : '')
-              + '<span class="ms-sr-snip">' + _plEsc(h.label) + ': ' + _msSnippet(h.value, h.term || q) + '</span>'
-              + '</div>';
+        const snip = _msSnippet(h.value, h.terms || h.term || q);
+        // Transcripts / long text get a full-width, wrapping passage so the
+        // sentence with the answer is readable — not clipped to one line.
+        const isLong = t === 'Conversations' || (h.value && String(h.value).length > 160);
+        if (isLong) {
+          html += '<div class="ms-sr-row ms-sr-row--long" onclick="_msGoSearchResult(\'' + href + '\')" title="Open ' + _plEsc(h.subtitle || h.title) + '">'
+                + '<div class="ms-sr-longhead"><span class="ms-sr-title">' + _plEsc(h.title) + '</span>'
+                + (h.subtitle ? '<span class="ms-sr-sub">' + _plEsc(h.subtitle) + '</span>' : '') + '</div>'
+                + '<div class="ms-sr-passage">' + snip + '</div></div>';
+        } else {
+          html += '<div class="ms-sr-row" onclick="_msGoSearchResult(\'' + href + '\')" title="Matched in ' + _plEsc(h.label) + '">'
+                + '<span class="ms-sr-title">' + _plEsc(h.title) + '</span>'
+                + (h.subtitle ? '<span class="ms-sr-sub">' + _plEsc(h.subtitle) + '</span>' : '')
+                + '<span class="ms-sr-snip">' + _plEsc(h.label) + ': ' + snip + '</span>'
+                + '</div>';
+        }
       });
       if (list.length > 12) html += '<div class="ms-sr-more">+ ' + (list.length - 12) + ' more in ' + _plEsc(t) + '\u2026</div>';
     });
@@ -38309,7 +38348,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         score = Math.round(20 + frac * 60);   // 20–80
       }
       out.push({ type: r.type, title: r.title, subtitle: r.subtitle, href: r.href,
-                 label: f.label, value: f.value, term: term, score: score });
+                 label: f.label, value: f.value, term: term, terms: tokens, score: score });
     });
     out.sort((a, b) => b.score - a.score);
     return out;
