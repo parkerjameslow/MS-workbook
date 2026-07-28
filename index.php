@@ -13704,14 +13704,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const cb = document.getElementById('pallet-manual');
     const on = !!(cb && cb.checked);
     // Mutually exclusive with the Manual Pallet Override (case dims) —
-    // product-dims manual mode wins when the operator picks it.
+    // product-dims manual mode wins when the operator picks it. Only
+    // clear it (don't disable) so the operator can always switch to the
+    // case-dims override directly.
     const palletCaseOverrideEl = document.getElementById('pallet-case-override');
-    if (palletCaseOverrideEl) {
-      if (on && palletCaseOverrideEl.checked) {
-        palletCaseOverrideEl.checked = false;
-        if (typeof _syncCaseOnlyFieldsEnabled === 'function') _syncCaseOnlyFieldsEnabled();
-      }
-      palletCaseOverrideEl.disabled = on;
+    if (palletCaseOverrideEl && on && palletCaseOverrideEl.checked) {
+      palletCaseOverrideEl.checked = false;
+      if (typeof _syncCaseOnlyFieldsEnabled === 'function') _syncCaseOnlyFieldsEnabled();
     }
     document.querySelectorAll('.specs-col[data-carton-col]').forEach(col => {
       col.classList.toggle('pallet-manual-disabled', on);
@@ -13802,14 +13801,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
     // Manual Pallet Override lives on the (now grayed) Pallet View card —
-    // clear + lock it too so weight-only mode owns the pallet math.
+    // clear it so weight-only mode owns the pallet math. The card's own
+    // gray-out already blocks interaction, so no need to disable it.
     const palletCaseOverrideEl2 = document.getElementById('pallet-case-override');
-    if (palletCaseOverrideEl2) {
-      if (on && palletCaseOverrideEl2.checked) {
-        palletCaseOverrideEl2.checked = false;
-        if (typeof _syncCaseOnlyFieldsEnabled === 'function') _syncCaseOnlyFieldsEnabled();
-      }
-      palletCaseOverrideEl2.disabled = on;
+    if (palletCaseOverrideEl2 && on && palletCaseOverrideEl2.checked) {
+      palletCaseOverrideEl2.checked = false;
+      if (typeof _syncCaseOnlyFieldsEnabled === 'function') _syncCaseOnlyFieldsEnabled();
     }
     onWeightOnlyChanged();
     // Refresh dependent views.
@@ -13876,19 +13873,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Mutually exclusive with the other override modes.
     const weightOnlyEl   = document.getElementById('weight-only-override');
     const palletManualEl = document.getElementById('pallet-manual');
-    // The full Case Only Override already routes pallet + container off
-    // case dims, so the pallet-scoped Manual Pallet Override is redundant
-    // while it's on — clear + lock it so the operator isn't looking at
-    // two toggles that do overlapping things.
-    const palletCaseOverrideEl = document.getElementById('pallet-case-override');
     if (on) {
       if (weightOnlyEl   && weightOnlyEl.checked)   { weightOnlyEl.checked   = false; if (typeof onWeightOnlyToggle === 'function') onWeightOnlyToggle(); }
       if (palletManualEl && palletManualEl.checked) { palletManualEl.checked = false; if (typeof onPalletManualToggle === 'function') onPalletManualToggle(); }
-      if (palletCaseOverrideEl && palletCaseOverrideEl.checked) { palletCaseOverrideEl.checked = false; }
     }
     if (weightOnlyEl)   weightOnlyEl.disabled   = on;
     if (palletManualEl) palletManualEl.disabled = on;
-    if (palletCaseOverrideEl) palletCaseOverrideEl.disabled = on;
+    // Note: the pallet-scoped Manual Pallet Override is intentionally
+    // left enabled + independent — the full Case Only Override already
+    // drives pallet + container off case dims, so ticking both is just
+    // redundant (both resolve caseOn=true), never a conflict.
     // Restore the Total Units input + hint when turning OFF so the
     // operator can type freely / re-sync from RFQ. onCaseOnlyChanged
     // will re-lock + re-derive when ON.
@@ -29414,10 +29408,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (typeof onCaseOnlyToggle === 'function') onCaseOnlyToggle();
       }
       // Manual Pallet Override — restore after the main Case Only toggle
-      // so its field-enable state layers on correctly. Skipped implicitly
-      // when the main override is on (that path disables + clears it).
+      // so its field-enable state layers on correctly.
       const palletCaseOverrideEl = document.getElementById('pallet-case-override');
-      if (palletCaseOverrideEl && !palletCaseOverrideEl.disabled) {
+      if (palletCaseOverrideEl) {
         palletCaseOverrideEl.checked = !!data.palletCaseOverride;
         if (typeof onPalletCaseOverrideToggle === 'function') onPalletCaseOverrideToggle();
       }
