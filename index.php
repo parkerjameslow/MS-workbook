@@ -8224,6 +8224,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="checkbox" id="pallet-manual" onchange="onPalletManualToggle()" />
         <span>Manual mode — fit products directly on the pallet base (skip carton dimensions)</span>
       </label>
+      <!-- Manual Pallet Override — the case-dims sibling of Manual mode.
+           When ON, the Pallet View + Container View build from the
+           Case Only Override case dimensions (case L × W × H, case
+           weight, products/case) instead of the outer carton. Scoped
+           to pallet + container ONLY — freight / shipping stay on their
+           normal carton/product path (unlike the full Case Only
+           Override checkbox in Product Dimensions, which reroutes
+           everything). Ticking it enables the Case Only fields for
+           entry without flipping that global mode. -->
+      <label class="pallet-manual-toggle" id="pallet-case-override-wrap" style="margin-top:8px;">
+        <input type="checkbox" id="pallet-case-override" onchange="onPalletCaseOverrideToggle()" />
+        <span>Manual Pallet Override — build the pallet &amp; container from the <strong>Case Only Override</strong> case dimensions</span>
+      </label>
+      <div id="pallet-case-override-hint" style="font-size:11px; color:var(--text-muted); line-height:1.5; margin:4px 0 0 30px;">
+        Reads the case L × W × H, weight &amp; products/case from the <strong>Case Only Override</strong> block in Product Dimensions. Only the Pallet &amp; Container views change — freight stays on the carton/product path.
+      </div>
       <!-- 4mm divider toggle — only meaningful in manual mode. Adds a
            0.4 cm gap on every side of every product (between items on
            a layer AND between layers) so the operator can plan for
@@ -13687,6 +13703,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onPalletManualToggle() {
     const cb = document.getElementById('pallet-manual');
     const on = !!(cb && cb.checked);
+    // Mutually exclusive with the Manual Pallet Override (case dims) —
+    // product-dims manual mode wins when the operator picks it.
+    const palletCaseOverrideEl = document.getElementById('pallet-case-override');
+    if (palletCaseOverrideEl) {
+      if (on && palletCaseOverrideEl.checked) {
+        palletCaseOverrideEl.checked = false;
+        if (typeof _syncCaseOnlyFieldsEnabled === 'function') _syncCaseOnlyFieldsEnabled();
+      }
+      palletCaseOverrideEl.disabled = on;
+    }
     document.querySelectorAll('.specs-col[data-carton-col]').forEach(col => {
       col.classList.toggle('pallet-manual-disabled', on);
     });
@@ -13775,6 +13801,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (typeof onPalletManualToggle === 'function') onPalletManualToggle();
       }
     }
+    // Manual Pallet Override lives on the (now grayed) Pallet View card —
+    // clear + lock it too so weight-only mode owns the pallet math.
+    const palletCaseOverrideEl2 = document.getElementById('pallet-case-override');
+    if (palletCaseOverrideEl2) {
+      if (on && palletCaseOverrideEl2.checked) {
+        palletCaseOverrideEl2.checked = false;
+        if (typeof _syncCaseOnlyFieldsEnabled === 'function') _syncCaseOnlyFieldsEnabled();
+      }
+      palletCaseOverrideEl2.disabled = on;
+    }
     onWeightOnlyChanged();
     // Refresh dependent views.
     if (typeof renderPalletViz === 'function') renderPalletViz();
@@ -13821,20 +13857,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const cb = document.getElementById('case-only-override');
     if (!cb) return;
     const on = !!cb.checked;
-    // Toggle visuals on the override fields themselves.
-    const fields = document.getElementById('case-only-fields');
-    if (fields) {
-      fields.style.opacity = on ? '' : '0.45';
-      fields.style.pointerEvents = on ? '' : 'none';
-    }
-    ['case-only-products-per', 'case-only-cases-order',
-     'case-only-l-cm', 'case-only-l-in', 'case-only-w-cm', 'case-only-w-in',
-     'case-only-h-cm', 'case-only-h-in',
-     'case-only-weight-kg', 'case-only-weight-lbs', 'case-only-weight-oz'
-    ].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = !on;
-    });
+    // Enable/disable the case override fields. Shared with the Manual
+    // Pallet Override toggle on the Pallet View — either one being on
+    // makes the case fields editable.
+    _syncCaseOnlyFieldsEnabled();
     // Gray out the Product + Outer columns. Inner dim grid grays too
     // (matches the weight-only treatment) — only the case override
     // controls stay interactive.
@@ -13850,12 +13876,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Mutually exclusive with the other override modes.
     const weightOnlyEl   = document.getElementById('weight-only-override');
     const palletManualEl = document.getElementById('pallet-manual');
+    // The full Case Only Override already routes pallet + container off
+    // case dims, so the pallet-scoped Manual Pallet Override is redundant
+    // while it's on — clear + lock it so the operator isn't looking at
+    // two toggles that do overlapping things.
+    const palletCaseOverrideEl = document.getElementById('pallet-case-override');
     if (on) {
       if (weightOnlyEl   && weightOnlyEl.checked)   { weightOnlyEl.checked   = false; if (typeof onWeightOnlyToggle === 'function') onWeightOnlyToggle(); }
       if (palletManualEl && palletManualEl.checked) { palletManualEl.checked = false; if (typeof onPalletManualToggle === 'function') onPalletManualToggle(); }
+      if (palletCaseOverrideEl && palletCaseOverrideEl.checked) { palletCaseOverrideEl.checked = false; }
     }
     if (weightOnlyEl)   weightOnlyEl.disabled   = on;
     if (palletManualEl) palletManualEl.disabled = on;
+    if (palletCaseOverrideEl) palletCaseOverrideEl.disabled = on;
     // Restore the Total Units input + hint when turning OFF so the
     // operator can type freely / re-sync from RFQ. onCaseOnlyChanged
     // will re-lock + re-derive when ON.
@@ -13951,6 +13984,57 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Returns whether Case Only Override is currently active.
   function _caseOnlyActive() {
     return !!document.getElementById('case-only-override')?.checked;
+  }
+
+  // Enable/disable the Case Only Override input fields. The fields are
+  // editable when EITHER the full Case Only Override (Product
+  // Dimensions) OR the Manual Pallet Override (Pallet View) is on —
+  // both source their dims from the same block. Kept as one helper so
+  // the two toggles can't fight over the fields' enabled state.
+  function _syncCaseOnlyFieldsEnabled() {
+    const mainOn   = !!document.getElementById('case-only-override')?.checked;
+    const palletOn = !!document.getElementById('pallet-case-override')?.checked;
+    const on = mainOn || palletOn;
+    const fields = document.getElementById('case-only-fields');
+    if (fields) {
+      fields.style.opacity = on ? '' : '0.45';
+      fields.style.pointerEvents = on ? '' : 'none';
+    }
+    ['case-only-products-per', 'case-only-cases-order',
+     'case-only-l-cm', 'case-only-l-in', 'case-only-w-cm', 'case-only-w-in',
+     'case-only-h-cm', 'case-only-h-in',
+     'case-only-weight-kg', 'case-only-weight-lbs', 'case-only-weight-oz'
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !on;
+    });
+  }
+
+  // ── Manual Pallet Override (Pallet View) ────────────────────────────
+  // Case-dims sibling of pallet Manual mode. When ON, the Pallet View +
+  // Container View build off the Case Only Override case dimensions
+  // (renderPalletViz reads its `caseOn` branch), WITHOUT flipping the
+  // full global Case Only mode — so the Product/Outer columns stay live
+  // and freight/shipping keep using the carton/product path. Freight is
+  // deliberately untouched: this override is pallet + container only.
+  function onPalletCaseOverrideToggle() {
+    const cb = document.getElementById('pallet-case-override');
+    if (!cb) return;
+    const on = !!cb.checked;
+    if (on) {
+      // Mutually exclusive with pallet Manual mode (product dims) —
+      // case dims win.
+      const pm = document.getElementById('pallet-manual');
+      if (pm && pm.checked) { pm.checked = false; if (typeof onPalletManualToggle === 'function') onPalletManualToggle(); }
+    }
+    // Make the Case Only fields editable so the operator can enter the
+    // case dims this override reads from.
+    _syncCaseOnlyFieldsEnabled();
+    // Refresh the case-only hint (totals/CBM) since the fields just
+    // became live, then repaint the pallet + container views.
+    if (typeof onCaseOnlyChanged === 'function') onCaseOnlyChanged();
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
   // ── Ship-mode helpers — SINGLE SOURCE OF TRUTH ───────────────────────
@@ -15434,7 +15518,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     //   • manualOn  → use PRODUCT dims directly on the pallet base
     //     (existing manual mode).
     //   • default   → carton mode (outer carton dims).
-    const caseOn   = !!document.getElementById('case-only-override')?.checked;
+    // caseOn is true when the full Case Only Override (Product
+    // Dimensions) OR the Manual Pallet Override (Pallet View) is on —
+    // both build the pallet + container off the same case dims. This is
+    // pallet/container-scoped: freight keys off the main checkbox only
+    // (see _caseOnlyActive), so it stays on the carton/product path.
+    const caseOn   = !!document.getElementById('case-only-override')?.checked
+                  || !!document.getElementById('pallet-case-override')?.checked;
     const manualOn = !caseOn && !!document.getElementById('pallet-manual')?.checked;
     let bL, bW, bH;
     if (caseOn) {
@@ -29323,6 +29413,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         caseOnlyEl.checked = !!data.caseOnlyOverride;
         if (typeof onCaseOnlyToggle === 'function') onCaseOnlyToggle();
       }
+      // Manual Pallet Override — restore after the main Case Only toggle
+      // so its field-enable state layers on correctly. Skipped implicitly
+      // when the main override is on (that path disables + clears it).
+      const palletCaseOverrideEl = document.getElementById('pallet-case-override');
+      if (palletCaseOverrideEl && !palletCaseOverrideEl.disabled) {
+        palletCaseOverrideEl.checked = !!data.palletCaseOverride;
+        if (typeof onPalletCaseOverrideToggle === 'function') onPalletCaseOverrideToggle();
+      }
       // Pallet load mode — pallet | loose. Pick the radio that matches
       // the saved value (defaults to "pallet" when blank / legacy).
       const _loadModeSaved = data.palletLoadMode === 'loose' ? 'loose' : 'pallet';
@@ -31475,6 +31573,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // outer carton dims and fits products directly on the 40 × 48
       // pallet base. Used for crates / unboxed shipments.
       palletManualMode: !!document.getElementById('pallet-manual')?.checked,
+      // Manual Pallet Override — builds pallet + container from the Case
+      // Only case dims without flipping full Case Only mode (freight
+      // stays on the carton path). Pallet-view-scoped sibling of the
+      // manual flag above.
+      palletCaseOverride: !!document.getElementById('pallet-case-override')?.checked,
       // Product Dimensions lock — disables L/W/H/weight inputs and
       // floors the pallet-fit suggestion engine at the product dims so
       // it can't recommend a smaller outer carton.
@@ -39146,6 +39249,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ['freightCostOverrideOn','freight-cost-override-toggle'],
       ['weightOnlyOverride',   'weight-only-override'],
       ['caseOnlyOverride',     'case-only-override'],
+      ['palletCaseOverride',   'pallet-case-override'],
       ['materialSecondEnabled','mat2-toggle'],
     ];
 
