@@ -9979,6 +9979,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 ══════════════════════════════════════════════════════════════════════ -->
 <div id="view-crm" class="view">
   <main class="container" style="max-width:none; padding:0 16px 16px;">
+    <!-- CRM board search — filters cards live across EVERY field:
+         company, contact, title, email, phone, source, labels, notes,
+         comments, and the person(s) assigned. Sits above the board so
+         it never scrolls away and keeps focus across re-renders (the
+         input lives outside #crm-board, which is the only element
+         renderCrmBoard rebuilds). -->
+    <div class="crm-search-row" style="display:flex; align-items:center; gap:10px; margin:2px 0 12px; flex-wrap:wrap;">
+      <div style="position:relative; flex:1 1 340px; max-width:480px; min-width:220px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--text-muted); pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="crm-search-input" autocomplete="off"
+          placeholder="Search leads — name, contact, email, source, label, assignee, notes, comments…"
+          oninput="onCrmSearchInput(this.value)" onkeydown="if(event.key==='Escape')clearCrmSearch()"
+          style="width:100%; box-sizing:border-box; height:38px; padding:0 34px 0 34px; border:1px solid var(--border); border-radius:9px; background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" />
+        <button id="crm-search-clear" onclick="clearCrmSearch()" title="Clear search" tabindex="-1"
+          style="display:none; position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-muted); font-size:18px; line-height:1; cursor:pointer; padding:2px 4px;">×</button>
+      </div>
+      <span id="crm-search-count" style="font-size:12px; color:var(--text-muted); font-weight:600;"></span>
+    </div>
     <div id="crm-board" class="crm-board"></div>
   </main>
 </div><!-- /#view-crm -->
@@ -37402,6 +37420,47 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
   setInterval(_pollCrm, 4000);
 
+  // ── CRM board search ────────────────────────────────────────────────
+  // Free-text filter over the whole board. Multi-token AND: every
+  // whitespace-separated token must appear somewhere in the card's
+  // searchable text (all fields + assignees + labels + comments +
+  // column). Empty query → everything shows.
+  var _crmSearchQuery = '';
+  function onCrmSearchInput(v) {
+    _crmSearchQuery = String(v == null ? '' : v).trim();
+    const clr = document.getElementById('crm-search-clear');
+    if (clr) clr.style.display = _crmSearchQuery ? '' : 'none';
+    renderCrmBoard();
+  }
+  function clearCrmSearch() {
+    _crmSearchQuery = '';
+    const inp = document.getElementById('crm-search-input');
+    if (inp) inp.value = '';
+    const clr = document.getElementById('crm-search-clear');
+    if (clr) clr.style.display = 'none';
+    renderCrmBoard();
+    if (inp) inp.focus();
+  }
+  // Build the lowercase haystack for one card.  separators keep
+  // tokens from bleeding across fields (so "karen acme" needs both,
+  // not a phrase spanning two fields — and never a false match on the
+  // join seam).
+  function _crmCardHaystack(c) {
+    const parts = [c.company, c.contact, c.title, c.email, c.phone, c.source, c.notes];
+    if (Array.isArray(c.assignees)) parts.push(c.assignees.join(' '));
+    else if (typeof c.assignee === 'string') parts.push(c.assignee);
+    if (Array.isArray(c.labels)) c.labels.forEach(l => { if (l) parts.push(l.name); });
+    if (Array.isArray(c.comments)) c.comments.forEach(cm => { if (cm) { parts.push(cm.text); parts.push(cm.author); } });
+    const col = (typeof CRM_COLUMNS !== 'undefined') ? CRM_COLUMNS.find(x => x.id === c.column) : null;
+    if (col) parts.push(col.label);
+    return parts.filter(Boolean).join('  ').toLowerCase();
+  }
+  function _crmCardMatchesSearch(c, tokens) {
+    if (!tokens.length) return true;
+    const hay = _crmCardHaystack(c);
+    return tokens.every(t => hay.includes(t));
+  }
+
   function renderCrmBoard() {
     // Defensive init — when the router fires renderCrmBoard during
     // page boot (because the operator refreshed on #/crm), it can
@@ -37452,8 +37511,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
       });
     });
+    // Search filter — tokenize the current query once, then keep only
+    // matching cards per column. Column counts + the header hint reflect
+    // the filtered view so the operator sees exactly how many matched.
+    const _tokens = _crmSearchQuery ? _crmSearchQuery.toLowerCase().split(/\s+/).filter(Boolean) : [];
+    let _matchTotal = 0, _grandTotal = 0;
     const _newHtml = CRM_COLUMNS.map(col => {
-      const cards = byCol[col.id] || [];
+      const allCards = byCol[col.id] || [];
+      _grandTotal += allCards.length;
+      const cards = _tokens.length ? allCards.filter(c => _crmCardMatchesSearch(c, _tokens)) : allCards;
+      _matchTotal += cards.length;
       const cardsHtml = cards.map(c => _crmCardHtml(c, col)).join('');
       return `<div class="crm-column" data-col="${col.id}"
                    ondragover="event.preventDefault(); this.classList.add('drag-over');"
@@ -37474,6 +37541,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     board.scrollLeft = _scrollLeft;
     _attachCrmBoardGrabScroll(board);
     _updateCrmNavBadge();
+    // Search result hint — "N of M leads" while filtering, blank when not.
+    const _countEl = document.getElementById('crm-search-count');
+    if (_countEl) {
+      _countEl.textContent = _tokens.length
+        ? `${_matchTotal} of ${_grandTotal} lead${_grandTotal === 1 ? '' : 's'}`
+        : '';
+    }
+    // Keep the clear button + input value in sync when the board is
+    // re-rendered by something other than typing (e.g. live-sync poll).
+    const _srchInp = document.getElementById('crm-search-input');
+    if (_srchInp && document.activeElement !== _srchInp && _srchInp.value.trim() !== _crmSearchQuery) {
+      _srchInp.value = _crmSearchQuery;
+    }
+    const _srchClr = document.getElementById('crm-search-clear');
+    if (_srchClr) _srchClr.style.display = _crmSearchQuery ? '' : 'none';
   }
 
   // Trello-style click-and-drag scrolling for mouse users (trackpads
