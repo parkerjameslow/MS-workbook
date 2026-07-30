@@ -1819,14 +1819,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        padding) with the rest of the columns keeping the same
        percentage widths the operator had before. */
     #samples-table th:nth-child(1), #samples-table td:nth-child(1) { width: 48px; padding-left: 18px; padding-right: 4px; }  /* Checkbox */
-    #samples-table th:nth-child(2), #samples-table td:nth-child(2) { width: 22%; }  /* Item */
-    #samples-table th:nth-child(3), #samples-table td:nth-child(3) { width: 16%; }  /* Client (pill) */
-    #samples-table th:nth-child(4), #samples-table td:nth-child(4) { width: 22%; }  /* Workbook (pill) */
-    #samples-table th:nth-child(5), #samples-table td:nth-child(5) { width: 8%;  }  /* Qty */
-    #samples-table th:nth-child(6), #samples-table td:nth-child(6) { width: 9%;  }  /* RMB */
-    #samples-table th:nth-child(7), #samples-table td:nth-child(7) { width: 9%;  }  /* USD */
-    #samples-table th:nth-child(8), #samples-table td:nth-child(8) { width: 6%;  }  /* Lead */
-    #samples-table th:nth-child(9), #samples-table td:nth-child(9) { width: 8%;  }  /* Status */
+    #samples-table th:nth-child(2), #samples-table td:nth-child(2) { width: 18%; }  /* Item */
+    #samples-table th:nth-child(3), #samples-table td:nth-child(3) { width: 15%; }  /* Client (pill) */
+    #samples-table th:nth-child(4), #samples-table td:nth-child(4) { width: 18%; }  /* Workbook (pill) */
+    #samples-table th:nth-child(5), #samples-table td:nth-child(5) { width: 7%;  }  /* Qty */
+    #samples-table th:nth-child(6), #samples-table td:nth-child(6) { width: 8%;  }  /* RMB */
+    #samples-table th:nth-child(7), #samples-table td:nth-child(7) { width: 8%;  }  /* USD */
+    #samples-table th:nth-child(8), #samples-table td:nth-child(8) { width: 5%;  }  /* Lead */
+    #samples-table th:nth-child(9), #samples-table td:nth-child(9) { width: 12%; }  /* Direction */
+    #samples-table th:nth-child(10), #samples-table td:nth-child(10) { width: 9%; }  /* Status */
     #samples-table th, #samples-table td { padding-left: 12px; padding-right: 12px; vertical-align: middle; }
     #samples-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* The checkbox cell must not inherit text-overflow:ellipsis from
@@ -9257,12 +9258,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
         <span class="section-title" style="margin-right:auto;">All Sample Requests</span>
-        <div style="display:flex; gap:6px;">
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
           <button class="status-filter-btn active" id="samples-filter-all" onclick="filterSamples('all', this)">All</button>
           <button class="status-filter-btn" id="samples-filter-pending" onclick="filterSamples('pending', this)">Pending</button>
           <button class="status-filter-btn" id="samples-filter-requested" onclick="filterSamples('requested', this)">Requested</button>
           <button class="status-filter-btn" id="samples-filter-received" onclick="filterSamples('received', this)">Received</button>
           <button class="status-filter-btn" id="samples-filter-approved" onclick="filterSamples('approved', this)">Approved</button>
+          <!-- Direction filter — orthogonal to the status filters above.
+               Its own active state (dir-filter-btn class) so it doesn't
+               fight the status toggle. Counts update per render. -->
+          <span style="width:1px; height:20px; background:var(--border); margin:0 4px;"></span>
+          <button class="status-filter-btn dir-filter-btn active" id="samples-dir-all" onclick="filterSamplesDir('all', this)">All Directions</button>
+          <button class="status-filter-btn dir-filter-btn" id="samples-dir-from" onclick="filterSamplesDir('from', this)">← From China <span id="samples-dir-from-count" style="opacity:0.7;"></span></button>
+          <button class="status-filter-btn dir-filter-btn" id="samples-dir-to" onclick="filterSamplesDir('to', this)">→ To China <span id="samples-dir-to-count" style="opacity:0.7;"></span></button>
         </div>
       </div>
       <div class="section-body" style="padding:0;">
@@ -9282,6 +9290,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">RMB</th>
               <th style="text-align:right;">USD</th>
               <th>LEAD</th>
+              <th style="text-align:center;">DIRECTION</th>
               <th style="text-align:center;">STATUS</th>
               <th style="width:36px;"></th>
             </tr>
@@ -30000,6 +30009,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   // sampleMeta is stored alongside rfqItems: sampleStatuses[rowIndex] = 'pending'|'received' etc.
   let _samplesFilter = 'all';
+  // Sample DIRECTION — orthogonal to status. 'from' = the produced
+  // sample the factory ships back to us to approve (the default, and
+  // what every existing sample is). 'to' = a physical reference we ship
+  // TO the factory to match. Stored per line item in
+  // detail.sampleDirections[rowIndex]; filtered independently of status.
+  let _samplesDirFilter = 'all';
+  const SAMPLE_DIR_LABELS = { from: '← From China', to: '→ To China' };
+  // Row-select pill styling per direction. From = orange (matches the
+  // sample branding); To = blue so outbound references read distinctly.
+  const SAMPLE_DIR_STYLES = {
+    from: { bg: 'rgba(232,117,26,0.12)', border: 'rgba(232,117,26,0.4)', text: '#E8751A' },
+    to:   { bg: 'rgba(107,147,255,0.12)', border: 'rgba(107,147,255,0.4)', text: '#6b93ff' },
+  };
   // Bulk-select state for the Samples view. Composite key is
   // `${clientName}|${workbookId}|${rowIndex}` so a single sample row
   // is uniquely addressable even when the operator has multiple
@@ -30066,6 +30088,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       detail.rfqItems.forEach((item, idx) => {
         if (!item.sample) return;
         const status = (detail.sampleStatuses && detail.sampleStatuses[idx]) || 'pending';
+        // Default direction is 'from' (factory → us) — every legacy
+        // sample predates this field and is inbound for approval.
+        const direction = (detail.sampleDirections && detail.sampleDirections[idx]) || 'from';
         const usdPrice = item.priceRmb ? (parseFloat(item.priceRmb) / USD_TO_RMB).toFixed(2) : '';
         results.push({
           clientName,
@@ -30077,6 +30102,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           priceUsd: usdPrice,
           leadTime: item.leadTime || '',
           status,
+          direction,
           rowIndex: idx,
           key
         });
@@ -30131,7 +30157,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const emptyEl = document.getElementById('samples-empty');
     const tableEl = document.getElementById('samples-table');
 
-    const filtered = _samplesFilter === 'all' ? allSamples : allSamples.filter(s => s.status === _samplesFilter);
+    // Status filter first, then compute direction counts within that
+    // set (so "3 From China" reflects the current status view), then
+    // apply the direction filter.
+    const statusFiltered = _samplesFilter === 'all' ? allSamples : allSamples.filter(s => s.status === _samplesFilter);
+    const _dirCounts = { from: 0, to: 0 };
+    statusFiltered.forEach(s => { if (_dirCounts[s.direction] !== undefined) _dirCounts[s.direction]++; });
+    const _fc = document.getElementById('samples-dir-from-count');
+    const _tc = document.getElementById('samples-dir-to-count');
+    if (_fc) _fc.textContent = `(${_dirCounts.from})`;
+    if (_tc) _tc.textContent = `(${_dirCounts.to})`;
+    const filtered = _samplesDirFilter === 'all' ? statusFiltered : statusFiltered.filter(s => s.direction === _samplesDirFilter);
 
     // Drop selections that are no longer visible (e.g. operator
     // changed the filter to one that excludes a previously-selected
@@ -30186,6 +30222,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td style="text-align:right; color:var(--success);">${usd}</td>
           <td style="color:var(--text-muted);">${lead}</td>
           <td style="text-align:center;">
+            <select class="sample-dir-sel" onchange="updateSampleDirection('${s.key}', ${s.rowIndex}, this.value)"
+              title="Direction — From China (factory ships the sample back to us) or To China (we ship a reference for the factory to match)"
+              style="background:${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).bg}; border:1px solid ${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).border}; color:${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">
+              <option value="from" ${s.direction === 'from' ? 'selected' : ''}>← From China</option>
+              <option value="to" ${s.direction === 'to' ? 'selected' : ''}>→ To China</option>
+            </select>
+          </td>
+          <td style="text-align:center;">
             <select class="sample-status-sel" onchange="updateSampleStatus('${s.key}', ${s.rowIndex}, this.value)"
               style="background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">
               ${SAMPLE_STATUSES.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${SAMPLE_STATUS_LABELS[st]}</option>`).join('')}
@@ -30233,6 +30277,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (detail.sampleStatuses) {
       delete detail.sampleStatuses[rowIndex];
     }
+    if (detail.sampleDirections) {
+      delete detail.sampleDirections[rowIndex];
+    }
     const [, workbookId] = key.split('|');
     const dbId = dbWorkbookMap[key] || workbookId;
     apiCall('save_workbook_detail', { id: dbId, detail, changed_by: getCurrentUser() });
@@ -30256,9 +30303,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (countBadge) countBadge.textContent = freshSamples.length === 1 ? '1 sample' : `${freshSamples.length} samples`;
   }
 
+  function updateSampleDirection(key, rowIndex, newDir) {
+    if (!workbookDetail[key]) return;
+    if (!workbookDetail[key].sampleDirections) workbookDetail[key].sampleDirections = {};
+    workbookDetail[key].sampleDirections[rowIndex] = newDir;
+    const [clientName, workbookId] = key.split('|');
+    const dbId = dbWorkbookMap[key] || workbookId;
+    apiCall('save_workbook_detail', { id: dbId, detail: workbookDetail[key], changed_by: getCurrentUser() });
+    saveToLocalStorage();
+    renderSamplesTable(collectAllSamples());
+  }
+
   function filterSamples(filter, btn) {
     _samplesFilter = filter;
-    document.querySelectorAll('#view-samples .status-filter-btn').forEach(b => b.classList.remove('active'));
+    // Only toggle the STATUS group's active state — the direction
+    // buttons share the .status-filter-btn class but carry .dir-filter-btn
+    // too, so exclude them here (and vice-versa in filterSamplesDir).
+    document.querySelectorAll('#view-samples .status-filter-btn:not(.dir-filter-btn)').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    renderSamplesTable(collectAllSamples());
+  }
+
+  function filterSamplesDir(dir, btn) {
+    _samplesDirFilter = dir;
+    document.querySelectorAll('#view-samples .dir-filter-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
     renderSamplesTable(collectAllSamples());
   }
@@ -31752,6 +31820,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       clientLogo: existing.clientLogo || '',
       // Preserve sample statuses (managed from samples dashboard, not DOM-driven)
       sampleStatuses: existing.sampleStatuses || {},
+      // Preserve sample directions (From/To China) — same, samples-dashboard managed
+      sampleDirections: existing.sampleDirections || {},
       // Selected pricing tier
       selectedTierIdx: _selectedTierId,
       // Total Landed Cost (Pricing tab) — workbook-level overrides.
