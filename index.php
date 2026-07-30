@@ -9985,7 +9985,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          it never scrolls away and keeps focus across re-renders (the
          input lives outside #crm-board, which is the only element
          renderCrmBoard rebuilds). -->
-    <div class="crm-search-row" style="display:flex; align-items:center; gap:10px; margin:2px 0 12px; flex-wrap:wrap;">
+    <div class="crm-search-row" style="display:flex; align-items:center; gap:10px; margin:18px 0 12px; flex-wrap:wrap;">
       <div style="position:relative; flex:1 1 340px; max-width:480px; min-width:220px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--text-muted); pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" id="crm-search-input" autocomplete="off"
