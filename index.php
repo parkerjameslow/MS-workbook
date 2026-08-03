@@ -8331,7 +8331,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border);">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
           <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">40' High Cube Container View</div>
-          <div id="container-stats-inline" style="font-size:12px; color:var(--text-muted);"></div>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <!-- View toggle — 3D iso / bird's-eye / front. Bird's-eye +
+                 front show the individual carton packing (Loose Load). -->
+            <span class="fwb-seg" role="group" aria-label="Container view">
+              <button type="button" class="fwb-btn active" id="cv-view-3d" onclick="_setContainerView('3d')" title="3D isometric view">3D</button>
+              <button type="button" class="fwb-btn" id="cv-view-top" onclick="_setContainerView('top')" title="Bird's-eye (top-down) packing plan — Loose Load">Bird’s-eye</button>
+              <button type="button" class="fwb-btn" id="cv-view-front" onclick="_setContainerView('front')" title="Front / container-door elevation — Loose Load">Front</button>
+            </span>
+            <div id="container-stats-inline" style="font-size:12px; color:var(--text-muted);"></div>
+          </div>
         </div>
         <div style="display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap;">
           <div style="flex:1 1 600px; min-width:300px; display:flex; flex-direction:column; gap:14px;">
@@ -14490,7 +14499,99 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const HC_L = 1203, HC_W = 235, HC_H = 269;
   const HC_MAX_KG = 26000;     // max payload (kg)
   const HC_USABLE_CBM = 67;    // usable cargo volume (m³)
-  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg, unitCbmArg, unitWeightKgArg, totalCartonsArg) {
+
+  // Which container view is showing: '3d' (iso) | 'top' (bird's-eye) |
+  // 'front' (container-end elevation). Toggled by the buttons above the
+  // canvas. Session-level (not per-workbook) — a viewing preference.
+  var _containerViewMode = '3d';
+
+  // Geometric carton packing grid for a 40' HC (loose, floor-loaded).
+  // colsX along length, colsZ along width, layers up the height. Fill
+  // order is length-slices from the back wall (cx outer, then cz, then
+  // ly) so a partial load packs the back of the container first.
+  function _containerCartonGrid(boxL, boxW, boxH, totalCartons) {
+    const colsX  = Math.max(0, Math.floor(HC_L / boxL));
+    const colsZ  = Math.max(0, Math.floor(HC_W / boxW));
+    const layers = Math.max(0, Math.floor(HC_H / boxH));
+    const capacity = colsX * colsZ * layers;
+    const toPlace  = Math.min(totalCartons > 0 ? totalCartons : capacity, capacity);
+    return { colsX, colsZ, layers, capacity, toPlace };
+  }
+
+  // Flat orthographic container views drawn on the 2D canvas. view =
+  // 'top' (looking straight down — floor plan, cells shaded by stack
+  // height) or 'front' (looking at the container doors — the back
+  // slice's cross-section, showing how cartons stack). Own scaling, so
+  // no dependence on the iso projection.
+  function _drawContainerFlat(ctx, CW, CH, opts, view) {
+    ctx.clearRect(0, 0, CW, CH);
+    const { loose, boxL, boxW, boxH, totalCartons } = opts;
+    if (!loose || !(boxL > 0 && boxW > 0 && boxH > 0)) {
+      ctx.fillStyle = '#9ba3c0';
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(view === 'top' ? 'Bird’s-eye view' : 'Front view', CW / 2, CH / 2 - 10);
+      ctx.fillText('available in Loose Load with carton dimensions entered', CW / 2, CH / 2 + 10);
+      return;
+    }
+    const g = _containerCartonGrid(boxL, boxW, boxH, totalCartons);
+    const perSlice = g.colsZ * g.layers;
+    const occ = (cx, cz, ly) => (cx * perSlice + cz * g.layers + ly) < g.toPlace;
+    const PAD = 46;
+    const worldW = view === 'top' ? HC_L : HC_W;
+    const worldH = view === 'top' ? HC_W : HC_H;
+    const s = Math.min((CW - 2 * PAD) / worldW, (CH - 2 * PAD - 20) / worldH);
+    const offX = (CW - worldW * s) / 2;
+    const offY = (CH - worldH * s) / 2 + 8;
+    // Container outline
+    ctx.strokeStyle = 'rgba(70,130,180,0.75)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(offX, offY, worldW * s, worldH * s);
+    const offZc = (HC_W - g.colsZ * boxW) / 2; // center the carton block across width
+    if (view === 'top') {
+      const cw = boxL * s, ch = boxW * s;
+      for (let cx = 0; cx < g.colsX; cx++) for (let cz = 0; cz < g.colsZ; cz++) {
+        if (!occ(cx, cz, 0)) continue;
+        let stack = 0; for (let ly = 0; ly < g.layers; ly++) if (occ(cx, cz, ly)) stack++;
+        const frac = g.layers > 0 ? stack / g.layers : 0;
+        const px = offX + cx * boxL * s, py = offY + (offZc + cz * boxW) * s;
+        ctx.fillStyle = `rgba(232,117,26,${(0.35 + 0.6 * frac).toFixed(3)})`;
+        ctx.fillRect(px, py, cw, ch);
+        ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1;
+        ctx.strokeRect(px, py, cw, ch);
+      }
+    } else {
+      // Front = back slice (cx=0) cross-section, cartons stacked cz × ly.
+      const cw = boxW * s, ch = boxH * s;
+      for (let cz = 0; cz < g.colsZ; cz++) for (let ly = 0; ly < g.layers; ly++) {
+        if (!occ(0, cz, ly)) continue;
+        const px = offX + (offZc + cz * boxW) * s;
+        const py = offY + (HC_H - (ly + 1) * boxH) * s; // floor-up
+        ctx.fillStyle = '#E8751A';
+        ctx.fillRect(px, py, cw, ch);
+        ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1;
+        ctx.strokeRect(px, py, cw, ch);
+      }
+    }
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '700 12px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'left';
+    const cap = view === 'top'
+      ? `Bird’s-eye · ${g.colsX} × ${g.colsZ} cartons per floor · up to ${g.layers} high · darker = taller stack`
+      : `Front (container doors) · ${g.colsZ} wide × ${g.layers} high per slice`;
+    ctx.fillText(cap, offX, offY - 8);
+  }
+
+  function _setContainerView(mode) {
+    _containerViewMode = (mode === 'top' || mode === 'front') ? mode : '3d';
+    ['3d', 'top', 'front'].forEach(m => {
+      const b = document.getElementById('cv-view-' + m);
+      if (b) b.classList.toggle('active', m === _containerViewMode);
+    });
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+  }
+
+  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg, unitCbmArg, unitWeightKgArg, totalCartonsArg, boxLArg, boxWArg, boxHArg) {
     const canvas = document.getElementById('container-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -14532,6 +14633,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Total visible stack height for canvas scaling.
     const totalPalletsHeight = Math.min(verticalLayers * palletStack, HC_H);
 
+    // Container view mode + ship-unit context — computed BEFORE the iso
+    // render so the flat (top / front) views can reuse them. Flat views
+    // are Loose-Load only (carton grid); pallet mode always draws 3D.
+    const _ctxLoadMode = (typeof _palletLoadMode === 'function') ? _palletLoadMode() : 'pallet';
+    const _ctxLoose    = _ctxLoadMode === 'loose';
+    const _cvMode = (_containerViewMode === 'top' || _containerViewMode === 'front')
+      ? _containerViewMode : '3d';
+    const _bxL = (typeof boxLArg === 'number' && boxLArg > 0) ? boxLArg : 0;
+    const _bxW = (typeof boxWArg === 'number' && boxWArg > 0) ? boxWArg : 0;
+    const _bxH = (typeof boxHArg === 'number' && boxHArg > 0) ? boxHArg : 0;
+    const _tCartons = (typeof totalCartonsArg === 'number' && totalCartonsArg > 0) ? totalCartonsArg : 0;
+
+    if (_cvMode !== '3d') {
+      _drawContainerFlat(ctx, CW, CH, { loose: _ctxLoose, boxL: _bxL, boxW: _bxW, boxH: _bxH, totalCartons: _tCartons }, _cvMode);
+    } else {
     // Iso projection — shared with the pallet viz. Generous padding so
     // the W and L labels (which extend down/right) and H label (left)
     // fit comfortably without clipping. Sized for 16px dim labels +
@@ -14554,36 +14670,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // the bottom one so it overlaps correctly. In LOOSE-LOAD mode the
     // wood pallet deck is skipped — cargo blocks sit straight on the
     // container floor, freeing the 15 cm of deck height for product.
-    const _ctxLoadMode = (typeof _palletLoadMode === 'function') ? _palletLoadMode() : 'pallet';
-    const _ctxLoose    = _ctxLoadMode === 'loose';
     const palletDeckHere = _ctxLoose ? 0 : PALLET_DECK;
     let drawn = 0;
     const stackOnly = Math.max(0, palletStack - palletDeckHere);
     if (_ctxLoose) {
-      // ── Loose Load — draw cargo PROPORTIONAL to actual fill ──────────
-      // The pallet-block loop below packs the container regardless of
-      // volume, so a 55%-full loose load looked ~packed. Instead draw a
-      // single floor-to-ceiling, full-width block whose LENGTH is the
-      // fraction of the container the cartons actually occupy. Fraction
-      // is carton-count based (cartons ÷ cartons-per-container, which
-      // already bakes in the ~85% packing allowance) so it reads as
-      // "how full is this box" at a glance.
+      // ── Loose Load — draw INDIVIDUAL cartons filling the used space ──
+      // Grid of real-dimension cartons, floor-loaded from the back wall
+      // for the fraction of the container the load occupies. Reads as a
+      // packed wall of boxes (not one solid block) and shows the fill
+      // level by how far it reaches down the container.
       const _dLuCbm = (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0;
       const _dLuWt  = (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0;
-      const _dLuCartons = (typeof totalCartonsArg === 'number' && totalCartonsArg > 0) ? totalCartonsArg : 0;
       const _dCPC = _dLuCbm > 0
         ? Math.max(1, Math.min(
             Math.floor((HC_USABLE_CBM * 0.85) / _dLuCbm),
             _dLuWt > 0 ? Math.floor(HC_MAX_KG / _dLuWt) : Infinity))
         : 0;
-      // Fill fraction of ONE container. ≥1 container → this one is full.
-      const _fillFrac = _dCPC > 0 ? Math.min(1, _dLuCartons / _dCPC) : 0;
-      if (_fillFrac > 0) {
-        const cargoLen = Math.max(1, _fillFrac * HC_L);
-        // A slim ceiling gap so the block doesn't visually fuse with the
-        // container roof; full width so length reads as the fill level.
-        const cargoH = HC_H * 0.94;
-        drawIsoBox(ctx, 0, 0, 0, cargoLen, cargoH, HC_W, s, ox, oy, '#E8751A');
+      const _fillFrac = _dCPC > 0 ? Math.min(1, _tCartons / _dCPC) : 0;
+      if (_fillFrac > 0 && _bxL > 0 && _bxW > 0 && _bxH > 0) {
+        const usedLen = Math.max(_bxL, _fillFrac * HC_L);
+        const cX = Math.max(1, Math.floor(usedLen / _bxL));
+        const cZ = Math.max(1, Math.floor(HC_W / _bxW));
+        const cY = Math.max(1, Math.floor((HC_H * 0.98) / _bxH));
+        const offZ = Math.max(0, (HC_W - cZ * _bxW) / 2);
+        // Painter's order: bottom-up, back-to-front (diagonal ascending).
+        for (let ly = 0; ly < cY; ly++) {
+          for (let diag = 0; diag <= cX + cZ - 2; diag++) {
+            for (let cx = Math.max(0, diag - cZ + 1); cx <= Math.min(diag, cX - 1); cx++) {
+              const cz = diag - cx;
+              drawIsoBox(ctx, cx * _bxL, ly * _bxH, offZ + cz * _bxW, _bxL, _bxH, _bxW, s, ox, oy, '#E8751A');
+            }
+          }
+        }
+      } else if (_fillFrac > 0) {
+        // No carton dims yet — fall back to a proportional solid block.
+        drawIsoBox(ctx, 0, 0, 0, Math.max(1, _fillFrac * HC_L), HC_H * 0.94, HC_W, s, ox, oy, '#E8751A');
       }
     } else {
       for (let layerIdx = 0; layerIdx < verticalLayers && drawn < palletsToShow; layerIdx++) {
@@ -14799,6 +14920,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
     ctx.fillText("40' High Cube Container", CW - 14, 12);
+    } // end iso (3d) view branch
 
     // ── Compute container math ─────────────────────────────────────────
     const containersNeeded = palletsNeeded > 0 ? Math.ceil(palletsNeeded / palletsPerContainer) : 0;
@@ -15072,6 +15194,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtCbm(cargoCbm)}</div>
               <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${totalCartonsCV.toLocaleString()} cartons × ${fmtCbm(unitCbmCV)} each</div>
             </div>` : ''}
+            ${cargoCbm > 0 ? `
+            <div>
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Space Used <span style="opacity:0.6; text-transform:none; letter-spacing:0;">(loose)</span></div>
+              <div style="font-size:16px; font-weight:700; color:var(--text); line-height:1.3;">${fmtCbm(cargoCbm / 0.85)}</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">cargo + ~15% loose stacking gaps</div>
+            </div>` : ''}
           </div>
         `;
         if (fillEl) {
@@ -15129,6 +15257,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Volume (CBM)</div>
               <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${cargoCbm > 0 ? fmtCbm(cargoCbm) : '—'}</div>
               <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${totalCartonsCV > 0 ? `${totalCartonsCV.toLocaleString()} ${unitWord} × ${fmtCbm(unitCbmCV)} each` : 'actual cargo volume'}</div>
+            </div>` : ''}
+            ${(palletCbm > 0 && palletsNeeded > 0) ? `
+            <div>
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Space Used <span style="opacity:0.6; text-transform:none; letter-spacing:0;">(on pallets)</span></div>
+              <div style="font-size:16px; font-weight:700; color:var(--text); line-height:1.3;">${fmtCbm(palletCbm * palletsNeeded)}</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${palletsNeeded.toLocaleString()} pallet${palletsNeeded === 1 ? '' : 's'} — footprint + deck + stack gaps</div>
             </div>` : ''}
           </div>
         `;
@@ -16331,7 +16465,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       renderContainerViz(
         palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm,
         palletWeightKg, totalPerPallet, unitWordP,
-        unitCbmM3, unitWeightKg, totalCartons
+        unitCbmM3, unitWeightKg, totalCartons, bL, bW, bH
       );
     }
 
