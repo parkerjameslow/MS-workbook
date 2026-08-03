@@ -5170,6 +5170,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       font-weight: 600;
     }
 
+    /* Freight weight-basis picker — segmented control (Actual /
+       Volumetric / Chargeable) that chooses which weight bills. */
+    .fwb-seg { display:inline-flex; gap:2px; background:var(--surface2); border:1px solid var(--border); border-radius:7px; padding:2px; }
+    .fwb-btn { font-size:11px; font-weight:600; color:var(--text-muted); background:transparent; border:none; border-radius:5px; padding:4px 9px; cursor:pointer; font-family:inherit; white-space:nowrap; transition:background 0.12s, color 0.12s; }
+    .fwb-btn:hover { color:var(--text); }
+    .fwb-btn.active { background:var(--accent); color:#fff; }
+    /* Highlight the weight row that is currently billing. */
+    .freight-result.fwb-billing .freight-result-value { color: var(--accent); font-weight: 700; }
+
     .freight-verdict.volumetric {
       background: rgba(251,191,36,0.1);
       border: 1px solid rgba(251,191,36,0.3);
@@ -8523,17 +8532,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="sh-box sh-results-box">
         <div class="sh-box-title">Results</div>
 
-        <div class="freight-result">
+        <div class="freight-result" id="freight-row-actual">
           <span class="freight-result-label">Actual Weight</span>
           <span class="freight-result-value" id="freight-out-actual">—</span>
         </div>
-        <div class="freight-result">
+        <div class="freight-result" id="freight-row-volumetric">
           <span class="freight-result-label">Volumetric Weight</span>
           <span class="freight-result-value" id="freight-out-vol">—</span>
         </div>
-        <div class="freight-result">
+        <div class="freight-result" id="freight-row-chargeable">
           <span class="freight-result-label">Chargeable Weight</span>
           <span class="freight-result-value highlight" id="freight-out-charge">—</span>
+        </div>
+        <!-- Weight-basis picker — the operator chooses which weight drives
+             the Estimated Shipping Cost. Default Chargeable = max(actual,
+             volumetric); Actual or Volumetric force that basis instead.
+             Persists per workbook (detail.freightWeightBasis). -->
+        <div class="freight-result" style="align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="freight-result-label">Bill cost on</span>
+          <span class="fwb-seg">
+            <button type="button" class="fwb-btn" id="fwb-actual" onclick="setFreightWeightBasis('actual')">Actual</button>
+            <button type="button" class="fwb-btn" id="fwb-volumetric" onclick="setFreightWeightBasis('volumetric')">Volumetric</button>
+            <button type="button" class="fwb-btn active" id="fwb-chargeable" onclick="setFreightWeightBasis('chargeable')">Chargeable</button>
+          </span>
         </div>
         <div class="freight-result">
           <span class="freight-result-label">Formula Used</span>
@@ -25400,6 +25421,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
+  // ── Freight weight basis ────────────────────────────────────────────
+  // Which weight drives the Estimated Shipping Cost. 'chargeable' (the
+  // default + industry norm) = max(actual, volumetric); 'actual' and
+  // 'volumetric' force that basis so the operator can bill exactly what
+  // they negotiated with the forwarder. Persisted per workbook as
+  // detail.freightWeightBasis.
+  let _freightWeightBasis = 'chargeable';
+  function _billedWeightKg(actualKg, volWeight) {
+    if (_freightWeightBasis === 'actual')     return actualKg;
+    if (_freightWeightBasis === 'volumetric') return volWeight;
+    return Math.max(actualKg, volWeight); // chargeable
+  }
+  function _syncFreightBasisButtons() {
+    ['actual', 'volumetric', 'chargeable'].forEach(b => {
+      const btn = document.getElementById('fwb-' + b);
+      if (btn) btn.classList.toggle('active', b === _freightWeightBasis);
+      const row = document.getElementById('freight-row-' + b);
+      // Highlight the billing row — but only 'actual'/'volumetric' when
+      // explicitly chosen; 'chargeable' always keeps its highlight class.
+      if (row && b !== 'chargeable') row.classList.toggle('fwb-billing', b === _freightWeightBasis);
+    });
+  }
+  function setFreightWeightBasis(basis) {
+    if (!['actual', 'volumetric', 'chargeable'].includes(basis)) basis = 'chargeable';
+    _freightWeightBasis = basis;
+    _syncFreightBasisButtons();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof renderPricingTab === 'function') renderPricingTab();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   function calcFreight() {
     syncShippingDims();
 
@@ -25568,11 +25620,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const volWeight = volume / divisor;  // kg per carton (volumetric)
 
     const chargePerCarton = Math.max(actualKg, volWeight);
+    // Billed weight = the operator's chosen basis (Actual / Volumetric /
+    // Chargeable). Drives the cost; the three weight ROWS still show all
+    // three numbers for comparison.
+    const billedPerCarton = _billedWeightKg(actualKg, volWeight);
     const totalActual     = actualKg * cartons;
     const totalVol        = volWeight * cartons;
     const totalCharge     = chargePerCarton * cartons;
-    const computedCostRmb = totalCharge * rate;
+    const totalBilled     = billedPerCarton * cartons;
+    const computedCostRmb = totalBilled * rate;
     const computedCostUsd = exchange > 0 ? computedCostRmb / exchange : 0;
+    _syncFreightBasisButtons();
     // Manual override (if active) replaces both display values + the
     // numbers the downstream cards (Total Landed Cost, Hypothetical
     // Scenarios) read back from these elements.
@@ -25602,7 +25660,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const verdictEl = document.getElementById('freight-verdict');
     const extraEl   = document.getElementById('freight-extra');
 
-    if (volWeight > actualKg) {
+    if (_freightWeightBasis !== 'chargeable') {
+      // Operator forced a specific basis — say so, and surface the delta
+      // vs the standard chargeable weight so they see what they're
+      // giving up / saving by not billing the max.
+      const basisLabel = _freightWeightBasis === 'actual' ? 'Actual' : 'Volumetric';
+      verdictEl.className = 'freight-verdict ' + (_freightWeightBasis === 'volumetric' ? 'volumetric' : 'actual');
+      verdictEl.textContent = `Billing on ${basisLabel} weight (your choice) — not the standard Chargeable (max).`;
+      const deltaKg = (chargePerCarton - billedPerCarton) * cartons; // ≥ 0
+      if (deltaKg > 0.01) {
+        const deltaRmb = deltaKg * rate;
+        extraEl.innerHTML = `vs Chargeable: <span>−¥ ${deltaRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}  /  −$ ${(deltaRmb / exchange).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span> (${deltaKg.toFixed(1)} kg less billed)`;
+        extraEl.style.display = 'block';
+      } else {
+        extraEl.style.display = 'none';
+      }
+    } else if (volWeight > actualKg) {
       verdictEl.className = 'freight-verdict volumetric';
       verdictEl.textContent = 'Volumetric weight applies — package is bulky/light.';
       const extraCostRmb = (volWeight - actualKg) * rate * cartons;
@@ -25630,7 +25703,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       { key: 'directair', div: 5000, r: freightMethodRates.directair },
     ].forEach(m => {
       const vw = volume / m.div;
-      const cw = Math.max(actualKg, vw) * cartons;  // total chargeable kg
+      const cw = _billedWeightKg(actualKg, vw) * cartons;  // total billed kg (chosen basis)
       const cr = cw * m.r;
       const cu = cr / exchange;
       const haveData = cartons > 0 && cw > 0;
@@ -29561,6 +29634,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         freightOverrideEl.checked = !!data.freightCostOverrideOn;
         if (typeof onShippingCostOverrideToggle === 'function') onShippingCostOverrideToggle();
       }
+      // Freight weight basis — restore the picker (defaults to chargeable
+      // for legacy workbooks that predate this field).
+      _freightWeightBasis = ['actual', 'volumetric', 'chargeable'].includes(data.freightWeightBasis)
+        ? data.freightWeightBasis : 'chargeable';
+      if (typeof _syncFreightBasisButtons === 'function') _syncFreightBasisButtons();
       // Weight-only override — restore the checkbox + qty + kg/lb,
       // then call the toggle so the gray-out + enable state matches.
       _s('weight-only-qty', data.weightOnlyCaseQty);
@@ -31826,6 +31904,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // instead of the chargeable-weight × rate computation.
       freightCostOverrideOn:  !!document.getElementById('freight-cost-override-toggle')?.checked,
       freightCostOverrideUsd: _v('freight-cost-override'),
+      // Which weight bills the freight cost — actual | volumetric | chargeable.
+      freightWeightBasis: _freightWeightBasis,
       // Weight-only override — skips dims, ships by Case Qty × per-case
       // Weight. Persists the checkbox + the two numbers so a hard
       // refresh keeps everything where the operator left it.
