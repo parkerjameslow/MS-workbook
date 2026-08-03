@@ -14469,7 +14469,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const HC_L = 1203, HC_W = 235, HC_H = 269;
   const HC_MAX_KG = 26000;     // max payload (kg)
   const HC_USABLE_CBM = 67;    // usable cargo volume (m³)
-  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg, unitCbmArg, unitWeightKgArg) {
+  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg, unitCbmArg, unitWeightKgArg, totalCartonsArg) {
     const canvas = document.getElementById('container-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -14770,7 +14770,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const _wbWtKey = `${currentClient}|${currentWorkbookId}`;
       if (!workbookDetail[_wbWtKey]) workbookDetail[_wbWtKey] = {};
       workbookDetail[_wbWtKey].pricingShipmentWeightKg = totalShipmentWeightKg > 0 ? totalShipmentWeightKg : 0;
-      // Note: totalShipmentCbm is computed below; we patch the cache
+      // Note: cargo CBM is computed below; we patch the cache
       // again after it's available.
     }
     // Units math — how many products fit per pallet, how many more
@@ -14783,13 +14783,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // subtract from the 67 CBM usable cargo allowance.
     const palletCbm = (PALLET_L * PALLET_W * palletStack) / 1_000_000; // m³
     const lastContainerCbm = palletCbm * palletsInLast;
-    const totalShipmentCbm = palletCbm * palletsNeeded;
+    // TRUE cargo CBM = actual ship-unit volume × cartons. The pallet
+    // figures above (palletCbm × pallets) are the pallet BOUNDING-BOX
+    // volume — they count the empty air in the 40×48 footprint plus the
+    // rounded-up stack height, so they overstate real cargo volume (e.g.
+    // 62.5 vs 36.57). Cargo CBM matches the Shipping tab exactly
+    // (cbmPerCarton × cartons in calcWorkbookShipStats). Show + cache
+    // THIS so the container view, Shipping tab, and order-fill rollups
+    // all agree. The pallet numbers still drive the physical container
+    // COUNT + room-to-fill (that's a packing constraint, not volume).
+    const unitCbmCV      = (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0;
+    const totalCartonsCV = (typeof totalCartonsArg === 'number' && totalCartonsArg > 0) ? totalCartonsArg : 0;
+    const cargoCbm       = unitCbmCV * totalCartonsCV;
     // Cache CBM alongside the weight cache above. The picker uses this
     // to roll up "X / 67 CBM" container fill across selected workbooks.
     if (typeof currentClient === 'string' && currentWorkbookId) {
       const _wbCbmKey = `${currentClient}|${currentWorkbookId}`;
       if (!workbookDetail[_wbCbmKey]) workbookDetail[_wbCbmKey] = {};
-      workbookDetail[_wbCbmKey].pricingShipmentCbm = totalShipmentCbm > 0 ? totalShipmentCbm : 0;
+      workbookDetail[_wbCbmKey].pricingShipmentCbm = cargoCbm > 0 ? cargoCbm : 0;
     }
     // ── Loose top-off accounting ─────────────────────────────────────
     // When the operator clicks "↻ Top Off", we stash the loose unit
@@ -14979,9 +14990,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>` : ''}
           ${palletsNeeded > 0 ? `
           <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Volume</div>
-            <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtCbm(totalShipmentCbm)}</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${fmtCbm(palletCbm)} per pallet × ${palletsNeeded.toLocaleString()} pallets</div>
+            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Volume (CBM)</div>
+            <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${cargoCbm > 0 ? fmtCbm(cargoCbm) : '—'}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${totalCartonsCV > 0 ? `${totalCartonsCV.toLocaleString()} ${unitWord} × ${fmtCbm(unitCbmCV)} each` : 'actual cargo volume'}</div>
           </div>` : ''}
         </div>
       `;
@@ -16151,7 +16162,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       renderContainerViz(
         palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm,
         palletWeightKg, totalPerPallet, unitWordP,
-        unitCbmM3, unitWeightKg
+        unitCbmM3, unitWeightKg, totalCartons
       );
     }
 
