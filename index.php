@@ -14538,11 +14538,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const perSlice = g.colsZ * g.layers;
     const occ = (cx, cz, ly) => (cx * perSlice + cz * g.layers + ly) < g.toPlace;
     const PAD = 46;
+    const CAP_H = 30;   // reserved header band so the caption clears the outline
     const worldW = view === 'top' ? HC_L : HC_W;
     const worldH = view === 'top' ? HC_W : HC_H;
-    const s = Math.min((CW - 2 * PAD) / worldW, (CH - 2 * PAD - 20) / worldH);
+    const availH = CH - CAP_H - PAD;   // vertical space for the container BELOW the caption
+    const s = Math.min((CW - 2 * PAD) / worldW, availH / worldH);
     const offX = (CW - worldW * s) / 2;
-    const offY = (CH - worldH * s) / 2 + 8;
+    const offY = CAP_H + Math.max(0, (availH - worldH * s) / 2); // always below the caption band
+    // Caption first, top-aligned in the reserved band.
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '700 12px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const cap = view === 'top'
+      ? `Bird’s-eye · ${g.colsX} × ${g.colsZ} cartons per floor · up to ${g.layers} high · darker = taller stack`
+      : `Front (container doors) · ${g.colsZ} wide × ${g.layers} high per slice`;
+    ctx.fillText(cap, offX, 8);
+    ctx.textBaseline = 'alphabetic';
     // Container outline
     ctx.strokeStyle = 'rgba(70,130,180,0.75)';
     ctx.lineWidth = 2;
@@ -14573,13 +14585,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ctx.strokeRect(px, py, cw, ch);
       }
     }
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '700 12px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.textAlign = 'left';
-    const cap = view === 'top'
-      ? `Bird’s-eye · ${g.colsX} × ${g.colsZ} cartons per floor · up to ${g.layers} high · darker = taller stack`
-      : `Front (container doors) · ${g.colsZ} wide × ${g.layers} high per slice`;
-    ctx.fillText(cap, offX, offY - 8);
   }
 
   function _setContainerView(mode) {
