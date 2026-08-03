@@ -23732,11 +23732,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 ? `<span style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:#E8751A; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:4px; padding:1px 6px; margin-right:8px; font-weight:600;">${_escCombine(m.sku)}</span>`
                 : '';
               const nameTxt = m.name ? `<span style="color:var(--text);">${_escCombine(m.name)}</span>` : `<span style="color:var(--text-muted); font-style:italic;">(unnamed)</span>`;
+              // Attribute-safe escape (quotes too) so the export can read
+              // the member name/sku/qty straight off the row — cleaner and
+              // hidden-row-proof vs scraping the cell text.
+              const _escAttr = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
               // Members list what's INSIDE the group — deliberately no
               // pricing (no Sale Price, no Total). The group's single
               // rolled-up line carries the price; exposing per-member
               // prices here would defeat the point of combining.
-              html += `<tr class="cq-variant-row cq-combine-member hidden" data-cq-variant-of="${_cgKey}">
+              html += `<tr class="cq-variant-row cq-combine-member hidden" data-cq-variant-of="${_cgKey}"
+                data-cm-sku="${_escAttr(m.sku)}" data-cm-name="${_escAttr(m.name)}" data-cm-qty="${m.qty > 0 ? m.qty : ''}">
                 <td></td>
                 <td style="padding-left:32px;">
                   <span style="color:var(--text-muted); font-family:'SF Mono','Consolas',monospace; margin-right:8px;">${branch}</span>
@@ -24927,8 +24932,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return;
       }
       if (tr.classList.contains('cq-combine-member')) {
-        // Combined-group members are an on-screen breakdown only — the
-        // exported quote / PDF keeps the group as ONE line, so skip them.
+        // Combined-group members — include them as an indented breakdown
+        // under the combined line so the client can see what's inside the
+        // kit. No per-member price (the group's single line carries it),
+        // matching the on-screen view. Read from data-attrs (robust even
+        // though the row is display:none by default).
+        const cmSku  = (tr.getAttribute('data-cm-sku')  || '').trim();
+        const cmName = (tr.getAttribute('data-cm-name') || '').trim();
+        const cmQty  = (tr.getAttribute('data-cm-qty')  || '').trim();
+        const cmLabel = [cmSku, cmName || '(unnamed)'].filter(Boolean).join(' ');
+        lineItems.push({ kind: 'combineMember', label: cmLabel, qty: cmQty, sale: '', total: '' });
         return;
       }
       if (tr.classList.contains('cq-variant-row') && variantOf) {
@@ -25007,6 +25020,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       let label = it.label;
       if (it.kind === 'parent')   kindLabel = 'Item';
       if (it.kind === 'variant')  { kindLabel = 'Variant'; label = label.replace(/^└\s*/, ''); }
+      if (it.kind === 'combineMember') { kindLabel = 'Component'; label = '  ↳ ' + label; }
       if (it.kind === 'fee')      kindLabel = 'Fee';
       if (it.kind === 'feeZero')  kindLabel = 'Fee';
       lines.push([
@@ -25051,6 +25065,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const itemRows = data.lineItems.map(it => {
       const labelEsc = escHtml(it.label);
+      if (it.kind === 'combineMember') {
+        // Indented component of a combined line — muted, qty only, no price.
+        return `<tr class="row-variant"><td></td><td class="lbl indent"><span style="color:#c0c5d4;">&#8627;</span> ${labelEsc}</td><td class="r">${escHtml(it.qty)}</td><td class="r"></td><td class="r"></td></tr>`;
+      }
       if (it.kind === 'variant') {
         // Strip any legacy "└ " prefix that older renders may have
         // baked into the label, then render the variant name on its
