@@ -9936,11 +9936,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          container shows as an amber bar. Populated by
          renderShipmentContainerViz(). -->
     <div class="section-card" style="margin:16px 0 0;" id="ship-container-viz-card">
-      <div class="section-header">
+      <div class="section-header" style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
         <div style="display:flex; align-items:center; gap:8px;">
           <span class="section-title">Container View</span>
           <span id="ship-cv-cbm-summary" style="font-size:12px; color:var(--text-muted);"></span>
         </div>
+        <!-- Toggle: 2D CBM segments (default) or carton-packing views.
+             Packing views color each order distinctly (mixed container). -->
+        <span class="fwb-seg">
+          <button type="button" class="fwb-btn active" id="ship-cv-mode-segments" onclick="_setShipCvMode('segments')" title="Proportional CBM segments">Segments</button>
+          <button type="button" class="fwb-btn" id="ship-cv-mode-3d" onclick="_setShipCvMode('3d')" title="3D carton packing">3D</button>
+          <button type="button" class="fwb-btn" id="ship-cv-mode-top" onclick="_setShipCvMode('top')" title="Bird's-eye packing plan">Bird’s-eye</button>
+          <button type="button" class="fwb-btn" id="ship-cv-mode-front" onclick="_setShipCvMode('front')" title="Front / container-door elevation">Front</button>
+        </span>
       </div>
       <div class="section-body" style="padding:16px;">
         <div id="ship-cv-empty" style="padding:24px 0; text-align:center; color:var(--text-muted); font-size:13px;">
@@ -36246,6 +36254,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const _SHIP_CV_CAP    = 67;     // usable m³ in a 40' HC
   const _SHIP_CV_WT_CAP = 26000;  // max payload kg for a 40' HC (truck axle limit)
 
+  // Shipment Container View mode: 'segments' (2D CBM bars, default) |
+  // '3d' | 'top' | 'front' (carton-packing, colored per order).
+  var _shipCvMode = 'segments';
+  function _setShipCvMode(mode) {
+    _shipCvMode = ['3d', 'top', 'front'].includes(mode) ? mode : 'segments';
+    ['segments', '3d', 'top', 'front'].forEach(m => {
+      const b = document.getElementById('ship-cv-mode-' + m);
+      if (b) b.classList.toggle('active', m === _shipCvMode);
+    });
+    if (typeof renderShipmentContainerViz === 'function') renderShipmentContainerViz();
+  }
+
   function renderShipmentContainerViz() {
     const card  = document.getElementById('ship-container-viz-card');
     const empty = document.getElementById('ship-cv-empty');
@@ -36426,7 +36446,174 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ${wtOverAll > 0 ? `<div style="margin-top:6px; font-size:11px; color:#d97706; font-weight:700;">⚠ Over weight cap by ${fmtKg(wtOverAll)} kg — split the load, downgauge cartons, or add another container.</div>` : ''}`;
     }
 
-    body.innerHTML = vizHtml + legend;
+    if (_shipCvMode === 'segments') {
+      body.innerHTML = vizHtml + legend;
+    } else {
+      // Carton-packing views (3D / bird's-eye / front) — mixed container:
+      // each order is a distinct color, packed into length-zones sized by
+      // its cargo volume. Legend below maps color → order + cartons + CBM.
+      const groups = (typeof _shipmentPackingGroups === 'function') ? _shipmentPackingGroups() : [];
+      const packLegend = `
+        <div style="display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:16px;">
+          ${groups.map(g => `
+            <div style="display:flex; align-items:center; gap:7px; font-size:12px;">
+              <span style="width:12px; height:12px; border-radius:3px; background:${g.color}; flex-shrink:0; box-shadow:0 0 0 1px rgba(0,0,0,0.08);"></span>
+              <span style="font-weight:600; color:var(--text);">${g.name}</span>
+              <span style="color:var(--text-muted);">${g.cartons > 0 ? g.cartons.toLocaleString() + ' cartons · ' : ''}${fmtCbm(g.cbm)} m³</span>
+            </div>`).join('')}
+        </div>
+        ${groups.some(g => !(g.boxL > 0)) ? `<div style="margin-top:8px; font-size:11px; color:var(--text-muted);">Orders without outer-carton dimensions show as solid volume blocks — enter carton dims on their Shipping tab to see individual cartons.</div>` : ''}`;
+      body.innerHTML = `<canvas id="ship-cv-canvas" width="820" height="360" style="width:100%; max-width:820px; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>${packLegend}`;
+      const cvEl = document.getElementById('ship-cv-canvas');
+      if (cvEl && typeof _drawShipmentPacking === 'function') {
+        _drawShipmentPacking(cvEl.getContext('2d'), cvEl.width, cvEl.height, groups, _shipCvMode);
+      }
+    }
+  }
+
+  // Build the per-order cargo groups for the shipment packing views.
+  // Each order → { name, color, cartons, cbm, boxL/W/H } where the carton
+  // dims are the order's largest-carton-count workbook (a representative
+  // box for the packing grid). Colors match the segments view.
+  function _shipmentPackingGroups() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return [];
+    const out = [];
+    (s.entries || []).forEach((e, i) => {
+      if (!e.orderId || !orderData[e.orderId]) return;
+      const o = orderData[e.orderId];
+      let cartons = 0, cbm = 0, rep = null, repN = -1;
+      (o.entries || []).forEach(oe => {
+        const detail = workbookDetail[`${oe.clientName}|${oe.workbookId}`];
+        if (!detail) return;
+        const units = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(detail).units || 0) : 0;
+        const st = (typeof calcWorkbookShipStats === 'function') ? calcWorkbookShipStats(detail, units) : { totalCartons: 0, totalCbm: 0 };
+        cartons += st.totalCartons || 0;
+        cbm     += st.totalCbm || 0;
+        const L = parseFloat(detail.cartonOuterLCm) || 0, W = parseFloat(detail.cartonOuterWCm) || 0, H = parseFloat(detail.cartonOuterHCm) || 0;
+        if ((st.totalCartons || 0) > repN && L > 0 && W > 0 && H > 0) { repN = st.totalCartons; rep = { L, W, H }; }
+      });
+      if (cartons <= 0 && cbm <= 0) return;
+      out.push({
+        name:  o.name || `Order #${e.orderId}`,
+        color: _SHIP_CV_PALETTE[i % _SHIP_CV_PALETTE.length],
+        cartons, cbm,
+        boxL: rep ? rep.L : 0, boxW: rep ? rep.W : 0, boxH: rep ? rep.H : 0,
+      });
+    });
+    return out;
+  }
+
+  // Draw a MIXED container load: each group gets a length-zone (sized by
+  // its occupied volume) packed with its own color. view = '3d' | 'top'
+  // | 'front'. Reuses the iso helpers for 3D. Single-container view;
+  // notes when the load spans more.
+  function _drawShipmentPacking(ctx, CW, CH, groups, view) {
+    ctx.clearRect(0, 0, CW, CH);
+    if (!groups || !groups.length) {
+      ctx.fillStyle = '#9ba3c0';
+      ctx.font = '13px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('No order cargo to pack yet.', CW / 2, CH / 2);
+      return;
+    }
+    const PACK = 0.85;
+    const contInterior = (HC_L * HC_W * HC_H) / 1e6; // ~76 m³
+    let cursor = 0;
+    const zones = groups.map(g => {
+      const boxVolM3 = (g.boxL > 0 && g.boxW > 0 && g.boxH > 0) ? (g.boxL * g.boxW * g.boxH) / 1e6 : 0;
+      const spaceCbm = (g.cbm > 0 ? g.cbm : (g.cartons * boxVolM3)) / PACK;
+      const len = contInterior > 0 ? (spaceCbm / contInterior) * HC_L : 0;
+      const z = Object.assign({}, g, { x0: cursor, len: Math.max(0, len) });
+      cursor += z.len;
+      return z;
+    });
+    const totalLen = cursor;
+    const overflow = totalLen > HC_L;
+    const fitScale = overflow ? HC_L / totalLen : 1;
+    zones.forEach(z => { z.x0 *= fitScale; z.len *= fitScale; });
+
+    if (view === 'top' || view === 'front') {
+      const PAD = 46, CAP_H = 30;
+      const worldW = view === 'top' ? HC_L : HC_W;
+      const worldH = view === 'top' ? HC_W : HC_H;
+      const availH = CH - CAP_H - PAD;
+      const sc = Math.min((CW - 2 * PAD) / worldW, availH / worldH);
+      const offX = (CW - worldW * sc) / 2;
+      const offY = CAP_H + Math.max(0, (availH - worldH * sc) / 2);
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '700 12px -apple-system, BlinkMacSystemFont, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(view === 'top'
+        ? `Bird’s-eye · mixed load${overflow ? ' · container 1 (spans more)' : ''}`
+        : `Front (container doors) · door-end item shown`, offX, 8);
+      ctx.textBaseline = 'alphabetic';
+      ctx.strokeStyle = 'rgba(70,130,180,0.75)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(offX, offY, worldW * sc, worldH * sc);
+      if (view === 'top') {
+        zones.forEach(z => {
+          if (!(z.boxL > 0 && z.boxW > 0 && z.boxH > 0)) {
+            ctx.fillStyle = z.color; ctx.fillRect(offX + z.x0 * sc, offY, z.len * sc, worldH * sc);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(offX + z.x0 * sc, offY, z.len * sc, worldH * sc);
+            return;
+          }
+          const cX = Math.max(1, Math.floor(z.len / z.boxL)), cZ = Math.max(1, Math.floor(HC_W / z.boxW));
+          const cw = z.boxL * sc, ch = z.boxW * sc, offZc = (HC_W - cZ * z.boxW) / 2;
+          for (let cx = 0; cx < cX; cx++) for (let cz = 0; cz < cZ; cz++) {
+            const px = offX + (z.x0 + cx * z.boxL) * sc, py = offY + (offZc + cz * z.boxW) * sc;
+            ctx.fillStyle = z.color; ctx.fillRect(px, py, cw, ch);
+            ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1; ctx.strokeRect(px, py, cw, ch);
+          }
+        });
+      } else {
+        const z = zones[zones.length - 1];
+        if (z && z.boxL > 0 && z.boxW > 0 && z.boxH > 0) {
+          const cZ = Math.max(1, Math.floor(HC_W / z.boxW)), cY = Math.max(1, Math.floor(HC_H / z.boxH));
+          const cw = z.boxW * sc, ch = z.boxH * sc, offZc = (HC_W - cZ * z.boxW) / 2;
+          for (let cz = 0; cz < cZ; cz++) for (let ly = 0; ly < cY; ly++) {
+            const px = offX + (offZc + cz * z.boxW) * sc, py = offY + (HC_H - (ly + 1) * z.boxH) * sc;
+            ctx.fillStyle = z.color; ctx.fillRect(px, py, cw, ch);
+            ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 1; ctx.strokeRect(px, py, cw, ch);
+          }
+        }
+      }
+      return;
+    }
+
+    // ── 3D isometric ────────────────────────────────────────────────
+    const totalHeight = HC_H;
+    const PAD_LEFT = 90, PAD_RIGHT = 100, PAD_TOP = 34, PAD_BOTTOM = 66;
+    const footprintSpan = HC_L + HC_W;
+    const stackSpan = totalHeight + footprintSpan * ISO_SIN30;
+    const sc = Math.min((CW - PAD_LEFT - PAD_RIGHT) / (footprintSpan * ISO_COS30), (CH - PAD_TOP - PAD_BOTTOM) / stackSpan);
+    const ox = (CW + (HC_W - HC_L) * ISO_COS30 * sc) / 2;
+    const oy = totalHeight * sc + PAD_TOP;
+    zones.forEach(z => {
+      if (!(z.boxL > 0 && z.boxW > 0 && z.boxH > 0)) {
+        drawIsoBox(ctx, z.x0, 0, 0, Math.max(1, z.len), HC_H * 0.9, HC_W, sc, ox, oy, z.color);
+        return;
+      }
+      const cX = Math.max(1, Math.floor(z.len / z.boxL)), cZ = Math.max(1, Math.floor(HC_W / z.boxW)), cY = Math.max(1, Math.floor((HC_H * 0.98) / z.boxH));
+      const offZc = Math.max(0, (HC_W - cZ * z.boxW) / 2);
+      for (let ly = 0; ly < cY; ly++) for (let diag = 0; diag <= cX + cZ - 2; diag++) for (let cx = Math.max(0, diag - cZ + 1); cx <= Math.min(diag, cX - 1); cx++) {
+        const cz = diag - cx;
+        drawIsoBox(ctx, z.x0 + cx * z.boxL, ly * z.boxH, offZc + cz * z.boxW, z.boxL, z.boxH, z.boxW, sc, ox, oy, z.color);
+      }
+    });
+    // Container wireframe
+    const cv = {
+      bbl: isoProj(0, 0, 0, sc, ox, oy), bbr: isoProj(HC_L, 0, 0, sc, ox, oy),
+      bfl: isoProj(0, 0, HC_W, sc, ox, oy), bfr: isoProj(HC_L, 0, HC_W, sc, ox, oy),
+      tbl: isoProj(0, HC_H, 0, sc, ox, oy), tbr: isoProj(HC_L, HC_H, 0, sc, ox, oy),
+      tfl: isoProj(0, HC_H, HC_W, sc, ox, oy), tfr: isoProj(HC_L, HC_H, HC_W, sc, ox, oy)
+    };
+    ctx.strokeStyle = 'rgba(70,130,180,0.55)';
+    ctx.lineWidth = 1.4;
+    [['bbl','bbr'],['bfl','bfr'],['bbl','bfl'],['bbr','bfr'],['tbl','tbr'],['tfl','tfr'],['tbl','tfl'],['tbr','tfr'],['bbl','tbl'],['bbr','tbr'],['bfl','tfl'],['bfr','tfr']].forEach(([a, b]) => {
+      ctx.beginPath(); ctx.moveTo(cv[a].x, cv[a].y); ctx.lineTo(cv[b].x, cv[b].y); ctx.stroke();
+    });
   }
 
   function renderShipmentUtilization() {
