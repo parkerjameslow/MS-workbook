@@ -14538,24 +14538,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const palletDeckHere = _ctxLoose ? 0 : PALLET_DECK;
     let drawn = 0;
     const stackOnly = Math.max(0, palletStack - palletDeckHere);
-    for (let layerIdx = 0; layerIdx < verticalLayers && drawn < palletsToShow; layerIdx++) {
-      const layerY = layerIdx * palletStack;
-      for (let diag = 0; diag <= palletLayout.cols + palletLayout.rows - 2 && drawn < palletsToShow; diag++) {
-        for (let col = Math.max(0, diag - palletLayout.rows + 1); col <= Math.min(diag, palletLayout.cols - 1); col++) {
-          if (drawn >= palletsToShow) break;
-          const row = diag - col;
-          const x = col * palletLayout.pL;
-          const z = row * palletLayout.pW;
-          // Pallet deck (gray) — pallet mode only
-          if (palletDeckHere > 0) {
-            drawIsoBox(ctx, x, layerY, z, palletLayout.pL, palletDeckHere, palletLayout.pW, s, ox, oy, '#a8a8a8');
+    if (_ctxLoose) {
+      // ── Loose Load — draw cargo PROPORTIONAL to actual fill ──────────
+      // The pallet-block loop below packs the container regardless of
+      // volume, so a 55%-full loose load looked ~packed. Instead draw a
+      // single floor-to-ceiling, full-width block whose LENGTH is the
+      // fraction of the container the cartons actually occupy. Fraction
+      // is carton-count based (cartons ÷ cartons-per-container, which
+      // already bakes in the ~85% packing allowance) so it reads as
+      // "how full is this box" at a glance.
+      const _dLuCbm = (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0;
+      const _dLuWt  = (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0;
+      const _dLuCartons = (typeof totalCartonsArg === 'number' && totalCartonsArg > 0) ? totalCartonsArg : 0;
+      const _dCPC = _dLuCbm > 0
+        ? Math.max(1, Math.min(
+            Math.floor((HC_USABLE_CBM * 0.85) / _dLuCbm),
+            _dLuWt > 0 ? Math.floor(HC_MAX_KG / _dLuWt) : Infinity))
+        : 0;
+      // Fill fraction of ONE container. ≥1 container → this one is full.
+      const _fillFrac = _dCPC > 0 ? Math.min(1, _dLuCartons / _dCPC) : 0;
+      if (_fillFrac > 0) {
+        const cargoLen = Math.max(1, _fillFrac * HC_L);
+        // A slim ceiling gap so the block doesn't visually fuse with the
+        // container roof; full width so length reads as the fill level.
+        const cargoH = HC_H * 0.94;
+        drawIsoBox(ctx, 0, 0, 0, cargoLen, cargoH, HC_W, s, ox, oy, '#E8751A');
+      }
+    } else {
+      for (let layerIdx = 0; layerIdx < verticalLayers && drawn < palletsToShow; layerIdx++) {
+        const layerY = layerIdx * palletStack;
+        for (let diag = 0; diag <= palletLayout.cols + palletLayout.rows - 2 && drawn < palletsToShow; diag++) {
+          for (let col = Math.max(0, diag - palletLayout.rows + 1); col <= Math.min(diag, palletLayout.cols - 1); col++) {
+            if (drawn >= palletsToShow) break;
+            const row = diag - col;
+            const x = col * palletLayout.pL;
+            const z = row * palletLayout.pW;
+            // Pallet deck (gray) — pallet mode only
+            if (palletDeckHere > 0) {
+              drawIsoBox(ctx, x, layerY, z, palletLayout.pL, palletDeckHere, palletLayout.pW, s, ox, oy, '#a8a8a8');
+            }
+            // Product stack (orange) on top of the deck.
+            if (stackOnly > 0) {
+              drawIsoBox(ctx, x, layerY + palletDeckHere, z, palletLayout.pL, stackOnly, palletLayout.pW, s, ox, oy, '#E8751A');
+            }
+            drawn++;
           }
-          // Product stack (orange) on top of the deck (or directly on
-          // the floor in loose-load mode).
-          if (stackOnly > 0) {
-            drawIsoBox(ctx, x, layerY + palletDeckHere, z, palletLayout.pL, stackOnly, palletLayout.pW, s, ox, oy, '#E8751A');
-          }
-          drawn++;
         }
       }
     }
@@ -15026,9 +15053,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </div>` : ''}
           </div>
         `;
-        if (fillEl) fillEl.innerHTML = looseCartonsPerContainer > 0
-          ? `<div style="margin-top:14px; padding:12px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.5;">A single 40' HC holds ~<strong>${looseCartonsPerContainer.toLocaleString()}</strong> cartons loose-loaded (no pallet), capped at <strong>${HC_USABLE_CBM} CBM</strong> / <strong>${HC_MAX_KG.toLocaleString()} kg</strong> at ≈85% packing.</div>`
-          : '';
+        if (fillEl) {
+          if (looseCartonsPerContainer > 0 && totalCartonsCV > 0) {
+            // Fill is measured on the LAST container (all but the last are
+            // full). Fraction is carton-count based, which reflects how
+            // much container SPACE the load occupies once ~15% stacking
+            // gaps are accounted for — so 36.6 CBM of cargo reads as the
+            // ~2/3 of the box it physically fills, not a raw 55% volume.
+            const _cartonsInLast = totalCartonsCV - (looseContainersNeeded - 1) * looseCartonsPerContainer;
+            const _fillPct = Math.min(100, Math.round((_cartonsInLast / looseCartonsPerContainer) * 100));
+            const _roomCartons = Math.max(0, looseCartonsPerContainer - _cartonsInLast);
+            const _ppc = (typeof _msProductsPerShipItem === 'function' ? _msProductsPerShipItem() : 1) || 1;
+            const _roomUnits = _roomCartons * _ppc;
+            const _roomCbm = _roomCartons * unitCbmCV;
+            const _lastWord = looseContainersNeeded > 1 ? 'Last container' : 'Container';
+            const _barColor = _fillPct >= 90 ? 'var(--success)' : 'var(--accent)';
+            fillEl.innerHTML = `
+              <div style="margin-top:14px; padding:14px 16px; border:1px solid var(--border); border-radius:10px; background:var(--surface2);">
+                <div style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px;">
+                  <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">${_lastWord} fill</span>
+                  <span style="font-size:20px; font-weight:800; color:${_barColor};">${_fillPct}%</span>
+                </div>
+                <div style="height:10px; background:var(--border); border-radius:99px; overflow:hidden;">
+                  <div style="height:100%; width:${_fillPct}%; background:${_barColor}; border-radius:99px; transition:width 0.4s;"></div>
+                </div>
+                <div style="font-size:11px; color:var(--text-muted); margin-top:6px;">${_cartonsInLast.toLocaleString()} of ~${looseCartonsPerContainer.toLocaleString()} cartons it can hold &nbsp;·&nbsp; ${fmtCbm(cargoCbm)} cargo / ${HC_USABLE_CBM} CBM usable</div>
+                ${_roomCartons > 0 ? `
+                <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); font-size:12.5px; color:var(--text); line-height:1.6;">
+                  <strong style="color:var(--accent);">To fill the rest:</strong> add ~<strong>${_roomCartons.toLocaleString()}</strong> more cartons${_ppc > 1 ? ` (≈ <strong>${_roomUnits.toLocaleString()}</strong> more units)` : ''} <span style="color:var(--text-muted);">— about ${fmtCbm(_roomCbm)} more cargo.</span>
+                </div>` : `
+                <div style="margin-top:10px; font-size:12.5px; color:var(--success); font-weight:700;">✓ This container is packed full.</div>`}
+              </div>`;
+          } else {
+            fillEl.innerHTML = '';
+          }
+        }
       } else {
         sideEl.innerHTML = `
           <div style="display:flex; flex-direction:column; gap:14px;">
