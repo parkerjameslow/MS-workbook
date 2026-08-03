@@ -8251,7 +8251,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span>Add 4 mm divider between products (cardboard / foam separators)</span>
       </label>
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
-        <div style="flex:0 1 540px; min-width:300px; max-width:540px; display:flex; flex-direction:column; gap:14px;">
+        <div id="pallet-viz-col" style="flex:0 1 540px; min-width:300px; max-width:540px; display:flex; flex-direction:column; gap:14px;">
           <canvas id="pallet-canvas" width="540" height="420" style="width:100%; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
           <!-- Pallet Fit Suggestion — surfaces a better outer-carton (or
                product, in manual mode) footprint that improves utilisation
@@ -14834,14 +14834,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? Math.max(0, HC_MAX_KG - lastContainerWeightKg - _looseWtConsumed)
       : Math.max(0, HC_MAX_KG - _looseWtConsumed);
 
+    // ── Loose-load (no pallet) carton-based container fit ──────────────
+    // When the operator picks Loose Load, cartons floor-load straight
+    // into the 40'HC — there are NO pallets, so every stat below switches
+    // to cartons. Capacity = usable cargo volume × a packing efficiency,
+    // OR max payload weight, whichever caps first (loose stacking packs
+    // tighter than palletized, so utilization is much higher).
+    const LOOSE_PACK_EFF = 0.85;
+    const looseCartonsPerContainer = (_ctxLoose && _unitCbmCV > 0)
+      ? Math.max(0, Math.min(
+          Math.floor((HC_USABLE_CBM * LOOSE_PACK_EFF) / _unitCbmCV),
+          _unitWtCV > 0 ? Math.floor(HC_MAX_KG / _unitWtCV) : Infinity
+        ))
+      : 0;
+    const looseContainersNeeded = (_ctxLoose && totalCartonsCV > 0 && looseCartonsPerContainer > 0)
+      ? Math.ceil(totalCartonsCV / looseCartonsPerContainer) : 0;
+    const looseTotalWeightKg = (_ctxLoose && _unitWtCV > 0) ? _unitWtCV * totalCartonsCV : 0;
+
     // ── Inline summary line above the canvas ───────────────────────────
     if (inlineEl) {
-      const stackTag = verticalLayers > 1 ? ` <span style="opacity:0.7;">(${verticalLayers}-high)</span>` : '';
-      if (palletsNeeded > 0) {
-        inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC${stackTag} &nbsp;·&nbsp; ` +
-          `<strong style="color:var(--accent);">${containersNeeded}</strong> container${containersNeeded === 1 ? '' : 's'} needed for ${palletsNeeded.toLocaleString()} pallets`;
+      if (_ctxLoose) {
+        // Loose load — cartons, no pallets.
+        if (totalCartonsCV > 0 && looseCartonsPerContainer > 0) {
+          inlineEl.innerHTML = `<strong>${looseCartonsPerContainer.toLocaleString()}</strong> cartons fit per 40' HC <span style="opacity:0.7;">(loose, no pallet)</span> &nbsp;·&nbsp; ` +
+            `<strong style="color:var(--accent);">${looseContainersNeeded}</strong> container${looseContainersNeeded === 1 ? '' : 's'} needed for ${totalCartonsCV.toLocaleString()} cartons`;
+        } else if (looseCartonsPerContainer > 0) {
+          inlineEl.innerHTML = `<strong>${looseCartonsPerContainer.toLocaleString()}</strong> cartons fit per 40' HC <span style="opacity:0.7;">(loose — enter shipment qty to see containers needed)</span>`;
+        } else {
+          inlineEl.innerHTML = `Loose load (no pallet) <span style="opacity:0.7;">— enter carton dimensions + qty to see cartons per 40' HC</span>`;
+        }
       } else {
-        inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC${stackTag} <span style="opacity:0.7;">(enter shipment qty to see containers needed)</span>`;
+        const stackTag = verticalLayers > 1 ? ` <span style="opacity:0.7;">(${verticalLayers}-high)</span>` : '';
+        if (palletsNeeded > 0) {
+          inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC${stackTag} &nbsp;·&nbsp; ` +
+            `<strong style="color:var(--accent);">${containersNeeded}</strong> container${containersNeeded === 1 ? '' : 's'} needed for ${palletsNeeded.toLocaleString()} pallets`;
+        } else {
+          inlineEl.innerHTML = `<strong>${palletsPerContainer}</strong> pallets fit per 40' HC${stackTag} <span style="opacity:0.7;">(enter shipment qty to see containers needed)</span>`;
+        }
       }
     }
 
@@ -14974,32 +15003,60 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // View; see renderPalletViz). Keeping it out of this side panel
       // avoids duplication.
 
-      sideEl.innerHTML = `
-        <div style="display:flex; flex-direction:column; gap:14px;">
-          <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Pallets</div>
-            <div style="font-size:22px; font-weight:700; color:var(--text);">${palletsNeeded.toLocaleString()}</div>
-            ${palletsBadge}
-            ${stackBadge}
+      if (_ctxLoose) {
+        // ── Loose Load — carton-based stats, NO pallets anywhere ────────
+        sideEl.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div>
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Cartons</div>
+              <div style="font-size:22px; font-weight:700; color:var(--text);">${totalCartonsCV > 0 ? totalCartonsCV.toLocaleString() : '—'}</div>
+              ${looseContainersNeeded > 0 ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${looseContainersNeeded} × 40' HC container${looseContainersNeeded === 1 ? '' : 's'} <span style="opacity:0.8;">(loose)</span></div>` : ''}
+            </div>
+            ${looseTotalWeightKg > 0 ? `
+            <div>
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Weight</div>
+              <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtKg(looseTotalWeightKg)}</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${totalCartonsCV.toLocaleString()} cartons × ${fmtKg(_unitWtCV)}</div>
+            </div>` : ''}
+            ${cargoCbm > 0 ? `
+            <div>
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Volume (CBM)</div>
+              <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtCbm(cargoCbm)}</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${totalCartonsCV.toLocaleString()} cartons × ${fmtCbm(unitCbmCV)} each</div>
+            </div>` : ''}
           </div>
-          ${palletWeightKg > 0 ? `
-          <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Weight</div>
-            <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtKg(totalShipmentWeightKg)}</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${palletsNeeded.toLocaleString()} pallets × ${fmtKg(palletWeightKg)}</div>
-          </div>` : ''}
-          ${palletsNeeded > 0 ? `
-          <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Volume (CBM)</div>
-            <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${cargoCbm > 0 ? fmtCbm(cargoCbm) : '—'}</div>
-            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${totalCartonsCV > 0 ? `${totalCartonsCV.toLocaleString()} ${unitWord} × ${fmtCbm(unitCbmCV)} each` : 'actual cargo volume'}</div>
-          </div>` : ''}
-        </div>
-      `;
-      // Render the Last Container — Room to Fill block in its own slot
-      // beneath the container 3D viz so it fills the white space there
-      // instead of crowding the side stats panel.
-      if (fillEl) fillEl.innerHTML = remainingBlock;
+        `;
+        if (fillEl) fillEl.innerHTML = looseCartonsPerContainer > 0
+          ? `<div style="margin-top:14px; padding:12px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.5;">A single 40' HC holds ~<strong>${looseCartonsPerContainer.toLocaleString()}</strong> cartons loose-loaded (no pallet), capped at <strong>${HC_USABLE_CBM} CBM</strong> / <strong>${HC_MAX_KG.toLocaleString()} kg</strong> at ≈85% packing.</div>`
+          : '';
+      } else {
+        sideEl.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div>
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Pallets</div>
+              <div style="font-size:22px; font-weight:700; color:var(--text);">${palletsNeeded.toLocaleString()}</div>
+              ${palletsBadge}
+              ${stackBadge}
+            </div>
+            ${palletWeightKg > 0 ? `
+            <div>
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Weight</div>
+              <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtKg(totalShipmentWeightKg)}</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${palletsNeeded.toLocaleString()} pallets × ${fmtKg(palletWeightKg)}</div>
+            </div>` : ''}
+            ${palletsNeeded > 0 ? `
+            <div>
+              <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Volume (CBM)</div>
+              <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${cargoCbm > 0 ? fmtCbm(cargoCbm) : '—'}</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${totalCartonsCV > 0 ? `${totalCartonsCV.toLocaleString()} ${unitWord} × ${fmtCbm(unitCbmCV)} each` : 'actual cargo volume'}</div>
+            </div>` : ''}
+          </div>
+        `;
+        // Render the Last Container — Room to Fill block in its own slot
+        // beneath the container 3D viz so it fills the white space there
+        // instead of crowding the side stats panel.
+        if (fillEl) fillEl.innerHTML = remainingBlock;
+      }
     } else if (fillEl) {
       fillEl.innerHTML = '';
     }
@@ -15009,14 +15066,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Use the FUNCTION ARGS for unitCbm / unitWtKg (the local consts
     // of those names are scoped inside the if (sideEl) block above).
     if (typeof _renderContainerHypotheticals === 'function') {
-      _renderContainerHypotheticals({
-        palletsNeeded, palletsPerContainer, palletsInLast, palletsRoomLeft,
-        cbmRoomLeft, weightRoomLeftKg,
-        palletWeightKg, unitsPerPallet,
-        unitWord,
-        unitCbm: (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0,
-        unitWtKg: (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0
-      });
+      if (_ctxLoose) {
+        // The "fill the container" pitch is pallet-framed — suppress it in
+        // Loose Load so no pallet language leaks back into the view.
+        const _hypHost = document.getElementById('container-hypothetical');
+        if (_hypHost) _hypHost.innerHTML = '';
+      } else {
+        _renderContainerHypotheticals({
+          palletsNeeded, palletsPerContainer, palletsInLast, palletsRoomLeft,
+          cbmRoomLeft, weightRoomLeftKg,
+          palletWeightKg, unitsPerPallet,
+          unitWord,
+          unitCbm: (typeof unitCbmArg === 'number' && unitCbmArg > 0) ? unitCbmArg : 0,
+          unitWtKg: (typeof unitWeightKgArg === 'number' && unitWeightKgArg > 0) ? unitWeightKgArg : 0
+        });
+      }
     }
   }
 
@@ -16047,7 +16111,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    document.getElementById('pallet-stats').innerHTML = `
+    // Loose Load — no palletization. Hide the 40×48 pallet viz + collapse
+    // the pallet stats to a carton-only summary; the carton-per-container
+    // + CBM detail lives in the Container View below. Honors "no pallets
+    // means I don't want to see any."
+    const _palletVizColEl = document.getElementById('pallet-viz-col');
+    if (_palletVizColEl) _palletVizColEl.style.display = _looseLoad ? 'none' : '';
+    if (_looseLoad) {
+      const _cartonCbm = (bL * bW * bH) / 1_000_000;
+      const _fmtCbmL = (m3) => m3 > 0 ? (m3 < 1 ? m3.toFixed(3) + ' m³' : m3.toLocaleString('en-US', {maximumFractionDigits:2}) + ' m³') : '—';
+      document.getElementById('pallet-stats').innerHTML = `
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--accent); margin-bottom:12px;">Loose Load — no pallets</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          ${totalCartons > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${totalCartons.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total cartons</div></div>` : ''}
+          ${productsPerOuter > 0 ? `<div><div style="font-size:22px; font-weight:700; color:var(--text);">${productsPerOuter.toLocaleString()}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">products / carton</div></div>` : ''}
+          ${unitWeightKg > 0 ? `<div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">weight / carton</div></div>` : ''}
+          ${unitWeightKg > 0 && totalCartons > 0 ? `<div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${fmtWt(unitWeightKg * totalCartons)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total shipment weight</div></div>` : ''}
+          ${_cartonCbm > 0 ? `<div><div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.25;">${_fmtCbmL(_cartonCbm)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">volume / carton</div></div>` : ''}
+          ${_cartonCbm > 0 && totalCartons > 0 ? `<div><div style="font-size:18px; font-weight:700; color:var(--accent); line-height:1.25;">${_fmtCbmL(_cartonCbm * totalCartons)}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">total volume (CBM)</div></div>` : ''}
+        </div>
+        <div style="margin-top:16px; padding:10px 12px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.5;">
+          Cartons floor-load straight into the container — see the <strong>40' HC Container View</strong> below for cartons per container &amp; containers needed.
+        </div>`;
+    }
+    // Pallet-based stats — skipped in Loose Load (the carton summary above
+    // replaced it). Container view still renders below in BOTH modes.
+    if (!_looseLoad) document.getElementById('pallet-stats').innerHTML = `
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${perLayer}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${unitWordP} / layer</div></div>
         <div><div style="font-size:22px; font-weight:700; color:var(--text);">${maxLayers}</div><div style="font-size:11px; color:var(--text-muted); margin-top:2px;">max layers</div></div>
