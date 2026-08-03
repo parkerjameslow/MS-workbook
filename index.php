@@ -24975,6 +24975,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       generated:   today.toLocaleString('en-US'),
     };
 
+    // Estimated delivery = today (the day the quote is pulled) + total
+    // lead time, so the client sees an actual arrival DATE, not just a
+    // day count. Parse the largest number in the total-lead string
+    // (handles "80 days" and "70–80 days" → 80).
+    const _leadNums = (summary.totalLead || '').match(/\d+/g);
+    const _totalLeadDays = _leadNums ? Math.max.apply(null, _leadNums.map(Number)) : 0;
+    summary.estDeliveryDays = _totalLeadDays;
+    summary.estDelivery = _totalLeadDays > 0
+      ? new Date(today.getTime() + _totalLeadDays * 86400000)
+          .toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : '';
+
     return { meta, lineItems, summary };
   }
 
@@ -25011,6 +25023,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     lines.push([_csvEscape('Production Lead'),     _csvEscape(data.summary.productionLead)].join(','));
     lines.push([_csvEscape('Shipping Lead'),       _csvEscape(data.summary.shippingLead)].join(','));
     lines.push([_csvEscape('Total Lead'),          _csvEscape(data.summary.totalLead)].join(','));
+    if (data.summary.estDelivery) {
+      lines.push([_csvEscape('Estimated Delivery'), _csvEscape(`${data.summary.estDelivery} (${data.summary.estDeliveryDays} days from today)`)].join(','));
+    }
     lines.push('');
 
     // Line items
@@ -25107,7 +25122,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; color: #1a1d2e; }
   .for-client { font-size: 13px; color: #6b7280; margin-bottom: 14px; }
   .desc { font-size: 12px; color: #6b7280; margin-bottom: 18px; padding: 10px 12px; background: #f8f9fb; border-left: 3px solid #6b93ff; border-radius: 4px; line-height: 1.6; }
-  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 22px 0 26px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 22px 0 12px; }
+  .est-delivery { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 26px; padding: 12px 16px; background: rgba(232,117,26,0.07); border: 1px solid rgba(232,117,26,0.3); border-radius: 8px; }
+  .est-delivery-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #E8751A; }
+  .est-delivery-date { font-size: 16px; font-weight: 800; color: #1a1d2e; }
+  .est-delivery-note { font-size: 11px; color: #9ba3c0; }
   .stat { background: linear-gradient(135deg, rgba(107,147,255,0.10) 0%, rgba(107,147,255,0.04) 100%); border: 1px solid rgba(107,147,255,0.25); border-radius: 8px; padding: 10px 12px; }
   .stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6b93ff; margin-bottom: 4px; }
   .stat-value { font-size: 14px; font-weight: 700; color: #1a1d2e; }
@@ -25166,6 +25185,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="stat"><div class="stat-label">Shipping Lead</div><div class="stat-value">${escHtml(data.summary.shippingLead || '—')}</div></div>
     <div class="stat"><div class="stat-label">Total Lead</div><div class="stat-value">${escHtml(data.summary.totalLead || '—')}</div></div>
   </div>
+  ${data.summary.estDelivery ? `<div class="est-delivery"><span class="est-delivery-label">Estimated Delivery</span><span class="est-delivery-date">${escHtml(data.summary.estDelivery)}</span><span class="est-delivery-note">≈ ${escHtml(String(data.summary.estDeliveryDays))} days from today (${escHtml(data.meta.quoteDate)})</span></div>` : ''}
 
   <table class="items">
     <thead>
