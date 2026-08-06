@@ -34718,9 +34718,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { localStorage.setItem('ms_shipmentData', JSON.stringify(shipmentData)); } catch(e) {}
     try { localStorage.setItem('ms_nextShipmentId', String(_nextShipmentId)); } catch(e) {}
     if (Object.keys(shipmentData).length > 0 || _nextShipmentId > 1) {
-      const payload = JSON.stringify({ data: shipmentData, nextId: _nextShipmentId });
-      _lastShipmentsJson = payload; // prevent our own save from triggering a poll re-render
-      apiCall('save_app_state', { key: 'ms_shipments', value: payload }).catch(() => {});
+      _lastShipmentsJson = JSON.stringify({ data: shipmentData, nextId: _nextShipmentId });
+      _saveAppStateCAS('ms_shipments',
+        () => ({ data: shipmentData, nextId: _nextShipmentId }),
+        'data',
+        (merged) => {
+          Object.keys(merged.data || {}).forEach(id => { if (!(id in shipmentData)) shipmentData[id] = merged.data[id]; });
+          if (merged.nextId && merged.nextId > _nextShipmentId) _nextShipmentId = merged.nextId;
+          try { if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav(); } catch(_) {}
+        }
+      ).then(json => { if (json) _lastShipmentsJson = json; }).catch(() => {});
     }
   }
 
@@ -36263,6 +36270,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!s) return;
     if (!confirm(`Delete "${s.name}"? This cannot be undone.`)) return;
     delete shipmentData[id];
+    _appStateDelSet('ms_shipments').add(String(id)); // so a merge won't resurrect it
     saveShipments();
     rebuildShipmentsNav();
     location.hash = '#/shipments';
@@ -36273,6 +36281,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!o) return;
     if (!confirm(`Delete "${o.name}"? This cannot be undone.`)) return;
     delete orderData[id];
+    _appStateDelSet('ms_orders').add(String(id)); // so a merge won't resurrect it
     saveOrders();
     rebuildOrdersNav();
     location.hash = '#/orders';
@@ -37980,13 +37989,90 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ══════════════════════════════════════════════════════════════════════
 
   // ── Persistence ──────────────────────────────────────────────────────
+  // ── Shared-blob concurrency protection (orders / shipments / CRM) ─────
+  // These live in single app_state blobs; a naive save posts the whole
+  // local copy and can wipe an item another session just added. We now
+  // save with optimistic concurrency: send the rev we based on; if the
+  // server says someone else moved first, MERGE our change onto the
+  // current server copy (server as base → their concurrent adds survive;
+  // our entries overlay → our edits win; our deletions are honored) and
+  // retry. On any uncertainty we fall back to a plain save, so this is
+  // never worse than before.
+  const _appStateRev = {};       // key -> last server rev our local copy is based on
+  const _appStateDeleted = {};   // key -> Set of ids deleted locally, honored during merge
+  function _appStateDelSet(key) { return _appStateDeleted[key] || (_appStateDeleted[key] = new Set()); }
+  function _captureAppStateRev(key, res) {
+    if (res && typeof res.rev === 'number') _appStateRev[key] = res.rev;
+  }
+  function _mergeIdMap(serverObj, localObj, dataKey, delSet) {
+    const sd = (serverObj && serverObj[dataKey] && typeof serverObj[dataKey] === 'object') ? serverObj[dataKey] : {};
+    const ld = (localObj  && localObj[dataKey]  && typeof localObj[dataKey]  === 'object') ? localObj[dataKey]  : {};
+    const merged = Object.assign({}, sd, ld);              // server base, local overlays
+    if (delSet) delSet.forEach(id => { delete merged[String(id)]; }); // honor local deletes
+    const out = Object.assign({}, localObj);
+    out[dataKey] = merged;
+    const sNext = parseInt(serverObj && serverObj.nextId) || 0;
+    const lNext = parseInt(localObj  && localObj.nextId)  || 0;
+    if (sNext || lNext) out.nextId = Math.max(sNext, lNext);
+    return out;
+  }
+  // Save an id-map blob with CAS + merge-on-conflict. buildLocal() returns
+  // the current local object; applyMerged(mergedObj) folds any concurrent
+  // server items back into the in-memory store. Returns the JSON persisted.
+  async function _saveAppStateCAS(key, buildLocal, dataKey, applyMerged) {
+    let localObj = buildLocal();
+    let baseRev  = _appStateRev[key];
+    const delSet = _appStateDelSet(key);
+    const legacySave = async () => {
+      try {
+        const r = await apiCall('save_app_state', { key, value: JSON.stringify(localObj), changed_by: getCurrentUser() });
+        if (r && typeof r.rev === 'number') _appStateRev[key] = r.rev;
+      } catch (_) {}
+      return JSON.stringify(localObj);
+    };
+    for (let attempt = 0; attempt < 6; attempt++) {
+      let res;
+      try {
+        res = await apiCall('save_app_state', {
+          key, value: JSON.stringify(localObj),
+          base_rev: (typeof baseRev === 'number' ? baseRev : null),
+          changed_by: getCurrentUser(),
+        });
+      } catch (e) { return await legacySave(); }
+      if (res && res.success) {
+        if (typeof res.rev === 'number') _appStateRev[key] = res.rev;
+        delSet.clear();
+        return JSON.stringify(localObj);
+      }
+      if (res && res.conflict) {
+        let serverObj = {};
+        try { serverObj = JSON.parse(res.current_value || '{}') || {}; } catch (_) { serverObj = {}; }
+        localObj = _mergeIdMap(serverObj, localObj, dataKey, delSet);
+        baseRev  = res.current_rev;
+        if (typeof applyMerged === 'function') { try { applyMerged(localObj); } catch (_) {} }
+        continue; // retry with merged payload against the newer rev
+      }
+      return await legacySave(); // unknown non-success
+    }
+    return await legacySave();   // exhausted retries — land the change anyway
+  }
+
   function saveOrders() {
     try { localStorage.setItem('ms_orderData', JSON.stringify(orderData)); } catch(e) {}
     try { localStorage.setItem('ms_nextOrderId', String(_nextOrderId)); } catch(e) {}
     if (Object.keys(orderData).length > 0 || _nextOrderId > 1) {
-      const payload = JSON.stringify({ data: orderData, nextId: _nextOrderId });
-      _lastOrdersJson = payload; // prevent our own save from triggering a poll re-render
-      apiCall('save_app_state', { key: 'ms_orders', value: payload }).catch(() => {});
+      _lastOrdersJson = JSON.stringify({ data: orderData, nextId: _nextOrderId }); // pre-set so our own save doesn't trigger a poll re-render
+      _saveAppStateCAS('ms_orders',
+        () => ({ data: orderData, nextId: _nextOrderId }),
+        'data',
+        (merged) => {
+          // Fold any concurrently-added orders from other sessions into
+          // our in-memory map so they don't vanish from our view either.
+          Object.keys(merged.data || {}).forEach(id => { if (!(id in orderData)) orderData[id] = merged.data[id]; });
+          if (merged.nextId && merged.nextId > _nextOrderId) _nextOrderId = merged.nextId;
+          try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch(_) {}
+        }
+      ).then(json => { if (json) _lastOrdersJson = json; }).catch(() => {});
     }
   }
 
@@ -38053,14 +38139,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function saveCrm() {
     try { localStorage.setItem('ms_crmData', JSON.stringify(crmData)); } catch(e) {}
-    const payload = JSON.stringify(crmData);
-    _lastCrmJson = payload;
+    _lastCrmJson = JSON.stringify(crmData);
     // Mark a save in flight so the live poll can't adopt a stale server
     // copy over the change we just made but haven't persisted yet.
     _crmSavePending = true;
-    apiCall('save_app_state', { key: 'ms_crm', value: payload })
-      .then(() => { _crmSavePending = false; })
-      .catch(() => { _crmSavePending = false; });
+    _saveAppStateCAS('ms_crm',
+      () => crmData,
+      'cards',
+      (merged) => {
+        // Fold concurrently-added cards from other sessions into our board.
+        if (merged && merged.cards) {
+          if (!crmData.cards) crmData.cards = {};
+          Object.keys(merged.cards).forEach(id => { if (!(id in crmData.cards)) crmData.cards[id] = merged.cards[id]; });
+          if (merged.nextId && (!crmData.nextId || merged.nextId > crmData.nextId)) crmData.nextId = merged.nextId;
+        }
+        try { if (typeof renderCrmBoard === 'function' && location.hash === '#/crm') renderCrmBoard(); } catch(_) {}
+      }
+    ).then(json => { if (json) _lastCrmJson = json; _crmSavePending = false; }).catch(() => { _crmSavePending = false; });
   }
 
   function loadCrm() {
@@ -38093,6 +38188,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof apiCall === 'function') {
       apiCall('get_app_state', { key: 'ms_crm' }).then(res => {
         if (!res || !res.success || !res.value) return;
+        _captureAppStateRev('ms_crm', res);
         let dbCrm;
         try { dbCrm = JSON.parse(res.value); } catch { return; }
         if (!dbCrm || typeof dbCrm !== 'object' || !dbCrm.cards) return;
@@ -38132,6 +38228,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try {
       const res = await apiCall('get_app_state', { key: 'ms_crm' });
       if (!res || !res.success || !res.value) return;
+      _captureAppStateRev('ms_crm', res);
       if (res.value === _lastCrmJson) return;                // nothing changed since our last sync
       let dbCrm; try { dbCrm = JSON.parse(res.value); } catch { return; }
       if (!dbCrm || typeof dbCrm !== 'object' || !dbCrm.cards) return;
@@ -38822,6 +38919,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!card) { closeCrmCardModal(); return; }
     const proceed = confirm(`Delete "${card.company || 'this lead'}" from the CRM?\n\nThis cannot be undone.`);
     if (!proceed) return;
+    _appStateDelSet('ms_crm').add(String(_crmEditingId)); // so a merge won't resurrect it
     delete crmData.cards[_crmEditingId];
     saveCrm();
     closeCrmCardModal();
@@ -39416,6 +39514,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try {
       const res = await apiCall('get_app_state', { key: 'ms_orders' });
       if (!res.success) return false;
+      _captureAppStateRev('ms_orders', res);
       if (res.value) {
         _lastOrdersJson = res.value; // seed poll cache so first poll doesn't false-trigger
         const stored = JSON.parse(res.value);
@@ -39431,7 +39530,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (Object.keys(orderData).length > 0) {
         const payload = JSON.stringify({ data: orderData, nextId: _nextOrderId });
         _lastOrdersJson = payload;
-        await apiCall('save_app_state', { key: 'ms_orders', value: payload });
+        const pr = await apiCall('save_app_state', { key: 'ms_orders', value: payload });
+        _captureAppStateRev('ms_orders', pr);
       }
     } catch(e) { console.warn('syncOrdersFromDB:', e); }
     return false;
@@ -39441,6 +39541,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try {
       const res = await apiCall('get_app_state', { key: 'ms_shipments' });
       if (!res.success) return false;
+      _captureAppStateRev('ms_shipments', res);
       if (res.value) {
         _lastShipmentsJson = res.value; // seed poll cache
         const stored = JSON.parse(res.value);
@@ -39456,7 +39557,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (Object.keys(shipmentData).length > 0) {
         const payload = JSON.stringify({ data: shipmentData, nextId: _nextShipmentId });
         _lastShipmentsJson = payload;
-        await apiCall('save_app_state', { key: 'ms_shipments', value: payload });
+        const pr = await apiCall('save_app_state', { key: 'ms_shipments', value: payload });
+        _captureAppStateRev('ms_shipments', pr);
       }
     } catch(e) { console.warn('syncShipmentsFromDB:', e); }
     return false;
@@ -39478,6 +39580,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         apiCall('get_app_state', { key: 'ms_orders' }),
         apiCall('get_app_state', { key: 'ms_shipments' }),
       ]);
+      // Keep our concurrency base in sync with the server the poll just read
+      // — the poll adopts remote changes below, so local ends up based on
+      // this rev either way.
+      _captureAppStateRev('ms_orders', ordRes);
+      _captureAppStateRev('ms_shipments', shipRes);
 
       let ordChanged = false, shipChanged = false;
 
