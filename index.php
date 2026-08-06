@@ -34721,7 +34721,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _lastShipmentsJson = JSON.stringify({ data: shipmentData, nextId: _nextShipmentId });
       _saveAppStateCAS('ms_shipments',
         () => ({ data: shipmentData, nextId: _nextShipmentId }),
-        'data',
+        (s, l, d) => _mergeIdMap(s, l, 'data', d),
         (merged) => {
           Object.keys(merged.data || {}).forEach(id => { if (!(id in shipmentData)) shipmentData[id] = merged.data[id]; });
           if (merged.nextId && merged.nextId > _nextShipmentId) _nextShipmentId = merged.nextId;
@@ -38016,10 +38016,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (sNext || lNext) out.nextId = Math.max(sNext, lNext);
     return out;
   }
-  // Save an id-map blob with CAS + merge-on-conflict. buildLocal() returns
-  // the current local object; applyMerged(mergedObj) folds any concurrent
-  // server items back into the in-memory store. Returns the JSON persisted.
-  async function _saveAppStateCAS(key, buildLocal, dataKey, applyMerged) {
+  // Save a shared blob with CAS + merge-on-conflict. buildLocal() returns
+  // the current local object; mergeFn(serverObj, localObj, delSet) folds a
+  // concurrent server copy into ours; applyMerged(mergedObj) reflects the
+  // merged result back into the in-memory store. Returns the JSON persisted.
+  async function _saveAppStateCAS(key, buildLocal, mergeFn, applyMerged) {
     let localObj = buildLocal();
     let baseRev  = _appStateRev[key];
     const delSet = _appStateDelSet(key);
@@ -38047,7 +38048,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (res && res.conflict) {
         let serverObj = {};
         try { serverObj = JSON.parse(res.current_value || '{}') || {}; } catch (_) { serverObj = {}; }
-        localObj = _mergeIdMap(serverObj, localObj, dataKey, delSet);
+        localObj = (typeof mergeFn === 'function') ? mergeFn(serverObj, localObj, delSet) : localObj;
         baseRev  = res.current_rev;
         if (typeof applyMerged === 'function') { try { applyMerged(localObj); } catch (_) {} }
         continue; // retry with merged payload against the newer rev
@@ -38064,7 +38065,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _lastOrdersJson = JSON.stringify({ data: orderData, nextId: _nextOrderId }); // pre-set so our own save doesn't trigger a poll re-render
       _saveAppStateCAS('ms_orders',
         () => ({ data: orderData, nextId: _nextOrderId }),
-        'data',
+        (s, l, d) => _mergeIdMap(s, l, 'data', d),
         (merged) => {
           // Fold any concurrently-added orders from other sessions into
           // our in-memory map so they don't vanish from our view either.
@@ -38145,7 +38146,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _crmSavePending = true;
     _saveAppStateCAS('ms_crm',
       () => crmData,
-      'cards',
+      (s, l, d) => _mergeIdMap(s, l, 'cards', d),
       (merged) => {
         // Fold concurrently-added cards from other sessions into our board.
         if (merged && merged.cards) {
@@ -42408,13 +42409,50 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _plMetaLoaded = true;
     try {
       const r = await apiCall('get_app_state', { key: 'ms_pipeline_meta' });
+      if (typeof _captureAppStateRev === 'function') _captureAppStateRev('ms_pipeline_meta', r);
       let v = null;
       if (r && r.value) { try { v = JSON.parse(r.value); } catch (e) {} }
       _plMeta = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
     } catch (e) { _plMeta = {}; }
     if (location.hash === '#/pipeline') { try { renderPipelineBoard(); } catch (_) {} }
   }
+  // Per-card merge for the pipeline meta blob (keyed by card id, NOT the
+  // {data:{id}} shape). Server is the base so another session's card meta
+  // survives; for a card we also touched, assignees + comments are UNIONed
+  // (so two people assigning / commenting on the same card concurrently
+  // both survive), note prefers ours.
+  function _mergePlMeta(serverObj, localObj, _delSet) {
+    serverObj = (serverObj && typeof serverObj === 'object' && !Array.isArray(serverObj)) ? serverObj : {};
+    localObj  = (localObj  && typeof localObj  === 'object' && !Array.isArray(localObj))  ? localObj  : {};
+    const out = Object.assign({}, serverObj);
+    Object.keys(localObj).forEach(cid => {
+      const lm = localObj[cid] || {}, sm = serverObj[cid] || {};
+      const byKey = {};
+      const addC = c => { if (c) byKey[(c.id != null) ? ('id:' + c.id) : ('k:' + (c.at || '') + '|' + (c.text || ''))] = c; };
+      (sm.comments || []).forEach(addC);
+      (lm.comments || []).forEach(addC);
+      const comments = Object.values(byKey).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+      out[cid] = {
+        assignees: Array.from(new Set([...(sm.assignees || []), ...(lm.assignees || [])])),
+        note: (lm.note || sm.note || ''),
+        comments,
+      };
+    });
+    return out;
+  }
   function _persistPlMeta() {
+    if (typeof _saveAppStateCAS === 'function') {
+      _saveAppStateCAS('ms_pipeline_meta',
+        () => (_plMeta || {}),
+        _mergePlMeta,
+        (merged) => {
+          _plMeta = merged || _plMeta;
+          try { if (location.hash === '#/pipeline') renderPipelineBoard(); } catch (_) {}
+          try { if (_plModalId && typeof _renderPlComments === 'function') _renderPlComments(); } catch (_) {}
+        }
+      ).catch(() => {});
+      return;
+    }
     try { apiCall('save_app_state', { key: 'ms_pipeline_meta', value: JSON.stringify(_plMeta || {}) }).catch(() => {}); } catch (e) {}
   }
   function _plAssigneeChips(id) {
