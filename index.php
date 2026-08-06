@@ -10440,6 +10440,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         ← Back to Orders
       </a>
       <span id="order-detail-stage-pill" style="display:none;"></span>
+      <span id="order-detail-client-status" style="display:none;"></span>
     </div>
 
     <!-- Header: client name (big) → ship-to → order name → controls -->
@@ -36221,7 +36222,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span>Change request pending — <strong>hold this order</strong></span>
             <a href="#/order/${entry.orderId}" onclick="event.stopPropagation(); location.hash='#/order/${entry.orderId}'">View Request →</a>
            </div>`
-        : '';
+        : (order.clientApproved
+          ? `<div class="soc-cr-banner" style="background:rgba(39,174,96,0.10); border-color:rgba(39,174,96,0.35); color:#16a34a;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              <span>Client <strong>approved</strong> this order — ready to proceed</span>
+             </div>`
+          : '');
 
       return `<div class="ship-order-card${order.changeRequested ? ' has-change-request' : ''}" onclick="location.hash='${orderHref}'">
         <div class="ship-order-card-header">
@@ -41056,6 +41062,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       });
 
+      // ── Approval detection ──────────────────────────────────────────
+      // get_pending_changes only surfaces change-requests. Check the
+      // actual portal status of every order that has a token so a client
+      // APPROVAL flips the order into a positive "Approved" state (green
+      // pill) — not just silently clearing the red flag.
+      const tokens = Object.values(orderData).map(o => o && o.portalToken).filter(Boolean);
+      if (tokens.length) {
+        const statusMap = await apiCall('check_portal_status', { tokens });
+        if (statusMap && typeof statusMap === 'object') {
+          Object.keys(orderData).forEach(id => {
+            const o = orderData[id];
+            if (!o || !o.portalToken) return;
+            const st = statusMap[o.portalToken];
+            if (st === 'approved') {
+              if (!o.clientApproved) { o.clientApproved = true; o.clientApprovedAt = new Date().toISOString(); changed = true; }
+              if (o.changeRequested) { o.changeRequested = false; changed = true; }
+            } else if (st === 'changes_requested') {
+              if (o.clientApproved) { o.clientApproved = false; changed = true; }
+            }
+          });
+        }
+      }
+
       if (changed) {
         saveOrders();
         renderOrdersContent();
@@ -43886,6 +43915,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       } else {
         stageEl.style.cssText = 'display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:99px; background:rgba(107,147,255,0.10); color:#6b93ff; border:1px solid rgba(107,147,255,0.30); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;';
         stageEl.textContent = 'In Orders Queue';
+      }
+    }
+
+    // Client-response pill — reflects the portal approval loop so the
+    // operator sees at a glance whether the client approved or asked for
+    // changes, without opening the change-request detail.
+    const csEl = document.getElementById('order-detail-client-status');
+    if (csEl) {
+      if (o.changeRequested) {
+        csEl.style.cssText = 'display:inline-flex; align-items:center; gap:5px; padding:2px 10px; border-radius:99px; background:rgba(232,117,26,0.12); color:#E8751A; border:1px solid rgba(232,117,26,0.4); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;';
+        csEl.textContent = '⚑ Client requested changes';
+      } else if (o.clientApproved) {
+        const when = o.clientApprovedAt ? new Date(o.clientApprovedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        csEl.style.cssText = 'display:inline-flex; align-items:center; gap:5px; padding:2px 10px; border-radius:99px; background:rgba(39,174,96,0.12); color:#16a34a; border:1px solid rgba(39,174,96,0.4); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;';
+        csEl.textContent = '✓ Client approved' + (when ? ' · ' + when : '');
+      } else {
+        csEl.style.display = 'none';
+        csEl.textContent = '';
       }
     }
 

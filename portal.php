@@ -357,6 +357,48 @@ function portalNotify(array $order, array $items, float $rate, string $clName, s
 
     $html = portalEmailWrap($subject, $subject, $body);
     portalSmtpSend($internal, '[Internal] ' . $subject, $html);
+
+    // Proactive team Slack ping — fires exactly once, right when the client
+    // acts on the portal (no polling, no per-session duplication). No-ops
+    // cleanly when SLACK_WEBHOOK_URL isn't configured. This is the "close
+    // the loop" alert: you hear about an approval / change request the
+    // moment it happens instead of watching the board.
+    portalSlackNotify($status, $orderName, $clName, $po, $comment, count($changes), $appUrl);
+}
+
+// Self-contained Slack channel post for the client portal (portal.php does
+// not include api.php, so it reads the webhook from the environment the
+// same way api.php's constant does).
+function portalSlackNotify(string $status, string $orderName, string $clName, string $po, string $comment, int $changeCount, string $appUrl): void {
+    $webhook = getenv('SLACK_WEBHOOK_URL');
+    if (!is_string($webhook) || $webhook === '') $webhook = $_SERVER['SLACK_WEBHOOK_URL'] ?? '';
+    if (!is_string($webhook) || $webhook === '' || !function_exists('curl_init')) return;
+
+    $approved = ($status === 'approved');
+    $emoji    = $approved ? ':white_check_mark:' : ':warning:';
+    $title    = $approved ? "Client APPROVED — {$orderName}" : "Client requested changes — {$orderName}";
+    $lines    = ["*Client:* {$clName}"];
+    if ($po !== '') $lines[] = "*PO:* {$po}";
+    if (!$approved && $changeCount > 0) $lines[] = "*{$changeCount}* line" . ($changeCount === 1 ? '' : 's') . " flagged for changes";
+    if ($comment !== '') $lines[] = "*Comment:* " . mb_substr($comment, 0, 300);
+    $lines[] = $approved ? "Ready to move into production." : "Review the request and resend an updated order.";
+
+    $blocks = [
+        ['type' => 'header',  'text' => ['type' => 'plain_text', 'text' => trim($emoji . ' ' . $title), 'emoji' => true]],
+        ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $lines)]],
+    ];
+    $payload = json_encode(['text' => $title, 'blocks' => $blocks]);
+
+    $ch = curl_init($webhook);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_TIMEOUT        => 8,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
 }
 
 function internalDetailTable(string $clName, string $clEmail, string $orderName, string $po, string $total): string {
