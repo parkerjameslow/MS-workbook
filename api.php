@@ -285,7 +285,25 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS inventory (
 $pdo->exec("CREATE TABLE IF NOT EXISTS app_state (
     key_name VARCHAR(100) NOT NULL PRIMARY KEY,
     value_json LONGTEXT,
+    rev INT NOT NULL DEFAULT 0,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// Optimistic-concurrency version column (lazy migration for existing DBs).
+// A save only lands when it names the rev it was based on — protects the
+// shared order/shipment/CRM blobs from silent last-write-wins clobber.
+try { $pdo->exec("ALTER TABLE app_state ADD COLUMN rev INT NOT NULL DEFAULT 0"); }
+catch (PDOException $e) { /* column already exists */ }
+// Snapshot history for app_state — the shared blobs previously had NO
+// recovery point (unlike workbooks). Every content-changing save archives
+// the PRIOR blob here first, so a clobbered order/shipment is recoverable.
+$pdo->exec("CREATE TABLE IF NOT EXISTS app_state_revisions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    key_name VARCHAR(100) NOT NULL,
+    value_json LONGTEXT,
+    rev INT NOT NULL DEFAULT 0,
+    changed_by VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_asr_key (key_name, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 // ── One-shot migration: dedup workbooks + enforce uniqueness at DB level ──
@@ -5285,25 +5303,108 @@ switch ($action) {
         break;
 
     case 'get_app_state':
-        // Retrieve a shared key-value entry (e.g. orders, shipments)
+        // Retrieve a shared key-value entry (e.g. orders, shipments). Now
+        // also returns `rev` so the client can base an optimistic-
+        // concurrency save on the version it actually read.
         $stateKey = $input['key'] ?? '';
         if (!$stateKey) { echo json_encode(['success' => false, 'error' => 'key required']); break; }
-        $stmtGAS = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ?");
+        $stmtGAS = $pdo->prepare("SELECT value_json, rev FROM app_state WHERE key_name = ?");
         $stmtGAS->execute([$stateKey]);
         $rowGAS = $stmtGAS->fetch();
-        echo json_encode(['success' => true, 'value' => $rowGAS ? $rowGAS['value_json'] : null]);
+        echo json_encode([
+            'success' => true,
+            'value'   => $rowGAS ? $rowGAS['value_json'] : null,
+            'rev'     => $rowGAS ? (int)$rowGAS['rev'] : 0,
+        ]);
         break;
 
     case 'save_app_state':
-        // Upsert a shared key-value entry
+        // Upsert a shared key-value entry. Two modes:
+        //   • base_rev supplied → optimistic concurrency. The write only
+        //     lands if the row's rev still equals base_rev (nobody saved
+        //     in between). On mismatch we return the CURRENT value + rev so
+        //     the client can merge its change on top and retry — this is
+        //     what stops one session's full-blob save from silently wiping
+        //     an order/shipment another session just added.
+        //   • base_rev absent → legacy unconditional upsert (unchanged
+        //     behavior), so any caller that hasn't adopted rev tracking
+        //     still works. Never makes saving worse than before.
+        // Either way, the PRIOR blob is snapshotted to app_state_revisions
+        // first, so a clobber is always recoverable.
         $stateKey = $input['key']   ?? '';
         $stateVal = $input['value'] ?? null;
         if (!$stateKey) { echo json_encode(['success' => false, 'error' => 'key required']); break; }
-        $pdo->prepare(
-            "INSERT INTO app_state (key_name, value_json) VALUES (?, ?)
-             ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = NOW()"
-        )->execute([$stateKey, $stateVal]);
-        echo json_encode(['success' => true]);
+        $hasBaseRev = array_key_exists('base_rev', $input) && $input['base_rev'] !== null && $input['base_rev'] !== '';
+        $baseRev    = $hasBaseRev ? (int)$input['base_rev'] : null;
+        $asChangedBy = $input['changed_by'] ?? ($_SESSION['username'] ?? '');
+
+        // Snapshot helper — archives the prior blob (deduped against the
+        // most recent snapshot), keeping the last 40 per key.
+        $asSnapshot = function ($prevJson, $prevRev) use ($pdo, $stateKey, $asChangedBy) {
+            if ($prevJson === null || $prevJson === '' || $prevJson === 'null') return;
+            $last = $pdo->prepare("SELECT value_json FROM app_state_revisions WHERE key_name = ? ORDER BY id DESC LIMIT 1");
+            $last->execute([$stateKey]);
+            $lastRow = $last->fetch();
+            if ($lastRow && $lastRow['value_json'] === $prevJson) return; // no change since last snapshot
+            $pdo->prepare("INSERT INTO app_state_revisions (key_name, value_json, rev, changed_by) VALUES (?, ?, ?, ?)")
+                ->execute([$stateKey, $prevJson, (int)$prevRev, $asChangedBy ?: 'auto']);
+            // Trim history to the newest 40 for this key.
+            $pdo->prepare("DELETE FROM app_state_revisions WHERE key_name = ? AND id NOT IN (
+                SELECT id FROM (SELECT id FROM app_state_revisions WHERE key_name = ? ORDER BY id DESC LIMIT 40) t
+            )")->execute([$stateKey, $stateKey]);
+        };
+
+        // Read current row (value + rev) once.
+        $curStmt = $pdo->prepare("SELECT value_json, rev FROM app_state WHERE key_name = ?");
+        $curStmt->execute([$stateKey]);
+        $curRow = $curStmt->fetch();
+
+        if (!$curRow) {
+            // First write for this key — nothing to conflict with.
+            $pdo->prepare("INSERT INTO app_state (key_name, value_json, rev) VALUES (?, ?, 1)")
+                ->execute([$stateKey, $stateVal]);
+            echo json_encode(['success' => true, 'rev' => 1]);
+            break;
+        }
+
+        if ($hasBaseRev) {
+            if ((int)$curRow['rev'] !== $baseRev) {
+                // Someone saved in between — hand back the current state so
+                // the client can merge + retry. No write happens.
+                echo json_encode([
+                    'success'       => false,
+                    'conflict'      => true,
+                    'current_value' => $curRow['value_json'],
+                    'current_rev'   => (int)$curRow['rev'],
+                ]);
+                break;
+            }
+            $asSnapshot($curRow['value_json'], (int)$curRow['rev']);
+            $newRev = $baseRev + 1;
+            $upd = $pdo->prepare("UPDATE app_state SET value_json = ?, rev = ?, updated_at = NOW() WHERE key_name = ? AND rev = ?");
+            $upd->execute([$stateVal, $newRev, $stateKey, $baseRev]);
+            if ($upd->rowCount() === 0) {
+                // Lost a race between SELECT and UPDATE — report conflict.
+                $c2 = $pdo->prepare("SELECT value_json, rev FROM app_state WHERE key_name = ?");
+                $c2->execute([$stateKey]);
+                $c2r = $c2->fetch();
+                echo json_encode([
+                    'success'       => false,
+                    'conflict'      => true,
+                    'current_value' => $c2r['value_json'] ?? null,
+                    'current_rev'   => (int)($c2r['rev'] ?? 0),
+                ]);
+                break;
+            }
+            echo json_encode(['success' => true, 'rev' => $newRev]);
+            break;
+        }
+
+        // Legacy path — unconditional overwrite (still snapshots first).
+        $asSnapshot($curRow['value_json'], (int)$curRow['rev']);
+        $pdo->prepare("UPDATE app_state SET value_json = ?, rev = rev + 1, updated_at = NOW() WHERE key_name = ?")
+            ->execute([$stateVal, $stateKey]);
+        echo json_encode(['success' => true, 'rev' => (int)$curRow['rev'] + 1]);
         break;
 
     case 'mint_order_tracking':
