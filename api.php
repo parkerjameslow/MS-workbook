@@ -4847,12 +4847,27 @@ switch ($action) {
             // Portal CTA button for client email
             $portal_btn = '';
             if ($portalUrl && $type === 'order_confirmed') {
-                $portal_btn = "<div style='text-align:center;margin:32px 0;'>"
+                $portal_btn = "<div style='text-align:center;margin:32px 0 12px;'>"
                             . "<a href='" . htmlspecialchars($portalUrl) . "' style='display:inline-block;background:#E8751A;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;letter-spacing:0.01em;'>"
                             . "View &amp; Approve Your Order &rarr;"
                             . "</a>"
                             . "<p style='margin:12px 0 0;font-size:12px;color:#9ba3c0;'>This link expires once you approve or request changes.</p>"
                             . "</div>";
+            }
+
+            // Live tracking CTA — auto-attached when the order is confirmed
+            // so the client can follow it from Ordered → Delivered. The
+            // frontend mints a persistent per-order tracking token and
+            // passes its URL as `tracking_url`.
+            $tracking_btn = '';
+            $trackingUrl  = $input['tracking_url'] ?? '';
+            if ($trackingUrl && $type === 'order_confirmed') {
+                $tracking_btn = "<div style='text-align:center;margin:0 0 28px;'>"
+                              . "<a href='" . htmlspecialchars($trackingUrl) . "' style='display:inline-block;background:#181b26;color:#f0f1f5;font-size:14px;font-weight:700;text-decoration:none;padding:12px 30px;border-radius:8px;border:1px solid #3a3f5c;'>"
+                              . "&#128230; Track Your Order &rarr;"
+                              . "</a>"
+                              . "<p style='margin:10px 0 0;font-size:12px;color:#9ba3c0;'>A live page — watch your order move from Ordered to Delivered.</p>"
+                              . "</div>";
             }
 
             $msg_map = [
@@ -4870,6 +4885,7 @@ switch ($action) {
                     . ms_detail_table($detail_rows)
                     . $order_tbl_client
                     . $portal_btn
+                    . $tracking_btn
                     . "<p style='margin:24px 0 0;font-size:15px;color:#374151;'>Thank you for your business!<br><strong>Market Sculpt Team</strong></p>";
 
             $i_detail = [

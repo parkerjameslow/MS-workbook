@@ -23266,6 +23266,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     btn.disabled = true;
     btn.textContent = 'Sending…';
     try {
+      // Auto-attach the live tracking link to the order-confirmed email so
+      // the client can follow their order from the moment it's confirmed.
+      // Mints (or reuses) a persistent per-order tracking token.
+      if (_currentOrderId && _notifyPayload?.type === 'order_confirmed' && !_notifyPayload.tracking_url) {
+        try {
+          const trk = await apiCall('mint_order_tracking', {
+            order_id:    String(_currentOrderId),
+            client_name: orderData[_currentOrderId]?.clientName || '',
+          });
+          if (trk && trk.success && trk.url) _notifyPayload.tracking_url = trk.url;
+        } catch (e) { console.warn('[MS tracking mint]', e); }
+      }
       const res = await apiCall('send_notification', _notifyPayload);
       if (res.success) {
         // Store portal token so we can poll for change requests later
