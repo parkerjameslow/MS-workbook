@@ -5346,6 +5346,42 @@ switch ($action) {
         echo json_encode(['success' => true, 'token' => $trkToken, 'url' => "{$trkScheme}://{$trkHost}/track.php?t={$trkToken}"]);
         break;
 
+    case 'notify_stage_slack':
+        // Fire a team Slack channel message when a workbook/shipment hits a
+        // key stage (Sent for Review, Delivered → needs audit). Fire-and-
+        // forget from the frontend on an operator-initiated move. No-ops
+        // cleanly when SLACK_WEBHOOK_URL isn't configured, and never
+        // blocks the move it's reporting.
+        if (SLACK_WEBHOOK_URL === '' || !function_exists('curl_init')) {
+            echo json_encode(['success' => true, 'skipped' => 'no_webhook']);
+            break;
+        }
+        $stTitle = trim((string)($input['title'] ?? 'Stage update'));
+        $stEmoji = trim((string)($input['emoji'] ?? ':package:'));
+        $stLines = $input['lines'] ?? [];
+        if (!is_array($stLines)) $stLines = [];
+        $stBody = implode("\n", array_map(fn($l) => (string)$l, $stLines));
+        $stPayload = json_encode([
+            'text'   => $stTitle,
+            'blocks' => [
+                ['type' => 'header',  'text' => ['type' => 'plain_text', 'text' => trim($stEmoji . ' ' . $stTitle), 'emoji' => true]],
+                ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $stBody !== '' ? $stBody : $stTitle]],
+            ],
+        ]);
+        $stCh = curl_init(SLACK_WEBHOOK_URL);
+        curl_setopt_array($stCh, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $stPayload,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            CURLOPT_TIMEOUT        => 8,
+        ]);
+        curl_exec($stCh);
+        $stCode = curl_getinfo($stCh, CURLINFO_HTTP_CODE);
+        curl_close($stCh);
+        echo json_encode(['success' => $stCode >= 200 && $stCode < 300, 'status' => $stCode]);
+        break;
+
     case 'get_fx_rate':
         // Returns USD→CNY mid-market rate.
         // Tries XE.com first (parses __NEXT_DATA__ for CNY→USD, then inverts),

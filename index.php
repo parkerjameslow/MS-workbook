@@ -31292,6 +31292,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { rebuildReviewNav(); } catch (_) {}
     if (typeof renderRfqDashboard === 'function') setTimeout(renderRfqDashboard, 400);
     showToast(`Sent ${ok} workbook${ok === 1 ? '' : 's'} to review${fail ? ` · ${fail} failed` : ''}`, fail ? 'warn' : 'success');
+    if (ok > 0) {
+      const names = rows.slice(0, 10).map(r => `• *${r.product || 'Untitled'}* — ${r.clientName || ''}`);
+      _notifyStageSlack(`${ok} workbook${ok === 1 ? '' : 's'} sent for review`, ':eyes:',
+        ['Ready for Jackson + Parker to review:', ...names]);
+    }
+  }
+
+  // Fire-and-forget team Slack alert on a key stage move. Posts to the
+  // shared channel via notify_stage_slack, which no-ops server-side when
+  // SLACK_WEBHOOK_URL isn't configured. Never blocks the move it reports.
+  function _notifyStageSlack(title, emoji, lines) {
+    try {
+      const p = apiCall('notify_stage_slack', {
+        title, emoji, lines: Array.isArray(lines) ? lines : [lines],
+      });
+      if (p && typeof p.catch === 'function') p.catch(e => console.warn('[MS stage slack]', e));
+    } catch (e) { console.warn('[MS stage slack]', e); }
+  }
+
+  // Team alert when a shipment transitions INTO delivered — it now needs
+  // a receiving audit. Called from both delivered write points, guarded
+  // against re-fire (only on a real transition).
+  function _notifyShipmentDelivered(s) {
+    if (!s) return;
+    const lines = [`*${s.name || 'Shipment'}* is delivered and needs a receiving audit.`];
+    const carr = [(s.carrier || '').toUpperCase(), s.trackingNumber || ''].filter(Boolean).join(' ');
+    if (carr) lines.push(`Carrier: ${carr}`);
+    lines.push('Open the Receiving lane to check received qty and mark it received.');
+    _notifyStageSlack('Shipment delivered — needs audit', ':inbox_tray:', lines);
   }
 
   // submit_for_review sets sentForReview in the DB but does NOT come back
@@ -31339,6 +31368,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // isn't reloaded here.
         _markSentForReviewLocal(clientName, workbookId);
         try { saveToLocalStorage(); } catch (_) {}
+        if (!res.re_sent) {
+          _notifyStageSlack('Workbook sent for review', ':eyes:',
+            ['Ready for Jackson + Parker to review:', `• *${productName || 'Untitled'}* — ${clientName || ''}`]);
+        }
         // Active hand-off animation: pulse the Ready-for-Review nav badge +
         // flash the link (the workbook "lands" there), slide the row out of
         // the queue, then re-render so counts/empty-state settle.
@@ -36718,6 +36751,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       document.getElementById('ship-detail-status').value = s.status || 'planning';
       return;
     }
+    const _wasStatus = s.status;
     s.status = newStatus;
     const wrap = document.getElementById('ship-delivered-wrap');
     if (wrap) wrap.style.display = s.status === 'delivered' ? 'flex' : 'none';
@@ -36726,7 +36760,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     updateReceivingBadge();
     // If status moved to delivered (already had tracking), route the
     // operator to the Receiving lane so they land on the card.
-    if (newStatus === 'delivered') location.hash = '#/receiving';
+    if (newStatus === 'delivered') {
+      if (_wasStatus !== 'delivered') _notifyShipmentDelivered(s);
+      location.hash = '#/receiving';
+    }
   }
 
   // ── Receiving view ────────────────────────────────────────────────
@@ -37223,7 +37260,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         s.trackings[0].number  = num;
       }
     }
+    const _wasShipStatus = s.status;
     s.status = ctx.requestedStatus;
+    // Delivered via the tracking modal (carrier + number just captured) —
+    // alert the team it needs a receiving audit, once per transition.
+    if (ctx.requestedStatus === 'delivered' && _wasShipStatus !== 'delivered'
+        && typeof _notifyShipmentDelivered === 'function') {
+      _notifyShipmentDelivered(s);
+    }
     s.tracking = s.tracking || null; // will be filled by the AI fetch below
     // Persist (or clear) the truck booking BOL. When the checkbox is
     // OFF we drop s.truckBooking entirely so the shipment card doesn't
