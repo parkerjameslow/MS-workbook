@@ -7063,6 +7063,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
+        <!-- Business Dashboard — at-a-glance KPIs (pipeline value,
+             margins, quote→order conversion, on-time delivery, stage
+             velocity, top clients). Overview surface, so it sits first. -->
+        <a id="nav-dashboard-link" href="#/dashboard" onclick="event.preventDefault(); location.hash='#/dashboard'" class="nav-flat-link">
+          <span>Dashboard</span>
+        </a>
         <!-- CRM — sales pipeline board (Trello-like). Lives under
              Internal because it's an operator-facing surface, not a
              client-facing one. Drag-and-drop cards across the
@@ -10024,6 +10030,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      Cards drag freely between columns via HTML5 drag/drop. Each card
      holds contact info + free-form notes + next-followup date.
 ══════════════════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: BUSINESS DASHBOARD (Internal)
+     At-a-glance KPIs — pipeline value, margins, quote→order conversion,
+     on-time delivery, stage distribution, top clients. Body populated by
+     renderBusinessDashboard() from live in-memory data.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-biz-dashboard" class="view">
+  <main class="container" style="max-width:1180px;">
+    <div id="biz-dashboard-body"></div>
+  </main>
+</div>
+
 <div id="view-crm" class="view">
   <main class="container" style="max-width:none; padding:0 16px 16px;">
     <!-- CRM board search — filters cards live across EVERY field:
@@ -31854,6 +31872,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Match: #/dashboard — internal business KPI dashboard.
+    if (hash === '#/dashboard') {
+      renderBusinessDashboard();
+      return;
+    }
+
     // Match: #/crm — Trello-like sales pipeline board.
     if (hash === '#/crm') {
       renderCrmBoard();
@@ -38292,6 +38316,195 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!tokens.length) return true;
     const hay = _crmCardHaystack(c);
     return tokens.every(t => hay.includes(t));
+  }
+
+  // ── Business Dashboard (Internal) ─────────────────────────────────────
+  // At-a-glance KPIs computed from live in-memory data. Everything is
+  // defensively guarded so it renders even with sparse/no data.
+  function _bizMoney(n) { n = Number(n) || 0; return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 }); }
+  function _bizPct(n) { return (n == null) ? '—' : (Math.round(n) + '%'); }
+
+  function _computeBusinessMetrics() {
+    const M = {
+      quotedCount: 0, orderedCount: 0, conversionPct: null,
+      pipelineSaleValue: 0, pipelineCost: 0,
+      marginSum: 0, marginCount: 0, avgMarginPct: null, unpriced: 0,
+      marginBands: { '<20%': 0, '20–35%': 0, '35–50%': 0, '50%+': 0 },
+      activeOrders: 0, ordersSaleValue: 0,
+      inProduction: 0, inTransit: 0, delivered: 0,
+      onTime: 0, late: 0, onTimePct: null,
+      shipDaysSum: 0, shipDaysN: 0, confirmDaysSum: 0, confirmDaysN: 0,
+      clients: [], stages: [],
+    };
+    const wd = (typeof workbookDetail === 'object' && workbookDetail) ? workbookDetail : {};
+    const cd = (typeof clientData === 'object' && clientData) ? clientData : {};
+    const od = (typeof orderData === 'object' && orderData) ? orderData : {};
+    const sd = (typeof shipmentData === 'object' && shipmentData) ? shipmentData : {};
+    const parseAny = v => { if (!v) return null; const t = Date.parse(v); return isNaN(t) ? null : t; };
+
+    const perClient = {};
+    for (const [client, items] of Object.entries(cd)) {
+      if (!Array.isArray(items)) continue;
+      let cWb = 0, cSale = 0, cMarginSum = 0, cMarginN = 0;
+      items.forEach(item => {
+        if (!item) return;
+        const detail = wd[`${client}|${item.id}`];
+        const quoted  = !!(item.flow && item.flow.quoteClient) || !!(detail && detail.sentForReview);
+        const ordered = (typeof _wbInAnyOrder === 'function') ? _wbInAnyOrder(client, item.id) : false;
+        if (quoted) { M.quotedCount++; if (ordered) M.orderedCount++; }
+        cWb++;
+        let price = 0, cost = 0;
+        if (detail && typeof _wbStatsForPicker === 'function') {
+          const st = _wbStatsForPicker(detail) || {};
+          price = Number(st.price) || 0; cost = Number(st.cost) || 0;
+        }
+        if (price > 0) {
+          cSale += price; M.pipelineSaleValue += price; M.pipelineCost += cost;
+          const margin = (price - cost) / price * 100;
+          M.marginSum += margin; M.marginCount++; cMarginSum += margin; cMarginN++;
+          if (margin < 20) M.marginBands['<20%']++;
+          else if (margin < 35) M.marginBands['20–35%']++;
+          else if (margin < 50) M.marginBands['35–50%']++;
+          else M.marginBands['50%+']++;
+        } else M.unpriced++;
+      });
+      perClient[client] = { name: client, wbCount: cWb, saleValue: cSale, avgMargin: cMarginN ? cMarginSum / cMarginN : null };
+    }
+    M.conversionPct = M.quotedCount ? (M.orderedCount / M.quotedCount * 100) : null;
+    M.avgMarginPct  = M.marginCount ? (M.marginSum / M.marginCount) : null;
+    M.clients = Object.values(perClient).filter(c => c.saleValue > 0 || c.wbCount > 0)
+      .sort((a, b) => b.saleValue - a.saleValue).slice(0, 8);
+
+    Object.values(od).forEach(o => {
+      if (!o) return;
+      if (o.status !== 'complete') M.activeOrders++;
+      let oSale = 0;
+      (o.entries || []).forEach(e => { const d = wd[`${e.clientName}|${e.workbookId}`]; if (d) oSale += parseFloat(d.pricingClientQuoteTotal) || 0; });
+      M.ordersSaleValue += oSale;
+      if (typeof _orderIsInFulfillment === 'function' && _orderIsInFulfillment(o)) M.inProduction++;
+      const c = parseAny(o.createdAt) || parseAny(o.dateCreated), n = parseAny(o.notifiedAt);
+      if (c && n && n >= c) { M.confirmDaysSum += (n - c) / 86400000; M.confirmDaysN++; }
+    });
+
+    Object.values(sd).forEach(s => {
+      if (!s) return;
+      const st = s.status;
+      if (st === 'booked' || st === 'in_transit' || st === 'waiting_arrival') M.inTransit++;
+      if (st === 'delivered' || st === 'received') {
+        M.delivered++;
+        const dOn = parseAny(s.deliveredOn), eta = parseAny(s.eta) || parseAny(s.portArrivalDate);
+        if (dOn && eta) { if (dOn <= eta + 86400000) M.onTime++; else M.late++; }
+        const cr = parseAny(s.createdAt) || parseAny(s.dateCreated);
+        if (cr && dOn && dOn >= cr) { M.shipDaysSum += (dOn - cr) / 86400000; M.shipDaysN++; }
+      }
+    });
+    M.onTimePct = (M.onTime + M.late) ? (M.onTime / (M.onTime + M.late) * 100) : null;
+
+    const cnt = fn => { try { return (typeof fn === 'function') ? (fn() || []).length : 0; } catch (_) { return 0; } };
+    M.stages = [
+      { label: 'RFQ',        n: cnt(typeof collectAllRfqs !== 'undefined' && collectAllRfqs) },
+      { label: 'Review',     n: cnt(typeof collectAllReadyForReview !== 'undefined' && collectAllReadyForReview) },
+      { label: 'Samples',    n: cnt(typeof collectAllSamples !== 'undefined' && collectAllSamples) },
+      { label: 'Orders',     n: Object.values(od).filter(o => o && typeof _orderIsInOrdersQueue === 'function' && _orderIsInOrdersQueue(o)).length },
+      { label: 'Production', n: M.inProduction },
+      { label: 'Shipments',  n: Object.values(sd).filter(s => s && s.status && s.status !== 'received' && s.status !== 'delivered' && s.status !== 'planning').length },
+      { label: 'Receiving',  n: Object.values(sd).filter(s => s && s.status === 'delivered').length },
+    ];
+    return M;
+  }
+
+  function renderBusinessDashboard() {
+    document.getElementById('header-title').textContent = 'Business Dashboard';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-dashboard-link'); if (link) link.classList.add('active');
+    showView('view-biz-dashboard');
+    const host = document.getElementById('biz-dashboard-body'); if (!host) return;
+    const M = _computeBusinessMetrics();
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    const tile = (label, val, sub, accent) => `
+      <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:16px 18px;">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">${label}</div>
+        <div style="font-size:26px; font-weight:800; color:${accent || 'var(--text)'}; line-height:1.05;">${val}</div>
+        ${sub ? `<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${sub}</div>` : ''}
+      </div>`;
+    const marginAccent = M.avgMarginPct == null ? 'var(--text)' : (M.avgMarginPct < 20 ? '#ef4444' : (M.avgMarginPct < 35 ? '#f59e0b' : '#16a34a'));
+    const onTimeAccent = M.onTimePct == null ? 'var(--text-muted)' : (M.onTimePct < 80 ? '#f59e0b' : '#16a34a');
+    const tiles = [
+      tile('Pipeline Value', _bizMoney(M.pipelineSaleValue), 'quoted sale value · active workbooks', 'var(--accent)'),
+      tile('Avg Margin', _bizPct(M.avgMarginPct), `${M.marginCount} priced${M.unpriced ? ` · ${M.unpriced} unpriced` : ''}`, marginAccent),
+      tile('Quote → Order', _bizPct(M.conversionPct), `${M.orderedCount} of ${M.quotedCount} quoted ordered`),
+      tile('Active Orders', String(M.activeOrders), `${_bizMoney(M.ordersSaleValue)} sale value`),
+      tile('On-Time Delivery', _bizPct(M.onTimePct), M.onTimePct == null ? 'delivered vs ETA — no data yet' : `${M.onTime} on time · ${M.late} late`, onTimeAccent),
+      tile('In Production / Transit', `${M.inProduction} / ${M.inTransit}`, `${M.delivered} delivered`),
+    ].join('');
+
+    // Horizontal bar list (label · value · proportional bar).
+    const barList = (items, color, fmt) => {
+      const max = Math.max(1, ...items.map(i => i.n));
+      return items.map(i => `
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:7px;">
+          <div style="width:96px; font-size:12px; color:var(--text-muted); flex-shrink:0;">${esc(i.label)}</div>
+          <div style="flex:1; height:16px; background:var(--surface2); border-radius:6px; overflow:hidden;">
+            <div style="height:100%; width:${Math.round((i.n / max) * 100)}%; min-width:${i.n > 0 ? 3 : 0}%; background:${i.color || color}; border-radius:6px;"></div>
+          </div>
+          <div style="width:44px; text-align:right; font-size:12px; font-weight:700; color:var(--text);">${fmt ? fmt(i.n) : i.n}</div>
+        </div>`).join('');
+    };
+    const bandItems = [
+      { label: '< 20%',    n: M.marginBands['<20%'],   color: '#ef4444' },
+      { label: '20–35%',   n: M.marginBands['20–35%'], color: '#f59e0b' },
+      { label: '35–50%',   n: M.marginBands['35–50%'], color: '#84cc16' },
+      { label: '50%+',     n: M.marginBands['50%+'],   color: '#16a34a' },
+    ];
+
+    const card = (title, inner, sub) => `
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px;">
+        <div style="font-size:13px; font-weight:800; color:var(--text); margin-bottom:${sub ? 2 : 14}px;">${title}</div>
+        ${sub ? `<div style="font-size:11px; color:var(--text-muted); margin-bottom:14px;">${sub}</div>` : ''}
+        ${inner}
+      </div>`;
+
+    const clientsRows = M.clients.length ? M.clients.map(c => `
+      <tr style="border-top:1px solid var(--border);">
+        <td style="padding:8px 6px; font-weight:600; color:var(--text);">${esc(c.name)}</td>
+        <td style="padding:8px 6px; text-align:right; color:var(--text-muted);">${c.wbCount}</td>
+        <td style="padding:8px 6px; text-align:right; font-weight:700; color:var(--text);">${_bizMoney(c.saleValue)}</td>
+        <td style="padding:8px 6px; text-align:right; color:${c.avgMargin == null ? 'var(--text-muted)' : (c.avgMargin < 20 ? '#ef4444' : '#16a34a')};">${c.avgMargin == null ? '—' : Math.round(c.avgMargin) + '%'}</td>
+      </tr>`).join('')
+      : `<tr><td colspan="4" style="padding:14px 6px; color:var(--text-muted); font-style:italic;">No priced workbooks yet.</td></tr>`;
+    const clientsTable = `
+      <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead><tr style="font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">
+          <th style="padding:4px 6px; text-align:left;">Client</th>
+          <th style="padding:4px 6px; text-align:right;">Workbooks</th>
+          <th style="padding:4px 6px; text-align:right;">Quoted Value</th>
+          <th style="padding:4px 6px; text-align:right;">Avg Margin</th>
+        </tr></thead>
+        <tbody>${clientsRows}</tbody>
+      </table>`;
+
+    const ops = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+        <div><div style="font-size:22px; font-weight:800; color:var(--text);">${M.confirmDaysN ? (M.confirmDaysSum / M.confirmDaysN).toFixed(1) + 'd' : '—'}</div><div style="font-size:11px; color:var(--text-muted);">avg order → notified</div></div>
+        <div><div style="font-size:22px; font-weight:800; color:var(--text);">${M.shipDaysN ? (M.shipDaysSum / M.shipDaysN).toFixed(0) + 'd' : '—'}</div><div style="font-size:11px; color:var(--text-muted);">avg ship → delivered</div></div>
+      </div>`;
+
+    host.innerHTML = `
+      <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:6px 0 16px; flex-wrap:wrap;">
+        <div style="font-size:20px; font-weight:800; color:var(--text);">Business Overview</div>
+        <div style="font-size:12px; color:var(--text-muted);">Live · ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(185px, 1fr)); gap:12px; margin-bottom:20px;">${tiles}</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px; margin-bottom:16px;">
+        ${card('Pipeline by stage', barList(M.stages, 'var(--accent)'), 'Workbooks / orders / shipments in each stage')}
+        ${card('Margin distribution', barList(bandItems, '#84cc16'), `${M.marginCount} priced workbook${M.marginCount === 1 ? '' : 's'}`)}
+      </div>
+      <div style="display:grid; grid-template-columns:2fr 1fr; gap:16px;">
+        ${card('Top clients by quoted value', clientsTable)}
+        ${card('Cycle times', ops)}
+      </div>`;
   }
 
   function renderCrmBoard() {
