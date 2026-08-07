@@ -149,16 +149,29 @@ function artMain(string $product, array $files, string $notes, string $clName, s
         $tiles = '<div style="padding:40px;text-align:center;color:#9ba3c0;font-size:14px;">No art files were attached to this request.</div>';
     } else {
         $tk = urlencode($token);
+        // uploads/ is public (see uploads/.htaccess) — so the client can load
+        // each file DIRECTLY by its absolute URL, exactly like the operator's
+        // app does. Absolute avoids any relative-base ambiguity on art.php.
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host   = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
+        $absUrl = function ($rel) use ($scheme, $host) {
+            $rel = (string)$rel;
+            if (preg_match('#^https?://#i', $rel)) return $rel;
+            return $scheme . '://' . $host . '/' . ltrim($rel, '/');
+        };
         foreach ($files as $i => $f) {
             $url   = (string)$f;
             $name  = htmlspecialchars(artFileName($url));
-            $view  = "art.php?t={$tk}&img={$i}";        // token-gated stream
-            $dl    = $view . '&dl=1';                    // forces download
+            $src   = htmlspecialchars($absUrl($url));    // direct public URL
+            $dl    = "art.php?t={$tk}&img={$i}&dl=1";     // proxy → forces download
             $dlBtn = "<a class='art-dl' href='{$dl}'>&#8681; Download</a>";
             if (artIsImage($url)) {
-                $tiles .= "<figure class='art-tile'><a href='{$view}' target='_blank' rel='noopener'><img src='{$view}' alt='{$name}' loading='lazy'></a><figcaption><span class='art-name'>{$name}</span>{$dlBtn}</figcaption></figure>";
+                // Direct public URL first; if that fails on this host, fall
+                // back to the token-gated proxy stream. Covers both setups.
+                $proxy = "art.php?t={$tk}&amp;img={$i}";
+                $tiles .= "<figure class='art-tile'><a href='{$src}' target='_blank' rel='noopener'><img src='{$src}' alt='{$name}' loading='lazy' onerror=\"this.onerror=null;this.src='{$proxy}';\"></a><figcaption><span class='art-name'>{$name}</span>{$dlBtn}</figcaption></figure>";
             } elseif (artIsPdf($url)) {
-                $tiles .= "<figure class='art-tile art-doc'><a href='{$view}' target='_blank' rel='noopener'><div class='art-doc-badge'>PDF</div><span>{$name}</span></a><figcaption>{$dlBtn}</figcaption></figure>";
+                $tiles .= "<figure class='art-tile art-doc'><a href='{$src}' target='_blank' rel='noopener'><div class='art-doc-badge'>PDF</div><span>{$name}</span></a><figcaption>{$dlBtn}</figcaption></figure>";
             } else {
                 $tiles .= "<figure class='art-tile art-doc'><a href='{$dl}'><div class='art-doc-badge'>FILE</div><span>{$name}</span></a><figcaption>{$dlBtn}</figcaption></figure>";
             }
