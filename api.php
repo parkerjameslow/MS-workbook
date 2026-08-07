@@ -2163,16 +2163,10 @@ switch ($action) {
             // Cap flow so quoteClient (and later) clears → not "advanced past".
             $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'samples') {
-            if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
-                // Only flag line items with content — blank placeholder rows
-                // shouldn't become empty samples.
-                foreach ($detail['rfqItems'] as &$it) {
-                    if (is_array($it)) {
-                        $it['sample'] = (!empty($it['item']) || !empty($it['qty']) || !empty($it['priceRmb']));
-                    }
-                }
-                unset($it);
-            }
+            // Respect the per-line Sample checkmarks already on the workbook —
+            // don't bulk-flag. The existing rfqItems[].sample values decide
+            // which lines are samples; dividers are cleared and flow capped
+            // so the workbook sits in the Samples stage.
             $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'rfq') {
             $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now;

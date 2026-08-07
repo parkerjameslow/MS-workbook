@@ -42602,12 +42602,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const key = `${clientName}|${workbookId}`;
     const detail = workbookDetail[key];
     if (!detail) return;
-    // Samples are per-line-item — you can't sample a workbook that has no
-    // real line items yet. Guard so an empty workbook doesn't get dragged
-    // to Samples, flag nothing, and silently bounce back to Unstaged.
+    // Samples are per-line-item and driven by the Sample checkmark on each
+    // RFQ line. Moving to Samples RESPECTS those checkmarks — it doesn't
+    // bulk-flag the whole workbook. So require at least one line already
+    // checked as a sample; otherwise tell the operator to tick some first.
     if (targetStage === 'samples') {
-      const hasContent = Array.isArray(detail.rfqItems) && detail.rfqItems.some(it => it && (it.item || it.qty || it.priceRmb));
-      if (!hasContent) { showToast('Nothing to sample yet — add line items to this workbook first.', 'warn'); return; }
+      const hasSample = Array.isArray(detail.rfqItems) && detail.rfqItems.some(it => it && it.sample);
+      if (!hasSample) { showToast('No line items are flagged as samples — tick the Sample checkbox on the items you want, then drag.', 'warn'); return; }
     }
     // Snapshot the current flag state so we can roll the optimistic move
     // BACK if the server rejects it (e.g. the id has no live DB row) —
@@ -42628,12 +42629,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Clear every stage flag AND un-flag samples so it truly has no stage.
       if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = false; });
     } else if (targetStage === 'samples') {
-      // Flag only line items that actually have content — a blank/
-      // placeholder RFQ row shouldn't become an empty sample (a fresh
-      // "test" workbook with default rows was spawning several blanks).
-      if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => {
-        if (it) it.sample = !!(it.item || it.qty || it.priceRmb);
-      });
+      // Respect the per-line Sample checkmarks already set on the workbook —
+      // do NOT bulk-flag. The dividers were cleared above and advanced flow
+      // is cleared below, so the workbook lands in Samples via whichever
+      // line items the operator already ticked as samples.
     } else if (targetStage === 'rfq') {
       detail.sentToRfq = true; detail.sentToRfqAt = now;
     } else if (targetStage === 'review') {
