@@ -53,6 +53,30 @@ $files   = is_array($snap['files'] ?? null) ? $snap['files'] : [];
 $notes   = trim((string)($snap['notes'] ?? ''));
 $clName  = $row['client_name'];
 
+// ── Token-gated file proxy ───────────────────────────────────────────────────
+// The client has no app session, so it can't load /uploads/... the way the
+// operator can. Serve the art bytes THROUGH this page (token already
+// validated above), reading straight off disk. ?img=N streams the file;
+// &dl=1 forces a download. Only files named in THIS token's snapshot, only
+// from the uploads dir — never an arbitrary path.
+if (isset($_GET['img'])) {
+    $rel = $files[(int)$_GET['img']] ?? '';
+    if ($rel === '') { http_response_code(404); exit; }
+    $path = realpath(__DIR__ . '/' . ltrim($rel, '/'));
+    $base = realpath(__DIR__ . '/uploads');
+    if (!$path || !$base || strpos($path, $base) !== 0 || !is_file($path)) { http_response_code(404); exit; }
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $types = ['jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif','webp'=>'image/webp',
+              'svg'=>'image/svg+xml','bmp'=>'image/bmp','tif'=>'image/tiff','tiff'=>'image/tiff','heic'=>'image/heic',
+              'heif'=>'image/heif','avif'=>'image/avif','pdf'=>'application/pdf'];
+    header('Content-Type: ' . ($types[$ext] ?? 'application/octet-stream'));
+    header('Content-Length: ' . filesize($path));
+    if (!empty($_GET['dl'])) header('Content-Disposition: attachment; filename="' . basename($path) . '"');
+    header('Cache-Control: private, max-age=3600');
+    readfile($path);
+    exit;
+}
+
 // Already resolved?
 if ($row['status'] !== 'active') {
     $approved = $row['status'] === 'approved';
@@ -124,16 +148,19 @@ function artMain(string $product, array $files, string $notes, string $clName, s
     if (empty($files)) {
         $tiles = '<div style="padding:40px;text-align:center;color:#9ba3c0;font-size:14px;">No art files were attached to this request.</div>';
     } else {
-        foreach ($files as $f) {
-            $url  = (string)$f;
-            $name = htmlspecialchars(artFileName($url));
-            $safe = htmlspecialchars($url);
+        $tk = urlencode($token);
+        foreach ($files as $i => $f) {
+            $url   = (string)$f;
+            $name  = htmlspecialchars(artFileName($url));
+            $view  = "art.php?t={$tk}&img={$i}";        // token-gated stream
+            $dl    = $view . '&dl=1';                    // forces download
+            $dlBtn = "<a class='art-dl' href='{$dl}'>&#8681; Download</a>";
             if (artIsImage($url)) {
-                $tiles .= "<figure class='art-tile'><a href='{$safe}' target='_blank' rel='noopener'><img src='{$safe}' alt='{$name}' loading='lazy'></a><figcaption>{$name}</figcaption></figure>";
+                $tiles .= "<figure class='art-tile'><a href='{$view}' target='_blank' rel='noopener'><img src='{$view}' alt='{$name}' loading='lazy'></a><figcaption><span class='art-name'>{$name}</span>{$dlBtn}</figcaption></figure>";
             } elseif (artIsPdf($url)) {
-                $tiles .= "<figure class='art-tile art-doc'><a href='{$safe}' target='_blank' rel='noopener'><div class='art-doc-badge'>PDF</div><span>{$name}</span></a></figure>";
+                $tiles .= "<figure class='art-tile art-doc'><a href='{$view}' target='_blank' rel='noopener'><div class='art-doc-badge'>PDF</div><span>{$name}</span></a><figcaption>{$dlBtn}</figcaption></figure>";
             } else {
-                $tiles .= "<figure class='art-tile art-doc'><a href='{$safe}' target='_blank' rel='noopener'><div class='art-doc-badge'>FILE</div><span>{$name}</span></a></figure>";
+                $tiles .= "<figure class='art-tile art-doc'><a href='{$dl}'><div class='art-doc-badge'>FILE</div><span>{$name}</span></a><figcaption>{$dlBtn}</figcaption></figure>";
             }
         }
     }
@@ -274,7 +301,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .art-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;}
 .art-tile{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;background:#fafbfc;}
 .art-tile img{width:100%;height:200px;object-fit:contain;background:#fff;display:block;}
-.art-tile figcaption{font-size:11px;color:#6b7280;padding:8px 10px;border-top:1px solid #f0f2f5;word-break:break-word;}
+.art-tile figcaption{font-size:11px;color:#6b7280;padding:8px 10px;border-top:1px solid #f0f2f5;word-break:break-word;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.art-tile .art-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.art-dl{flex-shrink:0;font-size:11px;font-weight:700;color:#E8751A;text-decoration:none;white-space:nowrap;}
+.art-dl:hover{text-decoration:underline;}
 .art-doc a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;height:180px;text-decoration:none;color:#374151;font-size:12px;padding:12px;text-align:center;word-break:break-word;}
 .art-doc-badge{font-size:12px;font-weight:800;letter-spacing:0.06em;color:#E8751A;background:rgba(232,117,26,0.1);border:1px solid rgba(232,117,26,0.3);border-radius:8px;padding:8px 14px;}
 .art-notes{margin-top:18px;font-size:14px;color:#374151;background:#f8f9fb;border-left:3px solid #6b93ff;border-radius:6px;padding:12px 14px;line-height:1.6;}
