@@ -2164,7 +2164,13 @@ switch ($action) {
             $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'samples') {
             if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
-                foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = true; }
+                // Only flag line items with content — blank placeholder rows
+                // shouldn't become empty samples.
+                foreach ($detail['rfqItems'] as &$it) {
+                    if (is_array($it)) {
+                        $it['sample'] = (!empty($it['item']) || !empty($it['qty']) || !empty($it['priceRmb']));
+                    }
+                }
                 unset($it);
             }
             $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';

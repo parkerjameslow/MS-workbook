@@ -30540,6 +30540,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (_wbAdvancedPastSamples(clientName, workbookId, detail)) continue;
       detail.rfqItems.forEach((item, idx) => {
         if (!item.sample) return;
+        // Skip blank sample rows — a contentless line item is meaningless
+        // as a sample and was cluttering the list (e.g. after a whole-
+        // workbook "move to Samples" flagged empty placeholder rows).
+        if (!(item.item || item.qty || item.priceRmb)) return;
         const status = (detail.sampleStatuses && detail.sampleStatuses[idx]) || 'pending';
         // Default direction is 'from' (factory → us) — every legacy
         // sample predates this field and is inbound for approval.
@@ -42598,6 +42602,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const key = `${clientName}|${workbookId}`;
     const detail = workbookDetail[key];
     if (!detail) return;
+    // Samples are per-line-item — you can't sample a workbook that has no
+    // real line items yet. Guard so an empty workbook doesn't get dragged
+    // to Samples, flag nothing, and silently bounce back to Unstaged.
+    if (targetStage === 'samples') {
+      const hasContent = Array.isArray(detail.rfqItems) && detail.rfqItems.some(it => it && (it.item || it.qty || it.priceRmb));
+      if (!hasContent) { showToast('Nothing to sample yet — add line items to this workbook first.', 'warn'); return; }
+    }
     // Snapshot the current flag state so we can roll the optimistic move
     // BACK if the server rejects it (e.g. the id has no live DB row) —
     // otherwise the board would keep showing a move that never persisted.
@@ -42617,7 +42628,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Clear every stage flag AND un-flag samples so it truly has no stage.
       if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = false; });
     } else if (targetStage === 'samples') {
-      if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = true; });
+      // Flag only line items that actually have content — a blank/
+      // placeholder RFQ row shouldn't become an empty sample (a fresh
+      // "test" workbook with default rows was spawning several blanks).
+      if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => {
+        if (it) it.sample = !!(it.item || it.qty || it.priceRmb);
+      });
     } else if (targetStage === 'rfq') {
       detail.sentToRfq = true; detail.sentToRfqAt = now;
     } else if (targetStage === 'review') {
