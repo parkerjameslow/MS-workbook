@@ -42626,12 +42626,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } else if (targetStage === 'orders') {
       detail.movedToOrders = true; detail.movedToOrdersAt = now;
     }
-    // Keep the local flow in sync so the RFQ / Review queues include it
-    // without a reload (the server bumps flow_step for rfq/review).
-    if (targetStage === 'rfq' || targetStage === 'review') {
+    // Keep the local flow in sync with the target stage. The pipeline
+    // collectors gate on flow, not just the dividers: RFQ/Review require
+    // NOT quoteClient, and Samples requires the workbook isn't advanced
+    // past quoteClient. So a workbook already quoted-to-client would be
+    // rejected by those collectors and silently fall back to Unstaged —
+    // the card "wouldn't move" even though the divider flipped. Clearing
+    // the advanced flow flags on any early-stage move fixes that. (Orders
+    // is claimed by movedToOrders regardless of flow, so leave it alone.)
+    if (targetStage !== 'orders') {
       const items = clientData[clientName] || [];
       const item = items.find(i => String(i.id) === String(workbookId));
-      if (item && item.flow) { item.flow.quoteChina = true; item.flow.quoteSubmitted = true; }
+      if (item && item.flow) {
+        item.flow.quoteClient = false; item.flow.clientApproved = false;
+        item.flow.officeInvoice = false; item.flow.confirmedPayment = false; item.flow.orderChina = false;
+        if (targetStage === 'rfq' || targetStage === 'review') { item.flow.quoteChina = true; item.flow.quoteSubmitted = true; }
+      }
     }
     try { saveToLocalStorage(); } catch (_) {}
     renderPipelineBoard();

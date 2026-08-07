@@ -2146,9 +2146,13 @@ switch ($action) {
         $detail['sentToRfq']       = false; $detail['sentToRfqAt']     = null;
         $detail['sentForReview']   = false; $detail['sentForReviewAt'] = null;
         $detail['movedToOrders']   = false; $detail['movedToOrdersAt'] = null;
-        // rfq/review need flow_step >= 2 (quoteSubmitted) to enter their
-        // queues; samples/orders leave flow_step untouched.
-        $bumpFlow = false;
+        // Flow-step must match the target stage or the flow-gated collectors
+        // (RFQ/Review require quoteSubmitted AND NOT quoteClient; Samples
+        // requires NOT past quoteClient) will reject the card and it falls
+        // back to Unstaged. rfq/review → exactly 2 (quoteSubmitted, not
+        // quoteClient); samples/unstaged → cap at 2 so quoteClient clears;
+        // orders → untouched (claimed by movedToOrders regardless of flow).
+        $flowSql = null;
         if ($stage === 'unstaged') {
             // No stage at all — clear the dividers (already done) and un-flag
             // every sample line so it doesn't fall back into Samples.
@@ -2156,25 +2160,28 @@ switch ($action) {
                 foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = false; }
                 unset($it);
             }
+            // Cap flow so quoteClient (and later) clears → not "advanced past".
+            $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'samples') {
             if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
                 foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = true; }
                 unset($it);
             }
+            $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'rfq') {
-            $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now; $bumpFlow = true;
+            $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now;
+            $flowSql = 'flow_step = 2'; // quoteSubmitted, NOT quoteClient
         } elseif ($stage === 'review') {
             $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now;
-            $detail['sentForReview'] = true; $detail['sentForReviewAt'] = $now; $bumpFlow = true;
+            $detail['sentForReview'] = true; $detail['sentForReviewAt'] = $now;
+            $flowSql = 'flow_step = 2'; // quoteSubmitted, NOT quoteClient
         } elseif ($stage === 'orders') {
             $detail['movedToOrders'] = true; $detail['movedToOrdersAt'] = $now;
+            // orders is claimed by movedToOrders regardless of flow — leave flow_step.
         }
         $stageBy = $input['changed_by'] ?? ($_SESSION['username'] ?? '');
-        if ($bumpFlow) {
-            $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 2), updated_at = NOW(), updated_by = ? WHERE id = ?");
-        } else {
-            $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW(), updated_by = ? WHERE id = ?");
-        }
+        $setFlow = $flowSql ? (', ' . $flowSql) : '';
+        $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?{$setFlow}, updated_at = NOW(), updated_by = ? WHERE id = ?");
         $upd->execute([json_encode($detail), $stageBy, $wbId]);
         // The "workbook not found" case already returned above, so reaching
         // here means the row exists and was written.
