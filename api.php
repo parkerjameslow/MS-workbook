@@ -5457,6 +5457,49 @@ switch ($action) {
         echo json_encode(['success' => true, 'token' => $trkToken, 'url' => "{$trkScheme}://{$trkHost}/track.php?t={$trkToken}"]);
         break;
 
+    case 'mint_art_approval':
+        // Create a client art-approval link (art.php). Unlike tracking, each
+        // send is a NEW token snapshotting the CURRENT art files, so the
+        // client approves a specific version.
+        $maWbId   = (int)($input['workbook_id'] ?? 0);
+        $maClient = (string)($input['client_name']  ?? '');
+        $maEmail  = (string)($input['client_email'] ?? '');
+        if ($maWbId <= 0) { echo json_encode(['success' => false, 'error' => 'workbook_id required']); break; }
+        $pdo->exec("CREATE TABLE IF NOT EXISTS art_tokens (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            token CHAR(64) NOT NULL,
+            workbook_id INT NOT NULL,
+            art_snapshot LONGTEXT NOT NULL,
+            client_name VARCHAR(255) DEFAULT '',
+            client_email VARCHAR(255) DEFAULT '',
+            status ENUM('active','approved','changes_requested') NOT NULL DEFAULT 'active',
+            client_comment TEXT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP NULL,
+            UNIQUE KEY uq_art_token (token)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $maSel = $pdo->prepare("SELECT product_name, detail_json FROM workbooks WHERE id = ? AND deleted_at IS NULL");
+        $maSel->execute([$maWbId]);
+        $maWb = $maSel->fetch();
+        if (!$maWb) { echo json_encode(['success' => false, 'error' => 'Workbook not found']); break; }
+        $maD = json_decode($maWb['detail_json'] ?: '{}', true) ?: [];
+        $maFiles = (isset($maD['artImages']) && is_array($maD['artImages']))
+            ? array_values(array_filter($maD['artImages'], 'is_string')) : [];
+        if (empty($maFiles)) { echo json_encode(['success' => false, 'error' => 'No art files to approve — upload art first.']); break; }
+        $maScheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $maHost   = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
+        $maSnap = json_encode([
+            'product' => $maD['product'] ?? ($maWb['product_name'] ?? ('Workbook #' . $maWbId)),
+            'files'   => $maFiles,
+            'notes'   => trim(strip_tags((string)($maD['artNotes'] ?? ''))),
+            'appUrl'  => "{$maScheme}://{$maHost}/#/client/" . rawurlencode($maClient) . "/workbook/{$maWbId}",
+        ]);
+        $maToken = bin2hex(random_bytes(32));
+        $pdo->prepare("INSERT INTO art_tokens (token, workbook_id, art_snapshot, client_name, client_email) VALUES (?, ?, ?, ?, ?)")
+            ->execute([$maToken, $maWbId, $maSnap, $maClient, $maEmail]);
+        echo json_encode(['success' => true, 'token' => $maToken, 'url' => "{$maScheme}://{$maHost}/art.php?t={$maToken}", 'files' => count($maFiles)]);
+        break;
+
     case 'notify_stage_slack':
         // Fire a team Slack channel message when a workbook/shipment hits a
         // key stage (Sent for Review, Delivered → needs audit). Fire-and-

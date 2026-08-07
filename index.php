@@ -9065,6 +9065,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
         Send Art Update
       </button>
+      <button type="button" id="art-approval-btn" class="btn btn-ghost" onclick="event.stopPropagation(); shareArtApproval()"
+              title="Create a client approval link — they see the art and Approve / Request Changes"
+              style="font-size:12px; padding:7px 14px; display:inline-flex; align-items:center; gap:6px; border-color:var(--accent); color:var(--accent);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Client Approval
+      </button>
     </div>
     <div class="section-body">
       <p style="color:var(--text-muted); margin-bottom:16px;">Upload artwork files, logos, and design assets for this product.</p>
@@ -13127,6 +13133,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _artHasNewUpload() {
     return Array.isArray(_artImages) && _artImages.some(a => a && a.url && !_artLastSentUrls.includes(a.url));
   }
+  // Mint a client art-approval link (art.php) for the current workbook and
+  // show a copy-ready modal. Each click snapshots the CURRENT art files.
+  async function shareArtApproval() {
+    if (!currentClient || !currentWorkbookId) return;
+    const hasArt = Array.isArray(_artImages) && _artImages.some(a => a && a.url);
+    if (!hasArt) { if (typeof _msToast === 'function') _msToast('No art files yet — upload art first.', 'error'); return; }
+    const btn = document.getElementById('art-approval-btn');
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Creating link…'; }
+    const dbId  = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    const email = (clientDetails[currentClient] || {}).email || '';
+    try {
+      const res = await apiCall('mint_art_approval', { workbook_id: dbId, client_name: currentClient, client_email: email });
+      if (res && res.success && res.url) _showArtApprovalUrl(res.url, res.files || 0);
+      else if (typeof _msToast === 'function') _msToast((res && res.error) ? res.error : 'Could not create approval link.', 'error');
+    } catch (e) {
+      console.error('[MS mint_art_approval]', e);
+      if (typeof _msToast === 'function') _msToast('Could not create approval link: ' + e.message, 'error');
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+
+  function _showArtApprovalUrl(url, fileCount) {
+    const existing = document.getElementById('art-approval-modal');
+    if (existing) existing.remove();
+    const m = document.createElement('div');
+    m.id = 'art-approval-modal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px;';
+    m.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:rgba(39,174,96,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#27ae60" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          </div>
+          <div style="font-size:16px;font-weight:800;color:var(--text);">Client Art Approval Link</div>
+        </div>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 20px;line-height:1.6;">Share this link with your client. They'll see ${fileCount ? `the <strong>${fileCount}</strong> art file${fileCount === 1 ? '' : 's'}` : 'the artwork'} and can <strong>Approve</strong> or <strong>Request Changes</strong>. When they do, the Art Status updates and the team gets pinged. It captures the art as it is right now — re-send after any changes.</p>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px;">Approval Link</div>
+        <div style="display:flex;gap:8px;align-items:stretch;">
+          <input id="art-approval-url-input" type="text" value="${url}" readonly
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;font-family:ui-monospace,monospace;color:var(--text);outline:none;min-width:0;" />
+          <button onclick="(function(){const el=document.getElementById('art-approval-url-input');el.select();document.execCommand('copy');const b=document.getElementById('copy-art-approval-btn');b.textContent='Copied!';b.style.background='var(--success)';setTimeout(()=>{b.textContent='Copy';b.style.background='var(--accent)';},2000);})()"
+            id="copy-art-approval-btn"
+            style="background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:0 16px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;">Copy</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;gap:10px;">
+          <a href="${url}" target="_blank" rel="noopener" style="font-size:12px;color:var(--accent);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Preview
+          </a>
+          <button onclick="document.getElementById('art-approval-modal').remove()"
+            style="background:none;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-size:13px;font-weight:600;padding:8px 18px;cursor:pointer;font-family:inherit;">Done</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    setTimeout(() => { const el = document.getElementById('art-approval-url-input'); if (el) el.select(); }, 50);
+  }
+
   function _updateArtSendBtn() {
     const btn = document.getElementById('art-send-update-btn');
     if (!btn) return;
