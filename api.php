@@ -2169,12 +2169,15 @@ switch ($action) {
         } elseif ($stage === 'orders') {
             $detail['movedToOrders'] = true; $detail['movedToOrdersAt'] = $now;
         }
+        $stageBy = $input['changed_by'] ?? ($_SESSION['username'] ?? '');
         if ($bumpFlow) {
-            $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 2), updated_at = NOW() WHERE id = ?");
+            $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 2), updated_at = NOW(), updated_by = ? WHERE id = ?");
         } else {
-            $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
+            $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW(), updated_by = ? WHERE id = ?");
         }
-        $upd->execute([json_encode($detail), $wbId]);
+        $upd->execute([json_encode($detail), $stageBy, $wbId]);
+        // The "workbook not found" case already returned above, so reaching
+        // here means the row exists and was written.
         echo json_encode(['success' => true, 'stage' => $stage]);
         break;
     }

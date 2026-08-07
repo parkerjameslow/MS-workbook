@@ -42598,6 +42598,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const key = `${clientName}|${workbookId}`;
     const detail = workbookDetail[key];
     if (!detail) return;
+    // Snapshot the current flag state so we can roll the optimistic move
+    // BACK if the server rejects it (e.g. the id has no live DB row) —
+    // otherwise the board would keep showing a move that never persisted.
+    const _prevFlags = {
+      sentToRfq: detail.sentToRfq, sentToRfqAt: detail.sentToRfqAt,
+      sentForReview: detail.sentForReview, sentForReviewAt: detail.sentForReviewAt,
+      movedToOrders: detail.movedToOrders, movedToOrdersAt: detail.movedToOrdersAt,
+      samples: Array.isArray(detail.rfqItems) ? detail.rfqItems.map(it => it ? !!it.sample : false) : null,
+    };
     const now = new Date().toISOString();
     // Reset all four flag-stage dividers, then set the target — mirrors the
     // server set_pipeline_stage so the board updates without a reload.
@@ -42631,9 +42640,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { rebuildSamplesNav(); } catch (_) {}
     try { rebuildOrdersNav(); } catch (_) {}
     const dbId = dbWorkbookMap[key] || workbookId;
-    try { await apiCall('set_pipeline_stage', { workbook_id: dbId, stage: targetStage }); }
-    catch (_) { showToast('Saved locally — server sync failed', 'warn'); return; }
     const lbl = (PIPELINE_COLUMNS.find(c => c.id === targetStage) || {}).label || targetStage;
+    let res = null;
+    try {
+      res = await apiCall('set_pipeline_stage', { workbook_id: dbId, stage: targetStage, changed_by: getCurrentUser() });
+    } catch (_) { res = null; }
+    if (!res || !res.success) {
+      // Roll back the optimistic flag change so the board reflects what the
+      // server actually holds — no more "it said it saved but didn't".
+      detail.sentToRfq = _prevFlags.sentToRfq; detail.sentToRfqAt = _prevFlags.sentToRfqAt;
+      detail.sentForReview = _prevFlags.sentForReview; detail.sentForReviewAt = _prevFlags.sentForReviewAt;
+      detail.movedToOrders = _prevFlags.movedToOrders; detail.movedToOrdersAt = _prevFlags.movedToOrdersAt;
+      if (_prevFlags.samples && Array.isArray(detail.rfqItems)) {
+        detail.rfqItems.forEach((it, i) => { if (it) it.sample = !!_prevFlags.samples[i]; });
+      }
+      try { saveToLocalStorage(); } catch (_) {}
+      renderPipelineBoard();
+      try { rebuildRfqNav(); } catch (_) {}
+      try { rebuildReviewNav(); } catch (_) {}
+      try { rebuildSamplesNav(); } catch (_) {}
+      try { rebuildOrdersNav(); } catch (_) {}
+      const why = (res && res.error) ? res.error : 'the server did not save it';
+      showToast(`Couldn't move to ${lbl} — ${why}. Reverted.`, 'error');
+      return;
+    }
     showToast(`Moved to ${lbl}`, 'success');
   }
 
