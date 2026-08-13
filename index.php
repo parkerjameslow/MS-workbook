@@ -43168,9 +43168,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const lbl = (id) => (PIPELINE_COLUMNS.find(c => c.id === id) || {}).label || id;
     if (!PIPELINE_FLAG_STAGES.has(targetCol)) {
       if (fromStage === 'orders' && targetCol === 'production') {
-        // This is a workbook still sitting in Orders STAGING (not yet placed in
-        // an order). Only ORDER cards move to In Production — tell them how.
-        showToast(`“${detail.product || 'This workbook'}” isn't in an order yet. Place it in an order (Orders → Ready to Order), then drag that order card into In Production.`, 'warn');
+        // Workbook still in Orders STAGING (no order yet). Match the Orders
+        // "Move to Production" button end-state: mint its order, then move it in.
+        _pipelineStagedWorkbookToProduction(clientName, workbookId, detail);
       } else {
         showToast(`${lbl(targetCol)} is managed from its own view — advance the order/shipment there.`, 'warn');
       }
@@ -43181,6 +43181,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
     _doPipelineMove(clientName, workbookId, targetCol);
+  }
+
+  // Drag a STAGING workbook (not yet in an order) onto In Production: mint its
+  // order (single workbook, mirrors createOrderFromStaged's shape) and move
+  // that order into production — the same end-state as the Orders "Move to
+  // Production" button. If the workbook is somehow already in an order, just
+  // move that order instead of creating a duplicate.
+  function _pipelineStagedWorkbookToProduction(clientName, workbookId, detail) {
+    const existing = (typeof _wbOrdersFor === 'function') ? _wbOrdersFor(clientName, workbookId) : [];
+    if (existing && existing.length) { _pipelineMoveOrder(existing[0].id, 'production'); return; }
+    const id = _nextOrderId++;
+    const num = String(id).padStart(3, '0');
+    const stamp = new Date().toISOString();
+    orderData[id] = {
+      id, name: `Order #${num}`, clientName, status: 'draft',
+      dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
+      poNumber: '', depositPct: 50, notes: '',
+      entries: [{ clientName, workbookId }],
+      notifiedAt: stamp, movedToProductionAt: stamp,
+    };
+    if (typeof saveOrders === 'function') saveOrders();
+    try { renderPipelineBoard(); } catch (_) {}
+    try { rebuildOrdersNav(); } catch (_) {}
+    const prod = (detail && detail.product) ? detail.product : 'workbook';
+    showToast(`Created ${orderData[id].name} for “${prod}” and moved it to In Production`, 'success');
   }
 
   // Move an ORDER between the Orders and In Production lanes from the board.
