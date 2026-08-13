@@ -5868,6 +5868,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
     .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
     .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
+    /* Karen highlight — any card she's assigned to stands out on the board. */
+    .pl-card.pl-card-karen { border-color: #0ea5e9 !important; box-shadow: inset 3px 0 0 #0ea5e9, 0 0 0 1px #0ea5e9, 0 4px 16px rgba(14,165,233,0.38) !important; }
+    /* Assignee spot (on rows/cards) + the floating assignee picker. */
+    .assign-spot { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; margin-right: 8px; cursor: pointer; }
+    .assign-add { font-size: 10px; font-weight: 700; color: var(--text-muted); border: 1px dashed var(--border); border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
+    .assign-spot:hover .assign-add { color: var(--accent); border-color: var(--accent); }
+    .assignee-picker { position: fixed; z-index: 3000; min-width: 205px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.22); padding: 6px; display: none; }
+    .assignee-picker.open { display: block; }
+    .assignee-picker-head { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); padding: 6px 8px 4px; }
+    .assignee-picker-item { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text); }
+    .assignee-picker-item:hover { background: var(--surface2); }
+    .assignee-picker-item.on { font-weight: 700; }
+    .assignee-picker-name { flex: 1; }
+    .assignee-picker-check { color: var(--accent); font-weight: 800; }
+    .assignee-picker .pl-avatar { width: 22px; height: 22px; font-size: 11px; }
     /* Sample comments/follow-ups indicator on a workbook card. */
     .pl-sample-badge { margin-top: 8px; display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 99px; background: rgba(96,165,250,0.16); border: 1px solid rgba(96,165,250,0.36); color: #93c5fd; font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit; line-height: 1.6; }
     .pl-sample-badge:hover { background: rgba(96,165,250,0.30); color: #bfdbfe; }
@@ -6033,16 +6048,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        ties the row to its own panel. */
     .sn-data-row > td { border-top: 12px solid var(--bg); }
     .sn-data-row > td:first-child { border-left: 3px solid var(--accent); }
-    .sn-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
-    .sn-collapse-caret {
-      font-size: 15px; font-weight: 800; color: #fff; background: var(--accent);
-      width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
-      border-radius: 7px; line-height: 1; transition: transform 0.15s, filter 0.15s; flex: 0 0 auto;
+    /* Understated "▶ NOTES & FOLLOW-UPS" toggle band (matches the inspiration):
+       full-bleed light band, small rotating triangle, uppercase muted label. */
+    .sn-panel-head {
+      display: flex; align-items: center; gap: 10px;
+      margin: -14px -20px 0; padding: 9px 20px;
+      background: rgba(100,116,139,0.07); border-bottom: 1px solid var(--border);
+      cursor: pointer; user-select: none;
     }
-    .sn-panel-head:hover .sn-collapse-caret { filter: brightness(1.12); }
-    .sn-collapse-caret.collapsed { transform: rotate(-90deg); }
+    .sn-panel-head:not(.collapsed) { margin-bottom: 14px; }
+    .sn-panel-head.collapsed { margin-bottom: -16px; }
+    .sn-panel-head:hover .sn-panel-item { color: var(--text); }
+    .sn-collapse-caret { font-size: 10px; color: var(--text-muted); transition: transform 0.15s; flex: 0 0 auto; line-height: 1; }
+    .sn-panel-head:not(.collapsed) .sn-collapse-caret { transform: rotate(90deg); }
     .sn-panel-summary { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--text-muted); }
-    .sn-panel-item { font-weight: 800; font-size: 13px; color: var(--text); }
+    .sn-panel-item { font-weight: 800; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }
     .sn-panel-prod { font-size: 12px; color: var(--text-muted); }
     .sn-panel-client { font-size: 12px; font-weight: 600; color: var(--text-muted); }
     .sn-inline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px 32px; }
@@ -31164,6 +31184,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Lazy-load the per-sample comments/follow-ups blob; re-renders the
     // table once it lands so the Notes badges show real counts.
     if (typeof _ensureSampleMetaLoaded === 'function') _ensureSampleMetaLoaded();
+    // Also load pipeline meta so the per-workbook assignee avatars show.
+    if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
 
     const allSamples = collectAllSamples();
 
@@ -31281,6 +31303,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </select>
           </td>
           <td style="text-align:center; white-space:nowrap;">
+            ${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + s.key) : ''}
             <span class="remove-tier" onclick="removeSampleRequest('${s.key}', ${s.rowIndex})" title="Unmark as sample (keeps the RFQ line item, just removes it from this list)" style="font-size:18px; color:var(--text-muted);">&times;</span>
           </td>
         </tr>
@@ -43111,7 +43134,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'${_plEsc(c.key)}')" ondragend="onPipelineDragEnd(event)"`
       : '';
     const cid = _plCardId(c);
-    return `<div class="crm-card pl-card ${c.movable ? '' : 'pl-locked'}" ${dragAttrs}
+    return `<div class="crm-card pl-card ${c.movable ? '' : 'pl-locked'}${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs}
                  onclick="openPipelineCardModal('${_plEsc(cid).replace(/'/g, "\\'")}')" title="View details">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.product)}</div>
@@ -43134,7 +43157,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const dragAttrs = canDrag
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'order:${c.id}')" ondragend="onPipelineDragEnd(event)"`
       : '';
-    return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity" ${dragAttrs} onclick="openPipelineCardModal('${cid}')" title="${canDrag ? 'Drag between Orders / In Production, or click to view' : 'View details'}">
+    return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cid}')" title="${canDrag ? 'Drag between Orders / In Production, or click to view' : 'View details'}">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
@@ -43152,7 +43175,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       `<div class="pl-child-group">${_plEsc(g.label)}</div>${g.workbooks.map(_pipelineChildLine).join('')}`
     ).join('');
     const cid = _plCardId(c);
-    return `<div class="crm-card pl-card pl-locked pl-entity" onclick="openPipelineCardModal('${cid}')" title="View details">
+    return `<div class="crm-card pl-card pl-locked pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" onclick="openPipelineCardModal('${cid}')" title="View details">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub) || `${c.count} workbook${c.count === 1 ? '' : 's'}`}</div>
@@ -43432,6 +43455,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _plMeta = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
     } catch (e) { _plMeta = {}; }
     if (location.hash === '#/pipeline') { try { renderPipelineBoard(); } catch (_) {} }
+    // Assignee avatars also render on the Samples table — refresh it on load.
+    try { const v = document.getElementById('view-samples'); if (v && v.style.display !== 'none' && typeof collectAllSamples === 'function') renderSamplesTable(collectAllSamples()); } catch (_) {}
   }
   // Per-card merge for the pipeline meta blob (keyed by card id, NOT the
   // {data:{id}} shape). Server is the base so another session's card meta
@@ -43486,6 +43511,73 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? `<span class="pl-meta-pill has-comments" title="${nComments} comment${nComments === 1 ? '' : 's'}">&#128172; ${nComments}</span>`
       : '';
     return `<div class="pl-assignees">${chips}${noteDot}${cmtDot}</div>`;
+  }
+
+  // ── Reusable assignee picker (works from any surface) ─────────────────
+  // Assignees live in the shared _plMeta blob keyed by a card id — for a
+  // workbook that's `wb:${client}|${wb}`, the SAME key the pipeline uses, so
+  // an assignment made anywhere shows everywhere (samples, pipeline, …).
+  let _assignPickerCardId = null, _assignPickerAfter = null;
+  function _wbAssignCardId(clientName, workbookId) { return 'wb:' + clientName + '|' + workbookId; }
+  function _assigneeList(cardId) {
+    const m = (typeof _plMeta !== 'undefined') ? (_plMeta[cardId] || {}) : {};
+    return Array.isArray(m.assignees) ? m.assignees : [];
+  }
+  function _cardHasKaren(cardId) { return _assigneeList(cardId).indexOf('Karen') !== -1; }
+  // Small avatar stack + "assign" affordance for any row/card.
+  function _assigneeSpotHtml(cardId) {
+    const list = _assigneeList(cardId);
+    const avatars = list.map(n => {
+      const col = (CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
+      return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
+    }).join('');
+    return `<span class="assign-spot" onclick="event.stopPropagation(); openAssigneePicker('${_plEsc(cardId).replace(/'/g, "\\'")}', event)" title="Assign / unassign">${avatars || '<span class="assign-add">+ Assign</span>'}</span>`;
+  }
+  function openAssigneePicker(cardId, ev, afterFn) {
+    if (ev && ev.stopPropagation) { ev.stopPropagation(); }
+    if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
+    _assignPickerCardId = cardId;
+    _assignPickerAfter = (typeof afterFn === 'function') ? afterFn : null;
+    let menu = document.getElementById('assignee-picker');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'assignee-picker';
+      menu.className = 'assignee-picker';
+      document.body.appendChild(menu);
+      document.addEventListener('click', e => { if (menu && !menu.contains(e.target)) menu.classList.remove('open'); });
+    }
+    _renderAssigneePicker();
+    const x = ev && ev.clientX ? ev.clientX : 120, y = ev && ev.clientY ? ev.clientY : 120;
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - 230)) + 'px';
+    menu.style.top = Math.min(y + 8, window.innerHeight - 260) + 'px';
+    menu.classList.add('open');
+  }
+  function _renderAssigneePicker() {
+    const menu = document.getElementById('assignee-picker'); if (!menu) return;
+    const cur = new Set(_assigneeList(_assignPickerCardId));
+    menu.innerHTML = `<div class="assignee-picker-head">Assign to</div>` +
+      Object.keys(CRM_ASSIGNEE_COLORS).map(name => {
+        const col = CRM_ASSIGNEE_COLORS[name];
+        const on = cur.has(name);
+        return `<div class="assignee-picker-item${on ? ' on' : ''}" onclick="_toggleAssignee('${name}')">
+          <span class="pl-avatar" style="background:${col.bg}; color:${col.fg};">${name.charAt(0)}</span>
+          <span class="assignee-picker-name">${name}</span>
+          <span class="assignee-picker-check">${on ? '&#10003;' : ''}</span>
+        </div>`;
+      }).join('');
+  }
+  function _toggleAssignee(name) {
+    const id = _assignPickerCardId; if (!id) return;
+    const meta = _plMeta[id] || (_plMeta[id] = { assignees: [], note: '', comments: [] });
+    if (!Array.isArray(meta.assignees)) meta.assignees = [];
+    const i = meta.assignees.indexOf(name);
+    if (i >= 0) meta.assignees.splice(i, 1); else meta.assignees.push(name);
+    if (typeof _persistPlMeta === 'function') _persistPlMeta();
+    _renderAssigneePicker();
+    // Reflect on whichever surfaces are visible.
+    try { const v = document.getElementById('view-samples'); if (v && v.style.display !== 'none' && typeof collectAllSamples === 'function') renderSamplesTable(collectAllSamples()); } catch (_) {}
+    try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
+    if (_assignPickerAfter) { try { _assignPickerAfter(); } catch (_) {} }
   }
 
   function openPipelineCardModal(id) {
@@ -43761,13 +43853,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? `<span class="inv-client-chip" style="${_clientChipStyle(clientName)}" title="${_plEsc(clientName)}">${_plEsc(clientName)}</span>`
       : `<span class="sn-panel-client">${_plEsc(clientName)}</span>`;
     const collapsed = (typeof _snCollapsed !== 'undefined') && _snCollapsed.has(mk);
-    const summary = `${todos.length} follow-up${todos.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}`;
-    // The item + client are already shown on the row above, so the panel
-    // header just labels itself and carries the collapse toggle + summary.
-    const header = `<div class="sn-panel-head" onclick="toggleSampleCollapse('${enc}')" title="${collapsed ? 'Expand' : 'Collapse'} notes &amp; follow-ups">
-      <span class="sn-collapse-caret${collapsed ? ' collapsed' : ''}">&#9662;</span>
-      <span class="sn-panel-item">Notes &amp; follow-ups</span>
-      <span class="sn-panel-summary">${summary}</span>
+    // Understated "▶ NOTES & FOLLOW-UPS" toggle band (item + client already
+    // show on the row above). A subtle count rides on the right when collapsed.
+    const hasAny = (todos.length + notes.length) > 0;
+    const summary = collapsed && hasAny ? `${todos.length} follow-up${todos.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}` : '';
+    const header = `<div class="sn-panel-head${collapsed ? ' collapsed' : ''}" onclick="toggleSampleCollapse('${enc}')" title="${collapsed ? 'Expand' : 'Collapse'} notes &amp; follow-ups">
+      <span class="sn-collapse-caret">&#9654;</span>
+      <span class="sn-panel-item">Notes &amp; Follow-ups</span>
+      ${summary ? `<span class="sn-panel-summary">${summary}</span>` : ''}
     </div>`;
     const todoItems = todos.length ? todos.map(t => `
       <div class="sn-todo${t.done ? ' done' : ''}">
