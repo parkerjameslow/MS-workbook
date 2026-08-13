@@ -2481,30 +2481,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        operator picks ONE and only that one flows to the client quote. The
        options render on a full-width row under the line so every column
        (name · supplier · price · lead) reads on one line side-by-side. */
-    /* Comparable-option rows share the RFQ table's own columns so each field
-       (name · ¥price · $usd · lead) lines up under the primary line above. */
-    .rfq-optrow > td { background: var(--surface2); padding: 8px 10px; vertical-align: middle; }
+    /* ── Comparable options band (line-items mockup styling) ─────────────
+       Real table rows sharing the RFQ table's own columns, so each field
+       lines up under the line above: name→Description, ¥→Unit ¥, $→Unit $,
+       ext→Extended $, lead→Lead. */
+    .rfq-optrow > td { background: var(--surface2); padding: 11px 14px; vertical-align: middle; }
     .rfq-optrow > td:first-child { border-left: 3px solid var(--accent); }
-    .rfq-optrow-title > td { padding-top: 12px; padding-bottom: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
-    .rfq-optrow-foot > td { padding-bottom: 12px; text-align: center; }
+    .rfq-optrow-title > td { padding-top: 12px; padding-bottom: 8px; }
+    .rfq-opt-band-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .rfq-opt-band-head > span { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7aa8; }
+    .rfq-opt-editlink { background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; padding: 0; white-space: nowrap; }
+    .rfq-opt-editlink:hover { text-decoration: underline; }
     .rfq-optchoice { cursor: pointer; }
     .rfq-optchoice > td { border-top: 1px solid var(--border); transition: background 0.12s; }
-    .rfq-optchoice:hover > td { background: rgba(232,117,26,0.05); }
-    .rfq-optchoice.selected > td { background: rgba(232,117,26,0.10); }
-    .rfq-optc-radio { text-align: center; }
-    .rfq-optc-name .rfq-opt-name { font-weight: 700; font-size: 13px; color: var(--text); }
-    .rfq-optc-name .rfq-opt-supp { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-    /* Match the primary Price/USD cells' 14px horizontal padding so the option
-       ¥/$ sit exactly under the line above (see .tier-table td). */
+    .rfq-optchoice:hover > td { background: rgba(107,147,255,0.06); }
+    .rfq-optchoice.selected > td { background: rgba(107,147,255,0.13); }
+    .rfq-optc-radio { text-align: center; width: 46px; }
+    .rfq-opt-radio-ring { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #c3ccdf; display: inline-block; box-sizing: border-box; vertical-align: middle; background: #fff; transition: border-color 0.12s, border-width 0.12s; }
+    .rfq-optchoice:hover .rfq-opt-radio-ring { border-color: var(--accent); }
+    .rfq-optchoice.selected .rfq-opt-radio-ring { border-color: var(--accent); border-width: 5.5px; }
+    .rfq-optc-name .rfq-opt-name { font-weight: 700; font-size: 13.5px; color: var(--text); }
+    .rfq-optc-name .rfq-opt-supp { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+    .rfq-optc-name .rfq-opt-nosupp { font-style: italic; opacity: 0.75; }
+    .rfq-optc-qty { text-align: right; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+    /* Match the primary Price/USD 14px cell padding so ¥/$ line up exactly. */
     .rfq-optc-price { padding-left: 14px !important; padding-right: 14px !important; white-space: nowrap; }
     .rfq-optc-rmb { display: inline-block; position: relative; padding-left: 28px; font-weight: 700; font-size: 13px; color: var(--text); }
     .rfq-optc-dash { color: var(--text-muted); }
-    .rfq-optc-usd { color: var(--success); font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; padding-right: 14px !important; }
+    .rfq-optc-usd { color: var(--text); font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; padding-right: 14px !important; }
+    .rfq-optc-ext { text-align: right; white-space: nowrap; font-weight: 700; font-size: 13px; color: var(--text); padding-right: 14px !important; }
+    .rfq-optc-quoted { font-size: 10px; font-weight: 700; color: var(--text-muted); margin-top: 1px; }
+    .rfq-optc-delta { font-size: 11px; font-weight: 700; margin-top: 1px; }
+    .rfq-optc-delta.down { color: #16a34a; }
+    .rfq-optc-delta.up { color: var(--text-muted); }
     .rfq-optc-lead { color: var(--text-muted); font-size: 13px; text-align: right; white-space: nowrap; padding-right: 14px !important; }
-    .rfq-optc-badge { text-align: right; white-space: nowrap; }
-    .rfq-opt-dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); display: inline-block; box-sizing: border-box; vertical-align: middle; }
-    .rfq-optchoice.selected .rfq-opt-dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface2); }
-    .rfq-opt-usebadge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); white-space: nowrap; }
+    /* The line's Comparables toggle button (open = filled, collapsed = outline). */
+    .rfq-comparables-btn { display: inline-block; margin: 6px 8px 0 4px; padding: 4px 11px; border-radius: 7px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; font-family: inherit; border: 1px solid var(--accent); background: var(--surface); color: var(--accent); transition: filter 0.12s, background 0.12s; }
+    .rfq-comparables-btn.open { background: var(--accent); color: #fff; }
+    .rfq-comparables-btn:hover { filter: brightness(1.06); }
     .rfq-opt-row {
       display: grid;
       grid-template-columns: 54px 1.4fr 1.2fr 96px 78px 26px;
@@ -19757,55 +19771,73 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { opts = JSON.parse(tr.dataset.compOptions || '[]'); } catch(e) { opts = []; }
     // Always clear any existing option rows for this line first.
     document.querySelectorAll(`[data-rfq-optrow="${id}"]`).forEach(r => r.remove());
+    // Point the line's button: no options → "⇄ Options" (opens modal);
+    // options → a Comparables (N) / Compare N toggle for the band below.
+    const _setBtn = (html, cls, fn) => { if (!btn) return; btn.className = cls; btn.innerHTML = html; btn.onclick = fn; btn.style.display = ''; };
     if (!Array.isArray(opts) || opts.length === 0) {
-      if (btn) btn.style.display = '';       // show the "⇄ Options" entry button again
+      _setBtn('&#8646; Options', 'rfq-add-variant-link', (e) => { e.stopPropagation(); openRfqOptions(id); });
       return;
     }
     let sel = parseInt(tr.dataset.compSelected || '0');
     if (isNaN(sel) || sel < 0 || sel >= opts.length) sel = 0;
-    if (btn) btn.style.display = 'none';     // panel carries its own edit link
-    const usdOf = rmb => {
-      const n = parseFloat(String(rmb == null ? '' : rmb).replace(/,/g, ''));
-      if (!n || isNaN(n)) return '';
-      try { return '$' + _fxUsdFromRmbPrecise(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (_) { return ''; }
+    const collapsed = _rfqOptCollapsed.has(String(id));
+    _setBtn(
+      collapsed ? ('&#9656; Compare ' + opts.length) : ('&#9662; Comparables (' + opts.length + ')'),
+      'rfq-comparables-btn' + (collapsed ? '' : ' open'),
+      (e) => { e.stopPropagation(); toggleRfqOptRows(id); }
+    );
+    if (collapsed) return;   // button only; band stays hidden
+
+    // Extended $ + savings delta use the line's own qty and the FX rate.
+    const pInputs = tr.querySelectorAll('input:not([type="checkbox"])');
+    const lineQty = parseFloat(String(pInputs[2]?.value == null ? '' : pInputs[2].value).replace(/,/g, '')) || 0;
+    const unitUsdOf = o => {
+      const n = parseFloat(String(o.priceRmb == null ? '' : o.priceRmb).replace(/,/g, ''));
+      if (!n || isNaN(n)) return 0;
+      try { return _fxUsdFromRmbPrecise(n); } catch (_) { return 0; }
     };
+    const quotedExt = lineQty > 0 ? unitUsdOf(opts[sel] || {}) * lineQty : 0;
+    const money2 = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     // Each option is a real table row whose cells sit in the SAME columns as
-    // the line above (radio→select col, name→Item, ¥→Price, $→USD, lead→Lead,
-    // marker→actions) so the numbers line up under the primary line's columns.
-    // data-rfq-optrow keeps every one of these rows out of the parent-row
-    // selectors + variant queries, so positional cost reads are untouched.
+    // the line above (radio→select, name→Description, ¥→Unit ¥, $→Unit $,
+    // ext→Extended $, lead→Lead). data-rfq-optrow keeps every one out of the
+    // parent-row selectors + variant queries, so positional reads are safe.
     const optRows = opts.map((o, i) => {
       const rmbN = parseFloat(String(o.priceRmb == null ? '' : o.priceRmb).replace(/,/g, ''));
       const hasRmb = rmbN && !isNaN(rmbN);
-      // Render ¥ via the SAME currency-prefix wrapper the primary Price input
-      // uses (¥ at left:12px, number at padding-left:28px) so it sits exactly
-      // under the line's ¥ column. USD right-aligns to match the USD column.
       const priceCell = hasRmb
         ? `<td class="rfq-optc-price"><span class="currency-prefix currency-rmb rfq-optc-rmb">${rmbN.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></td>`
         : `<td class="rfq-optc-price"><span class="rfq-optc-dash">—</span></td>`;
-      const usd = usdOf(o.priceRmb) || '—';
-      const lead = o.leadTime ? _esc(o.leadTime) + 'd' : '—';
-      const supp = o.supplier ? `<div class="rfq-opt-supp">${_esc(o.supplier)}</div>` : `<div class="rfq-opt-supp" style="opacity:.55">no supplier</div>`;
+      const unitUsd = hasRmb ? _fxUsdFromRmbPrecise(rmbN) : 0;
+      const ext = (lineQty > 0 && unitUsd > 0) ? unitUsd * lineQty : 0;
+      const isSel = i === sel;
+      let extSub = '';
+      if (isSel) extSub = '<div class="rfq-optc-quoted">quoted</div>';
+      else if (ext > 0 && quotedExt > 0) {
+        const d = ext - quotedExt;
+        if (Math.abs(d) >= 0.5) extSub = `<div class="rfq-optc-delta ${d < 0 ? 'down' : 'up'}">${d < 0 ? '−' : '+'}$${Math.round(Math.abs(d)).toLocaleString('en-US')}</div>`;
+      }
+      const lead = o.leadTime ? _esc(o.leadTime) + ' d' : '—';
+      const supp = o.supplier ? `<div class="rfq-opt-supp">${_esc(o.supplier)}</div>` : `<div class="rfq-opt-supp rfq-opt-nosupp">No supplier assigned</div>`;
       const name = o.label ? _esc(o.label) : '<span style="opacity:.55">(unnamed option)</span>';
-      const badge = i === sel ? '<span class="rfq-opt-usebadge on">✓ On quote</span>' : '';
-      return `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optchoice${i === sel ? ' selected' : ''}" onclick="selectRfqOption(${id}, ${i})" title="Use this option on the client quote">
-        <td class="rfq-optc-radio"><span class="rfq-opt-dot"></span></td>
+      return `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optchoice${isSel ? ' selected' : ''}" onclick="selectRfqOption(${id}, ${i})" title="Quote this option to the client">
+        <td class="rfq-optc-radio"><span class="rfq-opt-radio-ring"></span></td>
         <td></td><td></td><td></td>
         <td class="rfq-optc-name"><div class="rfq-opt-name">${name}</div>${supp}</td>
-        <td></td>
+        <td class="rfq-optc-qty">${lineQty > 0 ? '&times; ' + lineQty.toLocaleString('en-US') : ''}</td>
         ${priceCell}
-        <td class="rfq-optc-usd">${usd}</td>
-        <td></td>
+        <td class="rfq-optc-usd">${unitUsd > 0 ? money2(unitUsd) : '—'}</td>
+        <td class="rfq-optc-ext">${ext > 0 ? money2(ext) : '—'}${extSub}</td>
         <td class="rfq-optc-lead">${lead}</td>
-        <td class="rfq-optc-badge">${badge}</td>
+        <td></td>
       </tr>`;
     }).join('');
-    const titleRow = `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optrow-title"><td colspan="11">Comparable options — pick the one used on the client quote</td></tr>`;
-    const footRow = `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optrow-foot"><td colspan="11"><button type="button" class="rfq-add-variant-link" onclick="openRfqOptions(${id})" title="Add, edit or remove options">&#8646; Edit / add options</button></td></tr>`;
+    const titleRow = `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optrow-title"><td class="rfq-optc-radio"></td><td colspan="10"><div class="rfq-opt-band-head"><span>Comparable options — select the one quoted to the client</span><button type="button" class="rfq-opt-editlink" onclick="event.stopPropagation(); openRfqOptions(${id})" title="Add, edit or remove options">Edit / add options</button></div></td></tr>`;
     // Insert the set right after the line's last variant row (or the line).
     const variantRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
     const anchor = variantRows.length ? variantRows[variantRows.length - 1] : tr;
-    anchor.insertAdjacentHTML('afterend', titleRow + optRows + footRow);
+    anchor.insertAdjacentHTML('afterend', titleRow + optRows);
   }
 
   // Pick a comparable option from the Client Quote tab: reuse the RFQ-side
@@ -19824,6 +19856,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _applyRfqOption(id);   // materialize into inputs + redraw panel
     if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
     if (typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
+  }
+
+  // Per-line collapse state for the comparable-options band (session UI).
+  const _rfqOptCollapsed = new Set();
+  function toggleRfqOptRows(id) {
+    const k = String(id);
+    if (_rfqOptCollapsed.has(k)) _rfqOptCollapsed.delete(k); else _rfqOptCollapsed.add(k);
+    _renderRfqOptPanel(id);
   }
 
   function openRfqOptions(id) {
@@ -28370,7 +28410,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       el.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:9999;padding:12px 18px;border-radius:10px;font-size:13px;font-weight:600;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,0.25);font-family:inherit;max-width:360px;line-height:1.5;opacity:0;transform:translateY(8px);transition:opacity 0.2s, transform 0.2s;';
       document.body.appendChild(el);
     }
-    el.style.background = kind === 'error' ? '#dc2626' : '#16a34a';
+    el.style.background = kind === 'error' ? '#dc2626'
+      : (kind === 'warn' || kind === 'warning') ? '#d97706'
+      : '#16a34a';
     el.textContent = msg;
     requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
     clearTimeout(el._t);
@@ -43064,7 +43106,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const wbs = c.workbooks || [];
     const children = wbs.map(_pipelineChildLine).join('');
     const cid = _plCardId(c);
-    return `<div class="crm-card pl-card pl-locked pl-entity" onclick="openPipelineCardModal('${cid}')" title="View details">
+    // Order cards can be dragged between Orders and In Production (the two
+    // order lanes); the drop is wired to the real order move in onPipelineDrop.
+    const canDrag = (c.stage === 'orders' || c.stage === 'production');
+    const dragAttrs = canDrag
+      ? `draggable="true" ondragstart="onPipelineDragStart(event,'order:${c.id}')" ondragend="onPipelineDragEnd(event)"`
+      : '';
+    return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity" ${dragAttrs} onclick="openPipelineCardModal('${cid}')" title="${canDrag ? 'Drag between Orders / In Production, or click to view' : 'View details'}">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
@@ -43110,6 +43158,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const key = _pipelineDragKey || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
     _pipelineDragKey = null;
     if (!key) return;
+    // Order entity cards move between Orders and In Production only.
+    if (String(key).indexOf('order:') === 0) { _pipelineMoveOrder(String(key).slice(6), targetCol); return; }
     const [clientName, workbookId] = key.split('|');
     const detail = workbookDetail[key];
     if (!detail) return;
@@ -43125,6 +43175,35 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
     _doPipelineMove(clientName, workbookId, targetCol);
+  }
+
+  // Move an ORDER between the Orders and In Production lanes from the board.
+  // notifiedAt is the gate _orderIsInFulfillment checks; toggling it moves the
+  // order between lanes. Re-renders the board in place (no view navigation).
+  function _pipelineMoveOrder(orderId, targetCol) {
+    const o = orderData[orderId];
+    if (!o) return;
+    if (targetCol !== 'orders' && targetCol !== 'production') {
+      showToast('An order can only move between Orders and In Production.', 'warn');
+      return;
+    }
+    const from = _orderIsInFulfillment(o) ? 'production' : (_orderIsInOrdersQueue(o) ? 'orders' : null);
+    if (from === targetCol) return;
+    if (targetCol === 'production') {
+      const stamp = new Date().toISOString();
+      o.notifiedAt = o.notifiedAt || stamp;
+      o.movedToProductionAt = stamp;
+    } else { // back to Orders
+      if (typeof _orderHasAnyWorkbookOnShipment === 'function' && _orderHasAnyWorkbookOnShipment(o)) {
+        showToast('This order has workbooks on a shipment — remove them from the shipment first.', 'warn');
+        return;
+      }
+      o.notifiedAt = null; o.movedToProductionAt = null;
+    }
+    if (typeof saveOrders === 'function') saveOrders();
+    try { renderPipelineBoard(); } catch (_) {}
+    try { rebuildOrdersNav(); } catch (_) {}
+    showToast(targetCol === 'production' ? 'Order moved to In Production' : 'Order moved back to Orders', 'success');
   }
 
   async function _doPipelineMove(clientName, workbookId, targetStage) {
@@ -43571,11 +43650,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       : `<span class="sn-panel-client">${_plEsc(clientName)}</span>`;
     const collapsed = (typeof _snCollapsed !== 'undefined') && _snCollapsed.has(mk);
     const summary = `${todos.length} follow-up${todos.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}`;
+    // The item + client are already shown on the row above, so the panel
+    // header just labels itself and carries the collapse toggle + summary.
     const header = `<div class="sn-panel-head" onclick="toggleSampleCollapse('${enc}')" title="${collapsed ? 'Expand' : 'Collapse'} notes &amp; follow-ups">
       <span class="sn-collapse-caret${collapsed ? ' collapsed' : ''}">&#9662;</span>
-      <span class="sn-panel-item">${_plEsc(itemName || product || 'Sample')}</span>
-      ${chip}
-      ${(product && product !== itemName) ? `<span class="sn-panel-prod">${_plEsc(product)}</span>` : ''}
+      <span class="sn-panel-item">Notes &amp; follow-ups</span>
       <span class="sn-panel-summary">${summary}</span>
     </div>`;
     const todoItems = todos.length ? todos.map(t => `
