@@ -1819,15 +1819,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        padding) with the rest of the columns keeping the same
        percentage widths the operator had before. */
     #samples-table th:nth-child(1), #samples-table td:nth-child(1) { width: 48px; padding-left: 18px; padding-right: 4px; }  /* Checkbox */
-    #samples-table th:nth-child(2), #samples-table td:nth-child(2) { width: 18%; }  /* Item */
-    #samples-table th:nth-child(3), #samples-table td:nth-child(3) { width: 15%; }  /* Client (pill) */
-    #samples-table th:nth-child(4), #samples-table td:nth-child(4) { width: 18%; }  /* Workbook (pill) */
+    #samples-table th:nth-child(2), #samples-table td:nth-child(2) { width: 16%; }  /* Item */
+    #samples-table th:nth-child(3), #samples-table td:nth-child(3) { width: 13%; }  /* Client (pill) */
+    #samples-table th:nth-child(4), #samples-table td:nth-child(4) { width: 16%; }  /* Workbook (pill) */
     #samples-table th:nth-child(5), #samples-table td:nth-child(5) { width: 7%;  }  /* Qty */
-    #samples-table th:nth-child(6), #samples-table td:nth-child(6) { width: 8%;  }  /* RMB */
-    #samples-table th:nth-child(7), #samples-table td:nth-child(7) { width: 8%;  }  /* USD */
+    #samples-table th:nth-child(6), #samples-table td:nth-child(6) { width: 7%;  }  /* RMB */
+    #samples-table th:nth-child(7), #samples-table td:nth-child(7) { width: 7%;  }  /* USD */
     #samples-table th:nth-child(8), #samples-table td:nth-child(8) { width: 5%;  }  /* Lead */
-    #samples-table th:nth-child(9), #samples-table td:nth-child(9) { width: 12%; }  /* Direction */
-    #samples-table th:nth-child(10), #samples-table td:nth-child(10) { width: 9%; }  /* Status */
+    #samples-table th:nth-child(9), #samples-table td:nth-child(9) { width: 11%; }  /* Direction */
+    #samples-table th:nth-child(10), #samples-table td:nth-child(10) { width: 8%; }  /* Status */
+    #samples-table th:nth-child(11), #samples-table td:nth-child(11) { width: 10%; }  /* Assignee + remove */
+    /* Actions cell holds the assignee avatars + remove — let them show. */
+    #samples-table td:nth-child(11) { overflow: visible; }
     #samples-table th, #samples-table td { padding-left: 12px; padding-right: 12px; vertical-align: middle; }
     #samples-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* The checkbox cell must not inherit text-overflow:ellipsis from
@@ -5871,8 +5874,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Karen highlight — any card she's assigned to stands out on the board. */
     .pl-card.pl-card-karen { border-color: #0ea5e9 !important; box-shadow: inset 3px 0 0 #0ea5e9, 0 0 0 1px #0ea5e9, 0 4px 16px rgba(14,165,233,0.38) !important; }
     /* Assignee spot (on rows/cards) + the floating assignee picker. */
-    .assign-spot { display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; margin-right: 8px; cursor: pointer; }
-    .assign-add { font-size: 10px; font-weight: 700; color: var(--text-muted); border: 1px dashed var(--border); border-radius: 99px; padding: 2px 8px; white-space: nowrap; }
+    .assign-spot { display: inline-flex; align-items: center; gap: 0; vertical-align: middle; margin-right: 6px; cursor: pointer; }
+    .assign-spot .pl-avatar { width: 20px; height: 20px; font-size: 10px; border: 2px solid var(--surface); box-shadow: none; }
+    .assign-add { font-size: 10px; font-weight: 700; color: var(--text-muted); border: 1px dashed var(--border); border-radius: 99px; padding: 2px 7px; white-space: nowrap; }
     .assign-spot:hover .assign-add { color: var(--accent); border-color: var(--accent); }
     .assignee-picker { position: fixed; z-index: 3000; min-width: 205px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.22); padding: 6px; display: none; }
     .assignee-picker.open { display: block; }
