@@ -5894,7 +5894,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .assign-add { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--text-muted); border: 1px dashed var(--border); border-radius: 99px; padding: 3px 9px; white-space: nowrap; }
     .assign-add-ic svg { width: 13px; height: 13px; display: block; }
     .assign-spot:hover .assign-add { color: var(--accent); border-color: var(--accent); }
+    .assign-add-plus { display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 50%; border: 1.5px dashed var(--border); color: var(--text-muted); font-size: 13px; font-weight: 700; line-height: 1; margin-left: 5px; flex: 0 0 auto; }
+    .assign-spot:hover .assign-add-plus { color: var(--accent); border-color: var(--accent); }
     .assign-spot-compact .pl-avatar { width: 20px; height: 20px; font-size: 9px; }
+    .assign-spot-compact .assign-add-plus { width: 17px; height: 17px; font-size: 12px; margin-left: 4px; }
     .assign-add-mini { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px dashed var(--border); color: var(--text-muted); }
     .assign-add-mini svg { width: 13px; height: 13px; }
     .assign-spot-compact:hover .assign-add-mini { color: var(--accent); border-color: var(--accent); }
@@ -43596,9 +43599,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
     }).join('');
     const userIc = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c0-3.6 3-5.6 6.5-5.6s6.5 2 6.5 5.6"/></svg>';
-    // Always label the empty state "Assign" so it's obvious what/where it is.
-    const empty = `<span class="assign-add"><span class="assign-add-ic">${userIc}</span>Assign</span>`;
-    return `<span class="assign-spot${compact ? ' assign-spot-compact' : ''}" onclick="event.stopPropagation(); openAssigneePicker('${_plEsc(cardId).replace(/'/g, "\\'")}', event)" title="Assign / unassign">${avatars || empty}</span>`;
+    // Assigned → avatars + a "+" so you can still add more. Empty → labeled
+    // "Assign" so it's obvious what/where it is.
+    const inner = list.length
+      ? `${avatars}<span class="assign-add-plus" title="Add another">+</span>`
+      : `<span class="assign-add"><span class="assign-add-ic">${userIc}</span>Assign</span>`;
+    return `<span class="assign-spot${compact ? ' assign-spot-compact' : ''}" onclick="event.stopPropagation(); openAssigneePicker('${_plEsc(cardId).replace(/'/g, "\\'")}', event)" title="Assign / unassign">${inner}</span>`;
   }
   function openAssigneePicker(cardId, ev, afterFn) {
     if (ev && ev.stopPropagation) { ev.stopPropagation(); }
