@@ -5839,6 +5839,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
     .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
     .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
+    /* Sample comments/follow-ups indicator on a workbook card. */
+    .pl-sample-badge { margin-top: 8px; display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 99px; background: rgba(96,165,250,0.16); border: 1px solid rgba(96,165,250,0.36); color: #93c5fd; font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit; line-height: 1.6; }
+    .pl-sample-badge:hover { background: rgba(96,165,250,0.30); color: #bfdbfe; }
+    /* Per-sample panels inside the workbook sample-notes modal. */
+    .wbsn-item { border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); margin-bottom: 12px; overflow: hidden; }
+    .wbsn-item:last-child { margin-bottom: 0; }
+    .wbsn-item .sn-inline-host { border-left: 3px solid var(--accent); }
     /* Entity cards (orders / shipments) — the title is the order client or
        the shipment name, with a drill-down list of what's inside. */
     .pl-entity .pl-card-sub { color: #cbd5e1; }
@@ -5991,7 +5998,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        ties the row to its own panel. */
     .sn-data-row > td { border-top: 12px solid var(--bg); }
     .sn-data-row > td:first-child { border-left: 3px solid var(--accent); }
-    .sn-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    .sn-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
+    .sn-panel-head:hover .sn-collapse-caret { color: var(--accent); }
+    .sn-collapse-caret { font-size: 11px; color: var(--text-muted); transition: transform 0.15s; flex: 0 0 auto; }
+    .sn-collapse-caret.collapsed { transform: rotate(-90deg); }
+    .sn-panel-summary { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--text-muted); }
     .sn-panel-item { font-weight: 800; font-size: 13px; color: var(--text); }
     .sn-panel-prod { font-size: 12px; color: var(--text-muted); }
     .sn-panel-client { font-size: 12px; font-weight: 600; color: var(--text-muted); }
@@ -11169,6 +11180,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button type="button" class="btn btn-ghost" onclick="closePipelineCardModal()">Close</button>
       <button type="button" class="btn btn-ghost" id="pl-modal-open-btn" style="border-color:var(--accent); color:var(--accent);">Open</button>
       <button type="button" class="btn btn-primary" onclick="savePipelineCardModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Workbook sample notes (opened from the Pipeline card indicator) ───
+     Shows every sample line's comments + follow-ups for one workbook, using
+     the same inline panels as the Samples view (editable). -->
+<div class="modal-overlay" id="wb-sample-notes-modal" onclick="if(event.target===this)closeWbSampleNotes()" style="z-index:1260;">
+  <div class="modal" style="max-width:760px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" id="wbsn-title" style="flex-shrink:0;">Sample notes</div>
+    <div id="wbsn-body" style="overflow-y:auto; flex:1 1 auto; margin-top:8px;"></div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
+      <button type="button" class="btn btn-primary" onclick="closeWbSampleNotes()">Done</button>
     </div>
   </div>
 </div>
@@ -42821,6 +42845,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!board) return;
     const _scrollLeft = board.scrollLeft;
     _ensurePlMetaLoaded();
+    if (typeof _ensureSampleMetaLoaded === 'function') _ensureSampleMetaLoaded();  // so sample-notes badges show
     const all = collectPipeline();
     // Remember every card by id so the detail modal can look one up.
     _plLastCards = {};
@@ -42961,6 +42986,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="pl-card-title">${_plEsc(c.product)}</div>
       <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
       ${_plAssigneeChips(cid)}
+      ${(typeof _sampleNotesWbBadge === 'function') ? _sampleNotesWbBadge(c) : ''}
     </div>`;
   }
 
@@ -43383,6 +43409,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ms_sample_meta app_state blob. Mirrors the pipeline-meta pattern
   // (CAS + per-key merge) so concurrent edits from two operators survive.
   let _sampleMeta = {}, _sampleMetaLoaded = false;
+  const _snCollapsed = new Set();   // sample keys whose notes panel is collapsed (session UI state)
+  function toggleSampleCollapse(enc) {
+    const mk = decodeURIComponent(enc);
+    if (_snCollapsed.has(mk)) _snCollapsed.delete(mk); else _snCollapsed.add(mk);
+    _renderSamplePanel(mk);
+  }
 
   async function _ensureSampleMetaLoaded() {
     if (_sampleMetaLoaded) return;
@@ -43395,6 +43427,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _sampleMeta = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
     } catch (e) { _sampleMeta = {}; }
     _refreshSampleRowBadges();
+    // If the Pipeline board is up, re-render so its sample-notes badges appear.
+    try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
   }
 
   // Server is the base so another session's notes survive; for a sample we
@@ -43468,10 +43502,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const chip = (typeof _clientChipStyle === 'function')
       ? `<span class="inv-client-chip" style="${_clientChipStyle(clientName)}" title="${_plEsc(clientName)}">${_plEsc(clientName)}</span>`
       : `<span class="sn-panel-client">${_plEsc(clientName)}</span>`;
-    const header = `<div class="sn-panel-head">
+    const collapsed = (typeof _snCollapsed !== 'undefined') && _snCollapsed.has(mk);
+    const summary = `${todos.length} follow-up${todos.length === 1 ? '' : 's'} · ${notes.length} note${notes.length === 1 ? '' : 's'}`;
+    const header = `<div class="sn-panel-head" onclick="toggleSampleCollapse('${enc}')" title="${collapsed ? 'Expand' : 'Collapse'} notes &amp; follow-ups">
+      <span class="sn-collapse-caret${collapsed ? ' collapsed' : ''}">&#9662;</span>
       <span class="sn-panel-item">${_plEsc(itemName || product || 'Sample')}</span>
       ${chip}
       ${(product && product !== itemName) ? `<span class="sn-panel-prod">${_plEsc(product)}</span>` : ''}
+      <span class="sn-panel-summary">${summary}</span>
     </div>`;
     const todoItems = todos.length ? todos.map(t => `
       <div class="sn-todo${t.done ? ' done' : ''}">
@@ -43494,7 +43532,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </div>`;
     }).join('') : `<div class="sn-empty">No notes yet.</div>`;
-    return `<div class="sn-inline-grid">
+    const grid = `<div class="sn-inline-grid">
       <div>
         <div class="sn-inline-col-head"><span>&#9745; Follow-ups</span><span class="pl-comments-count">${todos.length ? `${todos.length - openN}/${todos.length}` : '0'}</span></div>
         <div class="sn-todos">${todoItems}</div>
@@ -43506,6 +43544,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="sn-add-row"><input type="text" class="sn-note-input" placeholder="Add a note…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleNote('${enc}');}" style="${inp}" /><button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleNote('${enc}')">Add</button></div>
       </div>
     </div>`;
+    return `${header}<div class="sn-collapse-body"${collapsed ? ' style="display:none;"' : ''}>${grid}</div>`;
   }
 
   // Re-render one sample's panel in place (found by its data-snpanel key), so
@@ -43558,6 +43597,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     meta.comments = meta.comments.filter(c => c && c.id !== id);
     _persistSampleMeta();
     _renderSamplePanel(mk);
+  }
+
+  // ── Sample notes on the Pipeline board ────────────────────────────────
+  // A workbook (pipeline card key = client|wb) rolls up the notes/follow-ups
+  // of all its sample line items (_sampleMeta keys client|wb|rowIndex).
+  function _sampleNotesForWb(key) {
+    const out = { nComments: 0, nTodos: 0, nTodoOpen: 0, items: [] };
+    if (!key) return out;
+    const prefix = key + '|';
+    Object.keys(_sampleMeta || {}).forEach(mk => {
+      if (mk.indexOf(prefix) !== 0) return;
+      const m = _sampleMeta[mk] || {};
+      const cs = Array.isArray(m.comments) ? m.comments : [];
+      const ts = Array.isArray(m.todos) ? m.todos : [];
+      if (!cs.length && !ts.length) return;
+      out.nComments += cs.length;
+      out.nTodos += ts.length;
+      out.nTodoOpen += ts.filter(t => t && !t.done).length;
+      out.items.push({ mk, rowIndex: parseInt(mk.split('|')[2] || '0') });
+    });
+    out.items.sort((a, b) => a.rowIndex - b.rowIndex);
+    return out;
+  }
+  // Clickable indicator for a workbook pipeline card (dark-theme styling).
+  function _sampleNotesWbBadge(c) {
+    if (!c || c.kind !== 'wb') return '';
+    const key = c.key || ((c.clientName != null && c.workbookId != null) ? (c.clientName + '|' + c.workbookId) : '');
+    if (!key) return '';
+    const s = _sampleNotesForWb(key);
+    if (!s.nComments && !s.nTodos) return '';
+    const bits = [];
+    if (s.nComments) bits.push(`&#128172; ${s.nComments}`);
+    if (s.nTodos) bits.push(`&#9745; ${s.nTodos - s.nTodoOpen}/${s.nTodos}`);
+    return `<button class="pl-sample-badge" onclick="event.stopPropagation(); openWbSampleNotes(decodeURIComponent('${encodeURIComponent(key)}'))" title="Sample comments &amp; follow-ups — click to view">${bits.join(' · ')}</button>`;
+  }
+  async function openWbSampleNotes(key) {
+    if (typeof _ensureSampleMetaLoaded === 'function') await _ensureSampleMetaLoaded();
+    const s = _sampleNotesForWb(key);
+    const parts = String(key).split('|');
+    const clientName = parts[0] || '';
+    const det = (typeof workbookDetail !== 'undefined') ? workbookDetail[key] : null;
+    const product = (det && det.product) || '';
+    const t = document.getElementById('wbsn-title');
+    if (t) t.textContent = (product ? product + ' — ' : '') + clientName + ' · Sample notes';
+    const body = document.getElementById('wbsn-body');
+    if (body) {
+      body.innerHTML = s.items.length
+        ? s.items.map(it => `<div class="wbsn-item"><div class="sn-inline-host" data-snpanel="${encodeURIComponent(it.mk)}">${_sampleNotesPanelInner(it.mk)}</div></div>`).join('')
+        : `<div class="sn-empty">No sample comments or follow-ups yet.</div>`;
+    }
+    const m = document.getElementById('wb-sample-notes-modal'); if (m) m.classList.add('open');
+  }
+  function closeWbSampleNotes() {
+    const m = document.getElementById('wb-sample-notes-modal'); if (m) m.classList.remove('open');
+    // Reflect any edits back onto the board's indicator counts.
+    try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
   }
 
   function _updatePipelineNavBadge() {
