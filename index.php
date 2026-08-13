@@ -1766,6 +1766,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #review-table th:nth-child(6), #review-table td:nth-child(6) { width: 10%; } /* Qty */
     #review-table th:nth-child(7), #review-table td:nth-child(7) { width: 12%; } /* RMB */
     #review-table th:nth-child(8), #review-table td:nth-child(8) { width: 14%; } /* USD */
+    #review-table th:nth-child(9), #review-table td:nth-child(9) { width: 122px; } /* Assignee */
+    #review-table td:nth-child(9) { overflow: visible; }
     #review-table th, #review-table td { padding-left: 12px; padding-right: 12px; }
     #review-table .review-client-name { display: block; max-width: 100%; }
 
@@ -9667,6 +9669,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">QTY</th>
               <th style="text-align:right;">RMB</th>
               <th style="text-align:right;">USD</th>
+              <th style="text-align:center;">ASSIGNEE</th>
             </tr>
           </thead>
           <tbody id="review-tbody">
@@ -31758,6 +31761,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rfqNav = document.getElementById('nav-rfq-link');
     if (rfqNav) rfqNav.classList.add('active');
     showView('view-rfq');
+    if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
     if (typeof rebuildRfqNav === 'function') rebuildRfqNav();
 
     const all = collectAllRfqs();
@@ -31828,7 +31832,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
           <td style="text-align:right; white-space:nowrap;">${rmb}</td>
           <td style="text-align:right; white-space:nowrap; color:var(--success);">${usd}</td>
-          <td style="text-align:right;">
+          <td style="text-align:right; white-space:nowrap;">
+            ${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + r.clientName + '|' + r.workbookId) : ''}
             <button class="btn rfq-review-btn"
               onclick="event.stopPropagation(); submitWorkbookForReview(${r.workbookId}, '${clientEsc}', '${productEsc}', this);"
               title="Mark as ready for review — advances the workbook out of the queue and emails Jackson + Parker."
@@ -32251,6 +32256,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const navLink = document.getElementById('nav-review-link');
     if (navLink) navLink.classList.add('active');
     showView('view-review');
+    if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
     if (typeof rebuildReviewNav === 'function') rebuildReviewNav();
 
     const all = collectAllReadyForReview();
@@ -32325,6 +32331,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
           <td style="text-align:right; white-space:nowrap;">${rmb}</td>
           <td style="text-align:right; white-space:nowrap; color:var(--success);">${usd}</td>
+          <td style="text-align:center; white-space:nowrap;" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + r.clientName + '|' + r.workbookId) : ''}</td>
         </tr>
       `;
     }).join('');
@@ -43488,9 +43495,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (r && r.value) { try { v = JSON.parse(r.value); } catch (e) {} }
       _plMeta = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
     } catch (e) { _plMeta = {}; }
-    if (location.hash === '#/pipeline') { try { renderPipelineBoard(); } catch (_) {} }
-    // Assignee avatars also render on the Samples table — refresh it on load.
-    try { const v = document.getElementById('view-samples'); if (v && v.style.display !== 'none' && typeof collectAllSamples === 'function') renderSamplesTable(collectAllSamples()); } catch (_) {}
+    // Assignee avatars render on many views — re-render whichever is up so
+    // they populate on first paint (meta loads async).
+    if (typeof _reRenderAssigneeSurfaces === 'function') _reRenderAssigneeSurfaces();
   }
   // Per-card merge for the pipeline meta blob (keyed by card id, NOT the
   // {data:{id}} shape). Server is the base so another session's card meta
@@ -43535,7 +43542,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const m = _plMeta[id] || {};
     const list = m.assignees || [], note = m.note || '';
     const nComments = Array.isArray(m.comments) ? m.comments.length : 0;
-    if (!list.length && !note && !nComments) return '';
     const chips = list.map(n => {
       const col = (typeof CRM_ASSIGNEE_COLORS !== 'undefined' && CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
       return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
@@ -43544,7 +43550,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const cmtDot  = nComments
       ? `<span class="pl-meta-pill has-comments" title="${nComments} comment${nComments === 1 ? '' : 's'}">&#128172; ${nComments}</span>`
       : '';
-    return `<div class="pl-assignees">${chips}${noteDot}${cmtDot}</div>`;
+    // Always render a clickable assignee area so anyone can assign right from
+    // the board (shows "+ Assign" when empty), keeping the note/comment dots.
+    const assignPart = chips || '<span class="assign-add">+ Assign</span>';
+    const enc = (typeof id === 'string') ? id.replace(/'/g, "\\'") : id;
+    return `<div class="pl-assignees" onclick="event.stopPropagation(); openAssigneePicker('${enc}', event)" style="cursor:pointer;" title="Assign / unassign">${assignPart}${noteDot}${cmtDot}</div>`;
   }
 
   // ── Reusable assignee picker (works from any surface) ─────────────────
@@ -43608,10 +43618,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (i >= 0) meta.assignees.splice(i, 1); else meta.assignees.push(name);
     if (typeof _persistPlMeta === 'function') _persistPlMeta();
     _renderAssigneePicker();
-    // Reflect on whichever surfaces are visible.
-    try { const v = document.getElementById('view-samples'); if (v && v.style.display !== 'none' && typeof collectAllSamples === 'function') renderSamplesTable(collectAllSamples()); } catch (_) {}
-    try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
+    _reRenderAssigneeSurfaces();
     if (_assignPickerAfter) { try { _assignPickerAfter(); } catch (_) {} }
+  }
+  // Re-render whichever assignee-showing view is up so avatars update live.
+  function _reRenderAssigneeSurfaces() {
+    try {
+      const h = location.hash;
+      if (h === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard();
+      else if (h === '#/rfq' && typeof renderRfqDashboard === 'function') renderRfqDashboard();
+      else if (h === '#/review' && typeof renderReviewDashboard === 'function') renderReviewDashboard();
+      else if (h === '#/orders' && typeof renderOrdersList === 'function') renderOrdersList();
+      else if (h.indexOf('#/order/') === 0 && typeof _renderOrderDetailLaneControls === 'function') _renderOrderDetailLaneControls();
+    } catch (_) {}
+    try { const v = document.getElementById('view-samples'); if (v && v.style.display !== 'none' && typeof collectAllSamples === 'function') renderSamplesTable(collectAllSamples()); } catch (_) {}
   }
 
   function openPipelineCardModal(id) {
@@ -44248,6 +44268,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-right:2px;">Lane</span>
       <span style="display:inline-flex; align-items:center; padding:3px 10px; border-radius:99px; background:${laneBg}; color:${laneFg}; border:1px solid ${laneBd}; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">${lane}</span>
       <span style="flex:1;"></span>
+      <span style="display:inline-flex; align-items:center; gap:6px; margin-right:12px;"><span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Assignee</span>${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('order:' + _currentOrderId) : ''}</span>
       ${buttons}
     `;
   }
@@ -44509,6 +44530,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="oc-title">${o.name || `Order #${id}`}</span>
           ${_orderCardShipToBadge(o)}
           <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">${pills.join('')}</div>
+          <div style="margin-top:6px;" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('order:' + id) : ''}</div>
         </div>
         <div class="oc-wb-list">
           <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
@@ -44620,6 +44642,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${valSub ? `<div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.03em;">${valSub}</div>` : ''}
         </div>
         <span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}; flex-shrink:0;">${esc(s.clientName)}</span>
+        <span style="flex-shrink:0;" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + s.key) : ''}</span>
         <button class="staged-notready-btn" onclick="event.stopPropagation(); sendStagedBackToSamples('${keyAttr}')" title="Not ready — send back to Samples">Not ready</button>
       </div>`;
     }).join('');
@@ -44773,6 +44796,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const ordNav = document.getElementById('nav-orders-link');
     if (ordNav) ordNav.classList.add('active');
     showView('view-orders');
+    if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
     renderOrdersStaging();
     renderOrdersContent();
     // Refresh the nav badge to match what'\''s actually on this page —
@@ -45179,6 +45203,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${leadBlock}
             ${deadlineBlock}
             ${changeBadge}
+            <div style="margin-top:6px;" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('order:' + id) : ''}</div>
           </div>
           <div class="oc-wb-list">
             <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
@@ -45236,6 +45261,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── Detail view ──────────────────────────────────────────────────────
   function renderOrderDetail(id) {
     _currentOrderId = parseInt(id);
+    if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
     const o = orderData[_currentOrderId];
     if (!o) { location.hash = '#/orders'; return; }
 
