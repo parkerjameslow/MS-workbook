@@ -2480,19 +2480,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        A parent line can carry several supplier/price alternatives; the
        operator picks ONE (via the modal) and only that one flows to the
        client quote. The selected option is shown inline under the Item. */
-    .rfq-opt-hint {
-      display: inline-block;
-      margin: 6px 0 0 8px;
-      padding: 1px 8px;
-      font-size: 11px;
-      font-weight: 600;
-      line-height: 1.5;
-      color: var(--accent);
-      background: rgba(232,117,26,0.10);
-      border: 1px solid rgba(232,117,26,0.30);
-      border-radius: 10px;
-      vertical-align: middle;
+    .rfq-opt-panel { margin: 8px 4px 2px; display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+    .rfq-opt-panel-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
+    .rfq-opt-choice {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+      padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+      cursor: pointer; background: var(--surface); transition: border-color 0.12s, background 0.12s;
     }
+    .rfq-opt-choice:hover { border-color: var(--accent); }
+    .rfq-opt-choice.selected { border-color: var(--accent); background: rgba(232,117,26,0.07); box-shadow: inset 0 0 0 1px var(--accent); }
+    .rfq-opt-dot { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--border); flex: 0 0 auto; box-sizing: border-box; }
+    .rfq-opt-choice.selected .rfq-opt-dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2px var(--surface); }
+    .rfq-opt-name { font-weight: 700; font-size: 13px; color: var(--text); }
+    .rfq-opt-supp { font-size: 12px; color: var(--text-muted); }
+    .rfq-opt-metrics { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 12px; white-space: nowrap; }
+    .rfq-opt-price { font-weight: 600; color: var(--text); }
+    .rfq-opt-lead { color: var(--text-muted); }
+    .rfq-opt-usebadge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); }
     .rfq-opt-row {
       display: grid;
       grid-template-columns: 54px 1.4fr 1.2fr 96px 78px 26px;
@@ -5975,6 +5979,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sn-todo-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 0 2px; flex: 0 0 auto; line-height: 1.3; }
     .sn-todo-del:hover { color: #dc2626; }
     .sn-empty { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 6px 2px; }
+    /* Inline (expand-under-the-row) sample notes panel */
+    .sn-inline-cell { padding: 0 !important; background: var(--surface2); border-bottom: 2px solid var(--accent); }
+    .sn-inline-host { padding: 16px 20px 18px; }
+    .sn-inline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px 28px; }
+    .sn-inline-col-head { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .sn-inline-col-head .pl-comments-count { position: static; }
+    .sn-inline-host .pl-comments { max-height: 240px; }
+    .sn-notes-btn-wrap { display: inline-flex; align-items: center; }
 
     /* ══ Local search results (AI Assistant view) ═══════════════════════ */
     .ms-sr-group { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 12px 0 6px; }
@@ -11143,39 +11155,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
-<!-- ── Sample notes: comments + follow-up checklist (per sample line) ───
-     Opened from the Notes button on each Samples row. Comments + tasks are
-     keyed by the sample's client|workbook|rowIndex and live in the shared
-     ms_sample_meta app_state blob (CAS-merge protected, like pipeline meta). -->
-<div class="modal-overlay" id="sample-notes-modal" onclick="if(event.target===this)closeSampleNotes()" style="z-index:1250;">
-  <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
-    <div style="flex-shrink:0;">
-      <div class="modal-title" id="sn-title" style="margin-bottom:4px;">Sample</div>
-      <div id="sn-sub" style="font-size:12px; color:var(--text-muted); margin-bottom:14px;"></div>
-    </div>
-    <div style="overflow-y:auto; flex:1 1 auto;">
-      <div class="pl-comments-head"><span>&#9745; Follow-ups</span><span class="pl-comments-count" id="sn-todo-count">0</span></div>
-      <div id="sn-todos" class="sn-todos"></div>
-      <div style="display:flex; gap:8px; margin-top:10px;">
-        <input type="text" id="sn-todo-input" placeholder="Add a follow-up task…" autocomplete="off"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleTodo();}"
-          style="flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;" />
-        <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleTodo()">Add</button>
-      </div>
-      <div class="pl-comments-head" style="margin-top:20px;"><span>&#128172; Comments</span><span class="pl-comments-count" id="sn-comment-count">0</span><span class="pl-comments-hint" id="sn-comment-hint"></span></div>
-      <div id="sn-comments" class="pl-comments" onclick="_focusSnCommentInput()" title="Click to add a comment"></div>
-    </div>
-    <div style="flex-shrink:0; display:flex; gap:8px; margin-top:10px;">
-      <input type="text" id="sn-comment-input" placeholder="Add a comment…" autocomplete="off"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleComment();}"
-        style="flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;" />
-      <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleComment()">Post</button>
-    </div>
-    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
-      <button type="button" class="btn btn-primary" onclick="closeSampleNotes()">Done</button>
-    </div>
-  </div>
-</div>
+<!-- Sample notes (comments + follow-up checklist) render INLINE under each
+     Samples row — see _sampleNotesPanelHtml / renderSamplesTable — so no
+     modal here. Data lives in the ms_sample_meta app_state blob. -->
 
 <!-- ── Add staged workbooks to an existing order ──────────────────────── -->
 <div class="modal-overlay" id="staged-add-order-modal" onclick="if(event.target===this)closeStagedAddOrderModal()" style="z-index:1200;">
@@ -18455,9 +18437,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <div class="rfq-item-links">
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
-          <button type="button" class="rfq-add-variant-link" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button>
-          <span class="rfq-opt-hint" id="rfq-opthint-${id}" style="display:none;"></span>
+          <button type="button" class="rfq-add-variant-link" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button>
         </div>
+        <div class="rfq-opt-panel" id="rfq-optpanel-${id}" style="display:none;"></div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
             oninput="recalcRfqRow(${id})"
@@ -19680,29 +19662,79 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _applyRfqOption(id) {
     const tr = document.getElementById('rfq-' + id);
     if (!tr) return;
-    const hint = document.getElementById('rfq-opthint-' + id);
     let opts = [];
     try { opts = JSON.parse(tr.dataset.compOptions || '[]'); } catch(e) { opts = []; }
     if (!Array.isArray(opts) || opts.length === 0) {
       delete tr.dataset.compOptions; delete tr.dataset.compSelected;
-      if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+      _renderRfqOptPanel(id);
       return;
     }
     let sel = parseInt(tr.dataset.compSelected || '0');
     if (isNaN(sel) || sel < 0 || sel >= opts.length) sel = 0;
     tr.dataset.compSelected = sel;
     const o = opts[sel] || {};
+    // Materialize the selected option into the row's live Item/Price/Lead
+    // inputs so every existing cost / quote / lead read path uses it.
     const inputs = tr.querySelectorAll('input:not([type="checkbox"])');
     if (inputs[1]) inputs[1].value = o.label || '';
     if (inputs[3]) inputs[3].value = o.priceRmb || '';
     if (inputs[4]) inputs[4].value = o.leadTime || '';
-    if (hint) {
-      const supp = o.supplier ? ' — ' + o.supplier : '';
-      hint.textContent = `✓ ${o.label || ('Option ' + (sel + 1))}${supp} · ${opts.length} option${opts.length > 1 ? 's' : ''}`;
-      hint.title = 'Selected comparable option — click ⇄ Options to change';
-      hint.style.display = 'inline-block';
-    }
+    _renderRfqOptPanel(id);
     if (typeof recalcRfqRow === 'function') recalcRfqRow(id);
+  }
+
+  // Inline comparison panel under the Item cell — shows every option's full
+  // details (name, supplier, ¥price + $USD, lead) so the operator can compare
+  // at a glance, with a radio-dot to pick the one used on the client quote.
+  // No <input> elements (clickable divs) so the row's positional input reads
+  // for cost/qty/price/lead are never shifted.
+  function _renderRfqOptPanel(id) {
+    const tr = document.getElementById('rfq-' + id);
+    const panel = document.getElementById('rfq-optpanel-' + id);
+    const btn = document.getElementById('rfq-optbtn-' + id);
+    if (!tr || !panel) return;
+    let opts = [];
+    try { opts = JSON.parse(tr.dataset.compOptions || '[]'); } catch(e) { opts = []; }
+    if (!Array.isArray(opts) || opts.length === 0) {
+      panel.style.display = 'none'; panel.innerHTML = '';
+      if (btn) btn.style.display = '';   // show the "⇄ Options" entry button again
+      return;
+    }
+    let sel = parseInt(tr.dataset.compSelected || '0');
+    if (isNaN(sel) || sel < 0 || sel >= opts.length) sel = 0;
+    if (btn) btn.style.display = 'none'; // panel carries its own edit link
+    const usdOf = rmb => {
+      const n = parseFloat(String(rmb == null ? '' : rmb).replace(/,/g, ''));
+      if (!n || isNaN(n)) return '';
+      try { return '$' + _fxUsdFromRmbPrecise(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (_) { return ''; }
+    };
+    const rows = opts.map((o, i) => {
+      const rmbN = parseFloat(String(o.priceRmb == null ? '' : o.priceRmb).replace(/,/g, ''));
+      const rmb = (rmbN && !isNaN(rmbN)) ? '¥' + rmbN.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '¥—';
+      const usd = usdOf(o.priceRmb);
+      const lead = o.leadTime ? _esc(o.leadTime) + 'd' : '—';
+      const supp = o.supplier ? _esc(o.supplier) : '<span style="opacity:.55">no supplier</span>';
+      const name = o.label ? _esc(o.label) : '<span style="opacity:.55">(unnamed option)</span>';
+      const useBadge = i === sel ? '<span class="rfq-opt-usebadge">On quote</span>' : '';
+      return `<div class="rfq-opt-choice${i === sel ? ' selected' : ''}" onclick="selectRfqOption(${id}, ${i})" title="Use this option on the client quote">
+        <span class="rfq-opt-dot"></span>
+        <span class="rfq-opt-name">${name}</span>
+        <span class="rfq-opt-supp">${supp}</span>
+        <span class="rfq-opt-metrics"><span class="rfq-opt-price">${rmb}${usd ? ' · ' + usd : ''}</span><span class="rfq-opt-lead">${lead}</span>${useBadge}</span>
+      </div>`;
+    }).join('');
+    panel.innerHTML = `<div class="rfq-opt-panel-title">Comparable options — pick the one used on the client quote</div>${rows}<button type="button" class="rfq-add-variant-link" onclick="openRfqOptions(${id})" title="Add, edit or remove options">&#8646; Edit / add options</button>`;
+    panel.style.display = '';
+  }
+
+  function selectRfqOption(id, idx) {
+    if (_wbLocked) return;
+    const tr = document.getElementById('rfq-' + id);
+    if (!tr) return;
+    tr.dataset.compSelected = idx;
+    _applyRfqOption(id);   // materialize into inputs + redraw panel
+    if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
+    if (typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
   }
 
   function openRfqOptions(id) {
@@ -19792,8 +19824,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const clean = _rfqOptState.options.filter(o => o.label || o.supplier || o.priceRmb || o.leadTime);
       if (clean.length === 0) {
         delete tr.dataset.compOptions; delete tr.dataset.compSelected;
-        const hint = document.getElementById('rfq-opthint-' + id);
-        if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+        _renderRfqOptPanel(id);   // hide panel, restore the "⇄ Options" button
       } else {
         let sel = clean.indexOf(selOpt);
         if (sel < 0) sel = 0;
@@ -31067,8 +31098,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span class="remove-tier" onclick="removeSampleRequest('${s.key}', ${s.rowIndex})" title="Unmark as sample (keeps the RFQ line item, just removes it from this list)" style="font-size:18px; color:var(--text-muted);">&times;</span>
           </td>
         </tr>
+        <tr class="sn-inline-row" data-snrow="${encodeURIComponent(compKey)}" style="display:none;">
+          <td colspan="11" class="sn-inline-cell"><div class="sn-inline-host"></div></td>
+        </tr>
       `;
     }).join('');
+    // A table rebuild discards any expanded inline notes panel, so drop the
+    // open-state pointer (the row is freshly collapsed with an empty host).
+    _snModalKey = null;
     // Reflect current selection state in the action bar + header
     // checkbox now that the row checkboxes are in the DOM.
     updateSamplesBulkActionBar();
@@ -43362,8 +43399,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _mergeSampleMeta,
         (merged) => {
           _sampleMeta = merged || _sampleMeta;
-          try { if (_snModalKey) { _renderSampleComments(); _renderSampleTodos(); } } catch (_) {}
-          _refreshSampleRowBadges();
+          // If a panel is open, refresh it + its badge in place; only fall
+          // back to a full table re-render (which collapses panels) when
+          // nothing is expanded, so a concurrent-merge won't yank the panel.
+          try {
+            if (_snModalKey) { _renderSampleComments(); _renderSampleTodos(); _updateSampleRowBadge(_snModalKey); }
+            else _refreshSampleRowBadges();
+          } catch (_) {}
         }
       ).catch(() => {});
       return;
@@ -43388,39 +43430,77 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _sampleNotesBtnHtml(mk) {
     const s = _sampleMetaSummary(mk);
     const has = s.nComments > 0 || s.nTotal > 0;
+    const enc = encodeURIComponent(mk);
     let label = '';
     if (s.nTotal > 0) label += `☑ ${s.nTotal - s.nOpen}/${s.nTotal}`;
     if (s.nComments > 0) label += `${label ? ' · ' : ''}💬 ${s.nComments}`;
     if (!has) label = '💬 Notes';
     // encodeURIComponent keeps the key (which contains |, spaces, maybe
-    // punctuation from the client name) safe inside the inline handler.
-    return `<button class="sample-notes-btn${has ? ' has-content' : ''}" onclick="event.stopPropagation(); openSampleNotes(decodeURIComponent('${encodeURIComponent(mk)}'))" title="Comments &amp; follow-up tasks for this sample">${label}</button>`;
+    // punctuation from the client name) safe inside the handler + the
+    // data-attribute selector (its output never contains a double-quote).
+    return `<button class="sample-notes-btn${has ? ' has-content' : ''}" data-snbtn="${enc}" onclick="event.stopPropagation(); toggleSampleNotes(decodeURIComponent('${enc}'))" title="Comments &amp; follow-up tasks for this sample">${label}</button>`;
   }
 
-  async function openSampleNotes(mk) {
+  // Build the inline panel body (follow-ups + comments) for one sample. Uses
+  // the fixed sn-* ids that _renderSample*/addSample* expect — safe because
+  // only ONE inline panel is expanded (filled) at a time.
+  function _sampleNotesPanelHtml() {
+    const inp = 'flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;';
+    return `<div class="sn-inline-grid">
+      <div>
+        <div class="sn-inline-col-head"><span>&#9745; Follow-ups</span><span class="pl-comments-count" id="sn-todo-count">0</span></div>
+        <div id="sn-todos" class="sn-todos"></div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <input type="text" id="sn-todo-input" placeholder="Add a follow-up task…" autocomplete="off"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleTodo();}" style="${inp}" />
+          <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleTodo()">Add</button>
+        </div>
+      </div>
+      <div>
+        <div class="sn-inline-col-head"><span>&#128172; Comments</span><span class="pl-comments-count" id="sn-comment-count">0</span><span class="pl-comments-hint" id="sn-comment-hint" style="margin-left:auto; font-weight:600; font-style:italic; text-transform:none; letter-spacing:0;"></span></div>
+        <div id="sn-comments" class="pl-comments" onclick="_focusSnCommentInput()" title="Click to add a comment"></div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <input type="text" id="sn-comment-input" placeholder="Add a comment…" autocomplete="off"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleComment();}" style="${inp}" />
+          <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleComment()">Post</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function _collapseSampleNotes() {
+    document.querySelectorAll('.sn-inline-row.open').forEach(r => {
+      r.classList.remove('open'); r.style.display = 'none';
+      const h = r.querySelector('.sn-inline-host'); if (h) h.innerHTML = '';
+    });
+    _snModalKey = null;
+  }
+
+  async function toggleSampleNotes(mk) {
     if (typeof _ensureSampleMetaLoaded === 'function') await _ensureSampleMetaLoaded();
+    const enc = encodeURIComponent(mk);
+    const row = document.querySelector('.sn-inline-row[data-snrow="' + enc + '"]');
+    if (!row) return;
+    const wasOpen = row.classList.contains('open');
+    _collapseSampleNotes();                 // accordion — only one open at a time
+    if (wasOpen) return;                     // clicking the open one closes it
     _snModalKey = mk;
-    const parts = String(mk).split('|');
-    const clientName = parts[0] || '', workbookId = parts[1] || '', rowIndex = parts[2] || '0';
-    const dkey = clientName + '|' + workbookId;
-    let itemName = 'Sample', product = '';
-    const det = (typeof workbookDetail !== 'undefined') ? workbookDetail[dkey] : null;
-    if (det) {
-      product = det.product || '';
-      const it = (det.rfqItems || [])[parseInt(rowIndex)];
-      if (it && it.item) itemName = it.item;
-    }
-    const t = document.getElementById('sn-title'); if (t) t.textContent = itemName;
-    const sub = document.getElementById('sn-sub'); if (sub) sub.textContent = [product, clientName].filter(Boolean).join(' · ');
+    const host = row.querySelector('.sn-inline-host');
+    if (host) host.innerHTML = _sampleNotesPanelHtml();
+    row.style.display = '';
+    row.classList.add('open');
     _renderSampleTodos();
     _renderSampleComments();
-    const m = document.getElementById('sample-notes-modal'); if (m) m.classList.add('open');
-    setTimeout(() => { const el = document.getElementById('sn-todo-input'); if (el) try { el.focus(); } catch (_) {} }, 50);
+    setTimeout(() => { const el = document.getElementById('sn-todo-input'); if (el) try { el.focus(); } catch (_) {} }, 30);
   }
 
-  function closeSampleNotes() {
-    const m = document.getElementById('sample-notes-modal'); if (m) m.classList.remove('open');
-    _snModalKey = null;
+  // Refresh just this sample's Notes button (count + accent) in place, so a
+  // comment/task edit doesn't require re-rendering the whole table (which
+  // would collapse the open inline panel).
+  function _updateSampleRowBadge(mk) {
+    if (!mk) return;
+    const b = document.querySelector('[data-snbtn="' + encodeURIComponent(mk) + '"]');
+    if (b) b.outerHTML = _sampleNotesBtnHtml(mk);
   }
 
   function _renderSampleComments() {
@@ -43464,6 +43544,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _persistSampleMeta();
     if (input) input.value = '';
     _renderSampleComments();
+    _updateSampleRowBadge(_snModalKey);
   }
   function deleteSampleComment(id) {
     if (!_snModalKey) return;
@@ -43471,6 +43552,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     meta.comments = meta.comments.filter(c => c && c.id !== id);
     _persistSampleMeta();
     _renderSampleComments();
+    _updateSampleRowBadge(_snModalKey);
   }
 
   function _renderSampleTodos() {
@@ -43506,6 +43588,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _persistSampleMeta();
     if (input) input.value = '';
     _renderSampleTodos();
+    _updateSampleRowBadge(_snModalKey);
   }
   function toggleSampleTodo(id, done) {
     if (!_snModalKey) return;
@@ -43514,6 +43597,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     t.done = !!done; t.doneAt = done ? new Date().toISOString() : null;
     _persistSampleMeta();
     _renderSampleTodos();
+    _updateSampleRowBadge(_snModalKey);
   }
   function deleteSampleTodo(id) {
     if (!_snModalKey) return;
@@ -43521,6 +43605,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     meta.todos = meta.todos.filter(t => t && t.id !== id);
     _persistSampleMeta();
     _renderSampleTodos();
+    _updateSampleRowBadge(_snModalKey);
   }
 
   function _updatePipelineNavBadge() {
