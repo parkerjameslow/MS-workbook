@@ -43167,7 +43167,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (fromStage === targetCol) return;
     const lbl = (id) => (PIPELINE_COLUMNS.find(c => c.id === id) || {}).label || id;
     if (!PIPELINE_FLAG_STAGES.has(targetCol)) {
-      showToast(`${lbl(targetCol)} is managed from its own view — advance the order/shipment there.`, 'warn');
+      if (fromStage === 'orders' && targetCol === 'production') {
+        // This is a workbook still sitting in Orders STAGING (not yet placed in
+        // an order). Only ORDER cards move to In Production — tell them how.
+        showToast(`“${detail.product || 'This workbook'}” isn't in an order yet. Place it in an order (Orders → Ready to Order), then drag that order card into In Production.`, 'warn');
+      } else {
+        showToast(`${lbl(targetCol)} is managed from its own view — advance the order/shipment there.`, 'warn');
+      }
       return;
     }
     if (!_pipelineCardMovable(clientName, workbookId, fromStage)) {
