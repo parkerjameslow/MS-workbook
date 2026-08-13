@@ -5871,6 +5871,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Sample comments/follow-ups indicator on a workbook card. */
     .pl-sample-badge { margin-top: 8px; display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 99px; background: rgba(96,165,250,0.16); border: 1px solid rgba(96,165,250,0.36); color: #93c5fd; font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit; line-height: 1.6; }
     .pl-sample-badge:hover { background: rgba(96,165,250,0.30); color: #bfdbfe; }
+    /* Pipeline "add to an order" prompt modal. */
+    .plop-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 8px; }
+    .plop-orders { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+    .plop-order-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); font-size: 13px; }
+    .plop-lane { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--accent); background: rgba(232,117,26,0.10); border: 1px solid rgba(232,117,26,0.25); border-radius: 8px; padding: 1px 6px; margin-left: 4px; }
+    .plop-add-btn { flex: 0 0 auto; padding: 5px 12px; font-size: 12px; }
     /* Per-sample panels inside the workbook sample-notes modal. */
     .wbsn-item { border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); margin-bottom: 12px; overflow: hidden; }
     .wbsn-item:last-child { margin-bottom: 0; }
@@ -11226,6 +11232,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="wbsn-body" style="overflow-y:auto; flex:1 1 auto; margin-top:8px;"></div>
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
       <button type="button" class="btn btn-primary" onclick="closeWbSampleNotes()">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Pipeline: add a staging workbook to an order (from the board) ─────
+     Shown when a workbook still in Orders staging is dragged to In
+     Production — offers add-to-existing / create-new / go-to links. -->
+<div class="modal-overlay" id="pipeline-order-prompt-modal" onclick="if(event.target===this)closePipelineOrderPrompt()" style="z-index:1265;">
+  <div class="modal" style="max-width:540px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" id="plop-title" style="flex-shrink:0;">Add to an order</div>
+    <div id="plop-body" style="overflow-y:auto; flex:1 1 auto; margin-top:8px; font-size:13px; color:var(--text);"></div>
+    <div class="modal-actions" style="margin-top:18px; flex-shrink:0; gap:10px; flex-wrap:wrap;">
+      <button type="button" class="btn btn-ghost" onclick="closePipelineOrderPrompt()">Cancel</button>
+      <button type="button" class="btn btn-ghost" onclick="_plOrderPromptGoWorkbook()">Open workbook</button>
+      <button type="button" class="btn btn-ghost" onclick="_plOrderPromptGoOrders()">Go to Orders</button>
+      <button type="button" class="btn btn-primary" onclick="_plOrderPromptCreate()">Create new order → In Production</button>
     </div>
   </div>
 </div>
@@ -43168,9 +43190,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const lbl = (id) => (PIPELINE_COLUMNS.find(c => c.id === id) || {}).label || id;
     if (!PIPELINE_FLAG_STAGES.has(targetCol)) {
       if (fromStage === 'orders' && targetCol === 'production') {
-        // Workbook still in Orders STAGING (no order yet). Match the Orders
-        // "Move to Production" button end-state: mint its order, then move it in.
-        _pipelineStagedWorkbookToProduction(clientName, workbookId, detail);
+        // Workbook still in Orders STAGING (no order yet). Prompt: add it to an
+        // existing order, create a new one, or jump to the workbook / Orders.
+        _openPipelineOrderPrompt(clientName, workbookId, detail);
       } else {
         showToast(`${lbl(targetCol)} is managed from its own view — advance the order/shipment there.`, 'warn');
       }
@@ -43206,6 +43228,65 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     try { rebuildOrdersNav(); } catch (_) {}
     const prod = (detail && detail.product) ? detail.product : 'workbook';
     showToast(`Created ${orderData[id].name} for “${prod}” and moved it to In Production`, 'success');
+  }
+
+  // Prompt shown when a staging workbook is dragged to In Production: it isn't
+  // in an order yet, so offer to add it to an existing order, create a new one
+  // (→ In Production), or jump to the workbook / Orders — all from the modal.
+  let _plOrderPromptCtx = null;
+  function _openPipelineOrderPrompt(clientName, workbookId, detail) {
+    _plOrderPromptCtx = { clientName, workbookId, detail };
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const prod = (detail && detail.product) ? detail.product : 'This workbook';
+    const t = document.getElementById('plop-title');
+    if (t) t.textContent = `Add “${prod}” to an order`;
+    const orders = Object.values(orderData || {}).filter(o => o && o.clientName === clientName);
+    const laneOf = o => _orderIsInFulfillment(o) ? 'In Production' : (_orderIsInOrdersQueue(o) ? 'Orders' : 'Shipment');
+    let ordersHtml = '';
+    if (orders.length) {
+      ordersHtml = `<div class="plop-label">Add to an existing ${esc(clientName)} order</div><div class="plop-orders">` +
+        orders.map(o => `<div class="plop-order-row">
+          <span><strong>${esc(o.name || ('Order #' + o.id))}</strong> <span class="plop-lane">${laneOf(o)}</span> · ${(o.entries || []).length} wb</span>
+          <button type="button" class="btn btn-ghost plop-add-btn" onclick="_plOrderPromptAddTo('${esc(String(o.id))}')">Add here</button>
+        </div>`).join('') + `</div>`;
+    }
+    const body = document.getElementById('plop-body');
+    if (body) body.innerHTML = `<p style="margin:0 0 14px; color:var(--text-muted); line-height:1.55;">“${esc(prod)}” isn't part of an order yet, so it can't move into In Production on its own. Add it to an order below — or jump to the workbook or the Orders view.</p>${ordersHtml}`;
+    const m = document.getElementById('pipeline-order-prompt-modal');
+    if (m) { m.classList.add('open'); m.style.display = 'flex'; }
+  }
+  function closePipelineOrderPrompt() {
+    const m = document.getElementById('pipeline-order-prompt-modal');
+    if (m) { m.classList.remove('open'); m.style.display = 'none'; }
+    _plOrderPromptCtx = null;
+  }
+  function _plOrderPromptCreate() {
+    const c = _plOrderPromptCtx; if (!c) return;
+    closePipelineOrderPrompt();
+    _pipelineStagedWorkbookToProduction(c.clientName, c.workbookId, c.detail);
+  }
+  function _plOrderPromptAddTo(orderId) {
+    const c = _plOrderPromptCtx; if (!c) return;
+    const o = orderData[orderId]; if (!o) return;
+    if (!Array.isArray(o.entries)) o.entries = [];
+    const already = o.entries.some(e => e && e.clientName === c.clientName && String(e.workbookId) === String(c.workbookId));
+    if (!already) o.entries.push({ clientName: c.clientName, workbookId: c.workbookId });
+    if (typeof saveOrders === 'function') saveOrders();
+    closePipelineOrderPrompt();
+    try { renderPipelineBoard(); } catch (_) {}
+    try { rebuildOrdersNav(); } catch (_) {}
+    const lane = _orderIsInFulfillment(o) ? 'In Production' : 'Orders';
+    showToast(`Added “${c.detail && c.detail.product ? c.detail.product : 'workbook'}” to ${o.name || ('Order #' + o.id)} (${lane})`, 'success');
+  }
+  function _plOrderPromptGoWorkbook() {
+    const c = _plOrderPromptCtx; if (!c) return;
+    const url = `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`;
+    closePipelineOrderPrompt();
+    location.hash = url;
+  }
+  function _plOrderPromptGoOrders() {
+    closePipelineOrderPrompt();
+    location.hash = '#/orders';
   }
 
   // Move an ORDER between the Orders and In Production lanes from the board.
