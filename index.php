@@ -6678,9 +6678,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .oc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
     .oc-wb-row { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
-    .oc-wb-row .oc-wb-prices { margin-left: auto; }
+    .oc-wb-row .oc-wb-prices { margin-left: auto; }   /* prices stay right; pill + assignee stay together on the left */
     .oc-wb-assignee { flex: 0 0 auto; display: inline-flex; align-items: center; }
-    .oc-wb-row > .oc-wb-assignee:nth-child(2) { margin-left: auto; }
     .oc-wb-pill {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px;
@@ -43178,8 +43177,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _pipelineChildLine(w) {
     const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
     const spot = (typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + w.cn + '|' + w.wid, true) : '';
-    return `<div class="pl-child" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}" style="display:flex; align-items:center; gap:6px;">
-      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto;">→ ${_plEsc(w.product)}</span>
+    return `<div class="pl-child" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}" style="display:flex; align-items:center; gap:8px;">
+      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:0 1 auto; min-width:0;">→ ${_plEsc(w.product)}</span>
       <span style="flex:0 0 auto;">${spot}</span></div>`;
   }
 
@@ -44496,8 +44495,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         : '';
       return `<div class="oc-wb-row">
         <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to In Production'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
-        ${priceStr}
         <span class="oc-wb-assignee" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + e.clientName + '|' + e.workbookId, true) : ''}</span>
+        ${priceStr}
       </div>`;
     }).join('');
 
@@ -44936,8 +44935,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               : '';
             return `<div class="oc-wb-row">
               <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
-              ${priceStr}
               <span class="oc-wb-assignee" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + key, true) : ''}</span>
+              ${priceStr}
             </div>`;
           }).join('');
 
@@ -46023,9 +46022,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             onclick="event.stopPropagation(); _wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; event.preventDefault(); location.hash='${wbHref.substring(1)}'">
             ${esc(product)} <span style="font-size:11px; opacity:0.5;">→</span>
           </a>
+          ${(typeof _assigneeSpotHtml === 'function') ? '<span onclick="event.stopPropagation();" style="margin-left:8px; display:inline-flex; vertical-align:middle;">' + _assigneeSpotHtml('wb:' + key, true) + '</span>' : ''}
           ${_artPill}
           ${splitBadges}
-          ${(typeof _assigneeSpotHtml === 'function') ? '<span onclick="event.stopPropagation();" style="margin-left:8px; display:inline-flex; vertical-align:middle;">' + _assigneeSpotHtml('wb:' + key, true) + '</span>' : ''}
         </td>
         <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>
         <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
