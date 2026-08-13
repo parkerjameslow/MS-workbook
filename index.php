@@ -2500,7 +2500,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rfq-opt-price { font-weight: 700; color: var(--text); min-width: 96px; text-align: right; }
     .rfq-opt-usd { color: var(--success); min-width: 60px; text-align: right; }
     .rfq-opt-lead { color: var(--text-muted); min-width: 40px; text-align: right; }
-    .rfq-opt-usebadge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); min-width: 64px; text-align: right; }
+    /* Fixed-width slot: reserved on every option so the On-quote marker never
+       shifts the columns; only the selected one shows the label. */
+    .rfq-opt-usebadge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); flex: 0 0 auto; width: 78px; text-align: right; white-space: nowrap; }
     .rfq-opt-row {
       display: grid;
       grid-template-columns: 54px 1.4fr 1.2fr 96px 78px 26px;
@@ -5984,8 +5986,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sn-todo-del:hover { color: #dc2626; }
     .sn-empty { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 6px 2px; }
     /* Inline (expand-under-the-row) sample notes panel */
-    .sn-inline-cell { padding: 0 !important; background: var(--surface2); border-bottom: 3px solid var(--border); }
+    .sn-inline-cell { padding: 0 !important; background: var(--surface2); border-bottom: none; border-left: 3px solid var(--accent); }
     .sn-inline-host { padding: 14px 20px 16px; }
+    /* Each sample = its data row + its notes panel, bracketed by a page-bg gap
+       so one card is clearly distinct from the next. The accent left-stripe
+       ties the row to its own panel. */
+    .sn-data-row > td { border-top: 12px solid var(--bg); }
+    .sn-data-row > td:first-child { border-left: 3px solid var(--accent); }
+    .sn-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    .sn-panel-item { font-weight: 800; font-size: 13px; color: var(--text); }
+    .sn-panel-prod { font-size: 12px; color: var(--text-muted); }
+    .sn-panel-client { font-size: 12px; font-weight: 600; color: var(--text-muted); }
     .sn-inline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px 32px; }
     .sn-inline-col-head { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .sn-inline-col-head .pl-comments-count { position: static; }
@@ -19724,7 +19735,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const lead = o.leadTime ? _esc(o.leadTime) + 'd' : '—';
       const supp = o.supplier ? _esc(o.supplier) : '<span style="opacity:.55">no supplier</span>';
       const name = o.label ? _esc(o.label) : '<span style="opacity:.55">(unnamed option)</span>';
-      const useBadge = i === sel ? '<span class="rfq-opt-usebadge">On quote</span>' : '';
+      // Always render the badge slot (fixed width) so selecting/deselecting
+      // never shifts the price/usd/lead columns — only its text toggles.
+      const useBadge = `<span class="rfq-opt-usebadge${i === sel ? ' on' : ''}">${i === sel ? '✓ On quote' : ''}</span>`;
       return `<div class="rfq-opt-choice${i === sel ? ' selected' : ''}" onclick="selectRfqOption(${id}, ${i})" title="Use this option on the client quote">
         <span class="rfq-opt-dot"></span>
         <span class="rfq-opt-name">${name}</span>
@@ -31090,7 +31103,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const compKey = `${s.key}|${s.rowIndex}`;
       const checked = _samplesSelected.has(compKey) ? 'checked' : '';
       return `
-        <tr>
+        <tr class="sn-data-row">
           <td style="text-align:center;">
             <input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked}
                    onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" />
@@ -43450,6 +43463,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const notes = (Array.isArray(m.comments) ? m.comments : []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
     const openN = todos.filter(t => t && !t.done).length;
     const inp = 'flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;';
+    // Identity header so each always-on panel is clearly tied to its sample.
+    const parts = String(mk).split('|');
+    const clientName = parts[0] || '', workbookId = parts[1] || '', rowIndex = parts[2] || '0';
+    let itemName = '', product = '';
+    const det = (typeof workbookDetail !== 'undefined') ? workbookDetail[clientName + '|' + workbookId] : null;
+    if (det) { product = det.product || ''; const it = (det.rfqItems || [])[parseInt(rowIndex)]; if (it && it.item) itemName = it.item; }
+    const chip = (typeof _clientChipStyle === 'function')
+      ? `<span class="inv-client-chip" style="${_clientChipStyle(clientName)}" title="${_plEsc(clientName)}">${_plEsc(clientName)}</span>`
+      : `<span class="sn-panel-client">${_plEsc(clientName)}</span>`;
+    const header = `<div class="sn-panel-head">
+      <span class="sn-panel-item">${_plEsc(itemName || product || 'Sample')}</span>
+      ${chip}
+      ${(product && product !== itemName) ? `<span class="sn-panel-prod">${_plEsc(product)}</span>` : ''}
+    </div>`;
     const todoItems = todos.length ? todos.map(t => `
       <div class="sn-todo${t.done ? ' done' : ''}">
         <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleSampleTodo('${enc}','${_plEsc(t.id)}', this.checked)" />
