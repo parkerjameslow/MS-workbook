@@ -5871,8 +5871,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
     .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
     .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
-    /* Karen highlight — any card she's assigned to stands out on the board. */
-    .pl-card.pl-card-karen { border-color: #0ea5e9 !important; box-shadow: inset 3px 0 0 #0ea5e9, 0 0 0 1px #0ea5e9, 0 4px 16px rgba(14,165,233,0.38) !important; }
+    /* Karen highlight — any card she's assigned to must jump off the board:
+       bright cyan ring + strong glow + a slow pulse so it's unmistakable. */
+    @keyframes karenPulse {
+      0%, 100% { box-shadow: 0 0 0 2px rgba(34,211,238,0.55), 0 0 14px 2px rgba(34,211,238,0.40), inset 5px 0 0 #22d3ee; }
+      50%      { box-shadow: 0 0 0 2px rgba(34,211,238,0.95), 0 0 30px 6px rgba(34,211,238,0.75), inset 5px 0 0 #22d3ee; }
+    }
+    .pl-card.pl-card-karen { border: 2px solid #22d3ee !important; animation: karenPulse 2.2s ease-in-out infinite; }
     /* Assignee spot (on rows/cards) + the floating assignee picker. */
     .assign-spot { display: inline-flex; align-items: center; gap: 0; vertical-align: middle; margin-right: 6px; cursor: pointer; }
     .assign-spot .pl-avatar { width: 20px; height: 20px; font-size: 10px; border: 2px solid var(--surface); box-shadow: none; }
@@ -42989,6 +42994,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     else renderPipelineBoard();
   }
 
+  // "+" in a column header → add a card appropriate to that lane.
+  function _pipelineAddToColumn(colId) {
+    if (colId === 'orders' || colId === 'production') {
+      if (typeof openNewOrderModal === 'function') { openNewOrderModal(); return; }
+    } else if (colId === 'shipments' || colId === 'receiving') {
+      if (typeof openNewShipmentModal === 'function') { openNewShipmentModal(); return; }
+    }
+    // Unstaged / RFQ / Review / Samples (and any fallback) → new workbook.
+    if (typeof openNewWorkbookModal === 'function') openNewWorkbookModal();
+  }
+
   function renderPipelineBoard() {
     document.getElementById('header-title').textContent = 'Pipeline';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
@@ -43046,7 +43062,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                    ondragleave="this.classList.remove('drag-over');"
                    ondrop="onPipelineDrop(event, '${col.id}')">
         <div class="crm-column-header" style="background:${col.bg}; color:${col.fg};">
-          <span class="crm-col-title">${col.label}</span>
+          <span class="crm-col-title" style="flex:0 1 auto;">${col.label}</span>
+          <button class="crm-col-add-icon" onclick="event.stopPropagation(); _pipelineAddToColumn('${col.id}')" title="Add to ${_plEsc(col.label)}">+</button>
+          <span style="flex:1 1 auto;"></span>
           ${total > 0 ? `<span class="crm-col-total">${_plMoney(total)}</span>` : ''}
           <span class="crm-col-count">${cards.length}</span>
         </div>
