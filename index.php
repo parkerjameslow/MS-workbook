@@ -5872,20 +5872,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
     .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
     .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
-    /* Karen highlight — the WHOLE card turns light red so it's unmistakable
-       that it needs her attention. Text flips to dark red for readability. */
+    /* Karen highlight — the WHOLE card turns the In Production lane color
+       (#ffedd5 / #c2410c) so it's unmistakable it needs her attention. */
     .pl-card.pl-card-karen {
-      background: #fca5a5 !important;
-      border: 2px solid #dc2626 !important;
-      box-shadow: 0 6px 18px rgba(220,38,38,0.45) !important;
+      background: #ffedd5 !important;
+      border: 2px solid #c2410c !important;
+      box-shadow: 0 6px 18px rgba(194,65,12,0.38) !important;
     }
-    .pl-card.pl-card-karen .pl-card-title { color: #7f1d1d !important; }
+    .pl-card.pl-card-karen .pl-card-title { color: #7c2d12 !important; }
     .pl-card.pl-card-karen .pl-card-sub,
     .pl-card.pl-card-karen .pl-child,
     .pl-card.pl-card-karen .pl-drill-toggle,
-    .pl-card.pl-card-karen .pl-lock-hint { color: #991b1b !important; }
+    .pl-card.pl-card-karen .pl-lock-hint { color: #9a3412 !important; }
     .pl-card.pl-card-karen .pl-card-val { color: #166534 !important; }
-    .pl-card.pl-card-karen .pl-stage-age { background: rgba(127,29,29,0.14) !important; color: #7f1d1d !important; border-color: rgba(127,29,29,0.30) !important; }
+    .pl-card.pl-card-karen .pl-stage-age { background: rgba(124,45,18,0.14) !important; color: #7c2d12 !important; border-color: rgba(124,45,18,0.30) !important; }
     /* Assignee spot (on rows/cards) + the floating assignee picker. */
     .assign-spot { display: inline-flex; align-items: center; gap: 0; vertical-align: middle; margin-right: 6px; cursor: pointer; }
     .assign-spot .pl-avatar { width: 20px; height: 20px; font-size: 10px; border: 2px solid var(--surface); box-shadow: none; }
