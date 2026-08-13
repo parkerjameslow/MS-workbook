@@ -2478,25 +2478,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     /* ── RFQ comparable options ────────────────────────────────────────
        A parent line can carry several supplier/price alternatives; the
-       operator picks ONE (via the modal) and only that one flows to the
-       client quote. The selected option is shown inline under the Item. */
-    .rfq-opt-panel { margin: 8px 4px 2px; display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+       operator picks ONE and only that one flows to the client quote. The
+       options render on a full-width row under the line so every column
+       (name · supplier · price · lead) reads on one line side-by-side. */
+    .rfq-optrow > td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+    .rfq-optrow-cell { background: var(--surface2); }
+    .rfq-opt-panel { margin: 10px 14px 14px; display: flex; flex-direction: column; gap: 6px; max-width: 940px; }
     .rfq-opt-panel-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
     .rfq-opt-choice {
-      display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
-      padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+      display: flex; align-items: center; gap: 16px;
+      padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px;
       cursor: pointer; background: var(--surface); transition: border-color 0.12s, background 0.12s;
     }
     .rfq-opt-choice:hover { border-color: var(--accent); }
     .rfq-opt-choice.selected { border-color: var(--accent); background: rgba(232,117,26,0.07); box-shadow: inset 0 0 0 1px var(--accent); }
-    .rfq-opt-dot { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--border); flex: 0 0 auto; box-sizing: border-box; }
-    .rfq-opt-choice.selected .rfq-opt-dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2px var(--surface); }
-    .rfq-opt-name { font-weight: 700; font-size: 13px; color: var(--text); }
-    .rfq-opt-supp { font-size: 12px; color: var(--text-muted); }
-    .rfq-opt-metrics { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 12px; white-space: nowrap; }
-    .rfq-opt-price { font-weight: 600; color: var(--text); }
-    .rfq-opt-lead { color: var(--text-muted); }
-    .rfq-opt-usebadge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); }
+    .rfq-opt-dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); flex: 0 0 auto; box-sizing: border-box; }
+    .rfq-opt-choice.selected .rfq-opt-dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
+    .rfq-opt-name { font-weight: 700; font-size: 13px; color: var(--text); flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rfq-opt-supp { font-size: 12px; color: var(--text-muted); flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rfq-opt-metrics { margin-left: auto; display: flex; align-items: center; gap: 18px; font-size: 13px; white-space: nowrap; flex: 0 0 auto; }
+    .rfq-opt-price { font-weight: 700; color: var(--text); min-width: 96px; text-align: right; }
+    .rfq-opt-usd { color: var(--success); min-width: 60px; text-align: right; }
+    .rfq-opt-lead { color: var(--text-muted); min-width: 40px; text-align: right; }
+    .rfq-opt-usebadge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); min-width: 64px; text-align: right; }
     .rfq-opt-row {
       display: grid;
       grid-template-columns: 54px 1.4fr 1.2fr 96px 78px 26px;
@@ -2577,10 +2581,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        tall by the Sample / + Add Variant sub-lines. The number, checkbox,
        USD, TOTAL and remove cells get a top pad so their single line sits
        centered on the ~44px input box. */
-    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]) > td { vertical-align: top; }
-    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]) .tier-col-num { padding-top: 22px; }
-    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]) .tier-col-usd,
-    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]) .total-cell { padding-top: 24px; }
+    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow]) > td { vertical-align: top; }
+    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow]) .tier-col-num { padding-top: 22px; }
+    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow]) .tier-col-usd,
+    #rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow]) .total-cell { padding-top: 24px; }
 
     .rfq-img-cell { display: flex; align-items: center; justify-content: center; }
     .rfq-img-tile {
@@ -5980,13 +5984,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sn-todo-del:hover { color: #dc2626; }
     .sn-empty { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 6px 2px; }
     /* Inline (expand-under-the-row) sample notes panel */
-    .sn-inline-cell { padding: 0 !important; background: var(--surface2); border-bottom: 2px solid var(--accent); }
-    .sn-inline-host { padding: 16px 20px 18px; }
-    .sn-inline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px 28px; }
+    .sn-inline-cell { padding: 0 !important; background: var(--surface2); border-bottom: 3px solid var(--border); }
+    .sn-inline-host { padding: 14px 20px 16px; }
+    .sn-inline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px 32px; }
     .sn-inline-col-head { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .sn-inline-col-head .pl-comments-count { position: static; }
-    .sn-inline-host .pl-comments { max-height: 240px; }
-    .sn-notes-btn-wrap { display: inline-flex; align-items: center; }
+    .sn-add-row { display: flex; gap: 8px; margin-top: 10px; }
+    /* Notes items share the follow-up item styling so both columns match. */
+    .sn-note { display: flex; align-items: flex-start; gap: 9px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    .sn-note-body { flex: 1; min-width: 0; }
+    .sn-note-meta { font-size: 10px; color: var(--text-muted); font-weight: 700; display: flex; align-items: center; gap: 4px; }
+    .sn-note-meta .sn-todo-del { margin-left: auto; }
+    .sn-note-text { font-size: 13px; color: var(--text); white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
 
     /* ══ Local search results (AI Assistant view) ═══════════════════════ */
     .ms-sr-group { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 12px 0 6px; }
@@ -11156,7 +11165,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div>
 
 <!-- Sample notes (comments + follow-up checklist) render INLINE under each
-     Samples row — see _sampleNotesPanelHtml / renderSamplesTable — so no
+     Samples row — see _sampleNotesPanelInner / renderSamplesTable — so no
      modal here. Data lives in the ms_sample_meta app_state blob. -->
 
 <!-- ── Add staged workbooks to an existing order ──────────────────────── -->
@@ -15579,7 +15588,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // a new priced row was added but the recalc bookkeeping missed the
     // unit price for some reason).
     if (!usdPerUnit) {
-      const rfqRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+      const rfqRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
       for (const r of rfqRows) {
         const inputs = r.querySelectorAll('input:not([type="checkbox"])');
         const rmb = _msNumFromInput(inputs[3]);
@@ -18043,7 +18052,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!groups.length) { el.style.display = 'none'; return; }
     const inGroup = new Set();
     groups.forEach(g => (g.itemIdxs || []).forEach(i => inGroup.add(i)));
-    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     let loose = 0;
     parents.forEach((row, idx) => {
       if (inGroup.has(idx)) return;
@@ -18108,7 +18117,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // into the parent rows in DOM order (same enumeration collectRfqItems
   // uses), so we map index → group label and lock those rows.
   function _refreshRfqCombineMembership() {
-    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     const labelByIdx = new Map();
     (Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => {
       (g.itemIdxs || []).forEach(idx => labelByIdx.set(idx, g.label || 'a combined group'));
@@ -18140,14 +18149,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // DOM in tbody order, skipping variant + add-for rows, mirroring
   // collectRfqItems' enumeration so the indexes line up.
   function _rfqIdxFromDomId(domId) {
-    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     for (let i = 0; i < parents.length; i++) {
       if (parents[i].id === `rfq-${domId}`) return i;
     }
     return -1;
   }
   function _rfqDomIdFromIdx(idx) {
-    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     const tr = parents[idx];
     if (!tr || !tr.id) return null;
     const m = tr.id.match(/^rfq-(\d+)$/);
@@ -18395,7 +18404,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
-    const isFirstRow = tbody.querySelectorAll('tr:not([data-rfq-parent]):not([data-rfq-add-for])').length === 0;
+    const isFirstRow = tbody.querySelectorAll('tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])').length === 0;
     const defaultItem = item;
     const tr = document.createElement('tr');
     tr.id = `rfq-${id}`;
@@ -18439,7 +18448,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
           <button type="button" class="rfq-add-variant-link" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button>
         </div>
-        <div class="rfq-opt-panel" id="rfq-optpanel-${id}" style="display:none;"></div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
             oninput="recalcRfqRow(${id})"
@@ -18814,7 +18822,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       let changed = 0;
       if (imgByKey) {
-        document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])').forEach(row => {
+        document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])').forEach(row => {
           const id = parseInt(row.id.replace('rfq-', ''));
           if (getRfqRowImages(id).length) return;
           const inputs = row.querySelectorAll('input:not([type="checkbox"])');
@@ -18850,19 +18858,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (row) row.remove();
     document.querySelectorAll(`[data-rfq-parent="${id}"]`).forEach(vr => vr.remove());
     document.querySelector(`[data-rfq-add-for="${id}"]`)?.remove();
+    document.getElementById(`rfq-optrow-${id}`)?.remove();   // drop its comparable-options row
     renumberRfqRows();
     // If we just deleted the last RFQ row, drop in a fresh blank row so
     // the table never bottoms out completely (matches what the user
     // expects when they "start over"): there's always at least one row
     // visible to type into.
-    const remaining = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const remaining = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     if (remaining.length === 0) addRfqRow();
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
   }
 
   function renumberRfqRows() {
-    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     rows.forEach((row, i) => {
       const td = row.querySelector('td');
       if (i === 0) {
@@ -18927,7 +18936,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const parentRows = [];
     const variantsByParent = new Map();
     allRfqRows.forEach(r => {
-      if (r.hasAttribute('data-rfq-add-for')) return;
+      if (r.hasAttribute('data-rfq-add-for') || r.hasAttribute('data-rfq-optrow')) return;
       if (r.hasAttribute('data-rfq-parent')) {
         const pid = r.dataset.rfqParent;
         let arr = variantsByParent.get(pid);
@@ -19328,7 +19337,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // The first parent row's qty input already reflects its own variants
     // (syncParentQtyFromVariants sums them into the parent), so this reads
     // "the first item's qty" whether or not that item has variants.
-    const rfqFirstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):first-child');
+    const rfqFirstRow = document.querySelector('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow]):first-child');
     const rfqInputs = rfqFirstRow ? rfqFirstRow.querySelectorAll('input:not([type="checkbox"])') : [];
     // Use the PRIMARY line's qty (same basis as the per-primary-unit price
     // above) so tier total = qty × price ties out with the RFQ grand total.
@@ -19602,7 +19611,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function collectRfqItems() {
-    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     const items = [];
     rows.forEach(row => {
       const id = parseInt(row.id.replace('rfq-', ''));
@@ -19690,19 +19699,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // for cost/qty/price/lead are never shifted.
   function _renderRfqOptPanel(id) {
     const tr = document.getElementById('rfq-' + id);
-    const panel = document.getElementById('rfq-optpanel-' + id);
     const btn = document.getElementById('rfq-optbtn-' + id);
-    if (!tr || !panel) return;
+    if (!tr) return;
+    let optrow = document.getElementById('rfq-optrow-' + id);
     let opts = [];
     try { opts = JSON.parse(tr.dataset.compOptions || '[]'); } catch(e) { opts = []; }
     if (!Array.isArray(opts) || opts.length === 0) {
-      panel.style.display = 'none'; panel.innerHTML = '';
-      if (btn) btn.style.display = '';   // show the "⇄ Options" entry button again
+      if (optrow) optrow.remove();          // no options → drop the full-width row
+      if (btn) btn.style.display = '';       // show the "⇄ Options" entry button again
       return;
     }
     let sel = parseInt(tr.dataset.compSelected || '0');
     if (isNaN(sel) || sel < 0 || sel >= opts.length) sel = 0;
-    if (btn) btn.style.display = 'none'; // panel carries its own edit link
+    if (btn) btn.style.display = 'none';     // panel carries its own edit link
     const usdOf = rmb => {
       const n = parseFloat(String(rmb == null ? '' : rmb).replace(/,/g, ''));
       if (!n || isNaN(n)) return '';
@@ -19720,11 +19729,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="rfq-opt-dot"></span>
         <span class="rfq-opt-name">${name}</span>
         <span class="rfq-opt-supp">${supp}</span>
-        <span class="rfq-opt-metrics"><span class="rfq-opt-price">${rmb}${usd ? ' · ' + usd : ''}</span><span class="rfq-opt-lead">${lead}</span>${useBadge}</span>
+        <span class="rfq-opt-metrics"><span class="rfq-opt-price">${rmb}</span><span class="rfq-opt-usd">${usd || ''}</span><span class="rfq-opt-lead">${lead}</span>${useBadge}</span>
       </div>`;
     }).join('');
-    panel.innerHTML = `<div class="rfq-opt-panel-title">Comparable options — pick the one used on the client quote</div>${rows}<button type="button" class="rfq-add-variant-link" onclick="openRfqOptions(${id})" title="Add, edit or remove options">&#8646; Edit / add options</button>`;
-    panel.style.display = '';
+    const inner = `<div class="rfq-opt-panel"><div class="rfq-opt-panel-title">Comparable options — pick the one used on the client quote</div>${rows}<button type="button" class="rfq-add-variant-link" onclick="openRfqOptions(${id})" title="Add, edit or remove options">&#8646; Edit / add options</button></div>`;
+    // Full-width row under the line item. data-rfq-optrow keeps it out of the
+    // parent-row selectors and the variant queries, so cost/qty/price/lead
+    // positional reads are never affected.
+    if (!optrow) {
+      optrow = document.createElement('tr');
+      optrow.id = 'rfq-optrow-' + id;
+      optrow.setAttribute('data-rfq-optrow', id);
+      optrow.className = 'rfq-optrow';
+      optrow.innerHTML = `<td colspan="11" class="rfq-optrow-cell"></td>`;
+    }
+    optrow.querySelector('td').innerHTML = inner;
+    // Position it after the line's last variant row (or the line itself).
+    const variantRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
+    const anchor = variantRows.length ? variantRows[variantRows.length - 1] : tr;
+    if (anchor.nextSibling !== optrow) anchor.after(optrow);
   }
 
   function selectRfqOption(id, idx) {
@@ -21325,7 +21348,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const fmt2  = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
           const items = [];
           let grandTotal = 0, grandQty = 0, grandLead = 0;
-          const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+          const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
           parents.forEach((parent, idx) => {
             const pIns = parent.querySelectorAll('input:not([type="checkbox"])');
             // Parent inputs: sku(0), item(1), qty(2), rmb(3), lead(4)
@@ -24161,7 +24184,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const groups = [];
       let curGroup = null;
       allRows.forEach(row => {
-        if (row.hasAttribute('data-rfq-add-for')) return;
+        if (row.hasAttribute('data-rfq-add-for') || row.hasAttribute('data-rfq-optrow')) return;
         if (row.hasAttribute('data-rfq-parent')) {
           if (curGroup) curGroup.variants.push(row);
         } else {
@@ -24225,7 +24248,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // group. The first time we encounter a group member in
         // realGroups, we render the rolled-up line; subsequent
         // members are skipped via emittedCombineGroups.
-        const _allParentDomIds = Array.from(document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])')).map(r => r.id);
+        const _allParentDomIds = Array.from(document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])')).map(r => r.id);
         const _domIdToCombineGroup = new Map();
         const _combineGroupPrimaryDomId = new Map();
         (typeof _combineGroups !== 'undefined' && Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => {
@@ -25099,7 +25122,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         // the row label; same-price variants under one parent merge.
         const PRICE_EPS = 0.005;
         const groups = new Map(); // key = rmb (rounded), val = { rmb, names: [], qty }
-        const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+        const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
         parents.forEach(row => {
           const id     = parseInt(row.id.replace('rfq-', ''));
           const pIns   = row.querySelectorAll('input:not([type="checkbox"])');
@@ -25327,7 +25350,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         detail: `Sale Per ${money3(v.salePer)} ≤ landed cost ${money3(v.landedAvg)} — losing ${money3(v.landedAvg - v.salePer)}/unit.` });
     }
     // 3. RFQ lines with a qty but no supplier price.
-    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     let noPrice = 0;
     parents.forEach(row => {
       const ins = row.querySelectorAll('input:not([type="checkbox"])');
@@ -31094,18 +31117,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </select>
           </td>
           <td style="text-align:center; white-space:nowrap;">
-            ${_sampleNotesBtnHtml(compKey)}
             <span class="remove-tier" onclick="removeSampleRequest('${s.key}', ${s.rowIndex})" title="Unmark as sample (keeps the RFQ line item, just removes it from this list)" style="font-size:18px; color:var(--text-muted);">&times;</span>
           </td>
         </tr>
-        <tr class="sn-inline-row" data-snrow="${encodeURIComponent(compKey)}" style="display:none;">
-          <td colspan="11" class="sn-inline-cell"><div class="sn-inline-host"></div></td>
+        <tr class="sn-inline-row">
+          <td colspan="11" class="sn-inline-cell"><div class="sn-inline-host" data-snpanel="${encodeURIComponent(compKey)}">${_sampleNotesPanelInner(compKey)}</div></td>
         </tr>
       `;
     }).join('');
-    // A table rebuild discards any expanded inline notes panel, so drop the
-    // open-state pointer (the row is freshly collapsed with an empty host).
-    _snModalKey = null;
     // Reflect current selection state in the action bar + header
     // checkbox now that the row checkboxes are in the DOM.
     updateSamplesBulkActionBar();
@@ -31154,7 +31173,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const openKey = (typeof currentClient !== 'undefined' && typeof currentWorkbookId !== 'undefined')
       ? `${currentClient}|${currentWorkbookId}` : null;
     if (openKey === key) {
-      const rfqRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for])');
+      const rfqRows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
       const targetRow = rfqRows[rowIndex];
       if (targetRow) {
         const cb = targetRow.querySelector('.rfq-sample-check');
@@ -43354,7 +43373,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Keyed by the sample's client|workbook|rowIndex in the shared
   // ms_sample_meta app_state blob. Mirrors the pipeline-meta pattern
   // (CAS + per-key merge) so concurrent edits from two operators survive.
-  let _sampleMeta = {}, _sampleMetaLoaded = false, _snModalKey = null;
+  let _sampleMeta = {}, _sampleMetaLoaded = false;
 
   async function _ensureSampleMetaLoaded() {
     if (_sampleMetaLoaded) return;
@@ -43399,12 +43418,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         _mergeSampleMeta,
         (merged) => {
           _sampleMeta = merged || _sampleMeta;
-          // If a panel is open, refresh it + its badge in place; only fall
-          // back to a full table re-render (which collapses panels) when
-          // nothing is expanded, so a concurrent-merge won't yank the panel.
+          // Re-render each visible sample panel in place from the merged
+          // state (panels are always shown, one per sample row).
           try {
-            if (_snModalKey) { _renderSampleComments(); _renderSampleTodos(); _updateSampleRowBadge(_snModalKey); }
-            else _refreshSampleRowBadges();
+            document.querySelectorAll('[data-snpanel]').forEach(el => {
+              const mk = decodeURIComponent(el.getAttribute('data-snpanel') || '');
+              if (mk) el.innerHTML = _sampleNotesPanelInner(mk);
+            });
           } catch (_) {}
         }
       ).catch(() => {});
@@ -43420,192 +43440,101 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } catch (_) {}
   }
 
-  function _sampleMetaSummary(mk) {
-    const m = _sampleMeta[mk] || {};
-    const nComments = Array.isArray(m.comments) ? m.comments.length : 0;
-    const todos = Array.isArray(m.todos) ? m.todos : [];
-    return { nComments, nTotal: todos.length, nOpen: todos.filter(t => t && !t.done).length };
-  }
-
-  function _sampleNotesBtnHtml(mk) {
-    const s = _sampleMetaSummary(mk);
-    const has = s.nComments > 0 || s.nTotal > 0;
+  // Build the always-on inline panel for one sample: Follow-ups | Notes,
+  // both compact lists of equal weight. Rendered per-row (scoped by the
+  // sample key on data-snpanel), so every sample shows its own on the card.
+  function _sampleNotesPanelInner(mk) {
     const enc = encodeURIComponent(mk);
-    let label = '';
-    if (s.nTotal > 0) label += `☑ ${s.nTotal - s.nOpen}/${s.nTotal}`;
-    if (s.nComments > 0) label += `${label ? ' · ' : ''}💬 ${s.nComments}`;
-    if (!has) label = '💬 Notes';
-    // encodeURIComponent keeps the key (which contains |, spaces, maybe
-    // punctuation from the client name) safe inside the handler + the
-    // data-attribute selector (its output never contains a double-quote).
-    return `<button class="sample-notes-btn${has ? ' has-content' : ''}" data-snbtn="${enc}" onclick="event.stopPropagation(); toggleSampleNotes(decodeURIComponent('${enc}'))" title="Comments &amp; follow-up tasks for this sample">${label}</button>`;
-  }
-
-  // Build the inline panel body (follow-ups + comments) for one sample. Uses
-  // the fixed sn-* ids that _renderSample*/addSample* expect — safe because
-  // only ONE inline panel is expanded (filled) at a time.
-  function _sampleNotesPanelHtml() {
+    const m = _sampleMeta[mk] || {};
+    const todos = (Array.isArray(m.todos) ? m.todos : []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    const notes = (Array.isArray(m.comments) ? m.comments : []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    const openN = todos.filter(t => t && !t.done).length;
     const inp = 'flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;';
+    const todoItems = todos.length ? todos.map(t => `
+      <div class="sn-todo${t.done ? ' done' : ''}">
+        <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleSampleTodo('${enc}','${_plEsc(t.id)}', this.checked)" />
+        <span class="sn-todo-text">${_plEsc(t.text)}</span>
+        <button class="sn-todo-del" title="Delete task" onclick="deleteSampleTodo('${enc}','${_plEsc(t.id)}')">&times;</button>
+      </div>`).join('') : `<div class="sn-empty">No follow-ups yet — e.g. “chase factory for revised sample”.</div>`;
+    const noteItems = notes.length ? notes.map(c => {
+      const who = c.author || 'Someone';
+      const rel = (typeof _crmRelTime === 'function') ? _crmRelTime(c.at) : '';
+      const abs = c.at ? new Date(c.at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+      const color = (typeof _plCommentColor === 'function') ? _plCommentColor(who) : '#4b5563';
+      return `<div class="sn-note">
+        <span class="pl-comment-avatar" style="background:${color};">${_plEsc(String(who).charAt(0).toUpperCase())}</span>
+        <div class="sn-note-body">
+          <div class="sn-note-meta"><span class="pl-comment-who">${_plEsc(who)}</span> · <span title="${_plEsc(abs)}">${_plEsc(rel || abs)}</span>
+            <button class="sn-todo-del" title="Delete note" onclick="deleteSampleNote('${enc}','${_plEsc(c.id)}')">&times;</button>
+          </div>
+          <div class="sn-note-text">${_plEsc(c.text)}</div>
+        </div>
+      </div>`;
+    }).join('') : `<div class="sn-empty">No notes yet.</div>`;
     return `<div class="sn-inline-grid">
       <div>
-        <div class="sn-inline-col-head"><span>&#9745; Follow-ups</span><span class="pl-comments-count" id="sn-todo-count">0</span></div>
-        <div id="sn-todos" class="sn-todos"></div>
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <input type="text" id="sn-todo-input" placeholder="Add a follow-up task…" autocomplete="off"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleTodo();}" style="${inp}" />
-          <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleTodo()">Add</button>
-        </div>
+        <div class="sn-inline-col-head"><span>&#9745; Follow-ups</span><span class="pl-comments-count">${todos.length ? `${todos.length - openN}/${todos.length}` : '0'}</span></div>
+        <div class="sn-todos">${todoItems}</div>
+        <div class="sn-add-row"><input type="text" class="sn-todo-input" placeholder="Add a follow-up task…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleTodo('${enc}');}" style="${inp}" /><button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleTodo('${enc}')">Add</button></div>
       </div>
       <div>
-        <div class="sn-inline-col-head"><span>&#128172; Comments</span><span class="pl-comments-count" id="sn-comment-count">0</span><span class="pl-comments-hint" id="sn-comment-hint" style="margin-left:auto; font-weight:600; font-style:italic; text-transform:none; letter-spacing:0;"></span></div>
-        <div id="sn-comments" class="pl-comments" onclick="_focusSnCommentInput()" title="Click to add a comment"></div>
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <input type="text" id="sn-comment-input" placeholder="Add a comment…" autocomplete="off"
-            onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleComment();}" style="${inp}" />
-          <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleComment()">Post</button>
-        </div>
+        <div class="sn-inline-col-head"><span>&#128221; Notes</span><span class="pl-comments-count">${notes.length}</span></div>
+        <div class="sn-todos">${noteItems}</div>
+        <div class="sn-add-row"><input type="text" class="sn-note-input" placeholder="Add a note…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleNote('${enc}');}" style="${inp}" /><button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleNote('${enc}')">Add</button></div>
       </div>
     </div>`;
   }
 
-  function _collapseSampleNotes() {
-    document.querySelectorAll('.sn-inline-row.open').forEach(r => {
-      r.classList.remove('open'); r.style.display = 'none';
-      const h = r.querySelector('.sn-inline-host'); if (h) h.innerHTML = '';
-    });
-    _snModalKey = null;
+  // Re-render one sample's panel in place (found by its data-snpanel key), so
+  // an edit doesn't disturb the rest of the table.
+  function _renderSamplePanel(mk) {
+    const el = document.querySelector('[data-snpanel="' + encodeURIComponent(mk) + '"]');
+    if (el) el.innerHTML = _sampleNotesPanelInner(mk);
   }
+  function _snMeta(mk) { return _sampleMeta[mk] || (_sampleMeta[mk] = { comments: [], todos: [] }); }
+  function _snFocus(enc, sel) { const i = document.querySelector('[data-snpanel="' + enc + '"] ' + sel); if (i) try { i.focus(); } catch (_) {} }
 
-  async function toggleSampleNotes(mk) {
-    if (typeof _ensureSampleMetaLoaded === 'function') await _ensureSampleMetaLoaded();
-    const enc = encodeURIComponent(mk);
-    const row = document.querySelector('.sn-inline-row[data-snrow="' + enc + '"]');
-    if (!row) return;
-    const wasOpen = row.classList.contains('open');
-    _collapseSampleNotes();                 // accordion — only one open at a time
-    if (wasOpen) return;                     // clicking the open one closes it
-    _snModalKey = mk;
-    const host = row.querySelector('.sn-inline-host');
-    if (host) host.innerHTML = _sampleNotesPanelHtml();
-    row.style.display = '';
-    row.classList.add('open');
-    _renderSampleTodos();
-    _renderSampleComments();
-    setTimeout(() => { const el = document.getElementById('sn-todo-input'); if (el) try { el.focus(); } catch (_) {} }, 30);
-  }
-
-  // Refresh just this sample's Notes button (count + accent) in place, so a
-  // comment/task edit doesn't require re-rendering the whole table (which
-  // would collapse the open inline panel).
-  function _updateSampleRowBadge(mk) {
-    if (!mk) return;
-    const b = document.querySelector('[data-snbtn="' + encodeURIComponent(mk) + '"]');
-    if (b) b.outerHTML = _sampleNotesBtnHtml(mk);
-  }
-
-  function _renderSampleComments() {
-    const host = document.getElementById('sn-comments'); if (!host) return;
-    const list = ((_sampleMeta[_snModalKey] || {}).comments || []).slice()
-      .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
-    const cnt = document.getElementById('sn-comment-count'); if (cnt) cnt.textContent = String(list.length);
-    host.innerHTML = list.map(c => {
-      const who = c.author || 'Someone';
-      const rel = (typeof _crmRelTime === 'function') ? _crmRelTime(c.at) : '';
-      const abs = c.at ? new Date(c.at).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '';
-      const color = (typeof _plCommentColor === 'function') ? _plCommentColor(who) : '#4b5563';
-      return `<div class="pl-comment">
-        <span class="pl-comment-avatar" style="background:${color};">${_plEsc(String(who).charAt(0).toUpperCase())}</span>
-        <div class="pl-comment-body">
-          <div class="pl-comment-meta"><span class="pl-comment-who">${_plEsc(who)}</span> · <span title="${_plEsc(abs)}">${_plEsc(rel || abs)}</span>
-            <button class="pl-comment-del" title="Delete comment" onclick="deleteSampleComment('${_plEsc(c.id)}')">&times;</button>
-          </div>
-          <div class="pl-comment-text">${_plEsc(c.text)}</div>
-        </div>
-      </div>`;
-    }).join('');
-    host.scrollTop = host.scrollHeight;
-    const hint = document.getElementById('sn-comment-hint');
-    if (hint) hint.textContent = (host.scrollHeight > host.clientHeight + 4) ? '↕ scroll for earlier comments' : '';
-  }
-  function _focusSnCommentInput() { const el = document.getElementById('sn-comment-input'); if (el) try { el.focus(); } catch (_) {} }
-
-  function addSampleComment() {
-    if (!_snModalKey) return;
-    const input = document.getElementById('sn-comment-input');
+  function addSampleTodo(enc) {
+    const mk = decodeURIComponent(enc);
+    const input = document.querySelector('[data-snpanel="' + enc + '"] .sn-todo-input');
     const text = ((input || {}).value || '').trim(); if (!text) return;
-    const meta = _sampleMeta[_snModalKey] || (_sampleMeta[_snModalKey] = { comments: [], todos: [] });
-    if (!Array.isArray(meta.comments)) meta.comments = [];
-    meta.comments.push({
-      id: 'c' + Date.now() + Math.floor(Math.random() * 1000),
-      text,
-      author: (typeof getCurrentUser === 'function' && getCurrentUser()) || 'Someone',
-      at: new Date().toISOString(),
-    });
+    const meta = _snMeta(mk); if (!Array.isArray(meta.todos)) meta.todos = [];
+    meta.todos.push({ id: 't' + Date.now() + Math.floor(Math.random() * 1000), text, done: false, at: new Date().toISOString(), author: (typeof getCurrentUser === 'function' && getCurrentUser()) || '' });
     _persistSampleMeta();
-    if (input) input.value = '';
-    _renderSampleComments();
-    _updateSampleRowBadge(_snModalKey);
+    _renderSamplePanel(mk);
+    _snFocus(enc, '.sn-todo-input');
   }
-  function deleteSampleComment(id) {
-    if (!_snModalKey) return;
-    const meta = _sampleMeta[_snModalKey]; if (!meta || !Array.isArray(meta.comments)) return;
-    meta.comments = meta.comments.filter(c => c && c.id !== id);
-    _persistSampleMeta();
-    _renderSampleComments();
-    _updateSampleRowBadge(_snModalKey);
-  }
-
-  function _renderSampleTodos() {
-    const host = document.getElementById('sn-todos'); if (!host) return;
-    const todos = ((_sampleMeta[_snModalKey] || {}).todos || []).slice()
-      .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
-    const open = todos.filter(t => t && !t.done).length;
-    const cnt = document.getElementById('sn-todo-count');
-    if (cnt) cnt.textContent = todos.length ? `${todos.length - open}/${todos.length}` : '0';
-    if (!todos.length) {
-      host.innerHTML = `<div class="sn-empty">No follow-ups yet. Add tasks like “chase factory for revised sample” or “photograph on arrival”.</div>`;
-      return;
-    }
-    host.innerHTML = todos.map(t => `
-      <div class="sn-todo${t.done ? ' done' : ''}">
-        <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleSampleTodo('${_plEsc(t.id)}', this.checked)" />
-        <span class="sn-todo-text">${_plEsc(t.text)}</span>
-        <button class="sn-todo-del" title="Delete task" onclick="deleteSampleTodo('${_plEsc(t.id)}')">&times;</button>
-      </div>`).join('');
-  }
-  function addSampleTodo() {
-    if (!_snModalKey) return;
-    const input = document.getElementById('sn-todo-input');
-    const text = ((input || {}).value || '').trim(); if (!text) return;
-    const meta = _sampleMeta[_snModalKey] || (_sampleMeta[_snModalKey] = { comments: [], todos: [] });
-    if (!Array.isArray(meta.todos)) meta.todos = [];
-    meta.todos.push({
-      id: 't' + Date.now() + Math.floor(Math.random() * 1000),
-      text, done: false,
-      at: new Date().toISOString(),
-      author: (typeof getCurrentUser === 'function' && getCurrentUser()) || '',
-    });
-    _persistSampleMeta();
-    if (input) input.value = '';
-    _renderSampleTodos();
-    _updateSampleRowBadge(_snModalKey);
-  }
-  function toggleSampleTodo(id, done) {
-    if (!_snModalKey) return;
-    const meta = _sampleMeta[_snModalKey]; if (!meta || !Array.isArray(meta.todos)) return;
+  function toggleSampleTodo(enc, id, done) {
+    const mk = decodeURIComponent(enc);
+    const meta = _sampleMeta[mk]; if (!meta || !Array.isArray(meta.todos)) return;
     const t = meta.todos.find(x => x && x.id === id); if (!t) return;
     t.done = !!done; t.doneAt = done ? new Date().toISOString() : null;
     _persistSampleMeta();
-    _renderSampleTodos();
-    _updateSampleRowBadge(_snModalKey);
+    _renderSamplePanel(mk);
   }
-  function deleteSampleTodo(id) {
-    if (!_snModalKey) return;
-    const meta = _sampleMeta[_snModalKey]; if (!meta || !Array.isArray(meta.todos)) return;
+  function deleteSampleTodo(enc, id) {
+    const mk = decodeURIComponent(enc);
+    const meta = _sampleMeta[mk]; if (!meta || !Array.isArray(meta.todos)) return;
     meta.todos = meta.todos.filter(t => t && t.id !== id);
     _persistSampleMeta();
-    _renderSampleTodos();
-    _updateSampleRowBadge(_snModalKey);
+    _renderSamplePanel(mk);
+  }
+  function addSampleNote(enc) {
+    const mk = decodeURIComponent(enc);
+    const input = document.querySelector('[data-snpanel="' + enc + '"] .sn-note-input');
+    const text = ((input || {}).value || '').trim(); if (!text) return;
+    const meta = _snMeta(mk); if (!Array.isArray(meta.comments)) meta.comments = [];
+    meta.comments.push({ id: 'c' + Date.now() + Math.floor(Math.random() * 1000), text, author: (typeof getCurrentUser === 'function' && getCurrentUser()) || 'Someone', at: new Date().toISOString() });
+    _persistSampleMeta();
+    _renderSamplePanel(mk);
+    _snFocus(enc, '.sn-note-input');
+  }
+  function deleteSampleNote(enc, id) {
+    const mk = decodeURIComponent(enc);
+    const meta = _sampleMeta[mk]; if (!meta || !Array.isArray(meta.comments)) return;
+    meta.comments = meta.comments.filter(c => c && c.id !== id);
+    _persistSampleMeta();
+    _renderSamplePanel(mk);
   }
 
   function _updatePipelineNavBadge() {
