@@ -1828,9 +1828,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #samples-table th:nth-child(8), #samples-table td:nth-child(8) { width: 5%;  }  /* Lead */
     #samples-table th:nth-child(9), #samples-table td:nth-child(9) { width: 11%; }  /* Direction */
     #samples-table th:nth-child(10), #samples-table td:nth-child(10) { width: 8%; }  /* Status */
-    #samples-table th:nth-child(11), #samples-table td:nth-child(11) { width: 10%; }  /* Assignee + remove */
-    /* Actions cell holds the assignee avatars + remove — let them show. */
-    #samples-table td:nth-child(11) { overflow: visible; }
+    #samples-table th:nth-child(11), #samples-table td:nth-child(11) { width: 136px; }  /* Assignee + remove */
+    /* Actions cell holds the assignee avatars + remove — keep them on screen. */
+    #samples-table td:nth-child(11) { overflow: visible; text-align: center; padding-right: 14px; }
+    #samples-table td:nth-child(11) .assign-spot { margin-right: 6px; }
     #samples-table th, #samples-table td { padding-left: 12px; padding-right: 12px; vertical-align: middle; }
     #samples-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* The checkbox cell must not inherit text-overflow:ellipsis from
@@ -5871,13 +5872,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
     .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
     .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
-    /* Karen highlight — any card she's assigned to must jump off the board:
-       bright cyan ring + strong glow + a slow pulse so it's unmistakable. */
-    @keyframes karenPulse {
-      0%, 100% { box-shadow: 0 0 0 2px rgba(34,211,238,0.55), 0 0 14px 2px rgba(34,211,238,0.40), inset 5px 0 0 #22d3ee; }
-      50%      { box-shadow: 0 0 0 2px rgba(34,211,238,0.95), 0 0 30px 6px rgba(34,211,238,0.75), inset 5px 0 0 #22d3ee; }
+    /* Karen highlight — the WHOLE card turns light red so it's unmistakable
+       that it needs her attention. Text flips to dark red for readability. */
+    .pl-card.pl-card-karen {
+      background: #fca5a5 !important;
+      border: 2px solid #dc2626 !important;
+      box-shadow: 0 6px 18px rgba(220,38,38,0.45) !important;
     }
-    .pl-card.pl-card-karen { border: 2px solid #22d3ee !important; animation: karenPulse 2.2s ease-in-out infinite; }
+    .pl-card.pl-card-karen .pl-card-title { color: #7f1d1d !important; }
+    .pl-card.pl-card-karen .pl-card-sub,
+    .pl-card.pl-card-karen .pl-child,
+    .pl-card.pl-card-karen .pl-drill-toggle,
+    .pl-card.pl-card-karen .pl-lock-hint { color: #991b1b !important; }
+    .pl-card.pl-card-karen .pl-card-val { color: #166534 !important; }
+    .pl-card.pl-card-karen .pl-stage-age { background: rgba(127,29,29,0.14) !important; color: #7f1d1d !important; border-color: rgba(127,29,29,0.30) !important; }
     /* Assignee spot (on rows/cards) + the floating assignee picker. */
     .assign-spot { display: inline-flex; align-items: center; gap: 0; vertical-align: middle; margin-right: 6px; cursor: pointer; }
     .assign-spot .pl-avatar { width: 20px; height: 20px; font-size: 10px; border: 2px solid var(--surface); box-shadow: none; }
@@ -9521,7 +9529,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th>LEAD</th>
               <th style="text-align:center;">DIRECTION</th>
               <th style="text-align:center;">STATUS</th>
-              <th style="width:36px;"></th>
+              <th style="width:136px; text-align:center;">ASSIGNEE</th>
             </tr>
           </thead>
           <tbody id="samples-tbody">
