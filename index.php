@@ -2476,6 +2476,66 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .rfq-add-variant-link:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    /* ── RFQ comparable options ────────────────────────────────────────
+       A parent line can carry several supplier/price alternatives; the
+       operator picks ONE (via the modal) and only that one flows to the
+       client quote. The selected option is shown inline under the Item. */
+    .rfq-opt-hint {
+      display: inline-block;
+      margin: 6px 0 0 8px;
+      padding: 1px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.5;
+      color: var(--accent);
+      background: rgba(232,117,26,0.10);
+      border: 1px solid rgba(232,117,26,0.30);
+      border-radius: 10px;
+      vertical-align: middle;
+    }
+    .rfq-opt-row {
+      display: grid;
+      grid-template-columns: 54px 1.4fr 1.2fr 96px 78px 26px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .rfq-opt-row:last-child { border-bottom: none; }
+    .rfq-opt-row .rfq-opt-f {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 8px;
+      font-size: 13px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+    .rfq-opt-sel {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      user-select: none;
+    }
+    .rfq-opt-sel input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+    .rfq-opt-head {
+      display: grid;
+      grid-template-columns: 54px 1.4fr 1.2fr 96px 78px 26px;
+      gap: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 0 0 6px;
+      border-bottom: 2px solid var(--border);
+    }
+
     /* ── RFQ line-item images ──────────────────────────────────────────
        Each RFQ line can have one or more product images "assigned" to it
        (picked from the workbook's Product Images gallery). The assign
@@ -10933,6 +10993,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- ── RFQ comparable options ──────────────────────────────────────────
+     Add several supplier/price alternatives to one RFQ line and pick which
+     one is used. Only the selected option flows to the client quote (its
+     name, price and lead time); the alternatives stay internal. -->
+<div class="modal-overlay" id="rfq-options-modal" onclick="if(event.target===this)closeRfqOptionsModal()" style="z-index:1150;">
+  <div class="modal" style="max-width:680px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;">Comparable Options</div>
+    <p style="color:var(--text-muted); font-size:13px; margin:-8px 0 14px; flex-shrink:0;">
+      List alternative suppliers / prices for this line, then choose the one with <strong>Use</strong>. Only the selected option is shown on the client quote &mdash; its <strong>name, price and lead time</strong> flow through. The others stay internal.
+    </p>
+    <div class="rfq-opt-head" style="flex-shrink:0;">
+      <span>Use</span><span>Option name</span><span>Supplier</span><span>Price (RMB)</span><span>Lead (days)</span><span></span>
+    </div>
+    <div id="rfq-opt-list" style="overflow-y:auto; flex:1 1 auto; min-height:60px;"><!-- populated by JS --></div>
+    <button type="button" class="rfq-add-variant-link" style="align-self:flex-start; margin-top:10px; flex-shrink:0;" onclick="_rfqOptAdd()">+ Add option</button>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
+      <button type="button" class="btn btn-ghost" onclick="closeRfqOptionsModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="_rfqOptDone()">Apply</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Reusable Email Preview Modal ────────────────────────────────────
      Shows exactly what an outgoing notification email will look like
      (rendered in an iframe, plus To/Cc/Subject) before it's sent. Any
@@ -18275,7 +18357,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return out;
   }
 
-  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = []) {
+  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = [], comparableOptions = [], selectedOptionIdx = null) {
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
@@ -18321,6 +18403,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <div class="rfq-item-links">
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
+          <button type="button" class="rfq-add-variant-link" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button>
+          <span class="rfq-opt-hint" id="rfq-opthint-${id}" style="display:none;"></span>
         </div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
@@ -18342,6 +18426,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     `;
     tr.dataset.images = JSON.stringify(Array.isArray(images) ? images : []);
     tbody.appendChild(tr);
+    // Comparable options: the selected option's name/price/lead were already
+    // materialized into item/priceRmb/leadTime by collectRfqItems on save, so
+    // re-applying here is idempotent — it just re-attaches the dataset + hint.
+    if (Array.isArray(comparableOptions) && comparableOptions.length) {
+      tr.dataset.compOptions = JSON.stringify(comparableOptions);
+      tr.dataset.compSelected = (selectedOptionIdx == null ? 0 : selectedOptionIdx);
+      _applyRfqOption(id);
+    }
     variants.forEach(v => addRfqVariantRow(id, v.variant, v.qty, v.priceRmb, v.leadTime, v.sku || ''));
     _updateVarAddRow(id);   // place trailing button below last variant (or parent if none)
     renderRfqLineImages(id); // draw assigned-image thumbnails (before the lock pass below)
@@ -18526,7 +18618,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       i.item || '', i.sku || '', i.qty || '', i.priceRmb || '', i.leadTime || '',
       i.sample ? 1 : 0,
       (i.variants || []).map(v => [v.variant||'', v.qty||'', v.priceRmb||'', v.leadTime||'', v.sku||''].join('~')).join(';'),
-      (i.images || []).join(',')
+      (i.images || []).join(','),
+      (i.comparableOptions || []).map(o => [o.label||'', o.supplier||'', o.priceRmb||'', o.leadTime||''].join('~')).join(';') + '#' + (i.selectedOptionIdx == null ? '' : i.selectedOptionIdx)
     ].join('|')).join('¬');
   }
 
@@ -18585,7 +18678,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           rfqCount = 0;
           incoming.forEach(rfqItem => {
             addRfqRow(rfqItem.item || '', rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb,
-                      rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || []);
+                      rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [],
+                      rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx);
           });
           while (document.querySelectorAll('#rfq-body tr').length < 3) addRfqRow();
         } finally { _filling = prevFilling; }
@@ -19497,6 +19591,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           leadTime: vi[3]?.value || ''
         });
       });
+      // Comparable options ride on the row's dataset. The selected option's
+      // name/price/lead are already live in inputs[1]/[3]/[4] (materialized by
+      // _applyRfqOption), so item/priceRmb/leadTime above already equal it —
+      // client quote, cost totals and lead all read the selected option for free.
+      let compOptions = [];
+      let compSelected = null;
+      try { compOptions = JSON.parse(row.dataset.compOptions || '[]'); } catch(e) { compOptions = []; }
+      if (Array.isArray(compOptions) && compOptions.length) {
+        compSelected = parseInt(row.dataset.compSelected || '0');
+        if (isNaN(compSelected) || compSelected < 0 || compSelected >= compOptions.length) compSelected = 0;
+      } else { compOptions = []; }
       items.push({
         sku: inputs[0]?.value || '',   // SKU is col 3 → inputs[0]
         item: inputs[1]?.value || '',  // Item is col 4 → inputs[1]
@@ -19505,10 +19610,155 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         leadTime: inputs[4]?.value || '',
         sample: sampleCheck?.checked || false,
         variants,
-        images: getRfqRowImages(id)   // assigned product-image URLs
+        images: getRfqRowImages(id),   // assigned product-image URLs
+        comparableOptions: compOptions,
+        selectedOptionIdx: compSelected
       });
     });
     return items;
+  }
+
+  // ── RFQ comparable options ───────────────────────────────────────────
+  // Alternatives live on the parent row's dataset (compOptions JSON +
+  // compSelected index). The selected option's name/price/lead are
+  // materialized into the row's live Item/Price/Lead inputs so every
+  // existing cost, quote and lead read path uses it with zero changes.
+  let _rfqOptState = { id: null, options: [], selected: 0 };
+
+  function _applyRfqOption(id) {
+    const tr = document.getElementById('rfq-' + id);
+    if (!tr) return;
+    const hint = document.getElementById('rfq-opthint-' + id);
+    let opts = [];
+    try { opts = JSON.parse(tr.dataset.compOptions || '[]'); } catch(e) { opts = []; }
+    if (!Array.isArray(opts) || opts.length === 0) {
+      delete tr.dataset.compOptions; delete tr.dataset.compSelected;
+      if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+      return;
+    }
+    let sel = parseInt(tr.dataset.compSelected || '0');
+    if (isNaN(sel) || sel < 0 || sel >= opts.length) sel = 0;
+    tr.dataset.compSelected = sel;
+    const o = opts[sel] || {};
+    const inputs = tr.querySelectorAll('input:not([type="checkbox"])');
+    if (inputs[1]) inputs[1].value = o.label || '';
+    if (inputs[3]) inputs[3].value = o.priceRmb || '';
+    if (inputs[4]) inputs[4].value = o.leadTime || '';
+    if (hint) {
+      const supp = o.supplier ? ' — ' + o.supplier : '';
+      hint.textContent = `✓ ${o.label || ('Option ' + (sel + 1))}${supp} · ${opts.length} option${opts.length > 1 ? 's' : ''}`;
+      hint.title = 'Selected comparable option — click ⇄ Options to change';
+      hint.style.display = 'inline-block';
+    }
+    if (typeof recalcRfqRow === 'function') recalcRfqRow(id);
+  }
+
+  function openRfqOptions(id) {
+    if (_wbLocked) return;
+    const tr = document.getElementById('rfq-' + id);
+    if (!tr) return;
+    let opts = [];
+    try { opts = JSON.parse(tr.dataset.compOptions || '[]'); } catch(e) { opts = []; }
+    let sel = parseInt(tr.dataset.compSelected || '0'); if (isNaN(sel)) sel = 0;
+    if (!Array.isArray(opts) || opts.length === 0) {
+      // Seed option 1 from the row's current values so nothing typed is lost.
+      const inputs = tr.querySelectorAll('input:not([type="checkbox"])');
+      opts = [{
+        label: (inputs[1]?.value || '').trim(),
+        supplier: '',
+        priceRmb: _msStripCommasStr(inputs[3]?.value || ''),
+        leadTime: (inputs[4]?.value || '').trim()
+      }];
+      sel = 0;
+    }
+    _rfqOptState = {
+      id,
+      options: opts.map(o => ({ label: o.label || '', supplier: o.supplier || '', priceRmb: o.priceRmb || '', leadTime: o.leadTime || '' })),
+      selected: Math.max(0, Math.min(sel, opts.length - 1))
+    };
+    _renderRfqOptList();
+    document.getElementById('rfq-options-modal').classList.add('open');
+  }
+
+  function _renderRfqOptList() {
+    const wrap = document.getElementById('rfq-opt-list');
+    if (!wrap) return;
+    const s = _rfqOptState;
+    wrap.innerHTML = s.options.map((o, i) => `
+      <div class="rfq-opt-row" data-idx="${i}">
+        <label class="rfq-opt-sel" title="Use this option on the client quote">
+          <input type="radio" name="rfq-opt-sel" ${i === s.selected ? 'checked' : ''} onchange="_rfqOptPick(${i})" />
+          <span>Use</span>
+        </label>
+        <input type="text" class="rfq-opt-f" data-f="label" placeholder="Option name" value="${_esc(o.label)}" />
+        <input type="text" class="rfq-opt-f" data-f="supplier" placeholder="Supplier / vendor" value="${_esc(o.supplier)}" />
+        <div class="currency-prefix currency-rmb" style="position:relative;"><input type="text" class="rfq-opt-f" data-f="priceRmb" inputmode="decimal" placeholder="0.00" value="${_esc(o.priceRmb)}" style="padding-left:26px;" /></div>
+        <div class="lead-time-suffix" style="position:relative;"><input type="text" class="rfq-opt-f" data-f="leadTime" inputmode="numeric" placeholder="0" value="${_esc(o.leadTime)}" style="padding-right:38px;" /></div>
+        <span class="remove-tier" onclick="_rfqOptDel(${i})" title="Remove option" style="${s.options.length <= 1 ? 'opacity:.3; pointer-events:none;' : 'cursor:pointer;'}">&times;</span>
+      </div>
+    `).join('');
+  }
+
+  function _rfqOptGather() {
+    const rows = document.querySelectorAll('#rfq-opt-list .rfq-opt-row');
+    const opts = [];
+    let sel = _rfqOptState.selected;
+    rows.forEach(r => {
+      const idx = parseInt(r.dataset.idx);
+      const g = f => (r.querySelector(`.rfq-opt-f[data-f="${f}"]`)?.value || '');
+      opts[idx] = { label: g('label').trim(), supplier: g('supplier').trim(), priceRmb: _msStripCommasStr(g('priceRmb')), leadTime: g('leadTime').trim() };
+      if (r.querySelector('input[type="radio"]')?.checked) sel = idx;
+    });
+    _rfqOptState.options = opts.filter(o => o != null);
+    _rfqOptState.selected = Math.max(0, Math.min(sel, _rfqOptState.options.length - 1));
+  }
+
+  function _rfqOptPick(i) { _rfqOptGather(); _rfqOptState.selected = i; }
+
+  function _rfqOptAdd() {
+    _rfqOptGather();
+    _rfqOptState.options.push({ label: '', supplier: '', priceRmb: '', leadTime: '' });
+    _renderRfqOptList();
+  }
+
+  function _rfqOptDel(i) {
+    _rfqOptGather();
+    if (_rfqOptState.options.length <= 1) return;
+    _rfqOptState.options.splice(i, 1);
+    if (_rfqOptState.selected > i) _rfqOptState.selected--;
+    else if (_rfqOptState.selected >= _rfqOptState.options.length) _rfqOptState.selected = _rfqOptState.options.length - 1;
+    _renderRfqOptList();
+  }
+
+  function _rfqOptDone() {
+    _rfqOptGather();
+    const id = _rfqOptState.id;
+    const tr = document.getElementById('rfq-' + id);
+    if (tr) {
+      // Drop fully-empty options; if none remain the row goes back to plain.
+      const selOpt = _rfqOptState.options[_rfqOptState.selected];
+      const clean = _rfqOptState.options.filter(o => o.label || o.supplier || o.priceRmb || o.leadTime);
+      if (clean.length === 0) {
+        delete tr.dataset.compOptions; delete tr.dataset.compSelected;
+        const hint = document.getElementById('rfq-opthint-' + id);
+        if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+      } else {
+        let sel = clean.indexOf(selOpt);
+        if (sel < 0) sel = 0;
+        tr.dataset.compOptions = JSON.stringify(clean);
+        tr.dataset.compSelected = sel;
+        _applyRfqOption(id);
+      }
+      if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
+      if (typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
+    }
+    closeRfqOptionsModal();
+  }
+
+  function closeRfqOptionsModal() {
+    const m = document.getElementById('rfq-options-modal');
+    if (m) m.classList.remove('open');
+    _rfqOptState = { id: null, options: [], selected: 0 };
   }
 
   function toggleRfqSample(checkbox) {
@@ -29984,7 +30234,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           // First row: replace empty or old "Main Item" placeholder with the actual product name
           let itemName = rfqItem.item;
           if (idx === 0 && (!itemName || itemName === 'Main Item')) itemName = data.product || '';
-          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || []);
+          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [], rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx);
         });
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
