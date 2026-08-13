@@ -2494,9 +2494,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rfq-optc-radio { text-align: center; }
     .rfq-optc-name .rfq-opt-name { font-weight: 700; font-size: 13px; color: var(--text); }
     .rfq-optc-name .rfq-opt-supp { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-    .rfq-optc-price { font-weight: 700; font-size: 13px; color: var(--text); white-space: nowrap; }
-    .rfq-optc-usd { color: var(--success); font-size: 13px; text-align: right; white-space: nowrap; }
-    .rfq-optc-lead { color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+    /* Match the primary Price/USD cells' 14px horizontal padding so the option
+       ¥/$ sit exactly under the line above (see .tier-table td). */
+    .rfq-optc-price { padding-left: 14px !important; padding-right: 14px !important; white-space: nowrap; }
+    .rfq-optc-rmb { display: inline-block; position: relative; padding-left: 28px; font-weight: 700; font-size: 13px; color: var(--text); }
+    .rfq-optc-dash { color: var(--text-muted); }
+    .rfq-optc-usd { color: var(--success); font-size: 13px; font-weight: 600; text-align: right; white-space: nowrap; padding-right: 14px !important; }
+    .rfq-optc-lead { color: var(--text-muted); font-size: 13px; text-align: right; white-space: nowrap; padding-right: 14px !important; }
     .rfq-optc-badge { text-align: right; white-space: nowrap; }
     .rfq-opt-dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); display: inline-block; box-sizing: border-box; vertical-align: middle; }
     .rfq-optchoice.selected .rfq-opt-dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface2); }
@@ -4749,6 +4753,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: rgba(155,163,192,0.05);
       font-size: 12px;
     }
+    /* Comparable-option picker rows (operator-only — never exported). */
+    .pricing-quote-ref-table .cq-opt-compare > td { background: rgba(107,147,255,0.05); border-top: none; font-size: 12px; cursor: pointer; }
+    .pricing-quote-ref-table .cq-opt-compare:hover > td { background: rgba(107,147,255,0.12); }
+    .pricing-quote-ref-table .cq-opt-compare.sel > td { background: rgba(232,117,26,0.09); }
+    .pricing-quote-ref-table .cq-opt-compare-head > td { background: transparent; padding-top: 8px; cursor: default; }
+    .cq-opt-compare-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
+    .cq-opt-radio { text-align: center; width: 24px; }
+    .rfq-opt-dot.cq-dot-sel { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
+    .cq-opt-supp { color: var(--text-muted); font-size: 11px; }
+    .cq-opt-onquote { color: var(--accent); font-weight: 800; font-size: 9px; text-transform: uppercase; letter-spacing: 0.4px; margin-left: 8px; }
+    .cq-opt-chip { display: inline-block; margin-left: 8px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #6b93ff; background: rgba(107,147,255,0.10); border: 1px solid rgba(107,147,255,0.25); border-radius: 9px; padding: 1px 6px; vertical-align: middle; }
     .pricing-no-selection {
       padding: 24px 0;
       color: var(--text-muted);
@@ -5999,8 +6014,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sn-data-row > td { border-top: 12px solid var(--bg); }
     .sn-data-row > td:first-child { border-left: 3px solid var(--accent); }
     .sn-panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
-    .sn-panel-head:hover .sn-collapse-caret { color: var(--accent); }
-    .sn-collapse-caret { font-size: 11px; color: var(--text-muted); transition: transform 0.15s; flex: 0 0 auto; }
+    .sn-collapse-caret {
+      font-size: 15px; font-weight: 800; color: #fff; background: var(--accent);
+      width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 7px; line-height: 1; transition: transform 0.15s, filter 0.15s; flex: 0 0 auto;
+    }
+    .sn-panel-head:hover .sn-collapse-caret { filter: brightness(1.12); }
     .sn-collapse-caret.collapsed { transform: rotate(-90deg); }
     .sn-panel-summary { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--text-muted); }
     .sn-panel-item { font-weight: 800; font-size: 13px; color: var(--text); }
@@ -19757,7 +19776,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // selectors + variant queries, so positional cost reads are untouched.
     const optRows = opts.map((o, i) => {
       const rmbN = parseFloat(String(o.priceRmb == null ? '' : o.priceRmb).replace(/,/g, ''));
-      const rmb = (rmbN && !isNaN(rmbN)) ? '¥' + rmbN.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '¥—';
+      const hasRmb = rmbN && !isNaN(rmbN);
+      // Render ¥ via the SAME currency-prefix wrapper the primary Price input
+      // uses (¥ at left:12px, number at padding-left:28px) so it sits exactly
+      // under the line's ¥ column. USD right-aligns to match the USD column.
+      const priceCell = hasRmb
+        ? `<td class="rfq-optc-price"><span class="currency-prefix currency-rmb rfq-optc-rmb">${rmbN.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></td>`
+        : `<td class="rfq-optc-price"><span class="rfq-optc-dash">—</span></td>`;
       const usd = usdOf(o.priceRmb) || '—';
       const lead = o.leadTime ? _esc(o.leadTime) + 'd' : '—';
       const supp = o.supplier ? `<div class="rfq-opt-supp">${_esc(o.supplier)}</div>` : `<div class="rfq-opt-supp" style="opacity:.55">no supplier</div>`;
@@ -19768,7 +19793,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <td></td><td></td><td></td>
         <td class="rfq-optc-name"><div class="rfq-opt-name">${name}</div>${supp}</td>
         <td></td>
-        <td class="rfq-optc-price">${rmb}</td>
+        ${priceCell}
         <td class="rfq-optc-usd">${usd}</td>
         <td></td>
         <td class="rfq-optc-lead">${lead}</td>
@@ -19781,6 +19806,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const variantRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
     const anchor = variantRows.length ? variantRows[variantRows.length - 1] : tr;
     anchor.insertAdjacentHTML('afterend', titleRow + optRows + footRow);
+  }
+
+  // Pick a comparable option from the Client Quote tab: reuse the RFQ-side
+  // selection (materializes into the row → cost/name/lead) then re-render the
+  // quote so the line + totals update.
+  function selectRfqOptionFromQuote(id, idx) {
+    if (typeof selectRfqOption === 'function') selectRfqOption(id, idx);
+    if (typeof renderPricingTab === 'function') renderPricingTab();
   }
 
   function selectRfqOption(id, idx) {
@@ -24416,13 +24449,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               ? ` <span style="color:#10b981; font-weight:700; font-size:10px;">(+${(pQty - pRawQty).toLocaleString('en-US')})</span>`
               : '';
 
+            // Comparable options (operator-only): list every option under the
+            // line with a picker. Switching updates the quote; only the
+            // SELECTED one is sent to the client — the export skips the
+            // .cq-opt-compare rows.
+            let _optChip = '', _optCompareRows = '';
+            try {
+              const _opts = JSON.parse(group.parent.dataset.compOptions || '[]');
+              if (Array.isArray(_opts) && _opts.length) {
+                let _sel = parseInt(group.parent.dataset.compSelected || '0');
+                if (isNaN(_sel) || _sel < 0 || _sel >= _opts.length) _sel = 0;
+                _optChip = `<span class="cq-opt-chip">&#8646; ${_opts.length} options</span>`;
+                _optCompareRows = `<tr class="cq-opt-compare cq-opt-compare-head"><td></td><td colspan="4" class="cq-opt-compare-title">Comparable options — pick the one sent to the client (others stay internal)</td></tr>` +
+                  _opts.map((o, i) => {
+                    const rmbN = parseFloat(String(o.priceRmb == null ? '' : o.priceRmb).replace(/,/g, ''));
+                    const rmb = (rmbN && !isNaN(rmbN)) ? '¥' + rmbN.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '¥—';
+                    let usd = '';
+                    if (rmbN && !isNaN(rmbN)) { try { usd = '$' + _fxUsdFromRmb(rmbN).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (e) {} }
+                    const nm = o.label ? _esc(o.label) : '(unnamed option)';
+                    const sp = o.supplier ? ` <span class="cq-opt-supp">${_esc(o.supplier)}</span>` : '';
+                    const on = i === _sel ? '<span class="cq-opt-onquote">✓ On quote</span>' : '';
+                    return `<tr class="cq-opt-compare${i === _sel ? ' sel' : ''}" onclick="selectRfqOptionFromQuote(${parentId}, ${i})" title="Use this option on the client quote">
+                      <td class="cq-opt-radio"><span class="rfq-opt-dot${i === _sel ? ' cq-dot-sel' : ''}"></span></td>
+                      <td>${nm}${sp}${on}</td>
+                      <td></td>
+                      <td style="text-align:right; color:var(--text-muted); white-space:nowrap;">${rmb}${usd ? ' · ' + usd : ''}</td>
+                      <td></td>
+                    </tr>`;
+                  }).join('');
+              }
+            } catch (e) {}
+
             html += `<tr class="cq-parent-row no-variants">
               <td style="color:var(--text-muted); width:24px;">${groupIdx}</td>
-              <td style="font-weight:500;">${parentName}</td>
+              <td style="font-weight:500;">${parentName}${_optChip}</td>
               <td style="text-align:right;">${pQty > 0 ? pQty.toLocaleString('en-US') + pitchBadge : '—'}</td>
               <td style="text-align:right;">${pSale > 0 ? '$' + _fmt3(pSale) : '—'}</td>
               <td style="text-align:right; font-weight:600; color:var(--accent);">${pTotal > 0 ? '$' + _fmt2(pTotal) : '—'}</td>
-            </tr>`;
+            </tr>${_optCompareRows}`;
           } else {
             // Variant group — collapsible
             let totalQty = 0, totalSale = 0;
@@ -25544,6 +25608,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (cells.length < 5) return;
 
       const cellText = i => (cells[i]?.innerText || '').replace(/\s+/g, ' ').trim();
+
+      // Operator-only comparable-option rows never go to the client.
+      if (tr.classList.contains('cq-opt-compare')) return;
 
       if (tr.classList.contains('cq-fees-divider-row')) {
         return; // skip pure header
