@@ -6200,6 +6200,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cursor: pointer; font-family: inherit;
       transition: background 0.15s, transform 0.05s;
     }
+    .crm-col-add-icon svg { width: 13px; height: 13px; display: block; }
     .crm-col-add-icon:hover { background: rgba(255,255,255,0.95); transform: scale(1.05); }
     .crm-col-add-icon:active { transform: scale(0.97); }
     .crm-col-body {
@@ -43103,7 +43104,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                    ondrop="onPipelineDrop(event, '${col.id}')">
         <div class="crm-column-header" style="background:${col.bg}; color:${col.fg};">
           <span class="crm-col-title" style="flex:0 1 auto;">${col.label}</span>
-          <button class="crm-col-add-icon" onclick="event.stopPropagation(); _pipelineAddToColumn('${col.id}')" title="Add to ${_plEsc(col.label)}">+</button>
+          <button class="crm-col-add-icon" onclick="event.stopPropagation(); _pipelineAddToColumn('${col.id}')" title="Add to ${_plEsc(col.label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
           <span style="flex:1 1 auto;"></span>
           ${total > 0 ? `<span class="crm-col-total">${_plMoney(total)}</span>` : ''}
           <span class="crm-col-count">${cards.length}</span>
