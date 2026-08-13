@@ -5958,6 +5958,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-comment-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; padding: 0 2px; }
     .pl-comment-del:hover { color: #dc2626; }
 
+    /* ── Sample notes: per-line comments + follow-up checklist ──────────── */
+    .sample-notes-btn {
+      background: none; border: 1px solid var(--border); border-radius: 14px;
+      padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer;
+      color: var(--text-muted); font-family: inherit; margin-right: 6px;
+      vertical-align: middle; white-space: nowrap; transition: all 0.15s;
+    }
+    .sample-notes-btn:hover { color: var(--accent); border-color: var(--accent); background: rgba(232,117,26,0.08); }
+    .sample-notes-btn.has-content { color: var(--accent); border-color: rgba(232,117,26,0.4); background: rgba(232,117,26,0.08); }
+    .sn-todos { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+    .sn-todo { display: flex; align-items: flex-start; gap: 9px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); }
+    .sn-todo input[type=checkbox] { width: 16px; height: 16px; margin-top: 1px; cursor: pointer; accent-color: var(--accent); flex: 0 0 auto; }
+    .sn-todo-text { flex: 1; min-width: 0; font-size: 13px; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+    .sn-todo.done .sn-todo-text { text-decoration: line-through; color: var(--text-muted); }
+    .sn-todo-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 0 2px; flex: 0 0 auto; line-height: 1.3; }
+    .sn-todo-del:hover { color: #dc2626; }
+    .sn-empty { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 6px 2px; }
+
     /* ══ Local search results (AI Assistant view) ═══════════════════════ */
     .ms-sr-group { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 12px 0 6px; }
     .ms-sr-group:first-child { margin-top: 0; }
@@ -11121,6 +11139,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button type="button" class="btn btn-ghost" onclick="closePipelineCardModal()">Close</button>
       <button type="button" class="btn btn-ghost" id="pl-modal-open-btn" style="border-color:var(--accent); color:var(--accent);">Open</button>
       <button type="button" class="btn btn-primary" onclick="savePipelineCardModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Sample notes: comments + follow-up checklist (per sample line) ───
+     Opened from the Notes button on each Samples row. Comments + tasks are
+     keyed by the sample's client|workbook|rowIndex and live in the shared
+     ms_sample_meta app_state blob (CAS-merge protected, like pipeline meta). -->
+<div class="modal-overlay" id="sample-notes-modal" onclick="if(event.target===this)closeSampleNotes()" style="z-index:1250;">
+  <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div style="flex-shrink:0;">
+      <div class="modal-title" id="sn-title" style="margin-bottom:4px;">Sample</div>
+      <div id="sn-sub" style="font-size:12px; color:var(--text-muted); margin-bottom:14px;"></div>
+    </div>
+    <div style="overflow-y:auto; flex:1 1 auto;">
+      <div class="pl-comments-head"><span>&#9745; Follow-ups</span><span class="pl-comments-count" id="sn-todo-count">0</span></div>
+      <div id="sn-todos" class="sn-todos"></div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <input type="text" id="sn-todo-input" placeholder="Add a follow-up task…" autocomplete="off"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleTodo();}"
+          style="flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;" />
+        <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleTodo()">Add</button>
+      </div>
+      <div class="pl-comments-head" style="margin-top:20px;"><span>&#128172; Comments</span><span class="pl-comments-count" id="sn-comment-count">0</span><span class="pl-comments-hint" id="sn-comment-hint"></span></div>
+      <div id="sn-comments" class="pl-comments" onclick="_focusSnCommentInput()" title="Click to add a comment"></div>
+    </div>
+    <div style="flex-shrink:0; display:flex; gap:8px; margin-top:10px;">
+      <input type="text" id="sn-comment-input" placeholder="Add a comment…" autocomplete="off"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleComment();}"
+        style="flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;" />
+      <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleComment()">Post</button>
+    </div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
+      <button type="button" class="btn btn-primary" onclick="closeSampleNotes()">Done</button>
     </div>
   </div>
 </div>
@@ -30891,6 +30943,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (samplesNav) samplesNav.classList.add('active');
     showView('view-samples');
     if (typeof rebuildSamplesNav === 'function') rebuildSamplesNav();
+    // Lazy-load the per-sample comments/follow-ups blob; re-renders the
+    // table once it lands so the Notes badges show real counts.
+    if (typeof _ensureSampleMetaLoaded === 'function') _ensureSampleMetaLoaded();
 
     const allSamples = collectAllSamples();
 
@@ -31007,7 +31062,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               ${SAMPLE_STATUSES.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${SAMPLE_STATUS_LABELS[st]}</option>`).join('')}
             </select>
           </td>
-          <td style="text-align:center;">
+          <td style="text-align:center; white-space:nowrap;">
+            ${_sampleNotesBtnHtml(compKey)}
             <span class="remove-tier" onclick="removeSampleRequest('${s.key}', ${s.rowIndex})" title="Unmark as sample (keeps the RFQ line item, just removes it from this list)" style="font-size:18px; color:var(--text-muted);">&times;</span>
           </td>
         </tr>
@@ -43255,6 +43311,216 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _persistPlMeta();
     _renderPlComments();
     try { renderPipelineBoard(); } catch (_) {}
+  }
+
+  // ── Sample notes: per-line comments + follow-up checklist ─────────────
+  // Keyed by the sample's client|workbook|rowIndex in the shared
+  // ms_sample_meta app_state blob. Mirrors the pipeline-meta pattern
+  // (CAS + per-key merge) so concurrent edits from two operators survive.
+  let _sampleMeta = {}, _sampleMetaLoaded = false, _snModalKey = null;
+
+  async function _ensureSampleMetaLoaded() {
+    if (_sampleMetaLoaded) return;
+    _sampleMetaLoaded = true;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_sample_meta' });
+      if (typeof _captureAppStateRev === 'function') _captureAppStateRev('ms_sample_meta', r);
+      let v = null;
+      if (r && r.value) { try { v = JSON.parse(r.value); } catch (e) {} }
+      _sampleMeta = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    } catch (e) { _sampleMeta = {}; }
+    _refreshSampleRowBadges();
+  }
+
+  // Server is the base so another session's notes survive; for a sample we
+  // also touched, comments are UNIONed by id and follow-ups merged by id
+  // (local wins on a shared task's done/text — last writer).
+  function _mergeSampleMeta(serverObj, localObj) {
+    serverObj = (serverObj && typeof serverObj === 'object' && !Array.isArray(serverObj)) ? serverObj : {};
+    localObj  = (localObj  && typeof localObj  === 'object' && !Array.isArray(localObj))  ? localObj  : {};
+    const out = Object.assign({}, serverObj);
+    Object.keys(localObj).forEach(k => {
+      const lm = localObj[k] || {}, sm = serverObj[k] || {};
+      const cById = {};
+      const addC = c => { if (c) cById[(c.id != null) ? ('id:' + c.id) : ('k:' + (c.at || '') + '|' + (c.text || ''))] = c; };
+      (sm.comments || []).forEach(addC);
+      (lm.comments || []).forEach(addC);
+      const comments = Object.values(cById).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+      const tById = {};
+      (sm.todos || []).forEach(t => { if (t && t.id != null) tById[t.id] = t; });
+      (lm.todos || []).forEach(t => { if (t && t.id != null) tById[t.id] = t; });  // local overrides
+      const todos = Object.values(tById).sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+      out[k] = { comments, todos };
+    });
+    return out;
+  }
+
+  function _persistSampleMeta() {
+    if (typeof _saveAppStateCAS === 'function') {
+      _saveAppStateCAS('ms_sample_meta',
+        () => (_sampleMeta || {}),
+        _mergeSampleMeta,
+        (merged) => {
+          _sampleMeta = merged || _sampleMeta;
+          try { if (_snModalKey) { _renderSampleComments(); _renderSampleTodos(); } } catch (_) {}
+          _refreshSampleRowBadges();
+        }
+      ).catch(() => {});
+      return;
+    }
+    try { apiCall('save_app_state', { key: 'ms_sample_meta', value: JSON.stringify(_sampleMeta || {}) }).catch(() => {}); } catch (e) {}
+  }
+
+  function _refreshSampleRowBadges() {
+    try {
+      const v = document.getElementById('view-samples');
+      if (v && v.style.display !== 'none' && typeof collectAllSamples === 'function') renderSamplesTable(collectAllSamples());
+    } catch (_) {}
+  }
+
+  function _sampleMetaSummary(mk) {
+    const m = _sampleMeta[mk] || {};
+    const nComments = Array.isArray(m.comments) ? m.comments.length : 0;
+    const todos = Array.isArray(m.todos) ? m.todos : [];
+    return { nComments, nTotal: todos.length, nOpen: todos.filter(t => t && !t.done).length };
+  }
+
+  function _sampleNotesBtnHtml(mk) {
+    const s = _sampleMetaSummary(mk);
+    const has = s.nComments > 0 || s.nTotal > 0;
+    let label = '';
+    if (s.nTotal > 0) label += `☑ ${s.nTotal - s.nOpen}/${s.nTotal}`;
+    if (s.nComments > 0) label += `${label ? ' · ' : ''}💬 ${s.nComments}`;
+    if (!has) label = '💬 Notes';
+    // encodeURIComponent keeps the key (which contains |, spaces, maybe
+    // punctuation from the client name) safe inside the inline handler.
+    return `<button class="sample-notes-btn${has ? ' has-content' : ''}" onclick="event.stopPropagation(); openSampleNotes(decodeURIComponent('${encodeURIComponent(mk)}'))" title="Comments &amp; follow-up tasks for this sample">${label}</button>`;
+  }
+
+  async function openSampleNotes(mk) {
+    if (typeof _ensureSampleMetaLoaded === 'function') await _ensureSampleMetaLoaded();
+    _snModalKey = mk;
+    const parts = String(mk).split('|');
+    const clientName = parts[0] || '', workbookId = parts[1] || '', rowIndex = parts[2] || '0';
+    const dkey = clientName + '|' + workbookId;
+    let itemName = 'Sample', product = '';
+    const det = (typeof workbookDetail !== 'undefined') ? workbookDetail[dkey] : null;
+    if (det) {
+      product = det.product || '';
+      const it = (det.rfqItems || [])[parseInt(rowIndex)];
+      if (it && it.item) itemName = it.item;
+    }
+    const t = document.getElementById('sn-title'); if (t) t.textContent = itemName;
+    const sub = document.getElementById('sn-sub'); if (sub) sub.textContent = [product, clientName].filter(Boolean).join(' · ');
+    _renderSampleTodos();
+    _renderSampleComments();
+    const m = document.getElementById('sample-notes-modal'); if (m) m.classList.add('open');
+    setTimeout(() => { const el = document.getElementById('sn-todo-input'); if (el) try { el.focus(); } catch (_) {} }, 50);
+  }
+
+  function closeSampleNotes() {
+    const m = document.getElementById('sample-notes-modal'); if (m) m.classList.remove('open');
+    _snModalKey = null;
+  }
+
+  function _renderSampleComments() {
+    const host = document.getElementById('sn-comments'); if (!host) return;
+    const list = ((_sampleMeta[_snModalKey] || {}).comments || []).slice()
+      .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    const cnt = document.getElementById('sn-comment-count'); if (cnt) cnt.textContent = String(list.length);
+    host.innerHTML = list.map(c => {
+      const who = c.author || 'Someone';
+      const rel = (typeof _crmRelTime === 'function') ? _crmRelTime(c.at) : '';
+      const abs = c.at ? new Date(c.at).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+      const color = (typeof _plCommentColor === 'function') ? _plCommentColor(who) : '#4b5563';
+      return `<div class="pl-comment">
+        <span class="pl-comment-avatar" style="background:${color};">${_plEsc(String(who).charAt(0).toUpperCase())}</span>
+        <div class="pl-comment-body">
+          <div class="pl-comment-meta"><span class="pl-comment-who">${_plEsc(who)}</span> · <span title="${_plEsc(abs)}">${_plEsc(rel || abs)}</span>
+            <button class="pl-comment-del" title="Delete comment" onclick="deleteSampleComment('${_plEsc(c.id)}')">&times;</button>
+          </div>
+          <div class="pl-comment-text">${_plEsc(c.text)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    host.scrollTop = host.scrollHeight;
+    const hint = document.getElementById('sn-comment-hint');
+    if (hint) hint.textContent = (host.scrollHeight > host.clientHeight + 4) ? '↕ scroll for earlier comments' : '';
+  }
+  function _focusSnCommentInput() { const el = document.getElementById('sn-comment-input'); if (el) try { el.focus(); } catch (_) {} }
+
+  function addSampleComment() {
+    if (!_snModalKey) return;
+    const input = document.getElementById('sn-comment-input');
+    const text = ((input || {}).value || '').trim(); if (!text) return;
+    const meta = _sampleMeta[_snModalKey] || (_sampleMeta[_snModalKey] = { comments: [], todos: [] });
+    if (!Array.isArray(meta.comments)) meta.comments = [];
+    meta.comments.push({
+      id: 'c' + Date.now() + Math.floor(Math.random() * 1000),
+      text,
+      author: (typeof getCurrentUser === 'function' && getCurrentUser()) || 'Someone',
+      at: new Date().toISOString(),
+    });
+    _persistSampleMeta();
+    if (input) input.value = '';
+    _renderSampleComments();
+  }
+  function deleteSampleComment(id) {
+    if (!_snModalKey) return;
+    const meta = _sampleMeta[_snModalKey]; if (!meta || !Array.isArray(meta.comments)) return;
+    meta.comments = meta.comments.filter(c => c && c.id !== id);
+    _persistSampleMeta();
+    _renderSampleComments();
+  }
+
+  function _renderSampleTodos() {
+    const host = document.getElementById('sn-todos'); if (!host) return;
+    const todos = ((_sampleMeta[_snModalKey] || {}).todos || []).slice()
+      .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    const open = todos.filter(t => t && !t.done).length;
+    const cnt = document.getElementById('sn-todo-count');
+    if (cnt) cnt.textContent = todos.length ? `${todos.length - open}/${todos.length}` : '0';
+    if (!todos.length) {
+      host.innerHTML = `<div class="sn-empty">No follow-ups yet. Add tasks like “chase factory for revised sample” or “photograph on arrival”.</div>`;
+      return;
+    }
+    host.innerHTML = todos.map(t => `
+      <div class="sn-todo${t.done ? ' done' : ''}">
+        <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleSampleTodo('${_plEsc(t.id)}', this.checked)" />
+        <span class="sn-todo-text">${_plEsc(t.text)}</span>
+        <button class="sn-todo-del" title="Delete task" onclick="deleteSampleTodo('${_plEsc(t.id)}')">&times;</button>
+      </div>`).join('');
+  }
+  function addSampleTodo() {
+    if (!_snModalKey) return;
+    const input = document.getElementById('sn-todo-input');
+    const text = ((input || {}).value || '').trim(); if (!text) return;
+    const meta = _sampleMeta[_snModalKey] || (_sampleMeta[_snModalKey] = { comments: [], todos: [] });
+    if (!Array.isArray(meta.todos)) meta.todos = [];
+    meta.todos.push({
+      id: 't' + Date.now() + Math.floor(Math.random() * 1000),
+      text, done: false,
+      at: new Date().toISOString(),
+      author: (typeof getCurrentUser === 'function' && getCurrentUser()) || '',
+    });
+    _persistSampleMeta();
+    if (input) input.value = '';
+    _renderSampleTodos();
+  }
+  function toggleSampleTodo(id, done) {
+    if (!_snModalKey) return;
+    const meta = _sampleMeta[_snModalKey]; if (!meta || !Array.isArray(meta.todos)) return;
+    const t = meta.todos.find(x => x && x.id === id); if (!t) return;
+    t.done = !!done; t.doneAt = done ? new Date().toISOString() : null;
+    _persistSampleMeta();
+    _renderSampleTodos();
+  }
+  function deleteSampleTodo(id) {
+    if (!_snModalKey) return;
+    const meta = _sampleMeta[_snModalKey]; if (!meta || !Array.isArray(meta.todos)) return;
+    meta.todos = meta.todos.filter(t => t && t.id !== id);
+    _persistSampleMeta();
+    _renderSampleTodos();
   }
 
   function _updatePipelineNavBadge() {
