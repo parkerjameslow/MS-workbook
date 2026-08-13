@@ -5891,9 +5891,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Assignee spot (on rows/cards) + the floating assignee picker. */
     .assign-spot { display: inline-flex; align-items: center; gap: 0; vertical-align: middle; margin-right: 6px; cursor: pointer; }
     .assign-spot .pl-avatar { width: 20px; height: 20px; font-size: 10px; border: 2px solid var(--surface); box-shadow: none; }
-    .assign-add { font-size: 10px; font-weight: 700; color: var(--text-muted); border: 1px dashed var(--border); border-radius: 99px; padding: 2px 7px; white-space: nowrap; }
-    .assign-spot-compact .pl-avatar { width: 18px; height: 18px; font-size: 9px; }
-    .assign-add-mini { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px dashed var(--border); color: var(--text-muted); font-size: 12px; font-weight: 700; line-height: 1; }
+    .assign-add { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--text-muted); border: 1px dashed var(--border); border-radius: 99px; padding: 3px 9px; white-space: nowrap; }
+    .assign-add-ic svg { width: 13px; height: 13px; display: block; }
+    .assign-spot:hover .assign-add { color: var(--accent); border-color: var(--accent); }
+    .assign-spot-compact .pl-avatar { width: 20px; height: 20px; font-size: 9px; }
+    .assign-add-mini { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px dashed var(--border); color: var(--text-muted); }
+    .assign-add-mini svg { width: 13px; height: 13px; }
     .assign-spot-compact:hover .assign-add-mini { color: var(--accent); border-color: var(--accent); }
     .assign-spot:hover .assign-add { color: var(--accent); border-color: var(--accent); }
     .assignee-picker { position: fixed; z-index: 3000; min-width: 205px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.22); padding: 6px; display: none; }
@@ -5906,8 +5909,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .assignee-picker-check { color: var(--accent); font-weight: 800; }
     .assignee-picker .pl-avatar { width: 22px; height: 22px; font-size: 11px; }
     /* Sample comments/follow-ups indicator on a workbook card. */
-    .pl-sample-badge { margin-top: 8px; display: inline-flex; align-items: center; gap: 3px; padding: 2px 9px; border-radius: 99px; background: rgba(96,165,250,0.16); border: 1px solid rgba(96,165,250,0.36); color: #93c5fd; font-size: 10px; font-weight: 700; cursor: pointer; font-family: inherit; line-height: 1.6; }
-    .pl-sample-badge:hover { background: rgba(96,165,250,0.30); color: #bfdbfe; }
+    /* Neutral pill that inverts with the card: light on dark cards, dark on
+       the Karen peach card — so it always pops. Flat line icons inherit the
+       text color via currentColor. */
+    .pl-sample-badge { margin-top: 8px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.20); color: #e2e8f0; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; line-height: 1.4; letter-spacing: 0.02em; }
+    .pl-sample-badge:hover { background: rgba(255,255,255,0.18); }
+    .pl-card-karen .pl-sample-badge { background: rgba(124,45,18,0.10); border-color: rgba(124,45,18,0.32); color: #7c2d12; }
+    .pl-card-karen .pl-sample-badge:hover { background: rgba(124,45,18,0.18); }
+    .pl-badge-ic { width: 13px; height: 13px; display: inline-block; vertical-align: middle; }
+    .pl-badge-grp { display: inline-flex; align-items: center; gap: 4px; }
+    .pl-badge-sep { opacity: 0.4; margin: 0 1px; }
     /* Pipeline "add to an order" prompt modal. */
     .plop-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 8px; }
     .plop-orders { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
@@ -43585,7 +43596,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const col = (CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
       return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
     }).join('');
-    const empty = compact ? '<span class="assign-add-mini" title="Assign">+</span>' : '<span class="assign-add">+ Assign</span>';
+    const userIc = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c0-3.6 3-5.6 6.5-5.6s6.5 2 6.5 5.6"/></svg>';
+    // Always label the empty state "Assign" so it's obvious what/where it is.
+    const empty = `<span class="assign-add"><span class="assign-add-ic">${userIc}</span>Assign</span>`;
     return `<span class="assign-spot${compact ? ' assign-spot-compact' : ''}" onclick="event.stopPropagation(); openAssigneePicker('${_plEsc(cardId).replace(/'/g, "\\'")}', event)" title="Assign / unassign">${avatars || empty}</span>`;
   }
   function openAssigneePicker(cardId, ev, afterFn) {
@@ -44043,10 +44056,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!key) return '';
     const s = _sampleNotesForWb(key);
     if (!s.nComments && !s.nTodos) return '';
+    const chatIc = '<svg class="pl-badge-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    const checkIc = '<svg class="pl-badge-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     const bits = [];
-    if (s.nComments) bits.push(`&#128172; ${s.nComments}`);
-    if (s.nTodos) bits.push(`&#9745; ${s.nTodos - s.nTodoOpen}/${s.nTodos}`);
-    return `<button class="pl-sample-badge" onclick="event.stopPropagation(); openWbSampleNotes(decodeURIComponent('${encodeURIComponent(key)}'))" title="Sample comments &amp; follow-ups — click to view">${bits.join(' · ')}</button>`;
+    if (s.nComments) bits.push(`<span class="pl-badge-grp">${chatIc}${s.nComments}</span>`);
+    if (s.nTodos) bits.push(`<span class="pl-badge-grp">${checkIc}${s.nTodos - s.nTodoOpen}/${s.nTodos}</span>`);
+    return `<button class="pl-sample-badge" onclick="event.stopPropagation(); openWbSampleNotes(decodeURIComponent('${encodeURIComponent(key)}'))" title="Sample comments &amp; follow-ups — click to view">${bits.join('<span class="pl-badge-sep">·</span>')}</button>`;
   }
   async function openWbSampleNotes(key) {
     if (typeof _ensureSampleMetaLoaded === 'function') await _ensureSampleMetaLoaded();
