@@ -5892,6 +5892,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .assign-spot { display: inline-flex; align-items: center; gap: 0; vertical-align: middle; margin-right: 6px; cursor: pointer; }
     .assign-spot .pl-avatar { width: 20px; height: 20px; font-size: 10px; border: 2px solid var(--surface); box-shadow: none; }
     .assign-add { font-size: 10px; font-weight: 700; color: var(--text-muted); border: 1px dashed var(--border); border-radius: 99px; padding: 2px 7px; white-space: nowrap; }
+    .assign-spot-compact .pl-avatar { width: 18px; height: 18px; font-size: 9px; }
+    .assign-add-mini { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1px dashed var(--border); color: var(--text-muted); font-size: 12px; font-weight: 700; line-height: 1; }
+    .assign-spot-compact:hover .assign-add-mini { color: var(--accent); border-color: var(--accent); }
     .assign-spot:hover .assign-add { color: var(--accent); border-color: var(--accent); }
     .assignee-picker { position: fixed; z-index: 3000; min-width: 205px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.22); padding: 6px; display: none; }
     .assignee-picker.open { display: block; }
@@ -6663,7 +6666,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 4px 14px;
     }
     .oc-wb-count { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 2px; }
-    .oc-wb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .oc-wb-row { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
+    .oc-wb-row .oc-wb-prices { margin-left: auto; }
+    .oc-wb-assignee { flex: 0 0 auto; display: inline-flex; align-items: center; }
+    .oc-wb-row > .oc-wb-assignee:nth-child(2) { margin-left: auto; }
     .oc-wb-pill {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px;
@@ -43160,8 +43166,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
   function _pipelineChildLine(w) {
     const href = `#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}`;
-    return `<div class="pl-child" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}">
-      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">→ ${_plEsc(w.product)}</span></div>`;
+    const spot = (typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + w.cn + '|' + w.wid, true) : '';
+    return `<div class="pl-child" onclick="event.stopPropagation(); location.hash='${href}'" title="Open ${_plEsc(w.product)}" style="display:flex; align-items:center; gap:6px;">
+      <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto;">→ ${_plEsc(w.product)}</span>
+      <span style="flex:0 0 auto;">${spot}</span></div>`;
   }
 
   // Workbook card (early stages).
@@ -43568,14 +43576,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return Array.isArray(m.assignees) ? m.assignees : [];
   }
   function _cardHasKaren(cardId) { return _assigneeList(cardId).indexOf('Karen') !== -1; }
-  // Small avatar stack + "assign" affordance for any row/card.
-  function _assigneeSpotHtml(cardId) {
+  // Small avatar stack + "assign" affordance for any row/card. `compact`
+  // shows a tiny "+" (instead of "+ Assign") when empty — for dense lists
+  // like an order's per-workbook rows.
+  function _assigneeSpotHtml(cardId, compact) {
     const list = _assigneeList(cardId);
     const avatars = list.map(n => {
       const col = (CRM_ASSIGNEE_COLORS[n]) || { bg: '#4b5563', fg: '#fff' };
       return `<span class="pl-avatar" style="background:${col.bg}; color:${col.fg};" title="${_plEsc(n)}">${_plEsc(n.charAt(0).toUpperCase())}</span>`;
     }).join('');
-    return `<span class="assign-spot" onclick="event.stopPropagation(); openAssigneePicker('${_plEsc(cardId).replace(/'/g, "\\'")}', event)" title="Assign / unassign">${avatars || '<span class="assign-add">+ Assign</span>'}</span>`;
+    const empty = compact ? '<span class="assign-add-mini" title="Assign">+</span>' : '<span class="assign-add">+ Assign</span>';
+    return `<span class="assign-spot${compact ? ' assign-spot-compact' : ''}" onclick="event.stopPropagation(); openAssigneePicker('${_plEsc(cardId).replace(/'/g, "\\'")}', event)" title="Assign / unassign">${avatars || empty}</span>`;
   }
   function openAssigneePicker(cardId, ev, afterFn) {
     if (ev && ev.stopPropagation) { ev.stopPropagation(); }
@@ -43629,7 +43640,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       else if (h === '#/rfq' && typeof renderRfqDashboard === 'function') renderRfqDashboard();
       else if (h === '#/review' && typeof renderReviewDashboard === 'function') renderReviewDashboard();
       else if (h === '#/orders' && typeof renderOrdersList === 'function') renderOrdersList();
-      else if (h.indexOf('#/order/') === 0 && typeof _renderOrderDetailLaneControls === 'function') _renderOrderDetailLaneControls();
+      else if (h.indexOf('#/order/') === 0 && typeof renderOrderDetail === 'function' && typeof _currentOrderId !== 'undefined' && _currentOrderId != null) renderOrderDetail(_currentOrderId);
     } catch (_) {}
     try { const v = document.getElementById('view-samples'); if (v && v.style.display !== 'none' && typeof collectAllSamples === 'function') renderSamplesTable(collectAllSamples()); } catch (_) {}
   }
@@ -44268,7 +44279,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-right:2px;">Lane</span>
       <span style="display:inline-flex; align-items:center; padding:3px 10px; border-radius:99px; background:${laneBg}; color:${laneFg}; border:1px solid ${laneBd}; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;">${lane}</span>
       <span style="flex:1;"></span>
-      <span style="display:inline-flex; align-items:center; gap:6px; margin-right:12px;"><span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Assignee</span>${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('order:' + _currentOrderId) : ''}</span>
       ${buttons}
     `;
   }
@@ -44472,6 +44482,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return `<div class="oc-wb-row">
         <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to In Production'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
         ${priceStr}
+        <span class="oc-wb-assignee" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + e.clientName + '|' + e.workbookId, true) : ''}</span>
       </div>`;
     }).join('');
 
@@ -44530,7 +44541,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="oc-title">${o.name || `Order #${id}`}</span>
           ${_orderCardShipToBadge(o)}
           <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">${pills.join('')}</div>
-          <div style="margin-top:6px;" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('order:' + id) : ''}</div>
         </div>
         <div class="oc-wb-list">
           <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
@@ -44912,6 +44922,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             return `<div class="oc-wb-row">
               <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/orders'; _wbBackLabel='Back to Orders'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
               ${priceStr}
+              <span class="oc-wb-assignee" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + key, true) : ''}</span>
             </div>`;
           }).join('');
 
@@ -45203,7 +45214,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${leadBlock}
             ${deadlineBlock}
             ${changeBadge}
-            <div style="margin-top:6px;" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('order:' + id) : ''}</div>
           </div>
           <div class="oc-wb-list">
             <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
@@ -46000,6 +46010,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </a>
           ${_artPill}
           ${splitBadges}
+          ${(typeof _assigneeSpotHtml === 'function') ? '<span onclick="event.stopPropagation();" style="margin-left:8px; display:inline-flex; vertical-align:middle;">' + _assigneeSpotHtml('wb:' + key, true) + '</span>' : ''}
         </td>
         <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>
         <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
