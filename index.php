@@ -2481,28 +2481,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        operator picks ONE and only that one flows to the client quote. The
        options render on a full-width row under the line so every column
        (name · supplier · price · lead) reads on one line side-by-side. */
-    .rfq-optrow > td { padding: 0 !important; border-bottom: 1px solid var(--border); }
-    .rfq-optrow-cell { background: var(--surface2); }
-    .rfq-opt-panel { margin: 10px 14px 14px; display: flex; flex-direction: column; gap: 6px; max-width: 940px; }
-    .rfq-opt-panel-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
-    .rfq-opt-choice {
-      display: flex; align-items: center; gap: 16px;
-      padding: 9px 14px; border: 1px solid var(--border); border-radius: 8px;
-      cursor: pointer; background: var(--surface); transition: border-color 0.12s, background 0.12s;
-    }
-    .rfq-opt-choice:hover { border-color: var(--accent); }
-    .rfq-opt-choice.selected { border-color: var(--accent); background: rgba(232,117,26,0.07); box-shadow: inset 0 0 0 1px var(--accent); }
-    .rfq-opt-dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); flex: 0 0 auto; box-sizing: border-box; }
-    .rfq-opt-choice.selected .rfq-opt-dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
-    .rfq-opt-name { font-weight: 700; font-size: 13px; color: var(--text); flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .rfq-opt-supp { font-size: 12px; color: var(--text-muted); flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .rfq-opt-metrics { margin-left: auto; display: flex; align-items: center; gap: 18px; font-size: 13px; white-space: nowrap; flex: 0 0 auto; }
-    .rfq-opt-price { font-weight: 700; color: var(--text); min-width: 96px; text-align: right; }
-    .rfq-opt-usd { color: var(--success); min-width: 60px; text-align: right; }
-    .rfq-opt-lead { color: var(--text-muted); min-width: 40px; text-align: right; }
-    /* Fixed-width slot: reserved on every option so the On-quote marker never
-       shifts the columns; only the selected one shows the label. */
-    .rfq-opt-usebadge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); flex: 0 0 auto; width: 78px; text-align: right; white-space: nowrap; }
+    /* Comparable-option rows share the RFQ table's own columns so each field
+       (name · ¥price · $usd · lead) lines up under the primary line above. */
+    .rfq-optrow > td { background: var(--surface2); padding: 8px 10px; vertical-align: middle; }
+    .rfq-optrow > td:first-child { border-left: 3px solid var(--accent); }
+    .rfq-optrow-title > td { padding-top: 12px; padding-bottom: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); }
+    .rfq-optrow-foot > td { padding-bottom: 12px; text-align: center; }
+    .rfq-optchoice { cursor: pointer; }
+    .rfq-optchoice > td { border-top: 1px solid var(--border); transition: background 0.12s; }
+    .rfq-optchoice:hover > td { background: rgba(232,117,26,0.05); }
+    .rfq-optchoice.selected > td { background: rgba(232,117,26,0.10); }
+    .rfq-optc-radio { text-align: center; }
+    .rfq-optc-name .rfq-opt-name { font-weight: 700; font-size: 13px; color: var(--text); }
+    .rfq-optc-name .rfq-opt-supp { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+    .rfq-optc-price { font-weight: 700; font-size: 13px; color: var(--text); white-space: nowrap; }
+    .rfq-optc-usd { color: var(--success); font-size: 13px; text-align: right; white-space: nowrap; }
+    .rfq-optc-lead { color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+    .rfq-optc-badge { text-align: right; white-space: nowrap; }
+    .rfq-opt-dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border); display: inline-block; box-sizing: border-box; vertical-align: middle; }
+    .rfq-optchoice.selected .rfq-opt-dot { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface2); }
+    .rfq-opt-usebadge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--accent); white-space: nowrap; }
     .rfq-opt-row {
       display: grid;
       grid-template-columns: 54px 1.4fr 1.2fr 96px 78px 26px;
@@ -18869,7 +18867,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (row) row.remove();
     document.querySelectorAll(`[data-rfq-parent="${id}"]`).forEach(vr => vr.remove());
     document.querySelector(`[data-rfq-add-for="${id}"]`)?.remove();
-    document.getElementById(`rfq-optrow-${id}`)?.remove();   // drop its comparable-options row
+    document.querySelectorAll(`[data-rfq-optrow="${id}"]`).forEach(r => r.remove());   // drop its comparable-options rows
     renumberRfqRows();
     // If we just deleted the last RFQ row, drop in a fresh blank row so
     // the table never bottoms out completely (matches what the user
@@ -19712,11 +19710,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tr = document.getElementById('rfq-' + id);
     const btn = document.getElementById('rfq-optbtn-' + id);
     if (!tr) return;
-    let optrow = document.getElementById('rfq-optrow-' + id);
     let opts = [];
     try { opts = JSON.parse(tr.dataset.compOptions || '[]'); } catch(e) { opts = []; }
+    // Always clear any existing option rows for this line first.
+    document.querySelectorAll(`[data-rfq-optrow="${id}"]`).forEach(r => r.remove());
     if (!Array.isArray(opts) || opts.length === 0) {
-      if (optrow) optrow.remove();          // no options → drop the full-width row
       if (btn) btn.style.display = '';       // show the "⇄ Options" entry button again
       return;
     }
@@ -19728,39 +19726,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (!n || isNaN(n)) return '';
       try { return '$' + _fxUsdFromRmbPrecise(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (_) { return ''; }
     };
-    const rows = opts.map((o, i) => {
+    // Each option is a real table row whose cells sit in the SAME columns as
+    // the line above (radio→select col, name→Item, ¥→Price, $→USD, lead→Lead,
+    // marker→actions) so the numbers line up under the primary line's columns.
+    // data-rfq-optrow keeps every one of these rows out of the parent-row
+    // selectors + variant queries, so positional cost reads are untouched.
+    const optRows = opts.map((o, i) => {
       const rmbN = parseFloat(String(o.priceRmb == null ? '' : o.priceRmb).replace(/,/g, ''));
       const rmb = (rmbN && !isNaN(rmbN)) ? '¥' + rmbN.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '¥—';
-      const usd = usdOf(o.priceRmb);
+      const usd = usdOf(o.priceRmb) || '—';
       const lead = o.leadTime ? _esc(o.leadTime) + 'd' : '—';
-      const supp = o.supplier ? _esc(o.supplier) : '<span style="opacity:.55">no supplier</span>';
+      const supp = o.supplier ? `<div class="rfq-opt-supp">${_esc(o.supplier)}</div>` : `<div class="rfq-opt-supp" style="opacity:.55">no supplier</div>`;
       const name = o.label ? _esc(o.label) : '<span style="opacity:.55">(unnamed option)</span>';
-      // Always render the badge slot (fixed width) so selecting/deselecting
-      // never shifts the price/usd/lead columns — only its text toggles.
-      const useBadge = `<span class="rfq-opt-usebadge${i === sel ? ' on' : ''}">${i === sel ? '✓ On quote' : ''}</span>`;
-      return `<div class="rfq-opt-choice${i === sel ? ' selected' : ''}" onclick="selectRfqOption(${id}, ${i})" title="Use this option on the client quote">
-        <span class="rfq-opt-dot"></span>
-        <span class="rfq-opt-name">${name}</span>
-        <span class="rfq-opt-supp">${supp}</span>
-        <span class="rfq-opt-metrics"><span class="rfq-opt-price">${rmb}</span><span class="rfq-opt-usd">${usd || ''}</span><span class="rfq-opt-lead">${lead}</span>${useBadge}</span>
-      </div>`;
+      const badge = i === sel ? '<span class="rfq-opt-usebadge on">✓ On quote</span>' : '';
+      return `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optchoice${i === sel ? ' selected' : ''}" onclick="selectRfqOption(${id}, ${i})" title="Use this option on the client quote">
+        <td class="rfq-optc-radio"><span class="rfq-opt-dot"></span></td>
+        <td></td><td></td><td></td>
+        <td class="rfq-optc-name"><div class="rfq-opt-name">${name}</div>${supp}</td>
+        <td></td>
+        <td class="rfq-optc-price">${rmb}</td>
+        <td class="rfq-optc-usd">${usd}</td>
+        <td></td>
+        <td class="rfq-optc-lead">${lead}</td>
+        <td class="rfq-optc-badge">${badge}</td>
+      </tr>`;
     }).join('');
-    const inner = `<div class="rfq-opt-panel"><div class="rfq-opt-panel-title">Comparable options — pick the one used on the client quote</div>${rows}<button type="button" class="rfq-add-variant-link" onclick="openRfqOptions(${id})" title="Add, edit or remove options">&#8646; Edit / add options</button></div>`;
-    // Full-width row under the line item. data-rfq-optrow keeps it out of the
-    // parent-row selectors and the variant queries, so cost/qty/price/lead
-    // positional reads are never affected.
-    if (!optrow) {
-      optrow = document.createElement('tr');
-      optrow.id = 'rfq-optrow-' + id;
-      optrow.setAttribute('data-rfq-optrow', id);
-      optrow.className = 'rfq-optrow';
-      optrow.innerHTML = `<td colspan="11" class="rfq-optrow-cell"></td>`;
-    }
-    optrow.querySelector('td').innerHTML = inner;
-    // Position it after the line's last variant row (or the line itself).
+    const titleRow = `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optrow-title"><td colspan="11">Comparable options — pick the one used on the client quote</td></tr>`;
+    const footRow = `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optrow-foot"><td colspan="11"><button type="button" class="rfq-add-variant-link" onclick="openRfqOptions(${id})" title="Add, edit or remove options">&#8646; Edit / add options</button></td></tr>`;
+    // Insert the set right after the line's last variant row (or the line).
     const variantRows = document.querySelectorAll(`[data-rfq-parent="${id}"]`);
     const anchor = variantRows.length ? variantRows[variantRows.length - 1] : tr;
-    if (anchor.nextSibling !== optrow) anchor.after(optrow);
+    anchor.insertAdjacentHTML('afterend', titleRow + optRows + footRow);
   }
 
   function selectRfqOption(id, idx) {
