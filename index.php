@@ -6076,6 +6076,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sn-todo-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 0 2px; flex: 0 0 auto; line-height: 1.3; }
     .sn-todo-del:hover { color: #dc2626; }
     .sn-empty { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 6px 2px; }
+    /* Notes list scrolls (newest first) once it gets long. */
+    .sn-notes-scroll { max-height: 300px; overflow-y: auto; padding-right: 2px; }
     /* Inline (expand-under-the-row) sample notes panel */
     .sn-inline-cell { padding: 0 !important; background: var(--surface2); border-bottom: none; border-left: 3px solid var(--accent); }
     .sn-inline-host { padding: 14px 20px 16px; }
@@ -43842,10 +43844,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ms_sample_meta app_state blob. Mirrors the pipeline-meta pattern
   // (CAS + per-key merge) so concurrent edits from two operators survive.
   let _sampleMeta = {}, _sampleMetaLoaded = false;
-  const _snCollapsed = new Set();   // sample keys whose notes panel is collapsed (session UI state)
+  const _snExpanded = new Set();   // sample keys the operator has expanded (collapsed is the DEFAULT)
   function toggleSampleCollapse(enc) {
     const mk = decodeURIComponent(enc);
-    if (_snCollapsed.has(mk)) _snCollapsed.delete(mk); else _snCollapsed.add(mk);
+    if (_snExpanded.has(mk)) _snExpanded.delete(mk); else _snExpanded.add(mk);
     _renderSamplePanel(mk);
   }
 
@@ -43923,7 +43925,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const enc = encodeURIComponent(mk);
     const m = _sampleMeta[mk] || {};
     const todos = (Array.isArray(m.todos) ? m.todos : []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
-    const notes = (Array.isArray(m.comments) ? m.comments : []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    const notes = (Array.isArray(m.comments) ? m.comments : []).slice().sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))); // newest first
     const openN = todos.filter(t => t && !t.done).length;
     const inp = 'flex:1 1 auto; min-width:0; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box;';
     // Identity header so each always-on panel is clearly tied to its sample.
@@ -43935,7 +43937,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const chip = (typeof _clientChipStyle === 'function')
       ? `<span class="inv-client-chip" style="${_clientChipStyle(clientName)}" title="${_plEsc(clientName)}">${_plEsc(clientName)}</span>`
       : `<span class="sn-panel-client">${_plEsc(clientName)}</span>`;
-    const collapsed = (typeof _snCollapsed !== 'undefined') && _snCollapsed.has(mk);
+    const collapsed = !((typeof _snExpanded !== 'undefined') && _snExpanded.has(mk));
     // Understated "▶ NOTES & FOLLOW-UPS" toggle band (item + client already
     // show on the row above). A subtle count rides on the right when collapsed.
     const hasAny = (todos.length + notes.length) > 0;
@@ -43974,25 +43976,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div>
         <div class="sn-inline-col-head"><span>&#128221; Notes</span><span class="pl-comments-count">${notes.length}</span></div>
-        <div class="sn-todos">${noteItems}</div>
+        <div class="sn-todos sn-notes-scroll">${noteItems}</div>
         <div class="sn-add-row"><input type="text" class="sn-note-input" placeholder="Add a note…" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addSampleNote('${enc}');}" style="${inp}" /><button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addSampleNote('${enc}')">Add</button></div>
       </div>
     </div>`;
     return `${header}<div class="sn-collapse-body"${collapsed ? ' style="display:none;"' : ''}>${grid}</div>`;
   }
 
-  // Re-render one sample's panel in place (found by its data-snpanel key), so
-  // an edit doesn't disturb the rest of the table.
+  // Re-render EVERY copy of a sample's panel (the samples table row AND the
+  // wb-sample-notes modal can both hold one for the same key) so they stay in
+  // sync after an edit.
   function _renderSamplePanel(mk) {
-    const el = document.querySelector('[data-snpanel="' + encodeURIComponent(mk) + '"]');
-    if (el) el.innerHTML = _sampleNotesPanelInner(mk);
+    document.querySelectorAll('[data-snpanel="' + encodeURIComponent(mk) + '"]').forEach(el => { el.innerHTML = _sampleNotesPanelInner(mk); });
+  }
+  // The panel the operator is actually interacting with — prefer the open
+  // wb-sample-notes modal (it sits on top of the hidden samples table), else
+  // the first match. Fixes "add did nothing" when both copies exist.
+  function _snPanelEl(enc) {
+    const modal = document.getElementById('wb-sample-notes-modal');
+    if (modal && modal.classList.contains('open')) { const el = modal.querySelector('[data-snpanel="' + enc + '"]'); if (el) return el; }
+    return document.querySelector('[data-snpanel="' + enc + '"]');
   }
   function _snMeta(mk) { return _sampleMeta[mk] || (_sampleMeta[mk] = { comments: [], todos: [] }); }
-  function _snFocus(enc, sel) { const i = document.querySelector('[data-snpanel="' + enc + '"] ' + sel); if (i) try { i.focus(); } catch (_) {} }
+  function _snFocus(enc, sel) { const p = _snPanelEl(enc); const i = p ? p.querySelector(sel) : null; if (i) try { i.focus(); } catch (_) {} }
 
   function addSampleTodo(enc) {
     const mk = decodeURIComponent(enc);
-    const input = document.querySelector('[data-snpanel="' + enc + '"] .sn-todo-input');
+    const input = (function(){ const p=_snPanelEl(enc); return p?p.querySelector('.sn-todo-input'):null; })();
     const text = ((input || {}).value || '').trim(); if (!text) return;
     const meta = _snMeta(mk); if (!Array.isArray(meta.todos)) meta.todos = [];
     meta.todos.push({ id: 't' + Date.now() + Math.floor(Math.random() * 1000), text, done: false, at: new Date().toISOString(), author: (typeof getCurrentUser === 'function' && getCurrentUser()) || '' });
@@ -44017,7 +44027,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
   function addSampleNote(enc) {
     const mk = decodeURIComponent(enc);
-    const input = document.querySelector('[data-snpanel="' + enc + '"] .sn-note-input');
+    const input = (function(){ const p=_snPanelEl(enc); return p?p.querySelector('.sn-note-input'):null; })();
     const text = ((input || {}).value || '').trim(); if (!text) return;
     const meta = _snMeta(mk); if (!Array.isArray(meta.comments)) meta.comments = [];
     meta.comments.push({ id: 'c' + Date.now() + Math.floor(Math.random() * 1000), text, author: (typeof getCurrentUser === 'function' && getCurrentUser()) || 'Someone', at: new Date().toISOString() });
@@ -44077,6 +44087,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const product = (det && det.product) || '';
     const t = document.getElementById('wbsn-title');
     if (t) t.textContent = (product ? product + ' — ' : '') + clientName + ' · Sample notes';
+    // The modal IS the notes view — force its panels expanded (collapse is the
+    // default on the samples table).
+    try { s.items.forEach(it => { if (typeof _snExpanded !== 'undefined') _snExpanded.add(it.mk); }); } catch (_) {}
     const body = document.getElementById('wbsn-body');
     if (body) {
       body.innerHTML = s.items.length
