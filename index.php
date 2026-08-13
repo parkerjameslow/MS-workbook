@@ -7139,6 +7139,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
   <hr style="border:none; border-top:1px solid var(--border); margin: 0 0 6px;" />
 
+  <!-- Workbook Pipeline — pinned above the search so it never scrolls away. -->
+  <div style="padding: 0 10px 6px;">
+    <a id="nav-all-workbooks" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+      <span>Workbook Pipeline</span>
+    </a>
+  </div>
+
   <!-- Search -->
   <div style="padding: 0 10px 8px;">
     <div style="position:relative;">
@@ -7156,12 +7163,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <nav class="sidebar-nav" id="sidebar-nav">
 
-    <!-- Workbook Pipeline — opens the Pipeline board (every workbook by stage).
-         The stage list below is a drill-down: counts + aging per stage,
-         clicking one jumps the board to that column. -->
-    <a id="nav-all-workbooks" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
-      <span>Workbook Pipeline</span>
-    </a>
+    <!-- Workbook Pipeline stage drill-down (counts + aging per stage). The
+         "Workbook Pipeline" header link itself is pinned above the search so
+         it stays put while this list scrolls. -->
     <div id="pipeline-nav-list"></div>
 
     <!-- ★ Starred -->
