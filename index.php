@@ -19345,7 +19345,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _lastRfqPriceSummary = {
       hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange,
       grandQty, grandRmb, grandRmbPerPrimary, primaryQty, primaryName, primaryId,
-      grandRmbWeighted, grandUsdUnit, grandUsd
+      grandRmbWeighted, grandUsdUnit, grandUsd,
+      // # of priced parent lines. The variant paths (rmbMin / grandRmbWeighted)
+      // are only right for a SINGLE-product variant workbook; a multi-line KIT
+      // (a variant line + other lines) must use grandRmbPerPrimary instead.
+      pricedLineCount: pricedLines.length
     };
 
     document.getElementById('rfq-total-qty').textContent = grandQty ? grandQty.toLocaleString('en-US') : '—';
@@ -19485,7 +19489,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // matching the RFQ grand-total UNIT PRICE — not the raw sum of
       // component prices, which understated it when a component ran at a
       // different qty (e.g. tier showed ¥187 instead of the true ¥248).
-      if (ps.hasVariants && ps.grandRmbWeighted > 0)      perUnitRmb = ps.grandRmbWeighted;
+      if (ps.hasVariants && (ps.pricedLineCount || 0) <= 1 && ps.grandRmbWeighted > 0) perUnitRmb = ps.grandRmbWeighted;
       else if (ps.grandRmbPerPrimary > 0)                 perUnitRmb = ps.grandRmbPerPrimary;
       else if (ps.grandRmb > 0)                           perUnitRmb = ps.grandRmb;
       else if (ps.grandRmbWeighted > 0)                   perUnitRmb = ps.grandRmbWeighted;
@@ -24858,7 +24862,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let productTotal;
     let unitRmbText = '—', unitUsdText = '—';
 
-    if (psSummary && psSummary.hasVariants && psSummary.rmbMin > 0) {
+    if (psSummary && psSummary.hasVariants && (psSummary.pricedLineCount || 0) <= 1 && psSummary.rmbMin > 0) {
       // Variant range — render at 3 decimals from raw RMB and convert
       // RMB→USD on the fly (raw division) so the per-unit displayed
       // value reflects the actual cost, not the ceil-to-cent version
@@ -24878,7 +24882,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // sync with the per-unit displayed above (¥0.300 → $0.044, total
     // 75,000 units = ¥22,500 / $3,303.50, not the inflated $3,750
     // the old grandUsd-back-calc was producing).
-    if (psSummary && psSummary.hasVariants && psSummary.grandRmbWeighted > 0 && effectiveQty > 0) {
+    if (psSummary && psSummary.hasVariants && (psSummary.pricedLineCount || 0) <= 1 && psSummary.grandRmbWeighted > 0 && effectiveQty > 0) {
       productTotal = effectiveQty * (psSummary.grandRmbWeighted / USD_TO_RMB);
     } else {
       // Single-tier total = qty × precise per-unit (no cent-ceil — same
@@ -24904,7 +24908,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // entirely in RMB so a 75,000 × ¥0.30 entry shows the honest
     // ¥22,500, not ¥25,397 (which was qty × ceiled USD × FX rate).
     let productTotalRmb;
-    if (psSummary && psSummary.hasVariants && psSummary.grandRmbWeighted > 0 && effectiveQty > 0) {
+    if (psSummary && psSummary.hasVariants && (psSummary.pricedLineCount || 0) <= 1 && psSummary.grandRmbWeighted > 0 && effectiveQty > 0) {
       productTotalRmb = effectiveQty * psSummary.grandRmbWeighted;
     } else {
       productTotalRmb = (effectiveQty > 0 && tierRmb > 0) ? effectiveQty * tierRmb : 0;
