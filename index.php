@@ -19359,7 +19359,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Unit Price (RMB): variant mode → single price or range; else → sum (legacy "insert" behavior)
     const rmbCell = document.getElementById('rfq-total-rmb');
     if (rmbCell) {
-      if (hasVariants && pricedItems.length > 0) {
+      if (hasVariants && pricedLines.length <= 1 && pricedItems.length > 0) {
         rmbCell.textContent = isRange
           ? '¥ ' + fmt(rmbMin) + '–¥ ' + fmt(rmbMax)
           : '¥ ' + fmt(rmbMin);
@@ -19386,7 +19386,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // the per-unit prices (a "one of each component" kit price). The USD
       // value is just that same RMB figure converted, never the qty-
       // weighted average (which read $4.975 next to a ¥203.30 sum).
-      if (hasVariants && pricedItems.length > 0) {
+      if (hasVariants && pricedLines.length <= 1 && pricedItems.length > 0) {
         if (isRange) {
           const uMinPrecise = (USD_TO_RMB > 0) ? rmbMin / USD_TO_RMB : 0;
           const uMaxPrecise = (USD_TO_RMB > 0) ? rmbMax / USD_TO_RMB : 0;
