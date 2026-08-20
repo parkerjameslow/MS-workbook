@@ -19121,6 +19121,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pricedLines = [];   // { id, name, qty }
     const itemSummaries = [];  // { label, qty, rmb, usd, total, lead, isVariant }
 
+    // USD + Total are DERIVED cells, so a global FX-rate change can leave a
+    // row's shown USD/Total stale while the grand total (recomputed here) uses
+    // the current rate — the "total doesn't add up" bug. Re-derive each row's
+    // cells at the current FX as we pass, using the SAME formula recalcRfqRow
+    // uses, so the lines always tie out to the grand total.
+    const _rowUsd = (elId, r) => { const el = document.getElementById(elId); if (el) el.textContent = r ? '$' + _fxUsdFromRmbPrecise(r).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '—'; };
+    const _rowTot = (elId, q, r) => { const el = document.getElementById(elId); if (el) el.textContent = (q && r) ? '$' + (q * _fxUsdFromRmbPrecise(r)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; };
+
     parentRows.forEach(row => {
       const id      = parseInt(row.id.replace('rfq-', ''));
       const inputs  = row.querySelectorAll('input:not([type="checkbox"])');
@@ -19153,6 +19161,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const vRmb     = _msNumFromInput(vi[2]);
           const vLead    = vi[3]?.value || '';
           const vLeadNum = parseInt(vLead);
+          const _vid     = vr.id.replace('rfq-var-', '');   // refresh variant cells at current FX
+          _rowUsd('rfq-var-usd-' + _vid, vRmb);
+          _rowTot('rfq-var-total-' + _vid, vQty, vRmb);
           if (!isNaN(vLeadNum) && vLeadNum > maxLead) maxLead = vLeadNum;
           if (vQty > 0) totQty += vQty;
           if (vRmb > 0) {
@@ -19207,6 +19218,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       } else {
         // ── No variants: one summary row for the parent ───────────────────
+        _rowUsd('rfq-usd-' + id, rmb);          // keep the row's USD/Total in
+        _rowTot('rfq-total-' + id, qty, rmb);   // step with the current FX
         const usd   = _fxUsdFromRmb(rmb);
         const total = _msCeil2(qty * usd);
 
