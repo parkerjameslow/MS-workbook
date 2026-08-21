@@ -3593,6 +3593,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-color: rgba(232,117,26,0.35);
     }
 
+    /* Stage-action buttons — one clean horizontal row of uniform pills. */
+    .wb-stage-btn-group { display: flex; flex-direction: row; gap: 6px; align-items: center; }
+    .wb-stage-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      height: 32px; box-sizing: border-box; padding: 0 13px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: none; color: var(--text-muted);
+      font-size: 13px; font-weight: 600; font-family: inherit; white-space: nowrap;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .wb-stage-btn svg { flex: 0 0 auto; }
+    .wb-stage-btn:disabled { cursor: not-allowed; }
+    .wb-stage-btn.active { border-color: var(--accent); color: var(--accent); }
+    .wb-stage-btn.active:hover:not(:disabled) { background: rgba(232,117,26,0.07); }
+    .wb-stage-btn.filled { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .wb-stage-btn.filled-green { background: var(--success, #10b981); border-color: var(--success, #10b981); color: #fff; }
+    .status-actions-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; flex: 0 0 auto; }
+
     .status-step {
       display: flex;
       flex-direction: column;
@@ -7587,49 +7605,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            Before this stacking, Notify Client sat free in the action
            row and visually overlapped the Ordered step label. Folding
            it into the stack restores clean spacing in the row. -->
-      <div id="rfq-btn-stack" style="display:none; flex-direction:column; gap:4px; align-items:stretch;">
-        <button id="btn-send-rfq" onclick="toggleSendToRfq()"
-          style="background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; justify-content:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
+      <!-- Stage-action buttons — one clean horizontal row of uniform pills.
+           Each is styled by renderStatusBar: outlined-accent when actionable
+           at the current stage, muted+disabled otherwise (never restacks). -->
+      <div id="rfq-btn-stack" class="wb-stage-btn-group">
+        <button id="btn-send-rfq" class="wb-stage-btn" onclick="toggleSendToRfq()"
           title="Send this workbook to the RFQ queue for review">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
           <span id="btn-send-rfq-label">RFQ</span>
         </button>
-        <!-- "Send for Review" — visible only while the workbook sits in
-             the RFQ Queue (sentToRfq === true AND flow_step === 1, which
-             is quoteSubmitted). Karen clicks this after finishing her
-             edits: it advances the workbook out of the queue and emails
-             Jackson + Parker that it's ready for review.
-             Outlined 'ready to select' style + paper-plane icon so the
-             at-rest button doesn't read as already-done. Click handler
-             swaps in a filled 'Sent ✓' state on success. -->
-        <button id="btn-submit-review" onclick="submitCurrentWorkbookForReview()"
-          style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; justify-content:center; gap:5px; white-space:nowrap; transition:opacity 0.15s, background 0.15s, color 0.15s;"
+        <button id="btn-submit-review" class="wb-stage-btn" onclick="submitCurrentWorkbookForReview()"
           title="Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.">
-          <!-- Two icons in the markup; renderStatusBar shows one and
-               hides the other depending on detail.sentForReview. The
-               label text is also swapped between 'Send for Review' and
-               'Sent for Review' so the button reads as either an
-               actionable CTA or a confirmed-done state without ever
-               disappearing from the row. -->
-          <svg class="btn-submit-review-icon-send" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg class="btn-submit-review-icon-send" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
-          <svg class="btn-submit-review-icon-sent" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;">
+          <svg class="btn-submit-review-icon-sent" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
           <span id="btn-submit-review-label">Send for Review</span>
         </button>
-        <!-- Notify Client lives in the same stack as Send for Review
-             because they're sequential workflow actions for the same
-             quote. Renders only at stage 2 (Quote to Client) — the
-             existing renderStatusBar visibility rule still drives the
-             show/hide. Outlined accent style matches the sibling
-             buttons in the stack. -->
-        <button id="btn-notify-quote" onclick="openNotifyModal('quote_ready')"
-          style="display:none; background:none; border:1px solid var(--accent); border-radius:8px; color:var(--accent); font-size:12px; font-weight:600; padding:6px 12px; cursor:pointer; font-family:inherit; align-items:center; justify-content:center; gap:5px; white-space:nowrap; transition:opacity 0.15s;"
+        <button id="btn-notify-quote" class="wb-stage-btn" onclick="openNotifyModal('quote_ready')"
           title="Email this quote to the client">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Notify Client
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <span>Notify Client</span>
         </button>
       </div>
       <button id="btn-watchers" onclick="openWatchersModal()" class="wb-watchers-btn" title="Manage milestone watchers">
@@ -7637,6 +7635,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span>Watchers</span>
         <span class="wb-watchers-count" id="watchers-count">0</span>
       </button>
+      <span class="status-actions-sep"></span>
       <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
       <button class="btn-advance" id="btn-advance" onclick="advanceStatus()">
         Mark as Entered →
@@ -23140,94 +23139,55 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       advanceBtn.disabled = true;
     }
 
-    // Show "Notify Client" button ONLY while the workbook is at the
-    // Quote-to-Client stage — i.e. that step has just been marked
-    // complete but the next one (Client Approved) hasn't yet. Clears
-    // the button from every other stage so the operator can't
-    // accidentally re-send the quote email after the order has moved on.
-    const notifyBtn = document.getElementById('btn-notify-quote');
-    if (notifyBtn) {
-      // Show only at the Quote-to-Client stage — keeps the status bar clean.
-      const show = !!flow.quoteClient && !flow.clientApproved;
-      notifyBtn.style.display = show ? 'inline-flex' : 'none';
-    }
-
-    // Stack wrapper visible while we have at least one workflow-stage
-    // action to show — covers stages 1 (Sent to RFQ + Send for Review)
-    // and 2 (Notify Client). Inner buttons handle their own narrower
-    // windows so only the applicable buttons render inside.
-    const sendRfqBtn   = document.getElementById('btn-send-rfq');
+    // Stage-action buttons — ONE clean horizontal row of uniform pills.
+    // Each is outlined-accent when actionable at the current stage, muted +
+    // disabled otherwise (never restacks / wraps). Class-driven so the styling
+    // stays consistent — see .wb-stage-btn.
+    const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
     const rfqStackWrap = document.getElementById('rfq-btn-stack');
-    if (rfqStackWrap) {
-      // Show the RFQ stack only while it's actionable (stages 1–2) — keeps the
-      // status bar clean; each inner button gates its own narrower window.
-      const showStack = !!flow.quoteSubmitted && !flow.clientApproved;
-      rfqStackWrap.style.display = showStack ? 'flex' : 'none';
-      if (sendRfqBtn) {
-        const rfqApplicable = !!flow.quoteSubmitted && !flow.quoteClient;
-        sendRfqBtn.style.display = rfqApplicable ? 'inline-flex' : 'none';
-        if (rfqApplicable) {
-          const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
-          const sent = !!detail.sentToRfq;
-          const label = document.getElementById('btn-send-rfq-label');
-          if (label) label.textContent = sent ? '✓ Sent to RFQ' : 'RFQ';
-          sendRfqBtn.style.background = sent ? 'var(--accent)' : 'none';
-          sendRfqBtn.style.color = sent ? '#fff' : 'var(--accent)';
-          sendRfqBtn.disabled = sent;
-          sendRfqBtn.style.cursor = sent ? 'not-allowed' : 'pointer';
-          sendRfqBtn.style.opacity = sent ? '0.85' : '1';
-          sendRfqBtn.title = sent
-            ? 'Already in the RFQ queue. Use the back button (←) to undo and re-send.'
-            : 'Send this workbook to the RFQ queue for review';
-        }
-      }
+    if (rfqStackWrap) rfqStackWrap.style.display = 'flex';   // always the horizontal row
+
+    // Send to RFQ — actionable at Quote Submitted (not yet Quote-to-Client);
+    // filled accent once it's in the queue.
+    const sendRfqBtn = document.getElementById('btn-send-rfq');
+    if (sendRfqBtn) {
+      const rfqWindow = !!flow.quoteSubmitted && !flow.quoteClient;
+      const sent = rfqWindow && !!detail.sentToRfq;
+      sendRfqBtn.className = 'wb-stage-btn' + (rfqWindow ? ' active' : '') + (sent ? ' filled' : '');
+      sendRfqBtn.disabled = !rfqWindow || sent;
+      const label = document.getElementById('btn-send-rfq-label');
+      if (label) label.textContent = sent ? '✓ Sent to RFQ' : 'RFQ';
+      sendRfqBtn.title = !rfqWindow ? 'Available at the Quote Submitted stage'
+        : sent ? 'Already in the RFQ queue — use ← to undo and re-send.'
+        : 'Send this workbook to the RFQ queue for review';
     }
 
-    // "Send for Review" — visible only at stage 1 (quoteSubmitted, not
-    // yet advanced past). Because submit_for_review no longer auto-
-    // advances the flow_step, the workbook STAYS at stage 1 after Karen
-    // clicks the button — so the button stays on screen (in its filled
-    // 'Sent ✓' state) until the operator manually advances the flow.
-    //   • detail.sentForReview === false  → outlined, paper-plane icon,
-    //                                        label 'Send for Review'.
-    //   • detail.sentForReview === true   → filled success-green, check
-    //                                        icon, label 'Sent for Review'.
-    // Clicking when already sent re-fires the email (server is
-    // idempotent — see submit_for_review).
+    // Send for Review — actionable at Quote Submitted; green-filled once sent.
     const sendReviewBtn = document.getElementById('btn-submit-review');
     if (sendReviewBtn) {
-      const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
-      const inReviewWindow = !!flow.quoteSubmitted && !flow.quoteClient;
-      sendReviewBtn.style.display = inReviewWindow ? 'inline-flex' : 'none';
-      if (inReviewWindow) {
-        const alreadySent = !!detail.sentForReview;
-        const iconSend = sendReviewBtn.querySelector('.btn-submit-review-icon-send');
-        const iconSent = sendReviewBtn.querySelector('.btn-submit-review-icon-sent');
-        const label    = document.getElementById('btn-submit-review-label');
-        // Once sent, the button locks. Same model as Sent to RFQ —
-        // operator goes back via the status-bar back button (←) to
-        // re-enable it (revertStatus clears the flag).
-        sendReviewBtn.disabled = alreadySent;
-        sendReviewBtn.style.cursor = alreadySent ? 'not-allowed' : 'pointer';
-        sendReviewBtn.style.opacity = alreadySent ? '0.85' : '1';
-        if (alreadySent) {
-          sendReviewBtn.style.background   = 'var(--success, #10b981)';
-          sendReviewBtn.style.color        = '#fff';
-          sendReviewBtn.style.borderColor  = 'var(--success, #10b981)';
-          sendReviewBtn.title              = 'Already sent to Jackson + Parker. Use the back button (←) to undo and re-send.';
-          if (iconSend) iconSend.style.display = 'none';
-          if (iconSent) iconSent.style.display = '';
-          if (label)    label.textContent      = 'Sent for Review';
-        } else {
-          sendReviewBtn.style.background   = 'none';
-          sendReviewBtn.style.color        = 'var(--accent)';
-          sendReviewBtn.style.borderColor  = 'var(--accent)';
-          sendReviewBtn.title              = 'Mark this workbook as ready for review — emails Jackson + Parker.';
-          if (iconSend) iconSend.style.display = '';
-          if (iconSent) iconSent.style.display = 'none';
-          if (label)    label.textContent      = 'Send for Review';
-        }
-      }
+      const reviewWindow = !!flow.quoteSubmitted && !flow.quoteClient;
+      const sent = reviewWindow && !!detail.sentForReview;
+      sendReviewBtn.className = 'wb-stage-btn' + (reviewWindow ? ' active' : '') + (sent ? ' filled-green' : '');
+      sendReviewBtn.disabled = !reviewWindow || sent;
+      const iconSend = sendReviewBtn.querySelector('.btn-submit-review-icon-send');
+      const iconSent = sendReviewBtn.querySelector('.btn-submit-review-icon-sent');
+      const label    = document.getElementById('btn-submit-review-label');
+      if (iconSend) iconSend.style.display = sent ? 'none' : '';
+      if (iconSent) iconSent.style.display = sent ? '' : 'none';
+      if (label)    label.textContent = sent ? 'Sent for Review' : 'Send for Review';
+      sendReviewBtn.title = !reviewWindow ? 'Available at the Quote Submitted stage'
+        : sent ? 'Already sent to Jackson + Parker — use ← to undo and re-send.'
+        : 'Mark this workbook as ready for review — emails Jackson + Parker.';
+    }
+
+    // Notify Client — actionable once the quote is at (or past) Quote-to-Client.
+    const notifyBtn = document.getElementById('btn-notify-quote');
+    if (notifyBtn) {
+      const applicable = !!flow.quoteClient;
+      notifyBtn.className = 'wb-stage-btn' + (applicable ? ' active' : '');
+      notifyBtn.disabled = !applicable;
+      notifyBtn.title = applicable ? 'Email this quote to the client'
+        : 'Available once the quote is sent to the client';
     }
 
     // Lock Product Overview tab once Quote to Client (index 2) or beyond
