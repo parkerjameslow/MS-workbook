@@ -23147,12 +23147,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // accidentally re-send the quote email after the order has moved on.
     const notifyBtn = document.getElementById('btn-notify-quote');
     if (notifyBtn) {
-      const applicable = !!flow.quoteClient && !flow.clientApproved;
-      notifyBtn.style.display = 'inline-flex';   // always visible, gated by state
-      notifyBtn.disabled = !applicable;
-      notifyBtn.style.opacity = applicable ? '1' : '0.4';
-      notifyBtn.style.cursor = applicable ? 'pointer' : 'not-allowed';
-      if (!applicable) notifyBtn.title = 'Available once the quote is at the “Quote to Client” stage';
+      // Show only at the Quote-to-Client stage — keeps the status bar clean.
+      const show = !!flow.quoteClient && !flow.clientApproved;
+      notifyBtn.style.display = show ? 'inline-flex' : 'none';
     }
 
     // Stack wrapper visible while we have at least one workflow-stage
@@ -23162,13 +23159,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sendRfqBtn   = document.getElementById('btn-send-rfq');
     const rfqStackWrap = document.getElementById('rfq-btn-stack');
     if (rfqStackWrap) {
-      rfqStackWrap.style.display = 'flex';   // always visible; buttons gate themselves
+      // Show the RFQ stack only while it's actionable (stages 1–2) — keeps the
+      // status bar clean; each inner button gates its own narrower window.
+      const showStack = !!flow.quoteSubmitted && !flow.clientApproved;
+      rfqStackWrap.style.display = showStack ? 'flex' : 'none';
       if (sendRfqBtn) {
-        // Send-to-RFQ applies at stage 1 (quoteSubmitted, not yet quoteClient).
-        // Always shown now — disabled (greyed) outside that window, and locked
-        // once sent (back button (←) drops the flag to re-send).
-        sendRfqBtn.style.display = 'inline-flex';
         const rfqApplicable = !!flow.quoteSubmitted && !flow.quoteClient;
+        sendRfqBtn.style.display = rfqApplicable ? 'inline-flex' : 'none';
         if (rfqApplicable) {
           const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
           const sent = !!detail.sentToRfq;
@@ -23182,16 +23179,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           sendRfqBtn.title = sent
             ? 'Already in the RFQ queue. Use the back button (←) to undo and re-send.'
             : 'Send this workbook to the RFQ queue for review';
-        } else {
-          const label = document.getElementById('btn-send-rfq-label');
-          if (label) label.textContent = 'RFQ';
-          sendRfqBtn.disabled = true;
-          sendRfqBtn.style.background = 'none';
-          sendRfqBtn.style.color = 'var(--text-muted)';
-          sendRfqBtn.style.borderColor = 'var(--border)';
-          sendRfqBtn.style.opacity = '0.4';
-          sendRfqBtn.style.cursor = 'not-allowed';
-          sendRfqBtn.title = 'Available at the Quote Submitted stage';
         }
       }
     }
@@ -23211,22 +23198,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (sendReviewBtn) {
       const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
       const inReviewWindow = !!flow.quoteSubmitted && !flow.quoteClient;
-      sendReviewBtn.style.display = 'inline-flex';   // always visible; gated below
-      if (!inReviewWindow) {
-        sendReviewBtn.disabled = true;
-        sendReviewBtn.style.background = 'none';
-        sendReviewBtn.style.color = 'var(--text-muted)';
-        sendReviewBtn.style.borderColor = 'var(--border)';
-        sendReviewBtn.style.opacity = '0.4';
-        sendReviewBtn.style.cursor = 'not-allowed';
-        sendReviewBtn.title = 'Available at the Quote Submitted stage';
-        const iconSend = sendReviewBtn.querySelector('.btn-submit-review-icon-send');
-        const iconSent = sendReviewBtn.querySelector('.btn-submit-review-icon-sent');
-        const label    = document.getElementById('btn-submit-review-label');
-        if (iconSend) iconSend.style.display = '';
-        if (iconSent) iconSent.style.display = 'none';
-        if (label)    label.textContent = 'Send for Review';
-      }
+      sendReviewBtn.style.display = inReviewWindow ? 'inline-flex' : 'none';
       if (inReviewWindow) {
         const alreadySent = !!detail.sentForReview;
         const iconSend = sendReviewBtn.querySelector('.btn-submit-review-icon-send');
