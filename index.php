@@ -3572,7 +3572,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex;
       gap: 8px;
       flex: 1;
-      justify-content: center;
+      justify-content: flex-start;
+    }
+
+    /* Single "where is this workbook now" bubble — replaces the multi-step
+       flow strip (the stage buckets live in the left nav / pipeline board). */
+    .status-bubble {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-radius: 999px;
+      font-size: 13px; font-weight: 700; white-space: nowrap;
+      background: var(--surface2); color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .status-bubble::before {
+      content: ''; width: 8px; height: 8px; border-radius: 50%;
+      background: currentColor; flex: 0 0 auto;
+    }
+    .status-bubble.active {
+      background: rgba(232,117,26,0.10); color: var(--accent);
+      border-color: rgba(232,117,26,0.35);
     }
 
     .status-step {
@@ -23101,18 +23119,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     flow = flow || {};  // defensive: never crash on missing flow
     const statusFlow = document.getElementById('status-flow');
     if (!statusFlow) return;
-    statusFlow.innerHTML = flowSteps.map((s, i) => `
-      <div class="status-step">
-        <div class="status-step-bar ${flow[s] ? 'filled' : ''}"></div>
-        <span class="status-step-label"><span class="label-full">${flowLabels[i]}</span><span class="label-short">${flowLabelsShort[i]}</span></span>
-      </div>
-    `).join('');
-
-    // Find current status and next step
+    // Find the current stage (furthest completed step).
     let currentIdx = -1;
     for (let i = flowSteps.length - 1; i >= 0; i--) {
       if (flow[flowSteps[i]]) { currentIdx = i; break; }
     }
+    // A single "where is it now" bubble instead of the multi-step strip.
+    const _curLabel = currentIdx >= 0 ? flowLabels[currentIdx] : 'Not started';
+    statusFlow.innerHTML = `<span class="status-bubble${currentIdx >= 0 ? ' active' : ''}" title="Current workflow stage — advance it with the buttons on the right">${_curLabel}</span>`;
 
     const advanceBtn = document.getElementById('btn-advance');
     const backBtn = document.getElementById('btn-back-step');
@@ -23133,8 +23147,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // accidentally re-send the quote email after the order has moved on.
     const notifyBtn = document.getElementById('btn-notify-quote');
     if (notifyBtn) {
-      const show = !!flow.quoteClient && !flow.clientApproved;
-      notifyBtn.style.display = show ? 'inline-flex' : 'none';
+      const applicable = !!flow.quoteClient && !flow.clientApproved;
+      notifyBtn.style.display = 'inline-flex';   // always visible, gated by state
+      notifyBtn.disabled = !applicable;
+      notifyBtn.style.opacity = applicable ? '1' : '0.4';
+      notifyBtn.style.cursor = applicable ? 'pointer' : 'not-allowed';
+      if (!applicable) notifyBtn.title = 'Available once the quote is at the “Quote to Client” stage';
     }
 
     // Stack wrapper visible while we have at least one workflow-stage
@@ -23144,15 +23162,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sendRfqBtn   = document.getElementById('btn-send-rfq');
     const rfqStackWrap = document.getElementById('rfq-btn-stack');
     if (rfqStackWrap) {
-      const showStack = !!flow.quoteSubmitted && !flow.clientApproved;
-      rfqStackWrap.style.display = showStack ? 'flex' : 'none';
+      rfqStackWrap.style.display = 'flex';   // always visible; buttons gate themselves
       if (sendRfqBtn) {
-        // Sent-to-RFQ only applies at stage 1 (quoteSubmitted, not yet
-        // quoteClient). Once sent, the button locks itself — the
-        // operator has to use the status-bar back button to drop the
-        // flag before they can re-send. Prevents accidental re-fires.
+        // Send-to-RFQ applies at stage 1 (quoteSubmitted, not yet quoteClient).
+        // Always shown now — disabled (greyed) outside that window, and locked
+        // once sent (back button (←) drops the flag to re-send).
+        sendRfqBtn.style.display = 'inline-flex';
         const rfqApplicable = !!flow.quoteSubmitted && !flow.quoteClient;
-        sendRfqBtn.style.display = rfqApplicable ? 'inline-flex' : 'none';
         if (rfqApplicable) {
           const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
           const sent = !!detail.sentToRfq;
@@ -23166,6 +23182,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           sendRfqBtn.title = sent
             ? 'Already in the RFQ queue. Use the back button (←) to undo and re-send.'
             : 'Send this workbook to the RFQ queue for review';
+        } else {
+          const label = document.getElementById('btn-send-rfq-label');
+          if (label) label.textContent = 'RFQ';
+          sendRfqBtn.disabled = true;
+          sendRfqBtn.style.background = 'none';
+          sendRfqBtn.style.color = 'var(--text-muted)';
+          sendRfqBtn.style.borderColor = 'var(--border)';
+          sendRfqBtn.style.opacity = '0.4';
+          sendRfqBtn.style.cursor = 'not-allowed';
+          sendRfqBtn.title = 'Available at the Quote Submitted stage';
         }
       }
     }
@@ -23185,7 +23211,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (sendReviewBtn) {
       const detail = workbookDetail[`${currentClient}|${currentWorkbookId}`] || {};
       const inReviewWindow = !!flow.quoteSubmitted && !flow.quoteClient;
-      sendReviewBtn.style.display = inReviewWindow ? 'inline-flex' : 'none';
+      sendReviewBtn.style.display = 'inline-flex';   // always visible; gated below
+      if (!inReviewWindow) {
+        sendReviewBtn.disabled = true;
+        sendReviewBtn.style.background = 'none';
+        sendReviewBtn.style.color = 'var(--text-muted)';
+        sendReviewBtn.style.borderColor = 'var(--border)';
+        sendReviewBtn.style.opacity = '0.4';
+        sendReviewBtn.style.cursor = 'not-allowed';
+        sendReviewBtn.title = 'Available at the Quote Submitted stage';
+        const iconSend = sendReviewBtn.querySelector('.btn-submit-review-icon-send');
+        const iconSent = sendReviewBtn.querySelector('.btn-submit-review-icon-sent');
+        const label    = document.getElementById('btn-submit-review-label');
+        if (iconSend) iconSend.style.display = '';
+        if (iconSent) iconSent.style.display = 'none';
+        if (label)    label.textContent = 'Send for Review';
+      }
       if (inReviewWindow) {
         const alreadySent = !!detail.sentForReview;
         const iconSend = sendReviewBtn.querySelector('.btn-submit-review-icon-send');
