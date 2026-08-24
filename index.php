@@ -13815,22 +13815,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // solid Option-B–style 3D box(es) inside, plus a thin wireframe
     // silhouette overlay so the cardboard outline reads.
     let contents;
+    let aD = 1, aW = 1, aH = 1, cellColor = cfg.accent, haveArr = true;
     if (target === 'product') {
-      contents = { depth: 1, width: 1, height: 1, color: cfg.accent };
-    } else if (target === 'inner') {
-      const d = parseInt(document.getElementById('carton-inner-row')?.value);
-      const w = parseInt(document.getElementById('carton-inner-side')?.value);
-      const h = parseInt(document.getElementById('carton-inner-stack')?.value);
-      contents = (d >= 1 || w >= 1 || h >= 1)
-        ? { depth: d || 1, width: w || 1, height: h || 1, color: '#6b93ff' }
-        : null;
-    } else if (target === 'outer') {
-      const d = parseInt(document.getElementById('carton-outer-row')?.value);
-      const w = parseInt(document.getElementById('carton-outer-side')?.value);
-      const h = parseInt(document.getElementById('carton-outer-stack')?.value);
-      contents = (d >= 1 || w >= 1 || h >= 1)
-        ? { depth: d || 1, width: w || 1, height: h || 1, color: '#E8751A' }
-        : null;
+      aD = 1; aW = 1; aH = 1; cellColor = cfg.accent;
+    } else {
+      const pre = target;   // 'inner' or 'outer'
+      const d = parseInt(document.getElementById(`carton-${pre}-row`)?.value);
+      const w = parseInt(document.getElementById(`carton-${pre}-side`)?.value);
+      const h = parseInt(document.getElementById(`carton-${pre}-stack`)?.value);
+      if (d >= 1 || w >= 1 || h >= 1) { aD = d || 1; aW = w || 1; aH = h || 1; cellColor = (target === 'inner') ? '#6b93ff' : '#E8751A'; }
+      else haveArr = false;
+    }
+    if (haveArr) {
+      // Permute the cell arrangement the SAME way as the box dims (depth↔L,
+      // width↔W, height↔H) so a laid-down / rotated carton is a RIGID turn —
+      // each cell keeps the product's proportions instead of getting squashed.
+      if (_st) {
+        if (_st.method === 'horizontal') { const t = aH; aH = aW; aW = t; }
+        if (_st.rotate) { const t = aH; aH = aD; aD = t; }
+      }
+      contents = { depth: aD, width: aW, height: aH, color: cellColor };
+    } else {
+      contents = null;
     }
 
     // Fit-to-viewBox scale + center, with padding for L/W/H labels.
