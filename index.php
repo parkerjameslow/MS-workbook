@@ -13983,7 +13983,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const lA = { x: tBbl.x + lP.x*lOff, y: tBbl.y + lP.y*lOff };
     const lB = { x: tBbr.x + lP.x*lOff, y: tBbr.y + lP.y*lOff };
     const lMid = { x: (lA.x + lB.x)/2 + lP.x*lLabelGap, y: (lA.y + lB.y)/2 + lP.y*lLabelGap + 4 };
-    html += drawDim(lA, lB, lMid, `${L.toFixed(1)} cm L`);
+    html += drawDim(lA, lB, lMid, `${dL.toFixed(1)} cm L`);
 
     // W (depth) — bracket along the right-bottom edge bfr→bbr.
     const wOff = 12;
@@ -13992,7 +13992,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const wA = { x: tBfr.x + wP.x*wOff, y: tBfr.y + wP.y*wOff };
     const wB = { x: tBbr.x + wP.x*wOff, y: tBbr.y + wP.y*wOff };
     const wMid = { x: (wA.x + wB.x)/2 + wP.x*wLabelGap, y: (wA.y + wB.y)/2 + wP.y*wLabelGap + 4 };
-    html += drawDim(wA, wB, wMid, `${W.toFixed(1)} cm W`);
+    html += drawDim(wA, wB, wMid, `${dW.toFixed(1)} cm W`);
 
     // H (height) — bracket vertical, hugging the box's left silhouette.
     // Label reads horizontally (no rotation) so it matches the L and W
@@ -14002,7 +14002,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const hA = { x: hX, y: tTbl.y };
     const hB = { x: hX, y: tBbl.y };
     const hLabelPos = { x: hX - 8, y: (hA.y + hB.y)/2 + 4 };
-    html += drawDim(hA, hB, hLabelPos, `${H.toFixed(1)} cm H`, 'end', 0);
+    html += drawDim(hA, hB, hLabelPos, `${dH.toFixed(1)} cm H`, 'end', 0);
 
     svg.innerHTML = html;
   }
