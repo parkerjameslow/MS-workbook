@@ -8287,8 +8287,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   <option value="vertical">Vertical</option>
                 </select>
               </div>
-              <label class="carton-rotate-label"><input type="checkbox" id="carton-inner-rotate" onchange="onCartonStackChange('inner')" /> Rotate 90°</label>
-              <div id="carton-inner-rotate-dir-wrap" class="carton-rotate-dir" style="display:none;">
+              <div class="specs-row-label" style="margin-top:10px; margin-bottom:5px;">Rotate 90°</div>
+              <div class="carton-rotate-dir">
                 <button type="button" class="carton-rot-btn" id="carton-inner-rot-left" onclick="setCartonRotateDir('inner','left')" title="Rotate the box 90° counter-clockwise (left)">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"/><path d="M3.51 9a9 9 0 1 1 2.13 9.36L1 14"/></svg>
                   Left
@@ -8468,8 +8468,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                   <option value="vertical">Vertical</option>
                 </select>
               </div>
-              <label class="carton-rotate-label"><input type="checkbox" id="carton-outer-rotate" onchange="onCartonStackChange('outer')" /> Rotate 90°</label>
-              <div id="carton-outer-rotate-dir-wrap" class="carton-rotate-dir" style="display:none;">
+              <div class="specs-row-label" style="margin-top:10px; margin-bottom:5px;">Rotate 90°</div>
+              <div class="carton-rotate-dir">
                 <button type="button" class="carton-rot-btn" id="carton-outer-rot-left" onclick="setCartonRotateDir('outer','left')" title="Rotate the box 90° counter-clockwise (left)">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"/><path d="M3.51 9a9 9 0 1 1 2.13 9.36L1 14"/></svg>
                   Left
@@ -13713,20 +13713,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   };
   function onCartonStackChange(prefix) {
     const st = _cartonStack[prefix]; if (!st) return;
-    const m  = document.getElementById(`carton-${prefix}-stack-method`);
-    const r  = document.getElementById(`carton-${prefix}-rotate`);
-    const dw = document.getElementById(`carton-${prefix}-rotate-dir-wrap`);
+    const m = document.getElementById(`carton-${prefix}-stack-method`);
     if (m) st.method = m.value;
-    if (r) st.rotate = !!r.checked;
-    if (dw) dw.style.display = st.rotate ? 'flex' : 'none';
-    _syncCartonRotBtns(prefix);
     try { renderBoxViz(prefix); } catch (_) {}
     try { renderPalletViz(); } catch (_) {}
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
+  // Rotate Left / Right are toggle buttons (no separate checkbox): clicking the
+  // one that's already active turns the 90° rotation OFF.
   function setCartonRotateDir(prefix, dir) {
     const st = _cartonStack[prefix]; if (!st) return;
-    st.dir = dir;
+    if (st.rotate && st.dir === dir) { st.rotate = false; }
+    else { st.rotate = true; st.dir = dir; }
     _syncCartonRotBtns(prefix);
     try { renderBoxViz(prefix); } catch (_) {}
     try { renderPalletViz(); } catch (_) {}
@@ -13736,8 +13734,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const st = _cartonStack[prefix]; if (!st) return;
     const l = document.getElementById(`carton-${prefix}-rot-left`);
     const rt = document.getElementById(`carton-${prefix}-rot-right`);
-    if (l)  l.classList.toggle('active', st.dir === 'left');
-    if (rt) rt.classList.toggle('active', st.dir === 'right');
+    if (l)  l.classList.toggle('active', st.rotate && st.dir === 'left');
+    if (rt) rt.classList.toggle('active', st.rotate && st.dir === 'right');
   }
 
   function renderBoxViz(target) {
