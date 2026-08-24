@@ -2933,6 +2933,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       box-shadow: none;
       border-color: var(--border);
     }
+    /* Stacking-method control (inner + outer carton columns). */
+    .carton-rotate-label { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; user-select: none; }
+    .carton-rotate-label input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
+    .carton-rotate-dir { margin-top: 6px; }
     .specs-input-wrap input {
       width: 100%;
       padding-right: 30px;
@@ -8266,6 +8270,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <input type="number" min="0" placeholder="e.g. 5" id="carton-inner-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
               </div>
             </div>
+            <div class="specs-full-row carton-stack-ctl" style="margin-top:8px;">
+              <div class="specs-row-label" style="margin-bottom:5px;">Stacking Method</div>
+              <div class="select-wrapper">
+                <select id="carton-inner-stack-method" oninput="onCartonStackChange('inner')">
+                  <option value="horizontal">Horizontal</option>
+                  <option value="vertical">Vertical</option>
+                </select>
+              </div>
+              <label class="carton-rotate-label"><input type="checkbox" id="carton-inner-rotate" onchange="onCartonStackChange('inner')" /> Rotate 90°</label>
+              <div id="carton-inner-rotate-dir-wrap" class="carton-rotate-dir" style="display:none;">
+                <div class="select-wrapper">
+                  <select id="carton-inner-rotate-dir" oninput="onCartonStackChange('inner')">
+                    <option value="right">↻ Rotate Right</option>
+                    <option value="left">↺ Rotate Left</option>
+                  </select>
+                </div>
+              </div>
+            </div>
             <div class="specs-full-row" style="margin-top:6px;">
               <div class="specs-row-label" style="margin-bottom:5px;">Box Wall</div>
               <div class="select-wrapper">
@@ -8425,6 +8447,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Height <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
                 <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+              </div>
+            </div>
+            <div class="specs-full-row carton-stack-ctl" style="margin-top:8px;">
+              <div class="specs-row-label" style="margin-bottom:5px;">Stacking Method</div>
+              <div class="select-wrapper">
+                <select id="carton-outer-stack-method" oninput="onCartonStackChange('outer')">
+                  <option value="horizontal">Horizontal</option>
+                  <option value="vertical">Vertical</option>
+                </select>
+              </div>
+              <label class="carton-rotate-label"><input type="checkbox" id="carton-outer-rotate" onchange="onCartonStackChange('outer')" /> Rotate 90°</label>
+              <div id="carton-outer-rotate-dir-wrap" class="carton-rotate-dir" style="display:none;">
+                <div class="select-wrapper">
+                  <select id="carton-outer-rotate-dir" oninput="onCartonStackChange('outer')">
+                    <option value="right">↻ Rotate Right</option>
+                    <option value="left">↺ Rotate Left</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div class="specs-full-row" style="margin-top:6px;">
@@ -13653,6 +13693,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   //     drawn as a Depth × Width × Height grid in proper z-order, then
   //     front + right outer walls drawn last.
   // Always labels L, W, H along the visible edges.
+  // Stacking method + 90° rotation per carton column — orients the box preview.
+  const _cartonStack = {
+    inner: { method: 'horizontal', rotate: false, dir: 'right' },
+    outer: { method: 'horizontal', rotate: false, dir: 'right' }
+  };
+  function onCartonStackChange(prefix) {
+    const st = _cartonStack[prefix]; if (!st) return;
+    const m  = document.getElementById(`carton-${prefix}-stack-method`);
+    const r  = document.getElementById(`carton-${prefix}-rotate`);
+    const d  = document.getElementById(`carton-${prefix}-rotate-dir`);
+    const dw = document.getElementById(`carton-${prefix}-rotate-dir-wrap`);
+    if (m) st.method = m.value;
+    if (r) st.rotate = !!r.checked;
+    if (d) st.dir = d.value;
+    if (dw) dw.style.display = st.rotate ? '' : 'none';
+    try { renderBoxViz(prefix); } catch (_) {}
+    try { renderPalletViz(); } catch (_) {}
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   function renderBoxViz(target) {
     const cfg = {
       product: { svg: 'viz-product', l: 'dim-cm-l',          w: 'dim-cm-w',          h: 'dim-cm-h',          accent: '#6b93ff' },
@@ -13692,19 +13752,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
 
+    // Apply the column's Stacking Method + 90° rotation to the drawn box:
+    //   • horizontal  → lay the box on its side (swap Height ↔ Width).
+    //   • rotate 90°  → turn the footprint (swap Length ↔ Width); Left mirrors
+    //                   the iso view so it reads as the opposite rotation.
+    let dL = L, dW = W, dH = H, dirSign = 1;
+    const _st = (typeof _cartonStack !== 'undefined') ? _cartonStack[target] : null;
+    if (_st) {
+      if (_st.method === 'horizontal') { const t = dH; dH = dW; dW = t; }
+      if (_st.rotate) { const t = dL; dL = dW; dW = t; if (_st.dir === 'left') dirSign = -1; }
+    }
+
     // Standard iso projection (camera upper-front-right): x → right,
     // y → up, z → away from viewer. Back (high z) lands upper-LEFT,
     // front (low z) lower-RIGHT.
     const cos30 = Math.cos(Math.PI / 6);
     const sin30 = 0.5;
     const proj = (x, y, z) => ({
-      x: (x - z) * cos30,
+      x: dirSign * ((x - z) * cos30),
       y: (x + z) * sin30 - y
     });
 
-    const xL = -L/2, xR = L/2;
-    const yB = -H/2, yT = H/2;
-    const zF = -W/2, zB = W/2;
+    const xL = -dL/2, xR = dL/2;
+    const yB = -dH/2, yT = dH/2;
+    const zF = -dW/2, zB = dW/2;
     const v = {
       bfl: proj(xL, yB, zF), bfr: proj(xR, yB, zF),
       bbl: proj(xL, yB, zB), bbr: proj(xR, yB, zB),
