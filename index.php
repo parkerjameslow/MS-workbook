@@ -2920,6 +2920,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       position: relative;
       width: 100%;
     }
+    /* Outer Carton: only the Depth/Width/Height (Inner) arrangement + Box Wall
+       are editable — every field above is read-only and auto-computed. */
+    .specs-col[data-carton-col="outer"] input[readonly] {
+      background: var(--surface2);
+      color: var(--text-muted);
+      cursor: default;
+      border-color: var(--border);
+    }
+    .specs-col[data-carton-col="outer"] input[readonly]:focus {
+      outline: none;
+      box-shadow: none;
+      border-color: var(--border);
+    }
     .specs-input-wrap input {
       width: 100%;
       padding-right: 30px;
@@ -8361,40 +8374,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">cm</div>
             <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" readonly oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" readonly oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" readonly oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" readonly oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" readonly oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" readonly oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb · oz</div>
             <div class="specs-row-label">Weight</div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg'); renderPalletViz()" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" readonly oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg'); renderPalletViz()" /><span class="specs-unit-tag">kg</span></div>
             <div class="specs-lboz">
-              <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
-              <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="carton-outer-weight-oz" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">oz</span></div>
+              <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="carton-outer-weight-lbs" readonly oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
+              <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="carton-outer-weight-oz" readonly oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">oz</span></div>
             </div>
-            <!-- Two qty fields. Both are user-editable:
-                 • Inner-per-Outer  — manual or auto-derived from arrangement.
-                 • Units-per-Outer  — the user can type a target here and we
-                   back-solve inner-per-outer = units / units-per-inner;
-                   typing here also clears the Row/Side/Height arrangement
-                   so the explicit count drives the box.
-                 flex-wrap + min-width keeps both fields readable when the
-                 column is narrow (they stack instead of overflowing). -->
+            <!-- Two qty fields — both READ-ONLY, auto-derived from the
+                 Depth × Width × Height (Inner) arrangement below:
+                 • Inner Cartons  = Depth × Width × Height.
+                 • Units in Outer = units-per-inner × Inner Cartons.
+                 Only the arrangement (and Box Wall) is editable. -->
             <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 130px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Inner Cartons per Outer Carton">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons)</span></div>
-                <input type="number" min="0" placeholder="auto" id="carton-outer-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Inner Cartons per Outer Carton — auto from Depth × Width × Height below">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons)</span></div>
+                <input type="number" min="0" placeholder="auto" id="carton-outer-count" readonly tabindex="-1" style="width:100%;" />
               </div>
               <div style="flex:1 1 130px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units in the Outer Carton — type a target to back-solve Inner Cartons">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units in Outer)</span></div>
-                <input type="number" min="0" placeholder="auto" id="carton-outer-units" style="width:100%;" oninput="onOuterUnitsInput()" title="Type a target; we'll back-solve inner cartons per outer." />
+                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units in the Outer Carton — auto = units per inner × inner cartons">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units in Outer)</span></div>
+                <input type="number" min="0" placeholder="auto" id="carton-outer-units" readonly tabindex="-1" style="width:100%;" />
               </div>
             </div>
             <!-- Row × Side × Height arrangement for the OUTER carton.
@@ -14020,7 +14030,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // Auto-fill the Qty (Inner Cartons per Outer) field from arrangement
       resolvedOuterCount = r * s * h;
       const qtyEl = document.getElementById('carton-outer-count');
-      if (qtyEl && qtyEl !== document.activeElement) qtyEl.value = resolvedOuterCount;
+      if (qtyEl) qtyEl.value = resolvedOuterCount;   // read-only — always mirror the arrangement
       setHint('outer-arrange-hint', r, s, h, resolvedOuterCount === 1 ? 'inner' : 'inners');
       if (!isNaN(productWeightKg) && productWeightKg > 0) {
         const productsPerOuter = innerQty >= 1 ? innerQty * resolvedOuterCount : resolvedOuterCount;
@@ -14056,7 +14066,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // per outer. Skipped when the user is actively typing in this field
     // (onOuterUnitsInput handles the back-solve direction in that case).
     const unitsPerOuterEl = document.getElementById('carton-outer-units');
-    if (unitsPerOuterEl && unitsPerOuterEl !== document.activeElement) {
+    if (unitsPerOuterEl) {   // read-only — always = inner units × inner cartons
       const u = (innerQty >= 1 && resolvedOuterCount >= 1) ? innerQty * resolvedOuterCount : 0;
       unitsPerOuterEl.value = u > 0 ? u : '';
     }
