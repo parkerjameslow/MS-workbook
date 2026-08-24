@@ -2936,7 +2936,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Stacking-method control (inner + outer carton columns). */
     .carton-rotate-label { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; user-select: none; }
     .carton-rotate-label input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: 0 0 auto; }
-    .carton-rotate-dir { margin-top: 6px; }
+    .carton-rotate-dir { margin-top: 6px; display: flex; gap: 6px; }
+    .carton-rot-btn {
+      flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+      color: var(--text-muted); font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer;
+      transition: all 0.12s;
+    }
+    .carton-rot-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .carton-rot-btn.active { border-color: var(--accent); background: rgba(232,117,26,0.10); color: var(--accent); }
+    .carton-rot-btn svg { flex: 0 0 auto; }
     .specs-input-wrap input {
       width: 100%;
       padding-right: 30px;
@@ -8280,12 +8289,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               </div>
               <label class="carton-rotate-label"><input type="checkbox" id="carton-inner-rotate" onchange="onCartonStackChange('inner')" /> Rotate 90°</label>
               <div id="carton-inner-rotate-dir-wrap" class="carton-rotate-dir" style="display:none;">
-                <div class="select-wrapper">
-                  <select id="carton-inner-rotate-dir" oninput="onCartonStackChange('inner')">
-                    <option value="right">↻ Rotate Right</option>
-                    <option value="left">↺ Rotate Left</option>
-                  </select>
-                </div>
+                <button type="button" class="carton-rot-btn" id="carton-inner-rot-left" onclick="setCartonRotateDir('inner','left')" title="Rotate the box 90° counter-clockwise (left)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"/><path d="M3.51 9a9 9 0 1 1 2.13 9.36L1 14"/></svg>
+                  Left
+                </button>
+                <button type="button" class="carton-rot-btn" id="carton-inner-rot-right" onclick="setCartonRotateDir('inner','right')" title="Rotate the box 90° clockwise (right)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  Right
+                </button>
               </div>
             </div>
             <div class="specs-full-row" style="margin-top:6px;">
@@ -8459,12 +8470,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               </div>
               <label class="carton-rotate-label"><input type="checkbox" id="carton-outer-rotate" onchange="onCartonStackChange('outer')" /> Rotate 90°</label>
               <div id="carton-outer-rotate-dir-wrap" class="carton-rotate-dir" style="display:none;">
-                <div class="select-wrapper">
-                  <select id="carton-outer-rotate-dir" oninput="onCartonStackChange('outer')">
-                    <option value="right">↻ Rotate Right</option>
-                    <option value="left">↺ Rotate Left</option>
-                  </select>
-                </div>
+                <button type="button" class="carton-rot-btn" id="carton-outer-rot-left" onclick="setCartonRotateDir('outer','left')" title="Rotate the box 90° counter-clockwise (left)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"/><path d="M3.51 9a9 9 0 1 1 2.13 9.36L1 14"/></svg>
+                  Left
+                </button>
+                <button type="button" class="carton-rot-btn" id="carton-outer-rot-right" onclick="setCartonRotateDir('outer','right')" title="Rotate the box 90° clockwise (right)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  Right
+                </button>
               </div>
             </div>
             <div class="specs-full-row" style="margin-top:6px;">
@@ -13702,15 +13715,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const st = _cartonStack[prefix]; if (!st) return;
     const m  = document.getElementById(`carton-${prefix}-stack-method`);
     const r  = document.getElementById(`carton-${prefix}-rotate`);
-    const d  = document.getElementById(`carton-${prefix}-rotate-dir`);
     const dw = document.getElementById(`carton-${prefix}-rotate-dir-wrap`);
     if (m) st.method = m.value;
     if (r) st.rotate = !!r.checked;
-    if (d) st.dir = d.value;
-    if (dw) dw.style.display = st.rotate ? '' : 'none';
+    if (dw) dw.style.display = st.rotate ? 'flex' : 'none';
+    _syncCartonRotBtns(prefix);
     try { renderBoxViz(prefix); } catch (_) {}
     try { renderPalletViz(); } catch (_) {}
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  function setCartonRotateDir(prefix, dir) {
+    const st = _cartonStack[prefix]; if (!st) return;
+    st.dir = dir;
+    _syncCartonRotBtns(prefix);
+    try { renderBoxViz(prefix); } catch (_) {}
+    try { renderPalletViz(); } catch (_) {}
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  function _syncCartonRotBtns(prefix) {
+    const st = _cartonStack[prefix]; if (!st) return;
+    const l = document.getElementById(`carton-${prefix}-rot-left`);
+    const rt = document.getElementById(`carton-${prefix}-rot-right`);
+    if (l)  l.classList.toggle('active', st.dir === 'left');
+    if (rt) rt.classList.toggle('active', st.dir === 'right');
   }
 
   function renderBoxViz(target) {
@@ -13760,7 +13787,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _st = (typeof _cartonStack !== 'undefined') ? _cartonStack[target] : null;
     if (_st) {
       if (_st.method === 'horizontal') { const t = dH; dH = dW; dW = t; }
-      if (_st.rotate) { const t = dL; dL = dW; dW = t; if (_st.dir === 'left') dirSign = -1; }
+      // Rotate 90° lays the box down on its HORIZONTAL axis (Height ↔ Length);
+      // Left mirrors the iso view so it reads as the opposite spin.
+      if (_st.rotate) { const t = dH; dH = dL; dL = t; if (_st.dir === 'left') dirSign = -1; }
     }
 
     // Standard iso projection (camera upper-front-right): x → right,
