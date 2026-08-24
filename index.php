@@ -13784,10 +13784,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let dL = L, dW = W, dH = H, dirSign = 1;
     const _st = (typeof _cartonStack !== 'undefined') ? _cartonStack[target] : null;
     if (_st) {
-      if (_st.method === 'horizontal') { const t = dH; dH = dW; dW = t; }
-      // Rotate 90° lays the box down on its HORIZONTAL axis (Height ↔ Length);
-      // Left mirrors the iso view so it reads as the opposite spin.
-      if (_st.rotate) { const t = dH; dH = dL; dL = t; if (_st.dir === 'left') dirSign = -1; }
+      // Horizontal = flat (as computed); Vertical stands the box upright
+      // (Length ↔ Height). Rotate 90° spins it HORIZONTALLY around the vertical
+      // axis (Length ↔ Width) — Left mirrors the iso view for the opposite spin.
+      if (_st.method === 'vertical') { const t = dH; dH = dL; dL = t; }
+      if (_st.rotate) { const t = dL; dL = dW; dW = t; if (_st.dir === 'left') dirSign = -1; }
     }
 
     // Standard iso projection (camera upper-front-right): x → right,
@@ -13831,8 +13832,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // width↔W, height↔H) so a laid-down / rotated carton is a RIGID turn —
       // each cell keeps the product's proportions instead of getting squashed.
       if (_st) {
-        if (_st.method === 'horizontal') { const t = aH; aH = aW; aW = t; }
-        if (_st.rotate) { const t = aH; aH = aD; aD = t; }
+        if (_st.method === 'vertical') { const t = aH; aH = aD; aD = t; }
+        if (_st.rotate) { const t = aD; aD = aW; aW = t; }
       }
       contents = { depth: aD, width: aW, height: aH, color: cellColor };
     } else {
