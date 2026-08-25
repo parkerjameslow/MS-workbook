@@ -8420,14 +8420,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">cm</div>
             <div class="specs-unit-header">in</div>
             <div class="specs-row-label">Length</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" readonly oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" readonly oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-cm" oninput="convertDim('carton-outer-l-cm','carton-outer-l-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-l-in" oninput="convertDim('carton-outer-l-in','carton-outer-l-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Width</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" readonly oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" readonly oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-cm" oninput="convertDim('carton-outer-w-cm','carton-outer-w-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-w-in" oninput="convertDim('carton-outer-w-in','carton-outer-w-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <div class="specs-row-label">Height</div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" readonly oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
-            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" readonly oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-cm" oninput="convertDim('carton-outer-h-cm','carton-outer-h-in','cm'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">cm</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.01" min="0" placeholder="—" id="carton-outer-h-in" oninput="convertDim('carton-outer-h-in','carton-outer-h-cm','in'); renderPalletViz(); renderBoxViz('outer')" /><span class="specs-unit-tag">in</span></div>
             <hr class="specs-dim-divider" />
             <div></div>
             <div class="specs-unit-header">kg</div>
@@ -8453,12 +8453,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <input type="number" min="0" placeholder="auto" id="carton-outer-units" readonly tabindex="-1" style="width:100%;" />
               </div>
             </div>
-            <!-- Row × Side × Height arrangement for the OUTER carton.
-                 When set, drives outer dims directly:
-                   L = inner_L × Row    + 2 × wall
-                   W = inner_W × Side   + 2 × wall
-                   H = inner_H × Height + 2 × wall
-                 and Qty (Inner Cartons per Outer) auto-fills as Row × Side × Height. -->
+            <!-- Inner-orientation fit: how the inner carton packs into the
+                 FIXED outer carton. Tiles show each 90° orientation with its
+                 per-axis fit + waste; picking one auto-fills the arrangement. -->
+            <div class="specs-full-row" style="margin-top:10px;">
+              <div class="specs-row-label" style="margin-bottom:5px;">Inner Orientation <span style="font-weight:400; text-transform:none; font-size:11px;">(fit into outer)</span></div>
+              <div id="outer-orient-tiles" class="orient-tiles"></div>
+            </div>
+            <!-- Row × Side × Height arrangement for the OUTER carton — auto-
+                 filled by the orientation tiles above (best fit of inner
+                 cartons into the fixed outer box), editable. -->
             <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Depth <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
@@ -13687,28 +13691,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Instead, just propagate the new inner dims FORWARD to the outer
   // carton if outer arrangement is set.
   function recalcOuterFromInner() {
-    const innerL = parseFloat(document.getElementById('carton-inner-l-cm')?.value);
-    const innerW = parseFloat(document.getElementById('carton-inner-w-cm')?.value);
-    const innerH = parseFloat(document.getElementById('carton-inner-h-cm')?.value);
-    if (!innerL || !innerW || !innerH) return;
-    const oRowQty   = parseInt(document.getElementById('carton-outer-row')?.value);
-    const oSideQty  = parseInt(document.getElementById('carton-outer-side')?.value);
-    const oStackQty = parseInt(document.getElementById('carton-outer-stack')?.value);
-    const useArr    = (oRowQty >= 1) || (oSideQty >= 1) || (oStackQty >= 1);
-    if (!useArr) {
-      renderBoxViz('outer'); // dims unchanged but inner just changed — re-render
-      return;
-    }
-    const oWallSel = parseInt(document.getElementById('carton-outer-wall')?.value) || 2;
-    const oWallCm  = oWallSel === 2 ? 0.7 : 0.4;
-    const r = oRowQty   >= 1 ? oRowQty   : 1;
-    const s = oSideQty  >= 1 ? oSideQty  : 1;
-    const h = oStackQty >= 1 ? oStackQty : 1;
-    // count × (inner + 2*wall) — see autoCalcCartons for the rationale
-    setCartonDimFields('carton-outer', r * (innerL + 2 * oWallCm), s * (innerW + 2 * oWallCm), h * (innerH + 2 * oWallCm));
-    renderBoxViz('outer');
+    // Outer is a FIXED container (user-entered dims) that inner cartons fit
+    // into, so a changed inner size no longer resizes the outer — it only
+    // changes how many inners fit. Refresh the outer viz + orientation tiles.
+    try { renderOuterOrientTiles(); } catch (_) {}
+    try { renderBoxViz('outer'); } catch (_) {}
     if (typeof renderPalletViz === 'function') renderPalletViz();
-    if (!_filling) autoSaveWorkbook();
   }
 
   // 3D box render — isometric SVG. Standard upper-front-right camera:
@@ -13835,8 +13823,46 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
+  // Inner cartons pack into the FIXED outer carton — mirror of the inner tiles.
+  let _outerOrientSel = 0;
+  function renderOuterOrientTiles() {
+    const host = document.getElementById('outer-orient-tiles');
+    if (!host) return;
+    const item = _readDims3('carton-inner-l-cm', 'carton-inner-w-cm', 'carton-inner-h-cm');
+    const cont = _readDims3('carton-outer-l-cm', 'carton-outer-w-cm', 'carton-outer-h-cm');
+    if (!item || !cont) { host.innerHTML = `<div class="orient-empty">Enter the inner-carton + outer-carton dimensions to see fit options.</div>`; return; }
+    const fits = _orientFits(item, cont);
+    if (!fits.length) { host.innerHTML = `<div class="orient-empty">The inner carton doesn't fit in the outer at any orientation — check the sizes.</div>`; return; }
+    if (_outerOrientSel >= fits.length) _outerOrientSel = 0;
+    host.innerHTML = fits.slice(0, 6).map((f, i) => `
+      <div class="orient-tile${i === _outerOrientSel ? ' active' : ''}" onclick="selectOuterOrient(${i})" title="${f.counts.join(' × ')} = ${f.total} inner cartons per outer (${Math.round(f.waste*100)}% wasted space)">
+        ${i === 0 ? '<div class="orient-tile-best-tag">★ Best</div>' : ''}
+        ${_miniIsoBox(f.dims[0], f.dims[1], f.dims[2], '#E8751A')}
+        <div class="orient-tile-fit">${f.total.toLocaleString('en-US')} inners</div>
+        <div class="orient-tile-waste">${f.counts.join('×')} · ${Math.round(f.waste*100)}% waste</div>
+      </div>`).join('');
+  }
+  function selectOuterOrient(idx) {
+    const item = _readDims3('carton-inner-l-cm', 'carton-inner-w-cm', 'carton-inner-h-cm');
+    const cont = _readDims3('carton-outer-l-cm', 'carton-outer-w-cm', 'carton-outer-h-cm');
+    if (!item || !cont) return;
+    const fits = _orientFits(item, cont);
+    const f = fits[idx]; if (!f) return;
+    _outerOrientSel = idx;
+    const setV = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setV('carton-outer-row', f.counts[0]);
+    setV('carton-outer-side', f.counts[1]);
+    setV('carton-outer-stack', f.counts[2]);
+    if (typeof autoCalcCartons === 'function') autoCalcCartons();
+    if (typeof updateOuterWeightHint === 'function') updateOuterWeightHint();
+    renderOuterOrientTiles();
+    try { renderBoxViz('outer'); } catch (_) {}
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   function renderBoxViz(target) {
     if (target === 'inner' || target === 'product') { try { renderInnerOrientTiles(); } catch (_) {} }
+    if (target === 'outer' || target === 'inner') { try { renderOuterOrientTiles(); } catch (_) {} }
     const cfg = {
       product: { svg: 'viz-product', l: 'dim-cm-l',          w: 'dim-cm-w',          h: 'dim-cm-h',          accent: '#6b93ff' },
       inner:   { svg: 'viz-inner',   l: 'carton-inner-l-cm', w: 'carton-inner-w-cm', h: 'carton-inner-h-cm', accent: '#E8751A' },
@@ -14226,10 +14252,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // what the user gets when they account for every wall around every
       // inner. Adjacent inners share contact surfaces but each contributes
       // its own wall thickness to the total.
-      const outerL = r * (innerDims.L + 2 * oWallCm);
-      const outerW = s * (innerDims.W + 2 * oWallCm);
-      const outerH = h * (innerDims.H + 2 * oWallCm);
-      setCartonDimFields('carton-outer', outerL, outerW, outerH);
+      // Outer is a FIXED container now (user-entered dims) — the arrangement
+      // no longer resizes it, it just packs inners into the given box.
       // Auto-fill the Qty (Inner Cartons per Outer) field from arrangement
       resolvedOuterCount = r * s * h;
       const qtyEl = document.getElementById('carton-outer-count');
@@ -14252,7 +14276,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         outerDims = bestCartonDims(pL, pW, pH, outerQty, PADDING);
         setHint('outer-arrange-hint', outerDims.nx, outerDims.ny, outerDims.nz, outerQty === 1 ? 'unit' : 'units');
       }
-      setCartonDimFields('carton-outer', outerDims.L, outerDims.W, outerDims.H);
+      // Outer dims are the user's fixed box — don't overwrite them here.
       if (!isNaN(productWeightKg) && productWeightKg > 0) {
         const productsPerOuter = innerDims && innerQty >= 1 ? innerQty * outerQty : outerQty;
         document.getElementById('carton-outer-weight').value = (productWeightKg * productsPerOuter).toFixed(2);
@@ -14276,6 +14300,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     renderPalletViz();
     updateOuterWeightHint();
+    // Keep the inner/outer box previews + orientation-fit tiles in step with
+    // the arrangement (they read the row/side/stack + carton dims).
+    try { renderBoxViz('inner'); } catch (_) {}
+    try { renderBoxViz('outer'); } catch (_) {}
     if (typeof _updateSectionSummary === 'function') _updateSectionSummary('dimensions');
   }
 
