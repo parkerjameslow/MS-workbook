@@ -2946,6 +2946,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .carton-rot-btn:hover { border-color: var(--accent); color: var(--accent); }
     .carton-rot-btn.active { border-color: var(--accent); background: rgba(232,117,26,0.10); color: var(--accent); }
     .carton-rot-btn svg { flex: 0 0 auto; }
+    /* Orientation fit tiles (how the item packs into the fixed carton). */
+    .orient-tiles { display: flex; gap: 8px; flex-wrap: wrap; }
+    .orient-tile { position: relative; flex: 1 1 84px; min-width: 78px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 6px 7px; cursor: pointer; background: var(--surface); text-align: center; transition: border-color 0.12s, background 0.12s; }
+    .orient-tile:hover { border-color: var(--accent); }
+    .orient-tile.active { border-color: var(--accent); background: rgba(107,147,255,0.07); box-shadow: inset 0 0 0 1px var(--accent); }
+    .orient-tile svg { width: 46px; height: 46px; display: block; margin: 0 auto; }
+    .orient-tile-fit { font-size: 12px; font-weight: 800; color: var(--text); margin-top: 3px; }
+    .orient-tile-waste { font-size: 10px; color: var(--text-muted); margin-top: 1px; white-space: nowrap; }
+    .orient-tile-best-tag { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #fff; background: var(--accent); border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+    .orient-empty { font-size: 11px; color: var(--text-muted); font-style: italic; line-height: 1.5; }
     .specs-input-wrap input {
       width: 100%;
       padding-right: 30px;
@@ -8258,13 +8268,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div class="specs-row-label" style="margin-bottom:5px;">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units per Inner Carton)</span></div>
               <input type="number" min="0" placeholder="auto" id="carton-inner-count" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
             </div>
-            <!-- Row × Side × Height arrangement + box wall — explicit packing
-                 control for the inner carton. When all three are set, the
-                 inner dims auto-derive directly:
-                   L = product L × Row    + 2 × wall
-                   W = product W × Side   + 2 × wall
-                   H = product H × Height + 2 × wall
-                 and the Qty above auto-fills as Row × Side × Height. -->
+            <!-- Product-orientation fit: how the individual product packs into
+                 the FIXED inner carton. Tiles show each 90° orientation with
+                 its per-axis fit + waste; picking one auto-fills the
+                 Depth/Width/Height (units) below (still editable). -->
+            <div class="specs-full-row" style="margin-top:10px;">
+              <div class="specs-row-label" style="margin-bottom:5px;">Product Orientation <span style="font-weight:400; text-transform:none; font-size:11px;">(fit into inner)</span></div>
+              <div id="inner-orient-tiles" class="orient-tiles"></div>
+            </div>
+            <!-- Row × Side × Height arrangement — auto-filled by the orientation
+                 tiles above (best fit into the fixed inner carton), editable. -->
             <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Depth <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
@@ -13738,7 +13751,92 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (rt) rt.classList.toggle('active', st.rotate && st.dir === 'right');
   }
 
+  // ── Orientation fit (container-driven best-fit packing) ───────────────
+  // An item (product, or inner carton) packs into a FIXED container (inner, or
+  // outer). For each 90° orientation of the item, count how many fit per axis
+  // (floor) + wasted volume, so the operator picks the best-fitting turn.
+  const _ORIENTS = [ [0,1,2],[1,0,2],[0,2,1],[2,1,0],[1,2,0],[2,0,1] ];
+  let _innerOrientSel = 0;
+
+  function _readDims3(lId, wId, hId) {
+    const l = parseFloat(document.getElementById(lId)?.value);
+    const w = parseFloat(document.getElementById(wId)?.value);
+    const h = parseFloat(document.getElementById(hId)?.value);
+    return (l > 0 && w > 0 && h > 0 && !isNaN(l) && !isNaN(w) && !isNaN(h)) ? [l, w, h] : null;
+  }
+  function _orientFits(item, cont) {
+    // item/cont = [L,W,H]. Returns [{o, dims:[L,W,H], counts:[cL,cW,cH], total, waste}]
+    // (total>0, deduped by resulting counts, sorted most-per-carton first).
+    const cVol = cont[0] * cont[1] * cont[2];
+    const iVol = item[0] * item[1] * item[2];
+    const seen = new Set(); const out = [];
+    _ORIENTS.forEach(o => {
+      const oL = item[o[0]], oW = item[o[1]], oH = item[o[2]];
+      const cL = Math.floor(cont[0] / oL), cW = Math.floor(cont[1] / oW), cH = Math.floor(cont[2] / oH);
+      const total = cL * cW * cH;
+      if (total <= 0) return;
+      const key = `${cL}x${cW}x${cH}|${oL.toFixed(2)}x${oW.toFixed(2)}x${oH.toFixed(2)}`;
+      if (seen.has(key)) return; seen.add(key);
+      const waste = cVol > 0 ? Math.max(0, 1 - (total * iVol) / cVol) : 0;
+      out.push({ o, dims: [oL, oW, oH], counts: [cL, cW, cH], total, waste });
+    });
+    out.sort((a, b) => b.total - a.total || a.waste - b.waste);
+    return out;
+  }
+  // Compact iso box thumbnail for a tile (fits a 46-unit square viewBox).
+  function _miniIsoBox(oL, oW, oH, color) {
+    const cos30 = Math.cos(Math.PI / 6), sin30 = 0.5;
+    const proj = (x, y, z) => ({ x: (x - z) * cos30, y: (x + z) * sin30 - y });
+    const xL = -oL/2, xR = oL/2, yB = -oH/2, yT = oH/2, zF = -oW/2, zB = oW/2;
+    const v = { bfr:proj(xR,yB,zF), bbl:proj(xL,yB,zB), bbr:proj(xR,yB,zB), tfl:proj(xL,yT,zF), tfr:proj(xR,yT,zF), tbl:proj(xL,yT,zB), tbr:proj(xR,yT,zB) };
+    const xs = Object.values(v).map(p=>p.x), ys = Object.values(v).map(p=>p.y);
+    const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+    const VB = 46, PAD = 5;
+    const s = Math.min((VB-2*PAD)/(maxX-minX||1), (VB-2*PAD)/(maxY-minY||1));
+    const cx = VB/2 - (minX+maxX)/2*s, cy = VB/2 - (minY+maxY)/2*s;
+    const xf = p => `${(p.x*s+cx).toFixed(1)},${(p.y*s+cy).toFixed(1)}`;
+    const poly = ks => ks.map(k => xf(v[k])).join(' ');
+    const top = (typeof shadeRgb==='function') ? shadeRgb(color,25) : color;
+    const front = (typeof shadeRgb==='function') ? shadeRgb(color,-40) : color;
+    return `<svg viewBox="0 0 ${VB} ${VB}"><polygon points="${poly(['bbl','bbr','tbr','tbl'])}" fill="${front}" stroke="rgba(0,0,0,0.18)" stroke-width="0.6"/><polygon points="${poly(['bfr','bbr','tbr','tfr'])}" fill="${color}" stroke="rgba(0,0,0,0.18)" stroke-width="0.6"/><polygon points="${poly(['tfl','tfr','tbr','tbl'])}" fill="${top}" stroke="rgba(0,0,0,0.18)" stroke-width="0.6"/></svg>`;
+  }
+  function renderInnerOrientTiles() {
+    const host = document.getElementById('inner-orient-tiles');
+    if (!host) return;
+    const prod = _readDims3('dim-cm-l', 'dim-cm-w', 'dim-cm-h');
+    const cont = _readDims3('carton-inner-l-cm', 'carton-inner-w-cm', 'carton-inner-h-cm');
+    if (!prod || !cont) { host.innerHTML = `<div class="orient-empty">Enter the product + inner-carton dimensions to see fit options.</div>`; return; }
+    const fits = _orientFits(prod, cont);
+    if (!fits.length) { host.innerHTML = `<div class="orient-empty">The product doesn't fit in the inner carton at any orientation — check the sizes.</div>`; return; }
+    if (_innerOrientSel >= fits.length) _innerOrientSel = 0;
+    host.innerHTML = fits.slice(0, 6).map((f, i) => `
+      <div class="orient-tile${i === _innerOrientSel ? ' active' : ''}" onclick="selectInnerOrient(${i})" title="${f.counts.join(' × ')} = ${f.total} products per inner carton (${Math.round(f.waste*100)}% wasted space)">
+        ${i === 0 ? '<div class="orient-tile-best-tag">★ Best</div>' : ''}
+        ${_miniIsoBox(f.dims[0], f.dims[1], f.dims[2], '#6b93ff')}
+        <div class="orient-tile-fit">${f.total.toLocaleString('en-US')} pcs</div>
+        <div class="orient-tile-waste">${f.counts.join('×')} · ${Math.round(f.waste*100)}% waste</div>
+      </div>`).join('');
+  }
+  function selectInnerOrient(idx) {
+    const prod = _readDims3('dim-cm-l', 'dim-cm-w', 'dim-cm-h');
+    const cont = _readDims3('carton-inner-l-cm', 'carton-inner-w-cm', 'carton-inner-h-cm');
+    if (!prod || !cont) return;
+    const fits = _orientFits(prod, cont);
+    const f = fits[idx]; if (!f) return;
+    _innerOrientSel = idx;
+    const setV = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setV('carton-inner-row', f.counts[0]);
+    setV('carton-inner-side', f.counts[1]);
+    setV('carton-inner-stack', f.counts[2]);
+    if (typeof autoCalcCartons === 'function') autoCalcCartons();
+    if (typeof updateOuterWeightHint === 'function') updateOuterWeightHint();
+    renderInnerOrientTiles();
+    try { renderBoxViz('inner'); } catch (_) {}
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   function renderBoxViz(target) {
+    if (target === 'inner' || target === 'product') { try { renderInnerOrientTiles(); } catch (_) {} }
     const cfg = {
       product: { svg: 'viz-product', l: 'dim-cm-l',          w: 'dim-cm-w',          h: 'dim-cm-h',          accent: '#6b93ff' },
       inner:   { svg: 'viz-inner',   l: 'carton-inner-l-cm', w: 'carton-inner-w-cm', h: 'carton-inner-h-cm', accent: '#E8751A' },
