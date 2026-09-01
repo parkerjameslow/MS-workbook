@@ -5936,13 +5936,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background-attachment: scroll;
       position: relative;
     }
-    /* Clients card gallery (#/clients) — alphabetical grid of logo cards. */
+    /* Clients card gallery (#/clients) — A-Z rail on the left + grid. */
+    .clients-layout { display: flex; align-items: flex-start; gap: 10px; }
+    .clients-az-rail {
+      position: sticky; top: 8px;
+      flex-shrink: 0;
+      display: flex; flex-direction: column; gap: 1px;
+      padding: 4px 2px;
+      align-self: flex-start;
+    }
+    .clients-az-rail button {
+      background: none; border: none; cursor: pointer; font-family: inherit;
+      font-size: 10px; font-weight: 700; line-height: 1;
+      width: 20px; padding: 2px 0; border-radius: 4px;
+      color: var(--text-muted);
+      transition: background 0.1s, color 0.1s;
+    }
+    .clients-az-rail button:hover:not(:disabled) { background: var(--accent); color: #fff; }
+    .clients-az-rail button:disabled { opacity: 0.28; cursor: default; }
+    .clients-az-rail button.star { color: #f59e0b; font-size: 12px; }
     .clients-grid {
+      flex: 1 1 auto; min-width: 0;
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
       gap: 14px;
       padding: 6px 0 28px;
     }
+    .clients-letter-head { scroll-margin-top: 12px; }
     .client-card {
       position: relative;
       background: var(--surface);
@@ -10479,7 +10499,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         style="flex:0 1 240px; min-width:160px; padding:7px 10px; font-size:13px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
       <span id="clients-count-note" style="font-size:11px; color:var(--text-muted);"></span>
     </div>
-    <div id="clients-grid" class="clients-grid"></div>
+    <div class="clients-layout">
+      <!-- A-Z jump rail (iPhone-contacts style) — populated by renderClientsView. -->
+      <div id="clients-az-rail" class="clients-az-rail" aria-label="Jump to letter"></div>
+      <div id="clients-grid" class="clients-grid"></div>
+    </div>
   </main>
 </div><!-- /#view-clients -->
 
@@ -23473,6 +23497,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     if (ordered.length === 0) {
       grid.innerHTML = `<div style="grid-column:1/-1; padding:44px; text-align:center; color:var(--text-muted); font-size:13px;">No clients${q ? ' match your search' : ' yet'}.</div>`;
+      const rail0 = document.getElementById('clients-az-rail');
+      if (rail0) rail0.innerHTML = '';
       return;
     }
     const cardHtml = name => {
@@ -23489,20 +23515,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="client-card-sub">${wbCount} workbook${wbCount === 1 ? '' : 's'}</div>
       </div>`;
     };
-    // Starred clients get their OWN labelled section, closed off by a
-    // definite divider line before the rest. When nothing is starred, the
-    // grid is just the plain alphabetical list (no headers).
+    // Starred clients get their OWN labelled section (closed off by a
+    // divider). The rest are grouped by first letter (A-Z, non-alpha → #)
+    // with a letter header per group, iPhone-contacts style.
+    const letterOf = n => {
+      const c = (n.trim()[0] || '#').toUpperCase();
+      return (c >= 'A' && c <= 'Z') ? c : '#';
+    };
+    const groups = {};
+    restNames.forEach(n => { (groups[letterOf(n)] = groups[letterOf(n)] || []).push(n); });
+    const presentLetters = Object.keys(groups).sort((a, b) => (a === '#') - (b === '#') || (a < b ? -1 : 1));
+
     let html = '';
     if (starredNames.length) {
-      html += `<div class="clients-section-head starred">★ Starred <span class="clients-section-count">${starredNames.length}</span></div>`;
+      html += `<div id="clients-letter-star" class="clients-section-head clients-letter-head starred">★ Starred <span class="clients-section-count">${starredNames.length}</span></div>`;
       html += starredNames.map(cardHtml).join('');
       html += `<div class="clients-section-divider"></div>`;
-      html += `<div class="clients-section-head">All Clients <span class="clients-section-count">${restNames.length}</span></div>`;
-      html += restNames.map(cardHtml).join('');
-    } else {
-      html = ordered.map(cardHtml).join('');
     }
+    presentLetters.forEach(L => {
+      const grp = groups[L].slice().sort(collator);
+      const key = L === '#' ? 'hash' : L;
+      html += `<div id="clients-letter-${key}" class="clients-section-head clients-letter-head">${L} <span class="clients-section-count">${grp.length}</span></div>`;
+      html += grp.map(cardHtml).join('');
+    });
     grid.innerHTML = html;
+
+    // ── A-Z jump rail (iPhone-contacts style) — ★ jumps to Starred, each
+    // letter to its group; letters with no clients are dimmed/disabled. ──
+    const rail = document.getElementById('clients-az-rail');
+    if (rail) {
+      const letters = [];
+      for (let i = 65; i <= 90; i++) letters.push(String.fromCharCode(i));
+      letters.push('#');
+      let railHtml = starredNames.length
+        ? `<button type="button" class="star" title="Jump to Starred" onclick="scrollToClientsLetter('star')">★</button>`
+        : '';
+      railHtml += letters.map(L => {
+        const key = L === '#' ? 'hash' : L;
+        const has = !!groups[L];
+        return `<button type="button"${has ? '' : ' disabled'} title="Jump to ${L}" onclick="scrollToClientsLetter('${key}')">${L}</button>`;
+      }).join('');
+      rail.innerHTML = railHtml;
+    }
+  }
+
+  // Smooth-scroll the Clients grid to a letter group (or 'star'/'hash').
+  function scrollToClientsLetter(key) {
+    const el = document.getElementById('clients-letter-' + key);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // Star/unstar a client from its card in the Clients gallery, then
