@@ -5970,6 +5970,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .client-card-star:hover { opacity: 1; color: #f59e0b; transform: scale(1.15); }
     .client-card-star.on { color: #f59e0b; opacity: 1; }
+    /* Section headers + divider inside the Clients grid (span all columns). */
+    .clients-section-head {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: 4px 2px 0;
+    }
+    .clients-section-head.starred { color: #f59e0b; }
+    .clients-section-count {
+      font-size: 10px; font-weight: 700;
+      padding: 1px 7px; border-radius: 99px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    }
+    .clients-section-divider {
+      grid-column: 1 / -1;
+      height: 0; border-top: 2px solid var(--border);
+      margin: 8px 0 2px;
+    }
     /* Soft fade-out layer over the logo so it doesn't compete with
        the cards — keeps the watermark visible without distracting. */
     #view-crm::before, #view-pipeline::before {
@@ -23456,7 +23475,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       grid.innerHTML = `<div style="grid-column:1/-1; padding:44px; text-align:center; color:var(--text-muted); font-size:13px;">No clients${q ? ' match your search' : ' yet'}.</div>`;
       return;
     }
-    grid.innerHTML = ordered.map(name => {
+    const cardHtml = name => {
       const wbCount = (clientData[name] || []).length;
       const starred = _starredClients.has(name);
       // Pass the name through encode/decode so any punctuation is safe in
@@ -23469,7 +23488,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="client-card-name">${esc(name)}</div>
         <div class="client-card-sub">${wbCount} workbook${wbCount === 1 ? '' : 's'}</div>
       </div>`;
-    }).join('');
+    };
+    // Starred clients get their OWN labelled section, closed off by a
+    // definite divider line before the rest. When nothing is starred, the
+    // grid is just the plain alphabetical list (no headers).
+    let html = '';
+    if (starredNames.length) {
+      html += `<div class="clients-section-head starred">★ Starred <span class="clients-section-count">${starredNames.length}</span></div>`;
+      html += starredNames.map(cardHtml).join('');
+      html += `<div class="clients-section-divider"></div>`;
+      html += `<div class="clients-section-head">All Clients <span class="clients-section-count">${restNames.length}</span></div>`;
+      html += restNames.map(cardHtml).join('');
+    } else {
+      html = ordered.map(cardHtml).join('');
+    }
+    grid.innerHTML = html;
   }
 
   // Star/unstar a client from its card in the Clients gallery, then
