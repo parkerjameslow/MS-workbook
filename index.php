@@ -10466,6 +10466,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 24px 14px; border-bottom:1px solid var(--border); gap:12px;">
       <div class="modal-title" id="crm-card-modal-title" style="margin:0;">New Lead</div>
       <div style="display:flex; align-items:center; gap:8px;">
+        <button type="button" id="crm-card-convert-btn" class="btn btn-ghost" style="color:#16a34a; border-color:rgba(22,163,74,0.35);" onclick="convertCrmCardModal()" title="Create an official client from this lead and archive the card (notes + comments move to the client)">Convert to Client</button>
         <button type="button" id="crm-card-delete-btn" class="btn btn-ghost" style="color:#dc2626; border-color:rgba(220,38,38,0.3);" onclick="deleteCrmCardModal()">Delete</button>
         <button type="button" class="btn btn-ghost" onclick="closeCrmCardModal()">Cancel</button>
         <button type="button" class="btn btn-primary" onclick="document.getElementById('crm-card-form').requestSubmit();">Save</button>
@@ -39572,6 +39573,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const byCol = {};
     CRM_COLUMNS.forEach(c => { byCol[c.id] = []; });
     Object.values(crmData.cards || {}).forEach(card => {
+      if (card && card.archived) return; // converted to a client → off the board
       const col = (byCol[card.column] !== undefined) ? card.column : 'referrals';
       byCol[col].push(card);
     });
@@ -40090,9 +40092,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _renderCrmModalComments(card);
     const composer = document.getElementById('crm-card-comment-input');
     if (composer) composer.value = '';
-    // Delete button only when editing an existing card.
+    // Delete + Convert only when editing an existing card (nothing to
+    // convert/delete on a brand-new unsaved lead).
     const delBtn = document.getElementById('crm-card-delete-btn');
     if (delBtn) delBtn.style.display = card ? '' : 'none';
+    const convBtn = document.getElementById('crm-card-convert-btn');
+    if (convBtn) convBtn.style.display = card ? '' : 'none';
     document.getElementById('modal-crm-card').classList.add('open');
     setTimeout(() => { try { document.getElementById('crm-card-company').focus(); } catch {} }, 60);
   }
@@ -40180,6 +40185,148 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     saveCrm();
     closeCrmCardModal();
     renderCrmBoard();
+  }
+
+  // ── Convert a CRM lead into an official client ───────────────────────
+  // The operator's "graduate this lead" action: creates (or updates) the
+  // real client record, carries the card's pre-client history (notes +
+  // the whole comments thread) onto the client's notes so nothing is
+  // lost, then ARCHIVES the card so it leaves the board but stays in the
+  // ms_crm blob for reference. Mirrors createClient()'s local-first
+  // pattern (populate clientData/clientDetails, then persist via
+  // add_client + save_client_detail).
+
+  // Format the card's notes + comments into a single history block that
+  // gets appended to the client's notes field.
+  function _crmHistoryBlock(card) {
+    const lines = [];
+    let when = '';
+    try { when = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) {}
+    lines.push(`— Converted from CRM${when ? ' on ' + when : ''} —`);
+    if (card.source && card.source.trim()) lines.push(`Source: ${card.source.trim()}`);
+    if (card.notes && card.notes.trim()) { lines.push(''); lines.push(card.notes.trim()); }
+    const comments = Array.isArray(card.comments) ? card.comments : [];
+    if (comments.length) {
+      lines.push('');
+      lines.push('CRM comments:');
+      comments.forEach(cm => {
+        let d = '';
+        try { d = cm.createdAt ? new Date(cm.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''; } catch (e) {}
+        const who = (cm.author || 'Unknown');
+        lines.push(`• ${d ? d + ' ' : ''}${who}: ${cm.text || ''}`);
+      });
+    }
+    return lines.join('\n');
+  }
+
+  // Called from the modal — persist any unsaved field edits onto the
+  // card first so the conversion uses the freshest values, then convert.
+  function convertCrmCardModal() {
+    if (!_crmEditingId) return;
+    const card = crmData.cards[_crmEditingId];
+    if (!card) return;
+    const getVal = id => (document.getElementById(id) || {}).value || '';
+    const company = getVal('crm-card-company').trim();
+    if (!company) {
+      if (typeof _msToast === 'function') _msToast('Add a company / lead name before converting.', 'warning');
+      return;
+    }
+    card.company  = company;
+    card.contact  = getVal('crm-card-contact').trim();
+    card.title    = getVal('crm-card-title').trim();
+    card.email    = getVal('crm-card-email').trim();
+    card.phone    = getVal('crm-card-phone').trim();
+    card.source   = getVal('crm-card-source').trim();
+    card.notes    = getVal('crm-card-notes');
+    card.updatedAt = new Date().toISOString();
+    convertCrmCardToClient(_crmEditingId);
+  }
+
+  async function convertCrmCardToClient(cardId) {
+    const card = crmData.cards[cardId];
+    if (!card) return;
+    const name = (card.company || '').trim();
+    if (!name) {
+      if (typeof _msToast === 'function') _msToast('Add a company / lead name before converting.', 'warning');
+      return;
+    }
+    const existed = (typeof clientData === 'object' && clientData && clientData[name] !== undefined);
+    const proceed = confirm(
+      `Convert "${name}" to a client?\n\n` +
+      (existed
+        ? `A client named "${name}" already exists — this card's notes & comments will be appended to it.`
+        : `This creates the official client and moves this lead's notes & comments onto the client card.`) +
+      `\n\nThe CRM card will be archived off the board.`
+    );
+    if (!proceed) return;
+
+    const history = _crmHistoryBlock(card);
+    try {
+      if (existed) {
+        // Append this card's history to the existing client's notes.
+        const cid = (typeof dbClientMap === 'object' && dbClientMap && dbClientMap[name]) ||
+                    (clientDetails[name] && clientDetails[name].id) || null;
+        const prevNotes = (clientDetails[name] && clientDetails[name].notes) || '';
+        const mergedNotes = prevNotes ? (prevNotes + '\n\n' + history) : history;
+        // Only fill contact fields that are currently empty — never
+        // clobber an existing client's details.
+        const det = clientDetails[name] || (clientDetails[name] = {});
+        const payload = { notes: mergedNotes };
+        if (!det.email && card.email)            payload.email = card.email;
+        if (!det.phone && card.phone)            payload.phone = card.phone;
+        if (!det.primary_contact && card.contact) payload.primary_contact = card.contact;
+        if (cid) { payload.id = cid; await apiCall('save_client_detail', payload); }
+        det.notes = mergedNotes;
+        if (payload.email) det.email = card.email;
+        if (payload.phone) det.phone = card.phone;
+        if (payload.primary_contact) det.primary_contact = card.contact;
+      } else {
+        // Create fresh — mirror createClient()'s local-first flow.
+        clientData[name] = [];
+        clientDetails[name] = {
+          id: null, email: card.email || '', phone: card.phone || '', primary_contact: card.contact || '',
+          email2: '', phone2: '', primary_contact2: '', billing_address: '', shipping_address: '',
+          notes: history, account_manager: '', salesperson: '', operations_person: '',
+          account_manager_pct: '', salesperson_pct: '', operations_pct: '', default_margin_pct: ''
+        };
+        const result = await apiCall('add_client', { name });
+        if (result && result.success) {
+          dbClientMap[name] = result.id;
+          clientDetails[name].id = result.id;
+          await apiCall('save_client_detail', {
+            id: result.id, email: card.email || '', phone: card.phone || '',
+            primary_contact: card.contact || '', notes: history
+          });
+        } else if (result && (result.error || '').toLowerCase().includes('already exists')) {
+          // Race with another operator — recover by reloading from DB,
+          // then re-append onto whatever's there.
+          if (typeof loadFromDatabase === 'function') await loadFromDatabase();
+          const cid = (dbClientMap && dbClientMap[name]) || (clientDetails[name] && clientDetails[name].id) || null;
+          const prevNotes = (clientDetails[name] && clientDetails[name].notes) || '';
+          const mergedNotes = prevNotes ? (prevNotes + '\n\n' + history) : history;
+          if (cid) await apiCall('save_client_detail', { id: cid, notes: mergedNotes });
+          if (clientDetails[name]) clientDetails[name].notes = mergedNotes;
+        } else {
+          if (typeof _msToast === 'function') _msToast(`Could not create client: ${(result && result.error) || 'unknown error'}`, 'warning');
+          return;
+        }
+      }
+
+      // Archive the card off the board (kept in the blob for reference).
+      card.archived = true;
+      card.archivedAt = new Date().toISOString();
+      card.convertedToClient = name;
+      saveCrm();
+      if (typeof rebuildSidebar === 'function') rebuildSidebar();
+      if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
+      closeCrmCardModal();
+      renderCrmBoard();
+      if (typeof _msToast === 'function') _msToast(`"${name}" converted to a client — card archived.`, 'success');
+      location.hash = `#/client/${encodeURIComponent(name)}`;
+    } catch (e) {
+      console.warn('convertCrmCardToClient:', e);
+      if (typeof _msToast === 'function') _msToast('Network error during conversion — please try again.', 'warning');
+    }
   }
 
   // Phase 2: actually send the onboarding invite. Hits api.php
