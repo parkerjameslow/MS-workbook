@@ -292,13 +292,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .nav-flat-link:hover { background: var(--surface2); color: var(--text); }
     .nav-flat-link.active { color: var(--accent); }
-    /* Workbook Pipeline — Market Sculpt orange pill, dark text (stays orange
-       on hover/active so it always reads as the primary nav entry). */
+    /* Workbook Pipeline + Clients — Market Sculpt orange pills, dark text
+       (stay orange on hover/active so they read as primary nav entries). */
     #nav-all-workbooks,
     #nav-all-workbooks:hover,
-    #nav-all-workbooks.active { background: #E8751A; color: #1a1d2e; }
-    #nav-all-workbooks span { color: #1a1d2e; }
-    #nav-all-workbooks:hover { background: #d4661a; }
+    #nav-all-workbooks.active,
+    #nav-clients-link,
+    #nav-clients-link:hover,
+    #nav-clients-link.active { background: #E8751A; color: #1a1d2e; }
+    #nav-all-workbooks span,
+    #nav-clients-link span { color: #1a1d2e; }
+    #nav-all-workbooks:hover,
+    #nav-clients-link:hover { background: #d4661a; }
     /* Stacked variant — main label row on top, smaller mixed-case
        sub-label underneath. Used by nav items that want a permanent
        hint about what lives inside (e.g. Inventory → "SKUs & Variants"). */
@@ -5955,7 +5960,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .client-card-logo { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; }
     .client-card-name { font-size: 13px; font-weight: 700; color: var(--text); text-align: center; line-height: 1.3; word-break: break-word; }
     .client-card-sub { font-size: 11px; color: var(--text-muted); }
-    .client-card-star { position: absolute; top: 8px; right: 10px; color: #f59e0b; font-size: 13px; }
+    .client-card-star {
+      position: absolute; top: 5px; right: 6px;
+      background: none; border: none; cursor: pointer;
+      font-size: 17px; line-height: 1; padding: 2px 4px;
+      color: var(--text-muted); opacity: 0.5;
+      font-family: inherit;
+      transition: color 0.12s, opacity 0.12s, transform 0.1s;
+    }
+    .client-card-star:hover { opacity: 1; color: #f59e0b; transform: scale(1.15); }
+    .client-card-star.on { color: #f59e0b; opacity: 1; }
     /* Soft fade-out layer over the logo so it doesn't compete with
        the cards — keeps the watermark visible without distracting. */
     #view-crm::before, #view-pipeline::before {
@@ -7292,21 +7306,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   <nav class="sidebar-nav" id="sidebar-nav">
 
-    <!-- ★ Starred -->
-    <div class="nav-section collapsed" id="nav-section-starred">
-      <div class="nav-section-header" onclick="toggleNavSection('nav-section-starred')">
-        <span>★ Starred</span>
-        <span class="nav-badge" id="badge-starred"></span>
-        <span class="nav-section-chevron">›</span>
-      </div>
-      <div class="nav-section-body" id="starred-list"></div>
-    </div>
-
-    <!-- Clients — opens the Clients card gallery (#/clients) instead of
-         expanding an inline list, which didn't scale past a handful of
-         clients. The card view is alphabetical with each client's logo. -->
-    <div style="padding: 2px 10px 6px;">
-      <a id="nav-clients-link" href="#/clients" onclick="event.preventDefault(); location.hash='#/clients'" class="nav-flat-link" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.07em;">
+    <!-- Clients — Market Sculpt orange pill (matches Workbook Pipeline).
+         Opens the Clients card gallery (#/clients); the old inline list
+         and Starred section are gone — starred clients now sort to the top
+         of the card view instead. -->
+    <div style="padding: 2px 10px 8px;">
+      <a id="nav-clients-link" href="#/clients" onclick="event.preventDefault(); location.hash='#/clients'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
         <span>Clients</span>
         <span class="nav-badge" id="badge-clients"></span>
       </a>
@@ -22758,20 +22763,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (searchEl) { searchEl.textContent = ''; document.getElementById('sidebar-search-ph').style.display = ''; }
     const sorted = Object.keys(clientData).sort();
 
-    // ── Starred list ──
+    // ── Starred list (legacy nav section — removed; starred clients now
+    // sort to the top of the Clients card gallery. Guarded in case the
+    // element is absent). ──
     const starredList = document.getElementById('starred-list');
-    starredList.innerHTML = '';
     const starredSection = document.getElementById('nav-section-starred');
-    const starredNames = sorted.filter(n => _starredClients.has(n));
-    if (starredNames.length === 0) {
-      starredSection.style.display = 'none';
-    } else {
-      starredSection.style.display = '';
-      starredNames.forEach(name => starredList.appendChild(makeClientNavItem(name)));
+    if (starredList && starredSection) {
+      starredList.innerHTML = '';
+      const starredNames = sorted.filter(n => _starredClients.has(n));
+      if (starredNames.length === 0) {
+        starredSection.style.display = 'none';
+      } else {
+        starredSection.style.display = '';
+        starredNames.forEach(name => starredList.appendChild(makeClientNavItem(name)));
+      }
     }
-    // Starred/Clients do not show badges — badges are reserved for actionable items only
-    const starredBadge = document.getElementById('badge-starred');
-    if (starredBadge) { starredBadge.textContent = ''; starredBadge.classList.remove('attention'); }
 
     // ── Full client list (legacy inline list — now replaced by the
     // Clients card gallery at #/clients; element may be absent). ──
@@ -23436,25 +23442,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const grid = document.getElementById('clients-grid');
     if (!grid) return;
     const q = (document.getElementById('clients-search')?.value || '').trim().toLowerCase();
-    const names = Object.keys(clientData || {}).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-    const filtered = q ? names.filter(n => n.toLowerCase().includes(q)) : names;
+    const all = Object.keys(clientData || {});
+    const filtered = q ? all.filter(n => n.toLowerCase().includes(q)) : all;
+    // Starred clients float to the TOP, each group alphabetical.
+    const collator = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+    const starredNames = filtered.filter(n => _starredClients.has(n)).sort(collator);
+    const restNames    = filtered.filter(n => !_starredClients.has(n)).sort(collator);
+    const ordered = [...starredNames, ...restNames];
     const note = document.getElementById('clients-count-note');
-    if (note) note.textContent = `${filtered.length} client${filtered.length === 1 ? '' : 's'}`;
+    if (note) note.textContent = `${ordered.length} client${ordered.length === 1 ? '' : 's'}${starredNames.length ? ` · ${starredNames.length} starred` : ''}`;
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    if (filtered.length === 0) {
+    if (ordered.length === 0) {
       grid.innerHTML = `<div style="grid-column:1/-1; padding:44px; text-align:center; color:var(--text-muted); font-size:13px;">No clients${q ? ' match your search' : ' yet'}.</div>`;
       return;
     }
-    grid.innerHTML = filtered.map(name => {
+    grid.innerHTML = ordered.map(name => {
       const wbCount = (clientData[name] || []).length;
       const starred = _starredClients.has(name);
-      return `<div class="client-card" onclick="location.hash='#/client/${encodeURIComponent(name)}'" title="Open ${esc(name)}">
-        ${starred ? '<span class="client-card-star" title="Starred">★</span>' : ''}
+      // Pass the name through encode/decode so any punctuation is safe in
+      // the inline handler.
+      const enc = encodeURIComponent(name);
+      return `<div class="client-card" onclick="location.hash='#/client/${enc}'" title="Open ${esc(name)}">
+        <button type="button" class="client-card-star${starred ? ' on' : ''}" title="${starred ? 'Unstar' : 'Star'} ${esc(name)}"
+                onclick="event.stopPropagation(); toggleClientCardStar(decodeURIComponent('${enc}'), event)">${starred ? '★' : '☆'}</button>
         <div class="client-card-logo">${clientAvatarHTML(name, 56)}</div>
         <div class="client-card-name">${esc(name)}</div>
         <div class="client-card-sub">${wbCount} workbook${wbCount === 1 ? '' : 's'}</div>
       </div>`;
     }).join('');
+  }
+
+  // Star/unstar a client from its card in the Clients gallery, then
+  // re-render so it re-sorts (starred float to the top) and the star fills.
+  function toggleClientCardStar(name, e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (_starredClients.has(name)) _starredClients.delete(name);
+    else _starredClients.add(name);
+    try { localStorage.setItem('ms_starred_clients', JSON.stringify([..._starredClients])); } catch (_) {}
+    renderClientsView();
   }
 
   function flowToStep(flow) {
