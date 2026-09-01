@@ -1,6 +1,9 @@
 <?php
 // Market Sculpt Client Portal — token-gated order approval page
-// Public access but requires a valid 64-char hex token in ?t=
+// Public access but requires a valid 64-char hex token in ?t= AND, for
+// tokens minted with one, a 6-digit access PIN emailed to the client
+// separately from the link (verified once per browser session).
+session_start();
 
 $DB_HOST = 'localhost';
 $DB_NAME = 'markewq4_workbook';
@@ -29,6 +32,17 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS portal_tokens (
     resolved_at TIMESTAMP NULL,
     UNIQUE KEY uq_token (token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// PIN-gate columns (added idempotently so existing installs pick them up
+// without a manual migration). api.php runs the same migration before it
+// mints a token, so the column is present on both write and read paths.
+foreach ([
+    "ALTER TABLE portal_tokens ADD COLUMN pin CHAR(6) DEFAULT NULL",
+    "ALTER TABLE portal_tokens ADD COLUMN pin_attempts INT NOT NULL DEFAULT 0",
+    "ALTER TABLE portal_tokens ADD COLUMN locked_until TIMESTAMP NULL DEFAULT NULL",
+] as $ddl) {
+    try { $pdo->exec($ddl); } catch (PDOException $e) { /* column already exists */ }
+}
 
 // ── Validate token ──────────────────────────────────────────────────────────
 $token = trim($_GET['t'] ?? '');
@@ -63,6 +77,48 @@ if ($row['status'] !== 'active') {
         : "Your change request has been received. The Market Sculpt team will review and follow up shortly.";
     portalPage($approved ? "{$noun} Approved" : 'Changes Requested',
                doneContent($approved ? 'approved' : 'changes_requested', $msg, $order['name'] ?? "Your {$noun}"));
+    exit;
+}
+
+// ── PIN gate ──────────────────────────────────────────────────────────────
+// Tokens minted with a PIN require it once per browser session before any
+// order data is shown — so a leaked link alone can't open the portal.
+// Legacy tokens (no PIN on the row) open directly. Failed attempts are
+// rate-limited per token (lock for 15 min after 6 misses) so the 6-digit
+// PIN can't be brute-forced.
+$requiredPin = trim((string)($row['pin'] ?? ''));
+$sessOkKey   = 'portal_ok_' . $token;
+if ($requiredPin !== '' && empty($_SESSION[$sessOkKey])) {
+    $pinError = '';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['pin'])) {
+        $now           = time();
+        $lockedUntilTs = !empty($row['locked_until']) ? strtotime((string)$row['locked_until']) : 0;
+        if ($lockedUntilTs > $now) {
+            $pinError = 'Too many incorrect attempts. Please wait a few minutes and try again.';
+        } else {
+            $entered = preg_replace('/\D/', '', (string)$_POST['pin']);
+            if ($entered !== '' && hash_equals($requiredPin, $entered)) {
+                $_SESSION[$sessOkKey] = true;
+                try { $pdo->prepare("UPDATE portal_tokens SET pin_attempts=0, locked_until=NULL WHERE token=?")->execute([$token]); } catch (PDOException $e) {}
+                // Redirect to a clean GET so the unlocked page isn't a POST
+                // resubmit (and the approve form posts fresh later).
+                header('Location: ?t=' . urlencode($token));
+                exit;
+            }
+            // A just-expired lock starts a fresh attempt window rather than
+            // re-locking on the very next miss.
+            $priorAttempts = $lockedUntilTs > 0 ? 0 : (int)($row['pin_attempts'] ?? 0);
+            $attempts = $priorAttempts + 1;
+            if ($attempts >= 6) {
+                try { $pdo->prepare("UPDATE portal_tokens SET pin_attempts=?, locked_until=DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE token=?")->execute([$attempts, $token]); } catch (PDOException $e) {}
+                $pinError = 'Too many incorrect attempts. Please wait 15 minutes and try again.';
+            } else {
+                try { $pdo->prepare("UPDATE portal_tokens SET pin_attempts=? WHERE token=?")->execute([$attempts, $token]); } catch (PDOException $e) {}
+                $pinError = "That PIN doesn't match. Please check the code we emailed you.";
+            }
+        }
+    }
+    portalPage('Enter Access PIN', pinContent($token, $noun, $clName, $pinError));
     exit;
 }
 
@@ -525,6 +581,29 @@ function errorContent(string $msg): string {
          . '<h1 style="font-size:22px;font-weight:800;color:#1a1d2e;margin-bottom:12px;">Link Not Valid</h1>'
          . '<p style="font-size:15px;color:#6b7280;max-width:420px;margin:0 auto;">' . htmlspecialchars($msg) . '</p>'
          . '</div>';
+}
+
+function pinContent(string $token, string $noun, string $clName, string $error): string {
+    $err = $error !== ''
+        ? "<div style='margin:0 0 16px;padding:11px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#b91c1c;font-size:13px;line-height:1.5;'>" . htmlspecialchars($error) . "</div>"
+        : '';
+    $who = $clName !== '' ? htmlspecialchars($clName) . ', ' : '';
+    return '<div class="card" style="max-width:440px;margin:40px auto;">'
+         . '<div class="card-head">'
+         . '<div style="width:52px;height:52px;border-radius:50%;background:#fff7ed;display:flex;align-items:center;justify-content:center;margin-bottom:14px;">'
+         . '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E8751A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+         . '</div>'
+         . '<h1 class="page-title" style="font-size:20px;">Enter your access PIN</h1>'
+         . "<p class='page-sub'>{$who}we emailed a 6-digit PIN to open your {$noun}. Enter it below to continue.</p>"
+         . '</div>'
+         . '<div class="card-body">' . $err
+         . '<form method="POST" action="?t=' . urlencode($token) . '">'
+         . '<input type="text" name="pin" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" placeholder="••••••" autofocus '
+         . 'style="width:100%;text-align:center;font-size:28px;letter-spacing:12px;padding:14px 10px;border:1px solid #d1d5db;border-radius:10px;font-family:inherit;color:#1a1d2e;outline:none;box-sizing:border-box;" />'
+         . '<button type="submit" style="width:100%;margin-top:16px;background:#E8751A;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;padding:13px;cursor:pointer;font-family:inherit;">Open ' . htmlspecialchars($noun) . ' &rarr;</button>'
+         . '</form>'
+         . '<p style="margin:16px 0 0;font-size:12px;color:#9ba3c0;text-align:center;line-height:1.6;">Didn\'t get a PIN? Contact your Market Sculpt representative.</p>'
+         . '</div></div>';
 }
 
 function doneContent(string $status, string $msg, string $orderName): string {

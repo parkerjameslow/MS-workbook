@@ -1200,6 +1200,41 @@ function ms_email_wrap(string $title, string $preheader, string $body): string {
     . '</td></tr></table></td></tr></table></body></html>';
 }
 
+// ── Client portal PIN helpers ────────────────────────────────────────────────
+// Ensure the portal PIN columns exist (idempotent). portal.php runs the same
+// migration on its side; this covers the operator-side INSERT path so a token
+// can be minted with a PIN even before any client has visited the portal.
+function ms_ensure_portal_pin_columns(PDO $pdo): void {
+    foreach ([
+        "ALTER TABLE portal_tokens ADD COLUMN pin CHAR(6) DEFAULT NULL",
+        "ALTER TABLE portal_tokens ADD COLUMN pin_attempts INT NOT NULL DEFAULT 0",
+        "ALTER TABLE portal_tokens ADD COLUMN locked_until TIMESTAMP NULL DEFAULT NULL",
+    ] as $ddl) {
+        try { $pdo->exec($ddl); } catch (PDOException $e) { /* column already exists */ }
+    }
+}
+
+// A 6-digit numeric access PIN for the client portal.
+function ms_gen_portal_pin(): string {
+    return str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+}
+
+// Email the client their portal ACCESS PIN in a SEPARATE message from the one
+// carrying the portal link, so a leaked link alone can't open the portal.
+// Best-effort — returns the ms_smtp_send result, or null when there's no
+// recipient on file.
+function ms_send_portal_pin_email(?string $to, string $clientName, string $pin, string $noun): ?array {
+    $to = trim((string)$to);
+    if ($to === '') return null;
+    $safeName = htmlspecialchars($clientName !== '' ? $clientName : 'there');
+    $body = "<h1 style='margin:0 0 6px;font-size:24px;font-weight:800;color:#1a1d2e;'>Your Access PIN</h1>"
+          . "<p style='margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;'>Hi {$safeName}, use this PIN to open your {$noun} in the Market Sculpt portal. We sent the portal link in a separate email.</p>"
+          . "<div style='text-align:center;margin:8px 0 24px;'><span style='display:inline-block;font-size:34px;font-weight:800;letter-spacing:10px;color:#1a1d2e;background:#f4f6fa;border:1px solid #e5e7eb;border-radius:10px;padding:16px 22px 16px 32px;'>" . htmlspecialchars($pin) . "</span></div>"
+          . "<p style='margin:0;font-size:13px;color:#9ba3c0;line-height:1.7;'>For your security, please don't share this PIN. If you weren't expecting this, you can safely ignore this email.</p>";
+    $html = ms_email_wrap('Your Access PIN', 'Your Market Sculpt portal access PIN', $body);
+    return ms_smtp_send([$to], 'Your Market Sculpt Portal PIN', $html);
+}
+
 function ms_detail_table(array $rows): string {
     $html = '<table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin:20px 0;">';
     foreach ($rows as $i => [$label, $value]) {
@@ -4655,6 +4690,7 @@ switch ($action) {
             // Generate portal token for quote review
             if (!empty($quoteItems)) {
                 $portalToken   = bin2hex(random_bytes(32));
+                $portalPin     = ms_gen_portal_pin();
                 $quoteSnapshot = json_encode([
                     'order' => [
                         'name'        => "Quote — {$product}",
@@ -4668,11 +4704,15 @@ switch ($action) {
                     'rate'  => $rate,
                 ]);
                 try {
-                    $pdo->prepare("INSERT INTO portal_tokens (token, order_snapshot, client_name, client_email) VALUES (?, ?, ?, ?)")
-                        ->execute([$portalToken, $quoteSnapshot, $clientName, $clientEmail]);
+                    ms_ensure_portal_pin_columns($pdo);
+                    $pdo->prepare("INSERT INTO portal_tokens (token, order_snapshot, client_name, client_email, pin) VALUES (?, ?, ?, ?, ?)")
+                        ->execute([$portalToken, $quoteSnapshot, $clientName, $clientEmail, $portalPin]);
                     $scheme    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
                     $host      = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
                     $portalUrl = "{$scheme}://{$host}/portal.php?t={$portalToken}";
+                    // Separate email carrying only the PIN (link travels in the
+                    // quote email below) so a leaked link alone can't open it.
+                    ms_send_portal_pin_email($clientEmail, $clientName, $portalPin, 'Quote');
                 } catch (PDOException $e) {
                     $portalUrl = null;
                 }
@@ -4709,6 +4749,7 @@ switch ($action) {
                 ['Sent To',   htmlspecialchars($clientEmail)],
             ];
             if ($portalUrl) $i_detail[] = ['Portal Link', '<a href="' . htmlspecialchars($portalUrl) . '" style="color:#E8751A;">' . htmlspecialchars($portalUrl) . '</a>'];
+            if ($portalUrl && !empty($portalPin)) $i_detail[] = ['Portal PIN', '<strong style="font-family:monospace;letter-spacing:2px;font-size:15px;">' . htmlspecialchars($portalPin) . '</strong> <span style="color:#9ba3c0;">(emailed to client separately — relay if needed)</span>'];
 
             $appBtn_quote = $appUrl
                 ? "<div style='margin:24px 0 0;'><a href='" . htmlspecialchars($appUrl) . "' style='display:inline-flex;align-items:center;gap:8px;background:#181b26;color:#f0f1f5;font-size:13px;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:8px;border:1px solid #3a3f5c;'>"
@@ -4839,6 +4880,7 @@ switch ($action) {
             $appUrl = $details['app_url'] ?? '';
             if ($type === 'order_confirmed' && !empty($orderItems)) {
                 $portalToken  = bin2hex(random_bytes(32));
+                $portalPin    = ms_gen_portal_pin();
                 $orderSnapshot = json_encode([
                     'order' => [
                         'name'        => $order_name,
@@ -4851,11 +4893,15 @@ switch ($action) {
                     'rate'  => $rate,
                 ]);
                 try {
-                    $pdo->prepare("INSERT INTO portal_tokens (token, order_snapshot, client_name, client_email) VALUES (?, ?, ?, ?)")
-                        ->execute([$portalToken, $orderSnapshot, $clientName, $clientEmail]);
+                    ms_ensure_portal_pin_columns($pdo);
+                    $pdo->prepare("INSERT INTO portal_tokens (token, order_snapshot, client_name, client_email, pin) VALUES (?, ?, ?, ?, ?)")
+                        ->execute([$portalToken, $orderSnapshot, $clientName, $clientEmail, $portalPin]);
                     $scheme    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
                     $host      = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
                     $portalUrl = "{$scheme}://{$host}/portal.php?t={$portalToken}";
+                    // Separate email carrying only the PIN (the link travels in
+                    // the order-confirmed email below).
+                    ms_send_portal_pin_email($clientEmail, $clientName, $portalPin, 'Order');
                 } catch (PDOException $e) {
                     $portalUrl = null;
                 }
@@ -4924,6 +4970,7 @@ switch ($action) {
             ];
             if ($po) $i_detail[] = ['PO Number', htmlspecialchars($po)];
             if ($portalUrl) $i_detail[] = ['Portal Link', '<a href="' . htmlspecialchars($portalUrl) . '" style="color:#E8751A;">' . htmlspecialchars($portalUrl) . '</a>'];
+            if ($portalUrl && !empty($portalPin)) $i_detail[] = ['Portal PIN', '<strong style="font-family:monospace;letter-spacing:2px;font-size:15px;">' . htmlspecialchars($portalPin) . '</strong> <span style="color:#9ba3c0;">(emailed to client separately — relay if needed)</span>'];
 
             $appBtn_order = $appUrl
                 ? "<div style='margin:24px 0 0;'><a href='" . htmlspecialchars($appUrl) . "' style='display:inline-flex;align-items:center;gap:8px;background:#181b26;color:#f0f1f5;font-size:13px;font-weight:700;text-decoration:none;padding:10px 20px;border-radius:8px;border:1px solid #3a3f5c;'>"
