@@ -5931,6 +5931,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background-attachment: scroll;
       position: relative;
     }
+    /* Clients card gallery (#/clients) — alphabetical grid of logo cards. */
+    .clients-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 14px;
+      padding: 6px 0 28px;
+    }
+    .client-card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 14px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+    }
+    .client-card:hover { border-color: var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,0.08); transform: translateY(-1px); }
+    .client-card-logo { width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; }
+    .client-card-name { font-size: 13px; font-weight: 700; color: var(--text); text-align: center; line-height: 1.3; word-break: break-word; }
+    .client-card-sub { font-size: 11px; color: var(--text-muted); }
+    .client-card-star { position: absolute; top: 8px; right: 10px; color: #f59e0b; font-size: 13px; }
     /* Soft fade-out layer over the logo so it doesn't compete with
        the cards — keeps the watermark visible without distracting. */
     #view-crm::before, #view-pipeline::before {
@@ -7277,14 +7302,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="nav-section-body" id="starred-list"></div>
     </div>
 
-    <!-- Clients -->
-    <div class="nav-section collapsed" id="nav-section-clients">
-      <div class="nav-section-header" onclick="toggleNavSection('nav-section-clients')">
+    <!-- Clients — opens the Clients card gallery (#/clients) instead of
+         expanding an inline list, which didn't scale past a handful of
+         clients. The card view is alphabetical with each client's logo. -->
+    <div style="padding: 2px 10px 6px;">
+      <a id="nav-clients-link" href="#/clients" onclick="event.preventDefault(); location.hash='#/clients'" class="nav-flat-link" style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.07em;">
         <span>Clients</span>
         <span class="nav-badge" id="badge-clients"></span>
-        <span class="nav-section-chevron">›</span>
-      </div>
-      <div class="nav-section-body" id="client-list"></div>
+      </a>
     </div>
 
     <!-- Inventory moved into the Internal section below. -->
@@ -7295,10 +7320,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          toggleNavSection persistence. Houses the day-to-day operator
          flow from RFQ through arrival. Samples sits below Ready for
          Review per the new layout. -->
-    <div class="nav-section collapsed" id="nav-section-design">
-      <div class="nav-section-header" onclick="toggleNavSection('nav-section-design')">
+    <div class="nav-section" id="nav-section-design">
+      <div class="nav-section-header" style="cursor:default;">
         <span>Design | Production</span>
-        <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
         <a id="nav-rfq-link" href="#/rfq" onclick="event.preventDefault(); location.hash='#/rfq'" class="nav-flat-link">
@@ -10423,6 +10447,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="pipeline-board" class="crm-board"></div>
   </main>
 </div><!-- /#view-pipeline -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: CLIENTS (card gallery)
+     Alphabetical grid of client cards (logo + name + workbook count),
+     opened from the "Clients" left-nav link. Replaces the old inline
+     expanding client list which didn't scale past a handful of clients.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-clients" class="view">
+  <main class="container" style="max-width:none; padding:0 16px 16px;">
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 0 10px;">
+      <h1 style="font-size:18px; font-weight:700; color:var(--text); margin:0;">Clients</h1>
+      <input type="text" id="clients-search" placeholder="Search clients…" oninput="renderClientsView()" autocomplete="off"
+        style="flex:0 1 240px; min-width:160px; padding:7px 10px; font-size:13px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
+      <span id="clients-count-note" style="font-size:11px; color:var(--text-muted);"></span>
+    </div>
+    <div id="clients-grid" class="clients-grid"></div>
+  </main>
+</div><!-- /#view-clients -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: AI ASSISTANT
@@ -22713,6 +22755,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (!el) return;
       el.classList.toggle('collapsed', isCollapsed);
     });
+    // Design | Production is always expanded (its header no longer toggles).
+    const design = document.getElementById('nav-section-design');
+    if (design) design.classList.remove('collapsed');
   }
 
   function rebuildSidebar() {
@@ -22735,10 +22780,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const starredBadge = document.getElementById('badge-starred');
     if (starredBadge) { starredBadge.textContent = ''; starredBadge.classList.remove('attention'); }
 
-    // ── Full client list ──
+    // ── Full client list (legacy inline list — now replaced by the
+    // Clients card gallery at #/clients; element may be absent). ──
     const clientList = document.getElementById('client-list');
-    clientList.innerHTML = '';
-    sorted.forEach(name => clientList.appendChild(makeClientNavItem(name)));
+    if (clientList) {
+      clientList.innerHTML = '';
+      sorted.forEach(name => clientList.appendChild(makeClientNavItem(name)));
+    }
     const clientBadge = document.getElementById('badge-clients');
     if (clientBadge) { clientBadge.textContent = ''; clientBadge.classList.remove('attention'); }
 
@@ -22781,8 +22829,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Expand clients section when searching so results are visible
     if (q) {
-      clientSection.classList.remove('collapsed');
-      if (starredSection.style.display !== 'none') starredSection.classList.remove('collapsed');
+      if (clientSection) clientSection.classList.remove('collapsed');
+      if (starredSection && starredSection.style.display !== 'none') starredSection.classList.remove('collapsed');
     }
   }
 
@@ -23347,6 +23395,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     a.appendChild(delBtn);
 
     return a;
+  }
+
+  // Clients card gallery (#/clients) — alphabetical grid, each card shows
+  // the client's logo (falls back to an initial), name and workbook count.
+  // Click opens the client detail. Replaces the old inline nav list.
+  function renderClientsView() {
+    const titleEl = document.getElementById('header-title');
+    if (titleEl) titleEl.textContent = 'Clients';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-clients-link');
+    if (link) link.classList.add('active');
+    showView('view-clients');
+    const grid = document.getElementById('clients-grid');
+    if (!grid) return;
+    const q = (document.getElementById('clients-search')?.value || '').trim().toLowerCase();
+    const names = Object.keys(clientData || {}).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const filtered = q ? names.filter(n => n.toLowerCase().includes(q)) : names;
+    const note = document.getElementById('clients-count-note');
+    if (note) note.textContent = `${filtered.length} client${filtered.length === 1 ? '' : 's'}`;
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    if (filtered.length === 0) {
+      grid.innerHTML = `<div style="grid-column:1/-1; padding:44px; text-align:center; color:var(--text-muted); font-size:13px;">No clients${q ? ' match your search' : ' yet'}.</div>`;
+      return;
+    }
+    grid.innerHTML = filtered.map(name => {
+      const wbCount = (clientData[name] || []).length;
+      const starred = _starredClients.has(name);
+      return `<div class="client-card" onclick="location.hash='#/client/${encodeURIComponent(name)}'" title="Open ${esc(name)}">
+        ${starred ? '<span class="client-card-star" title="Starred">★</span>' : ''}
+        <div class="client-card-logo">${clientAvatarHTML(name, 56)}</div>
+        <div class="client-card-name">${esc(name)}</div>
+        <div class="client-card-sub">${wbCount} workbook${wbCount === 1 ? '' : 's'}</div>
+      </div>`;
+    }).join('');
   }
 
   function flowToStep(flow) {
@@ -32849,6 +32932,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Match: #/pipeline — workbook stage kanban board.
     if (hash === '#/pipeline') {
       renderPipelineBoard();
+      return;
+    }
+
+    // Match: #/clients — alphabetical client card gallery.
+    if (hash === '#/clients') {
+      renderClientsView();
       return;
     }
 
