@@ -292,6 +292,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .nav-flat-link:hover { background: var(--surface2); color: var(--text); }
     .nav-flat-link.active { color: var(--accent); }
+    /* Workbook Pipeline — Market Sculpt orange pill, dark text (stays orange
+       on hover/active so it always reads as the primary nav entry). */
+    #nav-all-workbooks,
+    #nav-all-workbooks:hover,
+    #nav-all-workbooks.active { background: #E8751A; color: #1a1d2e; }
+    #nav-all-workbooks span { color: #1a1d2e; }
+    #nav-all-workbooks:hover { background: #d4661a; }
     /* Stacked variant — main label row on top, smaller mixed-case
        sub-label underneath. Used by nav items that want a permanent
        hint about what lives inside (e.g. Inventory → "SKUs & Variants"). */
@@ -7236,14 +7243,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
   <hr style="border:none; border-top:1px solid var(--border); margin: 0 0 6px;" />
 
-  <!-- Workbook Pipeline — pinned above the search so it never scrolls away. -->
-  <div style="padding: 0 10px 6px;">
-    <a id="nav-all-workbooks" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
-      <span>Workbook Pipeline</span>
-    </a>
-  </div>
-
-  <!-- Search -->
+  <!-- Search — now sits above the Workbook Pipeline link. -->
   <div style="padding: 0 10px 8px;">
     <div style="position:relative;">
       <span style="position:absolute; left:9px; top:50%; transform:translateY(-50%); font-size:12px; color:var(--text-muted); pointer-events:none; z-index:2;">🔍</span>
@@ -7258,12 +7258,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </div>
 
-  <nav class="sidebar-nav" id="sidebar-nav">
+  <!-- Workbook Pipeline — Market Sculpt orange pill with dark text. -->
+  <div style="padding: 0 10px 6px;">
+    <a id="nav-all-workbooks" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+      <span>Workbook Pipeline</span>
+    </a>
+  </div>
 
-    <!-- Workbook Pipeline stage drill-down (counts + aging per stage). The
-         "Workbook Pipeline" header link itself is pinned above the search so
-         it stays put while this list scrolls. -->
-    <div id="pipeline-nav-list"></div>
+  <nav class="sidebar-nav" id="sidebar-nav">
 
     <!-- ★ Starred -->
     <div class="nav-section collapsed" id="nav-section-starred">
