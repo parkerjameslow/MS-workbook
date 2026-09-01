@@ -7408,15 +7408,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="nav-badge" id="badge-crm"></span>
         </a>
 
-        <!-- Pipeline — kanban board of every workbook by its current
-             stage (RFQ → Ready for Review → Samples → Orders → In
-             Production → Shipments → Receiving). Drag cards between the
-             flag-based early stages; the entity-backed later stages are
-             managed from their own views. -->
-        <a id="nav-pipeline-link" href="#/pipeline" onclick="event.preventDefault(); location.hash='#/pipeline'" class="nav-flat-link">
-          <span>Pipeline</span>
-          <span class="nav-badge" id="badge-pipeline"></span>
-        </a>
+        <!-- (Pipeline link removed — the "Workbook Pipeline" link pinned
+             at the top of the nav already opens #/pipeline; no duplicate.) -->
 
         <!-- Inventory — moved here from a top-level flat link. Stays
              stacked so the "SKUs & Variants" sub-label still sits
