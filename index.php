@@ -22900,6 +22900,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Active highlighted index for keyboard nav. Reset whenever the
   // dropdown re-renders.
   let _sidebarSearchHighlight = -1;
+  // True once the operator has arrow-keyed into a specific dropdown row —
+  // then Enter jumps to that row. Otherwise Enter runs the FULL search in
+  // the AI Assistant window (same results, in the main pane).
+  let _sidebarSearchArrowed = false;
 
   // Build a fresh entry list from current globals every keystroke. The
   // dataset is small enough (typically a few hundred rows total) that
@@ -23117,7 +23121,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
     _sidebarSearchHighlight = 0;
+    _sidebarSearchArrowed = false;   // a fresh query — Enter runs the full search
     _renderSidebarSearchResults(q);
+  }
+
+  // Run a sidebar-search query in the AI Assistant window so the operator
+  // sees the SAME rich, grouped results in the main pane (not just the
+  // little dropdown). Mirrors pressing Enter in the assistant composer.
+  function runSidebarSearchInAssistant(query) {
+    const q = (query || '').trim();
+    if (!q) return;
+    if (typeof _addRecentSearch === 'function') _addRecentSearch(q);
+    renderAssistantView();                       // build the view + composer
+    const input = document.getElementById('assistant-composer');
+    if (input) input.value = q;
+    if (typeof _asstSend === 'function') _asstSend();   // search + render + persist
+    // Reflect the view in the URL. The re-render this triggers reloads the
+    // saved thread (results included), so nothing is lost.
+    if (location.hash !== '#/assistant') location.hash = '#/assistant';
   }
 
   // ── Recent searches (replaces "recent nav" in this dropdown) ─────────
@@ -23306,8 +23327,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function sidebarSearchKeydown(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (_sidebarSearchHighlight >= 0 && _sidebarSearchEntries[_sidebarSearchHighlight]) {
+      // If the operator arrow-keyed to a specific dropdown row, Enter jumps
+      // to it (quick-nav). Otherwise Enter runs the full search in the AI
+      // Assistant window so the same grouped results show in the main pane.
+      if (_sidebarSearchArrowed && _sidebarSearchHighlight >= 0 && _sidebarSearchEntries[_sidebarSearchHighlight]) {
         _sidebarSearchClick(_sidebarSearchHighlight);
+        return;
+      }
+      const q = (e.target.textContent || '').trim();
+      if (q) {
+        hideRecentNav();
+        e.target.blur();
+        runSidebarSearchInAssistant(q);
       }
       return;
     }
@@ -23321,6 +23352,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const total = _sidebarSearchEntries.length;
       if (total === 0) return;
       e.preventDefault();
+      _sidebarSearchArrowed = true;
       if (e.key === 'ArrowDown') _sidebarSearchHighlight = (_sidebarSearchHighlight + 1) % total;
       else _sidebarSearchHighlight = (_sidebarSearchHighlight - 1 + total) % total;
       _sidebarSearchHighlightRefresh();
