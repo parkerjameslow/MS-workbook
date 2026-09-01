@@ -7323,18 +7323,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </a>
   </div>
 
-  <nav class="sidebar-nav" id="sidebar-nav">
+  <!-- Clients — pinned orange pill (matches Workbook Pipeline; lives
+       OUTSIDE the scrolling nav below so it stays put on scroll). Opens
+       the Clients card gallery (#/clients); the old inline list + Starred
+       section are gone — starred clients now sort to the top there. -->
+  <div style="padding: 0 10px 8px;">
+    <a id="nav-clients-link" href="#/clients" onclick="event.preventDefault(); location.hash='#/clients'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+      <span>Clients</span>
+      <span class="nav-badge" id="badge-clients"></span>
+    </a>
+  </div>
 
-    <!-- Clients — Market Sculpt orange pill (matches Workbook Pipeline).
-         Opens the Clients card gallery (#/clients); the old inline list
-         and Starred section are gone — starred clients now sort to the top
-         of the card view instead. -->
-    <div style="padding: 2px 10px 8px;">
-      <a id="nav-clients-link" href="#/clients" onclick="event.preventDefault(); location.hash='#/clients'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
-        <span>Clients</span>
-        <span class="nav-badge" id="badge-clients"></span>
-      </a>
-    </div>
+  <nav class="sidebar-nav" id="sidebar-nav">
 
     <!-- Inventory moved into the Internal section below. -->
 
