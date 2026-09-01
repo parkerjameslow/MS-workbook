@@ -18754,7 +18754,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">Primary: <strong style="color:var(--text);">${esc(primaryName)}</strong> · ${memberCount} member${memberCount === 1 ? '' : 's'}</div>
           <div style="font-size:11px; color:var(--text-muted); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(memberNames)}">${esc(memberNames)}</div>
         </div>
-        <button class="btn btn-ghost" style="font-size:11px; color:var(--danger); flex-shrink:0;" onclick="deleteRfqGroup('${esc(g.id)}')">Delete</button>
+        <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
+          <button class="btn btn-ghost" style="font-size:11px;" onclick="duplicateRfqGroup('${esc(g.id)}')" title="Clone this group's lines and the group as a copy">Duplicate</button>
+          <button class="btn btn-ghost" style="font-size:11px; color:var(--danger);" onclick="deleteRfqGroup('${esc(g.id)}')">Delete</button>
+        </div>
       </div>`;
     }).join('');
   }
@@ -18763,6 +18766,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     renderManageRfqGroupsList();
     updateRfqGroupsBar();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
+  // Duplicate a whole combine group (a "kit"): clone every member RFQ
+  // line — full data, including variants, images and comparable options
+  // — as brand-new rows at the bottom of the table, then create a new
+  // group over those new positions labelled "… (copy)". Because clones
+  // append at the tail, their positional indices are simply
+  // startIdx + k (the group refs are positional; see _rfqIdxFromDomId).
+  function duplicateRfqGroup(id) {
+    const g = (_combineGroups || []).find(x => x && x.id === id);
+    if (!g) return;
+    // Snapshot every current parent row BEFORE appending — clones read
+    // from this, new rows land past its end.
+    const items = collectRfqItems();
+    const memberIdxs = (g.itemIdxs || []).slice().sort((a, b) => a - b);
+    const valid = memberIdxs.filter(i => items[i]);
+    if (valid.length < 2) {
+      if (typeof showToast === 'function') showToast('Nothing to duplicate — this group\'s lines are missing (likely reordered).', 'warn');
+      return;
+    }
+    const startIdx = items.length;   // first cloned row's positional index
+    const newIdxs = [];
+    let newPrimaryIdx = -1;
+    valid.forEach((srcIdx, k) => {
+      const it = items[srcIdx];
+      addRfqRow(
+        it.item, it.sku, it.qty, it.priceRmb, it.leadTime,
+        it.sample, it.variants, it.images,
+        it.comparableOptions, it.selectedOptionIdx
+      );
+      const newIdx = startIdx + k;
+      newIdxs.push(newIdx);
+      if (srcIdx === g.primaryIdx) newPrimaryIdx = newIdx;
+    });
+    if (newPrimaryIdx < 0) newPrimaryIdx = newIdxs[0];
+    const newGid = 'g' + Date.now() + Math.floor(Math.random() * 1000);
+    _combineGroups.push({
+      id: newGid,
+      label: (g.label || 'Group') + ' (copy)',
+      primaryIdx: newPrimaryIdx,
+      itemIdxs: newIdxs
+    });
+    renderManageRfqGroupsList();
+    updateRfqGroupsBar();
+    if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+    if (typeof showToast === 'function') showToast(`Duplicated "${g.label || 'group'}" — ${newIdxs.length} lines added`, 'success');
   }
 
   // Apply combine groups to a list of rfqItems for client-facing
