@@ -36220,6 +36220,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (hint) hint.textContent = `Release Date: ${_computeReleaseDateLabel(v)}`;
   }
 
+  // ── Date-driven shipment status (the dates ARE the "AI") ──────────
+  // The operator-entered ETD + arrival dates are the signal that moves
+  // a shipment along the flow — replacing the old carrier-fetch lookup
+  // that used to advance it. Given today's date, the dates imply how
+  // far the shipment has progressed and we set the status to match.
+  // Guardrails:
+  //   • FORWARD only — editing a date never pulls a shipment backward.
+  //   • Caps at 'waiting_arrival'. Delivered + Received mean the goods
+  //     physically arrived / were audited, which can't be known from an
+  //     ESTIMATE, so a human still confirms those (they keep their
+  //     manual dropdown + modals). A manually-set delivered/received
+  //     (higher in the flow) is therefore never overridden here.
+  //   • Bypasses the manual BOL/tracking modals: a date-driven move
+  //     reflects physical reality from operator input, not a UI action.
+  const _SHIP_FLOW_ORDER = ['planning', 'booked', 'in_transit', 'waiting_arrival', 'delivered', 'received'];
+  function _todayYmd() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  function _deriveShipmentStatusFromDates(s) {
+    if (!s) return null;
+    const today  = _todayYmd();
+    const depart = s.etd || s.portShipDate || '';
+    // Final door ETA is the true "arrived" threshold; port arrival is
+    // the fallback when no door ETA is on file (ocean-only legs).
+    const arrive = s.eta || s.portArrivalDate || '';
+    if (arrive && today >= arrive) return 'waiting_arrival';
+    if (depart && today >= depart) return 'in_transit';
+    return null; // before departure → leave whatever the operator set
+  }
+  // Advance one shipment's status to what its dates imply. Returns true
+  // only when the status actually changed. Never moves backward, never
+  // past the 'waiting_arrival' cap.
+  function _applyDateDrivenShipmentStatus(s) {
+    if (!s) return false;
+    const derived = _deriveShipmentStatusFromDates(s);
+    if (!derived) return false;
+    const cap = _SHIP_FLOW_ORDER.indexOf('waiting_arrival');
+    const di  = _SHIP_FLOW_ORDER.indexOf(derived);
+    const ci  = _SHIP_FLOW_ORDER.indexOf(s.status || 'planning');
+    if (di > ci && di <= cap) { s.status = derived; return true; }
+    return false;
+  }
+  // Sweep every shipment, advance any whose dates have carried it
+  // forward, and persist once if anything changed. Idempotent — a
+  // second pass over the same data finds nothing to do — so it's safe
+  // to call from the render paths. Delivered/received are never touched.
+  function _reconcileShipmentStatuses() {
+    let changed = false;
+    Object.keys(shipmentData || {}).forEach(id => {
+      if (_applyDateDrivenShipmentStatus(shipmentData[id])) changed = true;
+    });
+    if (changed && typeof saveShipments === 'function') saveShipments();
+    return changed;
+  }
+
   // Shipping-method onChange: show/hide port-date row (only meaningful
   // for ocean freight). Also pre-fill the tracking carrier when the
   // method has a known default carrier so the operator just needs to
@@ -36492,6 +36549,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const el = document.getElementById('shipment-list-content');
     if (!el) return;
 
+    // Dates drive the flow: catch up any shipment whose ETD/arrival
+    // has passed since it was last looked at (time moving forward, not
+    // just an edit). Idempotent + save-once, so this is cheap to run
+    // on every render.
+    _reconcileShipmentStatuses();
+
     // Hide shipments that have moved to the Receiving lane (operator
     // marked Delivered → moves to Receiving for audit) or are
     // already Received (archived). They live on the #/receiving
@@ -36560,13 +36623,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // port arrival date → "—". Tracking-derived ETA was dropped
       // when the carrier-fetch machinery came out; operators now
       // open the carrier site directly via the ↗ launch button.
-      const _etaResolved = isDelivered ? (s.deliveredOn || '')
-                          : (s.eta || s.portArrivalDate || '');
-      const _etaColor = isDelivered ? '#34d399' : '';
-      const eta = _etaResolved
-        ? `<strong${_etaColor ? ` style="color:${_etaColor};"` : ''}>${_etaResolved}</strong>`
-        : '—';
-      const etaLabel = isDelivered ? 'Delivered' : 'ETA';
+      // Arrival estimates on the card. An ocean shipment has TWO — the
+      // destination-port arrival AND the final door ETA — so when both
+      // are on file, show them side by side. Otherwise show whichever
+      // single date exists. Delivered shipments show the actual
+      // delivered date instead of an estimate.
+      let _etaHtml;
+      if (isDelivered) {
+        const d = s.deliveredOn ? _fmtShortDate(s.deliveredOn) : '—';
+        _etaHtml = `<span class="sc-eta">Delivered <strong style="color:#34d399;">${d}</strong></span>`;
+      } else {
+        const _port = s.portArrivalDate || '';
+        const _fin  = s.eta || '';
+        if (_port && _fin) {
+          _etaHtml = `<span class="sc-eta">Port ETA <strong>${_fmtShortDate(_port)}</strong> · Final ETA <strong>${_fmtShortDate(_fin)}</strong></span>`;
+        } else {
+          const _one = _fin || _port || '';
+          _etaHtml = `<span class="sc-eta">ETA ${_one ? `<strong>${_fmtShortDate(_one)}</strong>` : '—'}</span>`;
+        }
+      }
       const entries = s.entries || [];
       const orderEntries = entries.filter(e => e.orderId);
       const shipHasChangeRequest = orderEntries.some(e => orderData[e.orderId]?.changeRequested);
@@ -36622,7 +36697,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return `<div class="shipment-card${shipHasChangeRequest ? ' has-change-request' : ''}" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
           <span class="sc-title">${s.name}</span>
-          <span class="sc-eta">${etaLabel} ${eta}</span>
+          ${_etaHtml}
           ${_shippingInfoBlock}
           ${_trackingStrip}
         </div>
@@ -37726,6 +37801,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const recNav = document.getElementById('nav-receiving-link');
     if (recNav) recNav.classList.add('active');
     showView('view-receiving');
+    _reconcileShipmentStatuses();
     if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
     const host = document.getElementById('receiving-list-content');
     if (!host) return;
@@ -38469,6 +38545,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     s.etd         = document.getElementById('ship-detail-etd').value;
     s.eta         = document.getElementById('ship-detail-eta').value;
     s.deliveredOn = document.getElementById('ship-detail-delivered').value;
+    // Dates drive the flow: pushing ETD/ETA past today advances the
+    // status automatically (forward only, capped at Waiting Arrival).
+    // Reflect it in the header dropdown right away so the operator sees
+    // the move they just triggered.
+    if (_applyDateDrivenShipmentStatus(s)) {
+      const sel = document.getElementById('ship-detail-status');
+      if (sel) sel.value = s.status;
+      const wrap = document.getElementById('ship-delivered-wrap');
+      if (wrap) wrap.style.display = s.status === 'delivered' ? 'flex' : 'none';
+      if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
+    }
     saveShipments();
   }
 
