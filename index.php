@@ -265,17 +265,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .nav-section-header:hover { color: var(--text); }
     .nav-section-chevron {
       margin-left: auto;
-      width: 16px;
-      height: 16px;
+      width: 20px;
+      height: 20px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      color: var(--text-muted);
+      color: var(--text);
       transition: transform 0.2s ease;
       transform: rotate(90deg);
-      opacity: 0.7;
-      font-size: 12px;
+      opacity: 1;
+      font-size: 20px;
+      font-weight: 700;
       line-height: 1;
     }
     .nav-section.collapsed .nav-section-chevron { transform: rotate(0deg); }
@@ -7265,7 +7266,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="pipeline-nav-list"></div>
 
     <!-- ★ Starred -->
-    <div class="nav-section" id="nav-section-starred">
+    <div class="nav-section collapsed" id="nav-section-starred">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-starred')">
         <span>★ Starred</span>
         <span class="nav-badge" id="badge-starred"></span>
@@ -7292,7 +7293,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          toggleNavSection persistence. Houses the day-to-day operator
          flow from RFQ through arrival. Samples sits below Ready for
          Review per the new layout. -->
-    <div class="nav-section" id="nav-section-design">
+    <div class="nav-section collapsed" id="nav-section-design">
       <div class="nav-section-header" onclick="toggleNavSection('nav-section-design')">
         <span>Design | Production</span>
         <span class="nav-section-chevron">›</span>
@@ -22695,6 +22696,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function restoreNavSectionStates() {
+    // One-time reset: default every nav section to collapsed. Clears any
+    // stale pre-existing "expanded" prefs so the new collapsed-by-default
+    // actually shows; sections the user toggles after this persist normally.
+    try {
+      if (!localStorage.getItem('ms_nav_default_collapsed_v1')) {
+        localStorage.removeItem('ms_nav_collapsed');
+        localStorage.setItem('ms_nav_default_collapsed_v1', '1');
+      }
+    } catch (e) {}
     const collapsed = JSON.parse(localStorage.getItem('ms_nav_collapsed') || '{}');
     Object.entries(collapsed).forEach(([id, isCollapsed]) => {
       const el = document.getElementById(id);
