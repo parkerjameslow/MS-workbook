@@ -1374,7 +1374,46 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       color: var(--text);
       line-height: 1.1;
       margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+    .cdc-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .cdc-name-edit {
+      flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; padding: 0;
+      background: none; border: none; border-radius: 6px;
+      color: var(--text-muted); cursor: pointer; opacity: 0.6;
+      transition: background 0.12s, color 0.12s, opacity 0.12s;
+    }
+    .cdc-name-edit:hover { background: var(--surface2); color: var(--accent); opacity: 1; }
+    .cdc-name-save, .cdc-name-cancel {
+      flex-shrink: 0; width: 30px; height: 30px; padding: 0;
+      border-radius: 6px; border: 1px solid var(--border); cursor: pointer;
+      font-size: 14px; font-weight: 700; line-height: 1; font-family: inherit;
+      background: var(--surface2); color: var(--text);
+    }
+    .cdc-name-save { border-color: var(--accent); color: var(--accent); }
+    .cdc-name-save:hover { background: var(--accent); color: #fff; }
+    .cdc-name-cancel:hover { background: var(--surface); color: var(--danger, #dc2626); }
+    /* Billing "Same as shipping" toggle sits in the field label row. */
+    .cdc-sameas {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0;
+      color: var(--text-muted); cursor: pointer; white-space: nowrap;
+    }
+    .cdc-sameas input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--accent); margin: 0; }
+    /* Delete-client action at the bottom of the detail card's right column. */
+    .cdc-delete-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      margin-top: 12px; width: 100%;
+      padding: 8px 12px; border-radius: 8px;
+      background: transparent; border: 1px solid rgba(220,38,38,0.35);
+      color: #dc2626; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+      transition: background 0.12s, color 0.12s;
+    }
+    .cdc-delete-btn:hover { background: #dc2626; color: #fff; border-color: #dc2626; }
     .cdc-fields {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -28626,6 +28665,151 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }, 800);
   }
 
+  // ── Billing "Same as shipping" ───────────────────────────────────────
+  // Checking the box copies the current shipping address into billing so
+  // the operator doesn't retype it. One-time copy (not a live lock) —
+  // they can still tweak billing afterward.
+  function onBillingSameAsShipping(cb, encName) {
+    const clientName = decodeURIComponent(encName);
+    const d = clientDetails[clientName] || (clientDetails[clientName] = {});
+    if (cb.checked) {
+      const ship = (d.shipping_address || '').trim();
+      d.billing_address = ship;
+      const ta = document.getElementById('cdc-billing-textarea');
+      if (ta) ta.value = ship;
+      saveClientDetail(clientName);
+    }
+  }
+
+  // ── Rename a client from the detail card ─────────────────────────────
+  let _editingClientName = null;
+  function beginEditClientName(name) {
+    _editingClientName = name;
+    const el = document.querySelector('#client-detail-card-wrap .cdc-name');
+    if (!el) return;
+    const safe = String(name).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    el.innerHTML = `
+      <input id="cdc-name-input" type="text" value="${safe}" autocomplete="off" spellcheck="false"
+        style="flex:1; min-width:0; font:inherit; padding:2px 8px; border:1px solid var(--accent); border-radius:6px; background:var(--surface); color:var(--text); outline:none;"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();commitEditClientName();}else if(event.key==='Escape'){event.preventDefault();cancelEditClientName();}" />
+      <button type="button" class="cdc-name-save" title="Save name" onclick="commitEditClientName()">✓</button>
+      <button type="button" class="cdc-name-cancel" title="Cancel" onclick="cancelEditClientName()">✕</button>`;
+    const inp = document.getElementById('cdc-name-input');
+    if (inp) { inp.focus(); inp.select(); }
+  }
+  function cancelEditClientName() {
+    const n = _editingClientName; _editingClientName = null;
+    if (n) renderClientDetailCard(n);
+  }
+  async function commitEditClientName() {
+    const oldName = _editingClientName;
+    const inp = document.getElementById('cdc-name-input');
+    if (!oldName || !inp) return;
+    const newName = (inp.value || '').trim();
+    if (!newName || newName === oldName) { cancelEditClientName(); return; }
+    await renameClient(oldName, newName);
+  }
+
+  // Rename everywhere the client name is used as a key/value. Workbooks
+  // link to the client by client_id server-side, so the DB rename is one
+  // row; the front-end + app_state blobs key by NAME, so re-key those here.
+  async function renameClient(oldName, newName) {
+    newName = (newName || '').trim();
+    if (!newName || newName === oldName) return;
+    const clash = Object.keys(clientData || {}).some(n => n !== oldName && n.toLowerCase() === newName.toLowerCase());
+    if (clash) { alert(`A client named "${newName}" already exists.`); return; }
+    const cid = (typeof dbClientMap === 'object' && dbClientMap && dbClientMap[oldName]) ||
+                (clientDetails[oldName] && clientDetails[oldName].id) || null;
+    try {
+      if (cid) {
+        const res = await apiCall('rename_client', { id: cid, new_name: newName });
+        if (!res || !res.success) {
+          alert('Could not rename client: ' + ((res && res.error) || 'unknown error'));
+          cancelEditClientName();
+          return;
+        }
+      }
+      _migrateClientNameInState(oldName, newName);
+      _editingClientName = null;
+      if (typeof rebuildSidebar === 'function') rebuildSidebar();
+      if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
+      location.hash = '#/client/' + encodeURIComponent(newName);
+      if (typeof _msToast === 'function') _msToast(`Renamed to "${newName}".`, 'success');
+    } catch (e) {
+      console.warn('renameClient:', e);
+      alert('Network error renaming client — please try again.');
+    }
+  }
+
+  // Re-key every name-keyed structure + migrate name-valued app_state
+  // blobs from oldName → newName. Each blob is guarded + saved only when
+  // it actually changed, so this is safe even for blobs not yet loaded.
+  function _migrateClientNameInState(oldName, newName) {
+    const reKey = obj => { if (obj && Object.prototype.hasOwnProperty.call(obj, oldName)) { obj[newName] = obj[oldName]; delete obj[oldName]; } };
+    reKey(typeof clientData !== 'undefined' ? clientData : null);
+    reKey(typeof clientDetails !== 'undefined' ? clientDetails : null);
+    reKey(typeof dbClientMap !== 'undefined' ? dbClientMap : null);
+    reKey(typeof _clientConvos !== 'undefined' ? _clientConvos : null);
+    // Pipe-delimited "name|..." keys → new name prefix.
+    const rePrefix = (map) => {
+      if (!map) return false;
+      let touched = false;
+      Object.keys(map).forEach(k => {
+        const i = k.indexOf('|');
+        if (i > -1 && k.slice(0, i) === oldName) { map[newName + k.slice(i)] = map[k]; delete map[k]; touched = true; }
+      });
+      return touched;
+    };
+    rePrefix(typeof workbookDetail !== 'undefined' ? workbookDetail : null);
+    rePrefix(typeof dbWorkbookMap !== 'undefined' ? dbWorkbookMap : null);
+    // Starred set (localStorage).
+    try {
+      if (typeof _starredClients !== 'undefined' && _starredClients.has(oldName)) {
+        _starredClients.delete(oldName); _starredClients.add(newName);
+        localStorage.setItem('ms_starred_clients', JSON.stringify([..._starredClients]));
+      }
+    } catch (_) {}
+    // Orders (ms_orders): order.clientName + entries[].clientName.
+    try {
+      let t = false;
+      Object.values(typeof orderData !== 'undefined' ? orderData : {}).forEach(o => {
+        if (!o) return;
+        if (o.clientName === oldName) { o.clientName = newName; t = true; }
+        (o.entries || []).forEach(e => { if (e && e.clientName === oldName) { e.clientName = newName; t = true; } });
+      });
+      if (t && typeof saveOrders === 'function') saveOrders();
+    } catch (_) {}
+    // Shipments (ms_shipments): entries[] + sampleEntries[] clientName.
+    try {
+      let t = false;
+      Object.values(typeof shipmentData !== 'undefined' ? shipmentData : {}).forEach(s => {
+        if (!s) return;
+        (s.entries || []).forEach(e => { if (e && e.clientName === oldName) { e.clientName = newName; t = true; } });
+        (s.sampleEntries || []).forEach(e => { if (e && e.clientName === oldName) { e.clientName = newName; t = true; } });
+      });
+      if (t && typeof saveShipments === 'function') saveShipments();
+    } catch (_) {}
+    // Pipeline meta (_plMeta): keys "wb:<client>|<wb>".
+    try {
+      if (typeof _plMeta === 'object' && _plMeta) {
+        let t = false;
+        Object.keys(_plMeta).forEach(k => {
+          const m = k.match(/^wb:([^|]+)\|(.+)$/);
+          if (m && m[1] === oldName) { _plMeta[`wb:${newName}|${m[2]}`] = _plMeta[k]; delete _plMeta[k]; t = true; }
+        });
+        if (t && typeof _persistPlMeta === 'function') _persistPlMeta();
+      }
+    } catch (_) {}
+    // Sample meta (_sampleMeta): keys "<client>|<wb>|<row>".
+    try {
+      if (typeof _sampleMeta === 'object' && _sampleMeta) {
+        if (rePrefix(_sampleMeta) && typeof _persistSampleMeta === 'function') _persistSampleMeta();
+      }
+    } catch (_) {}
+    // Client conversations blob (name-keyed) already re-keyed via reKey above.
+    try { if (typeof _persistClientConvos === 'function' && typeof _clientConvos === 'object') _persistClientConvos(); } catch (_) {}
+  }
+
   function renderClientDetailCard(clientName) {
     const wrap = document.getElementById('client-detail-card-wrap');
     if (!wrap) return;
@@ -28816,7 +29000,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="cdc-avatar-margin-badge" title="Default profit margin: ${marginPct}%">${marginBadge}</span>
         </div>
         <div class="cdc-left">
-          <div class="cdc-name">${clientName}</div>
+          <div class="cdc-name">
+            <span class="cdc-name-text">${clientName}</span>
+            <button type="button" class="cdc-name-edit" title="Rename client" aria-label="Rename client"
+                    onclick="beginEditClientName(decodeURIComponent('${_encName}'))">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+            </button>
+          </div>
           <div class="cdc-fields">
             ${field('email',            'Email',            'client@example.com')}
             ${field('phone',            'Phone',            '+1 (555) 000-0000')}
@@ -28827,8 +29017,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             ${empSelect('account_manager',   'Account Manager')}
             ${empSelect('salesperson',       'Salesperson')}
             ${field('notes',           'Notes',            'Internal notes…',                true, 'cdc-field--tall')}
-            ${field('shipping_address','Shipping Address', 'Same as billing or different',   true)}
-            ${field('billing_address', 'Billing Address',  'Street, City, State ZIP',        true)}
+            ${field('shipping_address','Shipping Address', 'Street, City, State ZIP',        true)}
+            ${(() => {
+              const _bv = (d.billing_address || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+              const _bill = (d.billing_address || '').trim();
+              const _ship = (d.shipping_address || '').trim();
+              const _same = _bill !== '' && _bill === _ship;
+              return `<div class="cdc-field">
+                <div class="cdc-label" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                  <span>Billing Address</span>
+                  <label class="cdc-sameas" title="Copy the shipping address into billing">
+                    <input type="checkbox" ${_same ? 'checked' : ''} onchange="onBillingSameAsShipping(this,'${enc}')" />
+                    Same as shipping
+                  </label>
+                </div>
+                <textarea class="cdc-value" id="cdc-billing-textarea" rows="2" placeholder="Street, City, State ZIP" oninput="onClientDetailChange(this,'${enc}','billing_address')">${_bv}</textarea>
+              </div>`;
+            })()}
           </div>
         </div>
         <div class="cdc-right-col">
@@ -28863,6 +29068,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <span class="cdc-fin-stat-value" style="font-size:18px;">${fmtUsd(pipelineUsd)}</span>
             </div>
           </div>
+          <button type="button" class="cdc-delete-btn" onclick="openDeleteClientModal(decodeURIComponent('${_encName}'))" title="Delete this client">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Delete client
+          </button>
         </div>
       </div>
     `;

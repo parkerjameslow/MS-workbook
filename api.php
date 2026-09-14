@@ -1676,6 +1676,31 @@ switch ($action) {
         }
         break;
 
+    case 'rename_client':
+        $cid     = (int)($input['id'] ?? 0);
+        $newName = trim((string)($input['new_name'] ?? ''));
+        if (!$cid || $newName === '') {
+            echo json_encode(['success' => false, 'error' => 'Client id and new name required']);
+            break;
+        }
+        // Reject a collision with another live client (case-insensitive).
+        $dup = $pdo->prepare("SELECT id FROM clients WHERE deleted_at IS NULL AND id <> ? AND LOWER(name) = LOWER(?) LIMIT 1");
+        $dup->execute([$cid, $newName]);
+        if ($dup->fetchColumn()) {
+            echo json_encode(['success' => false, 'error' => 'Another client already has that name']);
+            break;
+        }
+        try {
+            // Workbooks reference the client by client_id, so this single-row
+            // update surfaces the new name everywhere the join is used.
+            $stmt = $pdo->prepare("UPDATE clients SET name = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL");
+            $stmt->execute([$newName, $cid]);
+            echo json_encode(['success' => true, 'id' => $cid, 'name' => $newName]);
+        } catch (PDOException $e) {
+            echo json_encode(['success' => false, 'error' => ($e->getCode() == 23000) ? 'Another client already has that name' : $e->getMessage()]);
+        }
+        break;
+
     case 'delete_client':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Client ID required']);
