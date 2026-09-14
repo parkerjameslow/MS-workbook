@@ -23551,7 +23551,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const starred = _starredClients.has(name);
       // Pass the name through encode/decode so any punctuation is safe in
       // the inline handler.
-      const enc = encodeURIComponent(name);
+      // encodeURIComponent leaves ' unescaped, which would close the inline
+      // onclick's JS string early (e.g. "Gandolfo's") — escape it to %27.
+      const enc = encodeURIComponent(name).replace(/'/g, '%27');
       return `<div class="client-card" onclick="location.hash='#/client/${enc}'" title="Open ${esc(name)}">
         <button type="button" class="client-card-star${starred ? ' on' : ''}" title="${starred ? 'Unstar' : 'Star'} ${esc(name)}"
                 onclick="event.stopPropagation(); toggleClientCardStar(decodeURIComponent('${enc}'), event)">${starred ? '★' : '☆'}</button>
