@@ -1399,11 +1399,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .cdc-name-cancel:hover { background: var(--surface); color: var(--danger, #dc2626); }
     /* Billing "Same as shipping" toggle sits in the field label row. */
     .cdc-sameas {
+      flex-shrink: 0;
       display: inline-flex; align-items: center; gap: 5px;
       font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0;
       color: var(--text-muted); cursor: pointer; white-space: nowrap;
     }
-    .cdc-sameas input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--accent); margin: 0; }
+    .cdc-sameas input { width: 13px; height: 13px; cursor: pointer; accent-color: var(--accent); margin: 0; flex-shrink: 0; }
     /* Delete-client action at the bottom of the detail card's right column. */
     .cdc-delete-btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -1450,6 +1451,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       text-transform: uppercase;
       letter-spacing: 0.07em;
       color: var(--text-muted);
+      white-space: nowrap;
+      min-height: 16px;            /* keep header height consistent so the
+                                      shipping + billing textareas line up */
+      display: flex;
+      align-items: center;
     }
     .cdc-value {
       font-size: 13px;
