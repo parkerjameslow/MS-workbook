@@ -5529,6 +5529,57 @@ switch ($action) {
         echo json_encode(['success' => true, 'token' => $trkToken, 'url' => "{$trkScheme}://{$trkHost}/track.php?t={$trkToken}"]);
         break;
 
+    case 'mint_client_portal':
+        // Persistent PER-CLIENT portal link — one stable token per client,
+        // gated by a 6-digit PIN. myportal.php reads LIVE order + shipment
+        // state each visit, so the client always sees current status across
+        // ALL of their orders (unlike track.php which is per-order).
+        $cpClientId = (int)($input['client_id'] ?? 0);
+        $cpClient   = trim((string)($input['client_name'] ?? ''));
+        if (!$cpClientId && $cpClient === '') { echo json_encode(['success' => false, 'error' => 'client_id or client_name required']); break; }
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS client_portal_tokens (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            token CHAR(64) NOT NULL,
+            client_id INT DEFAULT NULL,
+            client_name VARCHAR(255) DEFAULT '',
+            pin CHAR(6) DEFAULT NULL,
+            pin_attempts INT NOT NULL DEFAULT 0,
+            locked_until TIMESTAMP NULL DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_cpt_token (token),
+            UNIQUE KEY uq_cpt_client (client_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        // Reuse the existing token for this client (stable link). Match by id
+        // first, then by name for legacy rows minted before an id was passed.
+        $cpRow = null;
+        if ($cpClientId) {
+            $q = $pdo->prepare("SELECT * FROM client_portal_tokens WHERE client_id = ?");
+            $q->execute([$cpClientId]);
+            $cpRow = $q->fetch();
+        }
+        if (!$cpRow && $cpClient !== '') {
+            $q = $pdo->prepare("SELECT * FROM client_portal_tokens WHERE (client_id IS NULL OR client_id = 0) AND client_name = ?");
+            $q->execute([$cpClient]);
+            $cpRow = $q->fetch();
+        }
+        if ($cpRow) {
+            $cpToken = $cpRow['token'];
+            $cpPin   = ($cpRow['pin'] === null || $cpRow['pin'] === '') ? str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT) : $cpRow['pin'];
+            $pdo->prepare("UPDATE client_portal_tokens SET client_name = ?, client_id = COALESCE(NULLIF(?,0), client_id), pin = ? WHERE token = ?")
+                ->execute([$cpClient, $cpClientId, $cpPin, $cpToken]);
+        } else {
+            $cpToken = bin2hex(random_bytes(32));
+            $cpPin   = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $pdo->prepare("INSERT INTO client_portal_tokens (token, client_id, client_name, pin) VALUES (?, ?, ?, ?)")
+                ->execute([$cpToken, $cpClientId ?: null, $cpClient, $cpPin]);
+        }
+        $cpScheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $cpHost   = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
+        echo json_encode(['success' => true, 'token' => $cpToken, 'pin' => $cpPin, 'url' => "{$cpScheme}://{$cpHost}/myportal.php?t={$cpToken}"]);
+        break;
+
     case 'mint_art_approval':
         // Create a client art-approval link (art.php). Unlike tracking, each
         // send is a NEW token snapshotting the CURRENT art files, so the

@@ -1543,6 +1543,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .cdc-rfq-btn:hover { background: #d4661a; }
     .cdc-rfq-btn:active { transform: translateY(1px); }
     .cdc-rfq-btn:disabled { opacity: 0.55; cursor: not-allowed; background: var(--accent); }
+    /* Client Portal link button — outlined variant under the RFQ button. */
+    .cdc-portal-btn {
+      margin-top: 8px; width: 100%;
+      background: transparent; color: var(--accent);
+      border: 1px solid var(--accent); border-radius: 8px;
+      padding: 9px 14px; font-size: 12.5px; font-weight: 700; font-family: inherit;
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+      transition: background 0.15s, color 0.15s, transform 0.05s;
+    }
+    .cdc-portal-btn:hover { background: var(--accent); color: #fff; }
+    .cdc-portal-btn:active { transform: translateY(1px); }
     .cdc-rfq-status {
       font-size: 12px;
       color: var(--text-muted);
@@ -24627,6 +24638,71 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     setTimeout(() => { const el = document.getElementById('tracking-url-input'); if (el) el.select(); }, 50);
   }
 
+  // ── Per-client portal link (myportal.php) ────────────────────────────
+  // Mints (or re-fetches) the client's stable portal link + PIN, then shows
+  // a copy modal. The portal is a live dashboard of ALL the client's orders
+  // (status + shipments + ETAs), PIN-gated.
+  async function openClientPortal(clientName) {
+    const cid = (typeof dbClientMap === 'object' && dbClientMap && dbClientMap[clientName]) ||
+                (clientDetails[clientName] && clientDetails[clientName].id) || 0;
+    try {
+      const res = await apiCall('mint_client_portal', { client_id: cid || 0, client_name: clientName });
+      if (!res || !res.success) {
+        alert('Could not create the portal link: ' + ((res && res.error) || 'unknown error'));
+        return;
+      }
+      _showClientPortalUrl(res.url, res.pin, clientName);
+    } catch (e) {
+      console.warn('openClientPortal:', e);
+      alert('Network error creating the portal link — please try again.');
+    }
+  }
+
+  function _showClientPortalUrl(url, pin, clientName) {
+    const existing = document.getElementById('client-portal-url-modal');
+    if (existing) existing.remove();
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const m = document.createElement('div');
+    m.id = 'client-portal-url-modal';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px;';
+    m.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px;max-width:540px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+          <div style="width:32px;height:32px;border-radius:50%;background:rgba(232,117,26,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E8751A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          </div>
+          <div style="font-size:16px;font-weight:800;color:var(--text);">Client Portal Link${clientName ? ' — ' + esc(clientName) : ''}</div>
+        </div>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 20px;line-height:1.6;">Give the client this <strong>one stable link</strong> — it's a live page showing every order's status (Ordered → Delivered), ETAs and shipments, and updates on its own. It's protected by the <strong>6-digit PIN</strong> below; send the PIN to your client separately (e.g. text or a second email) so the link alone can't open it.</p>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px;">Portal Link</div>
+        <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:16px;">
+          <input id="cportal-url-input" type="text" value="${esc(url)}" readonly
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;font-family:ui-monospace,monospace;color:var(--text);outline:none;min-width:0;" />
+          <button id="cportal-copy-url" onclick="(function(){const el=document.getElementById('cportal-url-input');el.select();document.execCommand('copy');const b=document.getElementById('cportal-copy-url');b.textContent='Copied!';b.style.background='var(--success)';setTimeout(()=>{b.textContent='Copy';b.style.background='var(--accent)';},2000);})()"
+            style="background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:0 16px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;">Copy</button>
+        </div>
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px;">Access PIN</div>
+        <div style="display:flex;gap:8px;align-items:stretch;">
+          <input id="cportal-pin-input" type="text" value="${esc(pin || '')}" readonly
+            style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:18px;font-weight:800;letter-spacing:6px;font-family:ui-monospace,monospace;color:var(--text);outline:none;min-width:0;text-align:center;" />
+          <button id="cportal-copy-pin" onclick="(function(){const el=document.getElementById('cportal-pin-input');el.select();document.execCommand('copy');const b=document.getElementById('cportal-copy-pin');b.textContent='Copied!';b.style.background='var(--success)';setTimeout(()=>{b.textContent='Copy';b.style.background='var(--accent)';},2000);})()"
+            style="background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;padding:0 16px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;">Copy</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:22px;gap:10px;">
+          <a href="${esc(url)}" target="_blank" rel="noopener"
+            style="font-size:12px;color:var(--accent);text-decoration:none;font-weight:600;display:inline-flex;align-items:center;gap:5px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Preview
+          </a>
+          <button onclick="document.getElementById('client-portal-url-modal').remove()"
+            style="background:none;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-size:13px;font-weight:600;padding:8px 18px;cursor:pointer;font-family:inherit;">Done</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    setTimeout(() => { const el = document.getElementById('cportal-url-input'); if (el) el.select(); }, 50);
+  }
+
   function lockWorkbookTab(locked) {
     _wbLocked = locked;
     const tab = document.getElementById('wb-tab-workbook');
@@ -29055,6 +29131,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             </button>
             <div class="cdc-rfq-status" id="cdc-rfq-status" style="display:none;"></div>
           </div>
+          <button type="button" class="cdc-portal-btn" onclick="openClientPortal(decodeURIComponent('${_encName}'))" title="Get this client's live portal link — status + shipments for all their orders, PIN-protected">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            Client Portal Link
+          </button>
           <div class="cdc-financial">
             <div class="cdc-fin-title">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
