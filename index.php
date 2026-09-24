@@ -6071,44 +6071,67 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       height: 0; border-top: 2px solid var(--border);
       margin: 8px 0 2px;
     }
-    /* Recent Workbooks view — client-grouped workbook rows. */
+    /* Recent Workbooks view — grouped table with status filters. */
+    .recent-range {
+      display: inline-flex; gap: 2px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 3px;
+    }
     .recent-range-btn {
-      background: transparent; border: none; border-radius: 6px;
-      padding: 4px 10px; font-size: 11px; font-weight: 700; font-family: inherit;
+      background: transparent; border: none; border-radius: 8px;
+      padding: 6px 14px; font-size: 12.5px; font-weight: 700; font-family: inherit;
       color: var(--text-muted); cursor: pointer; transition: background 0.12s, color 0.12s;
     }
     .recent-range-btn:hover { color: var(--text); }
     .recent-range-btn.is-active { background: var(--accent); color: #fff; }
-    .recent-group { margin-bottom: 18px; }
-    .recent-group-head {
-      display: flex; align-items: center; gap: 9px;
-      padding: 7px 10px; cursor: pointer; border-radius: 8px;
-      border-bottom: 2px solid var(--border);
+    .recent-filters { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+    .recent-chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+      padding: 7px 13px; font-size: 12.5px; font-weight: 700; font-family: inherit;
+      color: var(--text); cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s;
     }
-    .recent-group-head:hover { background: var(--surface2); }
-    .recent-group-logo { display: inline-flex; flex-shrink: 0; }
-    .recent-group-name { font-size: 13px; font-weight: 800; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .recent-group-count {
-      margin-left: auto; flex-shrink: 0;
-      font-size: 10px; font-weight: 700; color: var(--text-muted);
-      padding: 1px 8px; border-radius: 99px; background: var(--surface2); border: 1px solid var(--border);
-    }
-    .recent-group-rows { display: flex; flex-direction: column; }
-    .recent-wb-row {
-      display: flex; align-items: center; gap: 12px;
-      padding: 9px 12px; cursor: pointer;
+    .recent-chip:hover { border-color: var(--text-muted); }
+    .recent-chip.is-active { background: #1a1d2e; color: #fff; border-color: #1a1d2e; }
+    .recent-chip-n { font-weight: 800; opacity: 0.6; }
+    .recent-chip.is-active .recent-chip-n { opacity: 0.85; }
+    .recent-empty { padding: 48px 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+    .recent-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+    .recent-table { width: 100%; border-collapse: collapse; }
+    .recent-table thead th {
+      text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-muted); padding: 14px 18px; background: var(--surface2);
       border-bottom: 1px solid var(--border);
-      transition: background 0.1s;
     }
-    .recent-wb-row:hover { background: var(--surface2); }
-    .recent-wb-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .recent-wb-stage {
-      flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-      padding: 2px 9px; border-radius: 99px; background: rgba(232,117,26,0.12); color: #b45309;
+    .recent-table th.rc-updated, .recent-table td.rc-updated { text-align: right; }
+    .recent-row { cursor: pointer; transition: background 0.1s; }
+    .recent-row:hover { background: var(--surface2); }
+    .recent-table td { padding: 13px 18px; border-top: 1px solid var(--border); vertical-align: middle; }
+    /* Light divider within a client group; heavier line where a new client starts. */
+    .recent-row:not(.is-group-start) td.rc-wb,
+    .recent-row:not(.is-group-start) td.rc-status,
+    .recent-row:not(.is-group-start) td.rc-updated { border-top-color: color-mix(in srgb, var(--border) 45%, transparent); }
+    .recent-row:not(.is-group-start) td.rc-client { border-top-color: transparent; }
+    .recent-row.is-group-start td { border-top: 2px solid var(--border); }
+    .recent-table tbody tr:first-child td { border-top: none; }
+    .rc-client { width: 32%; }
+    .rc-avatar { display: inline-flex; vertical-align: middle; margin-right: 10px; }
+    .rc-client-name { font-size: 14px; font-weight: 800; color: var(--text); cursor: pointer; }
+    .rc-client-name:hover { color: var(--accent); }
+    .rc-wb { font-size: 14px; color: var(--text); }
+    .rc-status { width: 150px; }
+    .rc-pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 99px; white-space: nowrap;
     }
-    .recent-wb-stage.is-complete { background: rgba(22,163,74,0.14); color: #15803d; }
-    .recent-wb-date { flex-shrink: 0; font-size: 11px; color: var(--text-muted); min-width: 64px; text-align: right; }
-    @media (max-width: 620px) { .recent-wb-date { display: none; } }
+    .rc-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; box-sizing: border-box; }
+    .rc-updated { width: 110px; font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+    @media (max-width: 640px) {
+      .recent-table th.rc-updated, .recent-table td.rc-updated { display: none; }
+      .rc-client { width: 40%; }
+      .rc-client-name { font-size: 13px; }
+      .recent-table td, .recent-table thead th { padding: 11px 12px; }
+    }
     /* Soft fade-out layer over the logo so it doesn't compete with
        the cards — keeps the watermark visible without distracting. */
     #view-crm::before, #view-pipeline::before {
@@ -10624,14 +10647,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 ══════════════════════════════════════════════════════════════════════ -->
 <div id="view-recent" class="view">
   <main class="container" style="max-width:none; padding:0 16px 16px;">
-    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 0 10px;">
-      <h1 style="font-size:18px; font-weight:700; color:var(--text); margin:0;">Recent Workbooks</h1>
-      <div id="recent-range" style="display:inline-flex; gap:4px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:3px;">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 0 14px;">
+      <h1 style="font-size:24px; font-weight:800; color:var(--text); margin:0;">Recent Workbooks</h1>
+      <div id="recent-range" class="recent-range">
         <button type="button" class="recent-range-btn" data-days="7"  onclick="setRecentRange(7)">1 week</button>
         <button type="button" class="recent-range-btn" data-days="14" onclick="setRecentRange(14)">2 weeks</button>
         <button type="button" class="recent-range-btn" data-days="30" onclick="setRecentRange(30)">30 days</button>
       </div>
-      <span id="recent-count-note" style="font-size:11px; color:var(--text-muted);"></span>
+      <div id="recent-status-filters" class="recent-filters"></div>
     </div>
     <div id="recent-content"></div>
   </main>
@@ -23713,10 +23736,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   // ── Recent Workbooks view (#/recent) ─────────────────────────────────
-  // Last N days of workbooks in a workbook-row layout, grouped by client.
+  // Last N days of workbooks as a grouped table (client = separator), with
+  // status-filter chips. Status is derived from how many flow steps are done.
   let _recentRangeDays = 14;
+  let _recentStatusFilter = 'all';
+  // Indexed by flow score (# of completed flow steps, 0..7).
+  const RECENT_STATUS = [
+    { key: 'not_started', label: 'Not started', dot: '#94a3b8',        bg: 'var(--surface2)',            fg: 'var(--text-muted)', hollow: true },
+    { key: 'quote',       label: 'Quote',       dot: '#E8751A',        bg: 'rgba(232,117,26,0.12)',      fg: '#b45309' },
+    { key: 'submitted',   label: 'Submitted',   dot: 'var(--accent)',  bg: 'rgba(107,147,255,0.16)',     fg: 'var(--accent)' },
+    { key: 'to_client',   label: 'To Client',   dot: '#0ea5e9',        bg: 'rgba(14,165,233,0.14)',      fg: '#0369a1' },
+    { key: 'approved',    label: 'Approved',    dot: '#16a34a',        bg: 'rgba(22,163,74,0.12)',       fg: '#15803d' },
+    { key: 'invoice',     label: 'Invoice',     dot: '#a855f7',        bg: 'rgba(168,85,247,0.12)',      fg: '#7e22ce' },
+    { key: 'payment',     label: 'Payment',     dot: '#0d9488',        bg: 'rgba(13,148,136,0.12)',      fg: '#0f766e' },
+    { key: 'ordered',     label: 'Ordered',     dot: '#16a34a',        bg: 'rgba(22,163,74,0.16)',       fg: '#166534' },
+  ];
+  function _recentWbStatus(flow) {
+    const score = (typeof flowSteps !== 'undefined' ? flowSteps : []).reduce((n, s) => n + (flow && flow[s] ? 1 : 0), 0);
+    return RECENT_STATUS[Math.min(score, RECENT_STATUS.length - 1)];
+  }
+  function _recentWbDateLabel(item) {
+    const raw = item.updatedAt || item.createdAt || '';
+    if (raw) { const d = new Date(raw); if (!isNaN(d.getTime())) return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }); }
+    return item.dateCreated || '—';
+  }
   function setRecentRange(days) {
     _recentRangeDays = days;
+    renderRecentWorkbooksView();
+  }
+  function setRecentStatusFilter(key) {
+    _recentStatusFilter = key;
     renderRecentWorkbooksView();
   }
   // A parseable timestamp for a workbook item: prefer the raw ISO
@@ -23750,46 +23799,73 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!host) return;
     const cutoff = Date.now() - _recentRangeDays * 86400000;
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    // Group recent workbooks by client.
+
+    // Group recent workbooks by client; each item carries its status.
     const groups = [];
     Object.keys(clientData || {}).forEach(name => {
       const recent = (clientData[name] || [])
-        .map(it => ({ it, ts: _recentWbTimestamp(it) }))
+        .map(it => ({ it, ts: _recentWbTimestamp(it), st: _recentWbStatus(it.flow || {}) }))
         .filter(x => x.ts >= cutoff);
       if (recent.length) {
         recent.sort((a, b) => b.ts - a.ts);
         groups.push({ name, items: recent });
       }
     });
-    // Clients with the most-recent activity first.
-    groups.sort((a, b) => b.items[0].ts - a.items[0].ts);
-    const totalWb = groups.reduce((s, g) => s + g.items.length, 0);
-    const note = document.getElementById('recent-count-note');
-    if (note) note.textContent = totalWb ? `${totalWb} workbook${totalWb === 1 ? '' : 's'} · ${groups.length} client${groups.length === 1 ? '' : 's'}` : '';
-    if (!groups.length) {
-      host.innerHTML = `<div style="padding:44px; text-align:center; color:var(--text-muted); font-size:13px;">No workbooks in the last ${_recentRangeDays} days.</div>`;
+    groups.sort((a, b) => b.items[0].ts - a.items[0].ts); // most recent client first
+
+    // Status counts across the whole range set (drives the filter chips).
+    const counts = {}; let total = 0;
+    groups.forEach(g => g.items.forEach(x => { counts[x.st.key] = (counts[x.st.key] || 0) + 1; total++; }));
+    // Reset a now-empty status filter back to All (e.g. after a range change).
+    if (_recentStatusFilter !== 'all' && !counts[_recentStatusFilter]) _recentStatusFilter = 'all';
+
+    // Render filter chips: All + one per status present, each with a count.
+    const chipsHost = document.getElementById('recent-status-filters');
+    if (chipsHost) {
+      let chips = `<button type="button" class="recent-chip${_recentStatusFilter === 'all' ? ' is-active' : ''}" onclick="setRecentStatusFilter('all')">All <span class="recent-chip-n">${total}</span></button>`;
+      RECENT_STATUS.forEach(s => {
+        if (!counts[s.key]) return;
+        chips += `<button type="button" class="recent-chip${_recentStatusFilter === s.key ? ' is-active' : ''}" onclick="setRecentStatusFilter('${s.key}')">${esc(s.label)} <span class="recent-chip-n">${counts[s.key]}</span></button>`;
+      });
+      chipsHost.innerHTML = chips;
+    }
+
+    if (!total) {
+      host.innerHTML = `<div class="recent-empty">No workbooks in the last ${_recentRangeDays} days.</div>`;
       return;
     }
-    host.innerHTML = groups.map(g => {
+
+    // Apply the active status filter, keeping the client grouping.
+    const shown = groups
+      .map(g => ({ name: g.name, items: g.items.filter(x => _recentStatusFilter === 'all' || x.st.key === _recentStatusFilter) }))
+      .filter(g => g.items.length);
+
+    if (!shown.length) {
+      host.innerHTML = `<div class="recent-empty">No matching workbooks.</div>`;
+      return;
+    }
+
+    const bodyRows = shown.map(g => {
       const encName = encodeURIComponent(g.name).replace(/'/g, '%27');
-      const rows = g.items.map(({ it }) => {
-        const stepName = (typeof getCurrentStepName === 'function') ? getCurrentStepName(it.flow) : '';
-        const complete = (typeof isFlowComplete === 'function') ? isFlowComplete(it.flow) : false;
-        return `<div class="recent-wb-row" onclick="location.hash='#/client/${encName}/workbook/${it.id}'" title="Open ${esc(it.product || 'workbook')}">
-          <span class="recent-wb-name">${esc(it.product || 'Untitled')}</span>
-          <span class="recent-wb-stage ${complete ? 'is-complete' : ''}">${esc(stepName || '—')}</span>
-          <span class="recent-wb-date">${esc(it.dateCreated || '')}</span>
-        </div>`;
+      return g.items.map((x, i) => {
+        const it = x.it, st = x.st, first = i === 0;
+        const clientCell = first
+          ? `<span class="rc-avatar" onclick="event.stopPropagation(); location.hash='#/client/${encName}'">${(typeof clientAvatarHTML === 'function') ? clientAvatarHTML(g.name, 26) : ''}</span><span class="rc-client-name" onclick="event.stopPropagation(); location.hash='#/client/${encName}'">${esc(g.name)}</span>`
+          : '';
+        const dot = st.hollow ? `border:2px solid ${st.dot};` : `background:${st.dot};`;
+        return `<tr class="recent-row${first ? ' is-group-start' : ''}" onclick="location.hash='#/client/${encName}/workbook/${it.id}'" title="Open ${esc(it.product || 'workbook')}">
+          <td class="rc-client">${clientCell}</td>
+          <td class="rc-wb">${esc(it.product || 'Untitled')}</td>
+          <td class="rc-status"><span class="rc-pill" style="background:${st.bg};color:${st.fg};"><span class="rc-dot" style="${dot}"></span>${esc(st.label)}</span></td>
+          <td class="rc-updated">${esc(_recentWbDateLabel(it))}</td>
+        </tr>`;
       }).join('');
-      return `<div class="recent-group">
-        <div class="recent-group-head" onclick="location.hash='#/client/${encName}'" title="Open ${esc(g.name)}">
-          <span class="recent-group-logo">${(typeof clientAvatarHTML === 'function') ? clientAvatarHTML(g.name, 22) : ''}</span>
-          <span class="recent-group-name">${esc(g.name)}</span>
-          <span class="recent-group-count">${g.items.length}</span>
-        </div>
-        <div class="recent-group-rows">${rows}</div>
-      </div>`;
     }).join('');
+
+    host.innerHTML = `<div class="recent-table-wrap"><table class="recent-table">
+      <thead><tr><th class="rc-client">Client</th><th class="rc-wb">Workbook</th><th class="rc-status">Status</th><th class="rc-updated">Updated</th></tr></thead>
+      <tbody>${bodyRows}</tbody>
+    </table></div>`;
   }
 
   function flowToStep(flow) {
