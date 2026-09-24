@@ -13530,6 +13530,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const urlAttr = String(img.url).replace(/'/g, "\\'");
       const removeBtn = `<button class="img-remove" onclick="removeWbFile('${urlAttr}', event)" title="Remove">✕</button>`;
       item.innerHTML = _buildFileTileInner(img.url, removeBtn);
+      // Robust double-click → preview on the whole tile, for every
+      // previewable kind. Covers cases where a PDF/video <embed> swallows
+      // the inner .art-tile-clicker (seen on the Workbook tab), and gives
+      // the operator a consistent double-click-to-open gesture on both
+      // galleries. openArtPreview is idempotent, so any overlap with the
+      // single-click clicker just re-renders the same preview.
+      const _fk = (typeof _artFileKind === 'function') ? _artFileKind(img.url) : 'file';
+      if (['image', 'pdf', 'video', '3d'].includes(_fk)) {
+        const _u = img.url;
+        item.addEventListener('dblclick', (ev) => {
+          if (ev.target.closest('.img-remove')) return;
+          ev.preventDefault();
+          openArtPreview(_u);
+        });
+      }
       gallery.insertBefore(item, addBtn);
     });
     // In-flight upload progress tiles (Art-tab XHR uploads) — show on both
