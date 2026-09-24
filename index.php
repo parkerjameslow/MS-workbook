@@ -8053,7 +8053,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            when an operator clicks a thumbnail. Content swaps based
            on file type (img / iframe / video) so PDFs, images, and
            videos all preview inline without bouncing to a new tab. -->
-      <div class="art-preview-overlay" id="artPreviewOverlay" onclick="if(event.target===this) closeArtPreview()">
+      <div class="art-preview-overlay" id="artPreviewOverlay" onclick="_artPreviewBackdrop(event)">
         <button class="art-preview-close" type="button" onclick="closeArtPreview()" title="Close (Esc)">×</button>
         <div class="art-preview-content" id="artPreviewContent" onclick="event.stopPropagation()"></div>
       </div>
@@ -13594,7 +13594,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return window._loading3dViewer;
   }
 
+  // Timestamp of the last preview open — used to ignore the SECOND click of
+  // a double-click (which would otherwise land on the backdrop and instantly
+  // close the previewer the first click just opened).
+  let _artPreviewOpenedAt = 0;
+  function _artPreviewBackdrop(e) {
+    if (e.target !== e.currentTarget) return;            // only the backdrop, not the content
+    if (Date.now() - _artPreviewOpenedAt < 400) return;  // tail of a double-click — keep it open
+    closeArtPreview();
+  }
   async function openArtPreview(url) {
+    _artPreviewOpenedAt = Date.now();
     const overlay = document.getElementById('artPreviewOverlay');
     const content = document.getElementById('artPreviewContent');
     if (!overlay || !content) {
