@@ -292,18 +292,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .nav-flat-link:hover { background: var(--surface2); color: var(--text); }
     .nav-flat-link.active { color: var(--accent); }
-    /* Workbook Pipeline + Clients — Market Sculpt orange pills, dark text
-       (stay orange on hover/active so they read as primary nav entries). */
+    /* Workbook Pipeline + Clients + Recent WB — Market Sculpt orange pills,
+       dark text (stay orange on hover/active so they read as primary nav
+       entries). */
     #nav-all-workbooks,
     #nav-all-workbooks:hover,
     #nav-all-workbooks.active,
     #nav-clients-link,
     #nav-clients-link:hover,
-    #nav-clients-link.active { background: #E8751A; color: #1a1d2e; }
+    #nav-clients-link.active,
+    #nav-recent-link,
+    #nav-recent-link:hover,
+    #nav-recent-link.active { background: #E8751A; color: #1a1d2e; }
     #nav-all-workbooks span,
-    #nav-clients-link span { color: #1a1d2e; }
+    #nav-clients-link span,
+    #nav-recent-link span { color: #1a1d2e; }
     #nav-all-workbooks:hover,
-    #nav-clients-link:hover { background: #d4661a; }
+    #nav-clients-link:hover,
+    #nav-recent-link:hover { background: #d4661a; }
     /* Stacked variant — main label row on top, smaller mixed-case
        sub-label underneath. Used by nav items that want a permanent
        hint about what lives inside (e.g. Inventory → "SKUs & Variants"). */
@@ -7448,13 +7454,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </a>
   </div>
 
-  <!-- Recent Workbooks — pinned below the two orange pills. Opens a
-       workbook-layout view of the last ~2 weeks' workbooks, grouped by
-       client. Neutral pill so the orange primaries stay distinct. -->
+  <!-- Recent WB — pinned below the two orange pills, matching their
+       Market Sculpt orange. Opens a workbook-layout view of the last
+       ~2 weeks' workbooks, grouped by client. -->
   <div style="padding: 0 10px 8px;">
-    <a id="nav-recent-link" href="#/recent" onclick="event.preventDefault(); location.hash='#/recent'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px; background:var(--surface2); border:1px solid var(--border);">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-      <span>Recent Workbooks</span>
+    <a id="nav-recent-link" href="#/recent" onclick="event.preventDefault(); location.hash='#/recent'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+      <span>Recent WB</span>
     </a>
   </div>
 
