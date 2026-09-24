@@ -8026,11 +8026,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <!-- images inserted dynamically -->
           <div class="image-add-btn" onclick="document.getElementById('imgInput').click()">
             <div class="add-icon">+</div>
-            <div class="add-text">Image or Video</div>
+            <div class="add-text">Image, PDF or File</div>
           </div>
         </div>
-        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop images or videos here, click the tile to browse, or paste from clipboard (Ctrl/⌘ + V).</div>
-        <input type="file" id="imgInput" accept="image/*" multiple onchange="handleImages(event)" style="display:none;" />
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop images, videos, PDFs or other files here, click the tile to browse, or paste from clipboard (Ctrl/⌘ + V). Files added here also show on the Art tab.</div>
+        <input type="file" id="imgInput" multiple onchange="_routeWorkbookFiles(event.target.files); event.target.value='';" style="display:none;"
+          accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.tif,.heic,.heif,.avif,.ai,.psd,.eps,.indd,.sketch,.xd,.fig,.pdf,.doc,.docx,.txt,.rtf,.csv,.xlsx,.xls,.ppt,.pptx,.dwg,.dxf,.step,.stp,.iges,.igs,.stl,.obj,.3mf,.sat,.ipt,.iam,.prt,.sldprt,.sldasm,.dgn,.x_t,.x_b,.mp4,.mov,.webm,.avi,.mkv,.m4v,.qt,.mpg,.mpeg,.wmv,.flv,.3gp,.zip,.rar,.7z,.tar,.gz" />
       </div>
 
       <!-- Product Videos -->
@@ -12597,6 +12598,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   /* ── Image Upload ──────────────────────────────────────────────────────── */
   let _productImages = []; // array of { url: 'uploads/28/abc.jpg' }
 
+  // Unified entry for files added on the WORKBOOK tab (file picker or drop).
+  // Images become product images (upload_image → _productImages); videos go
+  // to the product-video handler; everything else (PDF, AI, docs, CAD, etc.)
+  // routes through the Art-file uploader so it lands in the shared pool and
+  // shows on both galleries. Mirrors the Art tab's "accept anything" upload.
+  async function _routeWorkbookFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const imgs   = files.filter(f => f.type && f.type.startsWith('image/'));
+    const vids   = files.filter(f => !(f.type && f.type.startsWith('image/')) && (typeof isVideoFile === 'function') && isVideoFile(f));
+    const others = files.filter(f => !(f.type && f.type.startsWith('image/')) && !((typeof isVideoFile === 'function') && isVideoFile(f)));
+    if (imgs.length)   await handleImages({ target: { files: imgs, value: '' } });
+    if (vids.length)   await handleVideoFiles(vids);
+    if (others.length) await handleArtFiles({ target: { files: others, value: '' } });
+  }
+
   async function handleImages(e) {
     const files = Array.from(e.target.files);
     // Visible bail-out reasons instead of silent return — every reason
@@ -12710,16 +12727,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     e.preventDefault();
     galleryEl.style.outline = '';
     const allFiles = Array.from(e.dataTransfer.files);
-    const imageFiles = allFiles.filter(f => f.type.startsWith('image/'));
-    const videoFiles = allFiles.filter(f => !f.type.startsWith('image/') && isVideoFile(f));
-    if (imageFiles.length) handleImages({ target: { files: imageFiles } });
-    if (videoFiles.length) handleVideoFiles(videoFiles);
+    // Route every dropped file by type — images → product images, videos →
+    // product videos, everything else (PDF/AI/docs/CAD/…) → Art-file pool.
+    if (allFiles.length) _routeWorkbookFiles(allFiles);
     // Cross-tab drag — when the user drags an image from another
     // browser tab (or a Google image search), the drop event delivers a
     // text/uri-list (or text/html) entry instead of a File. Fetch the
     // URL, wrap it in a Blob, and route through handleImages so the
     // same upload + persist pipeline runs.
-    if (imageFiles.length === 0 && videoFiles.length === 0) {
+    if (allFiles.length === 0) {
       const uriList = e.dataTransfer.getData('text/uri-list')
                    || e.dataTransfer.getData('text/plain') || '';
       const urls = uriList.split(/\r?\n/).map(s => s.trim()).filter(s => /^https?:\/\//i.test(s));
@@ -13434,11 +13450,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const ext = (String(url).split('.').pop() || '').toLowerCase();
     if (['jpg','jpeg','png','gif','webp','svg','bmp','tiff','tif','heic','heif','avif'].includes(ext)) return 'image';
     if (['mp4','mov','webm','avi','mkv','m4v','qt','mpg','mpeg','wmv','flv','3gp'].includes(ext))     return 'video';
-    // AI is PDF-compatible from Illustrator CS3 onward — route into
-    // the pdf branch so the in-browser PDF viewer renders it instead
-    // of bouncing the operator to a download.
-    if (['pdf','ai'].includes(ext))                                                                    return 'pdf';
-    if (['psd','eps','indd','sketch','xd','fig'].includes(ext))                                        return 'design';
+    if (ext === 'pdf')                                                                                  return 'pdf';
+    // .ai is served as application/octet-stream (see uploads/.htaccess), so
+    // embedding it as a PDF made the browser AUTO-DOWNLOAD it on render and
+    // mislabel it "PDF". Treat it as a design file: a file card labeled AI,
+    // opened only on an explicit click.
+    if (['ai','psd','eps','indd','sketch','xd','fig'].includes(ext))                                   return 'design';
     // 3D-renderable formats — the online-3d-viewer library handles
     // these natively. Click opens the 3D viewer modal.
     if (['stl','step','stp','obj','3mf','iges','igs','gltf','glb','ply','3ds','fbx'].includes(ext))    return '3d';
