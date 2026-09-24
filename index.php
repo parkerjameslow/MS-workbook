@@ -23760,11 +23760,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (raw) { const d = new Date(raw); if (!isNaN(d.getTime())) return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }); }
     return item.dateCreated || '—';
   }
-  // When the workbook was ADDED (created), for sorting most-recent-first.
-  // Uses createdAt / the "DD MMM YY" display; returns null when unknown so
-  // undated workbooks sink to the bottom instead of floating up.
+  // Timestamp the list sorts by — the SAME value shown in the "Updated"
+  // column (updatedAt, else createdAt, else the "DD MMM YY" display), so the
+  // rows read strictly newest-first. Returns null when unknown so undated
+  // workbooks sink to the bottom instead of floating up.
   function _recentWbAddedTs(item) {
-    const raw = item.createdAt || '';
+    const raw = item.updatedAt || item.createdAt || '';
     if (raw) { const d = new Date(raw); if (!isNaN(d.getTime())) return d.getTime(); }
     if (item.dateCreated) {
       const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
