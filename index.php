@@ -6065,6 +6065,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       height: 0; border-top: 2px solid var(--border);
       margin: 8px 0 2px;
     }
+    /* Recent Workbooks view — client-grouped workbook rows. */
+    .recent-range-btn {
+      background: transparent; border: none; border-radius: 6px;
+      padding: 4px 10px; font-size: 11px; font-weight: 700; font-family: inherit;
+      color: var(--text-muted); cursor: pointer; transition: background 0.12s, color 0.12s;
+    }
+    .recent-range-btn:hover { color: var(--text); }
+    .recent-range-btn.is-active { background: var(--accent); color: #fff; }
+    .recent-group { margin-bottom: 18px; }
+    .recent-group-head {
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 10px; cursor: pointer; border-radius: 8px;
+      border-bottom: 2px solid var(--border);
+    }
+    .recent-group-head:hover { background: var(--surface2); }
+    .recent-group-logo { display: inline-flex; flex-shrink: 0; }
+    .recent-group-name { font-size: 13px; font-weight: 800; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .recent-group-count {
+      margin-left: auto; flex-shrink: 0;
+      font-size: 10px; font-weight: 700; color: var(--text-muted);
+      padding: 1px 8px; border-radius: 99px; background: var(--surface2); border: 1px solid var(--border);
+    }
+    .recent-group-rows { display: flex; flex-direction: column; }
+    .recent-wb-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 9px 12px; cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    .recent-wb-row:hover { background: var(--surface2); }
+    .recent-wb-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .recent-wb-stage {
+      flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 2px 9px; border-radius: 99px; background: rgba(232,117,26,0.12); color: #b45309;
+    }
+    .recent-wb-stage.is-complete { background: rgba(22,163,74,0.14); color: #15803d; }
+    .recent-wb-date { flex-shrink: 0; font-size: 11px; color: var(--text-muted); min-width: 64px; text-align: right; }
+    @media (max-width: 620px) { .recent-wb-date { display: none; } }
     /* Soft fade-out layer over the logo so it doesn't compete with
        the cards — keeps the watermark visible without distracting. */
     #view-crm::before, #view-pipeline::before {
@@ -7407,6 +7445,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <a id="nav-clients-link" href="#/clients" onclick="event.preventDefault(); location.hash='#/clients'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
       <span>Clients</span>
       <span class="nav-badge" id="badge-clients"></span>
+    </a>
+  </div>
+
+  <!-- Recent Workbooks — pinned below the two orange pills. Opens a
+       workbook-layout view of the last ~2 weeks' workbooks, grouped by
+       client. Neutral pill so the orange primaries stay distinct. -->
+  <div style="padding: 0 10px 8px;">
+    <a id="nav-recent-link" href="#/recent" onclick="event.preventDefault(); location.hash='#/recent'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px; background:var(--surface2); border:1px solid var(--border);">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      <span>Recent Workbooks</span>
     </a>
   </div>
 
@@ -10562,6 +10610,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </main>
 </div><!-- /#view-clients -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: RECENT WORKBOOKS
+     The last ~2 weeks of workbooks in a workbook-row layout, grouped with
+     the client as the section separator. Opened from the pinned "Recent
+     Workbooks" left-nav card.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-recent" class="view">
+  <main class="container" style="max-width:none; padding:0 16px 16px;">
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 0 10px;">
+      <h1 style="font-size:18px; font-weight:700; color:var(--text); margin:0;">Recent Workbooks</h1>
+      <div id="recent-range" style="display:inline-flex; gap:4px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:3px;">
+        <button type="button" class="recent-range-btn" data-days="7"  onclick="setRecentRange(7)">1 week</button>
+        <button type="button" class="recent-range-btn" data-days="14" onclick="setRecentRange(14)">2 weeks</button>
+        <button type="button" class="recent-range-btn" data-days="30" onclick="setRecentRange(30)">30 days</button>
+      </div>
+      <span id="recent-count-note" style="font-size:11px; color:var(--text-muted);"></span>
+    </div>
+    <div id="recent-content"></div>
+  </main>
+</div><!-- /#view-recent -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: AI ASSISTANT
@@ -22780,6 +22849,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         product: wb.product_name,
         description: wb.description || '',
         dateCreated: new Date(wb.created_at).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'2-digit'}),
+        // Raw timestamps kept for the Recent Workbooks view (parseable, unlike
+        // the display-string dateCreated). updated_at falls back to created_at
+        // when the API doesn't return it.
+        createdAt: wb.created_at || '',
+        updatedAt: wb.updated_at || wb.created_at || '',
         dateSubmitted: '',
         flow: flow
       };
@@ -23631,6 +23705,86 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     else _starredClients.add(name);
     try { localStorage.setItem('ms_starred_clients', JSON.stringify([..._starredClients])); } catch (_) {}
     renderClientsView();
+  }
+
+  // ── Recent Workbooks view (#/recent) ─────────────────────────────────
+  // Last N days of workbooks in a workbook-row layout, grouped by client.
+  let _recentRangeDays = 14;
+  function setRecentRange(days) {
+    _recentRangeDays = days;
+    renderRecentWorkbooksView();
+  }
+  // A parseable timestamp for a workbook item: prefer the raw ISO
+  // created/updated fields; fall back to the "DD MMM YY" display string;
+  // unknown → now (treat a just-created in-session item as recent).
+  function _recentWbTimestamp(item) {
+    const raw = item.updatedAt || item.createdAt || '';
+    if (raw) { const t = new Date(raw).getTime(); if (!isNaN(t)) return t; }
+    if (item.dateCreated) {
+      const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+      const p = String(item.dateCreated).split(' ');
+      if (p.length === 3 && months[p[1]] !== undefined) {
+        const t = new Date(2000 + parseInt(p[2]), months[p[1]], parseInt(p[0])).getTime();
+        if (!isNaN(t)) return t;
+      }
+    }
+    return Date.now();
+  }
+  function renderRecentWorkbooksView() {
+    const titleEl = document.getElementById('header-title');
+    if (titleEl) titleEl.textContent = 'Recent Workbooks';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-recent-link');
+    if (link) link.classList.add('active');
+    showView('view-recent');
+    document.querySelectorAll('#recent-range .recent-range-btn').forEach(b => {
+      b.classList.toggle('is-active', parseInt(b.dataset.days, 10) === _recentRangeDays);
+    });
+    const host = document.getElementById('recent-content');
+    if (!host) return;
+    const cutoff = Date.now() - _recentRangeDays * 86400000;
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    // Group recent workbooks by client.
+    const groups = [];
+    Object.keys(clientData || {}).forEach(name => {
+      const recent = (clientData[name] || [])
+        .map(it => ({ it, ts: _recentWbTimestamp(it) }))
+        .filter(x => x.ts >= cutoff);
+      if (recent.length) {
+        recent.sort((a, b) => b.ts - a.ts);
+        groups.push({ name, items: recent });
+      }
+    });
+    // Clients with the most-recent activity first.
+    groups.sort((a, b) => b.items[0].ts - a.items[0].ts);
+    const totalWb = groups.reduce((s, g) => s + g.items.length, 0);
+    const note = document.getElementById('recent-count-note');
+    if (note) note.textContent = totalWb ? `${totalWb} workbook${totalWb === 1 ? '' : 's'} · ${groups.length} client${groups.length === 1 ? '' : 's'}` : '';
+    if (!groups.length) {
+      host.innerHTML = `<div style="padding:44px; text-align:center; color:var(--text-muted); font-size:13px;">No workbooks in the last ${_recentRangeDays} days.</div>`;
+      return;
+    }
+    host.innerHTML = groups.map(g => {
+      const encName = encodeURIComponent(g.name).replace(/'/g, '%27');
+      const rows = g.items.map(({ it }) => {
+        const stepName = (typeof getCurrentStepName === 'function') ? getCurrentStepName(it.flow) : '';
+        const complete = (typeof isFlowComplete === 'function') ? isFlowComplete(it.flow) : false;
+        return `<div class="recent-wb-row" onclick="location.hash='#/client/${encName}/workbook/${it.id}'" title="Open ${esc(it.product || 'workbook')}">
+          <span class="recent-wb-name">${esc(it.product || 'Untitled')}</span>
+          <span class="recent-wb-stage ${complete ? 'is-complete' : ''}">${esc(stepName || '—')}</span>
+          <span class="recent-wb-date">${esc(it.dateCreated || '')}</span>
+        </div>`;
+      }).join('');
+      return `<div class="recent-group">
+        <div class="recent-group-head" onclick="location.hash='#/client/${encName}'" title="Open ${esc(g.name)}">
+          <span class="recent-group-logo">${(typeof clientAvatarHTML === 'function') ? clientAvatarHTML(g.name, 22) : ''}</span>
+          <span class="recent-group-name">${esc(g.name)}</span>
+          <span class="recent-group-count">${g.items.length}</span>
+        </div>
+        <div class="recent-group-rows">${rows}</div>
+      </div>`;
+    }).join('');
   }
 
   function flowToStep(flow) {
@@ -33378,6 +33532,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Match: #/clients — alphabetical client card gallery.
     if (hash === '#/clients') {
       renderClientsView();
+      return;
+    }
+
+    // Match: #/recent — recent workbooks grouped by client.
+    if (hash === '#/recent') {
+      renderRecentWorkbooksView();
       return;
     }
 
