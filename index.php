@@ -13503,11 +13503,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (kind === 'image') {
       return `<img src="${url}" alt="File" onclick="openArtPreview('${urlAttr}')" />${removeBtnHtml}`;
     } else if (kind === 'pdf') {
-      return `<div style="position:absolute; inset:0; background:#fff; pointer-events:none;">
-          <embed src="${url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1" type="application/pdf" style="width:100%; height:100%; pointer-events:none;" />
+      // A static card (NOT a live <embed>): a PDF plugin composites in its
+      // own native layer that can swallow the click on some tabs (the
+      // Workbook tab did, the Art tab didn't) regardless of pointer-events,
+      // so clicks never reached the previewer. The inner card is
+      // pointer-events:none, so the tile's own click handler always fires.
+      const label = _artFileBasename(url).toUpperCase();
+      return `<div style="position:absolute; inset:0; background:var(--surface2); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; pointer-events:none;">
+          <span style="font-size:34px; line-height:1;">📄</span>
+          <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; padding:0 6px;">${label}</span>
           <div class="art-tile-badge art-tile-badge--light">PDF</div>
-        </div>
-        <button type="button" class="art-tile-clicker" data-art-url="${urlAttr}" title="Click to preview"></button>${removeBtnHtml}`;
+        </div>${removeBtnHtml}`;
     } else if (kind === 'video') {
       return `<div style="position:absolute; inset:0; background:#000; pointer-events:none;">
           <video src="${url}" muted preload="metadata" playsinline style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
