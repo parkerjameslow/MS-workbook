@@ -13556,7 +13556,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const _fk = (typeof _artFileKind === 'function') ? _artFileKind(img.url) : 'file';
       if (['image', 'pdf', 'video', '3d'].includes(_fk)) {
         const _u = img.url;
-        item.addEventListener('dblclick', (ev) => {
+        // Single-click ANYWHERE on the tile opens the previewer, on BOTH
+        // galleries. This is the reliable path: a PDF/video <embed> can
+        // otherwise swallow the inner .art-tile-clicker on the Workbook tab
+        // so clicks never reached the preview. Skip the × remove button.
+        item.addEventListener('click', (ev) => {
           if (ev.target.closest('.img-remove')) return;
           ev.preventDefault();
           openArtPreview(_u);
