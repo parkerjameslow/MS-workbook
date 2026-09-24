@@ -23760,6 +23760,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (raw) { const d = new Date(raw); if (!isNaN(d.getTime())) return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }); }
     return item.dateCreated || '—';
   }
+  // When the workbook was ADDED (created), for sorting most-recent-first.
+  // Uses createdAt / the "DD MMM YY" display; returns null when unknown so
+  // undated workbooks sink to the bottom instead of floating up.
+  function _recentWbAddedTs(item) {
+    const raw = item.createdAt || '';
+    if (raw) { const d = new Date(raw); if (!isNaN(d.getTime())) return d.getTime(); }
+    if (item.dateCreated) {
+      const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+      const p = String(item.dateCreated).split(' ');
+      if (p.length === 3 && months[p[1]] !== undefined) {
+        const t = new Date(2000 + parseInt(p[2]), months[p[1]], parseInt(p[0])).getTime();
+        if (!isNaN(t)) return t;
+      }
+    }
+    return null;
+  }
+  // Compare two {it, added} so the most-recently-ADDED sorts first; undated
+  // items fall to the bottom, ordered by id (higher id = added later).
+  function _recentAddedCmp(a, b) {
+    if (a.added != null && b.added != null) { if (b.added !== a.added) return b.added - a.added; }
+    else if (a.added != null) return -1;
+    else if (b.added != null) return 1;
+    return (parseInt(b.it.id, 10) || 0) - (parseInt(a.it.id, 10) || 0);
+  }
   function setRecentRange(days) {
     _recentRangeDays = days;
     renderRecentWorkbooksView();
@@ -23804,14 +23828,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const groups = [];
     Object.keys(clientData || {}).forEach(name => {
       const recent = (clientData[name] || [])
-        .map(it => ({ it, ts: _recentWbTimestamp(it), st: _recentWbStatus(it.flow || {}) }))
+        .map(it => ({ it, ts: _recentWbTimestamp(it), added: _recentWbAddedTs(it), st: _recentWbStatus(it.flow || {}) }))
         .filter(x => x.ts >= cutoff);
       if (recent.length) {
-        recent.sort((a, b) => b.ts - a.ts);
+        recent.sort(_recentAddedCmp);   // most-recently-added first within a client
         groups.push({ name, items: recent });
       }
     });
-    groups.sort((a, b) => b.items[0].ts - a.items[0].ts); // most recent client first
+    // Client with the most-recently-added workbook first (mirror the item sort
+    // on each group's top row).
+    groups.sort((a, b) => _recentAddedCmp(a.items[0], b.items[0]));
 
     // Status counts across the whole range set (drives the filter chips).
     const counts = {}; let total = 0;
