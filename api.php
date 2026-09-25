@@ -538,6 +538,111 @@ if (!defined('ANTHROPIC_MODEL')) {
     define('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022');
 }
 
+// ── QuickBooks Online (Intuit) config ─────────────────────────────────────
+// Set these in api.local.php (gitignored), same as the other secrets:
+//   define('QBO_CLIENT_ID',     '...');   // from your Intuit Developer app
+//   define('QBO_CLIENT_SECRET', '...');
+//   define('QBO_ENVIRONMENT',   'production'); // or 'sandbox' for testing
+// Register the redirect URI below in the Intuit app's "Redirect URIs".
+if (!defined('QBO_CLIENT_ID'))     { $v = getenv('QBO_CLIENT_ID');     define('QBO_CLIENT_ID',     is_string($v) ? $v : ''); }
+if (!defined('QBO_CLIENT_SECRET')) { $v = getenv('QBO_CLIENT_SECRET'); define('QBO_CLIENT_SECRET', is_string($v) ? $v : ''); }
+if (!defined('QBO_ENVIRONMENT'))   { $v = getenv('QBO_ENVIRONMENT');   define('QBO_ENVIRONMENT', ($v === 'sandbox' || $v === 'production') ? $v : 'production'); }
+if (!defined('QBO_REDIRECT_URI'))  { define('QBO_REDIRECT_URI', PUBLIC_BASE_URL . '/qbo-callback.php'); }
+define('QBO_API_BASE',  QBO_ENVIRONMENT === 'sandbox' ? 'https://sandbox-quickbooks.api.intuit.com' : 'https://quickbooks.api.intuit.com');
+define('QBO_AUTH_URL',  'https://appcenter.intuit.com/connect/oauth2');
+define('QBO_TOKEN_URL', 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer');
+define('QBO_SCOPE',     'com.intuit.quickbooks.accounting');
+define('QBO_MINOR_VERSION', '73');
+
+function qbo_configured(): bool {
+    return QBO_CLIENT_ID !== '' && QBO_CLIENT_SECRET !== '';
+}
+function qbo_ensure_table(PDO $pdo): void {
+    // Single-row (id=1) table holding the one company connection + tokens.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS qbo_connection (
+        id TINYINT NOT NULL PRIMARY KEY DEFAULT 1,
+        realm_id VARCHAR(64) NOT NULL,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at INT NOT NULL DEFAULT 0,
+        company_name VARCHAR(255) NOT NULL DEFAULT '',
+        connected_by VARCHAR(255) NOT NULL DEFAULT '',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+function qbo_get_connection(PDO $pdo): ?array {
+    qbo_ensure_table($pdo);
+    $r = $pdo->query("SELECT * FROM qbo_connection WHERE id = 1")->fetch();
+    return $r ?: null;
+}
+function qbo_store_tokens(PDO $pdo, string $realmId, string $access, string $refresh, int $expiresIn, string $companyName = '', string $connectedBy = ''): void {
+    qbo_ensure_table($pdo);
+    $expiresAt = time() + $expiresIn - 60; // 60s safety margin
+    $pdo->prepare("INSERT INTO qbo_connection (id, realm_id, access_token, refresh_token, expires_at, company_name, connected_by)
+        VALUES (1, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE realm_id=VALUES(realm_id), access_token=VALUES(access_token),
+          refresh_token=VALUES(refresh_token), expires_at=VALUES(expires_at),
+          company_name=IF(VALUES(company_name)<>'', VALUES(company_name), company_name),
+          connected_by=IF(VALUES(connected_by)<>'', VALUES(connected_by), connected_by)")
+        ->execute([$realmId, $access, $refresh, $expiresAt, $companyName, $connectedBy]);
+}
+// POST to Intuit's token endpoint (grant_type=authorization_code | refresh_token).
+function qbo_token_request(array $params): ?array {
+    if (!function_exists('curl_init')) return null;
+    $ch = curl_init(QBO_TOKEN_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => http_build_query($params),
+        CURLOPT_HTTPHEADER     => [
+            'Accept: application/json',
+            'Content-Type: application/x-www-form-urlencoded',
+            'Authorization: Basic ' . base64_encode(QBO_CLIENT_ID . ':' . QBO_CLIENT_SECRET),
+        ],
+        CURLOPT_TIMEOUT => 25,
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+    return $resp ? json_decode($resp, true) : null;
+}
+// Return a live connection with a valid access token, refreshing if needed
+// (or when $force). Null when not connected / refresh failed.
+function qbo_live_connection(PDO $pdo, bool $force = false): ?array {
+    $c = qbo_get_connection($pdo);
+    if (!$c) return null;
+    if (!$force && (int)$c['expires_at'] > time()) return $c;
+    $new = qbo_token_request(['grant_type' => 'refresh_token', 'refresh_token' => $c['refresh_token']]);
+    if (!$new || empty($new['access_token'])) return null;
+    qbo_store_tokens($pdo, $c['realm_id'], $new['access_token'], $new['refresh_token'] ?? $c['refresh_token'], (int)($new['expires_in'] ?? 3600));
+    return qbo_get_connection($pdo);
+}
+// Call the QBO Accounting API. Returns ['code'=>int, 'data'=>array|null] or
+// ['error'=>'not_connected']. Retries once on a 401 after a forced refresh.
+function qbo_api(PDO $pdo, string $method, string $path, $body = null): array {
+    $c = qbo_live_connection($pdo);
+    if (!$c) return ['error' => 'not_connected'];
+    $call = function (array $conn) use ($method, $path, $body) {
+        $url = QBO_API_BASE . '/v3/company/' . $conn['realm_id'] . $path;
+        $url .= (strpos($path, '?') !== false ? '&' : '?') . 'minorversion=' . QBO_MINOR_VERSION;
+        $ch = curl_init($url);
+        $headers = ['Accept: application/json', 'Authorization: Bearer ' . $conn['access_token']];
+        $opts = [CURLOPT_RETURNTRANSFER => true, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_TIMEOUT => 30];
+        if ($body !== null) { $headers[] = 'Content-Type: application/json'; $opts[CURLOPT_POSTFIELDS] = json_encode($body); }
+        $opts[CURLOPT_HTTPHEADER] = $headers;
+        curl_setopt_array($ch, $opts);
+        $resp = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        return [$code, $resp];
+    };
+    [$code, $resp] = $call($c);
+    if ($code === 401) {
+        $c2 = qbo_live_connection($pdo, true);
+        if ($c2) [$code, $resp] = $call($c2);
+    }
+    return ['code' => $code, 'data' => $resp ? json_decode($resp, true) : null];
+}
+
 function ms_sms_configured(): bool {
     return TWILIO_ACCOUNT_SID !== '' && TWILIO_AUTH_TOKEN !== '' && TWILIO_FROM_NUMBER !== '';
 }
@@ -5579,6 +5684,61 @@ switch ($action) {
         $cpHost   = $_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com';
         echo json_encode(['success' => true, 'token' => $cpToken, 'pin' => $cpPin, 'url' => "{$cpScheme}://{$cpHost}/myportal.php?t={$cpToken}"]);
         break;
+
+    // ── QuickBooks Online ──────────────────────────────────────────────
+    case 'qbo_status': {
+        $conn = qbo_get_connection($pdo);
+        echo json_encode([
+            'success'     => true,
+            'configured'  => qbo_configured(),
+            'connected'   => (bool)$conn,
+            'environment' => QBO_ENVIRONMENT,
+            'company'     => $conn['company_name'] ?? '',
+            'realmId'     => $conn['realm_id'] ?? '',
+            'connectedBy' => $conn['connected_by'] ?? '',
+        ]);
+        break;
+    }
+    case 'qbo_connect': {
+        // Kick off OAuth: stash a CSRF state in the session, then 302 to
+        // Intuit's consent screen. (Browser GET from the logged-in operator.)
+        if (!qbo_configured()) {
+            header('Content-Type: text/html');
+            echo 'QuickBooks is not configured. Add QBO_CLIENT_ID / QBO_CLIENT_SECRET to api.local.php.';
+            break;
+        }
+        $state = bin2hex(random_bytes(16));
+        $_SESSION['qbo_oauth_state'] = $state;
+        $params = http_build_query([
+            'client_id'     => QBO_CLIENT_ID,
+            'response_type' => 'code',
+            'scope'         => QBO_SCOPE,
+            'redirect_uri'  => QBO_REDIRECT_URI,
+            'state'         => $state,
+        ]);
+        header('Location: ' . QBO_AUTH_URL . '?' . $params);
+        break;
+    }
+    case 'qbo_disconnect': {
+        // Best-effort token revoke, then drop the stored connection.
+        $conn = qbo_get_connection($pdo);
+        if ($conn && function_exists('curl_init')) {
+            $ch = curl_init('https://developer.api.intuit.com/v2/oauth2/tokens/revoke');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode(['token' => $conn['refresh_token']]),
+                CURLOPT_HTTPHEADER => [
+                    'Accept: application/json', 'Content-Type: application/json',
+                    'Authorization: Basic ' . base64_encode(QBO_CLIENT_ID . ':' . QBO_CLIENT_SECRET),
+                ],
+                CURLOPT_TIMEOUT => 15,
+            ]);
+            curl_exec($ch); curl_close($ch);
+        }
+        $pdo->exec("DELETE FROM qbo_connection WHERE id = 1");
+        echo json_encode(['success' => true]);
+        break;
+    }
 
     case 'mint_art_approval':
         // Create a client art-approval link (art.php). Unlike tracking, each

@@ -6095,6 +6095,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .recent-chip-n { font-weight: 800; opacity: 0.6; }
     .recent-chip.is-active .recent-chip-n { opacity: 0.85; }
     .recent-empty { padding: 48px 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
+    /* Billings / QuickBooks connection card */
+    .qbo-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; }
+    .qbo-head { display: flex; align-items: center; gap: 14px; }
+    .qbo-logo { width: 40px; height: 40px; border-radius: 9px; background: #2ca01c; color: #fff; font-size: 17px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; text-transform: lowercase; }
+    .qbo-title { font-size: 16px; font-weight: 800; color: var(--text); }
+    .qbo-sub { font-size: 12.5px; color: var(--text-muted); display: flex; align-items: center; gap: 7px; margin-top: 3px; }
+    .qbo-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); opacity: 0.5; flex-shrink: 0; }
+    .qbo-dot.on { background: #16a34a; opacity: 1; }
+    .qbo-env { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 99px; padding: 1px 7px; }
+    .qbo-note { font-size: 12.5px; color: var(--text-muted); line-height: 1.7; margin-top: 14px; }
+    .qbo-note code { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 11.5px; }
+    .qbo-pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 11.5px; margin: 8px 0; overflow-x: auto; white-space: pre; color: var(--text); }
 
     .recent-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
     .recent-table { width: 100%; border-collapse: collapse; }
@@ -7598,12 +7610,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="nav-flat-sublabel">SKUs &amp; Variants</span>
         </a>
 
-        <!-- Billings — placeholder link until the view ships.
-             onclick is a no-op so the click feels neutral rather
-             than dead. -->
-        <a id="nav-billings-link" href="#" onclick="event.preventDefault();" class="nav-flat-link" style="opacity:0.6; cursor:default;">
+        <!-- Billings — QuickBooks Online connection + sync home. -->
+        <a id="nav-billings-link" href="#/billings" onclick="event.preventDefault(); location.hash='#/billings'" class="nav-flat-link">
           <span>Billings</span>
-          <span style="margin-left:auto; font-size:10px; color:var(--text-muted); font-style:italic;">soon</span>
         </a>
 
         <!-- Commissions — no nav badge per operator preference. -->
@@ -10660,6 +10669,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="recent-content"></div>
   </main>
 </div><!-- /#view-recent -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: BILLINGS — QuickBooks Online connection + sync
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-billings" class="view">
+  <main class="container" style="max-width:820px; padding:0 16px 16px;">
+    <div style="padding:14px 0 14px;">
+      <h1 style="font-size:24px; font-weight:800; color:var(--text); margin:0;">Billings</h1>
+      <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">Connect QuickBooks Online to sync clients and create invoices.</div>
+    </div>
+    <div id="qbo-card" class="qbo-card">
+      <div style="padding:28px; text-align:center; color:var(--text-muted); font-size:13px;">Loading QuickBooks status…</div>
+    </div>
+  </main>
+</div><!-- /#view-billings -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: AI ASSISTANT
@@ -23947,6 +23971,67 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </table></div>`;
   }
 
+  // ── Billings / QuickBooks Online ──────────────────────────────────────
+  function renderBillingsView() {
+    const titleEl = document.getElementById('header-title');
+    if (titleEl) titleEl.textContent = 'Billings';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-billings-link');
+    if (link) link.classList.add('active');
+    showView('view-billings');
+    // OAuth return flag (#/billings?qbo=connected|error) → toast, then clean it.
+    const q = location.hash.split('?')[1] || '';
+    const params = new URLSearchParams(q);
+    const flag = params.get('qbo');
+    if (flag === 'connected' && typeof _msToast === 'function') _msToast('QuickBooks connected.', 'success');
+    else if (flag === 'error' && typeof _msToast === 'function') _msToast('QuickBooks connection failed' + (params.get('qbo_msg') ? ': ' + params.get('qbo_msg') : '') + '.', 'warning');
+    if (flag) { try { history.replaceState(null, '', '#/billings'); } catch (e) {} }
+    _loadQboStatus();
+  }
+  async function _loadQboStatus() {
+    const card = document.getElementById('qbo-card');
+    if (!card) return;
+    let s = null;
+    try { s = await apiCall('qbo_status'); } catch (e) {}
+    _renderQboCard(card, s);
+  }
+  function _renderQboCard(card, s) {
+    const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const logo = `<div class="qbo-logo">qb</div>`;
+    if (!s || !s.success) {
+      card.innerHTML = `<div class="qbo-head">${logo}<div class="qbo-title">QuickBooks Online</div></div><div class="qbo-note">Couldn't load status. <a href="#" onclick="event.preventDefault(); _loadQboStatus()">Retry</a></div>`;
+      return;
+    }
+    if (!s.configured) {
+      card.innerHTML = `<div class="qbo-head">${logo}<div><div class="qbo-title">QuickBooks Online</div><div class="qbo-sub"><span class="qbo-dot"></span>Not set up</div></div></div>
+        <div class="qbo-note">Add your Intuit app keys to <code>api.local.php</code> on the server, then reload:
+          <pre class="qbo-pre">define('QBO_CLIENT_ID', '…');
+define('QBO_CLIENT_SECRET', '…');
+define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
+          Register this exact <strong>Redirect URI</strong> in the Intuit app:<br><code>${esc(location.origin)}/qbo-callback.php</code></div>`;
+      return;
+    }
+    if (s.connected) {
+      card.innerHTML = `<div class="qbo-head">${logo}
+          <div><div class="qbo-title">QuickBooks Online</div>
+            <div class="qbo-sub"><span class="qbo-dot on"></span>Connected${s.company ? ' · ' + esc(s.company) : ''} <span class="qbo-env">${esc(s.environment)}</span></div></div>
+          <button class="btn btn-ghost" style="margin-left:auto; color:var(--danger);" onclick="qboDisconnect()">Disconnect</button></div>
+        <div class="qbo-note">${s.connectedBy ? 'Connected by ' + esc(s.connectedBy) + '. ' : ''}Sync a client from its detail page, and create an invoice from a workbook.</div>`;
+    } else {
+      card.innerHTML = `<div class="qbo-head">${logo}
+          <div><div class="qbo-title">QuickBooks Online</div>
+            <div class="qbo-sub"><span class="qbo-dot"></span>Not connected <span class="qbo-env">${esc(s.environment)}</span></div></div></div>
+        <div style="margin-top:16px;"><button class="btn btn-primary" onclick="qboConnect()">Connect to QuickBooks</button></div>`;
+    }
+  }
+  function qboConnect() { window.location.href = 'api.php?action=qbo_connect'; }
+  async function qboDisconnect() {
+    if (!confirm('Disconnect QuickBooks? Client sync and invoice creation will stop until you reconnect.')) return;
+    try { await apiCall('qbo_disconnect'); } catch (e) {}
+    _loadQboStatus();
+  }
+
   function flowToStep(flow) {
     let step = 0;
     for (let i = 0; i < flowSteps.length; i++) {
@@ -33698,6 +33783,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Match: #/recent — recent workbooks grouped by client.
     if (hash === '#/recent') {
       renderRecentWorkbooksView();
+      return;
+    }
+
+    // Match: #/billings — QuickBooks connection + sync (may carry ?qbo=…).
+    if (hash === '#/billings' || hash.split('?')[0] === '#/billings') {
+      renderBillingsView();
       return;
     }
 
