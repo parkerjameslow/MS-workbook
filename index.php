@@ -6131,6 +6131,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rc-client-name { font-size: 14px; font-weight: 800; color: var(--text); cursor: pointer; }
     .rc-client-name:hover { color: var(--accent); }
     .rc-wb { font-size: 14px; color: var(--text); }
+    /* Workbook name as a clickable pill so the column reads as interactive. */
+    .rc-wb-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      max-width: 100%;
+      padding: 5px 10px 5px 12px; border-radius: 99px;
+      background: var(--surface2); border: 1px solid var(--border);
+      font-size: 13px; font-weight: 600; color: var(--text);
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+    }
+    .rc-wb-arrow { flex-shrink: 0; opacity: 0.55; transition: transform 0.12s, opacity 0.12s; }
+    .recent-row:hover .rc-wb-pill { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .recent-row:hover .rc-wb-arrow { opacity: 1; transform: translateX(2px); }
     .rc-status { width: 150px; }
     .rc-pill {
       display: inline-flex; align-items: center; gap: 7px;
@@ -23958,7 +23970,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const dot = st.hollow ? `border:2px solid ${st.dot};` : `background:${st.dot};`;
         return `<tr class="recent-row${first ? ' is-group-start' : ''}" onclick="location.hash='#/client/${encName}/workbook/${it.id}'" title="Open ${esc(it.product || 'workbook')}">
           <td class="rc-client">${clientCell}</td>
-          <td class="rc-wb">${esc(it.product || 'Untitled')}</td>
+          <td class="rc-wb"><span class="rc-wb-pill">${esc(it.product || 'Untitled')}<svg class="rc-wb-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></td>
           <td class="rc-status"><span class="rc-pill" style="background:${st.bg};color:${st.fg};"><span class="rc-dot" style="${dot}"></span>${esc(st.label)}</span></td>
           <td class="rc-updated">${esc(_recentWbDateLabel(it))}</td>
         </tr>`;
