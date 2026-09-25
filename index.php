@@ -9210,6 +9210,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- ── Tab: Pricing ── -->
   <div id="wb-tab-pricing" class="wb-tab-content">
 
+  <!-- Placeholder action — will become "Create QB Invoice" once the
+       QuickBooks invoice sync ships. For now it just says coming soon. -->
+  <div style="display:flex; justify-content:flex-end; padding:2px 0 12px;">
+    <button type="button" class="btn btn-ghost" onclick="_qbInvoiceComingSoon()" title="Create a QuickBooks invoice from this workbook (coming soon)" style="display:inline-flex; align-items:center; gap:7px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      Create QB Invoice
+      <span style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); border:1px solid var(--border); border-radius:99px; padding:1px 6px;">Soon</span>
+    </button>
+  </div>
+
   <!-- ── Card: Delivered Cost Summary ── -->
   <div class="section-card" data-section="pricing-summary">
     <div class="section-header" style="display:flex; align-items:center; gap:8px;">
@@ -24038,6 +24048,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
   }
   function qboConnect() { window.location.href = 'api.php?action=qbo_connect'; }
+  // Placeholder for the future workbook → QuickBooks invoice action.
+  function _qbInvoiceComingSoon() {
+    if (typeof _msToast === 'function') _msToast('Create QB Invoice — coming soon 🚧');
+    else alert('Coming soon');
+  }
   async function qboDisconnect() {
     if (!confirm('Disconnect QuickBooks? Client sync and invoice creation will stop until you reconnect.')) return;
     try { await apiCall('qbo_disconnect'); } catch (e) {}
