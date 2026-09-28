@@ -27087,9 +27087,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const validRow = data.meta.quoteValid
       ? `<div class="meta-row"><span class="meta-label">Valid Until</span><span class="meta-value">${escHtml(data.meta.quoteValid)}</span></div>`
       : '';
-    const descRow = data.meta.productDesc
-      ? `<p class="desc">${escHtml(data.meta.productDesc)}</p>`
-      : '';
+    // Product Description intentionally omitted from the client quote PDF
+    // (operator request) — it lives on the Workbook tab, not the quote.
 
     const html = `<!DOCTYPE html><html lang="en"><head>
 <meta charset="UTF-8">
@@ -27161,7 +27160,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   <h1>${escHtml(data.meta.productName || 'Quote')}</h1>
   <div class="for-client">Prepared for <strong>${escHtml(data.meta.clientName)}</strong></div>
-  ${descRow}
 
   <div class="summary-grid">
     <div class="stat"><div class="stat-label">Sale Price (USD)</div><div class="stat-value">${escHtml(data.summary.salePrice || '—')}</div></div>
