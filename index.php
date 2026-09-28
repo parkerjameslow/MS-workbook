@@ -44530,7 +44530,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const value = groups.reduce((sum, g) => sum + g.workbooks.reduce((n, w) => n + _plWbValue(workbookDetail[`${w.cn}|${w.wid}`]), 0), 0);
       const flagged = (s.entries || []).some(e => e && e.orderId != null && orderData[e.orderId] && orderData[e.orderId].changeRequested);
       cards.push({ kind: 'shipment', stage, id: s.id, title: s.name || `Shipment #${s.id}`,
-                   sub: [(s.carrier || '').toUpperCase(), _SHIP_STATUS_LABEL(s.status)].filter(Boolean).join(' · '),
+                   sub: (s.carrier || '').toUpperCase(),   // status now shown as its own pill
                    groups, count: units, since, value, flagged,
                    search: [s.name, s.carrier, s.trackingNumber].concat(groups.map(g => g.label)).concat(groups.flatMap(g => g.workbooks.map(w => w.product + ' ' + w.cn))).join(' ').toLowerCase(),
                    clients: Array.from(new Set(groups.flatMap(g => g.workbooks.map(w => w.cn)))) });
@@ -44861,6 +44861,33 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return `<div class="pl-track-pill pl-track-${cb.key}" onclick="event.stopPropagation(); refreshWbTracking('${_plEsc(String(chosen.id)).replace(/'/g, "\\'")}')" title="${_plEsc(title)}">
       <span class="pl-track-dot" style="background:${dotCol[cb.key]};"></span>${labels[cb.key]}${_plEsc(sub)}</div>`;
   }
+  // Status pill for a shipment card. When we have a scraped carrier status it
+  // WINS (so a DHL "Delivered" shows even if the operator status still says
+  // Waiting Arrival); otherwise falls back to the shipment's own status.
+  function _shipmentStatusPillHtml(id) {
+    const s = shipmentData[id];
+    if (!s) return '';
+    const canRefresh = !!(s.carrier && s.trackingNumber);
+    const clickAttr = canRefresh
+      ? ` onclick="event.stopPropagation(); refreshWbTracking('${_plEsc(String(id)).replace(/'/g, "\\'")}')" title="Click to refresh ${_plEsc(String(s.carrier).toUpperCase())} tracking"`
+      : '';
+    const dotCol = { pending: '#94a3b8', in_transit: '#6b93ff', delivered: '#22c55e' };
+    if (s.tracking && s.tracking.status) {
+      // Real carrier status.
+      const b = _trackBucket(s);
+      const labels = { pending: 'Pending', in_transit: 'In Transit', delivered: 'Delivered' };
+      let sub = '';
+      if (b.key === 'delivered' && b.deliveredOn) sub = ' · ' + _trackFmtDate(b.deliveredOn);
+      else if (b.key === 'in_transit' && b.eta) sub = ' · ETA ' + _trackFmtDate(b.eta);
+      return `<div class="pl-track-pill pl-track-${b.key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[b.key]};"></span>${labels[b.key]}${_plEsc(sub)}</div>`;
+    }
+    // No carrier scrape yet — show the shipment's own status, colored by stage.
+    const lbl = (typeof _SHIP_STATUS_LABEL === 'function') ? _SHIP_STATUS_LABEL(s.status) : (s.status || '');
+    if (!lbl) return '';
+    const key = (s.status === 'delivered' || s.status === 'received') ? 'delivered' : (s.status === 'in_transit' ? 'in_transit' : 'pending');
+    return `<div class="pl-track-pill pl-track-${key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[key]};"></span>${_plEsc(lbl)}</div>`;
+  }
+
   // On-view refresh (cached): fetch carrier status for tracked shipments whose
   // stored status is stale (>3h) or missing. Best-effort; marks checkedAt even
   // on failure so a blocked carrier isn't hammered every render.
@@ -44958,6 +44985,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub) || `${c.count} workbook${c.count === 1 ? '' : 's'}`}</div>
+      ${_shipmentStatusPillHtml(c.id)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${c.count} workbook${c.count === 1 ? '' : 's'}</button>
       <div class="pl-children">${body}</div>` : ''}
