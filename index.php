@@ -2596,6 +2596,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rfq-optc-delta.down { color: #16a34a; }
     .rfq-optc-delta.up { color: var(--text-muted); }
     .rfq-optc-lead { color: var(--text-muted); font-size: 13px; text-align: right; white-space: nowrap; padding-right: 14px !important; }
+    /* Per-comparable remove (×) button in the option row's actions cell. */
+    .rfq-optc-actions { width: 34px; text-align: center; }
+    .rfq-opt-remove { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; color: var(--text-muted); opacity: 0.5; padding: 2px 6px; border-radius: 5px; font-family: inherit; transition: color 0.12s, opacity 0.12s, background 0.12s; }
+    .rfq-opt-remove:hover { color: #dc2626; opacity: 1; background: rgba(220,38,38,0.10); }
     /* The line's Comparables toggle button (open = filled, collapsed = outline). */
     .rfq-comparables-btn { display: inline-block; margin: 6px 8px 0 4px; padding: 4px 11px; border-radius: 7px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; font-family: inherit; border: 1px solid var(--accent); background: var(--surface); color: var(--accent); transition: filter 0.12s, background 0.12s; }
     .rfq-comparables-btn.open { background: var(--accent); color: #fff; }
@@ -20581,7 +20585,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <td class="rfq-optc-usd">${unitUsd > 0 ? money2(unitUsd) : '—'}</td>
         <td class="rfq-optc-ext">${ext > 0 ? money2(ext) : '—'}${extSub}</td>
         <td class="rfq-optc-lead">${lead}</td>
-        <td></td>
+        <td class="rfq-optc-actions"><button type="button" class="rfq-opt-remove" onclick="event.stopPropagation(); removeRfqComparable(${id}, ${i})" title="Remove this comparable">&times;</button></td>
       </tr>`;
     }).join('');
     const titleRow = `<tr data-rfq-optrow="${id}" class="rfq-optrow rfq-optrow-title"><td class="rfq-optc-radio"></td><td colspan="10"><div class="rfq-opt-band-head"><span>Comparable options — select the one quoted to the client</span><button type="button" class="rfq-opt-editlink" onclick="event.stopPropagation(); openRfqOptions(${id})" title="Add, edit or remove options">Edit / add options</button></div></td></tr>`;
@@ -20607,6 +20611,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _applyRfqOption(id);   // materialize into inputs + redraw panel
     if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
     if (typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
+  }
+
+  // Remove one comparable option from a line, inline (no modal). Fixes up the
+  // selected index so the right option stays quoted; clearing the last option
+  // reverts the line to plain (keeping its current values).
+  function removeRfqComparable(id, idx) {
+    if (_wbLocked) return;
+    const tr = document.getElementById('rfq-' + id);
+    if (!tr) return;
+    let opts = [];
+    try { opts = JSON.parse(tr.dataset.compOptions || '[]'); } catch (e) { opts = []; }
+    if (!Array.isArray(opts) || idx < 0 || idx >= opts.length) return;
+    let sel = parseInt(tr.dataset.compSelected || '0'); if (isNaN(sel)) sel = 0;
+    opts.splice(idx, 1);
+    if (opts.length === 0) {
+      delete tr.dataset.compOptions;
+      delete tr.dataset.compSelected;
+    } else {
+      if (idx < sel) sel = sel - 1;                 // removed one above → shift up
+      if (sel > opts.length - 1) sel = opts.length - 1;
+      if (sel < 0) sel = 0;
+      tr.dataset.compOptions = JSON.stringify(opts);
+      tr.dataset.compSelected = sel;
+    }
+    _applyRfqOption(id);   // re-materialize the now-selected option (or clear) + redraw
+    if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
   // Per-line collapse state for the comparable-options band (session UI).
