@@ -6244,6 +6244,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .pl-track-pill:hover { filter: brightness(1.12); }
     .pl-track-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    /* Carrier "Track ↗" launch button in the pipeline card modal's carrier box. */
+    .pl-carrier-launch { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--accent); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; margin-left: 4px; vertical-align: middle; transition: background 0.12s, border-color 0.12s; }
+    .pl-carrier-launch:hover { background: var(--surface2); border-color: var(--accent); }
     .pl-track-pending    { background: rgba(148,163,184,0.18); color: #cbd5e1; border-color: rgba(148,163,184,0.30); }
     .pl-track-in_transit { background: rgba(107,147,255,0.20); color: #bfdbfe; border-color: rgba(107,147,255,0.35); }
     .pl-track-delivered  { background: rgba(22,163,74,0.22);  color: #86efac; border-color: rgba(22,163,74,0.38); }
@@ -44822,6 +44825,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const d = new Date(v);
     return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
+  // The carrier's own public tracking-page URL for a number.
+  function _carrierTrackingUrl(carrier, number) {
+    if (!carrier || !number) return '';
+    const enc = encodeURIComponent(number);
+    const map = {
+      ups:    `https://www.ups.com/track?tracknum=${enc}`,
+      fedex:  `https://www.fedex.com/fedextrack/?trknbr=${enc}`,
+      dhl:    `https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=${enc}`,
+      cosco:  `https://elines.coscoshipping.com/ebusiness/cargoTracking?trackingType=BILLOFLADING&number=${enc}`,
+      matson: `https://www.matson.com/track-your-shipment.html?searchType=bookingNo&searchValue=${enc}`,
+    };
+    return map[String(carrier).toLowerCase()] || '';
+  }
+  // Small "Track ↗" button that opens the carrier's tracking page in a new tab.
+  function _carrierLaunchBtnHtml(carrier, number) {
+    const url = _carrierTrackingUrl(carrier, number);
+    if (!url) return '';
+    return `<a href="${url}" target="_blank" rel="noopener" class="pl-carrier-launch" onclick="event.stopPropagation();" title="Open the ${_plEsc(String(carrier).toUpperCase())} tracking page">Track <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>`;
+  }
   // The tracking pill for a workbook card. Empty when no tracked shipment.
   // Split across shipments → shows the LEAST-progressed one.
   function _wbTrackingPillHtml(clientName, workbookId) {
@@ -45383,6 +45405,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       facts.push(['Our cost', st.cost > 0 ? money(st.cost) : '—']);
       facts.push(['Lead time', st.leadDays > 0 ? `${st.leadDays} days` : '—']);
       facts.push(['Line items', String(lines)]);
+      // Carrier box — when this workbook is on a shipment with a tracking
+      // number, show the carrier + a launch button to the carrier's page.
+      const _trk = (typeof _wbTrackedShipments === 'function') ? _wbTrackedShipments(c.clientName, c.workbookId) : [];
+      if (_trk.length) {
+        const ts = _trk[0].s;
+        facts.push(['Carrier', (ts.carrier || '—').toUpperCase(), _carrierLaunchBtnHtml(ts.carrier, ts.trackingNumber)]);
+        facts.push(['Tracking #', ts.trackingNumber || '—']);
+      }
     } else if (c.kind === 'order') {
       facts.push(['Client', c.title]);
       facts.push(['Order', String(c.sub || '').split(' · ')[0] || '—']);
@@ -45391,15 +45421,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (c.flagged) facts.push(['Flag', 'Change requested']);
     } else {
       const s = shipmentData[c.id] || {};
-      facts.push(['Carrier', (s.carrier || '—').toUpperCase()]);
+      facts.push(['Carrier', (s.carrier || '—').toUpperCase(), _carrierLaunchBtnHtml(s.carrier, s.trackingNumber)]);
       facts.push(['Tracking', s.trackingNumber || '—']);
       facts.push(['Status', _SHIP_STATUS_LABEL(s.status)]);
       facts.push(['ETA', (s.tracking && s.tracking.eta) || s.eta || '—']);
       facts.push(['Workbooks', String(c.count || 0)]);
       facts.push(['Value', c.value > 0 ? money(c.value) : '—']);
     }
-    document.getElementById('pl-modal-facts').innerHTML = facts.map(([l, v]) =>
-      `<div class="pl-fact"><div class="pl-fact-label">${_plEsc(l)}</div><div class="pl-fact-value">${_plEsc(v)}</div></div>`).join('');
+    // Fact value may carry an optional 3rd element = raw HTML (e.g. the
+    // carrier "Track ↗" launch button) appended after the escaped value.
+    document.getElementById('pl-modal-facts').innerHTML = facts.map(f =>
+      `<div class="pl-fact"><div class="pl-fact-label">${_plEsc(f[0])}</div><div class="pl-fact-value">${_plEsc(f[1])}${f[2] ? ' ' + f[2] : ''}</div></div>`).join('');
 
     const row = w => `<li><span>${_plEsc(w.product)}</span><a href="#/client/${encodeURIComponent(w.cn)}/workbook/${w.wid}" onclick="closePipelineCardModal()" style="color:var(--accent); font-size:12px; white-space:nowrap;">open &rarr;</a></li>`;
     let contents = '';
