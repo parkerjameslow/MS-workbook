@@ -6235,6 +6235,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        text color via currentColor. */
     .pl-sample-badge { margin-top: 8px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 99px; background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.20); color: #e2e8f0; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; line-height: 1.4; letter-spacing: 0.02em; }
     .pl-sample-badge:hover { background: rgba(255,255,255,0.18); }
+    /* Tracking status pill on a workbook pipeline card. */
+    .pl-track-pill {
+      margin-top: 8px; display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700;
+      cursor: pointer; font-family: inherit; line-height: 1.4; letter-spacing: 0.02em;
+      border: 1px solid transparent; transition: filter 0.12s;
+    }
+    .pl-track-pill:hover { filter: brightness(1.12); }
+    .pl-track-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .pl-track-pending    { background: rgba(148,163,184,0.18); color: #cbd5e1; border-color: rgba(148,163,184,0.30); }
+    .pl-track-in_transit { background: rgba(107,147,255,0.20); color: #bfdbfe; border-color: rgba(107,147,255,0.35); }
+    .pl-track-delivered  { background: rgba(22,163,74,0.22);  color: #86efac; border-color: rgba(22,163,74,0.38); }
+    /* On the Karen (light) card, keep the pill readable. */
+    .pl-card-karen .pl-track-pending    { background: rgba(100,116,139,0.14); color: #475569; border-color: rgba(100,116,139,0.30); }
+    .pl-card-karen .pl-track-in_transit { background: rgba(37,99,235,0.12); color: #1d4ed8; border-color: rgba(37,99,235,0.30); }
+    .pl-card-karen .pl-track-delivered  { background: rgba(22,163,74,0.14); color: #15803d; border-color: rgba(22,163,74,0.32); }
     .pl-card-karen .pl-sample-badge { background: rgba(124,45,18,0.10); border-color: rgba(124,45,18,0.32); color: #7c2d12; }
     .pl-card-karen .pl-sample-badge:hover { background: rgba(124,45,18,0.18); }
     .pl-badge-ic { width: 13px; height: 13px; display: inline-block; vertical-align: middle; }
@@ -44710,6 +44726,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof _attachCrmBoardGrabScroll === 'function') _attachCrmBoardGrabScroll(board);
     _updatePipelineNavBadge();
     rebuildPipelineNav();
+    // Cached, best-effort carrier-status refresh for tracked shipments; it
+    // re-renders the board only if something actually changed.
+    try { _refreshPipelineTracking(); } catch (e) {}
   }
 
   // Left-nav drill-down: one row per stage with its count and how many
@@ -44769,6 +44788,97 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <span style="flex:0 0 auto;">${spot}</span></div>`;
   }
 
+  // ── Pipeline card tracking pills ──────────────────────────────────────
+  // Shipments carrying this workbook that have a carrier + tracking number,
+  // returned WITH their id so a pill can trigger a per-shipment refresh.
+  function _wbTrackedShipments(clientName, workbookId) {
+    const out = [];
+    const wantKey = `${clientName}|${workbookId}`;
+    const direct   = e => e && e.clientName === clientName && String(e.workbookId) === String(workbookId);
+    const viaOrder = e => { if (!e || e.orderId == null) return false; const o = orderData[e.orderId]; return !!o && (o.entries || []).some(direct); };
+    const viaSample = e => e && e.sampleKey === wantKey;
+    Object.entries(shipmentData || {}).forEach(([id, s]) => {
+      if (!s || !s.carrier || !s.trackingNumber) return;
+      const match = (s.entries || []).some(e => direct(e) || viaOrder(e) || viaSample(e)) || (s.sampleEntries || []).some(direct);
+      if (match) out.push({ id, s });
+    });
+    return out;
+  }
+  // Map a shipment's fetched carrier status → one of 3 buckets.
+  function _trackBucket(s) {
+    const t = s && s.tracking ? s.tracking : null;
+    const raw = String((t && t.status) || '').toLowerCase();
+    const shipDone = s && (s.status === 'delivered' || s.status === 'received');
+    let key;
+    if (/deliver|received/.test(raw) || shipDone) key = 'delivered';
+    else if (/transit|out for delivery|on its way|departed|arriv|processed|picked up|collect|scan|in progress/.test(raw)) key = 'in_transit';
+    else key = 'pending';
+    const eta = (t && t.eta) ? t.eta : (s ? (s.eta || '') : '');
+    const deliveredOn = (s && (s.deliveredOn || s.receivedAt)) || '';
+    return { key, eta, deliveredOn };
+  }
+  function _trackFmtDate(v) {
+    if (!v) return '';
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+  // The tracking pill for a workbook card. Empty when no tracked shipment.
+  // Split across shipments → shows the LEAST-progressed one.
+  function _wbTrackingPillHtml(clientName, workbookId) {
+    const tracked = _wbTrackedShipments(clientName, workbookId);
+    if (!tracked.length) return '';
+    const rank = { pending: 0, in_transit: 1, delivered: 2 };
+    let chosen = null, cb = null;
+    tracked.forEach(({ id, s }) => { const b = _trackBucket(s); if (!chosen || rank[b.key] < rank[cb.key]) { chosen = { id, s }; cb = b; } });
+    const labels = { pending: 'Pending', in_transit: 'In Transit', delivered: 'Delivered' };
+    const dotCol = { pending: '#94a3b8', in_transit: '#6b93ff', delivered: '#22c55e' };
+    let sub = '';
+    if (cb.key === 'delivered' && cb.deliveredOn) sub = ' · ' + _trackFmtDate(cb.deliveredOn);
+    else if (cb.key === 'in_transit' && cb.eta) sub = ' · ETA ' + _trackFmtDate(cb.eta);
+    const title = `${String(chosen.s.carrier).toUpperCase()} ${chosen.s.trackingNumber} — click to refresh`;
+    return `<div class="pl-track-pill pl-track-${cb.key}" onclick="event.stopPropagation(); refreshWbTracking('${_plEsc(String(chosen.id)).replace(/'/g, "\\'")}')" title="${_plEsc(title)}">
+      <span class="pl-track-dot" style="background:${dotCol[cb.key]};"></span>${labels[cb.key]}${_plEsc(sub)}</div>`;
+  }
+  // On-view refresh (cached): fetch carrier status for tracked shipments whose
+  // stored status is stale (>3h) or missing. Best-effort; marks checkedAt even
+  // on failure so a blocked carrier isn't hammered every render.
+  let _plTrackRefreshing = false;
+  const PL_TRACK_STALE_MS = 3 * 60 * 60 * 1000;
+  async function _refreshPipelineTracking() {
+    if (_plTrackRefreshing) return;
+    const now = Date.now();
+    const due = Object.values(shipmentData || {}).filter(s =>
+      s && s.carrier && s.trackingNumber && s.status !== 'received' &&
+      (!(s.tracking && s.tracking.checkedAt) || (now - s.tracking.checkedAt) > PL_TRACK_STALE_MS));
+    if (!due.length) return;
+    _plTrackRefreshing = true;
+    let changed = false;
+    try {
+      for (const s of due.slice(0, 8)) {   // cap per load — the rest refresh next visit
+        try {
+          const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
+          if (r && r.ok && r.data) { s.tracking = Object.assign({}, r.data, { checkedAt: Date.now() }); changed = true; }
+          else { s.tracking = Object.assign({}, s.tracking || {}, { checkedAt: Date.now() }); }
+        } catch (e) { s.tracking = Object.assign({}, s.tracking || {}, { checkedAt: Date.now() }); }
+      }
+    } finally {
+      _plTrackRefreshing = false;
+      if (changed) { try { saveShipments(); } catch (e) {} if (location.hash === '#/pipeline') renderPipelineBoard(); }
+    }
+  }
+  // Manual per-shipment refresh from a pill click.
+  async function refreshWbTracking(sid) {
+    const s = shipmentData[sid];
+    if (!s || !s.carrier || !s.trackingNumber) return;
+    if (typeof _msToast === 'function') _msToast('Checking ' + String(s.carrier).toUpperCase() + ' tracking…');
+    try {
+      const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
+      if (r && r.ok && r.data) { s.tracking = Object.assign({}, r.data, { checkedAt: Date.now() }); try { saveShipments(); } catch (e) {} }
+      else { s.tracking = Object.assign({}, s.tracking || {}, { checkedAt: Date.now() }); if (typeof _msToast === 'function') _msToast('No update available from the carrier right now.', 'warn'); }
+    } catch (e) {}
+    if (location.hash === '#/pipeline') renderPipelineBoard();
+  }
+
   // Workbook card (early stages).
   function _pipelineCardHtml(c) {
     const units = (c.units > 0) ? `${c.units.toLocaleString('en-US')} units` : '';
@@ -44785,6 +44895,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.product)}</div>
       <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
+      ${_wbTrackingPillHtml(c.clientName, c.workbookId)}
       ${_plAssigneeChips(cid)}
       ${(typeof _sampleNotesWbBadge === 'function') ? _sampleNotesWbBadge(c) : ''}
     </div>`;
