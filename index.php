@@ -6245,8 +6245,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-track-pill:hover { filter: brightness(1.12); }
     .pl-track-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     /* Carrier "Track ↗" launch button in the pipeline card modal's carrier box. */
-    .pl-carrier-launch { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--accent); text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; margin-left: 4px; vertical-align: middle; transition: background 0.12s, border-color 0.12s; }
-    .pl-carrier-launch:hover { background: var(--surface2); border-color: var(--accent); }
+    .pl-carrier-launch { display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--accent); text-decoration: none; border: 1.5px solid #E8751A; border-radius: 8px; padding: 8px 18px; margin-left: 8px; vertical-align: middle; transition: background 0.12s; }
+    .pl-carrier-launch:hover { background: rgba(232,117,26,0.10); }
     .pl-track-pending    { background: rgba(148,163,184,0.18); color: #cbd5e1; border-color: rgba(148,163,184,0.30); }
     .pl-track-in_transit { background: rgba(107,147,255,0.20); color: #bfdbfe; border-color: rgba(107,147,255,0.35); }
     .pl-track-delivered  { background: rgba(22,163,74,0.22);  color: #86efac; border-color: rgba(22,163,74,0.38); }
@@ -44530,7 +44530,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const value = groups.reduce((sum, g) => sum + g.workbooks.reduce((n, w) => n + _plWbValue(workbookDetail[`${w.cn}|${w.wid}`]), 0), 0);
       const flagged = (s.entries || []).some(e => e && e.orderId != null && orderData[e.orderId] && orderData[e.orderId].changeRequested);
       cards.push({ kind: 'shipment', stage, id: s.id, title: s.name || `Shipment #${s.id}`,
-                   sub: (s.carrier || '').toUpperCase(),   // status now shown as its own pill
+                   sub: '',   // carrier + status now live together in the status pill
                    groups, count: units, since, value, flagged,
                    search: [s.name, s.carrier, s.trackingNumber].concat(groups.map(g => g.label)).concat(groups.flatMap(g => g.workbooks.map(w => w.product + ' ' + w.cn))).join(' ').toLowerCase(),
                    clients: Array.from(new Set(groups.flatMap(g => g.workbooks.map(w => w.cn)))) });
@@ -44842,7 +44842,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _carrierLaunchBtnHtml(carrier, number) {
     const url = _carrierTrackingUrl(carrier, number);
     if (!url) return '';
-    return `<a href="${url}" target="_blank" rel="noopener" class="pl-carrier-launch" onclick="event.stopPropagation();" title="Open the ${_plEsc(String(carrier).toUpperCase())} tracking page">Track <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>`;
+    return `<a href="${url}" target="_blank" rel="noopener" class="pl-carrier-launch" onclick="event.stopPropagation();" title="Open the ${_plEsc(String(carrier).toUpperCase())} tracking page">Track</a>`;
   }
   // The tracking pill for a workbook card. Empty when no tracked shipment.
   // Split across shipments → shows the LEAST-progressed one.
@@ -44872,6 +44872,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ? ` onclick="event.stopPropagation(); refreshWbTracking('${_plEsc(String(id)).replace(/'/g, "\\'")}')" title="Click to refresh ${_plEsc(String(s.carrier).toUpperCase())} tracking"`
       : '';
     const dotCol = { pending: '#94a3b8', in_transit: '#6b93ff', delivered: '#22c55e' };
+    // Carrier lives INSIDE the pill (e.g. "DHL · Delivered") — no standalone
+    // carrier line on the card.
+    const carrierPrefix = s.carrier ? _plEsc(String(s.carrier).toUpperCase()) + ' · ' : '';
     if (s.tracking && s.tracking.status) {
       // Real carrier status.
       const b = _trackBucket(s);
@@ -44879,13 +44882,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       let sub = '';
       if (b.key === 'delivered' && b.deliveredOn) sub = ' · ' + _trackFmtDate(b.deliveredOn);
       else if (b.key === 'in_transit' && b.eta) sub = ' · ETA ' + _trackFmtDate(b.eta);
-      return `<div class="pl-track-pill pl-track-${b.key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[b.key]};"></span>${labels[b.key]}${_plEsc(sub)}</div>`;
+      return `<div class="pl-track-pill pl-track-${b.key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[b.key]};"></span>${carrierPrefix}${labels[b.key]}${_plEsc(sub)}</div>`;
     }
     // No carrier scrape yet — show the shipment's own status, colored by stage.
     const lbl = (typeof _SHIP_STATUS_LABEL === 'function') ? _SHIP_STATUS_LABEL(s.status) : (s.status || '');
-    if (!lbl) return '';
+    if (!lbl && !carrierPrefix) return '';
     const key = (s.status === 'delivered' || s.status === 'received') ? 'delivered' : (s.status === 'in_transit' ? 'in_transit' : 'pending');
-    return `<div class="pl-track-pill pl-track-${key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[key]};"></span>${_plEsc(lbl)}</div>`;
+    return `<div class="pl-track-pill pl-track-${key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[key]};"></span>${carrierPrefix}${_plEsc(lbl)}</div>`;
   }
 
   // On-view refresh (cached): fetch carrier status for tracked shipments whose
@@ -44984,7 +44987,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return `<div class="crm-card pl-card pl-locked pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" onclick="openPipelineCardModal('${cid}')" title="View details">
       ${_pipelineAgeBadge(c.since)}
       <div class="pl-card-title">${_plEsc(c.title)}</div>
-      <div class="pl-card-sub">${_plEsc(c.sub) || `${c.count} workbook${c.count === 1 ? '' : 's'}`}</div>
+      ${c.sub ? `<div class="pl-card-sub">${_plEsc(c.sub)}</div>` : ''}
       ${_shipmentStatusPillHtml(c.id)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${c.count} workbook${c.count === 1 ? '' : 's'}</button>
