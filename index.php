@@ -871,6 +871,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding-bottom: 2px;
     }
     .section-summary .ss-rfq-th--left { text-align: left; }
+    /* Reorder arrows inside the summary's Item cell (top line stays pinned). */
+    .section-summary .ss-rfq-reorder { display: inline-flex; flex-direction: column; gap: 1px; margin-right: 7px; vertical-align: middle; }
+    .section-summary .ss-rfq-move {
+      background: none; border: none; cursor: pointer; padding: 0 2px; margin: 0;
+      font-size: 8px; line-height: 1.05; color: var(--text-muted); opacity: 0.55;
+      font-family: inherit; transition: color 0.12s, opacity 0.12s;
+    }
+    .section-summary .ss-rfq-move:hover:not(:disabled) { color: var(--accent); opacity: 1; }
+    .section-summary .ss-rfq-move:disabled { opacity: 0.18; cursor: default; }
     /* Divider above the grand-total row — single grid item spanning
        every column so the border line runs continuously edge-to-edge,
        no breaks at the column gaps. Putting the border on the
@@ -20767,6 +20776,44 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (_appReady) autoSaveWorkbook();
   }
 
+  // All the rows a parent "owns" and that must travel with it when reordered:
+  // the parent row itself, its variant rows, the trailing add-variant row, and
+  // its comparable-option rows — i.e. every row until the next parent row.
+  function _rfqParentBlock(parentRow) {
+    const isParent = el => el && el.matches &&
+      el.matches('tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
+    const block = [parentRow];
+    let n = parentRow.nextElementSibling;
+    while (n && !isParent(n)) { block.push(n); n = n.nextElementSibling; }
+    return block;
+  }
+  // Move an RFQ line up/down (dir -1 | +1). The first line stays pinned:
+  // nothing moves to index 0, and index 0 itself never moves.
+  function moveRfqParent(id, dir) {
+    if (_wbLocked) return;
+    const tbody = document.getElementById('rfq-body');
+    if (!tbody) return;
+    const parents = [...tbody.querySelectorAll('tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])')];
+    const i = parents.findIndex(p => p.id === 'rfq-' + id);
+    if (i <= 0) return;                    // not found, or the pinned top line
+    const j = i + dir;
+    if (j < 1 || j >= parents.length) return;   // never cross the pinned top / off the ends
+    const block = _rfqParentBlock(parents[i]);
+    if (dir < 0) {
+      // Up: drop the block right before the previous line.
+      const before = parents[i - 1];
+      block.forEach(row => tbody.insertBefore(row, before));
+    } else {
+      // Down: drop the block after the next line's whole block.
+      const anchor = parents[i + 2] || null;  // row after the next line's block (null = end)
+      block.forEach(row => { anchor ? tbody.insertBefore(row, anchor) : tbody.appendChild(row); });
+    }
+    if (typeof renumberRfqRows === 'function') renumberRfqRows();
+    if (typeof recalcRfqTotals === 'function') recalcRfqTotals();
+    if (typeof _updateSectionSummary === 'function') _updateSectionSummary('rfq');
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   function rfqDropRow(e, targetId) {
     const draggedId = parseInt(e.dataTransfer.getData('text/plain'));
     const tbody = document.getElementById('rfq-body');
@@ -22291,6 +22338,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             if (qty === 0 && rmbMin === Infinity && total === 0) return;
 
             items.push({
+              id,        // underlying #rfq-body parent row id (for reorder)
+              idx,       // position among parent rows (0 = pinned primary)
               name:  itemName,
               variantCount,
               qty,
@@ -22337,8 +22386,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             const titleAttr = it.variantCount > 0
               ? `${it.name} (${it.variantCount} variant${it.variantCount === 1 ? '' : 's'})`
               : it.name;
+            // Reorder arrows — the primary line (idx 0) is pinned (no
+            // controls); others can move within the list but never above the
+            // pinned top (up disabled at idx 1, down disabled on the last).
+            const reorder = it.idx === 0 ? '' : (
+              `<span class="ss-rfq-reorder">` +
+              `<button type="button" class="ss-rfq-move" ${it.idx >= 2 ? '' : 'disabled'} onclick="event.stopPropagation(); moveRfqParent(${it.id}, -1)" title="Move up">&#9650;</button>` +
+              `<button type="button" class="ss-rfq-move" ${it.idx < parents.length - 1 ? '' : 'disabled'} onclick="event.stopPropagation(); moveRfqParent(${it.id}, 1)" title="Move down">&#9660;</button>` +
+              `</span>`
+            );
             return (
-              `<div class="ss-rfq-name" title="${cellEsc(titleAttr)}">${cellEsc(it.name)}${variantBadge}</div>` +
+              `<div class="ss-rfq-name" title="${cellEsc(titleAttr)}">${reorder}${cellEsc(it.name)}${variantBadge}</div>` +
               `<div>${_ssFmtInt(it.qty)}</div>` +
               `<div>${rmbCell}</div>` +
               `<div>${usdCell}</div>` +
