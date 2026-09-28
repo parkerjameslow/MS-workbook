@@ -544,6 +544,12 @@ if (!defined('ANTHROPIC_MODEL')) {
 //   define('QBO_CLIENT_SECRET', '...');
 //   define('QBO_ENVIRONMENT',   'production'); // or 'sandbox' for testing
 // Register the redirect URI below in the Intuit app's "Redirect URIs".
+// DHL Shipment Tracking – Unified API key (developer.dhl.com). When set,
+// DHL lookups hit the official API (authoritative, no scraping) instead of
+// the best-effort page scraper. Same load pattern as the other secrets:
+//   define('DHL_API_KEY', '...');   in api.local.php (gitignored)
+if (!defined('DHL_API_KEY')) { $v = getenv('DHL_API_KEY'); define('DHL_API_KEY', is_string($v) ? $v : ''); }
+
 if (!defined('QBO_CLIENT_ID'))     { $v = getenv('QBO_CLIENT_ID');     define('QBO_CLIENT_ID',     is_string($v) ? $v : ''); }
 if (!defined('QBO_CLIENT_SECRET')) { $v = getenv('QBO_CLIENT_SECRET'); define('QBO_CLIENT_SECRET', is_string($v) ? $v : ''); }
 if (!defined('QBO_ENVIRONMENT'))   { $v = getenv('QBO_ENVIRONMENT');   define('QBO_ENVIRONMENT', ($v === 'sandbox' || $v === 'production') ? $v : 'production'); }
@@ -3059,6 +3065,102 @@ switch ($action) {
             echo json_encode(['ok' => false, 'error' => 'carrier and tracking_number required']);
             break;
         }
+        // ─── OFFICIAL DHL API (preferred when a key is configured) ──────
+        // DHL explicitly blocks scraping (their tracking page returns 403
+        // "Automated extraction ... is prohibited"). The only reliable
+        // source is the official DHL "Shipment Tracking – Unified" API.
+        // When DHL_API_KEY is set in api.local.php we use it and skip the
+        // scraper entirely — authoritative status, ETA, and scan events
+        // straight from DHL's JSON, no LLM parsing needed.
+        if ($carrier === 'dhl' && DHL_API_KEY !== '' && function_exists('curl_init')) {
+            $apiUrl = 'https://api-eu.dhl.com/track/shipments?trackingNumber=' . urlencode($tn);
+            $ch = curl_init($apiUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 20,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_HTTPHEADER     => [
+                    'Accept: application/json',
+                    'DHL-API-Key: ' . DHL_API_KEY,
+                ],
+            ]);
+            $apiResp = curl_exec($ch);
+            $apiCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $apiCerr = curl_error($ch);
+            curl_close($ch);
+            $apiData = ($apiResp !== false) ? json_decode((string)$apiResp, true) : null;
+
+            if ($apiCode === 429) {
+                echo json_encode(['ok' => false, 'error' => 'DHL API rate limit reached — try again shortly.']);
+                break;
+            }
+            if ($apiCode === 401 || $apiCode === 403) {
+                echo json_encode(['ok' => false, 'error' => 'DHL API key rejected (HTTP ' . $apiCode . '). Check DHL_API_KEY in api.local.php.']);
+                break;
+            }
+            if (is_array($apiData) && !empty($apiData['shipments'][0])) {
+                $sh = $apiData['shipments'][0];
+                // DHL status codes: pre-transit | transit | delivered | failure | unknown.
+                $rawStatusCode = strtolower((string)($sh['status']['statusCode'] ?? ''));
+                $rawStatusTxt  = (string)($sh['status']['status'] ?? ($sh['status']['description'] ?? ''));
+                $statusMap = [
+                    'pre-transit' => 'Label Created',
+                    'transit'     => 'In Transit',
+                    'delivered'   => 'Delivered',
+                    'failure'     => 'Exception',
+                    'unknown'     => 'Unknown',
+                ];
+                $statusPhrase = $statusMap[$rawStatusCode] ?? ($rawStatusTxt !== '' ? $rawStatusTxt : 'Unknown');
+
+                // Most-recent location (statuses come newest-first in DHL's payload).
+                $locParts = [];
+                $addr = $sh['status']['location']['address'] ?? [];
+                foreach (['addressLocality', 'countryCode'] as $k) {
+                    if (!empty($addr[$k])) $locParts[] = $addr[$k];
+                }
+                $location = implode(', ', $locParts);
+
+                // ETA: estimatedTimeOfDelivery, else the delivery date if delivered.
+                $eta = (string)($sh['estimatedTimeOfDelivery'] ?? '');
+
+                // Scan events, newest-first (DHL returns them that way).
+                $events = [];
+                if (!empty($sh['events']) && is_array($sh['events'])) {
+                    foreach (array_slice($sh['events'], 0, 12) as $ev) {
+                        if (!is_array($ev)) continue;
+                        $evLoc = [];
+                        $evAddr = $ev['location']['address'] ?? [];
+                        foreach (['addressLocality', 'countryCode'] as $k) {
+                            if (!empty($evAddr[$k])) $evLoc[] = $evAddr[$k];
+                        }
+                        $events[] = [
+                            'time'        => (string)($ev['timestamp'] ?? ''),
+                            'location'    => implode(', ', $evLoc),
+                            'description' => (string)($ev['description'] ?? ($ev['status'] ?? '')),
+                        ];
+                    }
+                }
+                echo json_encode(['ok' => true, 'data' => [
+                    'status'         => $statusPhrase,
+                    'location'       => $location,
+                    'eta'            => $eta,
+                    'events'         => $events,
+                    'fetchedAt'      => date('c'),
+                    'carrier'        => 'dhl',
+                    'trackingNumber' => $tn,
+                    'source'         => 'dhl_api',
+                ]]);
+                break;
+            }
+            if ($apiCode === 404) {
+                echo json_encode(['ok' => false, 'error' => 'DHL has no record of tracking number ' . $tn . ' yet.']);
+                break;
+            }
+            // Any other API failure: fall through to the scraper as a
+            // best-effort backup rather than hard-failing.
+            $attemptDiag[] = 'DHL API: HTTP ' . $apiCode . ($apiCerr ? " ({$apiCerr})" : '');
+        }
+
         // Each carrier gets a primary + (optional) fallback URL. The
         // primary is the human tracking page; the fallback is usually
         // a mobile / older surface that's less aggressive about bot
