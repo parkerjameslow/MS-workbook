@@ -550,6 +550,103 @@ if (!defined('ANTHROPIC_MODEL')) {
 //   define('DHL_API_KEY', '...');   in api.local.php (gitignored)
 if (!defined('DHL_API_KEY')) { $v = getenv('DHL_API_KEY'); define('DHL_API_KEY', is_string($v) ? $v : ''); }
 
+// FedEx Track API (developer.fedex.com) — OAuth2 client-credentials.
+//   define('FEDEX_CLIENT_ID',     '...');   // "API Key" / Client ID
+//   define('FEDEX_CLIENT_SECRET', '...');   // "Secret Key" / Client Secret
+//   define('FEDEX_ENVIRONMENT',   'production'); // or 'sandbox'
+if (!defined('FEDEX_CLIENT_ID'))     { $v = getenv('FEDEX_CLIENT_ID');     define('FEDEX_CLIENT_ID',     is_string($v) ? $v : ''); }
+if (!defined('FEDEX_CLIENT_SECRET')) { $v = getenv('FEDEX_CLIENT_SECRET'); define('FEDEX_CLIENT_SECRET', is_string($v) ? $v : ''); }
+if (!defined('FEDEX_ENVIRONMENT'))   { $v = getenv('FEDEX_ENVIRONMENT');   define('FEDEX_ENVIRONMENT', ($v === 'sandbox') ? 'sandbox' : 'production'); }
+define('FEDEX_API_BASE', FEDEX_ENVIRONMENT === 'sandbox' ? 'https://apis-sandbox.fedex.com' : 'https://apis.fedex.com');
+
+// UPS Track API (developer.ups.com) — OAuth2 client-credentials.
+//   define('UPS_CLIENT_ID',     '...');   // Client ID
+//   define('UPS_CLIENT_SECRET', '...');   // Client Secret
+//   define('UPS_ENVIRONMENT',   'production'); // or 'sandbox'
+if (!defined('UPS_CLIENT_ID'))     { $v = getenv('UPS_CLIENT_ID');     define('UPS_CLIENT_ID',     is_string($v) ? $v : ''); }
+if (!defined('UPS_CLIENT_SECRET')) { $v = getenv('UPS_CLIENT_SECRET'); define('UPS_CLIENT_SECRET', is_string($v) ? $v : ''); }
+if (!defined('UPS_ENVIRONMENT'))   { $v = getenv('UPS_ENVIRONMENT');   define('UPS_ENVIRONMENT', ($v === 'sandbox') ? 'sandbox' : 'production'); }
+define('UPS_API_BASE', UPS_ENVIRONMENT === 'sandbox' ? 'https://wwwcie.ups.com' : 'https://onlinetools.ups.com');
+
+// ─── Carrier OAuth token cache (FedEx/UPS) ──────────────────────────────
+// Both carriers issue short-lived bearer tokens from client credentials.
+// We cache the token in app_state so we don't re-auth on every lookup.
+function ms_oauth_token_cached(PDO $pdo, string $carrier): string {
+    try {
+        $s = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ? LIMIT 1");
+        $s->execute(['oauth_token_' . $carrier]);
+        $j = $s->fetchColumn();
+        if ($j) {
+            $d = json_decode($j, true);
+            if (is_array($d) && !empty($d['token']) && (int)($d['expires_at'] ?? 0) > time() + 30) {
+                return (string)$d['token'];
+            }
+        }
+    } catch (PDOException $e) { /* fall through to re-auth */ }
+    return '';
+}
+function ms_oauth_token_store(PDO $pdo, string $carrier, string $token, int $expiresAt): void {
+    try {
+        $pdo->prepare("INSERT INTO app_state (key_name, value_json) VALUES (?, ?)
+            ON DUPLICATE KEY UPDATE value_json = VALUES(value_json)")
+            ->execute(['oauth_token_' . $carrier, json_encode(['token' => $token, 'expires_at' => $expiresAt])]);
+    } catch (PDOException $e) { /* non-fatal: we just won't cache */ }
+}
+function ms_fedex_token(PDO $pdo): array {
+    $cached = ms_oauth_token_cached($pdo, 'fedex');
+    if ($cached !== '') return ['ok' => true, 'token' => $cached];
+    if (FEDEX_CLIENT_ID === '' || FEDEX_CLIENT_SECRET === '') return ['ok' => false, 'error' => 'FedEx is not configured'];
+    $ch = curl_init(FEDEX_API_BASE . '/oauth/token');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_POSTFIELDS     => http_build_query([
+            'grant_type'    => 'client_credentials',
+            'client_id'     => FEDEX_CLIENT_ID,
+            'client_secret' => FEDEX_CLIENT_SECRET,
+        ]),
+        CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded'],
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $d = $resp ? json_decode((string)$resp, true) : null;
+    if (!is_array($d) || empty($d['access_token'])) return ['ok' => false, 'error' => 'FedEx auth failed (HTTP ' . $code . ')'];
+    ms_oauth_token_store($pdo, 'fedex', $d['access_token'], time() + (int)($d['expires_in'] ?? 3600) - 60);
+    return ['ok' => true, 'token' => (string)$d['access_token']];
+}
+function ms_ups_token(PDO $pdo): array {
+    $cached = ms_oauth_token_cached($pdo, 'ups');
+    if ($cached !== '') return ['ok' => true, 'token' => $cached];
+    if (UPS_CLIENT_ID === '' || UPS_CLIENT_SECRET === '') return ['ok' => false, 'error' => 'UPS is not configured'];
+    $ch = curl_init(UPS_API_BASE . '/security/v1/oauth/token');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_POSTFIELDS     => http_build_query(['grant_type' => 'client_credentials']),
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/x-www-form-urlencoded',
+            'Authorization: Basic ' . base64_encode(UPS_CLIENT_ID . ':' . UPS_CLIENT_SECRET),
+        ],
+    ]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $d = $resp ? json_decode((string)$resp, true) : null;
+    if (!is_array($d) || empty($d['access_token'])) return ['ok' => false, 'error' => 'UPS auth failed (HTTP ' . $code . ')'];
+    ms_oauth_token_store($pdo, 'ups', $d['access_token'], time() + (int)($d['expires_in'] ?? 14400) - 60);
+    return ['ok' => true, 'token' => (string)$d['access_token']];
+}
+// UPS returns dates as YYYYMMDD and times as HHMMSS — humanize them.
+function _ups_fmt_date(string $d): string {
+    return preg_match('/^(\d{4})(\d{2})(\d{2})$/', $d, $m) ? "{$m[1]}-{$m[2]}-{$m[3]}" : $d;
+}
+function _ups_fmt_time(string $t): string {
+    return preg_match('/^(\d{2})(\d{2})(\d{2})$/', $t, $m) ? "{$m[1]}:{$m[2]}" : '';
+}
+
 if (!defined('QBO_CLIENT_ID'))     { $v = getenv('QBO_CLIENT_ID');     define('QBO_CLIENT_ID',     is_string($v) ? $v : ''); }
 if (!defined('QBO_CLIENT_SECRET')) { $v = getenv('QBO_CLIENT_SECRET'); define('QBO_CLIENT_SECRET', is_string($v) ? $v : ''); }
 if (!defined('QBO_ENVIRONMENT'))   { $v = getenv('QBO_ENVIRONMENT');   define('QBO_ENVIRONMENT', ($v === 'sandbox' || $v === 'production') ? $v : 'production'); }
@@ -3065,6 +3162,7 @@ switch ($action) {
             echo json_encode(['ok' => false, 'error' => 'carrier and tracking_number required']);
             break;
         }
+        $attemptDiag = []; // accumulates per-source diagnostics (API + scraper)
         // ─── OFFICIAL DHL API (preferred when a key is configured) ──────
         // DHL explicitly blocks scraping (their tracking page returns 403
         // "Automated extraction ... is prohibited"). The only reliable
@@ -3161,6 +3259,164 @@ switch ($action) {
             $attemptDiag[] = 'DHL API: HTTP ' . $apiCode . ($apiCerr ? " ({$apiCerr})" : '');
         }
 
+        // ─── OFFICIAL FedEx API (preferred when configured) ─────────────
+        // FedEx blocks scraping too. The official FedEx Track API uses
+        // OAuth2 client-credentials: ms_fedex_token() fetches + caches a
+        // ~1h bearer token in app_state, then we POST the tracking number
+        // and parse the JSON directly (no LLM).
+        if ($carrier === 'fedex' && FEDEX_CLIENT_ID !== '' && function_exists('curl_init')) {
+            $tok = ms_fedex_token($pdo);
+            if (!$tok['ok']) {
+                echo json_encode(['ok' => false, 'error' => $tok['error'] . ' — check FEDEX_CLIENT_ID / FEDEX_CLIENT_SECRET in api.local.php.']);
+                break;
+            }
+            $ch = curl_init(FEDEX_API_BASE . '/track/v1/trackingnumbers');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST           => true,
+                CURLOPT_TIMEOUT        => 25,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_POSTFIELDS     => json_encode([
+                    'includeDetailedScans' => true,
+                    'trackingInfo'         => [['trackingNumberInfo' => ['trackingNumber' => $tn]]],
+                ]),
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $tok['token'],
+                    'Content-Type: application/json',
+                    'X-locale: en_US',
+                ],
+            ]);
+            $fResp = curl_exec($ch);
+            $fCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            $fData = ($fResp !== false) ? json_decode((string)$fResp, true) : null;
+            $tr = $fData['output']['completeTrackResults'][0]['trackResults'][0] ?? null;
+            if (is_array($tr) && empty($tr['error'])) {
+                $statusPhrase = (string)($tr['latestStatusDetail']['statusByLocale']
+                    ?? ($tr['latestStatusDetail']['description'] ?? 'Unknown'));
+                $lp = [];
+                $sl = $tr['latestStatusDetail']['scanLocation'] ?? [];
+                foreach (['city', 'stateOrProvinceCode', 'countryCode'] as $k) {
+                    if (!empty($sl[$k])) $lp[] = $sl[$k];
+                }
+                $location = implode(', ', $lp);
+                // Prefer actual delivery, else estimated.
+                $eta = '';
+                foreach (($tr['dateAndTimes'] ?? []) as $dt) {
+                    $ty = $dt['type'] ?? '';
+                    if ($ty === 'ACTUAL_DELIVERY') { $eta = (string)($dt['dateTime'] ?? ''); break; }
+                    if ($ty === 'ESTIMATED_DELIVERY' && $eta === '') $eta = (string)($dt['dateTime'] ?? '');
+                }
+                $events = [];
+                foreach (array_slice($tr['scanEvents'] ?? [], 0, 12) as $ev) {
+                    if (!is_array($ev)) continue;
+                    $el = $ev['scanLocation'] ?? [];
+                    $evl = [];
+                    foreach (['city', 'stateOrProvinceCode', 'countryCode'] as $k) {
+                        if (!empty($el[$k])) $evl[] = $el[$k];
+                    }
+                    $events[] = [
+                        'time'        => (string)($ev['date'] ?? ''),
+                        'location'    => implode(', ', $evl),
+                        'description' => (string)($ev['eventDescription'] ?? ($ev['derivedStatus'] ?? '')),
+                    ];
+                }
+                echo json_encode(['ok' => true, 'data' => [
+                    'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
+                    'events' => $events, 'fetchedAt' => date('c'),
+                    'carrier' => 'fedex', 'trackingNumber' => $tn, 'source' => 'fedex_api',
+                ]]);
+                break;
+            }
+            if ($fCode === 404 || (is_array($tr) && !empty($tr['error']))) {
+                echo json_encode(['ok' => false, 'error' => 'FedEx has no record of ' . $tn . ' yet.']);
+                break;
+            }
+            if ($fCode === 401 || $fCode === 403) {
+                echo json_encode(['ok' => false, 'error' => 'FedEx API rejected the request (HTTP ' . $fCode . '). Check credentials / app approval.']);
+                break;
+            }
+            $attemptDiag[] = 'FedEx API: HTTP ' . $fCode;
+        }
+
+        // ─── OFFICIAL UPS API (preferred when configured) ───────────────
+        // UPS Track API, OAuth2 client-credentials (ms_ups_token caches a
+        // ~4h bearer in app_state). GET the tracking detail + parse JSON.
+        if ($carrier === 'ups' && UPS_CLIENT_ID !== '' && function_exists('curl_init')) {
+            $tok = ms_ups_token($pdo);
+            if (!$tok['ok']) {
+                echo json_encode(['ok' => false, 'error' => $tok['error'] . ' — check UPS_CLIENT_ID / UPS_CLIENT_SECRET in api.local.php.']);
+                break;
+            }
+            $ch = curl_init(UPS_API_BASE . '/api/track/v1/details/' . urlencode($tn) . '?locale=en_US');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT        => 25,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_HTTPHEADER => [
+                    'Authorization: Bearer ' . $tok['token'],
+                    'Content-Type: application/json',
+                    'transId: ' . bin2hex(random_bytes(8)),
+                    'transactionSrc: marketsculpt',
+                ],
+            ]);
+            $uResp = curl_exec($ch);
+            $uCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            $uData = ($uResp !== false) ? json_decode((string)$uResp, true) : null;
+            $pkg = $uData['trackResponse']['shipment'][0]['package'][0] ?? null;
+            if (is_array($pkg)) {
+                $statusPhrase = (string)($pkg['currentStatus']['description'] ?? 'Unknown');
+                $acts = $pkg['activity'] ?? [];
+                $location = '';
+                if (!empty($acts[0]['location']['address'])) {
+                    $a = $acts[0]['location']['address'];
+                    $lp = [];
+                    foreach (['city', 'stateProvince', 'countryCode'] as $k) {
+                        if (!empty($a[$k])) $lp[] = $a[$k];
+                    }
+                    $location = implode(', ', $lp);
+                }
+                // Delivery date: actual (DEL) wins over scheduled (RDD/etc).
+                $eta = '';
+                foreach (($pkg['deliveryDate'] ?? []) as $dd) {
+                    $date = _ups_fmt_date((string)($dd['date'] ?? ''));
+                    if ($date === '') continue;
+                    $eta = $date;
+                    if (($dd['type'] ?? '') === 'DEL') break;
+                }
+                $events = [];
+                foreach (array_slice($acts, 0, 12) as $ev) {
+                    if (!is_array($ev)) continue;
+                    $a = $ev['location']['address'] ?? [];
+                    $evl = [];
+                    foreach (['city', 'stateProvince', 'countryCode'] as $k) {
+                        if (!empty($a[$k])) $evl[] = $a[$k];
+                    }
+                    $events[] = [
+                        'time'        => trim(_ups_fmt_date((string)($ev['date'] ?? '')) . ' ' . _ups_fmt_time((string)($ev['time'] ?? ''))),
+                        'location'    => implode(', ', $evl),
+                        'description' => (string)($ev['status']['description'] ?? ''),
+                    ];
+                }
+                echo json_encode(['ok' => true, 'data' => [
+                    'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
+                    'events' => $events, 'fetchedAt' => date('c'),
+                    'carrier' => 'ups', 'trackingNumber' => $tn, 'source' => 'ups_api',
+                ]]);
+                break;
+            }
+            if ($uCode === 404) {
+                echo json_encode(['ok' => false, 'error' => 'UPS has no record of ' . $tn . ' yet.']);
+                break;
+            }
+            if ($uCode === 401 || $uCode === 403) {
+                echo json_encode(['ok' => false, 'error' => 'UPS API rejected the request (HTTP ' . $uCode . '). Check credentials / app approval.']);
+                break;
+            }
+            $attemptDiag[] = 'UPS API: HTTP ' . $uCode;
+        }
+
         // Each carrier gets a primary + (optional) fallback URL. The
         // primary is the human tracking page; the fallback is usually
         // a mobile / older surface that's less aggressive about bot
@@ -3198,7 +3454,6 @@ switch ($action) {
         // attempt fails.
         $html = '';
         $fetchErr = '';
-        $attemptDiag = [];
         if (function_exists('curl_init')) {
             foreach ($urlSets[$carrier] as $attemptIdx => $url) {
                 $ch = curl_init($url);
