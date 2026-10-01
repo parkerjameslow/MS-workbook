@@ -10778,7 +10778,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div id="view-parker" class="view">
   <!-- PIN gate -->
   <div id="parker-pin-gate" style="display:none; max-width:360px; margin:12vh auto 0; text-align:center; padding:0 16px;">
-    <div style="font-size:40px; margin-bottom:8px;">🔒</div>
     <h1 style="font-size:22px; font-weight:800; color:var(--text); margin:0 0 4px;">Parker</h1>
     <div style="font-size:13px; color:var(--text-muted); margin-bottom:18px;">Enter your PIN to open your command center.</div>
     <input id="parker-pin-input" type="password" inputmode="numeric" maxlength="8" autocomplete="off"
@@ -10799,7 +10798,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
           <span id="parker-brief-stamp" style="font-size:11px; color:var(--text-muted);"></span>
-          <button class="btn btn-primary" onclick="buildParkerBrief()">↻ Build today's brief</button>
+          <button class="btn btn-primary" onclick="buildParkerBrief()">Build today's brief</button>
           <button class="btn btn-ghost" onclick="_parkerLock()" style="font-size:12px;">Lock</button>
         </div>
       </div>
@@ -10808,38 +10807,38 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 0 16px; border-bottom:1px solid var(--border); margin-bottom:16px;">
         <span style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Watching</span>
         <div id="parker-accounts" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"></div>
-        <button class="btn btn-ghost" onclick="openParkerAddModal()" style="font-size:12px; border:1px dashed var(--border);">➕ Add New</button>
+        <button class="btn btn-ghost" onclick="openParkerAddModal()" style="font-size:12px; border:1px dashed var(--border);">Add New</button>
       </div>
 
       <!-- Intel panels -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px;">
         <div class="parker-panel">
-          <div class="parker-panel-head">🔴 Urgent today</div>
+          <div class="parker-panel-head">Urgent today</div>
           <div id="parker-urgent" class="parker-panel-body"></div>
         </div>
         <div class="parker-panel">
-          <div class="parker-panel-head">🗓 This week</div>
+          <div class="parker-panel-head">This week</div>
           <div id="parker-week" class="parker-panel-body"></div>
         </div>
         <div class="parker-panel">
-          <div class="parker-panel-head">✉️ Needs a reply</div>
+          <div class="parker-panel-head">Needs a reply</div>
           <div id="parker-reply" class="parker-panel-body"></div>
         </div>
         <div class="parker-panel">
-          <div class="parker-panel-head">📈 Trending</div>
+          <div class="parker-panel-head">Trending</div>
           <div id="parker-trending" class="parker-panel-body"></div>
         </div>
       </div>
 
       <!-- Reorder soon -->
       <div class="parker-panel" style="margin-top:14px;">
-        <div class="parker-panel-head">📦 Reorder soon</div>
+        <div class="parker-panel-head">Reorder soon</div>
         <div id="parker-reorder" class="parker-panel-body"></div>
       </div>
 
       <!-- Finished orders → set reorder reminder -->
       <div class="parker-panel" style="margin-top:14px;">
-        <div class="parker-panel-head">✅ Finished orders — set a reorder reminder</div>
+        <div class="parker-panel-head">Finished orders — set a reorder reminder</div>
         <div id="parker-finished" class="parker-panel-body"></div>
       </div>
     </main>
@@ -24403,7 +24402,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     else {
       wrap.innerHTML=_parkerAccounts.map((a,i)=>{
         const active=_parkerFilter===a.name;
-        return `<span class="parker-chip" style="${active?'border-color:var(--accent); background:rgba(232,117,26,.08);':''}" onclick="_parkerFilterIdx(${i})">${_pkEsc(a.name)}<span onclick="event.stopPropagation(); _parkerEditIdx(${i})" style="opacity:.5; font-size:11px;" title="Edit">✎</span></span>`;
+        return `<span class="parker-chip" style="${active?'border-color:var(--accent); background:rgba(232,117,26,.08);':''}" onclick="_parkerFilterIdx(${i})">${_pkEsc(a.name)}<span onclick="event.stopPropagation(); _parkerEditIdx(${i})" style="opacity:.6; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;" title="Edit">Edit</span></span>`;
       }).join('');
     }
     const dl=document.getElementById('parker-client-list');
@@ -24454,7 +24453,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if(s.days<=1) opUrgent.push(item); else if(s.days<=7) opWeek.push(item);
     });
     const f=arr=>(arr||[]).filter(x=>_parkerMatchesFilter(x.account));
-    _pkFill('parker-urgent', f(intel.urgentToday).concat(opUrgent), 'Nothing urgent. 🎉');
+    _pkFill('parker-urgent', f(intel.urgentToday).concat(opUrgent), 'Nothing urgent.');
     _pkFill('parker-week', f(intel.thisWeek).concat(opWeek), 'Nothing flagged for this week.');
     _pkFill('parker-reply', f(intel.needsReply), 'No unanswered messages yet — the 8am MST agent fills this (or ask me to refresh).');
     _pkFill('parker-trending', f(intel.trending), 'No trends yet — the morning agent surfaces these.');
