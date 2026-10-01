@@ -3459,11 +3459,18 @@ switch ($action) {
 
         // Gather from each source (each no-ops without its creds).
         $GLOBALS['parker_email_diag'] = (PARKER_MAIL_USER !== '' && PARKER_MAIL_PASS !== '') ? 'creds set, not attempted' : 'no creds';
-        $raw = array_merge(
-            parker_read_email($accounts),
-            parker_read_slack($accounts),
-            parker_read_trello($accounts)
-        );
+        $rawEmail  = parker_read_email($accounts);
+        $rawSlack  = parker_read_slack($accounts);
+        $rawTrello = parker_read_trello($accounts);
+        $raw = array_merge($rawEmail, $rawSlack, $rawTrello);
+        // Per-source × per-account breakdown for debugging "where did these
+        // come from".
+        $GLOBALS['parker_breakdown'] = [];
+        foreach (['email' => $rawEmail, 'slack' => $rawSlack, 'trello' => $rawTrello] as $src => $arr) {
+            $byAcct = [];
+            foreach ($arr as $it) { $acc = $it['account'] ?? '?'; $byAcct[$acc] = ($byAcct[$acc] ?? 0) + 1; }
+            $GLOBALS['parker_breakdown'][$src] = $byAcct;
+        }
         $buckets = parker_classify($raw);
 
         // Normalize + persist (same shape parker_save_brief writes).
@@ -3558,7 +3565,7 @@ switch ($action) {
                 'ai'     => ANTHROPIC_API_KEY !== '' ? 'on' : 'heuristic',
             ],
             'alerts' => $alerts,
-            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run'] : null,
+            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run', 'breakdown' => $GLOBALS['parker_breakdown'] ?? []] : null,
         ]);
         break;
 
