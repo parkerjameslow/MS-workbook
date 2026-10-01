@@ -3465,7 +3465,8 @@ switch ($action) {
 
         $alerts = ['slack' => null, 'email' => null];
         $counts = array_map('count', $brief['intel']);
-        if (!empty($input['alert'])) {
+        $wantAlert = !empty($input['alert']) || (($_GET['alert'] ?? '') === '1');
+        if ($wantAlert) {
             $flat = function (string $label, array $items) {
                 if (!$items) return '';
                 $lines = array_map(function ($it) {
