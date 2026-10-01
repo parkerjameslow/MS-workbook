@@ -52,6 +52,7 @@ $_publicActions = [
     // so the scheduled agent (no operator login) can reach them.
     'parker_get_config'     => true,
     'parker_save_brief'     => true,
+    'parker_run_brief'      => true,
 ];
 $_requestedAction = $_GET['action'] ?? ($_POST['action'] ?? '');
 if (!isset($_publicActions[$_requestedAction])) {
@@ -580,6 +581,19 @@ if (!defined('PARKER_AGENT_TOKEN')) { $v = getenv('PARKER_AGENT_TOKEN'); define(
 // Where Parker's daily brief email goes.
 if (!defined('PARKER_BRIEF_EMAIL')) { $v = getenv('PARKER_BRIEF_EMAIL'); define('PARKER_BRIEF_EMAIL', is_string($v) && $v !== '' ? $v : 'parker@marketsculpt.com'); }
 
+// Parker cockpit — server-side brief sources (all optional; each source is
+// skipped if its creds are absent, so the brief degrades gracefully).
+// Mailbox (IMAP) for parker@marketsculpt.com — read directly on Bluehost:
+if (!defined('PARKER_MAIL_HOST')) { $v = getenv('PARKER_MAIL_HOST'); define('PARKER_MAIL_HOST', is_string($v) && $v !== '' ? $v : 'localhost'); }
+if (!defined('PARKER_MAIL_PORT')) { $v = getenv('PARKER_MAIL_PORT'); define('PARKER_MAIL_PORT', is_string($v) && $v !== '' ? (int)$v : 993); }
+if (!defined('PARKER_MAIL_USER')) { $v = getenv('PARKER_MAIL_USER'); define('PARKER_MAIL_USER', is_string($v) ? $v : ''); }
+if (!defined('PARKER_MAIL_PASS')) { $v = getenv('PARKER_MAIL_PASS'); define('PARKER_MAIL_PASS', is_string($v) ? $v : ''); }
+// Slack bot token (xoxb-…) with channels:history / groups:history / search:read / users:read:
+if (!defined('SLACK_BOT_TOKEN')) { $v = getenv('SLACK_BOT_TOKEN'); define('SLACK_BOT_TOKEN', is_string($v) ? $v : ''); }
+// Trello REST API key + token:
+if (!defined('TRELLO_KEY'))   { $v = getenv('TRELLO_KEY');   define('TRELLO_KEY',   is_string($v) ? $v : ''); }
+if (!defined('TRELLO_TOKEN')) { $v = getenv('TRELLO_TOKEN'); define('TRELLO_TOKEN', is_string($v) ? $v : ''); }
+
 // ─── Carrier OAuth token cache (FedEx/UPS) ──────────────────────────────
 // Both carriers issue short-lived bearer tokens from client credentials.
 // We cache the token in app_state so we don't re-auth on every lookup.
@@ -657,6 +671,216 @@ function _ups_fmt_date(string $d): string {
 }
 function _ups_fmt_time(string $t): string {
     return preg_match('/^(\d{2})(\d{2})(\d{2})$/', $t, $m) ? "{$m[1]}:{$m[2]}" : '';
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PARKER cockpit — server-side brief engine.
+   Reads Slack / email (IMAP) / Trello for each watched account, has Claude
+   classify what needs attention, saves ms_parker_brief, and alerts Parker.
+   Every source degrades gracefully when its creds are missing.
+   ══════════════════════════════════════════════════════════════════════ */
+
+// Split an account's comma/space-separated "email" field into addresses.
+function parker_split_emails(string $raw): array {
+    $parts = preg_split('/[,;\s]+/', $raw) ?: [];
+    $out = [];
+    foreach ($parts as $p) { $p = trim($p); if ($p !== '') $out[] = $p; }
+    return $out;
+}
+
+// Read recent unread/incoming mail for the watched accounts via IMAP.
+// Returns candidate items [{account, who, text, source:'email', ageHours}].
+function parker_read_email(array $accounts): array {
+    if (PARKER_MAIL_USER === '' || PARKER_MAIL_PASS === '') return [];
+    if (!function_exists('imap_open')) return [];
+    // Build an address→account map so we can attribute each message.
+    $addrMap = [];
+    foreach ($accounts as $a) {
+        foreach (parker_split_emails((string)($a['email'] ?? '')) as $addr) {
+            $addrMap[strtolower($addr)] = $a['name'] ?? '';
+        }
+    }
+    if (!$addrMap) return [];
+    $host = PARKER_MAIL_HOST; $port = PARKER_MAIL_PORT;
+    // SSL on 993, STARTTLS/plain otherwise. /novalidate-cert covers shared-host certs.
+    $flags = $port === 993 ? '/imap/ssl/novalidate-cert' : '/imap/notls';
+    $mailbox = '{' . $host . ':' . $port . $flags . '}INBOX';
+    $imap = @imap_open($mailbox, PARKER_MAIL_USER, PARKER_MAIL_PASS, 0, 1);
+    if (!$imap) return [];
+    $out = [];
+    $sinceDate = date('d-M-Y', strtotime('-5 days'));
+    foreach ($addrMap as $addr => $acctName) {
+        // Recent mail FROM this address (what the client sent us).
+        $ids = @imap_search($imap, 'FROM "' . $addr . '" SINCE "' . $sinceDate . '"', SE_UID);
+        if (!is_array($ids)) continue;
+        rsort($ids);
+        foreach (array_slice($ids, 0, 8) as $uid) {
+            $hdr = @imap_fetch_overview($imap, (string)$uid, FT_UID);
+            if (!is_array($hdr) || !isset($hdr[0])) continue;
+            $o = $hdr[0];
+            $subj = isset($o->subject) ? imap_utf8($o->subject) : '(no subject)';
+            $from = isset($o->from) ? imap_utf8($o->from) : $addr;
+            $ts   = isset($o->date) ? strtotime($o->date) : time();
+            $ageH = max(0, (int)round((time() - $ts) / 3600));
+            $seen = !empty($o->seen);
+            $out[] = [
+                'account'  => $acctName,
+                'who'      => $from,
+                'text'     => $subj . ($seen ? '' : ' (unread)'),
+                'source'   => 'email',
+                'ageHours' => $ageH,
+            ];
+        }
+    }
+    @imap_close($imap);
+    return $out;
+}
+
+// Small Slack Web API GET helper (bot token).
+function parker_slack_api(string $method, array $params): ?array {
+    if (SLACK_BOT_TOKEN === '' || !function_exists('curl_init')) return null;
+    $url = 'https://slack.com/api/' . $method . '?' . http_build_query($params);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . SLACK_BOT_TOKEN],
+    ]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+    $d = $resp ? json_decode($resp, true) : null;
+    return is_array($d) ? $d : null;
+}
+
+// Pull a Slack channel id out of whatever Parker pasted (a channel id like
+// C0C5CLFL8RL, a huddle/archives URL containing one, or a #name we search).
+function parker_slack_channel_id(string $raw): string {
+    $raw = trim($raw);
+    if ($raw === '') return '';
+    if (preg_match('/\b([CG][A-Z0-9]{8,})\b/', $raw, $m)) return $m[1]; // id or URL w/ id
+    return ''; // a bare #name would need a lookup; handled by search fallback
+}
+
+// Read recent Slack messages needing Parker's reply for each account.
+function parker_read_slack(array $accounts): array {
+    if (SLACK_BOT_TOKEN === '') return [];
+    $out = [];
+    $oldest = (string)(time() - 5 * 86400);
+    // Cache user id→name lookups.
+    static $userCache = [];
+    $uname = function ($uid) use (&$userCache) {
+        if ($uid === '' ) return '';
+        if (isset($userCache[$uid])) return $userCache[$uid];
+        $u = parker_slack_api('users.info', ['user' => $uid]);
+        $n = $u['user']['real_name'] ?? ($u['user']['name'] ?? $uid);
+        return $userCache[$uid] = $n;
+    };
+    foreach ($accounts as $a) {
+        $acctName = $a['name'] ?? '';
+        $chId = parker_slack_channel_id((string)($a['slack'] ?? ''));
+        if ($chId === '') continue;
+        $h = parker_slack_api('conversations.history', ['channel' => $chId, 'oldest' => $oldest, 'limit' => 30]);
+        if (!is_array($h) || empty($h['ok']) || empty($h['messages'])) continue;
+        // Messages come newest-first. Surface the most recent few that look
+        // like they need a response (not authored by a bot).
+        $count = 0;
+        foreach ($h['messages'] as $m) {
+            if (!empty($m['bot_id']) || ($m['subtype'] ?? '') === 'channel_join') continue;
+            $txt = trim((string)($m['text'] ?? ''));
+            if ($txt === '') continue;
+            $ts = (float)($m['ts'] ?? 0);
+            $ageH = $ts > 0 ? max(0, (int)round((time() - $ts) / 3600)) : null;
+            $out[] = [
+                'account'  => $acctName,
+                'who'      => $uname((string)($m['user'] ?? '')),
+                'text'     => mb_substr($txt, 0, 240),
+                'source'   => 'slack',
+                'ageHours' => $ageH,
+            ];
+            if (++$count >= 6) break;
+        }
+    }
+    return $out;
+}
+
+// Pull a Trello board id from a board/invite URL.
+function parker_trello_board_id(string $raw): string {
+    if (preg_match('#/b/([0-9a-zA-Z]+)#', $raw, $m)) return $m[1];
+    if (preg_match('#/invite/b/([0-9a-zA-Z]+)#', $raw, $m)) return $m[1];
+    return '';
+}
+
+// Read open Trello cards (recently active) per account board.
+function parker_read_trello(array $accounts): array {
+    if (TRELLO_KEY === '' || TRELLO_TOKEN === '' || !function_exists('curl_init')) return [];
+    $out = [];
+    $seenBoards = [];
+    foreach ($accounts as $a) {
+        $boardId = parker_trello_board_id((string)($a['trello'] ?? ''));
+        if ($boardId === '' || isset($seenBoards[$boardId])) continue;
+        $seenBoards[$boardId] = true;
+        $url = 'https://api.trello.com/1/boards/' . rawurlencode($boardId) . '/cards?'
+             . http_build_query(['key' => TRELLO_KEY, 'token' => TRELLO_TOKEN, 'fields' => 'name,due,dateLastActivity,url,labels', 'limit' => 50]);
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15]);
+        $resp = curl_exec($ch);
+        curl_close($ch);
+        $cards = $resp ? json_decode($resp, true) : null;
+        if (!is_array($cards)) continue;
+        foreach (array_slice($cards, 0, 20) as $c) {
+            if (!is_array($c)) continue;
+            $due = $c['due'] ?? '';
+            $out[] = [
+                'account'  => $a['name'] ?? '',
+                'who'      => 'Trello',
+                'text'     => (string)($c['name'] ?? 'card') . ($due ? ' (due ' . date('M j', strtotime($due)) . ')' : ''),
+                'source'   => 'trello',
+                'link'     => (string)($c['url'] ?? ''),
+                'ageHours' => null,
+            ];
+        }
+    }
+    return $out;
+}
+
+// Classify raw candidate items into the four cockpit buckets. Uses Claude
+// when available; otherwise a simple heuristic so the brief still works.
+function parker_classify(array $items): array {
+    $empty = ['urgentToday' => [], 'thisWeek' => [], 'needsReply' => [], 'trending' => []];
+    if (!$items) return $empty;
+
+    if (ANTHROPIC_API_KEY !== '') {
+        $system = "You are an account manager's assistant. You are given raw recent Slack/email/Trello items across client accounts. "
+            . "Return ONLY JSON: {\"urgentToday\":[],\"thisWeek\":[],\"needsReply\":[],\"trending\":[]}. "
+            . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\"|\"trello\",\"ageHours\":number|null}. "
+            . "urgentToday = needs action today (direct asks, overdue replies, time-sensitive). thisWeek = soon but not today. "
+            . "needsReply = messages awaiting Parker's reply (keep who + ageHours). trending = patterns (repeated topics, rising volume, sentiment). "
+            . "Be concise, do not invent, drop noise/automated notifications. Max ~10 per bucket.";
+        $r = ms_anthropic_send($system, json_encode($items), 2000);
+        if (!empty($r['ok'])) {
+            $t = trim((string)$r['text']);
+            $t = preg_replace('#^```(?:json)?\s*#i', '', $t);
+            $t = preg_replace('#\s*```$#', '', $t);
+            $p = json_decode($t, true);
+            if (is_array($p)) {
+                return [
+                    'urgentToday' => $p['urgentToday'] ?? [],
+                    'thisWeek'    => $p['thisWeek'] ?? [],
+                    'needsReply'  => $p['needsReply'] ?? [],
+                    'trending'    => $p['trending'] ?? [],
+                ];
+            }
+        }
+    }
+    // Heuristic fallback: everything that looks like an inbound message is a
+    // reply candidate; recent (<24h) ones are urgent, the rest are this-week.
+    $out = $empty;
+    foreach ($items as $it) {
+        $out['needsReply'][] = $it;
+        if (($it['ageHours'] ?? 99) !== null && (int)($it['ageHours'] ?? 99) <= 24) $out['urgentToday'][] = $it;
+        else $out['thisWeek'][] = $it;
+    }
+    return $out;
 }
 
 if (!defined('QBO_CLIENT_ID'))     { $v = getenv('QBO_CLIENT_ID');     define('QBO_CLIENT_ID',     is_string($v) ? $v : ''); }
@@ -3156,6 +3380,129 @@ switch ($action) {
         } else {
             echo json_encode(['success' => false, 'error' => 'File not found']);
         }
+        break;
+
+    case 'parker_run_brief':
+        // Server-side brief engine. Auth = valid agent token (cron) OR a
+        // logged-in operator (the "Run Data" button). Gathers Slack / email
+        // / Trello for every watched account, classifies with Claude, saves
+        // ms_parker_brief, and (alert=true) DMs + emails Parker.
+        $tok = $input['token'] ?? ($_SERVER['HTTP_X_PARKER_TOKEN'] ?? '');
+        $tokenOk = (PARKER_AGENT_TOKEN !== '' && hash_equals(PARKER_AGENT_TOKEN, (string)$tok));
+        $sessOk  = isset($sessionUser['id']) && (int)$sessionUser['id'] > 0;
+        if (!$tokenOk && !$sessOk) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'forbidden']);
+            break;
+        }
+        // Load the watchlist.
+        $accStmt = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = 'ms_parker_accounts'");
+        $accStmt->execute();
+        $accJson = $accStmt->fetchColumn();
+        $accounts = $accJson ? json_decode($accJson, true) : [];
+        if (!is_array($accounts)) $accounts = [];
+        if (!$accounts) { echo json_encode(['ok' => true, 'skipped' => 'no accounts']); break; }
+
+        // Gather from each source (each no-ops without its creds).
+        $raw = array_merge(
+            parker_read_email($accounts),
+            parker_read_slack($accounts),
+            parker_read_trello($accounts)
+        );
+        $buckets = parker_classify($raw);
+
+        // Normalize + persist (same shape parker_save_brief writes).
+        $bucket = function ($arr) {
+            $out = [];
+            if (is_array($arr)) foreach (array_slice($arr, 0, 25) as $it) {
+                if (!is_array($it)) continue;
+                $out[] = [
+                    'account'  => (string)($it['account'] ?? ''),
+                    'text'     => (string)($it['text'] ?? ($it['preview'] ?? '')),
+                    'who'      => (string)($it['who'] ?? ''),
+                    'source'   => (string)($it['source'] ?? ''),
+                    'link'     => (string)($it['link'] ?? ''),
+                    'ageHours' => isset($it['ageHours']) && $it['ageHours'] !== null ? (int)$it['ageHours'] : null,
+                ];
+            }
+            return $out;
+        };
+        $brief = [
+            'generatedAt' => date('c'),
+            'generatedBy' => $sessOk && !$tokenOk ? 'on-demand' : 'agent',
+            'intel' => [
+                'urgentToday' => $bucket($buckets['urgentToday'] ?? []),
+                'thisWeek'    => $bucket($buckets['thisWeek'] ?? []),
+                'needsReply'  => $bucket($buckets['needsReply'] ?? []),
+                'trending'    => $bucket($buckets['trending'] ?? []),
+            ],
+        ];
+        $briefJson = json_encode($brief);
+        $cur = $pdo->prepare("SELECT rev FROM app_state WHERE key_name = 'ms_parker_brief'");
+        $cur->execute();
+        $curRev = (int)($cur->fetchColumn() ?: 0);
+        $pdo->prepare("INSERT INTO app_state (key_name, value_json, rev) VALUES ('ms_parker_brief', ?, ?)
+            ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), rev = VALUES(rev)")
+            ->execute([$briefJson, $curRev + 1]);
+
+        $alerts = ['slack' => null, 'email' => null];
+        $counts = array_map('count', $brief['intel']);
+        if (!empty($input['alert'])) {
+            $flat = function (string $label, array $items) {
+                if (!$items) return '';
+                $lines = array_map(function ($it) {
+                    $a = $it['account'] !== '' ? $it['account'] . ' — ' : '';
+                    $w = $it['who'] !== '' ? $it['who'] . ': ' : '';
+                    return '• ' . $a . $w . $it['text'];
+                }, $items);
+                return "*{$label}*\n" . implode("\n", $lines) . "\n\n";
+            };
+            $slackText = "Good morning Parker — your account brief:\n\n"
+                . $flat('Urgent today', $brief['intel']['urgentToday'])
+                . $flat('This week', $brief['intel']['thisWeek'])
+                . $flat('Needs a reply', $brief['intel']['needsReply'])
+                . $flat('Trending', $brief['intel']['trending'])
+                . "Open the cockpit: " . rtrim(PUBLIC_BASE_URL, '/') . "/index.php#/parker";
+            if (function_exists('ms_asst_tool_send_slack_dm')) {
+                $alerts['slack'] = ms_asst_tool_send_slack_dm(['person' => 'Parker', 'message' => $slackText]);
+            }
+            $htmlSection = function (string $label, array $items) {
+                if (!$items) return '';
+                $lis = '';
+                foreach ($items as $it) {
+                    $a = $it['account'] !== '' ? '<strong>' . htmlspecialchars($it['account']) . '</strong> — ' : '';
+                    $w = $it['who'] !== '' ? htmlspecialchars($it['who']) . ': ' : '';
+                    $lnk = $it['link'] !== '' ? ' <a href="' . htmlspecialchars($it['link']) . '" style="color:#E8751A;">open</a>' : '';
+                    $lis .= '<li style="margin:4px 0;font-size:14px;color:#1a1d2e;">' . $a . $w . htmlspecialchars($it['text']) . $lnk . '</li>';
+                }
+                return "<h2 style='font-size:15px;color:#1a1d2e;margin:18px 0 6px;'>{$label}</h2><ul style='margin:0;padding-left:18px;'>{$lis}</ul>";
+            };
+            $hasAny = array_sum($counts) > 0;
+            $body = "<h1 style='margin:0 0 6px;font-size:22px;font-weight:800;color:#1a1d2e;'>Your Account Brief</h1>"
+                . "<p style='margin:0 0 10px;font-size:13px;color:#6b7280;'>" . date('l, F j') . "</p>"
+                . ($hasAny ? (
+                    $htmlSection('Urgent today', $brief['intel']['urgentToday'])
+                    . $htmlSection('This week', $brief['intel']['thisWeek'])
+                    . $htmlSection('Needs a reply', $brief['intel']['needsReply'])
+                    . $htmlSection('Trending', $brief['intel']['trending'])
+                  ) : "<p style='font-size:14px;color:#6b7280;'>Nothing needs your attention right now. 👍</p>")
+                . "<p style='margin:20px 0 0;font-size:13px;'><a href='" . htmlspecialchars(rtrim(PUBLIC_BASE_URL, '/') . "/index.php#/parker") . "' style='color:#E8751A;font-weight:700;'>Open your command center →</a></p>";
+            if (function_exists('ms_smtp_send')) {
+                $alerts['email'] = ms_smtp_send([PARKER_BRIEF_EMAIL], 'Your Account Brief — ' . date('M j'), ms_email_wrap('Your Account Brief', 'Daily account follow-ups', $body));
+            }
+        }
+        echo json_encode([
+            'ok' => true,
+            'counts' => $counts,
+            'rawCandidates' => count($raw),
+            'sources' => [
+                'email'  => (PARKER_MAIL_USER !== '' && PARKER_MAIL_PASS !== '') ? (function_exists('imap_open') ? 'on' : 'no-imap-ext') : 'off',
+                'slack'  => SLACK_BOT_TOKEN !== '' ? 'on' : 'off',
+                'trello' => (TRELLO_KEY !== '' && TRELLO_TOKEN !== '') ? 'on' : 'off',
+                'ai'     => ANTHROPIC_API_KEY !== '' ? 'on' : 'heuristic',
+            ],
+            'alerts' => $alerts,
+        ]);
         break;
 
     case 'parker_get_config':

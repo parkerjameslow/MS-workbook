@@ -24566,23 +24566,30 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   async function buildParkerBrief(){
-    // Re-pull everything from the server — the watchlist, reorder
-    // reminders, and the latest intel brief the morning agent wrote —
-    // then recompute the live operational panels. (The Slack/email intel
-    // itself is gathered by the 8am Mountain routine, or on request.)
+    // Run the server-side brief engine now: it reads Slack + email + Trello
+    // for every watched account, classifies with AI, and saves the intel —
+    // then we re-pull and re-render. (No Slack DM / email on the manual
+    // button; alerts are for the scheduled 8am run.)
     const btn=document.getElementById('parker-run-btn');
     const orig=btn?btn.textContent:'';
     if(btn){ btn.disabled=true; btn.textContent='Running…'; }
     try {
+      const r=await apiCall('parker_run_brief',{alert:false});
       await _parkerLoad();                 // fresh fetch + full re-render
       const st=document.getElementById('parker-brief-stamp');
       if(st) st.textContent='Refreshed '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
       if(typeof _msToast==='function'){
-        const n=_parkerAccounts.length, due=_parkerReorders.filter(r=>!r.done).length;
-        _msToast('Data refreshed — '+n+' account'+(n===1?'':'s')+', '+due+' reorder reminder'+(due===1?'':'s')+'. Slack/email intel runs at 8am (or ask me to pull it now).','success');
+        if(r&&r.ok){
+          const c=r.counts||{}; const tot=(c.urgentToday||0)+(c.thisWeek||0)+(c.needsReply||0)+(c.trending||0);
+          const srcOff=[]; const s=r.sources||{};
+          if(s.slack==='off') srcOff.push('Slack'); if(s.email==='off'||s.email==='no-imap-ext') srcOff.push('email'); if(s.trello==='off') srcOff.push('Trello');
+          _msToast('Ran — '+tot+' intel item'+(tot===1?'':'s')+' found.'+(srcOff.length?' ('+srcOff.join(' + ')+' not connected yet)':''), 'success');
+        } else {
+          _msToast('Ran, but intel sources aren’t set up yet — showing operational data.','warning');
+        }
       }
     } catch(e){
-      if(typeof _msToast==='function') _msToast('Couldn’t refresh — try again.','error');
+      if(typeof _msToast==='function') _msToast('Couldn’t run — try again.','error');
     } finally {
       if(btn){ btn.disabled=false; btn.textContent=orig||'Run Data'; }
     }
