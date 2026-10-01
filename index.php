@@ -7634,14 +7634,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
-        <!-- Parker — personal Account Command Center (PIN-gated). A
-             proactive per-account cockpit: urgent/weekly follow-ups,
-             reorder reminders off finished shipments, and a daily intel
-             brief (Slack / email / Trello) from the 8am MST agent. -->
-        <a id="nav-parker-link" href="#/parker" onclick="event.preventDefault(); location.hash='#/parker'" class="nav-flat-link" style="font-weight:800; color:var(--accent);">
-          <span>Parker</span>
-          <span style="margin-left:auto; font-size:11px; opacity:.7;">🔒</span>
-        </a>
         <!-- Business Dashboard — at-a-glance KPIs (pipeline value,
              margins, quote→order conversion, on-time delivery, stage
              velocity, top clients). Overview surface, so it sits first. -->
@@ -7692,6 +7684,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <a id="nav-reports-link" href="#/reports" onclick="event.preventDefault(); location.hash='#/reports'" class="nav-flat-link">
           <span>Reports</span>
           <span class="nav-badge" id="badge-reports"></span>
+        </a>
+
+        <!-- Parker — personal, PIN-gated Account Command Center. Sits at
+             the bottom of Internal; selecting it prompts for the PIN. -->
+        <a id="nav-parker-link" href="#/parker" onclick="event.preventDefault(); location.hash='#/parker'" class="nav-flat-link" style="font-weight:800; color:var(--accent);">
+          <span>Parker</span>
         </a>
       </div>
     </div>
