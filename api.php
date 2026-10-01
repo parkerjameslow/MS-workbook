@@ -47,6 +47,11 @@ require_once __DIR__ . '/auth.php';
 $_publicActions = [
     'crm_validate_pin'      => true,
     'crm_submit_onboarding' => true,
+    // Parker cockpit agent endpoints — NOT truly public: each verifies the
+    // PARKER_AGENT_TOKEN shared secret inside the handler. Allowlisted only
+    // so the scheduled agent (no operator login) can reach them.
+    'parker_get_config'     => true,
+    'parker_save_brief'     => true,
 ];
 $_requestedAction = $_GET['action'] ?? ($_POST['action'] ?? '');
 if (!isset($_publicActions[$_requestedAction])) {
@@ -567,6 +572,13 @@ if (!defined('UPS_CLIENT_ID'))     { $v = getenv('UPS_CLIENT_ID');     define('U
 if (!defined('UPS_CLIENT_SECRET')) { $v = getenv('UPS_CLIENT_SECRET'); define('UPS_CLIENT_SECRET', is_string($v) ? $v : ''); }
 if (!defined('UPS_ENVIRONMENT'))   { $v = getenv('UPS_ENVIRONMENT');   define('UPS_ENVIRONMENT', ($v === 'sandbox') ? 'sandbox' : 'production'); }
 define('UPS_API_BASE', UPS_ENVIRONMENT === 'sandbox' ? 'https://wwwcie.ups.com' : 'https://onlinetools.ups.com');
+
+// Parker cockpit — shared secret the 8am MST scheduled agent uses to read
+// the watchlist + write the daily intel brief without an operator login.
+//   define('PARKER_AGENT_TOKEN', '<long-random-string>');  // in api.local.php
+if (!defined('PARKER_AGENT_TOKEN')) { $v = getenv('PARKER_AGENT_TOKEN'); define('PARKER_AGENT_TOKEN', is_string($v) ? $v : ''); }
+// Where Parker's daily brief email goes.
+if (!defined('PARKER_BRIEF_EMAIL')) { $v = getenv('PARKER_BRIEF_EMAIL'); define('PARKER_BRIEF_EMAIL', is_string($v) && $v !== '' ? $v : 'parker@marketsculpt.com'); }
 
 // ─── Carrier OAuth token cache (FedEx/UPS) ──────────────────────────────
 // Both carriers issue short-lived bearer tokens from client credentials.
@@ -3144,6 +3156,133 @@ switch ($action) {
         } else {
             echo json_encode(['success' => false, 'error' => 'File not found']);
         }
+        break;
+
+    case 'parker_get_config':
+        // Token-gated. Hands the scheduled agent the watchlist + current
+        // reorder reminders so it knows which accounts (and Slack/email/
+        // Trello sources) to scan. No operator session required.
+        $tok = $input['token'] ?? ($_SERVER['HTTP_X_PARKER_TOKEN'] ?? '');
+        if (PARKER_AGENT_TOKEN === '' || !hash_equals(PARKER_AGENT_TOKEN, (string)$tok)) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'forbidden']);
+            break;
+        }
+        $readKey = function (string $k) use ($pdo) {
+            $s = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ?");
+            $s->execute([$k]);
+            $v = $s->fetchColumn();
+            $d = $v ? json_decode($v, true) : [];
+            return is_array($d) ? $d : [];
+        };
+        echo json_encode([
+            'ok'        => true,
+            'accounts'  => $readKey('ms_parker_accounts'),
+            'reorders'  => $readKey('ms_parker_reorders'),
+            'brief_email' => PARKER_BRIEF_EMAIL,
+            'serverTime'  => date('c'),
+        ]);
+        break;
+
+    case 'parker_save_brief':
+        // Token-gated. The scheduled agent POSTs the composed intel brief
+        // here; we persist it to app_state `ms_parker_brief` (stamped as
+        // agent-generated) and, when alert=true, DM Parker via his Slack
+        // webhook + email him the brief. The cockpit's operational panels
+        // stay computed client-side; this only carries the intel layer.
+        $tok = $input['token'] ?? ($_SERVER['HTTP_X_PARKER_TOKEN'] ?? '');
+        if (PARKER_AGENT_TOKEN === '' || !hash_equals(PARKER_AGENT_TOKEN, (string)$tok)) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'forbidden']);
+            break;
+        }
+        $intel = $input['intel'] ?? null;
+        if (!is_array($intel)) {
+            echo json_encode(['ok' => false, 'error' => 'intel object required']);
+            break;
+        }
+        // Normalize the four intel buckets so the cockpit can rely on shape.
+        $bucket = function ($arr) {
+            $out = [];
+            if (is_array($arr)) {
+                foreach (array_slice($arr, 0, 25) as $it) {
+                    if (!is_array($it)) continue;
+                    $out[] = [
+                        'account'  => (string)($it['account'] ?? ''),
+                        'text'     => (string)($it['text'] ?? ($it['preview'] ?? '')),
+                        'who'      => (string)($it['who'] ?? ''),
+                        'source'   => (string)($it['source'] ?? ''),
+                        'link'     => (string)($it['link'] ?? ''),
+                        'ageHours' => isset($it['ageHours']) ? (int)$it['ageHours'] : null,
+                    ];
+                }
+            }
+            return $out;
+        };
+        $brief = [
+            'generatedAt' => date('c'),
+            'generatedBy' => 'agent',
+            'intel' => [
+                'urgentToday' => $bucket($intel['urgentToday'] ?? []),
+                'thisWeek'    => $bucket($intel['thisWeek'] ?? []),
+                'needsReply'  => $bucket($intel['needsReply'] ?? []),
+                'trending'    => $bucket($intel['trending'] ?? []),
+            ],
+        ];
+        $briefJson = json_encode($brief);
+        // Upsert into app_state (bump rev; snapshot not needed for this key).
+        $cur = $pdo->prepare("SELECT rev FROM app_state WHERE key_name = 'ms_parker_brief'");
+        $cur->execute();
+        $curRev = (int)($cur->fetchColumn() ?: 0);
+        $pdo->prepare("INSERT INTO app_state (key_name, value_json, rev) VALUES ('ms_parker_brief', ?, ?)
+            ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), rev = VALUES(rev)")
+            ->execute([$briefJson, $curRev + 1]);
+
+        $alerts = ['slack' => null, 'email' => null];
+        if (!empty($input['alert'])) {
+            // Build a compact text/HTML digest from the intel buckets.
+            $flat = function (string $label, array $items) {
+                if (!$items) return '';
+                $lines = array_map(function ($it) {
+                    $a = $it['account'] !== '' ? $it['account'] . ' — ' : '';
+                    $w = $it['who'] !== '' ? $it['who'] . ': ' : '';
+                    return '• ' . $a . $w . $it['text'];
+                }, $items);
+                return "*{$label}*\n" . implode("\n", $lines) . "\n\n";
+            };
+            $slackText = "Good morning Parker — your account brief:\n\n"
+                . $flat('Urgent today', $brief['intel']['urgentToday'])
+                . $flat('This week', $brief['intel']['thisWeek'])
+                . $flat('Needs a reply', $brief['intel']['needsReply'])
+                . $flat('Trending', $brief['intel']['trending'])
+                . "Open the cockpit: " . rtrim(PUBLIC_BASE_URL, '/') . "/index.php#/parker";
+            if (function_exists('ms_asst_tool_send_slack_dm')) {
+                $alerts['slack'] = ms_asst_tool_send_slack_dm(['person' => 'Parker', 'message' => $slackText]);
+            }
+            // Email via the app's SMTP sender.
+            $htmlSection = function (string $label, array $items) {
+                if (!$items) return '';
+                $lis = '';
+                foreach ($items as $it) {
+                    $a = $it['account'] !== '' ? '<strong>' . htmlspecialchars($it['account']) . '</strong> — ' : '';
+                    $w = $it['who'] !== '' ? htmlspecialchars($it['who']) . ': ' : '';
+                    $lnk = $it['link'] !== '' ? ' <a href="' . htmlspecialchars($it['link']) . '" style="color:#E8751A;">open</a>' : '';
+                    $lis .= '<li style="margin:4px 0;font-size:14px;color:#1a1d2e;">' . $a . $w . htmlspecialchars($it['text']) . $lnk . '</li>';
+                }
+                return "<h2 style='font-size:15px;color:#1a1d2e;margin:18px 0 6px;'>{$label}</h2><ul style='margin:0;padding-left:18px;'>{$lis}</ul>";
+            };
+            $body = "<h1 style='margin:0 0 6px;font-size:22px;font-weight:800;color:#1a1d2e;'>Your Account Brief</h1>"
+                . "<p style='margin:0 0 10px;font-size:13px;color:#6b7280;'>" . date('l, F j') . "</p>"
+                . $htmlSection('Urgent today', $brief['intel']['urgentToday'])
+                . $htmlSection('This week', $brief['intel']['thisWeek'])
+                . $htmlSection('Needs a reply', $brief['intel']['needsReply'])
+                . $htmlSection('Trending', $brief['intel']['trending'])
+                . "<p style='margin:20px 0 0;font-size:13px;'><a href='" . htmlspecialchars(rtrim(PUBLIC_BASE_URL, '/') . "/index.php#/parker") . "' style='color:#E8751A;font-weight:700;'>Open your command center →</a></p>";
+            if (function_exists('ms_smtp_send')) {
+                $alerts['email'] = ms_smtp_send([PARKER_BRIEF_EMAIL], 'Your Account Brief — ' . date('M j'), ms_email_wrap('Your Account Brief', 'Daily account follow-ups', $body));
+            }
+        }
+        echo json_encode(['ok' => true, 'saved' => true, 'alerts' => $alerts]);
         break;
 
     case 'fetch_tracking_status':

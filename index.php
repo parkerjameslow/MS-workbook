@@ -10869,10 +10869,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input id="parker-acct-email" type="text" class="form-input" style="width:100%;" placeholder="sabrina@saltbysabrina.com, @saltbysabrina.com" autocomplete="off">
       </div>
       <div>
-        <label class="parker-lbl">Website</label>
-        <input id="parker-acct-web" type="text" class="form-input" style="width:100%;" placeholder="https://saltbysabrina.com" autocomplete="off">
-      </div>
-      <div>
         <label class="parker-lbl">Trello board / card URL</label>
         <input id="parker-acct-trello" type="text" class="form-input" style="width:100%;" placeholder="https://trello.com/b/…" autocomplete="off">
       </div>
@@ -24539,7 +24535,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.getElementById('parker-acct-name').value=a?a.name:'';
     document.getElementById('parker-acct-slack').value=a?(a.slack||''):'';
     document.getElementById('parker-acct-email').value=a?(a.email||''):'';
-    document.getElementById('parker-acct-web').value=a?(a.web||''):'';
     document.getElementById('parker-acct-trello').value=a?(a.trello||''):'';
     document.getElementById('parker-acct-notes').value=a?(a.notes||''):'';
     document.getElementById('parker-acct-delete').style.display=a?'inline-flex':'none';
@@ -24556,7 +24551,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const rec={ id, name,
       slack:document.getElementById('parker-acct-slack').value.trim(),
       email:document.getElementById('parker-acct-email').value.trim(),
-      web:document.getElementById('parker-acct-web').value.trim(),
       trello:document.getElementById('parker-acct-trello').value.trim(),
       notes:document.getElementById('parker-acct-notes').value.trim(),
       addedAt:prev.addedAt||new Date().toISOString() };
