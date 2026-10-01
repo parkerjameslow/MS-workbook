@@ -814,32 +814,45 @@ function parker_trello_board_id(string $raw): string {
     return '';
 }
 
-// Read open Trello cards (recently active) per account board.
+// Read Trello cards that are ABOUT a watched account — scoped to that
+// account's board AND matched to the account name (the design-production
+// board is shared across clients, so we only want Salt's cards, not all).
 function parker_read_trello(array $accounts): array {
     if (TRELLO_KEY === '' || TRELLO_TOKEN === '' || !function_exists('curl_init')) return [];
     $out = [];
-    $seenBoards = [];
     foreach ($accounts as $a) {
         $boardId = parker_trello_board_id((string)($a['trello'] ?? ''));
-        if ($boardId === '' || isset($seenBoards[$boardId])) continue;
-        $seenBoards[$boardId] = true;
-        $url = 'https://api.trello.com/1/boards/' . rawurlencode($boardId) . '/cards?'
-             . http_build_query(['key' => TRELLO_KEY, 'token' => TRELLO_TOKEN, 'fields' => 'name,due,dateLastActivity,url,labels', 'limit' => 50]);
+        $name    = trim((string)($a['name'] ?? ''));
+        if ($boardId === '' || $name === '') continue;
+        // Trello search scoped to this board + the account name — returns
+        // only cards whose name/desc mention the account.
+        $url = 'https://api.trello.com/1/search?' . http_build_query([
+            'key' => TRELLO_KEY, 'token' => TRELLO_TOKEN,
+            'query' => $name,
+            'idBoards' => $boardId,
+            'modelTypes' => 'cards',
+            'cards_limit' => 20,
+            'card_fields' => 'name,due,url,shortUrl,dateLastActivity',
+            'partial' => 'false',
+        ]);
         $ch = curl_init($url);
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15]);
         $resp = curl_exec($ch);
         curl_close($ch);
-        $cards = $resp ? json_decode($resp, true) : null;
+        $data = $resp ? json_decode($resp, true) : null;
+        $cards = (is_array($data) && isset($data['cards'])) ? $data['cards'] : [];
         if (!is_array($cards)) continue;
-        foreach (array_slice($cards, 0, 20) as $c) {
+        foreach (array_slice($cards, 0, 15) as $c) {
             if (!is_array($c)) continue;
+            $cardName = (string)($c['name'] ?? '');
+            if ($cardName === '') continue;
             $due = $c['due'] ?? '';
             $out[] = [
-                'account'  => $a['name'] ?? '',
+                'account'  => $name,
                 'who'      => 'Trello',
-                'text'     => (string)($c['name'] ?? 'card') . ($due ? ' (due ' . date('M j', strtotime($due)) . ')' : ''),
+                'text'     => $cardName . ($due ? ' (due ' . date('M j', strtotime($due)) . ')' : ''),
                 'source'   => 'trello',
-                'link'     => (string)($c['url'] ?? ''),
+                'link'     => (string)($c['url'] ?? ($c['shortUrl'] ?? '')),
                 'ageHours' => null,
             ];
         }
