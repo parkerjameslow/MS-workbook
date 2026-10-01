@@ -901,9 +901,13 @@ function parker_classify(array $items): array {
         $system = "You are an account manager's assistant. You are given raw recent Slack/email/Trello items across client accounts. "
             . "Return ONLY JSON: {\"urgentToday\":[],\"thisWeek\":[],\"needsReply\":[],\"trending\":[]}. "
             . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\"|\"trello\",\"ageHours\":number|null}. "
-            . "urgentToday = needs action today (direct asks, overdue replies, time-sensitive). thisWeek = soon but not today. "
-            . "needsReply = messages awaiting Parker's reply (keep who + ageHours). trending = patterns (repeated topics, rising volume, sentiment). "
-            . "Be concise, do not invent, drop noise/automated notifications. Max ~10 per bucket.";
+            . "BUCKET RULES (important): "
+            . "• needsReply = ONLY an actual Slack/email MESSAGE where the client is waiting on Parker to respond (a question, request, or a thread whose last message is from the client). NEVER put Trello cards here. NEVER put newsletters, receipts, or automated notifications here. "
+            . "• urgentToday = anything needing action TODAY — time-sensitive asks, overdue client replies, a Trello card due today/overdue. "
+            . "• thisWeek = everything else that's active work or a soft follow-up, INCLUDING Trello cards (ongoing tasks) and non-urgent messages. This is where most Trello cards go. "
+            . "• trending = short patterns worth noting (repeated topics, rising volume, sentiment shifts) — usually 0-3 items, not a dump. "
+            . "A single item goes in ONLY ONE bucket (a message awaiting reply = needsReply, not also thisWeek). "
+            . "Be concise, do not invent, drop pure noise/automated notifications entirely. Max ~10 per bucket.";
         $r = ms_anthropic_send($system, json_encode($items), 2000);
         if (!empty($r['ok'])) {
             $t = trim((string)$r['text']);
@@ -920,13 +924,15 @@ function parker_classify(array $items): array {
             }
         }
     }
-    // Heuristic fallback: everything that looks like an inbound message is a
-    // reply candidate; recent (<24h) ones are urgent, the rest are this-week.
+    // Heuristic fallback (no AI): Trello cards are tasks → thisWeek. Messages
+    // (email/slack) → needsReply, and if recent (<24h) also flagged urgent.
     $out = $empty;
     foreach ($items as $it) {
+        $src = $it['source'] ?? '';
+        if ($src === 'trello') { $out['thisWeek'][] = $it; continue; }
         $out['needsReply'][] = $it;
-        if (($it['ageHours'] ?? 99) !== null && (int)($it['ageHours'] ?? 99) <= 24) $out['urgentToday'][] = $it;
-        else $out['thisWeek'][] = $it;
+        $age = $it['ageHours'] ?? null;
+        if ($age !== null && (int)$age <= 24) $out['urgentToday'][] = $it;
     }
     return $out;
 }
