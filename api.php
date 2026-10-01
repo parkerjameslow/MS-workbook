@@ -795,6 +795,11 @@ function parker_read_slack(array $accounts): array {
                 'count' => 10,
                 'sort'  => 'timestamp',
             ], SLACK_USER_TOKEN);
+            if (is_array($r) && empty($r['ok'])) {
+                $GLOBALS['parker_slack_diag'] = 'user-search error: ' . ($r['error'] ?? 'unknown');
+            } else {
+                $GLOBALS['parker_slack_diag'] = 'user-search ok: ' . count($r['messages']['matches'] ?? []) . ' matches for "' . $acctName . '"';
+            }
             $matches = $r['messages']['matches'] ?? [];
             if (is_array($matches)) {
                 foreach ($matches as $m) {
@@ -3547,7 +3552,7 @@ switch ($action) {
                 'ai'     => ANTHROPIC_API_KEY !== '' ? 'on' : 'heuristic',
             ],
             'alerts' => $alerts,
-            'diag' => !empty($input['debug']) ? ['email' => $GLOBALS['parker_email_diag'] ?? ''] : null,
+            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run'] : null,
         ]);
         break;
 
