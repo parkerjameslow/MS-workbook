@@ -3518,6 +3518,7 @@ switch ($action) {
             foreach ($arr as $it) { $acc = $it['account'] ?? '?'; $byAcct[$acc] = ($byAcct[$acc] ?? 0) + 1; }
             $GLOBALS['parker_breakdown'][$src] = $byAcct;
         }
+        $GLOBALS['parker_trello_sample'] = array_map(function ($it) { return $it['text'] ?? ''; }, array_slice($rawTrello, 0, 4));
         $buckets = parker_classify($raw);
 
         // Normalize + persist (same shape parker_save_brief writes).
@@ -3612,7 +3613,7 @@ switch ($action) {
                 'ai'     => ANTHROPIC_API_KEY !== '' ? 'on' : 'heuristic',
             ],
             'alerts' => $alerts,
-            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run', 'breakdown' => $GLOBALS['parker_breakdown'] ?? []] : null,
+            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run', 'breakdown' => $GLOBALS['parker_breakdown'] ?? [], 'trelloSample' => $GLOBALS['parker_trello_sample'] ?? []] : null,
         ]);
         break;
 
