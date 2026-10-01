@@ -4073,6 +4073,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     /* ── Modal ──────────────────────────────────────────────────────────── */
+    /* ── Parker — Account Command Center ─────────────────────────── */
+    .parker-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    .parker-panel-head { font-size:13px; font-weight:800; color:var(--text); padding:12px 16px; border-bottom:1px solid var(--border); background:rgba(127,127,127,0.04); }
+    .parker-panel-body { padding:10px 16px 14px; display:flex; flex-direction:column; gap:8px; min-height:52px; }
+    .parker-lbl { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); display:block; margin-bottom:4px; }
+    .parker-empty { font-size:12px; color:var(--text-muted); padding:6px 0; }
+    .parker-item { display:flex; align-items:flex-start; gap:8px; font-size:13px; color:var(--text); line-height:1.4; padding:6px 0; border-bottom:1px dashed var(--border); }
+    .parker-item:last-child { border-bottom:none; }
+    .parker-item .pk-acct { font-weight:700; }
+    .parker-item .pk-meta { font-size:11px; color:var(--text-muted); }
+    .parker-src { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; padding:1px 6px; border-radius:6px; background:rgba(127,127,127,0.12); color:var(--text-muted); white-space:nowrap; }
+    .parker-chip { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:5px 10px; border-radius:999px; border:1px solid var(--border); background:var(--card); color:var(--text); cursor:pointer; }
+    .parker-chip:hover { border-color:var(--accent); }
+    .parker-due { font-weight:800; }
+    .parker-due.over { color:var(--danger); }
+    .parker-due.soon { color:#E8751A; }
+
     .modal-overlay {
       display: none;
       position: fixed;
@@ -7617,6 +7634,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="nav-section-chevron">›</span>
       </div>
       <div class="nav-section-body">
+        <!-- Parker — personal Account Command Center (PIN-gated). A
+             proactive per-account cockpit: urgent/weekly follow-ups,
+             reorder reminders off finished shipments, and a daily intel
+             brief (Slack / email / Trello) from the 8am MST agent. -->
+        <a id="nav-parker-link" href="#/parker" onclick="event.preventDefault(); location.hash='#/parker'" class="nav-flat-link" style="font-weight:800; color:var(--accent);">
+          <span>Parker</span>
+          <span style="margin-left:auto; font-size:11px; opacity:.7;">🔒</span>
+        </a>
         <!-- Business Dashboard — at-a-glance KPIs (pipeline value,
              margins, quote→order conversion, on-time delivery, stage
              velocity, top clients). Overview surface, so it sits first. -->
@@ -10738,6 +10763,134 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </main>
 </div><!-- /#view-billings -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: PARKER — Account Command Center (PIN-gated: 1124)
+     Personal cockpit for the account manager. Two data layers:
+       • Operational (computed live from the app): reorder countdowns off
+         finished shipments, incoming shipments, watched-account status.
+       • Intel (written by the 8am MST scheduled agent + on request):
+         unanswered Slack/email, Trello items, trending, narrative urgents
+         — persisted in app_state key `ms_parker_brief`.
+     Watchlist + reorder reminders persist in `ms_parker_accounts` /
+     `ms_parker_reorders`.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-parker" class="view">
+  <!-- PIN gate -->
+  <div id="parker-pin-gate" style="display:none; max-width:360px; margin:12vh auto 0; text-align:center; padding:0 16px;">
+    <div style="font-size:40px; margin-bottom:8px;">🔒</div>
+    <h1 style="font-size:22px; font-weight:800; color:var(--text); margin:0 0 4px;">Parker</h1>
+    <div style="font-size:13px; color:var(--text-muted); margin-bottom:18px;">Enter your PIN to open your command center.</div>
+    <input id="parker-pin-input" type="password" inputmode="numeric" maxlength="8" autocomplete="off"
+           onkeydown="if(event.key==='Enter')_parkerTryPin()"
+           style="width:160px; text-align:center; letter-spacing:8px; font-size:22px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background:var(--card); color:var(--text);">
+    <div id="parker-pin-err" style="height:16px; margin-top:8px; font-size:12px; color:var(--danger);"></div>
+    <div style="margin-top:12px;"><button class="btn btn-primary" onclick="_parkerTryPin()">Unlock</button></div>
+  </div>
+
+  <!-- Cockpit -->
+  <div id="parker-cockpit" style="display:none;">
+    <main class="container" style="max-width:1180px; padding:0 16px 40px;">
+      <!-- Header -->
+      <div style="display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; padding:16px 0 10px;">
+        <div>
+          <h1 style="font-size:24px; font-weight:800; color:var(--text); margin:0;">Account Command Center</h1>
+          <div id="parker-subtitle" style="font-size:13px; color:var(--text-muted); margin-top:3px;">Your proactive view across every account you watch.</div>
+        </div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+          <span id="parker-brief-stamp" style="font-size:11px; color:var(--text-muted);"></span>
+          <button class="btn btn-primary" onclick="buildParkerBrief()">↻ Build today's brief</button>
+          <button class="btn btn-ghost" onclick="_parkerLock()" style="font-size:12px;">Lock</button>
+        </div>
+      </div>
+
+      <!-- Watchlist -->
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 0 16px; border-bottom:1px solid var(--border); margin-bottom:16px;">
+        <span style="font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.5px;">Watching</span>
+        <div id="parker-accounts" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"></div>
+        <button class="btn btn-ghost" onclick="openParkerAddModal()" style="font-size:12px; border:1px dashed var(--border);">➕ Add New</button>
+      </div>
+
+      <!-- Intel panels -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px;">
+        <div class="parker-panel">
+          <div class="parker-panel-head">🔴 Urgent today</div>
+          <div id="parker-urgent" class="parker-panel-body"></div>
+        </div>
+        <div class="parker-panel">
+          <div class="parker-panel-head">🗓 This week</div>
+          <div id="parker-week" class="parker-panel-body"></div>
+        </div>
+        <div class="parker-panel">
+          <div class="parker-panel-head">✉️ Needs a reply</div>
+          <div id="parker-reply" class="parker-panel-body"></div>
+        </div>
+        <div class="parker-panel">
+          <div class="parker-panel-head">📈 Trending</div>
+          <div id="parker-trending" class="parker-panel-body"></div>
+        </div>
+      </div>
+
+      <!-- Reorder soon -->
+      <div class="parker-panel" style="margin-top:14px;">
+        <div class="parker-panel-head">📦 Reorder soon</div>
+        <div id="parker-reorder" class="parker-panel-body"></div>
+      </div>
+
+      <!-- Finished orders → set reorder reminder -->
+      <div class="parker-panel" style="margin-top:14px;">
+        <div class="parker-panel-head">✅ Finished orders — set a reorder reminder</div>
+        <div id="parker-finished" class="parker-panel-body"></div>
+      </div>
+    </main>
+  </div>
+</div><!-- /#view-parker -->
+
+<!-- Parker — Add / Edit watched account modal -->
+<div class="modal-overlay" id="parker-add-modal" style="display:none;">
+  <div class="modal" style="max-width:500px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;" id="parker-add-title">Add Account to Watch</h3>
+      <button onclick="closeParkerAddModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+      <p style="margin:0; font-size:12px; color:var(--text-muted);">Tell me where this account lives so the morning agent can scan it. Only the name is required.</p>
+      <input type="hidden" id="parker-acct-id">
+      <div>
+        <label class="parker-lbl">Account name</label>
+        <input id="parker-acct-name" type="text" class="form-input" style="width:100%;" placeholder="e.g. Salt by Sabrina" autocomplete="off" list="parker-client-list">
+        <datalist id="parker-client-list"></datalist>
+      </div>
+      <div>
+        <label class="parker-lbl">Slack channel(s) / DM</label>
+        <input id="parker-acct-slack" type="text" class="form-input" style="width:100%;" placeholder="#salt-by-sabrina, @sabrina" autocomplete="off">
+      </div>
+      <div>
+        <label class="parker-lbl">Email(s) / domain</label>
+        <input id="parker-acct-email" type="text" class="form-input" style="width:100%;" placeholder="sabrina@saltbysabrina.com, @saltbysabrina.com" autocomplete="off">
+      </div>
+      <div>
+        <label class="parker-lbl">Website</label>
+        <input id="parker-acct-web" type="text" class="form-input" style="width:100%;" placeholder="https://saltbysabrina.com" autocomplete="off">
+      </div>
+      <div>
+        <label class="parker-lbl">Trello board / card URL</label>
+        <input id="parker-acct-trello" type="text" class="form-input" style="width:100%;" placeholder="https://trello.com/b/…" autocomplete="off">
+      </div>
+      <div>
+        <label class="parker-lbl">Notes (what to watch for)</label>
+        <textarea id="parker-acct-notes" class="form-input" style="width:100%; min-height:60px; resize:vertical;" placeholder="Reorders ~every 90 days; Sabrina prefers Slack; watch for restock asks."></textarea>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:space-between; margin-top:4px;">
+        <button class="btn btn-ghost" id="parker-acct-delete" onclick="deleteParkerAccount()" style="color:var(--danger); display:none;">Remove</button>
+        <div style="display:flex; gap:10px; margin-left:auto;">
+          <button class="btn btn-ghost" onclick="closeParkerAddModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveParkerAccount(event)">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: AI ASSISTANT
@@ -24167,6 +24320,273 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _loadQboStatus();
   }
 
+  /* ══════════════════════════════════════════════════════════════════
+     PARKER — Account Command Center (PIN-gated: 1124)
+     Two data layers: OPERATIONAL (computed live here from shipments /
+     reorders) and INTEL (Slack/email/Trello, written into app_state
+     `ms_parker_brief` by the 8am MST agent). Watchlist + reorder
+     reminders persist in ms_parker_accounts / ms_parker_reorders.
+     ══════════════════════════════════════════════════════════════════ */
+  const PARKER_PIN = '1124';
+  let _parkerAccounts = [];      // [{id,name,slack,email,web,trello,notes,addedAt}]
+  let _parkerReorders = [];      // [{id,shipmentId,account,label,finishedOn,reorderDate,note,done}]
+  let _parkerBrief = null;       // {generatedAt,generatedBy,intel:{urgentToday,thisWeek,needsReply,trending}}
+  let _parkerFilter = null;      // active account-name filter, or null
+  let _parkerFinishedCache = {}; // shipmentId -> {acct,label,finishedOn}
+
+  function _pkEsc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function _pkDaysUntil(ds){ if(!ds) return null; const d=new Date(ds); if(isNaN(d)) return null; const t=new Date(); t.setHours(0,0,0,0); d.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
+  function _pkFmtDate(ds){ if(!ds) return '—'; const d=new Date(ds); if(isNaN(d)) return String(ds); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+  function _parkerMatchesFilter(name){ return !_parkerFilter || name===_parkerFilter; }
+
+  function renderParkerView(){
+    const titleEl=document.getElementById('header-title'); if(titleEl) titleEl.textContent='Parker';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a=>a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a=>a.classList.remove('active'));
+    const link=document.getElementById('nav-parker-link'); if(link) link.classList.add('active');
+    showView('view-parker');
+    if(_parkerUnlocked()) _parkerShowCockpit(); else _parkerShowGate();
+  }
+  function _parkerUnlocked(){ try { return sessionStorage.getItem('ms_parker_unlocked')==='1'; } catch(e){ return false; } }
+  function _parkerShowGate(){
+    document.getElementById('parker-pin-gate').style.display='block';
+    document.getElementById('parker-cockpit').style.display='none';
+    const i=document.getElementById('parker-pin-input'); if(i){ i.value=''; setTimeout(()=>{try{i.focus();}catch(_){}} ,50); }
+    const e=document.getElementById('parker-pin-err'); if(e) e.textContent='';
+  }
+  function _parkerTryPin(){
+    const i=document.getElementById('parker-pin-input'); const e=document.getElementById('parker-pin-err'); if(!i) return;
+    if(i.value.trim()===PARKER_PIN){ try{ sessionStorage.setItem('ms_parker_unlocked','1'); }catch(_){} _parkerShowCockpit(); }
+    else { if(e) e.textContent='Incorrect PIN.'; i.value=''; i.focus(); }
+  }
+  function _parkerLock(){ try{ sessionStorage.removeItem('ms_parker_unlocked'); }catch(_){} _parkerShowGate(); }
+  async function _parkerShowCockpit(){
+    document.getElementById('parker-pin-gate').style.display='none';
+    document.getElementById('parker-cockpit').style.display='block';
+    await _parkerLoad();
+  }
+
+  function _pkParse(res){ try { return (res&&res.success&&res.value)?JSON.parse(res.value):[]; } catch(e){ return []; } }
+  async function _parkerLoad(){
+    try {
+      const [a,r,b]=await Promise.all([
+        apiCall('get_app_state',{key:'ms_parker_accounts'}),
+        apiCall('get_app_state',{key:'ms_parker_reorders'}),
+        apiCall('get_app_state',{key:'ms_parker_brief'}),
+      ]);
+      _parkerAccounts=_pkParse(a); _parkerReorders=_pkParse(r);
+      try { _parkerBrief=(b&&b.success&&b.value)?JSON.parse(b.value):null; } catch(e){ _parkerBrief=null; }
+    } catch(e){ console.warn('parker load',e); }
+    if(!Array.isArray(_parkerAccounts)) _parkerAccounts=[];
+    if(!Array.isArray(_parkerReorders)) _parkerReorders=[];
+    _parkerRenderAll();
+  }
+
+  function _parkerRenderAll(){
+    _parkerRenderAccounts();
+    _parkerRenderIntel();
+    _parkerRenderReorders();
+    _parkerRenderFinished();
+    const st=document.getElementById('parker-brief-stamp');
+    if(st){
+      if(_parkerBrief&&_parkerBrief.generatedAt){ const d=new Date(_parkerBrief.generatedAt);
+        st.textContent='Brief: '+d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+(_parkerBrief.generatedBy==='agent'?' · agent':'');
+      } else st.textContent='No brief yet';
+    }
+    const sub=document.getElementById('parker-subtitle');
+    if(sub) sub.textContent=_parkerFilter?('Focused on '+_parkerFilter+' — click its chip again to clear.'):('Your proactive view across every account you watch.');
+  }
+
+  function _parkerRenderAccounts(){
+    const wrap=document.getElementById('parker-accounts'); if(!wrap) return;
+    if(!_parkerAccounts.length){ wrap.innerHTML='<span class="parker-empty">No accounts yet — click “Add New”.</span>'; }
+    else {
+      wrap.innerHTML=_parkerAccounts.map((a,i)=>{
+        const active=_parkerFilter===a.name;
+        return `<span class="parker-chip" style="${active?'border-color:var(--accent); background:rgba(232,117,26,.08);':''}" onclick="_parkerFilterIdx(${i})">${_pkEsc(a.name)}<span onclick="event.stopPropagation(); _parkerEditIdx(${i})" style="opacity:.5; font-size:11px;" title="Edit">✎</span></span>`;
+      }).join('');
+    }
+    const dl=document.getElementById('parker-client-list');
+    if(dl && typeof clientData==='object' && clientData){ dl.innerHTML=Object.keys(clientData).sort().map(n=>`<option value="${_pkEsc(n)}">`).join(''); }
+  }
+  function _parkerFilterIdx(i){ const a=_parkerAccounts[i]; if(!a) return; _parkerFilter=(_parkerFilter===a.name)?null:a.name; _parkerRenderAll(); }
+  function _parkerEditIdx(i){ const a=_parkerAccounts[i]; if(a) openParkerAddModal(a.id); }
+
+  // Resolve the watched-account name a shipment belongs to (direct entry,
+  // via order, or sample entry), or null if none is watched.
+  function _parkerAccountForShipment(s){
+    if(!s) return null;
+    const names=_parkerAccounts.map(a=>a.name).filter(Boolean);
+    const hit=cn=>cn&&names.find(n=>n===cn);
+    for(const e of (s.entries||[])){
+      if(e.clientName){ const m=hit(e.clientName); if(m) return m; }
+      if(e.orderId!=null && typeof orderData==='object' && orderData[e.orderId]){
+        for(const oe of (orderData[e.orderId].entries||[])){ if(oe.clientName){ const m=hit(oe.clientName); if(m) return m; } }
+      }
+    }
+    for(const e of (s.sampleEntries||[])){ if(e.clientName){ const m=hit(e.clientName); if(m) return m; } }
+    return null;
+  }
+  function _parkerShipLabel(s){ return (s.carrier?String(s.carrier).toUpperCase()+' ':'')+(s.trackingNumber||('Shipment #'+s.id)); }
+
+  function _parkerIncomingShipments(){
+    const out=[];
+    Object.values(typeof shipmentData==='object'?shipmentData:{}).forEach(s=>{
+      if(!s||s.status==='delivered'||s.status==='received') return;
+      const acct=_parkerAccountForShipment(s); if(!acct) return;
+      const eta=s.eta||s.portArrivalDate||''; const days=_pkDaysUntil(eta);
+      if(days===null) return;
+      out.push({account:acct, label:_parkerShipLabel(s), etaLabel:_pkFmtDate(eta), days});
+    });
+    return out;
+  }
+
+  function _parkerRenderIntel(){
+    const intel=(_parkerBrief&&_parkerBrief.intel)||{};
+    const opUrgent=[], opWeek=[];
+    _parkerReorders.filter(r=>!r.done&&_parkerMatchesFilter(r.account)).forEach(r=>{
+      const d=_pkDaysUntil(r.reorderDate); if(d===null) return;
+      const item={account:r.account, source:'reorder', text:(d<0?('Reorder OVERDUE '+(-d)+'d'):(d===0?'Reorder due today':('Reorder due in '+d+'d')))+' — '+(r.label||'order')};
+      if(d<=2) opUrgent.push(item); else if(d<=7) opWeek.push(item);
+    });
+    _parkerIncomingShipments().filter(s=>_parkerMatchesFilter(s.account)).forEach(s=>{
+      const item={account:s.account, source:'shipment', text:'Arriving '+s.etaLabel+' — '+s.label};
+      if(s.days<=1) opUrgent.push(item); else if(s.days<=7) opWeek.push(item);
+    });
+    const f=arr=>(arr||[]).filter(x=>_parkerMatchesFilter(x.account));
+    _pkFill('parker-urgent', f(intel.urgentToday).concat(opUrgent), 'Nothing urgent. 🎉');
+    _pkFill('parker-week', f(intel.thisWeek).concat(opWeek), 'Nothing flagged for this week.');
+    _pkFill('parker-reply', f(intel.needsReply), 'No unanswered messages yet — the 8am MST agent fills this (or ask me to refresh).');
+    _pkFill('parker-trending', f(intel.trending), 'No trends yet — the morning agent surfaces these.');
+  }
+  function _pkFill(id, items, emptyMsg){
+    const el=document.getElementById(id); if(!el) return;
+    if(!items||!items.length){ el.innerHTML='<div class="parker-empty">'+_pkEsc(emptyMsg)+'</div>'; return; }
+    el.innerHTML=items.map(it=>{
+      const src=it.source?`<span class="parker-src">${_pkEsc(it.source)}</span>`:'';
+      const who=it.who?`<span class="pk-meta">${_pkEsc(it.who)}</span> `:'';
+      const age=(it.ageHours!=null)?`<span class="pk-meta"> · ${_pkEsc(it.ageHours)}h</span>`:'';
+      const link=it.link?` <a href="${_pkEsc(it.link)}" target="_blank" rel="noopener" style="font-size:11px;">open ↗</a>`:'';
+      return `<div class="parker-item">${src}<div><span class="pk-acct">${_pkEsc(it.account||'')}</span>${it.account?' — ':''}${who}${_pkEsc(it.text||it.preview||'')}${age}${link}</div></div>`;
+    }).join('');
+  }
+
+  function _parkerRenderReorders(){
+    const el=document.getElementById('parker-reorder'); if(!el) return;
+    const due=_parkerReorders.filter(r=>!r.done&&_parkerMatchesFilter(r.account))
+      .map(r=>({...r, days:_pkDaysUntil(r.reorderDate)})).filter(r=>r.days!==null)
+      .sort((a,b)=>a.days-b.days);
+    if(!due.length){ el.innerHTML='<div class="parker-empty">No reorder reminders set. Add dates under “Finished orders” below.</div>'; return; }
+    el.innerHTML=due.map(r=>{
+      const cls=r.days<0?'over':(r.days<=7?'soon':'');
+      const when=r.days<0?('Overdue '+(-r.days)+'d'):(r.days===0?'Today':('in '+r.days+'d'));
+      return `<div class="parker-item" style="align-items:center;">
+        <div style="flex:1;"><span class="pk-acct">${_pkEsc(r.account)}</span> — ${_pkEsc(r.label||'order')}<span class="pk-meta"> · reorder ${_pkFmtDate(r.reorderDate)}</span></div>
+        <span class="parker-due ${cls}">${when}</span>
+        <button class="btn btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="markParkerReorderDone('${_pkEsc(r.id)}')">Done</button>
+      </div>`;
+    }).join('');
+  }
+  function markParkerReorderDone(id){
+    const r=_parkerReorders.find(x=>x.id===id);
+    if(r){ r.done=true; _parkerSaveReorders(); _parkerRenderAll(); if(typeof _msToast==='function') _msToast('Reorder marked done.'); }
+  }
+
+  function _parkerFinishedShipments(){
+    const out=[];
+    Object.values(typeof shipmentData==='object'?shipmentData:{}).forEach(s=>{
+      if(!s||(s.status!=='delivered'&&s.status!=='received')) return;
+      const acct=_parkerAccountForShipment(s); if(!acct||!_parkerMatchesFilter(acct)) return;
+      out.push({s,acct});
+    });
+    return out;
+  }
+  function _parkerReorderForShip(id){ return _parkerReorders.find(r=>String(r.shipmentId)===String(id)); }
+  function _parkerRenderFinished(){
+    const el=document.getElementById('parker-finished'); if(!el) return;
+    if(!_parkerAccounts.length){ el.innerHTML='<div class="parker-empty">Add an account to see its finished orders here.</div>'; return; }
+    const fin=_parkerFinishedShipments(); _parkerFinishedCache={};
+    if(!fin.length){ el.innerHTML='<div class="parker-empty">No finished (delivered/received) shipments for your watched accounts yet.</div>'; return; }
+    el.innerHTML=fin.map(({s,acct})=>{
+      const finishedOn=s.receivedAt||s.deliveredOn||''; const label=_parkerShipLabel(s);
+      _parkerFinishedCache[s.id]={acct,label,finishedOn};
+      const existing=_parkerReorderForShip(s.id); const dateVal=existing?existing.reorderDate:'';
+      return `<div class="parker-item" style="align-items:center;">
+        <span class="parker-src">${s.status==='received'?'received':'delivered'}</span>
+        <div style="flex:1;"><span class="pk-acct">${_pkEsc(acct)}</span> — ${_pkEsc(label)}<span class="pk-meta"> · finished ${_pkFmtDate(finishedOn)}</span></div>
+        <label class="pk-meta" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">Reorder on
+          <input type="date" value="${_pkEsc(dateVal)}" onchange="setParkerReorder('${_pkEsc(s.id)}', this.value)" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">
+        </label>
+      </div>`;
+    }).join('');
+  }
+  function setParkerReorder(shipmentId, dateVal){
+    const meta=_parkerFinishedCache[shipmentId]||{};
+    const r=_parkerReorderForShip(shipmentId);
+    if(!dateVal){ _parkerReorders=_parkerReorders.filter(x=>String(x.shipmentId)!==String(shipmentId)); }
+    else if(r){ r.reorderDate=dateVal; r.done=false; }
+    else { _parkerReorders.push({ id:'pk'+Date.now()+Math.floor(Math.random()*1000), shipmentId:String(shipmentId), account:meta.acct||'', label:meta.label||'', finishedOn:meta.finishedOn||'', reorderDate:dateVal, note:'', done:false }); }
+    _parkerSaveReorders(); _parkerRenderAll();
+    if(typeof _msToast==='function') _msToast(dateVal?('Reorder reminder set for '+_pkFmtDate(dateVal)+'.'):'Reorder reminder cleared.');
+  }
+
+  function _parkerSaveAccounts(){ apiCall('save_app_state',{key:'ms_parker_accounts', value:JSON.stringify(_parkerAccounts), changed_by:(typeof getCurrentUser==='function'?getCurrentUser():'')}).catch(()=>{}); }
+  function _parkerSaveReorders(){ apiCall('save_app_state',{key:'ms_parker_reorders', value:JSON.stringify(_parkerReorders), changed_by:(typeof getCurrentUser==='function'?getCurrentUser():'')}).catch(()=>{}); }
+
+  function openParkerAddModal(id){
+    const a=id?_parkerAccounts.find(x=>x.id===id):null;
+    document.getElementById('parker-acct-id').value=a?a.id:'';
+    document.getElementById('parker-add-title').textContent=a?'Edit Account':'Add Account to Watch';
+    document.getElementById('parker-acct-name').value=a?a.name:'';
+    document.getElementById('parker-acct-slack').value=a?(a.slack||''):'';
+    document.getElementById('parker-acct-email').value=a?(a.email||''):'';
+    document.getElementById('parker-acct-web').value=a?(a.web||''):'';
+    document.getElementById('parker-acct-trello').value=a?(a.trello||''):'';
+    document.getElementById('parker-acct-notes').value=a?(a.notes||''):'';
+    document.getElementById('parker-acct-delete').style.display=a?'inline-flex':'none';
+    const m=document.getElementById('parker-add-modal'); m.classList.add('open'); m.style.display='flex';
+    setTimeout(()=>{ try{ document.getElementById('parker-acct-name').focus(); }catch(_){}} ,50);
+  }
+  function closeParkerAddModal(){ const m=document.getElementById('parker-add-modal'); m.classList.remove('open'); m.style.display='none'; }
+  function saveParkerAccount(ev){
+    if(ev) ev.preventDefault();
+    const name=document.getElementById('parker-acct-name').value.trim();
+    if(!name){ if(typeof _msToast==='function') _msToast('Account name is required.','warning'); return; }
+    const id=document.getElementById('parker-acct-id').value||('pk'+Date.now());
+    const prev=_parkerAccounts.find(x=>x.id===id)||{};
+    const rec={ id, name,
+      slack:document.getElementById('parker-acct-slack').value.trim(),
+      email:document.getElementById('parker-acct-email').value.trim(),
+      web:document.getElementById('parker-acct-web').value.trim(),
+      trello:document.getElementById('parker-acct-trello').value.trim(),
+      notes:document.getElementById('parker-acct-notes').value.trim(),
+      addedAt:prev.addedAt||new Date().toISOString() };
+    const idx=_parkerAccounts.findIndex(x=>x.id===id);
+    if(idx>=0) _parkerAccounts[idx]=rec; else _parkerAccounts.push(rec);
+    _parkerSaveAccounts(); closeParkerAddModal(); _parkerRenderAll();
+    if(typeof _msToast==='function') _msToast('Saved “'+name+'”.','success');
+  }
+  function deleteParkerAccount(){
+    const id=document.getElementById('parker-acct-id').value; if(!id) return;
+    const a=_parkerAccounts.find(x=>x.id===id);
+    if(!confirm('Remove “'+(a?a.name:'this account')+'” from your watchlist? (Its reorder reminders stay.)')) return;
+    _parkerAccounts=_parkerAccounts.filter(x=>x.id!==id);
+    _parkerSaveAccounts(); closeParkerAddModal(); _parkerRenderAll();
+  }
+
+  function buildParkerBrief(){
+    // Operational panels already recompute live on render; stamp the
+    // refresh so it's clear the app-data layer is current. The
+    // Slack/email/Trello intel layer is produced by the 8am MST agent.
+    _parkerBrief=_parkerBrief||{intel:{}};
+    if(!_parkerBrief.intel) _parkerBrief.intel={};
+    _parkerBrief.generatedAt=new Date().toISOString();
+    _parkerBrief.generatedBy='operational';
+    apiCall('save_app_state',{key:'ms_parker_brief', value:JSON.stringify(_parkerBrief), changed_by:(typeof getCurrentUser==='function'?getCurrentUser():'')}).catch(()=>{});
+    _parkerRenderAll();
+    if(typeof _msToast==='function') _msToast('Operational data refreshed. Full Slack/email/Trello intel runs at 8am MST — say “refresh my Parker brief” to pull it now.','success');
+  }
+
   function flowToStep(flow) {
     let step = 0;
     for (let i = 0; i < flowSteps.length; i++) {
@@ -33928,6 +34348,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Match: #/assistant — Claude-powered chat assistant.
     if (hash === '#/assistant') {
       renderAssistantView();
+      return;
+    }
+
+    // Match: #/parker — personal, PIN-gated Account Command Center.
+    if (hash === '#/parker') {
+      renderParkerView();
       return;
     }
 
