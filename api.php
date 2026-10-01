@@ -588,8 +588,11 @@ if (!defined('PARKER_MAIL_HOST')) { $v = getenv('PARKER_MAIL_HOST'); define('PAR
 if (!defined('PARKER_MAIL_PORT')) { $v = getenv('PARKER_MAIL_PORT'); define('PARKER_MAIL_PORT', is_string($v) && $v !== '' ? (int)$v : 993); }
 if (!defined('PARKER_MAIL_USER')) { $v = getenv('PARKER_MAIL_USER'); define('PARKER_MAIL_USER', is_string($v) ? $v : ''); }
 if (!defined('PARKER_MAIL_PASS')) { $v = getenv('PARKER_MAIL_PASS'); define('PARKER_MAIL_PASS', is_string($v) ? $v : ''); }
-// Slack bot token (xoxb-…) with channels:history / groups:history / search:read / users:read:
+// Slack bot token (xoxb-…) with channels:history / groups:history / users:read:
 if (!defined('SLACK_BOT_TOKEN')) { $v = getenv('SLACK_BOT_TOKEN'); define('SLACK_BOT_TOKEN', is_string($v) ? $v : ''); }
+// Slack USER token (xoxp-…) with search:read — enables workspace-wide name
+// search (bot tokens can't call search.messages). Optional.
+if (!defined('SLACK_USER_TOKEN')) { $v = getenv('SLACK_USER_TOKEN'); define('SLACK_USER_TOKEN', is_string($v) ? $v : ''); }
 // Trello REST API key + token:
 if (!defined('TRELLO_KEY'))   { $v = getenv('TRELLO_KEY');   define('TRELLO_KEY',   is_string($v) ? $v : ''); }
 if (!defined('TRELLO_TOKEN')) { $v = getenv('TRELLO_TOKEN'); define('TRELLO_TOKEN', is_string($v) ? $v : ''); }
@@ -688,19 +691,14 @@ function parker_split_emails(string $raw): array {
     return $out;
 }
 
-// Read recent unread/incoming mail for the watched accounts via IMAP.
-// Returns candidate items [{account, who, text, source:'email', ageHours}].
+// Search the mailbox for ANYTHING mentioning each watched client (by name)
+// in the last week. Returns [{account, who, text, source:'email', ageHours}].
 function parker_read_email(array $accounts): array {
     if (PARKER_MAIL_USER === '' || PARKER_MAIL_PASS === '') return [];
     if (!function_exists('imap_open')) return [];
-    // Build an address→account map so we can attribute each message.
-    $addrMap = [];
-    foreach ($accounts as $a) {
-        foreach (parker_split_emails((string)($a['email'] ?? '')) as $addr) {
-            $addrMap[strtolower($addr)] = $a['name'] ?? '';
-        }
-    }
-    if (!$addrMap) return [];
+    $names = [];
+    foreach ($accounts as $a) { $n = trim((string)($a['name'] ?? '')); if ($n !== '') $names[] = $n; }
+    if (!$names) return [];
     $host = PARKER_MAIL_HOST; $port = PARKER_MAIL_PORT;
     // SSL on 993, STARTTLS/plain otherwise. /novalidate-cert covers shared-host certs.
     $flags = $port === 993 ? '/imap/ssl/novalidate-cert' : '/imap/notls';
@@ -712,23 +710,25 @@ function parker_read_email(array $accounts): array {
     }
     $GLOBALS['parker_email_diag'] = 'connected to ' . $host . ':' . $port;
     $out = [];
-    $sinceDate = date('d-M-Y', strtotime('-5 days'));
-    foreach ($addrMap as $addr => $acctName) {
-        // Recent mail FROM this address (what the client sent us).
-        $ids = @imap_search($imap, 'FROM "' . $addr . '" SINCE "' . $sinceDate . '"', SE_UID);
+    $sinceDate = date('d-M-Y', strtotime('-7 days'));
+    foreach ($names as $n) {
+        // TEXT searches the whole message (headers + body) for the client
+        // name — catches mail from them, about them, or cc'ing them.
+        $q = 'TEXT "' . str_replace('"', '', $n) . '" SINCE "' . $sinceDate . '"';
+        $ids = @imap_search($imap, $q, SE_UID);
         if (!is_array($ids)) continue;
         rsort($ids);
-        foreach (array_slice($ids, 0, 8) as $uid) {
+        foreach (array_slice($ids, 0, 10) as $uid) {
             $hdr = @imap_fetch_overview($imap, (string)$uid, FT_UID);
             if (!is_array($hdr) || !isset($hdr[0])) continue;
             $o = $hdr[0];
             $subj = isset($o->subject) ? imap_utf8($o->subject) : '(no subject)';
-            $from = isset($o->from) ? imap_utf8($o->from) : $addr;
+            $from = isset($o->from) ? imap_utf8($o->from) : '';
             $ts   = isset($o->date) ? strtotime($o->date) : time();
             $ageH = max(0, (int)round((time() - $ts) / 3600));
             $seen = !empty($o->seen);
             $out[] = [
-                'account'  => $acctName,
+                'account'  => $n,
                 'who'      => $from,
                 'text'     => $subj . ($seen ? '' : ' (unread)'),
                 'source'   => 'email',
@@ -740,15 +740,17 @@ function parker_read_email(array $accounts): array {
     return $out;
 }
 
-// Small Slack Web API GET helper (bot token).
-function parker_slack_api(string $method, array $params): ?array {
-    if (SLACK_BOT_TOKEN === '' || !function_exists('curl_init')) return null;
+// Small Slack Web API GET helper. Defaults to the bot token; pass a token
+// (e.g. the user token for search.messages) to override.
+function parker_slack_api(string $method, array $params, ?string $token = null): ?array {
+    $token = $token ?? SLACK_BOT_TOKEN;
+    if ($token === '' || !function_exists('curl_init')) return null;
     $url = 'https://slack.com/api/' . $method . '?' . http_build_query($params);
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => 15,
-        CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . SLACK_BOT_TOKEN],
+        CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . $token],
     ]);
     $resp = curl_exec($ch);
     curl_close($ch);
@@ -765,41 +767,70 @@ function parker_slack_channel_id(string $raw): string {
     return ''; // a bare #name would need a lookup; handled by search fallback
 }
 
-// Read recent Slack messages needing Parker's reply for each account.
+// Find recent Slack messages mentioning each watched client. Prefers a
+// workspace-wide name SEARCH (needs SLACK_USER_TOKEN, since search.messages
+// is user-token-only); otherwise falls back to reading a specific channel
+// id stored on the account (bot token).
 function parker_read_slack(array $accounts): array {
-    if (SLACK_BOT_TOKEN === '') return [];
+    $haveUser = defined('SLACK_USER_TOKEN') && SLACK_USER_TOKEN !== '';
+    if (SLACK_BOT_TOKEN === '' && !$haveUser) return [];
     $out = [];
-    $oldest = (string)(time() - 5 * 86400);
-    // Cache user id→name lookups.
     static $userCache = [];
     $uname = function ($uid) use (&$userCache) {
-        if ($uid === '' ) return '';
+        if ($uid === '') return '';
         if (isset($userCache[$uid])) return $userCache[$uid];
         $u = parker_slack_api('users.info', ['user' => $uid]);
         $n = $u['user']['real_name'] ?? ($u['user']['name'] ?? $uid);
         return $userCache[$uid] = $n;
     };
     foreach ($accounts as $a) {
-        $acctName = $a['name'] ?? '';
+        $acctName = trim((string)($a['name'] ?? ''));
+        if ($acctName === '') continue;
+
+        if ($haveUser) {
+            // Workspace-wide search for anything mentioning the client.
+            $after = date('Y-m-d', strtotime('-7 days'));
+            $r = parker_slack_api('search.messages', [
+                'query' => '"' . $acctName . '" after:' . $after,
+                'count' => 10,
+                'sort'  => 'timestamp',
+            ], SLACK_USER_TOKEN);
+            $matches = $r['messages']['matches'] ?? [];
+            if (is_array($matches)) {
+                foreach ($matches as $m) {
+                    $txt = trim((string)($m['text'] ?? ''));
+                    if ($txt === '') continue;
+                    $ts = (float)($m['ts'] ?? 0);
+                    $out[] = [
+                        'account'  => $acctName,
+                        'who'      => (string)($m['username'] ?? ($m['user'] ?? '')),
+                        'text'     => mb_substr($txt, 0, 240),
+                        'source'   => 'slack',
+                        'link'     => (string)($m['permalink'] ?? ''),
+                        'ageHours' => $ts > 0 ? max(0, (int)round((time() - $ts) / 3600)) : null,
+                    ];
+                }
+            }
+            continue;
+        }
+
+        // Fallback: read a specific channel id if one is stored on the account.
         $chId = parker_slack_channel_id((string)($a['slack'] ?? ''));
         if ($chId === '') continue;
-        $h = parker_slack_api('conversations.history', ['channel' => $chId, 'oldest' => $oldest, 'limit' => 30]);
+        $h = parker_slack_api('conversations.history', ['channel' => $chId, 'oldest' => (string)(time() - 7 * 86400), 'limit' => 30]);
         if (!is_array($h) || empty($h['ok']) || empty($h['messages'])) continue;
-        // Messages come newest-first. Surface the most recent few that look
-        // like they need a response (not authored by a bot).
         $count = 0;
         foreach ($h['messages'] as $m) {
             if (!empty($m['bot_id']) || ($m['subtype'] ?? '') === 'channel_join') continue;
             $txt = trim((string)($m['text'] ?? ''));
             if ($txt === '') continue;
             $ts = (float)($m['ts'] ?? 0);
-            $ageH = $ts > 0 ? max(0, (int)round((time() - $ts) / 3600)) : null;
             $out[] = [
                 'account'  => $acctName,
                 'who'      => $uname((string)($m['user'] ?? '')),
                 'text'     => mb_substr($txt, 0, 240),
                 'source'   => 'slack',
-                'ageHours' => $ageH,
+                'ageHours' => $ts > 0 ? max(0, (int)round((time() - $ts) / 3600)) : null,
             ];
             if (++$count >= 6) break;
         }
@@ -814,24 +845,19 @@ function parker_trello_board_id(string $raw): string {
     return '';
 }
 
-// Read Trello cards that are ABOUT a watched account — scoped to that
-// account's board AND matched to the account name (the design-production
-// board is shared across clients, so we only want Salt's cards, not all).
+// Search ALL of Parker's Trello (every board the token can see) for cards
+// mentioning each watched client by name — no per-account board needed.
 function parker_read_trello(array $accounts): array {
     if (TRELLO_KEY === '' || TRELLO_TOKEN === '' || !function_exists('curl_init')) return [];
     $out = [];
     foreach ($accounts as $a) {
-        $boardId = parker_trello_board_id((string)($a['trello'] ?? ''));
-        $name    = trim((string)($a['name'] ?? ''));
-        if ($boardId === '' || $name === '') continue;
-        // Trello search scoped to this board + the account name — returns
-        // only cards whose name/desc mention the account.
+        $name = trim((string)($a['name'] ?? ''));
+        if ($name === '') continue;
         $url = 'https://api.trello.com/1/search?' . http_build_query([
             'key' => TRELLO_KEY, 'token' => TRELLO_TOKEN,
             'query' => $name,
-            'idBoards' => $boardId,
             'modelTypes' => 'cards',
-            'cards_limit' => 20,
+            'cards_limit' => 15,
             'card_fields' => 'name,due,url,shortUrl,dateLastActivity',
             'partial' => 'false',
         ]);

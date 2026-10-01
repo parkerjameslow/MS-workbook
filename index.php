@@ -10851,27 +10851,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button onclick="closeParkerAddModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
-      <p style="margin:0; font-size:12px; color:var(--text-muted);">Tell me where this account lives so the morning agent can scan it. Only the name is required.</p>
+      <p style="margin:0; font-size:12px; color:var(--text-muted);">Just the client's name — the brief searches email, Slack, and Trello for anything about them.</p>
       <input type="hidden" id="parker-acct-id">
       <div>
-        <label class="parker-lbl">Account name</label>
-        <input id="parker-acct-name" type="text" class="form-input" style="width:100%;" placeholder="e.g. Salt by Sabrina" autocomplete="off" list="parker-client-list">
+        <label class="parker-lbl">Client name</label>
+        <input id="parker-acct-name" type="text" class="form-input" style="width:100%;" placeholder="e.g. Nut Garden" autocomplete="off" list="parker-client-list">
         <datalist id="parker-client-list"></datalist>
       </div>
       <div>
-        <label class="parker-lbl">Slack channel(s) / DM</label>
-        <input id="parker-acct-slack" type="text" class="form-input" style="width:100%;" placeholder="#salt-by-sabrina, @sabrina" autocomplete="off">
-      </div>
-      <div>
-        <label class="parker-lbl">Email(s) / domain</label>
-        <input id="parker-acct-email" type="text" class="form-input" style="width:100%;" placeholder="sabrina@saltbysabrina.com, @saltbysabrina.com" autocomplete="off">
-      </div>
-      <div>
-        <label class="parker-lbl">Trello board / card URL</label>
-        <input id="parker-acct-trello" type="text" class="form-input" style="width:100%;" placeholder="https://trello.com/b/…" autocomplete="off">
-      </div>
-      <div>
-        <label class="parker-lbl">Notes (what to watch for)</label>
+        <label class="parker-lbl">Notes (what to watch for) — optional</label>
         <textarea id="parker-acct-notes" class="form-input" style="width:100%; min-height:60px; resize:vertical;" placeholder="Reorders ~every 90 days; Sabrina prefers Slack; watch for restock asks."></textarea>
       </div>
       <div style="display:flex; gap:10px; justify-content:space-between; margin-top:4px;">
@@ -24531,9 +24519,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.getElementById('parker-acct-id').value=a?a.id:'';
     document.getElementById('parker-add-title').textContent=a?'Edit Account':'Add Account to Watch';
     document.getElementById('parker-acct-name').value=a?a.name:'';
-    document.getElementById('parker-acct-slack').value=a?(a.slack||''):'';
-    document.getElementById('parker-acct-email').value=a?(a.email||''):'';
-    document.getElementById('parker-acct-trello').value=a?(a.trello||''):'';
     document.getElementById('parker-acct-notes').value=a?(a.notes||''):'';
     document.getElementById('parker-acct-delete').style.display=a?'inline-flex':'none';
     const m=document.getElementById('parker-add-modal'); m.classList.add('open'); m.style.display='flex';
@@ -24547,9 +24532,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const id=document.getElementById('parker-acct-id').value||('pk'+Date.now());
     const prev=_parkerAccounts.find(x=>x.id===id)||{};
     const rec={ id, name,
-      slack:document.getElementById('parker-acct-slack').value.trim(),
-      email:document.getElementById('parker-acct-email').value.trim(),
-      trello:document.getElementById('parker-acct-trello').value.trim(),
       notes:document.getElementById('parker-acct-notes').value.trim(),
       addedAt:prev.addedAt||new Date().toISOString() };
     const idx=_parkerAccounts.findIndex(x=>x.id===id);
