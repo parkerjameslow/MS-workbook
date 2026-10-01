@@ -10796,7 +10796,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
           <span id="parker-brief-stamp" style="font-size:11px; color:var(--text-muted);"></span>
-          <button class="btn btn-primary" onclick="buildParkerBrief()">Build today's brief</button>
+          <button id="parker-run-btn" class="btn btn-primary" onclick="buildParkerBrief()">Run Data</button>
           <button class="btn btn-ghost" onclick="_parkerLock()" style="font-size:12px;">Lock</button>
         </div>
       </div>
@@ -24565,17 +24565,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _parkerSaveAccounts(); closeParkerAddModal(); _parkerRenderAll();
   }
 
-  function buildParkerBrief(){
-    // Operational panels already recompute live on render; stamp the
-    // refresh so it's clear the app-data layer is current. The
-    // Slack/email/Trello intel layer is produced by the 8am MST agent.
-    _parkerBrief=_parkerBrief||{intel:{}};
-    if(!_parkerBrief.intel) _parkerBrief.intel={};
-    _parkerBrief.generatedAt=new Date().toISOString();
-    _parkerBrief.generatedBy='operational';
-    apiCall('save_app_state',{key:'ms_parker_brief', value:JSON.stringify(_parkerBrief), changed_by:(typeof getCurrentUser==='function'?getCurrentUser():'')}).catch(()=>{});
-    _parkerRenderAll();
-    if(typeof _msToast==='function') _msToast('Operational data refreshed. Full Slack/email/Trello intel runs at 8am MST — say “refresh my Parker brief” to pull it now.','success');
+  async function buildParkerBrief(){
+    // Re-pull everything from the server — the watchlist, reorder
+    // reminders, and the latest intel brief the morning agent wrote —
+    // then recompute the live operational panels. (The Slack/email intel
+    // itself is gathered by the 8am Mountain routine, or on request.)
+    const btn=document.getElementById('parker-run-btn');
+    const orig=btn?btn.textContent:'';
+    if(btn){ btn.disabled=true; btn.textContent='Running…'; }
+    try {
+      await _parkerLoad();                 // fresh fetch + full re-render
+      const st=document.getElementById('parker-brief-stamp');
+      if(st) st.textContent='Refreshed '+new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+      if(typeof _msToast==='function'){
+        const n=_parkerAccounts.length, due=_parkerReorders.filter(r=>!r.done).length;
+        _msToast('Data refreshed — '+n+' account'+(n===1?'':'s')+', '+due+' reorder reminder'+(due===1?'':'s')+'. Slack/email intel runs at 8am (or ask me to pull it now).','success');
+      }
+    } catch(e){
+      if(typeof _msToast==='function') _msToast('Couldn’t refresh — try again.','error');
+    } finally {
+      if(btn){ btn.disabled=false; btn.textContent=orig||'Run Data'; }
+    }
   }
 
   function flowToStep(flow) {
