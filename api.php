@@ -706,7 +706,11 @@ function parker_read_email(array $accounts): array {
     $flags = $port === 993 ? '/imap/ssl/novalidate-cert' : '/imap/notls';
     $mailbox = '{' . $host . ':' . $port . $flags . '}INBOX';
     $imap = @imap_open($mailbox, PARKER_MAIL_USER, PARKER_MAIL_PASS, 0, 1);
-    if (!$imap) return [];
+    if (!$imap) {
+        $GLOBALS['parker_email_diag'] = 'connect-failed: ' . substr((string)imap_last_error(), 0, 160) . ' (host=' . $host . ':' . $port . ')';
+        return [];
+    }
+    $GLOBALS['parker_email_diag'] = 'connected to ' . $host . ':' . $port;
     $out = [];
     $sinceDate = date('d-M-Y', strtotime('-5 days'));
     foreach ($addrMap as $addr => $acctName) {
@@ -3404,6 +3408,7 @@ switch ($action) {
         if (!$accounts) { echo json_encode(['ok' => true, 'skipped' => 'no accounts']); break; }
 
         // Gather from each source (each no-ops without its creds).
+        $GLOBALS['parker_email_diag'] = (PARKER_MAIL_USER !== '' && PARKER_MAIL_PASS !== '') ? 'creds set, not attempted' : 'no creds';
         $raw = array_merge(
             parker_read_email($accounts),
             parker_read_slack($accounts),
@@ -3502,6 +3507,7 @@ switch ($action) {
                 'ai'     => ANTHROPIC_API_KEY !== '' ? 'on' : 'heuristic',
             ],
             'alerts' => $alerts,
+            'diag' => !empty($input['debug']) ? ['email' => $GLOBALS['parker_email_diag'] ?? ''] : null,
         ]);
         break;
 
