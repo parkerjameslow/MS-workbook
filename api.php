@@ -850,6 +850,41 @@ function parker_trello_board_id(string $raw): string {
     return '';
 }
 
+// Tiny Trello REST GET helper (adds key/token).
+function parker_trello_get(string $path, array $params = []) {
+    if (!function_exists('curl_init')) return null;
+    $params['key'] = TRELLO_KEY; $params['token'] = TRELLO_TOKEN;
+    $url = 'https://api.trello.com/1/' . $path . '?' . http_build_query($params);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 12]);
+    $resp = curl_exec($ch);
+    curl_close($ch);
+    return $resp ? json_decode($resp, true) : null;
+}
+// List (column) name for an id, cached.
+function parker_trello_list_name(string $idList): string {
+    static $cache = [];
+    if ($idList === '') return '';
+    if (isset($cache[$idList])) return $cache[$idList];
+    $l = parker_trello_get('lists/' . $idList, ['fields' => 'name']);
+    return $cache[$idList] = (is_array($l) ? (string)($l['name'] ?? '') : '');
+}
+// When did this card enter its CURRENT list? Looks at move actions, newest
+// first; falls back to the card's creation time (encoded in its id).
+function parker_trello_entered_ts(string $cardId, string $idList): int {
+    if ($cardId !== '' && $idList !== '') {
+        $acts = parker_trello_get('cards/' . $cardId . '/actions', ['filter' => 'updateCard', 'limit' => 50]);
+        if (is_array($acts)) {
+            foreach ($acts as $a) { // newest first
+                $after = $a['data']['listAfter']['id'] ?? '';
+                if ($after !== '' && $after === $idList) return (int)strtotime((string)($a['date'] ?? '')) ?: 0;
+            }
+        }
+    }
+    $hex = substr($cardId, 0, 8); // Trello ids embed the creation unix time
+    return ctype_xdigit($hex) ? (int)hexdec($hex) : 0;
+}
+
 // Search ALL of Parker's Trello (every board the token can see) for cards
 // mentioning each watched client by name — no per-account board needed.
 function parker_read_trello(array $accounts): array {
@@ -863,7 +898,7 @@ function parker_read_trello(array $accounts): array {
             'query' => $name,
             'modelTypes' => 'cards',
             'cards_limit' => 15,
-            'card_fields' => 'name,due,url,shortUrl,dateLastActivity',
+            'card_fields' => 'name,due,url,shortUrl,idList,dateLastActivity',
             'partial' => 'false',
         ]);
         $ch = curl_init($url);
@@ -877,14 +912,25 @@ function parker_read_trello(array $accounts): array {
             if (!is_array($c)) continue;
             $cardName = (string)($c['name'] ?? '');
             if ($cardName === '') continue;
+            $idList    = (string)($c['idList'] ?? '');
+            $listName  = parker_trello_list_name($idList);
+            $enteredTs = parker_trello_entered_ts((string)($c['id'] ?? ''), $idList);
+            $daysInCol = $enteredTs > 0 ? max(0, (int)floor((time() - $enteredTs) / 86400)) : null;
             $due = $c['due'] ?? '';
+            // e.g. "Reorder caps — In Production · 12d in column (due Oct 9)"
+            $meta = [];
+            if ($listName !== '') $meta[] = $listName;
+            if ($daysInCol !== null) $meta[] = $daysInCol . 'd in column';
+            $text = $cardName . ($meta ? ' — ' . implode(' · ', $meta) : '') . ($due ? ' (due ' . date('M j', strtotime($due)) . ')' : '');
             $out[] = [
                 'account'  => $name,
                 'who'      => 'Trello',
-                'text'     => $cardName . ($due ? ' (due ' . date('M j', strtotime($due)) . ')' : ''),
+                'text'     => $text,
                 'source'   => 'trello',
                 'link'     => (string)($c['url'] ?? ($c['shortUrl'] ?? '')),
-                'ageHours' => null,
+                'list'     => $listName,
+                'daysInColumn' => $daysInCol,
+                'ageHours' => $daysInCol !== null ? $daysInCol * 24 : null,
             ];
         }
     }
@@ -907,6 +953,7 @@ function parker_classify(array $items): array {
             . "• thisWeek = everything else that's active work or a soft follow-up, INCLUDING Trello cards (ongoing tasks) and non-urgent messages. This is where most Trello cards go. "
             . "• trending = short patterns worth noting (repeated topics, rising volume, sentiment shifts) — usually 0-3 items, not a dump. "
             . "A single item goes in ONLY ONE bucket (a message awaiting reply = needsReply, not also thisWeek). "
+            . "For Trello items, KEEP the column/list name and how long it's been there in the text (e.g. 'Reorder caps — In Production · 12d in column'); a card stuck a long time in one column is worth flagging (urgentToday if very stale). "
             . "Be concise, do not invent, drop pure noise/automated notifications entirely. Max ~10 per bucket.";
         $r = ms_anthropic_send($system, json_encode($items), 2000);
         if (!empty($r['ok'])) {
