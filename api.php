@@ -809,6 +809,7 @@ function parker_read_slack(array $accounts): array {
                 foreach ($matches as $m) {
                     $txt = trim((string)($m['text'] ?? ''));
                     if ($txt === '') continue;
+                    if (stripos($txt, 'your account brief') !== false) continue; // our own brief DM
                     $ts = (float)($m['ts'] ?? 0);
                     $out[] = [
                         'account'  => $acctName,
@@ -833,6 +834,7 @@ function parker_read_slack(array $accounts): array {
             if (!empty($m['bot_id']) || ($m['subtype'] ?? '') === 'channel_join') continue;
             $txt = trim((string)($m['text'] ?? ''));
             if ($txt === '') continue;
+            if (stripos($txt, 'your account brief') !== false) continue; // our own brief
             $ts = (float)($m['ts'] ?? 0);
             $out[] = [
                 'account'  => $acctName,
@@ -967,7 +969,7 @@ function parker_classify(array $items): array {
             . "urgentToday = needs action today (time-sensitive, overdue reply). thisWeek = soft follow-ups / non-urgent. "
             . "trending = short patterns (repeated topics, rising volume, sentiment) — usually 0-3 items. "
             . "Each item in ONE bucket only. Drop newsletters/receipts/automated noise entirely. Max ~10 per bucket.";
-        $r = ms_anthropic_send($system, json_encode($msgs), 2000);
+        $r = ms_anthropic_send($system, json_encode(array_slice($msgs, 0, 40)), 4000);
         if (!empty($r['ok'])) {
             $t = trim((string)$r['text']);
             $t = preg_replace('#^```(?:json)?\s*#i', '', $t);
