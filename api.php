@@ -724,6 +724,10 @@ function parker_read_email(array $accounts): array {
             $o = $hdr[0];
             $subj = isset($o->subject) ? imap_utf8($o->subject) : '(no subject)';
             $from = isset($o->from) ? imap_utf8($o->from) : '';
+            // Skip the cockpit's own "Your Account Brief" emails — they land
+            // in this inbox and mention the client names, so they'd otherwise
+            // re-ingest themselves into the next brief.
+            if (stripos($subj, 'Your Account Brief') !== false) continue;
             $ts   = isset($o->date) ? strtotime($o->date) : time();
             $ageH = max(0, (int)round((time() - $ts) / 3600));
             $seen = !empty($o->seen);
