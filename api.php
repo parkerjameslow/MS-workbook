@@ -3539,6 +3539,9 @@ switch ($action) {
         }
         $GLOBALS['parker_trello_sample'] = array_map(function ($it) { return $it['text'] ?? ''; }, array_slice($rawTrello, 0, 4));
         $buckets = parker_classify($raw);
+        $GLOBALS['parker_sugg_sample'] = array_map(function ($it) {
+            return ['text' => $it['text'] ?? '', 'suggestion' => $it['suggestion'] ?? ''];
+        }, array_slice(array_merge($buckets['urgentToday'] ?? [], $buckets['needsReply'] ?? []), 0, 3));
 
         // Normalize + persist (same shape parker_save_brief writes).
         $bucket = function ($arr) {
@@ -3637,7 +3640,7 @@ switch ($action) {
                 'ai'     => ANTHROPIC_API_KEY !== '' ? 'on' : 'heuristic',
             ],
             'alerts' => $alerts,
-            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run', 'breakdown' => $GLOBALS['parker_breakdown'] ?? [], 'trelloSample' => $GLOBALS['parker_trello_sample'] ?? []] : null,
+            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run', 'breakdown' => $GLOBALS['parker_breakdown'] ?? [], 'trelloSample' => $GLOBALS['parker_trello_sample'] ?? [], 'suggSample' => $GLOBALS['parker_sugg_sample'] ?? []] : null,
         ]);
         break;
 
