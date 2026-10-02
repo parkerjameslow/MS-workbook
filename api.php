@@ -935,50 +935,64 @@ function parker_read_trello(array $accounts): array {
     return $out;
 }
 
-// Classify raw candidate items into the four cockpit buckets. Uses Claude
-// when available; otherwise a simple heuristic so the brief still works.
+// Classify raw candidate items into the four cockpit buckets.
+// Trello cards are bucketed DETERMINISTICALLY in PHP (so their structured
+// list/daysInColumn fields always survive for the UI badge); only messages
+// (email/slack) go through Claude. Falls back to a heuristic without AI.
 function parker_classify(array $items): array {
     $empty = ['urgentToday' => [], 'thisWeek' => [], 'needsReply' => [], 'trending' => []];
     if (!$items) return $empty;
 
-    if (ANTHROPIC_API_KEY !== '') {
-        $system = "You are an account manager's assistant. You are given raw recent Slack/email/Trello items across client accounts. "
+    // Split Trello (tasks) from messages.
+    $trello = [];
+    $msgs   = [];
+    foreach ($items as $it) {
+        if (($it['source'] ?? '') === 'trello') $trello[] = $it; else $msgs[] = $it;
+    }
+
+    // Messages → AI classification (or heuristic).
+    $out = $empty;
+    $aiOk = false;
+    if ($msgs && ANTHROPIC_API_KEY !== '') {
+        $system = "You are an account manager's assistant. You are given raw recent Slack/email MESSAGES across client accounts. "
             . "Return ONLY JSON: {\"urgentToday\":[],\"thisWeek\":[],\"needsReply\":[],\"trending\":[]}. "
-            . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\"|\"trello\",\"ageHours\":number|null,\"list\":string,\"daysInColumn\":number|null}. "
-            . "For Trello items you MUST copy the input's \"list\" and \"daysInColumn\" through UNCHANGED, and keep \"text\" to just the card/task name (do NOT put the column or day-count in the text — the UI shows those as a badge). "
-            . "BUCKET RULES (important): "
-            . "• needsReply = ONLY an actual Slack/email MESSAGE where the client is waiting on Parker to respond (a question, request, or a thread whose last message is from the client). NEVER put Trello cards here. NEVER put newsletters, receipts, or automated notifications here. "
-            . "• urgentToday = anything needing action TODAY — time-sensitive asks, overdue client replies, a Trello card due today/overdue. "
-            . "• thisWeek = everything else that's active work or a soft follow-up, INCLUDING Trello cards (ongoing tasks) and non-urgent messages. This is where most Trello cards go. "
-            . "• trending = short patterns worth noting (repeated topics, rising volume, sentiment shifts) — usually 0-3 items, not a dump. "
-            . "A single item goes in ONLY ONE bucket (a message awaiting reply = needsReply, not also thisWeek). "
-            . "A Trello card stuck a long time in one column (high daysInColumn, e.g. 30+) is worth flagging as urgentToday. "
-            . "Be concise, do not invent, drop pure noise/automated notifications entirely. Max ~10 per bucket.";
-        $r = ms_anthropic_send($system, json_encode($items), 2000);
+            . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\",\"ageHours\":number|null}. "
+            . "needsReply = a message where the client is waiting on Parker to respond (question/request, or the last message is theirs). "
+            . "urgentToday = needs action today (time-sensitive, overdue reply). thisWeek = soft follow-ups / non-urgent. "
+            . "trending = short patterns (repeated topics, rising volume, sentiment) — usually 0-3 items. "
+            . "Each item in ONE bucket only. Drop newsletters/receipts/automated noise entirely. Max ~10 per bucket.";
+        $r = ms_anthropic_send($system, json_encode($msgs), 2000);
         if (!empty($r['ok'])) {
             $t = trim((string)$r['text']);
             $t = preg_replace('#^```(?:json)?\s*#i', '', $t);
             $t = preg_replace('#\s*```$#', '', $t);
             $p = json_decode($t, true);
             if (is_array($p)) {
-                return [
+                $out = [
                     'urgentToday' => $p['urgentToday'] ?? [],
                     'thisWeek'    => $p['thisWeek'] ?? [],
                     'needsReply'  => $p['needsReply'] ?? [],
                     'trending'    => $p['trending'] ?? [],
                 ];
+                $aiOk = true;
             }
         }
     }
-    // Heuristic fallback (no AI): Trello cards are tasks → thisWeek. Messages
-    // (email/slack) → needsReply, and if recent (<24h) also flagged urgent.
-    $out = $empty;
-    foreach ($items as $it) {
-        $src = $it['source'] ?? '';
-        if ($src === 'trello') { $out['thisWeek'][] = $it; continue; }
-        $out['needsReply'][] = $it;
-        $age = $it['ageHours'] ?? null;
-        if ($age !== null && (int)$age <= 24) $out['urgentToday'][] = $it;
+    if (!$aiOk) {
+        // Heuristic: messages → needsReply (recent also urgent).
+        foreach ($msgs as $it) {
+            $out['needsReply'][] = $it;
+            $age = $it['ageHours'] ?? null;
+            if ($age !== null && (int)$age <= 24) $out['urgentToday'][] = $it;
+        }
+    }
+
+    // Trello cards → deterministic: stuck >30d in a column = urgentToday,
+    // otherwise thisWeek. Structured fields (list/daysInColumn) preserved.
+    foreach ($trello as $t) {
+        $d = $t['daysInColumn'] ?? null;
+        if ($d !== null && (int)$d > 30) $out['urgentToday'][] = $t;
+        else $out['thisWeek'][] = $t;
     }
     return $out;
 }
