@@ -24479,8 +24479,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // suggestion prefilled; slack → open the thread to reply in context.
       let actionBtn='';
       if(it.source==='email' && it.replyTo){
+        let subj=(it.subject||'').trim();
+        if(!/^re:/i.test(subj)) subj='Re: '+subj;
         const mailto='mailto:'+encodeURIComponent(it.replyTo).replace(/%2C/g,',')
-          +'?subject='+encodeURIComponent('Re: '+(it.subject||''))
+          +'?subject='+encodeURIComponent(subj)
           +'&body='+encodeURIComponent(it.suggestion||'');
         actionBtn=`<a class="pk-sendbtn" href="${mailto}">Send Reply</a>`;
       } else if(it.source==='slack' && it.link){
