@@ -3591,8 +3591,8 @@ switch ($action) {
         $GLOBALS['parker_trello_sample'] = array_map(function ($it) { return $it['text'] ?? ''; }, array_slice($rawTrello, 0, 4));
         $buckets = parker_classify($raw);
         $GLOBALS['parker_sugg_sample'] = array_map(function ($it) {
-            return ['text' => $it['text'] ?? '', 'suggestion' => $it['suggestion'] ?? ''];
-        }, array_slice(array_merge($buckets['urgentToday'] ?? [], $buckets['needsReply'] ?? []), 0, 3));
+            return ['source' => $it['source'] ?? '', 'text' => mb_substr($it['text'] ?? '', 0, 40), 'replyTo' => $it['replyTo'] ?? '', 'subject' => $it['subject'] ?? ''];
+        }, array_slice(array_merge($buckets['urgentToday'] ?? [], $buckets['needsReply'] ?? [], $buckets['thisWeek'] ?? []), 0, 6));
 
         // Normalize + persist (same shape parker_save_brief writes).
         $bucket = function ($arr) {
