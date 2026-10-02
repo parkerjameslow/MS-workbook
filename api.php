@@ -970,6 +970,7 @@ function parker_classify(array $items): array {
             . "trending = short patterns (repeated topics, rising volume, sentiment) — usually 0-3 items. "
             . "Each item in ONE bucket only. Drop newsletters/receipts/automated noise entirely. Max ~10 per bucket.";
         $r = ms_anthropic_send($system, json_encode(array_slice($msgs, 0, 40)), 4000);
+        $GLOBALS['parker_ai_raw'] = !empty($r['ok']) ? substr((string)$r['text'], 0, 1200) : ('ERR: ' . ($r['error'] ?? '?'));
         if (!empty($r['ok'])) {
             $t = trim((string)$r['text']);
             $t = preg_replace('#^```(?:json)?\s*#i', '', $t);
@@ -3642,7 +3643,7 @@ switch ($action) {
                 'ai'     => ANTHROPIC_API_KEY !== '' ? 'on' : 'heuristic',
             ],
             'alerts' => $alerts,
-            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run', 'breakdown' => $GLOBALS['parker_breakdown'] ?? [], 'trelloSample' => $GLOBALS['parker_trello_sample'] ?? [], 'suggSample' => $GLOBALS['parker_sugg_sample'] ?? []] : null,
+            'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run', 'breakdown' => $GLOBALS['parker_breakdown'] ?? [], 'trelloSample' => $GLOBALS['parker_trello_sample'] ?? [], 'suggSample' => $GLOBALS['parker_sugg_sample'] ?? [], 'aiRaw' => $GLOBALS['parker_ai_raw'] ?? ''] : null,
         ]);
         break;
 
