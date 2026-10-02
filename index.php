@@ -4097,6 +4097,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Suggested reply / action line under an item */
     .pk-sugg { margin-top:5px; font-size:12.5px; color:var(--text); line-height:1.45; border-left:2px solid var(--accent); padding:2px 0 2px 9px; background:rgba(232,117,26,.06); border-radius:0 4px 4px 0; }
     .pk-sugg-lbl { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--accent); margin-right:7px; }
+    .pk-sugg-actions { display:block; margin-top:7px; }
+    .pk-sendbtn { display:inline-block; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.3px; color:#fff; background:var(--accent); border:none; border-radius:7px; padding:5px 14px; text-decoration:none; cursor:pointer; }
+    .pk-sendbtn:hover { filter:brightness(1.08); }
 
     .modal-overlay {
       display: none;
@@ -24472,7 +24475,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const age=(!isTrello&&it.ageHours!=null)?`<span class="pk-meta"> · ${_pkEsc(it.ageHours)}h</span>`:'';
       const col=_pkColBadge(it);
       const link=it.link?` <a href="${_pkEsc(it.link)}" target="_blank" rel="noopener" style="font-size:11px;">open ↗</a>`:'';
-      const sugg=it.suggestion?`<div class="pk-sugg"><span class="pk-sugg-lbl">Suggested</span>${_pkEsc(it.suggestion)}</div>`:'';
+      // "Send Reply" action: email → mailto to all thread recipients with the
+      // suggestion prefilled; slack → open the thread to reply in context.
+      let actionBtn='';
+      if(it.source==='email' && it.replyTo){
+        const mailto='mailto:'+encodeURIComponent(it.replyTo).replace(/%2C/g,',')
+          +'?subject='+encodeURIComponent('Re: '+(it.subject||''))
+          +'&body='+encodeURIComponent(it.suggestion||'');
+        actionBtn=`<a class="pk-sendbtn" href="${mailto}">Send Reply</a>`;
+      } else if(it.source==='slack' && it.link){
+        actionBtn=`<a class="pk-sendbtn" href="${_pkEsc(it.link)}" target="_blank" rel="noopener">Send Reply</a>`;
+      }
+      const sugg=it.suggestion?`<div class="pk-sugg"><span class="pk-sugg-lbl">Suggested</span>${_pkEsc(it.suggestion)}${actionBtn?`<span class="pk-sugg-actions">${actionBtn}</span>`:''}</div>`:'';
       return `<div class="parker-item">${src}<div style="flex:1;"><span class="pk-acct">${_pkEsc(it.account||'')}</span>${it.account?' — ':''}${who}${_pkEsc(it.text||it.preview||'')}${age}${col}${link}${sugg}</div></div>`;
     }).join('');
   }

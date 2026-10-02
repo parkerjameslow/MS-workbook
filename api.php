@@ -731,12 +731,28 @@ function parker_read_email(array $accounts): array {
             $ts   = isset($o->date) ? strtotime($o->date) : time();
             $ageH = max(0, (int)round((time() - $ts) / 3600));
             $seen = !empty($o->seen);
+            // Build the reply recipient list (sender + to + cc, minus Parker)
+            // so a one-click reply hits everyone on the thread.
+            $recips = [];
+            $hi = @imap_headerinfo($imap, imap_msgno($imap, $uid));
+            if ($hi) {
+                foreach (['from', 'to', 'cc'] as $hk) {
+                    foreach (($hi->$hk ?? []) as $ao) {
+                        if (empty($ao->mailbox) || empty($ao->host) || strpos((string)$ao->host, '.') === false) continue;
+                        $addr = strtolower($ao->mailbox . '@' . $ao->host);
+                        if ($addr === strtolower(PARKER_MAIL_USER)) continue;
+                        $recips[$addr] = true;
+                    }
+                }
+            }
             $out[] = [
                 'account'  => $n,
                 'who'      => $from,
                 'text'     => $subj . ($seen ? '' : ' (unread)'),
                 'source'   => 'email',
                 'ageHours' => $ageH,
+                'replyTo'  => implode(',', array_keys($recips)),
+                'subject'  => $subj,
             ];
         }
     }
@@ -971,14 +987,19 @@ function parker_classify(array $items): array {
     if ($msgs && ANTHROPIC_API_KEY !== '') {
         $system = "You are an account manager's assistant. You are given raw recent Slack/email MESSAGES across client accounts. "
             . "Return ONLY JSON: {\"urgentToday\":[],\"thisWeek\":[],\"needsReply\":[],\"trending\":[]}. "
-            . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\",\"ageHours\":number|null,\"suggestion\":string}. "
+            . "Each array item: {\"_id\":number,\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\",\"ageHours\":number|null,\"suggestion\":string}. "
+            . "Copy each input item's \"_id\" through UNCHANGED (it links your output back to the source message). "
             . "suggestion = a specific, ready-to-use recommendation of what Parker should reply or do next — one short sentence, concrete (e.g. 'Reply confirming the 2,000-unit reorder and ask for their PO number' or 'Send the updated quote and propose a Thursday call'). "
             . "Include a useful suggestion for EVERY item in urgentToday, needsReply, AND thisWeek. For trending it's optional (empty string if none). "
             . "needsReply = a message where the client is waiting on Parker to respond (question/request, or the last message is theirs). "
             . "urgentToday = needs action today (time-sensitive, overdue reply). thisWeek = soft follow-ups / non-urgent. "
             . "trending = short patterns (repeated topics, rising volume, sentiment) — usually 0-3 items. "
             . "Each item in ONE bucket only. Drop newsletters/receipts/automated noise entirely. Max ~10 per bucket.";
-        $r = ms_anthropic_send($system, json_encode(array_slice($msgs, 0, 40)), 4000);
+        // Tag each message with an id so we can re-attach reply recipients
+        // (which the model doesn't echo) after classification.
+        $indexed = [];
+        foreach (array_slice($msgs, 0, 40) as $i => $m) { $m['_id'] = $i; $indexed[] = $m; }
+        $r = ms_anthropic_send($system, json_encode($indexed), 4000);
         $GLOBALS['parker_ai_raw'] = !empty($r['ok']) ? substr((string)$r['text'], 0, 1200) : ('ERR: ' . ($r['error'] ?? '?'));
         if (!empty($r['ok'])) {
             $t = trim((string)$r['text']);
@@ -986,11 +1007,29 @@ function parker_classify(array $items): array {
             $t = preg_replace('#\s*```$#', '', $t);
             $p = json_decode($t, true);
             if (is_array($p)) {
+                // Re-attach reply recipients/subject/link from the source
+                // message (matched by _id) — the model doesn't echo them.
+                $enrich = function ($arr) use ($indexed) {
+                    $out = [];
+                    foreach ((array)$arr as $it) {
+                        if (!is_array($it)) continue;
+                        $id = $it['_id'] ?? null;
+                        if ($id !== null && isset($indexed[$id])) {
+                            $src = $indexed[$id];
+                            if (!empty($src['replyTo'])) $it['replyTo'] = $src['replyTo'];
+                            if (!empty($src['subject'])) $it['subject'] = $src['subject'];
+                            if (empty($it['link']) && !empty($src['link'])) $it['link'] = $src['link'];
+                        }
+                        unset($it['_id']);
+                        $out[] = $it;
+                    }
+                    return $out;
+                };
                 $out = [
-                    'urgentToday' => $p['urgentToday'] ?? [],
-                    'thisWeek'    => $p['thisWeek'] ?? [],
-                    'needsReply'  => $p['needsReply'] ?? [],
-                    'trending'    => $p['trending'] ?? [],
+                    'urgentToday' => $enrich($p['urgentToday'] ?? []),
+                    'thisWeek'    => $enrich($p['thisWeek'] ?? []),
+                    'needsReply'  => $enrich($p['needsReply'] ?? []),
+                    'trending'    => $enrich($p['trending'] ?? []),
                 ];
                 $aiOk = true;
             }
@@ -3567,6 +3606,8 @@ switch ($action) {
                     'source'   => (string)($it['source'] ?? ''),
                     'link'     => (string)($it['link'] ?? ''),
                     'suggestion' => isset($it['suggestion']) ? (string)$it['suggestion'] : '',
+                    'replyTo'  => isset($it['replyTo']) ? (string)$it['replyTo'] : '',
+                    'subject'  => isset($it['subject']) ? (string)$it['subject'] : '',
                     'list'     => isset($it['list']) ? (string)$it['list'] : '',
                     'daysInColumn' => isset($it['daysInColumn']) && $it['daysInColumn'] !== null ? (int)$it['daysInColumn'] : null,
                     'ageHours' => isset($it['ageHours']) && $it['ageHours'] !== null ? (int)$it['ageHours'] : null,
