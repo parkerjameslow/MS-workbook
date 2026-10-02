@@ -24385,16 +24385,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   function _parkerRenderAccounts(){
     const wrap=document.getElementById('parker-accounts'); if(!wrap) return;
-    if(!_parkerAccounts.length){ wrap.innerHTML='<span class="parker-empty">No accounts yet — click “Add New”.</span>'; }
-    else {
-      wrap.innerHTML=_parkerAccounts.map((a,i)=>{
-        const active=_parkerFilter===a.name;
-        return `<span class="parker-chip" style="${active?'border-color:var(--accent); background:rgba(232,117,26,.08);':''}" onclick="_parkerFilterIdx(${i})">${_pkEsc(a.name)}<span onclick="event.stopPropagation(); _parkerEditIdx(${i})" style="opacity:.6; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;" title="Edit">Edit</span></span>`;
-      }).join('');
-    }
+    if(!_parkerAccounts.length){ wrap.innerHTML='<span class="parker-empty">No accounts yet — click “Add New”.</span>'; return; }
+    // Leading "All" chip — shows every client's items at once (no filter).
+    const allActive=!_parkerFilter;
+    let html=`<span class="parker-chip" style="font-weight:800; ${allActive?'border-color:var(--accent); background:rgba(232,117,26,.12);':''}" onclick="_parkerSetFilter(null)">All</span>`;
+    html+=_parkerAccounts.map((a,i)=>{
+      const active=_parkerFilter===a.name;
+      return `<span class="parker-chip" style="${active?'border-color:var(--accent); background:rgba(232,117,26,.08);':''}" onclick="_parkerFilterIdx(${i})">${_pkEsc(a.name)}<span onclick="event.stopPropagation(); _parkerEditIdx(${i})" style="opacity:.6; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;" title="Edit">Edit</span></span>`;
+    }).join('');
+    wrap.innerHTML=html;
     const dl=document.getElementById('parker-client-list');
     if(dl && typeof clientData==='object' && clientData){ dl.innerHTML=Object.keys(clientData).sort().map(n=>`<option value="${_pkEsc(n)}">`).join(''); }
   }
+  function _parkerSetFilter(name){ _parkerFilter=name; _parkerRenderAll(); }
   function _parkerFilterIdx(i){ const a=_parkerAccounts[i]; if(!a) return; _parkerFilter=(_parkerFilter===a.name)?null:a.name; _parkerRenderAll(); }
   function _parkerEditIdx(i){ const a=_parkerAccounts[i]; if(a) openParkerAddModal(a.id); }
 
