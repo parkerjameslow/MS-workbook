@@ -4089,6 +4089,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .parker-due { font-weight:800; }
     .parker-due.over { color:var(--danger); }
     .parker-due.soon { color:#E8751A; }
+    /* Trello column badge — colored by how long the card's been in the column */
+    .pk-col { display:inline-block; margin-left:8px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; padding:2px 9px; border-radius:999px; white-space:nowrap; vertical-align:middle; }
+    .pk-col-fresh { background:rgba(34,197,94,.16); color:#22c55e; border:1px solid rgba(34,197,94,.45); }
+    .pk-col-aging { background:rgba(232,117,26,.18); color:#f59e0b; border:1px solid rgba(232,117,26,.5); }
+    .pk-col-stuck { background:rgba(220,38,38,.20); color:#f87171; border:1px solid rgba(220,38,38,.55); }
 
     .modal-overlay {
       display: none;
@@ -24440,15 +24445,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _pkFill('parker-reply', f(intel.needsReply), 'No unanswered messages yet — the 8am MST agent fills this (or ask me to refresh).');
     _pkFill('parker-trending', f(intel.trending), 'No trends yet — the morning agent surfaces these.');
   }
+  // Eye-catching column badge for Trello items: shows the list and how long
+  // the card's been sitting there, colored by staleness (green→amber→red).
+  function _pkColBadge(it){
+    if(it.source!=='trello' || !it.list) return '';
+    const d=(it.daysInColumn!=null)?it.daysInColumn:null;
+    let cls='fresh';
+    if(d!=null){ if(d>30) cls='stuck'; else if(d>=8) cls='aging'; }
+    const dayTxt=(d!=null)?` · ${d}d`:'';
+    const warn=(cls==='stuck')?'⚠ ':'';
+    return `<span class="pk-col pk-col-${cls}">${warn}${_pkEsc(it.list)}${dayTxt}</span>`;
+  }
   function _pkFill(id, items, emptyMsg){
     const el=document.getElementById(id); if(!el) return;
     if(!items||!items.length){ el.innerHTML='<div class="parker-empty">'+_pkEsc(emptyMsg)+'</div>'; return; }
     el.innerHTML=items.map(it=>{
+      const isTrello=it.source==='trello';
       const src=it.source?`<span class="parker-src">${_pkEsc(it.source)}</span>`:'';
-      const who=it.who?`<span class="pk-meta">${_pkEsc(it.who)}</span> `:'';
-      const age=(it.ageHours!=null)?`<span class="pk-meta"> · ${_pkEsc(it.ageHours)}h</span>`:'';
+      const who=(it.who&&!isTrello)?`<span class="pk-meta">${_pkEsc(it.who)}</span> `:'';
+      const age=(!isTrello&&it.ageHours!=null)?`<span class="pk-meta"> · ${_pkEsc(it.ageHours)}h</span>`:'';
+      const col=_pkColBadge(it);
       const link=it.link?` <a href="${_pkEsc(it.link)}" target="_blank" rel="noopener" style="font-size:11px;">open ↗</a>`:'';
-      return `<div class="parker-item">${src}<div><span class="pk-acct">${_pkEsc(it.account||'')}</span>${it.account?' — ':''}${who}${_pkEsc(it.text||it.preview||'')}${age}${link}</div></div>`;
+      return `<div class="parker-item">${src}<div style="flex:1;"><span class="pk-acct">${_pkEsc(it.account||'')}</span>${it.account?' — ':''}${who}${_pkEsc(it.text||it.preview||'')}${age}${col}${link}</div></div>`;
     }).join('');
   }
 

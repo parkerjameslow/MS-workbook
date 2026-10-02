@@ -917,11 +917,9 @@ function parker_read_trello(array $accounts): array {
             $enteredTs = parker_trello_entered_ts((string)($c['id'] ?? ''), $idList);
             $daysInCol = $enteredTs > 0 ? max(0, (int)floor((time() - $enteredTs) / 86400)) : null;
             $due = $c['due'] ?? '';
-            // e.g. "Reorder caps — In Production · 12d in column (due Oct 9)"
-            $meta = [];
-            if ($listName !== '') $meta[] = $listName;
-            if ($daysInCol !== null) $meta[] = $daysInCol . 'd in column';
-            $text = $cardName . ($meta ? ' — ' . implode(' · ', $meta) : '') . ($due ? ' (due ' . date('M j', strtotime($due)) . ')' : '');
+            // Keep text = the card/task name; column + time ride as structured
+            // fields (list / daysInColumn) so the UI can render a badge.
+            $text = $cardName . ($due ? ' (due ' . date('M j', strtotime($due)) . ')' : '');
             $out[] = [
                 'account'  => $name,
                 'who'      => 'Trello',
@@ -946,14 +944,15 @@ function parker_classify(array $items): array {
     if (ANTHROPIC_API_KEY !== '') {
         $system = "You are an account manager's assistant. You are given raw recent Slack/email/Trello items across client accounts. "
             . "Return ONLY JSON: {\"urgentToday\":[],\"thisWeek\":[],\"needsReply\":[],\"trending\":[]}. "
-            . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\"|\"trello\",\"ageHours\":number|null}. "
+            . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\"|\"trello\",\"ageHours\":number|null,\"list\":string,\"daysInColumn\":number|null}. "
+            . "For Trello items you MUST copy the input's \"list\" and \"daysInColumn\" through UNCHANGED, and keep \"text\" to just the card/task name (do NOT put the column or day-count in the text — the UI shows those as a badge). "
             . "BUCKET RULES (important): "
             . "• needsReply = ONLY an actual Slack/email MESSAGE where the client is waiting on Parker to respond (a question, request, or a thread whose last message is from the client). NEVER put Trello cards here. NEVER put newsletters, receipts, or automated notifications here. "
             . "• urgentToday = anything needing action TODAY — time-sensitive asks, overdue client replies, a Trello card due today/overdue. "
             . "• thisWeek = everything else that's active work or a soft follow-up, INCLUDING Trello cards (ongoing tasks) and non-urgent messages. This is where most Trello cards go. "
             . "• trending = short patterns worth noting (repeated topics, rising volume, sentiment shifts) — usually 0-3 items, not a dump. "
             . "A single item goes in ONLY ONE bucket (a message awaiting reply = needsReply, not also thisWeek). "
-            . "For Trello items, KEEP the column/list name and how long it's been there in the text (e.g. 'Reorder caps — In Production · 12d in column'); a card stuck a long time in one column is worth flagging (urgentToday if very stale). "
+            . "A Trello card stuck a long time in one column (high daysInColumn, e.g. 30+) is worth flagging as urgentToday. "
             . "Be concise, do not invent, drop pure noise/automated notifications entirely. Max ~10 per bucket.";
         $r = ms_anthropic_send($system, json_encode($items), 2000);
         if (!empty($r['ok'])) {
@@ -3532,6 +3531,8 @@ switch ($action) {
                     'who'      => (string)($it['who'] ?? ''),
                     'source'   => (string)($it['source'] ?? ''),
                     'link'     => (string)($it['link'] ?? ''),
+                    'list'     => isset($it['list']) ? (string)$it['list'] : '',
+                    'daysInColumn' => isset($it['daysInColumn']) && $it['daysInColumn'] !== null ? (int)$it['daysInColumn'] : null,
                     'ageHours' => isset($it['ageHours']) && $it['ageHours'] !== null ? (int)$it['ageHours'] : null,
                 ];
             }
