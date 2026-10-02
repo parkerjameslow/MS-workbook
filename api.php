@@ -987,13 +987,13 @@ function parker_classify(array $items): array {
         }
     }
 
-    // Trello cards → deterministic: stuck >30d in a column = urgentToday,
-    // otherwise thisWeek. Structured fields (list/daysInColumn) preserved.
-    foreach ($trello as $t) {
-        $d = $t['daysInColumn'] ?? null;
-        if ($d !== null && (int)$d > 30) $out['urgentToday'][] = $t;
-        else $out['thisWeek'][] = $t;
-    }
+    // Trello cards → always This week; the colored column badge (red + ⚠
+    // for >30d) conveys staleness visually without flooding Urgent today.
+    // Most-stuck first so the worst offenders rise to the top.
+    usort($trello, function ($a, $b) {
+        return (int)($b['daysInColumn'] ?? 0) <=> (int)($a['daysInColumn'] ?? 0);
+    });
+    foreach ($trello as $t) $out['thisWeek'][] = $t;
     return $out;
 }
 
