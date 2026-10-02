@@ -960,7 +960,9 @@ function parker_classify(array $items): array {
     if ($msgs && ANTHROPIC_API_KEY !== '') {
         $system = "You are an account manager's assistant. You are given raw recent Slack/email MESSAGES across client accounts. "
             . "Return ONLY JSON: {\"urgentToday\":[],\"thisWeek\":[],\"needsReply\":[],\"trending\":[]}. "
-            . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\",\"ageHours\":number|null}. "
+            . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\",\"ageHours\":number|null,\"suggestion\":string}. "
+            . "suggestion = a specific, ready-to-use recommendation of what Parker should reply or do next — one short sentence, concrete (e.g. 'Reply confirming the 2,000-unit reorder and ask for their PO number' or 'Send the updated quote and propose a Thursday call'). "
+            . "For EVERY item in urgentToday and needsReply you MUST include a useful suggestion. For thisWeek/trending a suggestion is optional (use empty string if none). "
             . "needsReply = a message where the client is waiting on Parker to respond (question/request, or the last message is theirs). "
             . "urgentToday = needs action today (time-sensitive, overdue reply). thisWeek = soft follow-ups / non-urgent. "
             . "trending = short patterns (repeated topics, rising volume, sentiment) — usually 0-3 items. "
@@ -3549,6 +3551,7 @@ switch ($action) {
                     'who'      => (string)($it['who'] ?? ''),
                     'source'   => (string)($it['source'] ?? ''),
                     'link'     => (string)($it['link'] ?? ''),
+                    'suggestion' => isset($it['suggestion']) ? (string)$it['suggestion'] : '',
                     'list'     => isset($it['list']) ? (string)$it['list'] : '',
                     'daysInColumn' => isset($it['daysInColumn']) && $it['daysInColumn'] !== null ? (int)$it['daysInColumn'] : null,
                     'ageHours' => isset($it['ageHours']) && $it['ageHours'] !== null ? (int)$it['ageHours'] : null,
@@ -3583,7 +3586,8 @@ switch ($action) {
                 $lines = array_map(function ($it) {
                     $a = $it['account'] !== '' ? $it['account'] . ' — ' : '';
                     $w = $it['who'] !== '' ? $it['who'] . ': ' : '';
-                    return '• ' . $a . $w . $it['text'];
+                    $s = !empty($it['suggestion']) ? "\n    ↳ Suggested: " . $it['suggestion'] : '';
+                    return '• ' . $a . $w . $it['text'] . $s;
                 }, $items);
                 return "*{$label}*\n" . implode("\n", $lines) . "\n\n";
             };
@@ -3603,7 +3607,8 @@ switch ($action) {
                     $a = $it['account'] !== '' ? '<strong>' . htmlspecialchars($it['account']) . '</strong> — ' : '';
                     $w = $it['who'] !== '' ? htmlspecialchars($it['who']) . ': ' : '';
                     $lnk = $it['link'] !== '' ? ' <a href="' . htmlspecialchars($it['link']) . '" style="color:#E8751A;">open</a>' : '';
-                    $lis .= '<li style="margin:4px 0;font-size:14px;color:#1a1d2e;">' . $a . $w . htmlspecialchars($it['text']) . $lnk . '</li>';
+                    $sug = !empty($it['suggestion']) ? '<div style="margin:2px 0 0 2px;font-size:13px;color:#6b7280;border-left:2px solid #E8751A;padding-left:8px;"><strong style="color:#E8751A;">Suggested:</strong> ' . htmlspecialchars($it['suggestion']) . '</div>' : '';
+                    $lis .= '<li style="margin:7px 0;font-size:14px;color:#1a1d2e;">' . $a . $w . htmlspecialchars($it['text']) . $lnk . $sug . '</li>';
                 }
                 return "<h2 style='font-size:15px;color:#1a1d2e;margin:18px 0 6px;'>{$label}</h2><ul style='margin:0;padding-left:18px;'>{$lis}</ul>";
             };
@@ -3724,7 +3729,8 @@ switch ($action) {
                 $lines = array_map(function ($it) {
                     $a = $it['account'] !== '' ? $it['account'] . ' — ' : '';
                     $w = $it['who'] !== '' ? $it['who'] . ': ' : '';
-                    return '• ' . $a . $w . $it['text'];
+                    $s = !empty($it['suggestion']) ? "\n    ↳ Suggested: " . $it['suggestion'] : '';
+                    return '• ' . $a . $w . $it['text'] . $s;
                 }, $items);
                 return "*{$label}*\n" . implode("\n", $lines) . "\n\n";
             };
@@ -3745,7 +3751,8 @@ switch ($action) {
                     $a = $it['account'] !== '' ? '<strong>' . htmlspecialchars($it['account']) . '</strong> — ' : '';
                     $w = $it['who'] !== '' ? htmlspecialchars($it['who']) . ': ' : '';
                     $lnk = $it['link'] !== '' ? ' <a href="' . htmlspecialchars($it['link']) . '" style="color:#E8751A;">open</a>' : '';
-                    $lis .= '<li style="margin:4px 0;font-size:14px;color:#1a1d2e;">' . $a . $w . htmlspecialchars($it['text']) . $lnk . '</li>';
+                    $sug = !empty($it['suggestion']) ? '<div style="margin:2px 0 0 2px;font-size:13px;color:#6b7280;border-left:2px solid #E8751A;padding-left:8px;"><strong style="color:#E8751A;">Suggested:</strong> ' . htmlspecialchars($it['suggestion']) . '</div>' : '';
+                    $lis .= '<li style="margin:7px 0;font-size:14px;color:#1a1d2e;">' . $a . $w . htmlspecialchars($it['text']) . $lnk . $sug . '</li>';
                 }
                 return "<h2 style='font-size:15px;color:#1a1d2e;margin:18px 0 6px;'>{$label}</h2><ul style='margin:0;padding-left:18px;'>{$lis}</ul>";
             };

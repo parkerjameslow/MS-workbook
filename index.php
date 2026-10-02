@@ -4094,6 +4094,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pk-col-fresh { background:rgba(34,197,94,.16); color:#22c55e; border:1px solid rgba(34,197,94,.45); }
     .pk-col-aging { background:rgba(232,117,26,.18); color:#f59e0b; border:1px solid rgba(232,117,26,.5); }
     .pk-col-stuck { background:rgba(220,38,38,.20); color:#f87171; border:1px solid rgba(220,38,38,.55); }
+    /* Suggested reply / action line under an item */
+    .pk-sugg { margin-top:5px; font-size:12.5px; color:var(--text); line-height:1.45; border-left:2px solid var(--accent); padding:2px 0 2px 9px; background:rgba(232,117,26,.06); border-radius:0 4px 4px 0; }
+    .pk-sugg-lbl { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--accent); margin-right:7px; }
 
     .modal-overlay {
       display: none;
@@ -24469,7 +24472,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const age=(!isTrello&&it.ageHours!=null)?`<span class="pk-meta"> · ${_pkEsc(it.ageHours)}h</span>`:'';
       const col=_pkColBadge(it);
       const link=it.link?` <a href="${_pkEsc(it.link)}" target="_blank" rel="noopener" style="font-size:11px;">open ↗</a>`:'';
-      return `<div class="parker-item">${src}<div style="flex:1;"><span class="pk-acct">${_pkEsc(it.account||'')}</span>${it.account?' — ':''}${who}${_pkEsc(it.text||it.preview||'')}${age}${col}${link}</div></div>`;
+      const sugg=it.suggestion?`<div class="pk-sugg"><span class="pk-sugg-lbl">Suggested</span>${_pkEsc(it.suggestion)}</div>`:'';
+      return `<div class="parker-item">${src}<div style="flex:1;"><span class="pk-acct">${_pkEsc(it.account||'')}</span>${it.account?' — ':''}${who}${_pkEsc(it.text||it.preview||'')}${age}${col}${link}${sugg}</div></div>`;
     }).join('');
   }
 
