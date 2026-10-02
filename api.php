@@ -541,7 +541,7 @@ if (!defined('PUBLIC_BASE_URL')) {
 }
 
 if (!defined('ANTHROPIC_MODEL')) {
-    define('ANTHROPIC_MODEL', 'claude-3-5-sonnet-20241022');
+    define('ANTHROPIC_MODEL', 'claude-sonnet-5-5');
 }
 
 // ── QuickBooks Online (Intuit) config ─────────────────────────────────────
