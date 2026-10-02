@@ -926,12 +926,21 @@ function parker_read_trello(array $accounts): array {
             // Keep text = the card/task name; column + time ride as structured
             // fields (list / daysInColumn) so the UI can render a badge.
             $text = $cardName . ($due ? ' (due ' . date('M j', strtotime($due)) . ')' : '');
+            // Action nudge based on how long it's been parked in the column.
+            $sugg = '';
+            $col = $listName !== '' ? '"' . $listName . '"' : 'its column';
+            if ($daysInCol !== null) {
+                if ($daysInCol > 180)     $sugg = 'Parked in ' . $col . ' ' . $daysInCol . 'd — confirm it\'s still active or archive it.';
+                elseif ($daysInCol > 60)  $sugg = 'Stuck in ' . $col . ' ' . $daysInCol . 'd — chase an update or move it forward.';
+                elseif ($daysInCol > 30)  $sugg = 'In ' . $col . ' ' . $daysInCol . 'd — nudge it along or set a next step.';
+            }
             $out[] = [
                 'account'  => $name,
                 'who'      => 'Trello',
                 'text'     => $text,
                 'source'   => 'trello',
                 'link'     => (string)($c['url'] ?? ($c['shortUrl'] ?? '')),
+                'suggestion' => $sugg,
                 'list'     => $listName,
                 'daysInColumn' => $daysInCol,
                 'ageHours' => $daysInCol !== null ? $daysInCol * 24 : null,
@@ -964,7 +973,7 @@ function parker_classify(array $items): array {
             . "Return ONLY JSON: {\"urgentToday\":[],\"thisWeek\":[],\"needsReply\":[],\"trending\":[]}. "
             . "Each array item: {\"account\":string,\"text\":concise action-oriented one-liner,\"who\":string,\"source\":\"slack\"|\"email\",\"ageHours\":number|null,\"suggestion\":string}. "
             . "suggestion = a specific, ready-to-use recommendation of what Parker should reply or do next — one short sentence, concrete (e.g. 'Reply confirming the 2,000-unit reorder and ask for their PO number' or 'Send the updated quote and propose a Thursday call'). "
-            . "For EVERY item in urgentToday and needsReply you MUST include a useful suggestion. For thisWeek/trending a suggestion is optional (use empty string if none). "
+            . "Include a useful suggestion for EVERY item in urgentToday, needsReply, AND thisWeek. For trending it's optional (empty string if none). "
             . "needsReply = a message where the client is waiting on Parker to respond (question/request, or the last message is theirs). "
             . "urgentToday = needs action today (time-sensitive, overdue reply). thisWeek = soft follow-ups / non-urgent. "
             . "trending = short patterns (repeated topics, rising volume, sentiment) — usually 0-3 items. "
