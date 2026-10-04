@@ -1054,6 +1054,49 @@ function parker_classify(array $items): array {
     return $out;
 }
 
+// Extract structured highlights from an uploaded meeting transcript/summary
+// (e.g. a Plaud export). Returns summary + highlights + followUps + action
+// items + order dates. Uses Claude; empty structure on failure.
+function parker_extract_meeting(string $text): array {
+    $empty = ['title' => '', 'summary' => '', 'highlights' => [], 'followUps' => [], 'actionItems' => [], 'orderDates' => []];
+    $text = trim($text);
+    if ($text === '' || ANTHROPIC_API_KEY === '') return $empty;
+    $system = "You extract structured highlights from a meeting transcript or summary for a product-sourcing account manager (Parker). "
+        . "Return ONLY JSON (no markdown): {\"title\":string,\"summary\":string,\"highlights\":[string],\"followUps\":[{\"text\":string,\"suggestion\":string}],\"actionItems\":[{\"text\":string,\"owner\":string,\"due\":string}],\"orderDates\":[{\"item\":string,\"date\":string}]}. "
+        . "title = a short meeting title if not obvious leave empty. summary = 2-3 sentence overview. highlights = key decisions/points (short). "
+        . "followUps = things Parker must follow up on, each with a concrete suggestion of what to do/say. "
+        . "actionItems = concrete tasks (owner = who owns it if stated, due = date or timeframe if stated else empty). "
+        . "orderDates = any reorder / production / ship / in-hand dates mentioned (item + the date or timeframe). "
+        . "Be concise and faithful — do NOT invent anything not supported by the text. Use empty arrays where nothing applies.";
+    $r = ms_anthropic_send($system, mb_substr($text, 0, 60000), 3500);
+    if (empty($r['ok'])) return $empty;
+    $t = trim((string)$r['text']);
+    $t = preg_replace('#^```(?:json)?\s*#i', '', $t);
+    $t = preg_replace('#\s*```$#', '', $t);
+    $p = json_decode($t, true);
+    if (!is_array($p)) return $empty;
+    // Normalize.
+    $strs = function ($a) { $o = []; if (is_array($a)) foreach ($a as $x) { if (is_string($x) && trim($x) !== '') $o[] = trim($x); } return $o; };
+    $objs = function ($a, array $keys) {
+        $o = [];
+        if (is_array($a)) foreach ($a as $x) {
+            if (!is_array($x)) continue;
+            $row = [];
+            foreach ($keys as $k) $row[$k] = (string)($x[$k] ?? '');
+            if (trim(implode('', $row)) !== '') $o[] = $row;
+        }
+        return $o;
+    };
+    return [
+        'title'       => (string)($p['title'] ?? ''),
+        'summary'     => (string)($p['summary'] ?? ''),
+        'highlights'  => $strs($p['highlights'] ?? []),
+        'followUps'   => $objs($p['followUps'] ?? [], ['text', 'suggestion']),
+        'actionItems' => $objs($p['actionItems'] ?? [], ['text', 'owner', 'due']),
+        'orderDates'  => $objs($p['orderDates'] ?? [], ['item', 'date']),
+    ];
+}
+
 if (!defined('QBO_CLIENT_ID'))     { $v = getenv('QBO_CLIENT_ID');     define('QBO_CLIENT_ID',     is_string($v) ? $v : ''); }
 if (!defined('QBO_CLIENT_SECRET')) { $v = getenv('QBO_CLIENT_SECRET'); define('QBO_CLIENT_SECRET', is_string($v) ? $v : ''); }
 if (!defined('QBO_ENVIRONMENT'))   { $v = getenv('QBO_ENVIRONMENT');   define('QBO_ENVIRONMENT', ($v === 'sandbox' || $v === 'production') ? $v : 'production'); }
@@ -3695,6 +3738,61 @@ switch ($action) {
             'alerts' => $alerts,
             'diag' => (!empty($input['debug']) || ($_GET['debug'] ?? '') === '1') ? ['email' => $GLOBALS['parker_email_diag'] ?? '', 'slack' => $GLOBALS['parker_slack_diag'] ?? 'not-run', 'breakdown' => $GLOBALS['parker_breakdown'] ?? [], 'trelloSample' => $GLOBALS['parker_trello_sample'] ?? [], 'suggSample' => $GLOBALS['parker_sugg_sample'] ?? [], 'aiRaw' => $GLOBALS['parker_ai_raw'] ?? ''] : null,
         ]);
+        break;
+
+    case 'parker_add_meeting':
+        // Operator-only (requireAuth already enforced): ingest an uploaded
+        // meeting transcript/summary, extract highlights via AI, file it
+        // under a client in app_state `ms_parker_meetings`.
+        $mClient = trim($input['client'] ?? '');
+        $mTitle  = trim($input['title'] ?? '');
+        $mDate   = trim($input['date'] ?? '');
+        $mText   = (string)($input['text'] ?? '');
+        if ($mClient === '' || trim($mText) === '') {
+            echo json_encode(['ok' => false, 'error' => 'client and meeting text are required']);
+            break;
+        }
+        $parsed = parker_extract_meeting($mText);
+        $meeting = [
+            'id'          => 'mtg' . time() . substr((string)mt_rand(1000, 9999), 0, 4),
+            'client'      => $mClient,
+            'title'       => $mTitle !== '' ? $mTitle : ($parsed['title'] !== '' ? $parsed['title'] : 'Meeting'),
+            'date'        => $mDate,
+            'uploadedAt'  => date('c'),
+            'summary'     => $parsed['summary'],
+            'highlights'  => $parsed['highlights'],
+            'followUps'   => $parsed['followUps'],
+            'actionItems' => $parsed['actionItems'],
+            'orderDates'  => $parsed['orderDates'],
+        ];
+        // Prepend to the stored list (cap 200).
+        $mStmt = $pdo->prepare("SELECT value_json, rev FROM app_state WHERE key_name = 'ms_parker_meetings'");
+        $mStmt->execute();
+        $mRow = $mStmt->fetch();
+        $list = ($mRow && $mRow['value_json']) ? json_decode($mRow['value_json'], true) : [];
+        if (!is_array($list)) $list = [];
+        array_unshift($list, $meeting);
+        $list = array_slice($list, 0, 200);
+        $mRev = $mRow ? (int)$mRow['rev'] : 0;
+        $pdo->prepare("INSERT INTO app_state (key_name, value_json, rev) VALUES ('ms_parker_meetings', ?, ?)
+            ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), rev = VALUES(rev)")
+            ->execute([json_encode($list), $mRev + 1]);
+        echo json_encode(['ok' => true, 'meeting' => $meeting]);
+        break;
+
+    case 'parker_delete_meeting':
+        $delId = trim($input['id'] ?? '');
+        if ($delId === '') { echo json_encode(['ok' => false, 'error' => 'id required']); break; }
+        $mStmt = $pdo->prepare("SELECT value_json, rev FROM app_state WHERE key_name = 'ms_parker_meetings'");
+        $mStmt->execute();
+        $mRow = $mStmt->fetch();
+        $list = ($mRow && $mRow['value_json']) ? json_decode($mRow['value_json'], true) : [];
+        if (!is_array($list)) $list = [];
+        $list = array_values(array_filter($list, function ($m) use ($delId) { return ($m['id'] ?? '') !== $delId; }));
+        $pdo->prepare("INSERT INTO app_state (key_name, value_json, rev) VALUES ('ms_parker_meetings', ?, ?)
+            ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), rev = rev + 1")
+            ->execute([json_encode($list), 1]);
+        echo json_encode(['ok' => true]);
         break;
 
     case 'parker_get_config':

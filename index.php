@@ -4100,6 +4100,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pk-sugg-actions { display:block; margin-top:7px; }
     .pk-sendbtn { display:inline-block; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.3px; color:#fff; background:var(--accent); border:none; border-radius:7px; padding:5px 14px; text-decoration:none; cursor:pointer; }
     .pk-sendbtn:hover { filter:brightness(1.08); }
+    .pk-mtg-sect { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--text-muted); margin-bottom:3px; }
+    .pk-mtg-row { font-size:13px; color:var(--text); line-height:1.45; margin:2px 0; }
 
     .modal-overlay {
       display: none;
@@ -10807,6 +10809,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
           <span id="parker-brief-stamp" style="font-size:11px; color:var(--text-muted);"></span>
+          <button class="btn btn-ghost" onclick="openParkerMeetingModal()" style="font-size:12px; border:1px solid var(--border);">Upload Meeting</button>
           <button id="parker-run-btn" class="btn btn-primary" onclick="buildParkerBrief()">Run Data</button>
           <button class="btn btn-ghost" onclick="_parkerLock()" style="font-size:12px;">Lock</button>
         </div>
@@ -10837,6 +10840,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="parker-panel-head">Trending</div>
           <div id="parker-trending" class="parker-panel-body"></div>
         </div>
+      </div>
+
+      <!-- Meeting highlights (uploaded Plaud transcripts) -->
+      <div class="parker-panel" style="margin-top:14px;">
+        <div class="parker-panel-head" style="display:flex; align-items:center;">Meeting highlights
+          <button class="btn btn-ghost" onclick="openParkerMeetingModal()" style="margin-left:auto; font-size:11px; padding:3px 10px; border:1px solid var(--border);">Upload</button>
+        </div>
+        <div id="parker-meetings" class="parker-panel-body"></div>
       </div>
 
       <!-- Reorder soon -->
@@ -10879,6 +10890,48 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <button class="btn btn-ghost" onclick="closeParkerAddModal()">Cancel</button>
           <button class="btn btn-primary" onclick="saveParkerAccount(event)">Save</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Parker — Upload Meeting (Plaud transcript) modal -->
+<div class="modal-overlay" id="parker-meeting-modal" style="display:none;">
+  <div class="modal" style="max-width:560px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Upload Meeting</h3>
+      <button onclick="closeParkerMeetingModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px;">
+      <p style="margin:0; font-size:12px; color:var(--text-muted);">Upload a Plaud transcript/summary (or paste it). I'll extract highlights, follow-ups, action items, and any order dates, filed under the client.</p>
+      <div style="display:flex; gap:10px;">
+        <div style="flex:1;">
+          <label class="parker-lbl">Client</label>
+          <input id="parker-mtg-client" type="text" class="form-input" style="width:100%;" placeholder="e.g. Salt" autocomplete="off" list="parker-mtg-clientlist">
+          <datalist id="parker-mtg-clientlist"></datalist>
+        </div>
+        <div style="width:130px;">
+          <label class="parker-lbl">Date</label>
+          <input id="parker-mtg-date" type="date" class="form-input" style="width:100%;">
+        </div>
+      </div>
+      <div>
+        <label class="parker-lbl">Meeting title — optional</label>
+        <input id="parker-mtg-title" type="text" class="form-input" style="width:100%;" placeholder="e.g. 09-24 Weekly Meeting" autocomplete="off">
+      </div>
+      <div>
+        <label class="parker-lbl">Transcript file (.txt / .md / .srt / .vtt)</label>
+        <input id="parker-mtg-file" type="file" accept=".txt,.md,.markdown,.srt,.vtt,.text,text/plain" class="form-input" style="width:100%; padding:7px;" onchange="_parkerMtgFilePicked()">
+        <div style="font-size:11px; color:var(--text-muted); margin-top:3px;">Plaud → Export → choose TXT or Markdown. (PDF/DOCX: open it and paste the text below instead.)</div>
+      </div>
+      <div>
+        <label class="parker-lbl">…or paste the transcript / summary</label>
+        <textarea id="parker-mtg-text" class="form-input" style="width:100%; min-height:120px; resize:vertical;" placeholder="Paste the Plaud transcript or summary here…"></textarea>
+      </div>
+      <div id="parker-mtg-err" style="display:none; font-size:12px; color:var(--danger);"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:2px;">
+        <button class="btn btn-ghost" onclick="closeParkerMeetingModal()">Cancel</button>
+        <button class="btn btn-primary" id="parker-mtg-save" onclick="saveParkerMeeting(event)">Extract highlights</button>
       </div>
     </div>
   </div>
@@ -24325,6 +24378,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   let _parkerBrief = null;       // {generatedAt,generatedBy,intel:{urgentToday,thisWeek,needsReply,trending}}
   let _parkerFilter = null;      // active account-name filter, or null
   let _parkerFinishedCache = {}; // shipmentId -> {acct,label,finishedOn}
+  let _parkerMeetings = [];      // [{id,client,title,date,summary,highlights,followUps,actionItems,orderDates}]
 
   function _pkEsc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function _pkDaysUntil(ds){ if(!ds) return null; const d=new Date(ds); if(isNaN(d)) return null; const t=new Date(); t.setHours(0,0,0,0); d.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
@@ -24361,22 +24415,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _pkParse(res){ try { return (res&&res.success&&res.value)?JSON.parse(res.value):[]; } catch(e){ return []; } }
   async function _parkerLoad(){
     try {
-      const [a,r,b]=await Promise.all([
+      const [a,r,b,m]=await Promise.all([
         apiCall('get_app_state',{key:'ms_parker_accounts'}),
         apiCall('get_app_state',{key:'ms_parker_reorders'}),
         apiCall('get_app_state',{key:'ms_parker_brief'}),
+        apiCall('get_app_state',{key:'ms_parker_meetings'}),
       ]);
-      _parkerAccounts=_pkParse(a); _parkerReorders=_pkParse(r);
+      _parkerAccounts=_pkParse(a); _parkerReorders=_pkParse(r); _parkerMeetings=_pkParse(m);
       try { _parkerBrief=(b&&b.success&&b.value)?JSON.parse(b.value):null; } catch(e){ _parkerBrief=null; }
     } catch(e){ console.warn('parker load',e); }
     if(!Array.isArray(_parkerAccounts)) _parkerAccounts=[];
     if(!Array.isArray(_parkerReorders)) _parkerReorders=[];
+    if(!Array.isArray(_parkerMeetings)) _parkerMeetings=[];
     _parkerRenderAll();
   }
 
   function _parkerRenderAll(){
     _parkerRenderAccounts();
     _parkerRenderIntel();
+    _parkerRenderMeetings();
     _parkerRenderReorders();
     _parkerRenderFinished();
     const st=document.getElementById('parker-brief-stamp');
@@ -24616,6 +24673,109 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     } finally {
       if(btn){ btn.disabled=false; btn.textContent=orig||'Run Data'; }
     }
+  }
+
+  // ── Meeting highlights (uploaded Plaud transcripts) ──────────────────────
+  function _parkerRenderMeetings(){
+    const el=document.getElementById('parker-meetings'); if(!el) return;
+    const list=_parkerMeetings.filter(m=>_parkerMatchesFilter(m.client));
+    if(!list.length){
+      el.innerHTML='<div class="parker-empty">No meetings uploaded'+(_parkerFilter?(' for '+_pkEsc(_parkerFilter)):'')+' yet — click “Upload”. Export a Plaud meeting as TXT/Markdown (or paste it) and I’ll pull out the follow-ups, action items, and order dates.</div>';
+      return;
+    }
+    el.innerHTML=list.map(m=>{
+      const when=m.date?_pkFmtDate(m.date):(m.uploadedAt?_pkFmtDate(m.uploadedAt):'');
+      const sect=(title,rows)=>{
+        if(!rows||!rows.length) return '';
+        return `<div style="margin-top:7px;"><div class="pk-mtg-sect">${title}</div>${rows}</div>`;
+      };
+      const ai=(m.actionItems||[]).map(a=>{
+        const meta=[a.owner,a.due].filter(Boolean).map(_pkEsc).join(' · ');
+        return `<div class="pk-mtg-row">• ${_pkEsc(a.text)}${meta?` <span class="pk-meta">(${meta})</span>`:''}</div>`;
+      }).join('');
+      const fu=(m.followUps||[]).map(f=>`<div class="pk-mtg-row">• ${_pkEsc(f.text)}${f.suggestion?`<div class="pk-sugg" style="margin-top:3px;"><span class="pk-sugg-lbl">Suggested</span>${_pkEsc(f.suggestion)}</div>`:''}</div>`).join('');
+      const od=(m.orderDates||[]).map((o,i)=>`<div class="pk-mtg-row" style="display:flex;align-items:center;gap:8px;">• ${_pkEsc(o.item)} — <strong>${_pkEsc(o.date)}</strong><button class="btn btn-ghost" style="font-size:10px;padding:2px 8px;" onclick="_parkerReorderFromMeeting('${_pkEsc(m.id)}',${i})">Set reorder</button></div>`).join('');
+      const hl=(m.highlights||[]).map(h=>`<div class="pk-mtg-row">• ${_pkEsc(h)}</div>`).join('');
+      return `<div class="parker-item" style="flex-direction:column; align-items:stretch; gap:0;">
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <span class="pk-acct">${_pkEsc(m.client)}</span>
+          <span style="font-weight:700;">${_pkEsc(m.title||'Meeting')}</span>
+          ${when?`<span class="pk-meta">· ${when}</span>`:''}
+          <button class="btn btn-ghost" style="margin-left:auto; font-size:10px; padding:2px 8px; color:var(--danger);" onclick="deleteParkerMeeting('${_pkEsc(m.id)}')">Remove</button>
+        </div>
+        ${m.summary?`<div style="font-size:13px; color:var(--text-muted); margin-top:3px;">${_pkEsc(m.summary)}</div>`:''}
+        ${sect('Action items',ai)}
+        ${sect('Follow-ups',fu)}
+        ${sect('Order dates',od)}
+        ${sect('Highlights',hl)}
+      </div>`;
+    }).join('');
+  }
+  // Turn a meeting's order date into a reorder reminder.
+  function _parkerReorderFromMeeting(mid,idx){
+    const m=_parkerMeetings.find(x=>x.id===mid); if(!m) return;
+    const o=(m.orderDates||[])[idx]; if(!o) return;
+    const d=new Date(o.date);
+    const iso=isNaN(d)?'':d.toISOString().slice(0,10);
+    if(!iso){ if(typeof _msToast==='function')_msToast('That date isn’t a clear calendar date — set it manually under Finished orders.','warn'); return; }
+    _parkerReorders.push({ id:'pk'+Date.now()+Math.floor(Math.random()*1000), shipmentId:'', account:m.client, label:(o.item||'order')+' (from meeting)', finishedOn:'', reorderDate:iso, note:'', done:false });
+    _parkerSaveReorders(); _parkerRenderAll();
+    if(typeof _msToast==='function')_msToast('Reorder reminder set for '+_pkFmtDate(iso)+'.','success');
+  }
+
+  function openParkerMeetingModal(){
+    document.getElementById('parker-mtg-client').value=_parkerFilter||'';
+    document.getElementById('parker-mtg-title').value='';
+    document.getElementById('parker-mtg-date').value='';
+    document.getElementById('parker-mtg-text').value='';
+    const f=document.getElementById('parker-mtg-file'); if(f) f.value='';
+    const err=document.getElementById('parker-mtg-err'); if(err){ err.style.display='none'; err.textContent=''; }
+    // populate client datalist from the watchlist
+    const dl=document.getElementById('parker-mtg-clientlist');
+    if(dl) dl.innerHTML=_parkerAccounts.map(a=>`<option value="${_pkEsc(a.name)}">`).join('');
+    const m=document.getElementById('parker-meeting-modal'); m.classList.add('open'); m.style.display='flex';
+  }
+  function closeParkerMeetingModal(){ const m=document.getElementById('parker-meeting-modal'); m.classList.remove('open'); m.style.display='none'; }
+  function _parkerMtgFilePicked(){
+    const f=document.getElementById('parker-mtg-file'); const file=f&&f.files&&f.files[0]; if(!file) return;
+    const rd=new FileReader();
+    rd.onload=()=>{ document.getElementById('parker-mtg-text').value=String(rd.result||''); };
+    rd.readAsText(file);
+    if(!document.getElementById('parker-mtg-title').value && file.name){ document.getElementById('parker-mtg-title').value=file.name.replace(/\.[^.]+$/,''); }
+  }
+  async function saveParkerMeeting(ev){
+    if(ev) ev.preventDefault();
+    const client=document.getElementById('parker-mtg-client').value.trim();
+    const text=document.getElementById('parker-mtg-text').value.trim();
+    const err=document.getElementById('parker-mtg-err');
+    const showErr=msg=>{ if(err){ err.style.display='block'; err.textContent=msg; } };
+    if(!client){ showErr('Pick a client.'); return; }
+    if(!text){ showErr('Upload a file or paste the transcript.'); return; }
+    const btn=document.getElementById('parker-mtg-save'); const orig=btn?btn.textContent:'';
+    if(btn){ btn.disabled=true; btn.textContent='Extracting…'; }
+    try {
+      const r=await apiCall('parker_add_meeting',{
+        client, text,
+        title:document.getElementById('parker-mtg-title').value.trim(),
+        date:document.getElementById('parker-mtg-date').value.trim(),
+      });
+      if(r&&r.ok){
+        closeParkerMeetingModal();
+        await _parkerLoad();
+        if(typeof _msToast==='function'){
+          const mt=r.meeting||{};
+          const n=((mt.actionItems||[]).length)+((mt.followUps||[]).length)+((mt.orderDates||[]).length);
+          _msToast('Meeting added — '+n+' highlight'+(n===1?'':'s')+' extracted.','success');
+        }
+      } else { showErr((r&&r.error)||'Couldn’t process that — try again.'); }
+    } catch(e){ showErr('Upload failed — try again.'); }
+    finally { if(btn){ btn.disabled=false; btn.textContent=orig||'Extract highlights'; } }
+  }
+  async function deleteParkerMeeting(id){
+    if(!confirm('Remove this meeting and its highlights?')) return;
+    try { await apiCall('parker_delete_meeting',{id}); } catch(e){}
+    _parkerMeetings=_parkerMeetings.filter(m=>m.id!==id);
+    _parkerRenderAll();
   }
 
   function flowToStep(flow) {
