@@ -10858,7 +10858,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       <!-- Finished orders → set reorder reminder -->
       <div class="parker-panel" style="margin-top:14px;">
-        <div class="parker-panel-head">Finished orders — set a reorder reminder</div>
+        <div class="parker-panel-head">Orders &amp; reordering</div>
         <div id="parker-finished" class="parker-panel-body"></div>
       </div>
     </main>
@@ -24550,19 +24550,89 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }).join('');
   }
 
+  // ── Order history + reorder cadence ──────────────────────────────────────
+  function _parkerTs(d){ if(!d) return 0; const t=new Date(d).getTime(); return isNaN(t)?0:t; }
+  function _parkerAcctMatches(cn, acct){ if(!cn||!acct) return false; cn=String(cn).toLowerCase(); acct=String(acct).toLowerCase(); return cn===acct || cn.indexOf(acct)!==-1; }
+  // Pull a watched account's orders (from orderData) + received shipments.
+  function _parkerOrdersFor(acct){
+    const orders=[];
+    Object.values(typeof orderData==='object'?orderData:{}).forEach(o=>{
+      if(!o) return;
+      const belongs=_parkerAcctMatches(o.clientName,acct)||(o.entries||[]).some(e=>_parkerAcctMatches(e.clientName,acct));
+      if(!belongs) return;
+      let val=0; try{ val=(orderTotals(o)||{}).totalUsd||0; }catch(e){}
+      orders.push({id:o.id, date:(o.dateCreated||o.createdAt||''), status:(o.status==='complete'?'complete':'open'), value:val});
+    });
+    orders.sort((a,b)=>_parkerTs(b.date)-_parkerTs(a.date));
+    const received=[];
+    Object.values(typeof shipmentData==='object'?shipmentData:{}).forEach(s=>{
+      if(!s||(s.status!=='delivered'&&s.status!=='received')) return;
+      const belongs=(s.entries||[]).some(e=>_parkerAcctMatches(e.clientName,acct))
+        || (s.sampleEntries||[]).some(e=>_parkerAcctMatches(e.clientName,acct));
+      if(!belongs) return;
+      received.push({id:s.id, date:(s.receivedAt||s.deliveredOn||''), label:_parkerShipLabel(s), status:s.status});
+    });
+    received.sort((a,b)=>_parkerTs(b.date)-_parkerTs(a.date));
+    const lastOrder=orders.find(o=>o.date);
+    const lastRecv=received.find(r=>r.date);
+    const lastOrderDate=[lastOrder&&lastOrder.date, lastRecv&&lastRecv.date].filter(Boolean).sort((a,b)=>_parkerTs(b)-_parkerTs(a))[0]||'';
+    return {orders, received, lastOrderDate,
+      openCount:orders.filter(o=>o.status==='open').length,
+      completeCount:orders.filter(o=>o.status==='complete').length,
+      receivedCount:received.length};
+  }
+  function _parkerAcct(name){ return _parkerAccounts.find(a=>a.name===name)||null; }
+  // Computed next order: explicit override wins, else lastOrder + cadence.
+  function _parkerComputedNextOrder(acct, lastOrderDate){
+    const a=_parkerAcct(acct)||{};
+    if(a.nextOrderDate) return a.nextOrderDate;
+    const n=parseInt(a.reorderEvery,10)||0;
+    if(n>0 && lastOrderDate){
+      const d=new Date(lastOrderDate); if(isNaN(d)) return '';
+      const unit=a.reorderUnit||'weeks';
+      if(unit==='days') d.setDate(d.getDate()+n);
+      else if(unit==='months') d.setMonth(d.getMonth()+n);
+      else d.setDate(d.getDate()+n*7);
+      return d.toISOString().slice(0,10);
+    }
+    return '';
+  }
+  function _parkerSetCadence(idx, field, value){
+    const a=_parkerAccounts[idx]; if(!a) return;
+    if(field==='every') a.reorderEvery=value.replace(/[^0-9]/g,'');
+    else if(field==='unit') a.reorderUnit=value;
+    else if(field==='next') a.nextOrderDate=value;
+    _parkerSaveAccounts(); _parkerRenderAll();
+    if(field==='next' && typeof _msToast==='function') _msToast(value?('Next order set for '+_pkFmtDate(value)+'.'):'Next-order date cleared.');
+  }
+
   function _parkerRenderReorders(){
     const el=document.getElementById('parker-reorder'); if(!el) return;
-    const due=_parkerReorders.filter(r=>!r.done&&_parkerMatchesFilter(r.account))
-      .map(r=>({...r, days:_pkDaysUntil(r.reorderDate)})).filter(r=>r.days!==null)
-      .sort((a,b)=>a.days-b.days);
-    if(!due.length){ el.innerHTML='<div class="parker-empty">No reorder reminders set. Add dates under “Finished orders” below.</div>'; return; }
-    el.innerHTML=due.map(r=>{
+    const items=[];
+    // Manual + meeting reminders.
+    _parkerReorders.filter(r=>!r.done&&_parkerMatchesFilter(r.account)).forEach(r=>{
+      const days=_pkDaysUntil(r.reorderDate); if(days===null) return;
+      items.push({account:r.account, label:r.label||'order', date:r.reorderDate, days, manualId:r.id});
+    });
+    // Cadence-computed next order per watched account.
+    _parkerAccounts.filter(a=>_parkerMatchesFilter(a.name)).forEach(a=>{
+      const info=_parkerOrdersFor(a.name);
+      const next=_parkerComputedNextOrder(a.name, info.lastOrderDate);
+      if(!next) return;
+      const days=_pkDaysUntil(next); if(days===null) return;
+      const cad=a.nextOrderDate?'set date':('every '+(a.reorderEvery||'?')+' '+(a.reorderUnit||'weeks'));
+      items.push({account:a.name, label:'Next order ('+cad+')', date:next, days, computed:true});
+    });
+    items.sort((a,b)=>a.days-b.days);
+    if(!items.length){ el.innerHTML='<div class="parker-empty">No reorders due. Set a cadence or next-order date under “Orders &amp; reordering” below.</div>'; return; }
+    el.innerHTML=items.map(r=>{
       const cls=r.days<0?'over':(r.days<=7?'soon':'');
       const when=r.days<0?('Overdue '+(-r.days)+'d'):(r.days===0?'Today':('in '+r.days+'d'));
+      const btn=r.manualId?`<button class="btn btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="markParkerReorderDone('${_pkEsc(r.manualId)}')">Done</button>`:'';
       return `<div class="parker-item" style="align-items:center;">
-        <div style="flex:1;"><span class="pk-acct">${_pkEsc(r.account)}</span> — ${_pkEsc(r.label||'order')}<span class="pk-meta"> · reorder ${_pkFmtDate(r.reorderDate)}</span></div>
+        <div style="flex:1;"><span class="pk-acct">${_pkEsc(r.account)}</span> — ${_pkEsc(r.label)}<span class="pk-meta"> · ${_pkFmtDate(r.date)}</span></div>
         <span class="parker-due ${cls}">${when}</span>
-        <button class="btn btn-ghost" style="font-size:11px; padding:3px 8px;" onclick="markParkerReorderDone('${_pkEsc(r.id)}')">Done</button>
+        ${btn}
       </div>`;
     }).join('');
   }
@@ -24571,42 +24641,48 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if(r){ r.done=true; _parkerSaveReorders(); _parkerRenderAll(); if(typeof _msToast==='function') _msToast('Reorder marked done.'); }
   }
 
-  function _parkerFinishedShipments(){
-    const out=[];
-    Object.values(typeof shipmentData==='object'?shipmentData:{}).forEach(s=>{
-      if(!s||(s.status!=='delivered'&&s.status!=='received')) return;
-      const acct=_parkerAccountForShipment(s); if(!acct||!_parkerMatchesFilter(acct)) return;
-      out.push({s,acct});
-    });
-    return out;
-  }
-  function _parkerReorderForShip(id){ return _parkerReorders.find(r=>String(r.shipmentId)===String(id)); }
+  function _parkerUsd(v){ return '$'+Math.round(v||0).toLocaleString('en-US'); }
+  // Per-account Orders & Reordering card: history snapshot + cadence controls.
   function _parkerRenderFinished(){
     const el=document.getElementById('parker-finished'); if(!el) return;
-    if(!_parkerAccounts.length){ el.innerHTML='<div class="parker-empty">Add an account to see its finished orders here.</div>'; return; }
-    const fin=_parkerFinishedShipments(); _parkerFinishedCache={};
-    if(!fin.length){ el.innerHTML='<div class="parker-empty">No finished (delivered/received) shipments for your watched accounts yet.</div>'; return; }
-    el.innerHTML=fin.map(({s,acct})=>{
-      const finishedOn=s.receivedAt||s.deliveredOn||''; const label=_parkerShipLabel(s);
-      _parkerFinishedCache[s.id]={acct,label,finishedOn};
-      const existing=_parkerReorderForShip(s.id); const dateVal=existing?existing.reorderDate:'';
-      return `<div class="parker-item" style="align-items:center;">
-        <span class="parker-src">${s.status==='received'?'received':'delivered'}</span>
-        <div style="flex:1;"><span class="pk-acct">${_pkEsc(acct)}</span> — ${_pkEsc(label)}<span class="pk-meta"> · finished ${_pkFmtDate(finishedOn)}</span></div>
-        <label class="pk-meta" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">Reorder on
-          <input type="date" value="${_pkEsc(dateVal)}" onchange="setParkerReorder('${_pkEsc(s.id)}', this.value)" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">
-        </label>
+    if(!_parkerAccounts.length){ el.innerHTML='<div class="parker-empty">Add an account to see its orders and set a reorder cadence.</div>'; return; }
+    const accts=_parkerAccounts.filter(a=>_parkerMatchesFilter(a.name));
+    el.innerHTML=accts.map((a)=>{
+      const idx=_parkerAccounts.indexOf(a);
+      const info=_parkerOrdersFor(a.name);
+      const next=_parkerComputedNextOrder(a.name, info.lastOrderDate);
+      const nextDays=next?_pkDaysUntil(next):null;
+      const nextCls=nextDays==null?'':(nextDays<0?'over':(nextDays<=7?'soon':''));
+      const nextTxt=next?(_pkFmtDate(next)+(nextDays!=null?(nextDays<0?(' · overdue '+(-nextDays)+'d'):(nextDays===0?' · today':(' · in '+nextDays+'d'))):'')):'—';
+      // recent orders (up to 4)
+      const recent=info.orders.slice(0,4).map(o=>`<div class="pk-mtg-row">• ${o.date?_pkFmtDate(o.date):'—'} · <span class="${o.status==='complete'?'':'pk-meta'}">${o.status}</span>${o.value?(' · '+_parkerUsd(o.value)):''}</div>`).join('')
+        || '<div class="pk-meta" style="font-size:12px;">No orders found in the app for this name.</div>';
+      const recv=info.received.slice(0,3).map(r=>`<div class="pk-mtg-row">• ${r.date?_pkFmtDate(r.date):'—'} · received · ${_pkEsc(r.label)}</div>`).join('');
+      const unit=a.reorderUnit||'weeks';
+      const opt=(u,lbl)=>`<option value="${u}"${unit===u?' selected':''}>${lbl}</option>`;
+      return `<div class="parker-item" style="flex-direction:column; align-items:stretch; gap:0;">
+        <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+          <span class="pk-acct" style="font-size:14px;">${_pkEsc(a.name)}</span>
+          <span class="pk-meta">Last order: ${info.lastOrderDate?_pkFmtDate(info.lastOrderDate):'—'}</span>
+          <span class="pk-meta">Open ${info.openCount} · Completed ${info.completeCount} · Received ${info.receivedCount}</span>
+          <span style="margin-left:auto; font-weight:800;" class="parker-due ${nextCls}">Order next: ${nextTxt}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:9px; padding:9px 11px; background:rgba(127,127,127,.05); border-radius:8px;">
+          <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">Reorder every
+            <input type="number" min="0" value="${a.reorderEvery||''}" placeholder="e.g. 8" style="width:62px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;" onchange="_parkerSetCadence(${idx},'every',this.value)">
+            <select onchange="_parkerSetCadence(${idx},'unit',this.value)" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">${opt('days','days')}${opt('weeks','weeks')}${opt('months','months')}</select>
+          </label>
+          <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">or next order on
+            <input type="date" value="${_pkEsc(a.nextOrderDate||'')}" onchange="_parkerSetCadence(${idx},'next',this.value)" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">
+          </label>
+          ${a.nextOrderDate?`<button class="btn btn-ghost" style="font-size:10px; padding:2px 8px;" onclick="_parkerSetCadence(${idx},'next','')">clear date</button>`:''}
+        </div>
+        <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:9px;">
+          <div style="flex:1; min-width:200px;"><div class="pk-mtg-sect">Recent orders</div>${recent}</div>
+          ${recv?`<div style="flex:1; min-width:200px;"><div class="pk-mtg-sect">Received</div>${recv}</div>`:''}
+        </div>
       </div>`;
     }).join('');
-  }
-  function setParkerReorder(shipmentId, dateVal){
-    const meta=_parkerFinishedCache[shipmentId]||{};
-    const r=_parkerReorderForShip(shipmentId);
-    if(!dateVal){ _parkerReorders=_parkerReorders.filter(x=>String(x.shipmentId)!==String(shipmentId)); }
-    else if(r){ r.reorderDate=dateVal; r.done=false; }
-    else { _parkerReorders.push({ id:'pk'+Date.now()+Math.floor(Math.random()*1000), shipmentId:String(shipmentId), account:meta.acct||'', label:meta.label||'', finishedOn:meta.finishedOn||'', reorderDate:dateVal, note:'', done:false }); }
-    _parkerSaveReorders(); _parkerRenderAll();
-    if(typeof _msToast==='function') _msToast(dateVal?('Reorder reminder set for '+_pkFmtDate(dateVal)+'.'):'Reorder reminder cleared.');
   }
 
   function _parkerSaveAccounts(){ apiCall('save_app_state',{key:'ms_parker_accounts', value:JSON.stringify(_parkerAccounts), changed_by:(typeof getCurrentUser==='function'?getCurrentUser():'')}).catch(()=>{}); }
