@@ -1145,9 +1145,10 @@ function parker_reorder_items(PDO $pdo, array $accounts): array {
             ]];
         }
         foreach ($plans as $p) {
+            $mode = $p['mode'] ?? (!empty($p['nextDate']) ? 'date' : 'recurring');
             $nextTs = 0;
-            if (!empty($p['nextDate'])) {
-                $nextTs = strtotime((string)$p['nextDate']);
+            if ($mode === 'date') {
+                $nextTs = !empty($p['nextDate']) ? strtotime((string)$p['nextDate']) : 0;
             } else {
                 $every = (int)($p['every'] ?? 0); $unit = $p['unit'] ?? 'weeks';
                 if ($every > 0 && $lastTs > 0) {

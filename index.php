@@ -24443,14 +24443,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _parkerAccounts.forEach(a=>{
       if(!Array.isArray(a.reorderPlans)){
         const legacy=(a.reorderEvery||a.nextOrderDate||a.reorderWhat);
-        a.reorderPlans = legacy ? [{ id:'rp'+Date.now()+Math.floor(Math.random()*1000), what:a.reorderWhat||'', fromOrderId:a.reorderFromOrderId||'', every:a.reorderEvery||'', unit:a.reorderUnit||'weeks', nextDate:a.nextOrderDate||'', leadDays:(a.reorderLeadDays!=null&&a.reorderLeadDays!=='')?a.reorderLeadDays:14 }] : [];
+        a.reorderPlans = legacy ? [{ id:'rp'+Date.now()+Math.floor(Math.random()*1000), mode:(a.nextOrderDate?'date':'recurring'), what:a.reorderWhat||'', fromOrderId:a.reorderFromOrderId||'', every:a.reorderEvery||'', unit:a.reorderUnit||'weeks', nextDate:a.nextOrderDate||'', leadDays:(a.reorderLeadDays!=null&&a.reorderLeadDays!=='')?a.reorderLeadDays:14 }] : [];
         changed=true;
       }
     });
     if(changed) _parkerSaveAccounts();
   }
+  function _parkerPlanMode(plan){ return plan.mode || (plan.nextDate?'date':'recurring'); }
   function _parkerPlanNext(plan, lastOrderDate){
-    if(plan.nextDate) return plan.nextDate;
+    const mode=_parkerPlanMode(plan);
+    if(mode==='date') return plan.nextDate||'';
     const n=parseInt(plan.every,10)||0; if(!(n>0)) return '';
     const base=_pkParseDate(lastOrderDate); if(!base) return '';
     const unit=plan.unit||'weeks';
@@ -24621,7 +24623,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _parkerAddPlan(idx){
     const a=_parkerAccounts[idx]; if(!a) return;
     if(!Array.isArray(a.reorderPlans)) a.reorderPlans=[];
-    a.reorderPlans.push({ id:'rp'+Date.now()+Math.floor(Math.random()*1000), what:'', fromOrderId:'', every:'', unit:'weeks', nextDate:'', leadDays:14 });
+    a.reorderPlans.push({ id:'rp'+Date.now()+Math.floor(Math.random()*1000), mode:'recurring', what:'', fromOrderId:'', every:'', unit:'weeks', nextDate:'', leadDays:14 });
     _parkerSaveAccounts(); _parkerRenderAll();
   }
   function _parkerRemovePlan(idx, planId){
@@ -24632,7 +24634,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _parkerSetPlan(idx, planId, field, value){
     const a=_parkerAccounts[idx]; if(!a||!Array.isArray(a.reorderPlans)) return;
     const p=a.reorderPlans.find(x=>x.id===planId); if(!p) return;
-    if(field==='every') p.every=value.replace(/[^0-9]/g,'');
+    if(field==='mode') p.mode=(value==='date'?'date':'recurring');
+    else if(field==='every') p.every=value.replace(/[^0-9]/g,'');
     else if(field==='unit') p.unit=value;
     else if(field==='next') p.nextDate=value;
     else if(field==='lead') p.leadDays=value.replace(/[^0-9]/g,'');
@@ -24710,10 +24713,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const planRows=plans.map((p,pi)=>{
         const unit=p.unit||'weeks';
         const opt=(u,lbl)=>`<option value="${u}"${unit===u?' selected':''}>${lbl}</option>`;
+        const mode=_parkerPlanMode(p);
         const nx=_parkerPlanNext(p, info.lastOrderDate);
         const nd=nx?_pkDaysUntil(nx):null;
         const ndTxt=nx?(_pkFmtDate(nx)+(nd!=null?(nd<0?(' · overdue '+(-nd)+'d'):(nd===0?' · today':(' · in '+nd+'d'))):'')):'set a schedule';
         const ndCls=nd==null?'':(nd<0?'over':(nd<=7?'soon':''));
+        // Honoring note — explicit about which method is driving the date.
+        const honoring = mode==='date'
+          ? (p.nextDate ? 'Honoring the specific date' : 'Pick a date')
+          : (parseInt(p.every,10)>0 ? ('Honoring the cadence — every '+p.every+' '+unit+(info.lastOrderDate?(' from last order '+_pkFmtDate(info.lastOrderDate)):'')) : 'Set a cadence');
+        // Schedule control depends on the chosen mode (no ambiguity).
+        const sched = mode==='date'
+          ? `<label class="pk-meta" style="display:flex; align-items:center; gap:6px;">on
+               <input type="date" value="${_pkEsc(p.nextDate||'')}" class="pk-cad-field" style="width:150px;" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','next',this.value)">
+             </label>`
+          : `<label class="pk-meta" style="display:flex; align-items:center; gap:6px;">every
+               <input type="number" min="0" value="${p.every||''}" placeholder="e.g. 8" class="pk-cad-field" style="width:62px;" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','every',this.value)">
+               <select class="pk-cad-field" style="width:100px;" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','unit',this.value)">${opt('days','days')}${opt('weeks','weeks')}${opt('months','months')}</select>
+             </label>`;
         return `<div style="padding:10px 11px; background:rgba(127,127,127,.05); border-radius:8px; margin-top:8px;">
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span class="pk-meta" style="font-weight:800;">Reorder ${pi+1}</span>
@@ -24721,18 +24738,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <button class="btn btn-ghost" style="margin-left:auto; font-size:10px; padding:2px 8px; color:var(--danger);" onclick="_parkerRemovePlan(${idx},'${_pkEsc(p.id)}')">Remove</button>
           </div>
           <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:8px;">
-            <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">every
-              <input type="number" min="0" value="${p.every||''}" placeholder="e.g. 8" class="pk-cad-field" style="width:62px;" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','every',this.value)">
-              <select class="pk-cad-field" style="width:100px;" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','unit',this.value)">${opt('days','days')}${opt('weeks','weeks')}${opt('months','months')}</select>
+            <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">reorder
+              <select class="pk-cad-field" style="width:140px;" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','mode',this.value)"><option value="recurring"${mode==='recurring'?' selected':''}>on a cadence</option><option value="date"${mode==='date'?' selected':''}>on a set date</option></select>
             </label>
-            <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">or on
-              <input type="date" value="${_pkEsc(p.nextDate||'')}" class="pk-cad-field" style="width:150px;" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','next',this.value)">
-            </label>
-            ${p.nextDate?`<button class="btn btn-ghost" style="font-size:10px; padding:2px 8px;" onclick="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','next','')">clear</button>`:''}
+            ${sched}
             <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">remind
               <input type="number" min="0" value="${p.leadDays!=null&&p.leadDays!==''?p.leadDays:14}" class="pk-cad-field" style="width:58px;" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','lead',this.value)"> before
             </label>
           </div>
+          ${honoring?`<div class="pk-meta" style="font-size:11px; margin-top:6px; font-style:italic;">${_pkEsc(honoring)}</div>`:''}
           <label class="pk-meta" style="display:flex; align-items:center; gap:6px; margin-top:8px;">reordering
             <select class="pk-cad-field" style="width:180px;" onchange="_parkerSetRedoPlan(${idx},'${_pkEsc(p.id)}',this.value)"><option value="">Redo a past order…</option>${redoOpts}</select>
             <input type="text" class="pk-cad-field" style="flex:1; min-width:200px;" placeholder="…or describe what you're reordering" value="${_pkEsc(p.what||'')}" onchange="_parkerSetPlan(${idx},'${_pkEsc(p.id)}','what',this.value)">
