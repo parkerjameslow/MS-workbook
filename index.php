@@ -10715,6 +10715,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="btn btn-ghost" onclick="clearPipelineFilters()">Clear</button>
         <span id="pl-filter-note" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></span>
       </div>
+      <button class="btn btn-ghost" onclick="refreshAllTracking(this)" title="Re-check every shipment's carrier tracking now" style="font-size:12px; border:1px solid var(--border);">↻ Refresh all tracking</button>
       <span style="font-size:11px; color:var(--text-muted);" title="Drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.">Every workbook by stage</span>
     </div>
     <div id="pipeline-board" class="crm-board"></div>
@@ -45697,6 +45698,33 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     } finally {
       _plTrackRefreshing = false;
       if (changed) { try { saveShipments(); } catch (e) {} if (location.hash === '#/pipeline') renderPipelineBoard(); }
+    }
+  }
+  // Force-refresh EVERY tracked shipment now (ignores the 3h cache), with
+  // progress feedback. Wired to the "Refresh all tracking" button.
+  async function refreshAllTracking(btn){
+    if (_plTrackRefreshing) return;
+    const all = Object.values(shipmentData || {}).filter(s => s && s.carrier && s.trackingNumber && s.status !== 'received');
+    if (!all.length) { if (typeof _msToast === 'function') _msToast('No shipments with a carrier + tracking number to refresh.'); return; }
+    _plTrackRefreshing = true;
+    const orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; }
+    let done = 0, changed = 0;
+    try {
+      for (const s of all) {
+        if (btn) btn.textContent = 'Refreshing ' + (done + 1) + '/' + all.length + '…';
+        try {
+          const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
+          if (r && r.ok && r.data) { s.tracking = Object.assign({}, r.data, { checkedAt: Date.now() }); changed++; }
+          else { s.tracking = Object.assign({}, s.tracking || {}, { checkedAt: Date.now() }); }
+        } catch (e) { s.tracking = Object.assign({}, s.tracking || {}, { checkedAt: Date.now() }); }
+        done++;
+      }
+    } finally {
+      _plTrackRefreshing = false;
+      try { saveShipments(); } catch (e) {}
+      if (location.hash === '#/pipeline') renderPipelineBoard();
+      if (typeof _msToast === 'function') _msToast('Refreshed ' + all.length + ' shipment' + (all.length === 1 ? '' : 's') + ' — ' + changed + ' updated.', 'success');
     }
   }
   // Manual per-shipment refresh from a pill click.
