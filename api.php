@@ -1153,10 +1153,11 @@ function parker_reorder_items(PDO $pdo, array $accounts): array {
         if ($daysUntil > $lead) continue; // not in the lead window yet
         $dateStr = date('M j, Y', $nextTs);
         $when = $daysUntil < 0 ? ('overdue ' . (-$daysUntil) . 'd') : ($daysUntil === 0 ? 'today' : ('in ' . $daysUntil . 'd'));
+        $what = trim((string)($a['reorderWhat'] ?? ''));
         $out[] = ['bucket' => ($daysUntil <= 2 ? 'urgentToday' : 'thisWeek'), 'item' => [
             'account'    => $name, 'source' => 'reorder',
-            'text'       => "Next order due {$dateStr} ({$when}) — time to start the reorder conversation.",
-            'suggestion' => "Reach out to {$name} now to kick off the next order (target {$dateStr}).",
+            'text'       => "Next order due {$dateStr} ({$when})" . ($what !== '' ? " — {$what}" : '') . " — time to start the reorder conversation.",
+            'suggestion' => $what !== '' ? "Reach out to {$name} to kick off: {$what} (target {$dateStr})." : "Reach out to {$name} now to kick off the next order (target {$dateStr}).",
         ]];
     }
 

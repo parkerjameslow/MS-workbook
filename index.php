@@ -24607,8 +24607,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     else if(field==='unit') a.reorderUnit=value;
     else if(field==='next') a.nextOrderDate=value;
     else if(field==='lead') a.reorderLeadDays=value.replace(/[^0-9]/g,'');
+    else if(field==='what'){ a.reorderWhat=value; if(!value) a.reorderFromOrderId=''; }
     _parkerSaveAccounts(); _parkerRenderAll();
     if(field==='next' && typeof _msToast==='function') _msToast(value?('Next order set for '+_pkFmtDate(value)+'.'):'Next-order date cleared.');
+  }
+  // Pick a past order to "redo" — fills the reorder description.
+  function _parkerSetRedo(idx, orderId){
+    const a=_parkerAccounts[idx]; if(!a||!orderId) return;
+    const o=(_parkerOrdersFor(a.name).orders||[]).find(x=>String(x.id)===String(orderId));
+    a.reorderFromOrderId=orderId;
+    a.reorderWhat='Redo '+(o&&o.date?_pkFmtDate(o.date):'')+' order'+(o&&o.value?(' ('+_parkerUsd(o.value)+')'):'');
+    _parkerSaveAccounts(); _parkerRenderAll();
+    if(typeof _msToast==='function') _msToast('Set to redo that order.','success');
   }
 
   function _parkerRenderReorders(){
@@ -24626,7 +24636,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if(!next) return;
       const days=_pkDaysUntil(next); if(days===null) return;
       const cad=a.nextOrderDate?'set date':('every '+(a.reorderEvery||'?')+' '+(a.reorderUnit||'weeks'));
-      items.push({account:a.name, label:'Next order ('+cad+')', date:next, days, computed:true});
+      const label=a.reorderWhat?a.reorderWhat:('Next order ('+cad+')');
+      items.push({account:a.name, label, date:next, days, computed:true});
     });
     items.sort((a,b)=>a.days-b.days);
     if(!items.length){ el.innerHTML='<div class="parker-empty">No reorders due. Set a cadence or next-order date under “Orders &amp; reordering” below.</div>'; return; }
@@ -24665,6 +24676,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const recv=info.received.slice(0,3).map(r=>`<div class="pk-mtg-row">• ${r.date?_pkFmtDate(r.date):'—'} · received · ${_pkEsc(r.label)}</div>`).join('');
       const unit=a.reorderUnit||'weeks';
       const opt=(u,lbl)=>`<option value="${u}"${unit===u?' selected':''}>${lbl}</option>`;
+      const redoOpts=info.orders.slice(0,8).map(o=>`<option value="${_pkEsc(o.id)}">${o.date?_pkFmtDate(o.date):'—'}${o.value?(' · '+_parkerUsd(o.value)):''}${o.status==='complete'?' · complete':' · open'}</option>`).join('');
       return `<div class="parker-item" style="flex-direction:column; align-items:stretch; gap:0;">
         <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
           <span class="pk-acct" style="font-size:14px;">${_pkEsc(a.name)}</span>
@@ -24683,6 +24695,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           ${a.nextOrderDate?`<button class="btn btn-ghost" style="font-size:10px; padding:2px 8px;" onclick="_parkerSetCadence(${idx},'next','')">clear date</button>`:''}
           <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">remind
             <input type="number" min="0" value="${a.reorderLeadDays!=null&&a.reorderLeadDays!==''?a.reorderLeadDays:14}" class="pk-cad-field" style="width:64px;" onchange="_parkerSetCadence(${idx},'lead',this.value)"> days before
+          </label>
+          <label class="pk-meta" style="display:flex; align-items:center; gap:6px; flex-basis:100%;">Reordering
+            <select class="pk-cad-field" style="width:190px;" onchange="_parkerSetRedo(${idx}, this.value)"><option value="">Redo a past order…</option>${redoOpts}</select>
+            <input type="text" class="pk-cad-field" style="flex:1; min-width:220px;" placeholder="…or describe what you're reordering (e.g. 500 NL hats)" value="${_pkEsc(a.reorderWhat||'')}" onchange="_parkerSetCadence(${idx},'what',this.value)">
           </label>
         </div>
         <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:9px;">
