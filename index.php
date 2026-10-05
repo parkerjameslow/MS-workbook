@@ -45595,13 +45595,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     else if (/transit|out for delivery|on its way|departed|arriv|processed|picked up|collect|scan|in progress/.test(raw)) key = 'in_transit';
     else key = 'pending';
     const eta = (t && t.eta) ? t.eta : (s ? (s.eta || '') : '');
-    const deliveredOn = (s && (s.deliveredOn || s.receivedAt)) || '';
+    // Prefer the carrier's OWN delivered date (statusDate when delivered),
+    // then the operator-entered date.
+    const carrierDelivered = (t && key === 'delivered') ? (t.deliveredOn || t.statusDate || '') : '';
+    const deliveredOn = carrierDelivered || (s && (s.deliveredOn || s.receivedAt)) || '';
     return { key, eta, deliveredOn };
   }
   function _trackFmtDate(v) {
     if (!v) return '';
-    const d = new Date(v);
-    return isNaN(d.getTime()) ? String(v) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const d = (typeof _pkParseDate === 'function') ? _pkParseDate(v) : new Date(v);
+    return (!d || isNaN(d.getTime())) ? String(v) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
   // The carrier's own public tracking-page URL for a number.
   function _carrierTrackingUrl(carrier, number) {

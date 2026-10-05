@@ -4124,6 +4124,9 @@ switch ($action) {
                     'status'         => $statusPhrase,
                     'location'       => $location,
                     'eta'            => $eta,
+                    // Timestamp of the current status — for Delivered this is
+                    // the actual delivery date/time.
+                    'statusDate'     => (string)($sh['status']['timestamp'] ?? ''),
                     'events'         => $events,
                     'fetchedAt'      => date('c'),
                     'carrier'        => 'dhl',
@@ -4205,6 +4208,7 @@ switch ($action) {
                 }
                 echo json_encode(['ok' => true, 'data' => [
                     'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
+                    'statusDate' => (string)($events[0]['time'] ?? ''), // latest scan = status time
                     'events' => $events, 'fetchedAt' => date('c'),
                     'carrier' => 'fedex', 'trackingNumber' => $tn, 'source' => 'fedex_api',
                 ]]);
@@ -4283,6 +4287,7 @@ switch ($action) {
                 }
                 echo json_encode(['ok' => true, 'data' => [
                     'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
+                    'statusDate' => (string)($events[0]['time'] ?? ''), // latest activity = status time
                     'events' => $events, 'fetchedAt' => date('c'),
                     'carrier' => 'ups', 'trackingNumber' => $tn, 'source' => 'ups_api',
                 ]]);
