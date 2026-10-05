@@ -1097,6 +1097,88 @@ function parker_extract_meeting(string $text): array {
     ];
 }
 
+// Compute reorder nudges server-side (for the 8am brief): for each watched
+// account, work out the next order date (explicit override, else last order
+// + cadence) and, once we're within the account's lead window, surface it so
+// Parker gets an advance heads-up to start the reorder conversation. Also
+// includes manual/meeting reminders. Returns [{bucket, item}].
+function parker_reorder_items(PDO $pdo, array $accounts): array {
+    $read = function ($k) use ($pdo) {
+        $s = $pdo->prepare("SELECT value_json FROM app_state WHERE key_name = ?");
+        $s->execute([$k]); $v = $s->fetchColumn();
+        $d = $v ? json_decode($v, true) : []; return is_array($d) ? $d : [];
+    };
+    $orders = $read('ms_orders');
+    $ships  = $read('ms_shipments');
+    $manual = $read('ms_parker_reorders');
+    $today  = strtotime('today');
+    $match  = function ($cn, $acct) { if (!$cn || !$acct) return false; $cn = mb_strtolower((string)$cn); $acct = mb_strtolower((string)$acct); return $cn === $acct || mb_strpos($cn, $acct) !== false; };
+    $out = [];
+
+    foreach ($accounts as $a) {
+        $name = trim((string)($a['name'] ?? '')); if ($name === '') continue;
+        // Last order/received date for this client.
+        $lastTs = 0;
+        foreach ($orders as $o) {
+            if (!is_array($o)) continue;
+            $belongs = $match($o['clientName'] ?? '', $name);
+            if (!$belongs) foreach (($o['entries'] ?? []) as $e) { if ($match($e['clientName'] ?? '', $name)) { $belongs = true; break; } }
+            if (!$belongs) continue;
+            $d = strtotime((string)($o['dateCreated'] ?? ($o['createdAt'] ?? ''))); if ($d && $d > $lastTs) $lastTs = $d;
+        }
+        foreach ($ships as $s) {
+            if (!is_array($s) || !in_array($s['status'] ?? '', ['delivered', 'received'], true)) continue;
+            $belongs = false;
+            foreach (($s['entries'] ?? []) as $e) { if ($match($e['clientName'] ?? '', $name)) { $belongs = true; break; } }
+            if (!$belongs) foreach (($s['sampleEntries'] ?? []) as $e) { if ($match($e['clientName'] ?? '', $name)) { $belongs = true; break; } }
+            if (!$belongs) continue;
+            $d = strtotime((string)($s['receivedAt'] ?? ($s['deliveredOn'] ?? ''))); if ($d && $d > $lastTs) $lastTs = $d;
+        }
+        // Next order date.
+        $nextTs = 0;
+        if (!empty($a['nextOrderDate'])) {
+            $nextTs = strtotime((string)$a['nextOrderDate']);
+        } else {
+            $every = (int)($a['reorderEvery'] ?? 0); $unit = $a['reorderUnit'] ?? 'weeks';
+            if ($every > 0 && $lastTs > 0) {
+                if ($unit === 'months')    $nextTs = strtotime('+' . $every . ' months', $lastTs);
+                elseif ($unit === 'days')  $nextTs = $lastTs + $every * 86400;
+                else                       $nextTs = $lastTs + $every * 7 * 86400;
+            }
+        }
+        if (!$nextTs) continue;
+        $lead = isset($a['reorderLeadDays']) && $a['reorderLeadDays'] !== '' ? (int)$a['reorderLeadDays'] : 14;
+        if ($lead < 0) $lead = 0;
+        $daysUntil = (int)floor(($nextTs - $today) / 86400);
+        if ($daysUntil > $lead) continue; // not in the lead window yet
+        $dateStr = date('M j, Y', $nextTs);
+        $when = $daysUntil < 0 ? ('overdue ' . (-$daysUntil) . 'd') : ($daysUntil === 0 ? 'today' : ('in ' . $daysUntil . 'd'));
+        $out[] = ['bucket' => ($daysUntil <= 2 ? 'urgentToday' : 'thisWeek'), 'item' => [
+            'account'    => $name, 'source' => 'reorder',
+            'text'       => "Next order due {$dateStr} ({$when}) — time to start the reorder conversation.",
+            'suggestion' => "Reach out to {$name} now to kick off the next order (target {$dateStr}).",
+        ]];
+    }
+
+    // Manual / meeting reminders within ~2 weeks.
+    foreach ($manual as $r) {
+        if (!is_array($r) || !empty($r['done'])) continue;
+        $ts = strtotime((string)($r['reorderDate'] ?? '')); if (!$ts) continue;
+        $daysUntil = (int)floor(($ts - $today) / 86400);
+        if ($daysUntil > 14) continue;
+        $dateStr = date('M j, Y', $ts);
+        $when = $daysUntil < 0 ? ('overdue ' . (-$daysUntil) . 'd') : ($daysUntil === 0 ? 'today' : ('in ' . $daysUntil . 'd'));
+        $acct = (string)($r['account'] ?? '');
+        $label = (string)($r['label'] ?? 'Reorder');
+        $out[] = ['bucket' => ($daysUntil <= 2 ? 'urgentToday' : 'thisWeek'), 'item' => [
+            'account'    => $acct, 'source' => 'reorder',
+            'text'       => "{$label} ({$when}, {$dateStr}).",
+            'suggestion' => "Start the " . ($acct !== '' ? $acct : 'client') . " reorder — {$label}.",
+        ]];
+    }
+    return $out;
+}
+
 if (!defined('QBO_CLIENT_ID'))     { $v = getenv('QBO_CLIENT_ID');     define('QBO_CLIENT_ID',     is_string($v) ? $v : ''); }
 if (!defined('QBO_CLIENT_SECRET')) { $v = getenv('QBO_CLIENT_SECRET'); define('QBO_CLIENT_SECRET', is_string($v) ? $v : ''); }
 if (!defined('QBO_ENVIRONMENT'))   { $v = getenv('QBO_ENVIRONMENT');   define('QBO_ENVIRONMENT', ($v === 'sandbox' || $v === 'production') ? $v : 'production'); }
@@ -3633,6 +3715,10 @@ switch ($action) {
         }
         $GLOBALS['parker_trello_sample'] = array_map(function ($it) { return $it['text'] ?? ''; }, array_slice($rawTrello, 0, 4));
         $buckets = parker_classify($raw);
+        // Advance reorder nudges (cadence + lead time + manual reminders).
+        foreach (parker_reorder_items($pdo, $accounts) as $ri) {
+            $buckets[$ri['bucket']][] = $ri['item'];
+        }
         $GLOBALS['parker_sugg_sample'] = array_map(function ($it) {
             return ['source' => $it['source'] ?? '', 'text' => mb_substr($it['text'] ?? '', 0, 40), 'replyTo' => $it['replyTo'] ?? '', 'subject' => $it['subject'] ?? ''];
         }, array_slice(array_merge($buckets['urgentToday'] ?? [], $buckets['needsReply'] ?? [], $buckets['thisWeek'] ?? []), 0, 6));

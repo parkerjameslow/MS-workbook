@@ -24602,6 +24602,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if(field==='every') a.reorderEvery=value.replace(/[^0-9]/g,'');
     else if(field==='unit') a.reorderUnit=value;
     else if(field==='next') a.nextOrderDate=value;
+    else if(field==='lead') a.reorderLeadDays=value.replace(/[^0-9]/g,'');
     _parkerSaveAccounts(); _parkerRenderAll();
     if(field==='next' && typeof _msToast==='function') _msToast(value?('Next order set for '+_pkFmtDate(value)+'.'):'Next-order date cleared.');
   }
@@ -24676,6 +24677,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <input type="date" value="${_pkEsc(a.nextOrderDate||'')}" onchange="_parkerSetCadence(${idx},'next',this.value)" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">
           </label>
           ${a.nextOrderDate?`<button class="btn btn-ghost" style="font-size:10px; padding:2px 8px;" onclick="_parkerSetCadence(${idx},'next','')">clear date</button>`:''}
+          <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">remind
+            <input type="number" min="0" value="${a.reorderLeadDays!=null&&a.reorderLeadDays!==''?a.reorderLeadDays:14}" style="width:52px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;" onchange="_parkerSetCadence(${idx},'lead',this.value)"> days before
+          </label>
         </div>
         <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:9px;">
           <div style="flex:1; min-width:200px;"><div class="pk-mtg-sect">Recent orders</div>${recent}</div>
