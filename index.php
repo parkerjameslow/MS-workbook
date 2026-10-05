@@ -4102,6 +4102,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pk-sendbtn:hover { filter:brightness(1.08); }
     .pk-mtg-sect { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--text-muted); margin-bottom:3px; }
     .pk-mtg-row { font-size:13px; color:var(--text); line-height:1.45; margin:2px 0; }
+    /* Cadence controls — one consistent size across number/select/date inputs */
+    .pk-cad-field { height:32px; box-sizing:border-box; padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px; font-family:inherit; line-height:normal; vertical-align:middle; -webkit-appearance:none; appearance:none; }
+    select.pk-cad-field { padding-right:24px; background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),linear-gradient(135deg,var(--text-muted) 50%,transparent 50%); background-position:calc(100% - 13px) 13px,calc(100% - 8px) 13px; background-size:5px 5px,5px 5px; background-repeat:no-repeat; }
+    input.pk-cad-field[type="date"]::-webkit-calendar-picker-indicator { opacity:.6; }
 
     .modal-overlay {
       display: none;
@@ -24670,15 +24674,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         </div>
         <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:9px; padding:9px 11px; background:rgba(127,127,127,.05); border-radius:8px;">
           <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">Reorder every
-            <input type="number" min="0" value="${a.reorderEvery||''}" placeholder="e.g. 8" style="width:62px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;" onchange="_parkerSetCadence(${idx},'every',this.value)">
-            <select onchange="_parkerSetCadence(${idx},'unit',this.value)" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">${opt('days','days')}${opt('weeks','weeks')}${opt('months','months')}</select>
+            <input type="number" min="0" value="${a.reorderEvery||''}" placeholder="e.g. 8" class="pk-cad-field" style="width:64px;" onchange="_parkerSetCadence(${idx},'every',this.value)">
+            <select class="pk-cad-field" style="width:104px;" onchange="_parkerSetCadence(${idx},'unit',this.value)">${opt('days','days')}${opt('weeks','weeks')}${opt('months','months')}</select>
           </label>
           <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">or next order on
-            <input type="date" value="${_pkEsc(a.nextOrderDate||'')}" onchange="_parkerSetCadence(${idx},'next',this.value)" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;">
+            <input type="date" value="${_pkEsc(a.nextOrderDate||'')}" class="pk-cad-field" style="width:150px;" onchange="_parkerSetCadence(${idx},'next',this.value)">
           </label>
           ${a.nextOrderDate?`<button class="btn btn-ghost" style="font-size:10px; padding:2px 8px;" onclick="_parkerSetCadence(${idx},'next','')">clear date</button>`:''}
           <label class="pk-meta" style="display:flex; align-items:center; gap:6px;">remind
-            <input type="number" min="0" value="${a.reorderLeadDays!=null&&a.reorderLeadDays!==''?a.reorderLeadDays:14}" style="width:52px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); font-size:12px;" onchange="_parkerSetCadence(${idx},'lead',this.value)"> days before
+            <input type="number" min="0" value="${a.reorderLeadDays!=null&&a.reorderLeadDays!==''?a.reorderLeadDays:14}" class="pk-cad-field" style="width:64px;" onchange="_parkerSetCadence(${idx},'lead',this.value)"> days before
           </label>
         </div>
         <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:9px;">
