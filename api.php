@@ -1134,31 +1134,47 @@ function parker_reorder_items(PDO $pdo, array $accounts): array {
             if (!$belongs) continue;
             $d = strtotime((string)($s['receivedAt'] ?? ($s['deliveredOn'] ?? ''))); if ($d && $d > $lastTs) $lastTs = $d;
         }
-        // Next order date.
-        $nextTs = 0;
-        if (!empty($a['nextOrderDate'])) {
-            $nextTs = strtotime((string)$a['nextOrderDate']);
-        } else {
-            $every = (int)($a['reorderEvery'] ?? 0); $unit = $a['reorderUnit'] ?? 'weeks';
-            if ($every > 0 && $lastTs > 0) {
-                if ($unit === 'months')    $nextTs = strtotime('+' . $every . ' months', $lastTs);
-                elseif ($unit === 'days')  $nextTs = $lastTs + $every * 86400;
-                else                       $nextTs = $lastTs + $every * 7 * 86400;
-            }
+        // Reorder plans (new multi-plan model); fall back to legacy single
+        // fields if an account hasn't been migrated yet.
+        $plans = (isset($a['reorderPlans']) && is_array($a['reorderPlans'])) ? $a['reorderPlans'] : [];
+        if (!$plans && (!empty($a['reorderEvery']) || !empty($a['nextOrderDate']) || !empty($a['reorderWhat']))) {
+            $plans = [[
+                'every' => $a['reorderEvery'] ?? '', 'unit' => $a['reorderUnit'] ?? 'weeks',
+                'nextDate' => $a['nextOrderDate'] ?? '', 'leadDays' => $a['reorderLeadDays'] ?? 14,
+                'what' => $a['reorderWhat'] ?? '',
+            ]];
         }
-        if (!$nextTs) continue;
-        $lead = isset($a['reorderLeadDays']) && $a['reorderLeadDays'] !== '' ? (int)$a['reorderLeadDays'] : 14;
-        if ($lead < 0) $lead = 0;
-        $daysUntil = (int)floor(($nextTs - $today) / 86400);
-        if ($daysUntil > $lead) continue; // not in the lead window yet
-        $dateStr = date('M j, Y', $nextTs);
-        $when = $daysUntil < 0 ? ('overdue ' . (-$daysUntil) . 'd') : ($daysUntil === 0 ? 'today' : ('in ' . $daysUntil . 'd'));
-        $what = trim((string)($a['reorderWhat'] ?? ''));
-        $out[] = ['bucket' => ($daysUntil <= 2 ? 'urgentToday' : 'thisWeek'), 'item' => [
-            'account'    => $name, 'source' => 'reorder',
-            'text'       => "Next order due {$dateStr} ({$when})" . ($what !== '' ? " — {$what}" : '') . " — time to start the reorder conversation.",
-            'suggestion' => $what !== '' ? "Reach out to {$name} to kick off: {$what} (target {$dateStr})." : "Reach out to {$name} now to kick off the next order (target {$dateStr}).",
-        ]];
+        foreach ($plans as $p) {
+            $nextTs = 0;
+            if (!empty($p['nextDate'])) {
+                $nextTs = strtotime((string)$p['nextDate']);
+            } else {
+                $every = (int)($p['every'] ?? 0); $unit = $p['unit'] ?? 'weeks';
+                if ($every > 0 && $lastTs > 0) {
+                    // Roll forward from the last order so a recurring cadence
+                    // always points at the NEXT upcoming occurrence.
+                    $nextTs = $lastTs; $guard = 0;
+                    do {
+                        if ($unit === 'months')   $nextTs = strtotime('+' . $every . ' months', $nextTs);
+                        elseif ($unit === 'days') $nextTs += $every * 86400;
+                        else                      $nextTs += $every * 7 * 86400;
+                    } while ($nextTs < $today && $guard++ < 400);
+                }
+            }
+            if (!$nextTs) continue;
+            $lead = (isset($p['leadDays']) && $p['leadDays'] !== '') ? (int)$p['leadDays'] : 14;
+            if ($lead < 0) $lead = 0;
+            $daysUntil = (int)floor(($nextTs - $today) / 86400);
+            if ($daysUntil > $lead) continue; // not in the lead window yet
+            $dateStr = date('M j, Y', $nextTs);
+            $when = $daysUntil < 0 ? ('overdue ' . (-$daysUntil) . 'd') : ($daysUntil === 0 ? 'today' : ('in ' . $daysUntil . 'd'));
+            $what = trim((string)($p['what'] ?? ''));
+            $out[] = ['bucket' => ($daysUntil <= 2 ? 'urgentToday' : 'thisWeek'), 'item' => [
+                'account'    => $name, 'source' => 'reorder',
+                'text'       => "Next order due {$dateStr} ({$when})" . ($what !== '' ? " — {$what}" : '') . " — time to start the reorder conversation.",
+                'suggestion' => $what !== '' ? "Reach out to {$name} to kick off: {$what} (target {$dateStr})." : "Reach out to {$name} now to kick off the next order (target {$dateStr}).",
+            ]];
+        }
     }
 
     // Manual / meeting reminders within ~2 weeks.
