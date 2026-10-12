@@ -512,12 +512,13 @@ function errorContent(string $msg): string {
 function portalPage(string $title, string $content): void {
     $css = '
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #1a1d2e; min-height: 100vh; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #1a1d2e; min-height: 100vh; display: flex; flex-direction: column; }
 .ms-header { background: #181b26; padding: 0 28px; display: flex; align-items: center; height: 58px; gap: 16px; }
 .ms-logo { font-size: 18px; font-weight: 800; color: #E8751A; letter-spacing: -0.3px; }
 .ms-logo-sub { font-size: 11px; font-weight: 500; color: #6b7280; letter-spacing: 0.02em; }
 .ms-bar { height: 3px; background: #E8751A; }
-.ms-wrap { max-width: none; margin: 0; padding: 28px 28px 80px; }
+.ms-wrap { max-width: none; margin: 0; padding: 28px 28px 80px; flex: 1 0 auto; }
+.footer-bar { margin-top: auto; }
 .card { background: #fff; border-radius: 14px; border: 1px solid #e8eaf0; overflow: hidden; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 .card-body { padding: 22px 24px; }
 .soft-icon { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
