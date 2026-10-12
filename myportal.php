@@ -8,6 +8,9 @@
 // aggregated across every order instead of a single one.
 session_start();
 
+// Temporary debug: append &dbg=1 to surface the actual error on a 500.
+if (($_GET['dbg'] ?? '') === '1') { ini_set('display_errors', '1'); ini_set('display_startup_errors', '1'); error_reporting(E_ALL); }
+
 $DB_HOST = 'localhost';
 $DB_NAME = 'markewq4_workbook';
 $DB_USER = 'markewq4_workbook';
