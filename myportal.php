@@ -87,12 +87,15 @@ if ($requiredPin !== '' && empty($_SESSION[$sessOkKey])) {
     exit;
 }
 
-// ── Load the client's workbooks opted into the portal ────────────────────────
-// The operator flips a per-workbook "Show in client portal" toggle (default
-// off) and picks a client-facing status; we show those items with friendly,
-// client-safe text. No orders/pricing/internal notes.
+// ── Load the client's portal items ───────────────────────────────────────────
+// Board mirrors the internal pipeline (RFQ → Shipments). Each workbook the
+// operator toggled "Show in client portal" is placed in the column matching
+// its real pipeline stage. The operator's custom message + dates/tracking
+// show on the card. No pricing / internal notes.
+$orders    = cpLoadState($pdo, 'ms_orders');
+$shipments = cpLoadState($pdo, 'ms_shipments');
+
 $clientId = (int)($row['client_id'] ?? 0);
-// Legacy tokens may not have client_id — resolve it from the client name.
 if ($clientId <= 0 && $clientName !== '') {
     try {
         $cidStmt = $pdo->prepare("SELECT id FROM clients WHERE name = ? LIMIT 1");
@@ -110,10 +113,11 @@ if ($clientId > 0) {
             $d = json_decode($wb['detail_json'] ?? '{}', true);
             if (!is_array($d)) continue;
             if (($d['showInPortal'] ?? '') !== '1' && ($d['showInPortal'] ?? null) !== true) continue;
-            $name = trim((string)($wb['product_name'] ?? '')) ?: (trim((string)($d['product'] ?? '')) ?: 'Item');
+            $name  = trim((string)($wb['product_name'] ?? '')) ?: (trim((string)($d['product'] ?? '')) ?: 'Item');
+            $stage = cpWbPipelineStage($clientName, (string)$wb['id'], $d, $orders, $shipments);
             $portalItems[] = [
                 'name'          => $name,
-                'status'        => (string)($d['portalStatus'] ?? 'request'),
+                'stage'         => $stage,
                 'message'       => trim((string)($d['portalMessage'] ?? '')),
                 'dateSubmitted' => trim((string)($d['portalDateSubmitted'] ?? '')),
                 'dateExpected'  => trim((string)($d['portalDateExpected'] ?? '')),
@@ -122,12 +126,6 @@ if ($clientId > 0) {
         }
     } catch (PDOException $e) { $portalItems = []; }
 }
-
-// Order by progress (earliest first), delivered last.
-$statusOrder = array_flip(array_keys(cpPortalStatuses()));
-usort($portalItems, function ($a, $b) use ($statusOrder) {
-    return ($statusOrder[$a['status']] ?? 0) <=> ($statusOrder[$b['status']] ?? 0);
-});
 
 portalPage($clientName !== '' ? $clientName : 'Your Portal', portalItemsContent($clientName, $portalItems));
 exit;
@@ -214,8 +212,8 @@ function cpComputeStage(array $order, array $carrying): array {
 
 const CP_STEPS = ['Ordered', 'In Production', 'Shipped', 'In Transit', 'Arriving', 'Delivered'];
 
-// Client-facing status options (key → [friendly label, progress %]). Ordered
-// from earliest to latest; the operator picks one per workbook.
+// Client-facing status options (key → [friendly label, progress %]). Kept
+// for the detail-card message fallback.
 function cpPortalStatuses(): array {
     return [
         'request'     => ["We're working on your request", 10],
@@ -227,6 +225,87 @@ function cpPortalStatuses(): array {
         'shipped'     => ['Shipped — on the way', 92],
         'delivered'   => ['Delivered', 100],
     ];
+}
+
+// Portal board columns — mirror the internal pipeline (RFQ → Shipments).
+// key => [label, header-bg, header-fg].
+function cpBoardColumns(): array {
+    return [
+        'rfq'        => ['RFQ',              '#dbeafe', '#1e40af'],
+        'review'     => ['Ready For Review', '#e0e7ff', '#3730a3'],
+        'samples'    => ['Samples',          '#dcfce7', '#15803d'],
+        'orders'     => ['Orders',           '#fef3c7', '#a16207'],
+        'production' => ['In Production',    '#ffedd5', '#c2410c'],
+        'shipments'  => ['Shipments',        '#cffafe', '#0e7490'],
+    ];
+}
+
+// Compute a workbook's pipeline stage (PHP port of _pipelineStageFor). Returns
+// one of: rfq, review, samples, orders, production, shipments, receiving,
+// done, unstaged.
+function cpWbPipelineStage(string $clientName, string $wbId, array $detail, array $orders, array $shipments): string {
+    $wantKey = $clientName . '|' . $wbId;
+    $direct = function ($e) use ($clientName, $wbId) {
+        return is_array($e)
+            && (string)($e['clientName'] ?? '') === $clientName
+            && (string)($e['workbookId'] ?? '') === (string)$wbId;
+    };
+    // Shipments carrying this workbook (direct / via order / sample).
+    $ships = [];
+    foreach ($shipments as $s) {
+        if (!is_array($s)) continue;
+        $hit = false;
+        foreach (($s['entries'] ?? []) as $e) {
+            if ($direct($e)) { $hit = true; break; }
+            if (!empty($e['orderId']) && isset($orders[$e['orderId']])) {
+                foreach (($orders[$e['orderId']]['entries'] ?? []) as $oe) { if ($direct($oe)) { $hit = true; break 2; } }
+            }
+            if (isset($e['sampleKey']) && (string)$e['sampleKey'] === $wantKey) { $hit = true; break; }
+        }
+        if (!$hit) foreach (($s['sampleEntries'] ?? []) as $e) { if ($direct($e)) { $hit = true; break; } }
+        if ($hit) $ships[] = $s;
+    }
+    if ($ships) {
+        $allReceived = true; $anyDelivered = false; $anyActive = false;
+        foreach ($ships as $s) {
+            $st = (string)($s['status'] ?? '');
+            if ($st === 'delivered') $anyDelivered = true;
+            if ($st !== 'received') $allReceived = false;
+            if ($st !== 'received' && $st !== 'delivered') $anyActive = true;
+        }
+        if ($anyDelivered) return 'receiving';
+        if ($anyActive)    return 'shipments';
+        if ($allReceived)  return 'done';
+    }
+    // Orders for this workbook.
+    $inOrder = false; $inFulfillment = false;
+    foreach ($orders as $o) {
+        if (!is_array($o)) continue;
+        foreach (($o['entries'] ?? []) as $e) {
+            if ($direct($e)) { $inOrder = true; if (!empty($o['notifiedAt'])) $inFulfillment = true; break; }
+        }
+    }
+    if ($inFulfillment) return 'production';
+    if ($inOrder)       return 'orders';
+    // Flag-based early stages.
+    if (!empty($detail['movedToOrders'])) return 'orders';
+    if (!empty($detail['sentForReview'])) return 'review';
+    if (!empty($detail['sentToRfq']))     return 'rfq';
+    if (!empty($detail['rfqItems']) && is_array($detail['rfqItems'])) {
+        foreach ($detail['rfqItems'] as $i) { if (is_array($i) && !empty($i['sample'])) return 'samples'; }
+    }
+    return 'unstaged';
+}
+
+// Map a raw stage to one of the 6 board columns (receiving → Shipments,
+// unstaged → RFQ so a freshly-shared item still shows; done → hidden).
+function cpStageToColumn(string $stage): string {
+    switch ($stage) {
+        case 'receiving': return 'shipments';
+        case 'unstaged':  return 'rfq';
+        case 'done':      return '';
+        default:          return $stage;
+    }
 }
 
 function portalItemsContent(string $clientName, array $items): string {
@@ -243,65 +322,60 @@ function portalItemsContent(string $clientName, array $items): string {
              . '</div></div>';
     }
 
-    $active = 0;
-    foreach ($items as $o) if (($o['status'] ?? '') !== 'delivered') $active++;
-    $summary = '<div class="cp-summary">' . count($items) . ' item' . (count($items) === 1 ? '' : 's')
-             . ($active ? ' · <strong>' . $active . ' in progress</strong>' : '') . '</div>';
+    // Group items into their pipeline column.
+    $cols  = cpBoardColumns();
+    $byCol = [];
+    foreach ($items as $o) {
+        $col = cpStageToColumn((string)($o['stage'] ?? 'unstaged'));
+        if ($col === '' || !isset($cols[$col])) continue; // done / unknown → hide
+        $byCol[$col][] = $o;
+    }
+    $shown = array_sum(array_map('count', $byCol));
+    $summary = '<div class="cp-summary">' . $shown . ' item' . ($shown === 1 ? '' : 's') . ' in progress</div>';
 
-    // Group items into status columns (board view, like the pipeline). Only
-    // columns that have items are shown, in stage order. The column header is
-    // the status message; a custom per-item message shows on its card.
-    $byStatus = [];
-    foreach ($items as $o) $byStatus[(string)($o['status'] ?? 'request')][] = $o;
-
-    // Show every status column (so it reads as a full board), in stage order.
-    $cols = '';
-    foreach (cpPortalStatuses() as $key => $row) {
-        $colItems = $byStatus[$key] ?? [];
-        $title  = $row[0];                 // friendly status label = the column
-        $isDone = ($key === 'delivered');
+    $colKeys = array_keys($cols);
+    $total   = count($colKeys);
+    $colsHtml = '';
+    foreach ($colKeys as $idx => $key) {
+        [$label, $bg, $fg] = $cols[$key];
+        $colItems = $byCol[$key] ?? [];
         $cards = '';
-        foreach ($colItems as $o) $cards .= cpPortalCard($o);
+        foreach ($colItems as $o) $cards .= cpPortalCard($o, $idx, $total);
         if ($cards === '') $cards = '<div class="cp-col-empty">—</div>';
-        $cols .= '<div class="cp-col' . ($isDone ? ' is-done' : '') . '">'
-               . '<div class="cp-col-head"><span>' . htmlspecialchars($title) . '</span><span class="cp-col-count">' . count($colItems) . '</span></div>'
-               . $cards . '</div>';
+        $colsHtml .= '<div class="cp-col">'
+                   . '<div class="cp-col-head" style="background:' . $bg . ';color:' . $fg . ';border-color:' . $bg . ';">'
+                   . '<span>' . htmlspecialchars($label) . '</span>'
+                   . '<span class="cp-col-count" style="color:' . $fg . ';">' . count($colItems) . '</span></div>'
+                   . '<div class="cp-col-body">' . $cards . '</div></div>';
     }
 
     $note = '<p class="cp-footnote">Questions about an item? Reply to your Market Sculpt email or contact your representative any time.</p>';
-    return $header . $summary . '<div class="cp-board">' . $cols . '</div>' . $note;
+    return $header . $summary . '<div class="cp-board">' . $colsHtml . '</div>' . $note;
 }
 
 function cpFmtDate(string $d): string { $ts = strtotime($d); return $ts ? date('M j, Y', $ts) : htmlspecialchars($d); }
 
 // Detailed portal card (name + optional custom message + progress bar +
-// submitted/expected/tracking). The owning column names the status, so no
-// redundant status badge here.
-function cpPortalCard(array $o): string {
-    $name      = htmlspecialchars((string)($o['name'] ?? 'Item'));
-    $statusKey = (string)($o['status'] ?? 'request');
-    $map = cpPortalStatuses();
-    $row = $map[$statusKey] ?? null;
-    $defLabel = $row ? $row[0] : '';
-    $pct    = $row ? (int)$row[1] : 55;
-    $done   = ($statusKey === 'delivered');
-    $accent = $done ? '#16a34a' : '#E8751A';
+// submitted/expected/tracking). The owning column names the pipeline stage.
+function cpPortalCard(array $o, int $colIdx = 0, int $total = 6): string {
+    $name   = htmlspecialchars((string)($o['name'] ?? 'Item'));
+    $pct    = (int)round((($colIdx + 1) / max(1, $total)) * 100);
+    $last   = ($colIdx >= $total - 1);
+    $accent = $last ? '#0e7490' : '#E8751A';
 
     $msg = trim((string)($o['message'] ?? ''));
-    $msgHtml = ($msg !== '' && $msg !== $defLabel)
-        ? '<div class="cp-order-sub" style="margin:7px 0 0;">' . htmlspecialchars($msg) . '</div>' : '';
+    $msgHtml = $msg !== '' ? '<div class="cp-order-sub" style="margin:7px 0 0;">' . htmlspecialchars($msg) . '</div>' : '';
 
     $meta = [];
-    if (!empty($o['dateSubmitted'])) $meta[] = 'Submitted ' . cpFmtDate((string)$o['dateSubmitted']);
-    if (!empty($o['dateExpected']))  $meta[] = 'Expected ' . cpFmtDate((string)$o['dateExpected']);
-    if (!empty($o['tracking']))      $meta[] = 'Tracking: <strong>' . htmlspecialchars((string)$o['tracking']) . '</strong>';
-    $metaHtml = $meta ? '<div class="cp-order-sub" style="margin-top:12px;font-size:12.5px;">' . implode(' &nbsp;·&nbsp; ', $meta) . '</div>' : '';
+    if (!empty($o['dateExpected'])) $meta[] = 'Expected ' . cpFmtDate((string)$o['dateExpected']);
+    if (!empty($o['tracking']))     $meta[] = 'Tracking: <strong>' . htmlspecialchars((string)$o['tracking']) . '</strong>';
+    $metaHtml = $meta ? '<div class="cp-order-sub" style="margin-top:12px;font-size:12.5px;">' . implode('<br>', $meta) . '</div>' : '';
 
-    return '<div class="card cp-order" style="margin-bottom:12px;">'
-         . '<div class="card-body" style="padding:16px 18px;">'
-         . '<h2 class="cp-order-name" style="font-size:15.5px;">' . $name . '</h2>'
+    return '<div class="card cp-order">'
+         . '<div class="card-body" style="padding:15px 17px;">'
+         . '<h2 class="cp-order-name" style="font-size:15px;">' . $name . '</h2>'
          . $msgHtml
-         . '<div class="cp-bar" style="margin-top:13px;"><div class="cp-bar-fill" style="width:' . $pct . '%;background:' . $accent . ';"></div></div>'
+         . '<div class="cp-bar" style="margin-top:12px;"><div class="cp-bar-fill" style="width:' . $pct . '%;background:' . $accent . ';"></div></div>'
          . $metaHtml
          . '</div></div>';
 }
@@ -443,16 +517,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .footer-bar { text-align: center; padding: 24px 20px 40px; color: #9ba3c0; font-size: 12px; line-height: 1.8; }
 .footer-bar a { color: #E8751A; text-decoration: none; }
 
-/* Status board (columns, like the pipeline) with the detailed cards inside */
-.cp-board { display:flex; gap:16px; overflow-x:auto; padding-bottom:12px; align-items:stretch; }
-.cp-col { flex:1 0 272px; min-width:272px; background:#f1f3f8; border:1px solid #e6e9f1; border-radius:16px; padding:12px; }
-.cp-col-head { font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:4px 6px 12px; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; line-height:1.3; }
-.cp-col-head > span:first-child { min-width:0; }
-.cp-col-count { background:#fff; border:1px solid #e5e7eb; color:#6b7280; border-radius:999px; font-size:11px; font-weight:800; padding:1px 8px; flex:0 0 auto; }
-.cp-col.is-done .cp-col-head { color:#166534; }
+/* Pipeline-style board: colored column headers, cards stacked below */
+.cp-board { display:flex; gap:16px; overflow-x:auto; padding-bottom:14px; align-items:flex-start; }
+.cp-col { flex:1 0 270px; min-width:270px; }
+.cp-col-head { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:10px 14px; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.cp-col-head > span:first-child { min-width:0; line-height:1.2; }
+.cp-col-count { background:rgba(255,255,255,.7); border-radius:999px; font-size:11.5px; font-weight:800; padding:1px 9px; flex:0 0 auto; }
+.cp-col-body { margin-top:12px; }
 .cp-col .card { margin-bottom:12px; }
 .cp-col .card:last-child { margin-bottom:0; }
-.cp-col-empty { font-size:12px; color:#b6bccb; text-align:center; padding:20px 6px; }
+.cp-col-empty { font-size:12px; color:#b6bccb; text-align:center; padding:24px 6px; border:1px dashed #e2e6ef; border-radius:12px; }
 
 @media (max-width: 620px) {
   .ms-wrap { padding: 18px 12px 60px; }
