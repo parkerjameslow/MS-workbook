@@ -3729,9 +3729,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .wb-portal-switch input:checked + .wb-portal-slider::before { transform:translateX(16px); }
     .wb-portal-label { font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
     .wb-portal-toggle.on .wb-portal-label { color:var(--accent); }
-    .portal-msg-opt { display:flex; align-items:center; gap:9px; padding:9px 11px; border:1px solid var(--border); border-radius:9px; cursor:pointer; font-size:13px; color:var(--text); }
-    .portal-msg-opt:hover { border-color:var(--accent); }
-    .portal-msg-opt input { accent-color:var(--accent); }
     .status-bubble.active {
       background: rgba(232,117,26,0.10); color: var(--accent);
       border-color: rgba(232,117,26,0.35);
@@ -10203,13 +10200,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button onclick="closePortalMsgModal(true)" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;">
-      <p style="margin:0; font-size:12px; color:var(--text-muted);">This shows on the client's portal for this item (no prices or internal notes). Pick a default or write your own.</p>
-      <div id="portal-msg-options" style="display:flex; flex-direction:column; gap:7px;"></div>
-      <div style="margin-top:4px;">
-        <label class="parker-lbl">Or write your own</label>
-        <textarea id="portal-msg-custom" class="form-input" style="width:100%; min-height:60px; resize:vertical;" placeholder="e.g. We've approved your samples and production starts Monday." oninput="_portalMsgCustomTyped()"></textarea>
+      <p style="margin:0; font-size:12px; color:var(--text-muted);">Shown on the client's portal (no prices or internal notes).</p>
+      <div>
+        <label class="parker-lbl">Status message</label>
+        <div class="select-wrapper">
+          <select id="portal-msg-select" style="width:100%;"></select>
+        </div>
       </div>
-      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:4px;">
+      <div>
+        <label class="parker-lbl">Or write your own <span style="font-weight:500; text-transform:none; letter-spacing:0;">(overrides the above)</span></label>
+        <textarea id="portal-msg-custom" class="form-input" style="width:100%; min-height:46px; resize:vertical;" placeholder="e.g. We've approved your samples and production starts Monday." oninput="_portalMsgCustomTyped()"></textarea>
+      </div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:2px;">
         <div style="flex:1; min-width:150px;">
           <label class="parker-lbl">Submitted to portal</label>
           <input type="date" id="portal-modal-date-submitted" class="form-input" style="width:100%;">
@@ -25079,6 +25081,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   };
 
   /* ── Status Bar ──────────────────────────────────────────────────────────── */
+  // Pipeline board columns — declared here (before renderStatusBar, which
+  // reads them for the workbook's column pill) so it isn't in the temporal
+  // dead zone when a workbook opens on initial load.
+  const PIPELINE_COLUMNS = [
+    { id: 'unstaged',   label: 'Unstaged',         bg: '#f3f4f6', fg: '#4b5563' },
+    { id: 'rfq',        label: 'RFQ',              bg: '#dbeafe', fg: '#1e40af' },
+    { id: 'review',     label: 'Ready For Review', bg: '#e0e7ff', fg: '#3730a3' },
+    { id: 'samples',    label: 'Samples',          bg: '#dcfce7', fg: '#15803d' },
+    { id: 'orders',     label: 'Orders',           bg: '#fef3c7', fg: '#a16207' },
+    { id: 'production', label: 'In Production',     bg: '#ffedd5', fg: '#c2410c' },
+    { id: 'shipments',  label: 'Shipments',        bg: '#cffafe', fg: '#0e7490' },
+    { id: 'receiving',  label: 'Receiving',        bg: '#f3e8ff', fg: '#7c3aed' },
+  ];
   const flowSteps = ['quoteChina', 'quoteSubmitted', 'quoteClient', 'clientApproved', 'officeInvoice', 'confirmedPayment', 'orderChina'];
   const flowLabels = ['Quote', 'Quote Submitted', 'Quote to Client', 'Client Approved', 'Office Invoice', 'Confirmed Payment', 'Ordered'];
   const flowLabelsShort = ['Quote', 'Submitted', 'Quote', 'Approved', 'Invoice', 'Payment', 'Ordered'];
@@ -33331,20 +33346,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _portalModalFresh = !!fresh;
     const curStatus = (document.getElementById('portal-status') || {}).value || '';
     const curMsg    = (document.getElementById('portal-message') || {}).value || '';
-    // Build the default-response radio list.
-    const optsEl = document.getElementById('portal-msg-options');
-    if (optsEl) {
-      optsEl.innerHTML = PORTAL_DEFAULTS.map(([key, label]) =>
-        `<label class="portal-msg-opt"><input type="radio" name="portal-msg-opt" value="${key}" onclick="_portalMsgRadioPicked('${key}')"> ${_pkEsc ? _pkEsc(label) : label}</label>`
-      ).join('');
+    // Build the default-message dropdown.
+    const sel = document.getElementById('portal-msg-select');
+    if (sel) {
+      sel.innerHTML = PORTAL_DEFAULTS.map(([key, label]) =>
+        `<option value="${key}">${_pkEsc ? _pkEsc(label) : label}</option>`).join('');
+      sel.value = (curStatus && curStatus !== 'custom') ? curStatus : 'request';
     }
     const custom = document.getElementById('portal-msg-custom');
-    if (curStatus === 'custom') { if (custom) custom.value = curMsg; }
-    else {
-      if (custom) custom.value = '';
-      const r = document.querySelector(`input[name="portal-msg-opt"][value="${curStatus || 'request'}"]`);
-      if (r) r.checked = true;
-    }
+    if (custom) custom.value = (curStatus === 'custom') ? curMsg : '';
     // Dates + tracking (default submitted = today when first enabling).
     const todayIso = new Date().toISOString().slice(0, 10);
     const ds = document.getElementById('portal-modal-date-submitted');
@@ -33355,13 +33365,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (tr) tr.value = (document.getElementById('portal-tracking') || {}).value || '';
     const m = document.getElementById('portal-msg-modal'); m.classList.add('open'); m.style.display = 'flex';
   }
-  function _portalMsgRadioPicked(key) { const c = document.getElementById('portal-msg-custom'); if (c) c.value = ''; }
-  function _portalMsgCustomTyped() {
-    // Typing a custom message deselects the default radios.
-    if ((document.getElementById('portal-msg-custom') || {}).value.trim() !== '') {
-      document.querySelectorAll('input[name="portal-msg-opt"]').forEach(r => { r.checked = false; });
-    }
-  }
+  function _portalMsgCustomTyped() { /* custom text overrides the dropdown on save */ }
   function closePortalMsgModal(cancel) {
     const m = document.getElementById('portal-msg-modal'); m.classList.remove('open'); m.style.display = 'none';
     if (cancel && _portalModalFresh) {
@@ -33376,8 +33380,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     let statusKey, message;
     if (custom !== '') { statusKey = 'custom'; message = custom; }
     else {
-      const r = document.querySelector('input[name="portal-msg-opt"]:checked');
-      statusKey = r ? r.value : 'request';
+      statusKey = (document.getElementById('portal-msg-select') || {}).value || 'request';
       const found = PORTAL_DEFAULTS.find(d => d[0] === statusKey);
       message = found ? found[1] : "We're working on your request";
     }
@@ -45388,16 +45391,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // flag-based (draggable, pure flag flips via set_pipeline_stage); the
   // later stages are backed by orders/shipments and are read-only here —
   // managed from their own views (Orders / Shipments / Receiving).
-  const PIPELINE_COLUMNS = [
-    { id: 'unstaged',   label: 'Unstaged',         bg: '#f3f4f6', fg: '#4b5563' },
-    { id: 'rfq',        label: 'RFQ',              bg: '#dbeafe', fg: '#1e40af' },
-    { id: 'review',     label: 'Ready For Review', bg: '#e0e7ff', fg: '#3730a3' },
-    { id: 'samples',    label: 'Samples',          bg: '#dcfce7', fg: '#15803d' },
-    { id: 'orders',     label: 'Orders',           bg: '#fef3c7', fg: '#a16207' },
-    { id: 'production', label: 'In Production',     bg: '#ffedd5', fg: '#c2410c' },
-    { id: 'shipments',  label: 'Shipments',        bg: '#cffafe', fg: '#0e7490' },
-    { id: 'receiving',  label: 'Receiving',        bg: '#f3e8ff', fg: '#7c3aed' },
-  ];
   // Stages you can freely drag a card to/from (pure flag flips). Unstaged
   // clears every stage flag; the others set exactly one.
   const PIPELINE_FLAG_STAGES = new Set(['unstaged', 'rfq', 'review', 'samples', 'orders']);
