@@ -349,7 +349,9 @@ function portalItemsContent(string $clientName, array $items): string {
                    . '<div class="cp-col-body">' . $cards . '</div></div>';
     }
 
-    $note = '<div class="cp-watermark" aria-hidden="true"><span class="cp-wm-mark">Market Sculpt</span></div>';
+    $note = '<div class="cp-watermark" aria-hidden="true">'
+          . '<img src="ms-watermark.png" alt="" class="cp-wm-img" onerror="this.remove();">'
+          . '</div>';
     $board = '<div class="cp-board-wrap"><div class="cp-board" id="cp-board">' . $colsHtml . '</div>'
            . '<div class="cp-board-fade" id="cp-board-fade"><span>›</span></div></div>';
     $script = '<script>(function(){var b=document.getElementById("cp-board"),f=document.getElementById("cp-board-fade");'
@@ -539,7 +541,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .cp-rail-labels { display: flex; justify-content: space-between; margin-top: 7px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #a9b0c2; }
 
 .cp-footnote { font-size: 12.5px; color: #9ba3c0; line-height: 1.7; text-align: center; padding: 6px 8px; }
-.cp-watermark { display:flex; align-items:center; justify-content:center; min-height: 240px; margin-top: 32px; user-select:none; pointer-events:none; overflow:hidden; }
+.cp-watermark { display:flex; align-items:center; justify-content:center; min-height: 260px; margin-top: 32px; user-select:none; pointer-events:none; overflow:hidden; }
+.cp-wm-img { width: min(460px, 60%); height:auto; opacity: 0.08; }
 .cp-wm-mark { font-size: clamp(44px, 10vw, 140px); font-weight: 900; letter-spacing: -3px; color: #E8751A; opacity: 0.06; white-space: nowrap; line-height: 1; }
 .footer-bar { text-align: center; padding: 24px 20px 40px; color: #9ba3c0; font-size: 12px; line-height: 1.8; }
 .footer-bar a { color: #E8751A; text-decoration: none; }
