@@ -12022,6 +12022,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="qb-inv-body" style="overflow-y:auto; flex:1 1 auto; margin-top:12px; font-size:13px; color:var(--text);"></div>
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closeQbInvoiceModal()">Cancel</button>
+      <button type="button" class="btn btn-ghost" id="qb-inv-download-btn" onclick="_exportInvoicePDF()">Download / print</button>
       <button type="button" class="btn btn-primary" id="qb-inv-create-btn" onclick="_qbInvoiceConfirmCreate(this)">Create invoice</button>
     </div>
   </div>
@@ -24517,13 +24518,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     const payload = _collectQbInvoicePayload();
     if (!payload) { _msToast('No billable lines — set Sale Per / add items on the Pricing tab first.', 'error'); return; }
+    // Preview + export work without QuickBooks — only the push to QBO needs it.
     let st = null;
     try { st = await apiCall('qbo_status', {}); } catch (_) {}
-    if (!st || !st.configured) { _msToast('QuickBooks isn\'t set up yet — open Billings to connect it.', 'error'); return; }
-    if (!st.connected)        { _msToast('QuickBooks isn\'t connected — connect it in Billings first.', 'error'); return; }
-    const env = st.environment || 'production';
+    const connected = !!(st && st.configured && st.connected);
+    const env = (st && st.environment) || 'production';
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
-    _qbPending = { key, dbId, payload, env };
+    _qbPending = { key, dbId, payload, env, connected };
     _openQbInvoiceModal();
   }
 
@@ -24532,15 +24533,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // Render the invoice preview into the modal from _qbPending, then show it.
   function _openQbInvoiceModal() {
     if (!_qbPending) return;
-    const { payload, env, key } = _qbPending;
+    const { payload, env, key, connected } = _qbPending;
     const existing = workbookDetail[key] || {};
     const esc = _esc;
     const envEl = document.getElementById('qb-inv-env');
     if (envEl) {
-      const prod = env === 'production';
-      envEl.textContent = prod ? 'Live' : 'Sandbox';
-      envEl.style.background = prod ? 'rgba(220,38,38,.12)' : 'rgba(5,150,105,.12)';
-      envEl.style.color      = prod ? '#dc2626' : '#059669';
+      if (!connected) {
+        envEl.textContent = 'Not connected';
+        envEl.style.background = 'rgba(107,114,128,.14)';
+        envEl.style.color = '#6b7280';
+      } else {
+        const prod = env === 'production';
+        envEl.textContent = prod ? 'Live' : 'Sandbox';
+        envEl.style.background = prod ? 'rgba(220,38,38,.12)' : 'rgba(5,150,105,.12)';
+        envEl.style.color      = prod ? '#dc2626' : '#059669';
+      }
     }
     const cell = 'padding:8px 6px; border-bottom:1px solid var(--border);';
     const cellR = cell + ' text-align:right; white-space:nowrap;';
@@ -24560,9 +24567,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const already = existing.qbInvoiceNumber
       ? `<div style="background:rgba(251,175,52,.12); border:1px solid rgba(251,175,52,.4); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:12.5px;">This workbook already has QB invoice <strong>#${esc(existing.qbInvoiceNumber)}</strong>. Creating another will make a second invoice.</div>`
       : '';
-    const foot = env === 'production'
-      ? `<div style="background:rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.35); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">⚠️ This creates a <strong>real invoice</strong> in your live QuickBooks company.</div>`
-      : `<div style="background:rgba(5,150,105,.10); border:1px solid rgba(5,150,105,.30); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">Sandbox test company — safe to try.</div>`;
+    const foot = !connected
+      ? `<div style="background:rgba(107,114,128,.10); border:1px solid rgba(107,114,128,.3); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">QuickBooks isn’t connected, so this can’t be pushed to QBO yet — but you can <strong>download the invoice</strong> and send it manually. Connect in Billings to create it in QuickBooks.</div>`
+      : (env === 'production'
+        ? `<div style="background:rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.35); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">⚠️ This creates a <strong>real invoice</strong> in your live QuickBooks company.</div>`
+        : `<div style="background:rgba(5,150,105,.10); border:1px solid rgba(5,150,105,.30); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">Sandbox test company — safe to try.</div>`);
     const email = payload.client_email ? `<div style="color:var(--text-muted); font-size:12px;">${esc(payload.client_email)}</div>` : '';
     const hCell = 'padding:6px; border-bottom:2px solid var(--border); color:var(--text-muted); font-size:11px;';
     const body = document.getElementById('qb-inv-body');
@@ -24582,7 +24591,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         + foot;
     }
     const cb = document.getElementById('qb-inv-create-btn');
-    if (cb) { cb.disabled = false; cb.textContent = 'Create invoice'; }
+    if (cb) {
+      cb.disabled = !connected;
+      cb.textContent = connected ? 'Create invoice' : 'Connect QuickBooks to create';
+      cb.style.opacity = connected ? '' : '.55';
+    }
     const m = document.getElementById('qb-invoice-modal');
     if (m) { m.classList.add('open'); m.style.display = 'flex'; }
   }
@@ -24591,6 +24604,75 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const m = document.getElementById('qb-invoice-modal');
     if (m) { m.classList.remove('open'); m.style.display = 'none'; }
     _qbPending = null;
+  }
+
+  // Download / print a standalone invoice (no QuickBooks needed) — e.g. to send
+  // to the bookkeeper. Uses the SAME billable lines as the QB preview, opened
+  // in a print window (Save as PDF).
+  function _exportInvoicePDF() {
+    if (!_qbPending) { _msToast('Open the invoice preview first.', 'error'); return; }
+    const { payload } = _qbPending;
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const usd = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const rows = [];
+    payload.lines.forEach(l => {
+      rows.push(`<tr><td>${esc(l.name)}</td><td class="r">${(l.qty || 0).toLocaleString('en-US')}</td><td class="r">${usd(l.unitPrice)}</td><td class="r">${usd(l.lineTotal)}</td></tr>`);
+    });
+    payload.fees.forEach(f => {
+      rows.push(`<tr><td>${esc(f.name)}</td><td class="r">1</td><td class="r">${usd(f.amount)}</td><td class="r">${usd(f.amount)}</td></tr>`);
+    });
+    const addrLines = String(payload.bill_addr || '').split(/\r?\n/).filter(x => x.trim() !== '').map(esc).join('<br>');
+    const billBlock = `<strong>${esc(payload.client_name)}</strong>`
+      + (payload.client_email ? `<br>${esc(payload.client_email)}` : '')
+      + (addrLines ? `<br>${addrLines}` : '');
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Invoice — ${esc(payload.client_name)}</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a1d2e;background:#fff;padding:36px;font-size:13px;line-height:1.5;}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #E8751A;padding-bottom:16px;margin-bottom:24px;}
+  .brand{font-size:22px;font-weight:800;color:#E8751A;letter-spacing:-0.3px;}
+  .brand-sub{font-size:11px;font-weight:600;color:#6b7280;letter-spacing:.06em;text-transform:uppercase;margin-top:4px;}
+  .inv-title{font-size:26px;font-weight:800;color:#1a1d2e;text-align:right;}
+  .meta-row{font-size:12px;color:#374151;margin-top:4px;text-align:right;}
+  .meta-label{font-weight:700;color:#9ba3c0;text-transform:uppercase;letter-spacing:.05em;font-size:10px;margin-right:6px;}
+  .billto-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ba3c0;margin-bottom:4px;}
+  .billto{font-size:13px;color:#1a1d2e;margin-bottom:24px;line-height:1.6;}
+  table.items{width:100%;border-collapse:collapse;font-size:13px;}
+  table.items thead th{padding:10px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#9ba3c0;background:#f8f9fb;border-bottom:1px solid #e5e7eb;text-align:left;}
+  table.items thead th.r{text-align:right;}
+  table.items tbody td{padding:10px 12px;border-bottom:1px solid #f0f2f5;}
+  table.items tbody td.r{text-align:right;white-space:nowrap;}
+  .total-row td{padding:12px;font-weight:800;font-size:15px;border-top:2px solid #E8751A;}
+  .total-row td.accent{color:#E8751A;text-align:right;}
+  .footer{margin-top:30px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ba3c0;line-height:1.7;}
+  .footer a{color:#E8751A;text-decoration:none;}
+  .print-controls{position:fixed;top:16px;right:16px;display:flex;gap:8px;z-index:100;}
+  .print-controls button{background:#E8751A;color:#fff;border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .print-controls button.secondary{background:#fff;color:#6b7280;border:1px solid #d1d5db;}
+  @media print{body{padding:0;}.print-controls{display:none!important;}}
+</style></head><body>
+  <div class="print-controls"><button onclick="window.print()">Print / Save as PDF</button><button class="secondary" onclick="window.close()">Close</button></div>
+  <div class="header">
+    <div><div class="brand">Market Sculpt</div><div class="brand-sub">Invoice</div></div>
+    <div><div class="inv-title">Invoice</div>
+      <div class="meta-row"><span class="meta-label">Date</span>${esc(dateStr)}</div>
+      <div class="meta-row"><span class="meta-label">Terms</span>Due on receipt</div>
+    </div>
+  </div>
+  <div class="billto-label">Bill to</div>
+  <div class="billto">${billBlock}</div>
+  <table class="items"><thead><tr>
+    <th>Product / service</th><th class="r" style="width:90px;">Qty</th><th class="r" style="width:120px;">Rate</th><th class="r" style="width:130px;">Amount</th>
+  </tr></thead><tbody>${rows.join('')}</tbody>
+  <tfoot><tr class="total-row"><td colspan="3" style="text-align:right;">Total</td><td class="accent">${usd(payload._displayTotal)}</td></tr></tfoot>
+  </table>
+  <div class="footer">Market Sculpt LLC &nbsp;·&nbsp; <a href="https://marketsculpt.com">marketsculpt.com</a><br>Questions? <a href="mailto:parker@marketsculpt.com">parker@marketsculpt.com</a></div>
+  <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),350));<\/script>
+</body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) { _msToast('Pop-up blocked. Allow pop-ups to download the invoice.', 'error'); return; }
+    win.document.open(); win.document.write(html); win.document.close();
   }
 
   async function _qbInvoiceConfirmCreate(confirmBtn) {
