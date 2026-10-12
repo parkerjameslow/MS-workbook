@@ -46272,6 +46272,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return;
     }
     showToast(`Moved to ${lbl}`, 'success');
+
+    // Stage-entry notifications — these used to live on the in-workbook
+    // "Send to RFQ" / "Send for Review" buttons (now removed). Firing them
+    // here means dragging a card into the column does the same thing:
+    //   • RFQ    → team Slack ping (sourcing/quoting heads-up).
+    //   • Review → email Jackson + Parker (submit_for_review) + team Slack.
+    // Fire-and-forget; never blocks or reverts the move.
+    const _prod = (detail && detail.product) ? detail.product : (`Workbook #${workbookId}`);
+    if (targetStage === 'rfq') {
+      _notifyStageSlack('Workbook sent to RFQ', ':clipboard:',
+        [`*${_prod}* — ${clientName}`, 'Moved into the RFQ queue for sourcing & quoting.']);
+    } else if (targetStage === 'review') {
+      try {
+        const p = apiCall('submit_for_review', { workbook_id: dbId, client_name: clientName, product_name: _prod });
+        if (p && typeof p.catch === 'function') p.catch(e => console.warn('[pipeline review email]', e));
+      } catch (e) { console.warn('[pipeline review email]', e); }
+      _notifyStageSlack('Workbook ready for review', ':eyes:',
+        [`*${_prod}* — ${clientName}`, 'Ready for Jackson + Parker to review.']);
+    }
   }
 
   // ── Pipeline card meta (assignees + notes) ────────────────────────
