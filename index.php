@@ -7758,7 +7758,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <header class="app-header">
   <div class="logo">
     <button class="hamburger-btn" id="hamburger-btn" onclick="toggleMobileSidebar()" aria-label="Open menu">☰</button>
-    <div class="logo-text" id="header-title" style="font-size:18px; font-weight:700; color:var(--header-title); border-left:3px solid #E8751A; padding-left:12px;">Market Sculpt</div>
+    <div class="logo-text" id="header-title" style="font-size:18px; font-weight:700; color:var(--header-title);">Market Sculpt</div>
   </div>
   <div class="header-actions">
     <span id="save-status" style="font-size:12px; opacity:0; transition:opacity 0.4s; margin-right:8px;"></span>
@@ -45453,7 +45453,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const stage = _pipelineStageFor(clientName, workbookId, detail);
     if (!stage) return '<span class="wb-col-pill" style="background:#dcfce7;color:#166534;">Completed</span>';
     const col = PIPELINE_COLUMNS.find(c => c.id === stage) || { label: stage, bg: '#f3f4f6', fg: '#4b5563' };
-    const esc = (typeof _plEsc === 'function') ? _plEsc : (s => s);
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     return `<span class="wb-col-pill" style="background:${col.bg};color:${col.fg};">${esc(col.label)}</span>`;
   }
 
@@ -45464,7 +45464,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const on = (d.showInPortal === '1' || d.showInPortal === true);
     if (!on) return '<span class="wb-portal-off">Off</span>';
     const msg = (d.portalMessage && String(d.portalMessage).trim()) ? d.portalMessage : 'On portal';
-    const esc = (typeof _plEsc === 'function') ? _plEsc : (s => s);
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     return `<span class="wb-portal-on" title="${esc(msg)}">${esc(msg)}</span>`;
   }
 
