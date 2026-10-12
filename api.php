@@ -595,9 +595,11 @@ if (!defined('SLACK_BOT_TOKEN')) { $v = getenv('SLACK_BOT_TOKEN'); define('SLACK
 if (!defined('SLACK_USER_TOKEN')) { $v = getenv('SLACK_USER_TOKEN'); define('SLACK_USER_TOKEN', is_string($v) ? $v : ''); }
 // Channel the "Send invoice" action posts the invoice PDF to. A channel id
 // (C…/G…) is used directly; a #name (or bare name) is resolved via
-// conversations.list. The bot (SLACK_BOT_TOKEN, needs files:write +
-// channels:read) must be a MEMBER of this channel. Defaults to #accounting.
-if (!defined('SLACK_ACCOUNTING_CHANNEL')) { $v = getenv('SLACK_ACCOUNTING_CHANNEL'); define('SLACK_ACCOUNTING_CHANNEL', is_string($v) && $v !== '' ? $v : 'accounting'); }
+// conversations.list (needs channels:read). The bot (SLACK_BOT_TOKEN, needs
+// files:write) must be a MEMBER of this channel. Defaults to MarketSculpt's
+// #accounting channel id (C0BDW1GP0FP) so no name lookup / channels:read is
+// needed; override in api.local.php to point elsewhere.
+if (!defined('SLACK_ACCOUNTING_CHANNEL')) { $v = getenv('SLACK_ACCOUNTING_CHANNEL'); define('SLACK_ACCOUNTING_CHANNEL', is_string($v) && $v !== '' ? $v : 'C0BDW1GP0FP'); }
 // Trello REST API key + token:
 if (!defined('TRELLO_KEY'))   { $v = getenv('TRELLO_KEY');   define('TRELLO_KEY',   is_string($v) ? $v : ''); }
 if (!defined('TRELLO_TOKEN')) { $v = getenv('TRELLO_TOKEN'); define('TRELLO_TOKEN', is_string($v) ? $v : ''); }
