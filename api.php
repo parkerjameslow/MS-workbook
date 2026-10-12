@@ -1348,29 +1348,40 @@ function qbo_find_or_create_customer(PDO $pdo, string $name, string $email = '',
     return ['error' => qbo_err($res, 'customer')];
 }
 
-// Find (or create) a generic Service item — QBO requires an ItemRef on every
-// sales line, so all workbook lines hang off one "MarketSculpt Product" item
-// (the real product name goes in the line Description).
-// Returns ['id'=>..] or ['error'=>..].
-function qbo_find_or_create_item(PDO $pdo): array {
-    $itemName = 'MarketSculpt Product';
-    $qr = qbo_query($pdo, "SELECT Id, Name FROM Item WHERE Name = '" . qbo_q_esc($itemName) . "'");
-    if (!empty($qr['Item'][0]['Id'])) return ['id' => (string)$qr['Item'][0]['Id']];
-    // Creating a Service item needs an income account to book sales against.
+// Resolve (once per request) an Income account to book new items against.
+function qbo_income_account_id(PDO $pdo): ?string {
+    static $cached = false, $id = null;
+    if ($cached) return $id;
+    $cached = true;
     $acc = qbo_query($pdo, "SELECT Id FROM Account WHERE AccountType = 'Income' MAXRESULTS 1");
-    $incomeId = $acc['Account'][0]['Id'] ?? null;
-    if (!$incomeId) {
+    $id = $acc['Account'][0]['Id'] ?? null;
+    if (!$id) {
         $acc2 = qbo_query($pdo, "SELECT Id FROM Account WHERE Classification = 'Revenue' MAXRESULTS 1");
-        $incomeId = $acc2['Account'][0]['Id'] ?? null;
+        $id = $acc2['Account'][0]['Id'] ?? null;
     }
-    if (!$incomeId) return ['error' => 'No income account found in QuickBooks to attach the product item to.'];
+    return $id ? (string)$id : null;
+}
+
+// Find-or-create a Service item NAMED after the line itself (product or fee),
+// so the invoice's Product/Service column reads as the actual product — no
+// generic wrapper item above it. Cached per request. QBO item names must be
+// <=100 chars and can't contain ':' (reserved for sub-items).
+// Returns ['id'=>..] or ['error'=>..].
+function qbo_find_or_create_named_item(PDO $pdo, string $name): array {
+    static $cache = [];
+    $n = trim(str_replace(':', '-', $name));
+    if ($n === '') $n = 'Item';
+    $n = mb_substr($n, 0, 100);
+    if (isset($cache[$n])) return ['id' => $cache[$n]];
+    $qr = qbo_query($pdo, "SELECT Id, Name FROM Item WHERE Name = '" . qbo_q_esc($n) . "'");
+    if (!empty($qr['Item'][0]['Id'])) { $cache[$n] = (string)$qr['Item'][0]['Id']; return ['id' => $cache[$n]]; }
+    $incomeId = qbo_income_account_id($pdo);
+    if (!$incomeId) return ['error' => 'No income account found in QuickBooks to attach the item to.'];
     $res = qbo_api($pdo, 'POST', '/item', [
-        'Name' => $itemName,
-        'Type' => 'Service',
-        'IncomeAccountRef' => ['value' => (string)$incomeId],
+        'Name' => $n, 'Type' => 'Service', 'IncomeAccountRef' => ['value' => $incomeId],
     ]);
-    if (!empty($res['data']['Item']['Id'])) return ['id' => (string)$res['data']['Item']['Id']];
-    return ['error' => qbo_err($res, 'item')];
+    if (!empty($res['data']['Item']['Id'])) { $cache[$n] = (string)$res['data']['Item']['Id']; return ['id' => $cache[$n]]; }
+    return ['error' => qbo_err($res, 'item "' . $n . '"')];
 }
 
 function ms_sms_configured(): bool {
@@ -7118,11 +7129,10 @@ switch ($action) {
         );
         if (!empty($cust['error'])) { echo json_encode(['success' => false, 'error' => $cust['error']]); break; }
 
-        $item = qbo_find_or_create_item($pdo);
-        if (!empty($item['error'])) { echo json_encode(['success' => false, 'error' => $item['error']]); break; }
-        $itemRef = ['value' => $item['id']];
-
         $invLines = [];
+        $itemErr  = '';
+        // Each line's Product/Service IS the product (or fee) itself — no
+        // generic "MarketSculpt Product" wrapper above the name.
         foreach ($lines as $ln) {
             if (!is_array($ln)) continue;
             $nm   = trim((string)($ln['name'] ?? 'Item'));
@@ -7130,28 +7140,31 @@ switch ($action) {
             $unit = (float)($ln['unitPrice'] ?? 0);
             $amt  = isset($ln['lineTotal']) ? (float)$ln['lineTotal'] : round($qty * $unit, 2);
             if ($qty <= 0 && $unit <= 0 && $amt == 0) continue;
-            $sd = ['ItemRef' => $itemRef];
+            $it = qbo_find_or_create_named_item($pdo, $nm !== '' ? $nm : 'Item');
+            if (!empty($it['error'])) { $itemErr = $it['error']; break; }
+            $sd = ['ItemRef' => ['value' => $it['id']]];
             if ($qty  > 0) $sd['Qty'] = $qty;
             if ($unit > 0) $sd['UnitPrice'] = round($unit, 4);
             $invLines[] = [
                 'DetailType'          => 'SalesItemLineDetail',
                 'Amount'              => round($amt, 2),
-                'Description'         => $nm !== '' ? $nm : 'Item',
                 'SalesItemLineDetail' => $sd,
             ];
         }
-        foreach ($fees as $fe) {
+        if ($itemErr === '') foreach ($fees as $fe) {
             if (!is_array($fe)) continue;
             $nm  = trim((string)($fe['name'] ?? 'Fee'));
             $amt = (float)($fe['amount'] ?? 0);
             if ($amt == 0) continue;
+            $it = qbo_find_or_create_named_item($pdo, $nm !== '' ? $nm : 'Fee');
+            if (!empty($it['error'])) { $itemErr = $it['error']; break; }
             $invLines[] = [
                 'DetailType'          => 'SalesItemLineDetail',
                 'Amount'              => round($amt, 2),
-                'Description'         => $nm !== '' ? $nm : 'Fee',
-                'SalesItemLineDetail' => ['ItemRef' => $itemRef, 'Qty' => 1, 'UnitPrice' => round($amt, 2)],
+                'SalesItemLineDetail' => ['ItemRef' => ['value' => $it['id']], 'Qty' => 1, 'UnitPrice' => round($amt, 2)],
             ];
         }
+        if ($itemErr !== '') { echo json_encode(['success' => false, 'error' => $itemErr]); break; }
         if (!$invLines) { echo json_encode(['success' => false, 'error' => 'No billable lines on this workbook.']); break; }
 
         $inv = ['CustomerRef' => ['value' => $cust['id']], 'Line' => $invLines];
