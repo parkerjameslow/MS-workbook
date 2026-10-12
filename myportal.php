@@ -546,8 +546,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 
 .cp-footnote { font-size: 12.5px; color: #9ba3c0; line-height: 1.7; text-align: center; padding: 6px 8px; }
 .cp-board-area { position: relative; }
-.cp-watermark { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; z-index:0; margin:0; user-select:none; pointer-events:none; overflow:visible; }
-.cp-wm-img { width: min(1300px, 108%); height:auto; opacity: 0.08; }
+.cp-watermark { position:absolute; left:0; right:0; top:62%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; z-index:0; margin:0; user-select:none; pointer-events:none; overflow:visible; }
+.cp-wm-img { width: min(820px, 84%); height:auto; opacity: 0.08; }
 .cp-wm-mark { font-size: clamp(40px, 9vw, 120px); font-weight: 900; letter-spacing: -3px; color: #E8751A; opacity: 0.07; white-space: nowrap; line-height: 1; }
 .cp-wm-sculpt { color: #9ca3af; font-weight: 300; margin-left: 4px; }
 .footer-bar { text-align: center; padding: 24px 20px 40px; color: #9ba3c0; font-size: 12px; line-height: 1.8; }
