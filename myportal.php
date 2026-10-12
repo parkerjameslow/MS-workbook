@@ -340,7 +340,7 @@ function portalItemsContent(string $clientName, array $items): string {
         [$label, $bg, $fg] = $cols[$key];
         $colItems = $byCol[$key] ?? [];
         $cards = '';
-        foreach ($colItems as $o) $cards .= cpPortalCard($o, $idx, $total);
+        foreach ($colItems as $o) $cards .= cpPortalCard($o, $idx, $total, $key);
         if ($cards === '') $cards = '<div class="cp-col-empty">—</div>';
         $colsHtml .= '<div class="cp-col">'
                    . '<div class="cp-col-head" style="background:' . $bg . ';color:' . $fg . ';border-color:' . $bg . ';">'
@@ -360,21 +360,36 @@ function portalItemsContent(string $clientName, array $items): string {
 
 function cpFmtDate(string $d): string { $ts = strtotime($d); return $ts ? date('M j, Y', $ts) : htmlspecialchars($d); }
 
-// Detailed portal card (name + optional custom message + progress bar +
-// submitted/expected/tracking). The owning column names the pipeline stage.
-function cpPortalCard(array $o, int $colIdx = 0, int $total = 6): string {
+// Client-friendly default line per board column (shown when the operator
+// hasn't written a custom message).
+function cpColDefaultMsg(string $colKey): string {
+    $m = [
+        'rfq'        => "We're sourcing options and preparing your quote.",
+        'review'     => "Finalizing the details and reviewing everything.",
+        'samples'    => "We're preparing your samples.",
+        'orders'     => "Your order is placed and queued for production.",
+        'production' => "Your order is in production.",
+        'shipments'  => "Your order is on its way.",
+    ];
+    return $m[$colKey] ?? "We're working on it.";
+}
+
+// Detailed portal card (name + a client-facing line + progress bar +
+// expected date/tracking). Uses the operator's CUSTOM message if set,
+// otherwise the column's default sentence.
+function cpPortalCard(array $o, int $colIdx = 0, int $total = 6, string $colKey = ''): string {
     $name   = htmlspecialchars((string)($o['name'] ?? 'Item'));
     $pct    = (int)round((($colIdx + 1) / max(1, $total)) * 100);
     $last   = ($colIdx >= $total - 1);
     $accent = $last ? '#0e7490' : '#E8751A';
 
-    // Show the message only when it's a CUSTOM one (not a stock default — the
-    // column already names the stage).
+    // Custom message (anything that isn't one of the stock dropdown defaults)
+    // wins; otherwise fall back to the column's default line.
     static $stockMsgs = null;
     if ($stockMsgs === null) { $stockMsgs = []; foreach (cpPortalStatuses() as $r) $stockMsgs[$r[0]] = true; }
-    $msg = trim((string)($o['message'] ?? ''));
-    $msgHtml = ($msg !== '' && !isset($stockMsgs[$msg]))
-        ? '<div class="cp-order-sub" style="margin:7px 0 0;">' . htmlspecialchars($msg) . '</div>' : '';
+    $raw     = trim((string)($o['message'] ?? ''));
+    $display = ($raw !== '' && !isset($stockMsgs[$raw])) ? $raw : cpColDefaultMsg($colKey);
+    $msgHtml = $display !== '' ? '<div class="cp-order-sub" style="margin:7px 0 0;">' . htmlspecialchars($display) . '</div>' : '';
 
     $meta = [];
     if (!empty($o['dateExpected'])) $meta[] = 'Expected ' . cpFmtDate((string)$o['dateExpected']);
