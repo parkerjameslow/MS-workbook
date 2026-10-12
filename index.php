@@ -3421,20 +3421,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .dash-table th.col-date-created   { width: 100px; }
     .dash-table th.col-date-submitted { width: 100px; }
     .dash-table th.col-order    { width: 110px; }
-    .dash-table th.col-portal   { width: 130px; }
+    .dash-table th.col-portal   { width: 260px; }
     .dash-table .wb-portal-on {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 800;
-      background: rgba(34,197,94,0.14); color: #16a34a; border: 1px solid rgba(34,197,94,0.35);
-      white-space: nowrap;
+      display: inline-flex; align-items: flex-start; gap: 7px;
+      padding: 6px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; line-height: 1.35;
+      background: rgba(34,197,94,0.12); color: #15803d; border: 1px solid rgba(34,197,94,0.30);
+      white-space: normal; max-width: 100%;
     }
-    .dash-table .wb-portal-on::before { content:''; width:7px; height:7px; border-radius:50%; background:#22c55e; }
+    .dash-table .wb-portal-on::before { content:''; width:7px; height:7px; border-radius:50%; background:#22c55e; margin-top:5px; flex:0 0 auto; }
     .dash-table .wb-portal-off { font-size: 12px; color: var(--text-muted); }
+    /* Pipeline Stage column — just a compact pill now (was 452px for the old
+       7-bar flow strip, which crammed the rest of the table). */
     .dash-table th.col-flow,
     .dash-table td.col-flow {
-      width: 452px;       /* 7 steps × 56px + 6 gaps × 6px + 24px right buffer */
-      min-width: 452px;   /* belt + suspenders for non-fixed layout fallbacks */
-      padding-right: 24px !important;
+      width: 150px;
+      padding-right: 16px !important;
     }
     .dash-table th.col-mobile-status { width: 0; }   /* hidden on desktop */
     .dash-table th:last-child   { width: 60px; }     /* Actions */
@@ -33362,10 +33363,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (sel) {
       sel.innerHTML = PORTAL_DEFAULTS.map(([key, label]) =>
         `<option value="${key}">${_pkEsc ? _pkEsc(label) : label}</option>`).join('');
-      sel.value = (curStatus && curStatus !== 'custom') ? curStatus : 'request';
+      sel.value = curStatus || 'request';
     }
+    // Show the custom text only if the saved message differs from the default.
+    const _found = PORTAL_DEFAULTS.find(d => d[0] === (curStatus || 'request'));
+    const _defLabel = _found ? _found[1] : '';
     const custom = document.getElementById('portal-msg-custom');
-    if (custom) custom.value = (curStatus === 'custom') ? curMsg : '';
+    if (custom) custom.value = (curMsg && curMsg !== _defLabel) ? curMsg : '';
     // Dates + tracking (default submitted = today when first enabling).
     const todayIso = new Date().toISOString().slice(0, 10);
     const ds = document.getElementById('portal-modal-date-submitted');
@@ -33387,14 +33391,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _portalModalFresh = false;
   }
   function savePortalMsg() {
+    // Status (the column) always comes from the dropdown; a custom message
+    // just overrides the displayed text within that stage.
     const custom = (document.getElementById('portal-msg-custom') || {}).value.trim();
-    let statusKey, message;
-    if (custom !== '') { statusKey = 'custom'; message = custom; }
-    else {
-      statusKey = (document.getElementById('portal-msg-select') || {}).value || 'request';
-      const found = PORTAL_DEFAULTS.find(d => d[0] === statusKey);
-      message = found ? found[1] : "We're working on your request";
-    }
+    const statusKey = (document.getElementById('portal-msg-select') || {}).value || 'request';
+    const found = PORTAL_DEFAULTS.find(d => d[0] === statusKey);
+    const defLabel = found ? found[1] : "We're working on your request";
+    const message = custom !== '' ? custom : defLabel;
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
     set('portal-status', statusKey);
     set('portal-message', message);
@@ -45451,20 +45454,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return `<span class="wb-col-pill" style="background:${col.bg};color:${col.fg};">${esc(col.label)}</span>`;
   }
 
-  // Client-detail "Customer Portal" cell: whether the workbook is shared to
-  // the client portal and, if so, the client-facing stage.
-  const _PORTAL_SHORT = {
-    request: 'Working on request', quoting: 'Quoting', sampling: 'Sampling',
-    sample_sent: 'Sample review', approved: 'Approved', production: 'In production',
-    shipped: 'Shipped', delivered: 'Delivered', custom: 'Custom message',
-  };
+  // Client-detail "Customer Portal" cell: shows the exact message the client
+  // sees when the workbook is shared, or a muted "Off" when it isn't.
   function _wbPortalCellHtml(cn, wid) {
     const d = workbookDetail[`${cn}|${wid}`] || {};
     const on = (d.showInPortal === '1' || d.showInPortal === true);
     if (!on) return '<span class="wb-portal-off">Off</span>';
-    const label = _PORTAL_SHORT[d.portalStatus] || (d.portalMessage ? 'Custom message' : 'On portal');
+    const msg = (d.portalMessage && String(d.portalMessage).trim()) ? d.portalMessage : 'On portal';
     const esc = (typeof _plEsc === 'function') ? _plEsc : (s => s);
-    return `<span class="wb-portal-on" title="Shared to the client portal">${esc(label)}</span>`;
+    return `<span class="wb-portal-on" title="${esc(msg)}">${esc(msg)}</span>`;
   }
 
   // Freely movable (flag flip) only when the stage is flag-based AND the

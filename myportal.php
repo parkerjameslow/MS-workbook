@@ -248,44 +248,39 @@ function portalItemsContent(string $clientName, array $items): string {
     $summary = '<div class="cp-summary">' . count($items) . ' item' . (count($items) === 1 ? '' : 's')
              . ($active ? ' · <strong>' . $active . ' in progress</strong>' : '') . '</div>';
 
-    $cards = '';
-    foreach ($items as $o) $cards .= cpPortalCard($o);
+    // Group items into status columns (board view, like the pipeline). Only
+    // columns that have items are shown, in stage order. The column header is
+    // the status message; a custom per-item message shows on its card.
+    $byStatus = [];
+    foreach ($items as $o) $byStatus[(string)($o['status'] ?? 'request')][] = $o;
+
+    $cols = '';
+    foreach (cpPortalStatuses() as $key => $row) {
+        $colItems = $byStatus[$key] ?? [];
+        if (!$colItems) continue;
+        $title  = $row[0];                 // friendly status label = the column
+        $isDone = ($key === 'delivered');
+        $cards = '';
+        foreach ($colItems as $o) {
+            $name = htmlspecialchars((string)($o['name'] ?? 'Item'));
+            $msg  = trim((string)($o['message'] ?? ''));
+            $msgHtml = ($msg !== '' && $msg !== $title) ? '<div class="cp-mini-msg">' . htmlspecialchars($msg) . '</div>' : '';
+            $meta = [];
+            if (!empty($o['dateExpected'])) $meta[] = 'Expected ' . cpFmtDate((string)$o['dateExpected']);
+            if (!empty($o['tracking']))     $meta[] = 'Tracking: <strong>' . htmlspecialchars((string)$o['tracking']) . '</strong>';
+            $metaHtml = $meta ? '<div class="cp-mini-meta">' . implode('<br>', $meta) . '</div>' : '';
+            $cards .= '<div class="cp-mini"><div class="cp-mini-name">' . $name . '</div>' . $msgHtml . $metaHtml . '</div>';
+        }
+        $cols .= '<div class="cp-col' . ($isDone ? ' is-done' : '') . '">'
+               . '<div class="cp-col-head"><span>' . htmlspecialchars($title) . '</span><span class="cp-col-count">' . count($colItems) . '</span></div>'
+               . $cards . '</div>';
+    }
 
     $note = '<p class="cp-footnote">Questions about an item? Reply to your Market Sculpt email or contact your representative any time.</p>';
-    return $header . $summary . $cards . $note;
+    return $header . $summary . '<div class="cp-board">' . $cols . '</div>' . $note;
 }
 
 function cpFmtDate(string $d): string { $ts = strtotime($d); return $ts ? date('M j, Y', $ts) : htmlspecialchars($d); }
-
-function cpPortalCard(array $o): string {
-    $name      = (string)($o['name'] ?? 'Item');
-    $statusKey = (string)($o['status'] ?? 'request');
-    $map   = cpPortalStatuses();
-    $row   = $map[$statusKey] ?? null;
-    // Operator's message wins; else the default label for the status.
-    $label = trim((string)($o['message'] ?? '')) !== '' ? (string)$o['message'] : ($row ? $row[0] : "We're working on your request");
-    $pct   = $row ? (int)$row[1] : 55; // custom message → neutral progress
-    $done  = $statusKey === 'delivered';
-    $accent = $done ? '#16a34a' : '#E8751A';
-    $badge = '<span class="cp-badge" style="background:' . ($done ? '#dcfce7' : '#fff7ed')
-           . ';color:' . ($done ? '#166534' : '#9a3412') . ';">' . htmlspecialchars($label) . '</span>';
-
-    // Dates + tracking line.
-    $meta = [];
-    if (!empty($o['dateSubmitted'])) $meta[] = 'Submitted ' . cpFmtDate((string)$o['dateSubmitted']);
-    if (!empty($o['dateExpected']))  $meta[] = 'Expected completion ' . cpFmtDate((string)$o['dateExpected']);
-    if (!empty($o['tracking']))      $meta[] = 'Tracking: <strong>' . htmlspecialchars((string)$o['tracking']) . '</strong>';
-    $metaHtml = $meta ? '<div class="cp-order-sub" style="margin-top:12px;">' . implode(' &nbsp;·&nbsp; ', $meta) . '</div>' : '';
-
-    return '<div class="card cp-order">'
-         . '<div class="card-body">'
-         . '<div class="cp-order-top">'
-         . '<h2 class="cp-order-name">' . htmlspecialchars($name) . '</h2>' . $badge
-         . '</div>'
-         . '<div class="cp-bar" style="margin-top:14px;"><div class="cp-bar-fill" style="width:' . $pct . '%;background:' . $accent . ';"></div></div>'
-         . $metaHtml
-         . '</div></div>';
-}
 
 function dashboardContent(string $clientName, array $mine): string {
     $activeCount = 0;
@@ -393,7 +388,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .ms-logo { font-size: 18px; font-weight: 800; color: #E8751A; border-left: 3px solid #E8751A; padding-left: 12px; letter-spacing: -0.3px; }
 .ms-logo-sub { font-size: 11px; font-weight: 500; color: #6b7280; letter-spacing: 0.02em; }
 .ms-bar { height: 3px; background: #E8751A; }
-.ms-wrap { max-width: 680px; margin: 0 auto; padding: 30px 20px 80px; }
+.ms-wrap { max-width: 1120px; margin: 0 auto; padding: 30px 24px 80px; }
 .card { background: #fff; border-radius: 14px; border: 1px solid #e8eaf0; overflow: hidden; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 .card-body { padding: 22px 24px; }
 .soft-icon { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
@@ -423,6 +418,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .cp-footnote { font-size: 12.5px; color: #9ba3c0; line-height: 1.7; text-align: center; padding: 6px 8px; }
 .footer-bar { text-align: center; padding: 24px 20px 40px; color: #9ba3c0; font-size: 12px; line-height: 1.8; }
 .footer-bar a { color: #E8751A; text-decoration: none; }
+
+/* Status board (columns, like the pipeline) */
+.cp-board { display:flex; gap:14px; overflow-x:auto; padding-bottom:10px; align-items:flex-start; }
+.cp-col { flex:1 1 0; min-width:220px; background:#f8f9fb; border:1px solid #e9ecf3; border-radius:14px; padding:11px; }
+.cp-col-head { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:3px 5px 11px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.cp-col-count { background:#fff; border:1px solid #e5e7eb; color:#6b7280; border-radius:999px; font-size:11px; font-weight:800; padding:1px 8px; }
+.cp-col.is-done .cp-col-head { color:#166534; }
+.cp-mini { background:#fff; border:1px solid #eceff4; border-radius:11px; padding:12px 13px; margin-bottom:9px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+.cp-mini:last-child { margin-bottom:0; }
+.cp-mini-name { font-size:14px; font-weight:800; color:#1a1d2e; line-height:1.25; }
+.cp-mini-msg { font-size:12.5px; color:#6b7280; margin-top:6px; line-height:1.45; }
+.cp-mini-meta { font-size:11px; color:#9ba3c0; margin-top:9px; line-height:1.5; }
 
 @media (max-width: 620px) {
   .ms-wrap { padding: 18px 12px 60px; }
