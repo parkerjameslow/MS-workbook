@@ -254,23 +254,15 @@ function portalItemsContent(string $clientName, array $items): string {
     $byStatus = [];
     foreach ($items as $o) $byStatus[(string)($o['status'] ?? 'request')][] = $o;
 
+    // Show every status column (so it reads as a full board), in stage order.
     $cols = '';
     foreach (cpPortalStatuses() as $key => $row) {
         $colItems = $byStatus[$key] ?? [];
-        if (!$colItems) continue;
         $title  = $row[0];                 // friendly status label = the column
         $isDone = ($key === 'delivered');
         $cards = '';
-        foreach ($colItems as $o) {
-            $name = htmlspecialchars((string)($o['name'] ?? 'Item'));
-            $msg  = trim((string)($o['message'] ?? ''));
-            $msgHtml = ($msg !== '' && $msg !== $title) ? '<div class="cp-mini-msg">' . htmlspecialchars($msg) . '</div>' : '';
-            $meta = [];
-            if (!empty($o['dateExpected'])) $meta[] = 'Expected ' . cpFmtDate((string)$o['dateExpected']);
-            if (!empty($o['tracking']))     $meta[] = 'Tracking: <strong>' . htmlspecialchars((string)$o['tracking']) . '</strong>';
-            $metaHtml = $meta ? '<div class="cp-mini-meta">' . implode('<br>', $meta) . '</div>' : '';
-            $cards .= '<div class="cp-mini"><div class="cp-mini-name">' . $name . '</div>' . $msgHtml . $metaHtml . '</div>';
-        }
+        foreach ($colItems as $o) $cards .= cpPortalCard($o);
+        if ($cards === '') $cards = '<div class="cp-col-empty">—</div>';
         $cols .= '<div class="cp-col' . ($isDone ? ' is-done' : '') . '">'
                . '<div class="cp-col-head"><span>' . htmlspecialchars($title) . '</span><span class="cp-col-count">' . count($colItems) . '</span></div>'
                . $cards . '</div>';
@@ -281,6 +273,38 @@ function portalItemsContent(string $clientName, array $items): string {
 }
 
 function cpFmtDate(string $d): string { $ts = strtotime($d); return $ts ? date('M j, Y', $ts) : htmlspecialchars($d); }
+
+// Detailed portal card (name + optional custom message + progress bar +
+// submitted/expected/tracking). The owning column names the status, so no
+// redundant status badge here.
+function cpPortalCard(array $o): string {
+    $name      = htmlspecialchars((string)($o['name'] ?? 'Item'));
+    $statusKey = (string)($o['status'] ?? 'request');
+    $map = cpPortalStatuses();
+    $row = $map[$statusKey] ?? null;
+    $defLabel = $row ? $row[0] : '';
+    $pct    = $row ? (int)$row[1] : 55;
+    $done   = ($statusKey === 'delivered');
+    $accent = $done ? '#16a34a' : '#E8751A';
+
+    $msg = trim((string)($o['message'] ?? ''));
+    $msgHtml = ($msg !== '' && $msg !== $defLabel)
+        ? '<div class="cp-order-sub" style="margin:7px 0 0;">' . htmlspecialchars($msg) . '</div>' : '';
+
+    $meta = [];
+    if (!empty($o['dateSubmitted'])) $meta[] = 'Submitted ' . cpFmtDate((string)$o['dateSubmitted']);
+    if (!empty($o['dateExpected']))  $meta[] = 'Expected ' . cpFmtDate((string)$o['dateExpected']);
+    if (!empty($o['tracking']))      $meta[] = 'Tracking: <strong>' . htmlspecialchars((string)$o['tracking']) . '</strong>';
+    $metaHtml = $meta ? '<div class="cp-order-sub" style="margin-top:12px;font-size:12.5px;">' . implode(' &nbsp;·&nbsp; ', $meta) . '</div>' : '';
+
+    return '<div class="card cp-order" style="margin-bottom:12px;">'
+         . '<div class="card-body" style="padding:16px 18px;">'
+         . '<h2 class="cp-order-name" style="font-size:15.5px;">' . $name . '</h2>'
+         . $msgHtml
+         . '<div class="cp-bar" style="margin-top:13px;"><div class="cp-bar-fill" style="width:' . $pct . '%;background:' . $accent . ';"></div></div>'
+         . $metaHtml
+         . '</div></div>';
+}
 
 function dashboardContent(string $clientName, array $mine): string {
     $activeCount = 0;
@@ -419,17 +443,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .footer-bar { text-align: center; padding: 24px 20px 40px; color: #9ba3c0; font-size: 12px; line-height: 1.8; }
 .footer-bar a { color: #E8751A; text-decoration: none; }
 
-/* Status board (columns, like the pipeline) */
-.cp-board { display:flex; gap:14px; overflow-x:auto; padding-bottom:10px; align-items:flex-start; }
-.cp-col { flex:1 1 0; min-width:220px; background:#f8f9fb; border:1px solid #e9ecf3; border-radius:14px; padding:11px; }
-.cp-col-head { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:3px 5px 11px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.cp-col-count { background:#fff; border:1px solid #e5e7eb; color:#6b7280; border-radius:999px; font-size:11px; font-weight:800; padding:1px 8px; }
+/* Status board (columns, like the pipeline) with the detailed cards inside */
+.cp-board { display:flex; gap:16px; overflow-x:auto; padding-bottom:12px; align-items:stretch; }
+.cp-col { flex:1 0 272px; min-width:272px; background:#f1f3f8; border:1px solid #e6e9f1; border-radius:16px; padding:12px; }
+.cp-col-head { font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; padding:4px 6px 12px; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; line-height:1.3; }
+.cp-col-head > span:first-child { min-width:0; }
+.cp-col-count { background:#fff; border:1px solid #e5e7eb; color:#6b7280; border-radius:999px; font-size:11px; font-weight:800; padding:1px 8px; flex:0 0 auto; }
 .cp-col.is-done .cp-col-head { color:#166534; }
-.cp-mini { background:#fff; border:1px solid #eceff4; border-radius:11px; padding:12px 13px; margin-bottom:9px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
-.cp-mini:last-child { margin-bottom:0; }
-.cp-mini-name { font-size:14px; font-weight:800; color:#1a1d2e; line-height:1.25; }
-.cp-mini-msg { font-size:12.5px; color:#6b7280; margin-top:6px; line-height:1.45; }
-.cp-mini-meta { font-size:11px; color:#9ba3c0; margin-top:9px; line-height:1.5; }
+.cp-col .card { margin-bottom:12px; }
+.cp-col .card:last-child { margin-bottom:0; }
+.cp-col-empty { font-size:12px; color:#b6bccb; text-align:center; padding:20px 6px; }
 
 @media (max-width: 620px) {
   .ms-wrap { padding: 18px 12px 60px; }
