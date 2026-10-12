@@ -7982,21 +7982,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            Each is styled by renderStatusBar: outlined-accent when actionable
            at the current stage, muted+disabled otherwise (never restacks). -->
       <div id="rfq-btn-stack" class="wb-stage-btn-group">
-        <button id="btn-send-rfq" class="wb-stage-btn" onclick="toggleSendToRfq()"
-          title="Send this workbook to the RFQ queue for review">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-          <span id="btn-send-rfq-label">RFQ</span>
-        </button>
-        <button id="btn-submit-review" class="wb-stage-btn" onclick="submitCurrentWorkbookForReview()"
-          title="Mark this workbook as ready for review — advances it out of the RFQ Queue and emails Jackson + Parker.">
-          <svg class="btn-submit-review-icon-send" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-          <svg class="btn-submit-review-icon-sent" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          <span id="btn-submit-review-label">Send for Review</span>
-        </button>
+        <!-- "Send to RFQ" and "Send for Review" buttons removed — stage moves
+             are now handled by dragging the card on the Pipeline board. -->
         <button id="btn-notify-quote" class="wb-stage-btn" onclick="openNotifyModal('quote_ready')"
           title="Email this quote to the client">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
