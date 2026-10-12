@@ -3673,9 +3673,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 24px;
+      flex-wrap: wrap;          /* actions drop to a second row instead of overlapping the stage pill */
+      gap: 14px 24px;
       box-shadow: var(--shadow);
     }
+    /* When the row wraps, keep the action cluster pinned to the right. */
+    .status-actions { margin-left: auto; }
 
     .status-bar-left {
       display: flex;
@@ -3724,7 +3727,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     /* Pipeline-column pill (which board column the workbook lives in). */
     .wb-col-pill {
-      display: inline-flex; align-items: center;
+      display: inline-flex; align-items: center; flex: 0 0 auto;
       padding: 5px 13px; border-radius: 999px; margin-left: 8px;
       font-size: 12px; font-weight: 800; white-space: nowrap;
       letter-spacing: .2px;

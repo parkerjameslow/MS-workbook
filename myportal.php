@@ -349,7 +349,7 @@ function portalItemsContent(string $clientName, array $items): string {
                    . '<div class="cp-col-body">' . $cards . '</div></div>';
     }
 
-    $note = '<p class="cp-footnote">Questions about an item? Reply to your Market Sculpt email or contact your representative any time.</p>';
+    $note = '<div class="cp-watermark" aria-hidden="true"><span class="cp-wm-mark">Market Sculpt</span></div>';
     $board = '<div class="cp-board-wrap"><div class="cp-board" id="cp-board">' . $colsHtml . '</div>'
            . '<div class="cp-board-fade" id="cp-board-fade"><span>›</span></div></div>';
     $script = '<script>(function(){var b=document.getElementById("cp-board"),f=document.getElementById("cp-board-fade");'
@@ -508,7 +508,7 @@ function portalPage(string $title, string $content): void {
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #1a1d2e; min-height: 100vh; }
 .ms-header { background: #181b26; padding: 0 28px; display: flex; align-items: center; height: 58px; gap: 16px; }
-.ms-logo { font-size: 18px; font-weight: 800; color: #E8751A; border-left: 3px solid #E8751A; padding-left: 12px; letter-spacing: -0.3px; }
+.ms-logo { font-size: 18px; font-weight: 800; color: #E8751A; letter-spacing: -0.3px; }
 .ms-logo-sub { font-size: 11px; font-weight: 500; color: #6b7280; letter-spacing: 0.02em; }
 .ms-bar { height: 3px; background: #E8751A; }
 .ms-wrap { max-width: none; margin: 0; padding: 28px 28px 80px; }
@@ -539,6 +539,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .cp-rail-labels { display: flex; justify-content: space-between; margin-top: 7px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #a9b0c2; }
 
 .cp-footnote { font-size: 12.5px; color: #9ba3c0; line-height: 1.7; text-align: center; padding: 6px 8px; }
+.cp-watermark { display:flex; align-items:center; justify-content:center; min-height: 240px; margin-top: 32px; user-select:none; pointer-events:none; overflow:hidden; }
+.cp-wm-mark { font-size: clamp(44px, 10vw, 140px); font-weight: 900; letter-spacing: -3px; color: #E8751A; opacity: 0.06; white-space: nowrap; line-height: 1; }
 .footer-bar { text-align: center; padding: 24px 20px 40px; color: #9ba3c0; font-size: 12px; line-height: 1.8; }
 .footer-bar a { color: #E8751A; text-decoration: none; }
 
