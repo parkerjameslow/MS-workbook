@@ -3712,6 +3712,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       content: ''; width: 8px; height: 8px; border-radius: 50%;
       background: currentColor; flex: 0 0 auto;
     }
+    /* Pipeline-column pill (which board column the workbook lives in). */
+    .wb-col-pill {
+      display: inline-flex; align-items: center;
+      padding: 5px 13px; border-radius: 999px; margin-left: 8px;
+      font-size: 12px; font-weight: 800; white-space: nowrap;
+      letter-spacing: .2px;
+    }
+    /* Send-to-Customer-Portal toggle (next to the Art tab). */
+    .wb-portal-toggle { display:inline-flex; align-items:center; gap:7px; margin-left:12px; user-select:none; }
+    .wb-portal-switch { display:inline-flex; cursor:pointer; }
+    .wb-portal-switch input { position:absolute; opacity:0; width:0; height:0; }
+    .wb-portal-slider { position:relative; width:34px; height:18px; border-radius:999px; background:var(--border); transition:background .15s; flex:0 0 auto; }
+    .wb-portal-slider::before { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:transform .15s; box-shadow:0 1px 2px rgba(0,0,0,.25); }
+    .wb-portal-switch input:checked + .wb-portal-slider { background:var(--accent); }
+    .wb-portal-switch input:checked + .wb-portal-slider::before { transform:translateX(16px); }
+    .wb-portal-label { font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.3px; white-space:nowrap; }
+    .wb-portal-toggle.on .wb-portal-label { color:var(--accent); }
+    .portal-msg-opt { display:flex; align-items:center; gap:9px; padding:9px 11px; border:1px solid var(--border); border-radius:9px; cursor:pointer; font-size:13px; color:var(--text); }
+    .portal-msg-opt:hover { border-color:var(--accent); }
+    .portal-msg-opt input { accent-color:var(--accent); }
     .status-bubble.active {
       background: rgba(232,117,26,0.10); color: var(--accent);
       border-color: rgba(232,117,26,0.35);
@@ -7901,6 +7921,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <button class="wb-tab" onclick="switchWbTab('shipping', this)"><span class="tab-full">Shipping</span><span class="tab-short">Ship</span></button>
           <button class="wb-tab" onclick="switchWbTab('pricing', this)"><span class="tab-full">Pricing</span><span class="tab-short">Price</span></button>
           <button class="wb-tab" onclick="switchWbTab('art', this)"><span class="tab-full">Art</span><span class="tab-short">Art</span></button>
+          <!-- Send to Customer Portal — toggle opens a modal to pick/compose
+               the client-facing message. Hidden fields hold the persisted
+               state (visibility + chosen status key + the actual message). -->
+          <span class="wb-portal-toggle" id="wb-portal-toggle">
+            <label class="wb-portal-switch" title="Show this item in the client portal">
+              <input type="checkbox" id="show-in-portal" onchange="onPortalSendToggle(this)">
+              <span class="wb-portal-slider"></span>
+            </label>
+            <span class="wb-portal-label" onclick="openPortalMsgModal(false)" style="cursor:pointer;" title="Edit what the client sees">Send to Portal</span>
+          </span>
+          <input type="hidden" id="portal-status">
+          <input type="hidden" id="portal-message">
+          <input type="hidden" id="portal-date-submitted">
+          <input type="hidden" id="portal-date-expected">
+          <input type="hidden" id="portal-tracking">
         </div>
         <!-- "X is editing" indicator — populated inline by _renderPresence
              so it sits on the same row as the back button + tabs. -->
@@ -7918,6 +7953,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="status-flow" id="status-flow">
         <!-- populated by JS -->
       </div>
+      <!-- Which pipeline column this workbook currently lives in. -->
+      <span id="wb-column-pill" title="Pipeline stage — where this workbook sits on the board"></span>
     </div>
     <div class="status-actions" style="display:flex; gap:6px; align-items:center;">
       <!-- Workflow-stage action stack: groups stage-specific buttons
@@ -7993,29 +8030,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
     <div class="section-body">
-
-      <!-- Client-portal visibility: opt-in per workbook (default off). When on,
-           the client's portal shows this item with a friendly, client-safe
-           status (no prices / internal notes). -->
-      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:10px 12px; margin-bottom:14px; background:rgba(232,117,26,0.06); border:1px solid rgba(232,117,26,0.25); border-radius:10px;">
-        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:700; color:var(--text);">
-          <input type="checkbox" id="show-in-portal" onchange="onPortalToggle()"> Show this item in the client portal
-        </label>
-        <label id="portal-status-wrap" style="display:none; align-items:center; gap:8px; font-size:12px; color:var(--text-muted);">Client sees:
-          <div class="select-wrapper" style="display:inline-block;">
-            <select id="portal-status" style="padding:5px 26px 5px 8px;">
-              <option value="request">We're working on your request</option>
-              <option value="quoting">Sourcing &amp; preparing your quote</option>
-              <option value="sampling">Preparing your samples</option>
-              <option value="sample_sent">Samples sent — awaiting your review</option>
-              <option value="approved">Approved — prepping production</option>
-              <option value="production">In production</option>
-              <option value="shipped">Shipped — on the way</option>
-              <option value="delivered">Delivered</option>
-            </select>
-          </div>
-        </label>
-      </div>
 
       <!-- Basic info grid -->
       <div class="form-grid form-grid-2">
@@ -10181,6 +10195,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <!-- Tracking entry modal — triggered when an operator switches a
      shipment's status to "Waiting Arrival". Captures carrier + tracking
      number, then kicks off the AI lookup. -->
+<!-- Send to Customer Portal — pick a default message or write your own -->
+<div class="modal-overlay" id="portal-msg-modal" style="display:none;">
+  <div class="modal" style="max-width:520px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">What should the client see?</h3>
+      <button onclick="closePortalMsgModal(true)" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;">
+      <p style="margin:0; font-size:12px; color:var(--text-muted);">This shows on the client's portal for this item (no prices or internal notes). Pick a default or write your own.</p>
+      <div id="portal-msg-options" style="display:flex; flex-direction:column; gap:7px;"></div>
+      <div style="margin-top:4px;">
+        <label class="parker-lbl">Or write your own</label>
+        <textarea id="portal-msg-custom" class="form-input" style="width:100%; min-height:60px; resize:vertical;" placeholder="e.g. We've approved your samples and production starts Monday." oninput="_portalMsgCustomTyped()"></textarea>
+      </div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:4px;">
+        <div style="flex:1; min-width:150px;">
+          <label class="parker-lbl">Submitted to portal</label>
+          <input type="date" id="portal-modal-date-submitted" class="form-input" style="width:100%;">
+        </div>
+        <div style="flex:1; min-width:150px;">
+          <label class="parker-lbl">Expected completion</label>
+          <input type="date" id="portal-modal-date-expected" class="form-input" style="width:100%;">
+        </div>
+      </div>
+      <div>
+        <label class="parker-lbl">Tracking number — optional</label>
+        <input type="text" id="portal-modal-tracking" class="form-input" style="width:100%;" placeholder="e.g. DHL 9559322625" autocomplete="off">
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closePortalMsgModal(true)">Cancel</button>
+        <button class="btn btn-primary" onclick="savePortalMsg()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="tracking-modal" style="display:none;">
   <div class="modal" style="max-width:560px; width:100%; max-height:90vh; overflow-y:auto;">
     <div class="modal-header">
@@ -25050,6 +25100,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const _curLabel = currentIdx >= 0 ? flowLabels[currentIdx] : 'Not started';
     statusFlow.innerHTML = `<span class="status-bubble${currentIdx >= 0 ? ' active' : ''}" title="Current workflow stage — advance it with the buttons on the right">${_curLabel}</span>`;
 
+    // Pipeline-column pill — where the workbook currently lives on the board.
+    const colPill = document.getElementById('wb-column-pill');
+    if (colPill && currentClient && currentWorkbookId) {
+      colPill.innerHTML = _wbColumnPillHtml(currentClient, currentWorkbookId);
+    }
+
     const advanceBtn = document.getElementById('btn-advance');
     const backBtn = document.getElementById('btn-back-step');
     backBtn.disabled = currentIdx < 0;
@@ -32374,17 +32430,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
         <td class="col-order">${orderCell}</td>
-        <td class="col-flow">
-          <div class="flow-group">
-            ${flowSteps.map((s, i) => `
-              <div class="flow-step">
-                <div class="flow-bar ${item.flow[s] ? 'filled' : ''}"></div>
-                <span class="flow-label">${flowLabels[i]}</span>
-              </div>
-            `).join('')}
-          </div>
-        </td>
-        <td class="col-mobile-status"><span class="mobile-status-badge ${stepClass}">${stepName}</span></td>
+        <td class="col-flow">${_wbColumnPillHtml(clientName, item.id)}</td>
+        <td class="col-mobile-status">${_wbColumnPillHtml(clientName, item.id)}</td>
         <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `}).join('');
@@ -32578,12 +32625,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
       _s('product-name', data.product);
       _s('product-desc', data.desc);
-      // Client-portal visibility + status.
+      // Client-portal visibility + message + dates + tracking.
       try {
         const _sip = document.getElementById('show-in-portal');
         if (_sip) _sip.checked = (data.showInPortal === '1' || data.showInPortal === true);
         _s('portal-status', data.portalStatus || 'request');
-        if (typeof onPortalToggle === 'function') onPortalToggle();
+        _s('portal-message', data.portalMessage || '');
+        _s('portal-date-submitted', data.portalDateSubmitted || '');
+        _s('portal-date-expected', data.portalDateExpected || '');
+        _s('portal-tracking', data.portalTracking || '');
+        if (typeof _portalSyncToggleClass === 'function') _portalSyncToggleClass();
       } catch (e) {}
       _s('dim-in-l', data.dimInL);
       _s('dim-in-w', data.dimInW);
@@ -33251,15 +33302,96 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     saveToLocalStorage();
   }
 
-  // Show/hide the client-facing status dropdown based on the portal toggle,
-  // and default the status to "working on your request" when first enabled.
-  function onPortalToggle() {
+  // ── Send to Customer Portal ─────────────────────────────────────────────
+  // Default client-facing messages (key → [label, progress %]). Mirrors the
+  // list myportal.php uses.
+  const PORTAL_DEFAULTS = [
+    ['request',     "We're working on your request", 10],
+    ['quoting',     'Sourcing options & preparing your quote', 22],
+    ['sampling',    'Preparing your samples', 38],
+    ['sample_sent', 'Samples sent — awaiting your review', 50],
+    ['approved',    'Approved — prepping production', 62],
+    ['production',  'In production', 75],
+    ['shipped',     'Shipped — on the way', 92],
+    ['delivered',   'Delivered', 100],
+  ];
+  let _portalModalFresh = false;
+  function _portalSyncToggleClass() {
+    const wrap = document.getElementById('wb-portal-toggle');
     const cb = document.getElementById('show-in-portal');
-    const wrap = document.getElementById('portal-status-wrap');
-    const sel = document.getElementById('portal-status');
-    if (!cb || !wrap) return;
-    wrap.style.display = cb.checked ? 'inline-flex' : 'none';
-    if (cb.checked && sel && !sel.value) sel.value = 'request';
+    if (wrap && cb) wrap.classList.toggle('on', cb.checked);
+  }
+  // Toggle switched: ON opens the message modal; OFF just saves (hidden).
+  function onPortalSendToggle(cb) {
+    _portalSyncToggleClass();
+    if (cb.checked) { openPortalMsgModal(true); }
+    else { if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook(); }
+  }
+  function openPortalMsgModal(fresh) {
+    _portalModalFresh = !!fresh;
+    const curStatus = (document.getElementById('portal-status') || {}).value || '';
+    const curMsg    = (document.getElementById('portal-message') || {}).value || '';
+    // Build the default-response radio list.
+    const optsEl = document.getElementById('portal-msg-options');
+    if (optsEl) {
+      optsEl.innerHTML = PORTAL_DEFAULTS.map(([key, label]) =>
+        `<label class="portal-msg-opt"><input type="radio" name="portal-msg-opt" value="${key}" onclick="_portalMsgRadioPicked('${key}')"> ${_pkEsc ? _pkEsc(label) : label}</label>`
+      ).join('');
+    }
+    const custom = document.getElementById('portal-msg-custom');
+    if (curStatus === 'custom') { if (custom) custom.value = curMsg; }
+    else {
+      if (custom) custom.value = '';
+      const r = document.querySelector(`input[name="portal-msg-opt"][value="${curStatus || 'request'}"]`);
+      if (r) r.checked = true;
+    }
+    // Dates + tracking (default submitted = today when first enabling).
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const ds = document.getElementById('portal-modal-date-submitted');
+    const de = document.getElementById('portal-modal-date-expected');
+    const tr = document.getElementById('portal-modal-tracking');
+    if (ds) ds.value = (document.getElementById('portal-date-submitted') || {}).value || (fresh ? todayIso : '');
+    if (de) de.value = (document.getElementById('portal-date-expected') || {}).value || '';
+    if (tr) tr.value = (document.getElementById('portal-tracking') || {}).value || '';
+    const m = document.getElementById('portal-msg-modal'); m.classList.add('open'); m.style.display = 'flex';
+  }
+  function _portalMsgRadioPicked(key) { const c = document.getElementById('portal-msg-custom'); if (c) c.value = ''; }
+  function _portalMsgCustomTyped() {
+    // Typing a custom message deselects the default radios.
+    if ((document.getElementById('portal-msg-custom') || {}).value.trim() !== '') {
+      document.querySelectorAll('input[name="portal-msg-opt"]').forEach(r => { r.checked = false; });
+    }
+  }
+  function closePortalMsgModal(cancel) {
+    const m = document.getElementById('portal-msg-modal'); m.classList.remove('open'); m.style.display = 'none';
+    if (cancel && _portalModalFresh) {
+      // Fresh enable cancelled → leave it OFF.
+      const cb = document.getElementById('show-in-portal'); if (cb) cb.checked = false;
+      _portalSyncToggleClass();
+    }
+    _portalModalFresh = false;
+  }
+  function savePortalMsg() {
+    const custom = (document.getElementById('portal-msg-custom') || {}).value.trim();
+    let statusKey, message;
+    if (custom !== '') { statusKey = 'custom'; message = custom; }
+    else {
+      const r = document.querySelector('input[name="portal-msg-opt"]:checked');
+      statusKey = r ? r.value : 'request';
+      const found = PORTAL_DEFAULTS.find(d => d[0] === statusKey);
+      message = found ? found[1] : "We're working on your request";
+    }
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    set('portal-status', statusKey);
+    set('portal-message', message);
+    set('portal-date-submitted', (document.getElementById('portal-modal-date-submitted') || {}).value || '');
+    set('portal-date-expected',  (document.getElementById('portal-modal-date-expected') || {}).value || '');
+    set('portal-tracking',       (document.getElementById('portal-modal-tracking') || {}).value.trim() || '');
+    const cb = document.getElementById('show-in-portal'); if (cb) cb.checked = true;
+    _portalSyncToggleClass();
+    closePortalMsgModal(false);
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+    if (typeof _msToast === 'function') _msToast('Client portal updated.', 'success');
   }
 
   function showSaveStatus(state) {
@@ -34980,9 +35112,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       client: _v('client-name'),
       product: _v('product-name'),
       desc: _v('product-desc'),
-      // Client-portal visibility (opt-in) + the friendly status the client sees.
+      // Client-portal visibility (opt-in) + what the client sees.
       showInPortal: (document.getElementById('show-in-portal') || {}).checked ? '1' : '',
       portalStatus: _v('portal-status') || 'request',
+      portalMessage: _v('portal-message'),
+      portalDateSubmitted: _v('portal-date-submitted'),
+      portalDateExpected: _v('portal-date-expected'),
+      portalTracking: _v('portal-tracking'),
       dimInL: _v('dim-in-l'),
       dimInW: _v('dim-in-w'),
       dimInH: _v('dim-in-h'),
@@ -43348,6 +43484,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Workbook tab — product + dims
       ['product',                 'product-name'],
       ['desc',                    'product-desc'],
+      // Client portal
+      ['portalStatus',            'portal-status'],
+      ['portalMessage',           'portal-message'],
+      ['portalDateSubmitted',     'portal-date-submitted'],
+      ['portalDateExpected',      'portal-date-expected'],
+      ['portalTracking',          'portal-tracking'],
       ['productSubcategoryOther', 'product-subcategory-other'],
       ['productSubcategoryOther2','product-subcategory-other-2'],
       ['materials',               'materials'],
@@ -43466,7 +43608,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ['invStatus',          'inv-status'],
       ['invMethod',          'inv-method'],
       ['artStatus',          'art-status'],
-      ['portalStatus',       'portal-status'],
     ];
 
     // <input type=checkbox> — .checked instead of .value, and we
@@ -45288,6 +45429,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Nothing started → Unstaged (still on the board). Note: the fully-
     // received case above returns null (done, exited) — NOT unstaged.
     return 'unstaged';
+  }
+
+  // A colored pill naming the pipeline column a workbook currently lives in
+  // (reuses the board's column colors). Returns 'Completed' for fully-received
+  // workbooks that have exited the board.
+  function _wbColumnPillHtml(clientName, workbookId) {
+    let detail = workbookDetail[`${clientName}|${workbookId}`];
+    if (!detail && currentClient === clientName && String(currentWorkbookId) === String(workbookId)
+        && typeof collectWorkbookDetail === 'function') {
+      try { detail = collectWorkbookDetail(); } catch (e) {}
+    }
+    const stage = _pipelineStageFor(clientName, workbookId, detail);
+    if (!stage) return '<span class="wb-col-pill" style="background:#dcfce7;color:#166534;">Completed</span>';
+    const col = PIPELINE_COLUMNS.find(c => c.id === stage) || { label: stage, bg: '#f3f4f6', fg: '#4b5563' };
+    const esc = (typeof _plEsc === 'function') ? _plEsc : (s => s);
+    return `<span class="wb-col-pill" style="background:${col.bg};color:${col.fg};">${esc(col.label)}</span>`;
   }
 
   // Freely movable (flag flip) only when the stage is flag-based AND the

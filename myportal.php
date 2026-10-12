@@ -8,9 +8,6 @@
 // aggregated across every order instead of a single one.
 session_start();
 
-// Temporary debug: append &dbg=1 to surface the actual error on a 500.
-if (($_GET['dbg'] ?? '') === '1') { ini_set('display_errors', '1'); ini_set('display_startup_errors', '1'); error_reporting(E_ALL); }
-
 $DB_HOST = 'localhost';
 $DB_NAME = 'markewq4_workbook';
 $DB_USER = 'markewq4_workbook';
@@ -114,7 +111,14 @@ if ($clientId > 0) {
             if (!is_array($d)) continue;
             if (($d['showInPortal'] ?? '') !== '1' && ($d['showInPortal'] ?? null) !== true) continue;
             $name = trim((string)($wb['product_name'] ?? '')) ?: (trim((string)($d['product'] ?? '')) ?: 'Item');
-            $portalItems[] = ['name' => $name, 'status' => (string)($d['portalStatus'] ?? 'request')];
+            $portalItems[] = [
+                'name'          => $name,
+                'status'        => (string)($d['portalStatus'] ?? 'request'),
+                'message'       => trim((string)($d['portalMessage'] ?? '')),
+                'dateSubmitted' => trim((string)($d['portalDateSubmitted'] ?? '')),
+                'dateExpected'  => trim((string)($d['portalDateExpected'] ?? '')),
+                'tracking'      => trim((string)($d['portalTracking'] ?? '')),
+            ];
         }
     } catch (PDOException $e) { $portalItems = []; }
 }
@@ -245,27 +249,41 @@ function portalItemsContent(string $clientName, array $items): string {
              . ($active ? ' · <strong>' . $active . ' in progress</strong>' : '') . '</div>';
 
     $cards = '';
-    foreach ($items as $o) $cards .= cpPortalCard($o['name'], $o['status']);
+    foreach ($items as $o) $cards .= cpPortalCard($o);
 
     $note = '<p class="cp-footnote">Questions about an item? Reply to your Market Sculpt email or contact your representative any time.</p>';
     return $header . $summary . $cards . $note;
 }
 
-function cpPortalCard(string $name, string $statusKey): string {
+function cpFmtDate(string $d): string { $ts = strtotime($d); return $ts ? date('M j, Y', $ts) : htmlspecialchars($d); }
+
+function cpPortalCard(array $o): string {
+    $name      = (string)($o['name'] ?? 'Item');
+    $statusKey = (string)($o['status'] ?? 'request');
     $map   = cpPortalStatuses();
-    $row   = $map[$statusKey] ?? $map['request'];
-    $label = $row[0];
-    $pct   = (int)$row[1];
+    $row   = $map[$statusKey] ?? null;
+    // Operator's message wins; else the default label for the status.
+    $label = trim((string)($o['message'] ?? '')) !== '' ? (string)$o['message'] : ($row ? $row[0] : "We're working on your request");
+    $pct   = $row ? (int)$row[1] : 55; // custom message → neutral progress
     $done  = $statusKey === 'delivered';
     $accent = $done ? '#16a34a' : '#E8751A';
     $badge = '<span class="cp-badge" style="background:' . ($done ? '#dcfce7' : '#fff7ed')
            . ';color:' . ($done ? '#166534' : '#9a3412') . ';">' . htmlspecialchars($label) . '</span>';
+
+    // Dates + tracking line.
+    $meta = [];
+    if (!empty($o['dateSubmitted'])) $meta[] = 'Submitted ' . cpFmtDate((string)$o['dateSubmitted']);
+    if (!empty($o['dateExpected']))  $meta[] = 'Expected completion ' . cpFmtDate((string)$o['dateExpected']);
+    if (!empty($o['tracking']))      $meta[] = 'Tracking: <strong>' . htmlspecialchars((string)$o['tracking']) . '</strong>';
+    $metaHtml = $meta ? '<div class="cp-order-sub" style="margin-top:12px;">' . implode(' &nbsp;·&nbsp; ', $meta) . '</div>' : '';
+
     return '<div class="card cp-order">'
          . '<div class="card-body">'
          . '<div class="cp-order-top">'
          . '<h2 class="cp-order-name">' . htmlspecialchars($name) . '</h2>' . $badge
          . '</div>'
          . '<div class="cp-bar" style="margin-top:14px;"><div class="cp-bar-fill" style="width:' . $pct . '%;background:' . $accent . ';"></div></div>'
+         . $metaHtml
          . '</div></div>';
 }
 
