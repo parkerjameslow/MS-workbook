@@ -350,7 +350,8 @@ function portalItemsContent(string $clientName, array $items): string {
     }
 
     $note = '<div class="cp-watermark" aria-hidden="true">'
-          . '<img src="ms-watermark.png" alt="" class="cp-wm-img" onerror="this.remove();">'
+          . '<img src="ms-watermark.png" alt="" class="cp-wm-img" onerror="this.style.display=\'none\';var s=this.nextElementSibling;if(s)s.style.display=\'inline-block\';">'
+          . '<span class="cp-wm-mark" style="display:none;">market<span class="cp-wm-sculpt">sculpt</span></span>'
           . '</div>';
     $board = '<div class="cp-board-wrap"><div class="cp-board" id="cp-board">' . $colsHtml . '</div>'
            . '<div class="cp-board-fade" id="cp-board-fade"><span>›</span></div></div>';
