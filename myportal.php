@@ -231,12 +231,12 @@ function cpPortalStatuses(): array {
 // key => [label, header-bg, header-fg].
 function cpBoardColumns(): array {
     return [
-        'rfq'        => ['RFQ',              '#dbeafe', '#1e40af'],
-        'review'     => ['Ready For Review', '#e0e7ff', '#3730a3'],
-        'samples'    => ['Samples',          '#dcfce7', '#15803d'],
-        'orders'     => ['Orders',           '#fef3c7', '#a16207'],
-        'production' => ['In Production',    '#ffedd5', '#c2410c'],
-        'shipments'  => ['Shipments',        '#cffafe', '#0e7490'],
+        'rfq'        => ['Sourcing & Quoting', '#dbeafe', '#1e40af'],
+        'review'     => ['In Review',          '#e0e7ff', '#3730a3'],
+        'samples'    => ['Sampling',           '#dcfce7', '#15803d'],
+        'orders'     => ['Order Placed',       '#fef3c7', '#a16207'],
+        'production' => ['In Production',       '#ffedd5', '#c2410c'],
+        'shipments'  => ['Shipping',           '#cffafe', '#0e7490'],
     ];
 }
 
@@ -363,8 +363,13 @@ function cpPortalCard(array $o, int $colIdx = 0, int $total = 6): string {
     $last   = ($colIdx >= $total - 1);
     $accent = $last ? '#0e7490' : '#E8751A';
 
+    // Show the message only when it's a CUSTOM one (not a stock default — the
+    // column already names the stage).
+    static $stockMsgs = null;
+    if ($stockMsgs === null) { $stockMsgs = []; foreach (cpPortalStatuses() as $r) $stockMsgs[$r[0]] = true; }
     $msg = trim((string)($o['message'] ?? ''));
-    $msgHtml = $msg !== '' ? '<div class="cp-order-sub" style="margin:7px 0 0;">' . htmlspecialchars($msg) . '</div>' : '';
+    $msgHtml = ($msg !== '' && !isset($stockMsgs[$msg]))
+        ? '<div class="cp-order-sub" style="margin:7px 0 0;">' . htmlspecialchars($msg) . '</div>' : '';
 
     $meta = [];
     if (!empty($o['dateExpected'])) $meta[] = 'Expected ' . cpFmtDate((string)$o['dateExpected']);
