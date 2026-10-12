@@ -3421,6 +3421,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .dash-table th.col-date-created   { width: 100px; }
     .dash-table th.col-date-submitted { width: 100px; }
     .dash-table th.col-order    { width: 110px; }
+    .dash-table th.col-portal   { width: 130px; }
+    .dash-table .wb-portal-on {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 800;
+      background: rgba(34,197,94,0.14); color: #16a34a; border: 1px solid rgba(34,197,94,0.35);
+      white-space: nowrap;
+    }
+    .dash-table .wb-portal-on::before { content:''; width:7px; height:7px; border-radius:50%; background:#22c55e; }
+    .dash-table .wb-portal-off { font-size: 12px; color: var(--text-muted); }
     .dash-table th.col-flow,
     .dash-table td.col-flow {
       width: 452px;       /* 7 steps × 56px + 6 gaps × 6px + 24px right buffer */
@@ -7879,7 +7888,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th class="col-date-created sortable" onclick="sortClientTable('date')">Date Created <span class="sort-arrow"></span></th>
               <th class="col-date-submitted sortable" onclick="sortClientTable('dateSubmitted')">Date Submitted <span class="sort-arrow"></span></th>
               <th class="col-order">Order</th>
-              <th class="col-flow">Fulfilment (Flow)</th>
+              <th class="col-flow">Pipeline Stage</th>
+              <th class="col-portal">Customer Portal</th>
               <th class="col-mobile-status sortable" onclick="sortClientTable('status')">Status <span class="sort-arrow"></span></th>
               <th></th>
             </tr>
@@ -32446,6 +32456,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <td class="col-date-submitted">${item.dateSubmitted || '—'}</td>
         <td class="col-order">${orderCell}</td>
         <td class="col-flow">${_wbColumnPillHtml(clientName, item.id)}</td>
+        <td class="col-portal">${_wbPortalCellHtml(clientName, item.id)}</td>
         <td class="col-mobile-status">${_wbColumnPillHtml(clientName, item.id)}</td>
         <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
@@ -45438,6 +45449,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const col = PIPELINE_COLUMNS.find(c => c.id === stage) || { label: stage, bg: '#f3f4f6', fg: '#4b5563' };
     const esc = (typeof _plEsc === 'function') ? _plEsc : (s => s);
     return `<span class="wb-col-pill" style="background:${col.bg};color:${col.fg};">${esc(col.label)}</span>`;
+  }
+
+  // Client-detail "Customer Portal" cell: whether the workbook is shared to
+  // the client portal and, if so, the client-facing stage.
+  const _PORTAL_SHORT = {
+    request: 'Working on request', quoting: 'Quoting', sampling: 'Sampling',
+    sample_sent: 'Sample review', approved: 'Approved', production: 'In production',
+    shipped: 'Shipped', delivered: 'Delivered', custom: 'Custom message',
+  };
+  function _wbPortalCellHtml(cn, wid) {
+    const d = workbookDetail[`${cn}|${wid}`] || {};
+    const on = (d.showInPortal === '1' || d.showInPortal === true);
+    if (!on) return '<span class="wb-portal-off">Off</span>';
+    const label = _PORTAL_SHORT[d.portalStatus] || (d.portalMessage ? 'Custom message' : 'On portal');
+    const esc = (typeof _plEsc === 'function') ? _plEsc : (s => s);
+    return `<span class="wb-portal-on" title="Shared to the client portal">${esc(label)}</span>`;
   }
 
   // Freely movable (flag flip) only when the stage is flag-based AND the
