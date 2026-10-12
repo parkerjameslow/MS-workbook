@@ -350,7 +350,12 @@ function portalItemsContent(string $clientName, array $items): string {
     }
 
     $note = '<p class="cp-footnote">Questions about an item? Reply to your Market Sculpt email or contact your representative any time.</p>';
-    return $header . $summary . '<div class="cp-board">' . $colsHtml . '</div>' . $note;
+    $board = '<div class="cp-board-wrap"><div class="cp-board" id="cp-board">' . $colsHtml . '</div>'
+           . '<div class="cp-board-fade" id="cp-board-fade"><span>›</span></div></div>';
+    $script = '<script>(function(){var b=document.getElementById("cp-board"),f=document.getElementById("cp-board-fade");'
+            . 'if(!b||!f)return;function u(){f.style.opacity=(b.scrollWidth-b.clientWidth-b.scrollLeft>8)?"1":"0";}'
+            . 'b.addEventListener("scroll",u);window.addEventListener("resize",u);setTimeout(u,60);})();</script>';
+    return $header . $summary . $board . $note . $script;
 }
 
 function cpFmtDate(string $d): string { $ts = strtotime($d); return $ts ? date('M j, Y', $ts) : htmlspecialchars($d); }
@@ -491,7 +496,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .ms-logo { font-size: 18px; font-weight: 800; color: #E8751A; border-left: 3px solid #E8751A; padding-left: 12px; letter-spacing: -0.3px; }
 .ms-logo-sub { font-size: 11px; font-weight: 500; color: #6b7280; letter-spacing: 0.02em; }
 .ms-bar { height: 3px; background: #E8751A; }
-.ms-wrap { max-width: 1120px; margin: 0 auto; padding: 30px 24px 80px; }
+.ms-wrap { max-width: none; margin: 0; padding: 28px 28px 80px; }
 .card { background: #fff; border-radius: 14px; border: 1px solid #e8eaf0; overflow: hidden; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
 .card-body { padding: 22px 24px; }
 .soft-icon { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
@@ -523,8 +528,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .footer-bar a { color: #E8751A; text-decoration: none; }
 
 /* Pipeline-style board: colored column headers, cards stacked below */
-.cp-board { display:flex; gap:16px; overflow-x:auto; padding-bottom:14px; align-items:flex-start; }
-.cp-col { flex:1 0 270px; min-width:270px; }
+.cp-board-wrap { position:relative; }
+.cp-board { display:flex; gap:16px; overflow-x:auto; padding-bottom:14px; align-items:flex-start; scrollbar-width:thin; }
+.cp-board::-webkit-scrollbar { height:9px; }
+.cp-board::-webkit-scrollbar-thumb { background:#cbd2df; border-radius:99px; }
+.cp-board::-webkit-scrollbar-track { background:#e8ebf1; border-radius:99px; }
+.cp-board-fade { position:absolute; top:0; right:-4px; bottom:16px; width:56px; pointer-events:none; opacity:0; transition:opacity .2s; background:linear-gradient(to right, rgba(240,242,245,0), #f0f2f5 75%); display:flex; align-items:center; justify-content:flex-end; }
+.cp-board-fade span { pointer-events:none; color:#8b93a7; font-size:22px; font-weight:800; margin-right:2px; }
+.cp-col { flex:1 0 258px; min-width:258px; }
 .cp-col-head { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:10px 14px; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .cp-col-head > span:first-child { min-width:0; line-height:1.2; }
 .cp-col-count { background:rgba(255,255,255,.7); border-radius:999px; font-size:11.5px; font-weight:800; padding:1px 9px; flex:0 0 auto; }
