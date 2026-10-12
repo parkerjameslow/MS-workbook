@@ -7994,6 +7994,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
     <div class="section-body">
 
+      <!-- Client-portal visibility: opt-in per workbook (default off). When on,
+           the client's portal shows this item with a friendly, client-safe
+           status (no prices / internal notes). -->
+      <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:10px 12px; margin-bottom:14px; background:rgba(232,117,26,0.06); border:1px solid rgba(232,117,26,0.25); border-radius:10px;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:700; color:var(--text);">
+          <input type="checkbox" id="show-in-portal" onchange="onPortalToggle()"> Show this item in the client portal
+        </label>
+        <label id="portal-status-wrap" style="display:none; align-items:center; gap:8px; font-size:12px; color:var(--text-muted);">Client sees:
+          <div class="select-wrapper" style="display:inline-block;">
+            <select id="portal-status" style="padding:5px 26px 5px 8px;">
+              <option value="request">We're working on your request</option>
+              <option value="quoting">Sourcing &amp; preparing your quote</option>
+              <option value="sampling">Preparing your samples</option>
+              <option value="sample_sent">Samples sent — awaiting your review</option>
+              <option value="approved">Approved — prepping production</option>
+              <option value="production">In production</option>
+              <option value="shipped">Shipped — on the way</option>
+              <option value="delivered">Delivered</option>
+            </select>
+          </div>
+        </label>
+      </div>
+
       <!-- Basic info grid -->
       <div class="form-grid form-grid-2">
         <div class="field">
@@ -32555,6 +32578,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
       _s('product-name', data.product);
       _s('product-desc', data.desc);
+      // Client-portal visibility + status.
+      try {
+        const _sip = document.getElementById('show-in-portal');
+        if (_sip) _sip.checked = (data.showInPortal === '1' || data.showInPortal === true);
+        _s('portal-status', data.portalStatus || 'request');
+        if (typeof onPortalToggle === 'function') onPortalToggle();
+      } catch (e) {}
       _s('dim-in-l', data.dimInL);
       _s('dim-in-w', data.dimInW);
       _s('dim-in-h', data.dimInH);
@@ -33219,6 +33249,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     apiCall('save_workbook_detail', { id: dbId, detail: detail, base: _wbBaseDetail[key], changed_by: getCurrentUser(), create_revision: true })
       .then(r => { showSaveStatus(r && r.success ? 'saved' : 'error'); if (r && r.success) { try { _wbBaseDetail[key] = detail; } catch (e) {} } });
     saveToLocalStorage();
+  }
+
+  // Show/hide the client-facing status dropdown based on the portal toggle,
+  // and default the status to "working on your request" when first enabled.
+  function onPortalToggle() {
+    const cb = document.getElementById('show-in-portal');
+    const wrap = document.getElementById('portal-status-wrap');
+    const sel = document.getElementById('portal-status');
+    if (!cb || !wrap) return;
+    wrap.style.display = cb.checked ? 'inline-flex' : 'none';
+    if (cb.checked && sel && !sel.value) sel.value = 'request';
   }
 
   function showSaveStatus(state) {
@@ -34939,6 +34980,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       client: _v('client-name'),
       product: _v('product-name'),
       desc: _v('product-desc'),
+      // Client-portal visibility (opt-in) + the friendly status the client sees.
+      showInPortal: (document.getElementById('show-in-portal') || {}).checked ? '1' : '',
+      portalStatus: _v('portal-status') || 'request',
       dimInL: _v('dim-in-l'),
       dimInW: _v('dim-in-w'),
       dimInH: _v('dim-in-h'),
@@ -43422,6 +43466,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ['invStatus',          'inv-status'],
       ['invMethod',          'inv-method'],
       ['artStatus',          'art-status'],
+      ['portalStatus',       'portal-status'],
     ];
 
     // <input type=checkbox> — .checked instead of .value, and we
@@ -43438,6 +43483,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ['caseOnlyOverride',     'case-only-override'],
       ['palletCaseOverride',   'pallet-case-override'],
       ['materialSecondEnabled','mat2-toggle'],
+      ['showInPortal',         'show-in-portal'],
     ];
 
     let scalarChanges = 0;

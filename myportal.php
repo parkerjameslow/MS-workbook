@@ -90,42 +90,42 @@ if ($requiredPin !== '' && empty($_SESSION[$sessOkKey])) {
     exit;
 }
 
-// ── Load LIVE order + shipment state ─────────────────────────────────────────
-$orders    = cpLoadState($pdo, 'ms_orders');
-$shipments = cpLoadState($pdo, 'ms_shipments');
-
-// Every order belonging to this client (by order.clientName or any entry).
-$mine = [];
-foreach ($orders as $oid => $order) {
-    if (!is_array($order)) continue;
-    $belongs = ((string)($order['clientName'] ?? '') === $clientName);
-    if (!$belongs) {
-        foreach (($order['entries'] ?? []) as $e) {
-            if (is_array($e) && (string)($e['clientName'] ?? '') === $clientName) { $belongs = true; break; }
-        }
-    }
-    if (!$belongs) continue;
-    $carrying = [];
-    foreach ($shipments as $s) {
-        if (is_array($s) && cpShipmentCarriesOrder($s, $order, (string)$oid)) $carrying[] = $s;
-    }
-    $stage = cpComputeStage($order, $carrying);
-    $mine[] = [
-        'id'    => (string)$oid,
-        'name'  => (string)($order['name'] ?? 'Order'),
-        'stage' => $stage,
-    ];
+// ── Load the client's workbooks opted into the portal ────────────────────────
+// The operator flips a per-workbook "Show in client portal" toggle (default
+// off) and picks a client-facing status; we show those items with friendly,
+// client-safe text. No orders/pricing/internal notes.
+$clientId = (int)($row['client_id'] ?? 0);
+// Legacy tokens may not have client_id — resolve it from the client name.
+if ($clientId <= 0 && $clientName !== '') {
+    try {
+        $cidStmt = $pdo->prepare("SELECT id FROM clients WHERE name = ? LIMIT 1");
+        $cidStmt->execute([$clientName]);
+        $clientId = (int)($cidStmt->fetchColumn() ?: 0);
+    } catch (PDOException $e) { /* clients table shape may differ */ }
 }
 
-// Active (not delivered) first, least-progressed at top; delivered after.
-usort($mine, function ($a, $b) {
-    $ad = $a['stage']['idx'] >= 5 ? 1 : 0;
-    $bd = $b['stage']['idx'] >= 5 ? 1 : 0;
-    if ($ad !== $bd) return $ad <=> $bd;          // active before delivered
-    return $a['stage']['idx'] <=> $b['stage']['idx'];
+$portalItems = [];
+if ($clientId > 0) {
+    try {
+        $wbStmt = $pdo->prepare("SELECT id, product_name, detail_json FROM workbooks WHERE client_id = ? ORDER BY id DESC");
+        $wbStmt->execute([$clientId]);
+        foreach ($wbStmt->fetchAll() as $wb) {
+            $d = json_decode($wb['detail_json'] ?? '{}', true);
+            if (!is_array($d)) continue;
+            if (($d['showInPortal'] ?? '') !== '1' && ($d['showInPortal'] ?? null) !== true) continue;
+            $name = trim((string)($wb['product_name'] ?? '')) ?: (trim((string)($d['product'] ?? '')) ?: 'Item');
+            $portalItems[] = ['name' => $name, 'status' => (string)($d['portalStatus'] ?? 'request')];
+        }
+    } catch (PDOException $e) { $portalItems = []; }
+}
+
+// Order by progress (earliest first), delivered last.
+$statusOrder = array_flip(array_keys(cpPortalStatuses()));
+usort($portalItems, function ($a, $b) use ($statusOrder) {
+    return ($statusOrder[$a['status']] ?? 0) <=> ($statusOrder[$b['status']] ?? 0);
 });
 
-portalPage($clientName !== '' ? $clientName : 'Your Portal', dashboardContent($clientName, $mine));
+portalPage($clientName !== '' ? $clientName : 'Your Portal', portalItemsContent($clientName, $portalItems));
 exit;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -209,6 +209,65 @@ function cpComputeStage(array $order, array $carrying): array {
 // ════════════════════════════════════════════════════════════════════════════
 
 const CP_STEPS = ['Ordered', 'In Production', 'Shipped', 'In Transit', 'Arriving', 'Delivered'];
+
+// Client-facing status options (key → [friendly label, progress %]). Ordered
+// from earliest to latest; the operator picks one per workbook.
+function cpPortalStatuses(): array {
+    return [
+        'request'     => ["We're working on your request", 10],
+        'quoting'     => ['Sourcing options & preparing your quote', 22],
+        'sampling'    => ['Preparing your samples', 38],
+        'sample_sent' => ['Samples sent — awaiting your review', 50],
+        'approved'    => ['Approved — prepping production', 62],
+        'production'  => ['In production', 75],
+        'shipped'     => ['Shipped — on the way', 92],
+        'delivered'   => ['Delivered', 100],
+    ];
+}
+
+function portalItemsContent(string $clientName, array $items): string {
+    $header = '<div class="cp-head">'
+            . '<div class="cp-hello">Welcome' . ($clientName !== '' ? ', ' . htmlspecialchars($clientName) : '') . '</div>'
+            . '<div class="cp-sub">Here\'s what we\'re working on for you. This page updates as each item moves along.</div>'
+            . '</div>';
+
+    if (empty($items)) {
+        return $header . '<div class="card"><div class="card-body" style="text-align:center;padding:56px 24px;">'
+             . '<div class="soft-icon" style="background:#fff7ed;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#E8751A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>'
+             . '<h2 style="font-size:19px;font-weight:800;color:#1a1d2e;margin:4px 0 8px;">Nothing to show just yet</h2>'
+             . '<p style="font-size:14px;color:#6b7280;max-width:420px;margin:0 auto;line-height:1.6;">Your items will appear here with live status as we start working on them. Your Market Sculpt rep will be in touch in the meantime.</p>'
+             . '</div></div>';
+    }
+
+    $active = 0;
+    foreach ($items as $o) if (($o['status'] ?? '') !== 'delivered') $active++;
+    $summary = '<div class="cp-summary">' . count($items) . ' item' . (count($items) === 1 ? '' : 's')
+             . ($active ? ' · <strong>' . $active . ' in progress</strong>' : '') . '</div>';
+
+    $cards = '';
+    foreach ($items as $o) $cards .= cpPortalCard($o['name'], $o['status']);
+
+    $note = '<p class="cp-footnote">Questions about an item? Reply to your Market Sculpt email or contact your representative any time.</p>';
+    return $header . $summary . $cards . $note;
+}
+
+function cpPortalCard(string $name, string $statusKey): string {
+    $map   = cpPortalStatuses();
+    $row   = $map[$statusKey] ?? $map['request'];
+    $label = $row[0];
+    $pct   = (int)$row[1];
+    $done  = $statusKey === 'delivered';
+    $accent = $done ? '#16a34a' : '#E8751A';
+    $badge = '<span class="cp-badge" style="background:' . ($done ? '#dcfce7' : '#fff7ed')
+           . ';color:' . ($done ? '#166534' : '#9a3412') . ';">' . htmlspecialchars($label) . '</span>';
+    return '<div class="card cp-order">'
+         . '<div class="card-body">'
+         . '<div class="cp-order-top">'
+         . '<h2 class="cp-order-name">' . htmlspecialchars($name) . '</h2>' . $badge
+         . '</div>'
+         . '<div class="cp-bar" style="margin-top:14px;"><div class="cp-bar-fill" style="width:' . $pct . '%;background:' . $accent . ';"></div></div>'
+         . '</div></div>';
+}
 
 function dashboardContent(string $clientName, array $mine): string {
     $activeCount = 0;
