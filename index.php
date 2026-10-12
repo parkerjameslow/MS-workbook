@@ -24478,6 +24478,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const cd = (typeof clientDetails !== 'undefined' && clientDetails[currentClient]) ? clientDetails[currentClient] : {};
     const productName = (document.getElementById('product-name')?.value || '').trim();
     const total = billLines.reduce((s, l) => s + (l.lineTotal || 0), 0) + fees.reduce((s, f) => s + (f.amount || 0), 0);
+    const sp = _qbShippingPackaging();
     return {
       client_name: currentClient,
       client_email: cd.email || '',
@@ -24486,8 +24487,37 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       memo: productName,
       lines: billLines,
       fees,
+      shipping: sp.shipping,
+      packaging: sp.packaging,
       _displayTotal: total,
       _nLines: billLines.length + fees.length,
+    };
+  }
+
+  // Informational shipping + packaging details for the invoice (NOT billed —
+  // they don't change the total, just show on the invoice for reference).
+  function _qbShippingPackaging() {
+    const key = `${currentClient}|${currentWorkbookId}`;
+    const d = workbookDetail[key] || {};
+    const optText = (id) => { const el = document.getElementById(id); return (el && el.selectedIndex >= 0) ? (el.options[el.selectedIndex].text || '').trim() : ''; };
+    const intOf = (id) => { const el = document.getElementById(id); return parseInt(String((el && el.value) || '').replace(/[^0-9]/g, ''), 10) || 0; };
+    // Shipping: method label from the freight-mode select; USD cost from the
+    // override-aware cached pricingShippingCostUsd (refreshed by renderPricingTab).
+    const methodLabel = optText('freight-mode');
+    let shipUsd = parseFloat(d.pricingShippingCostUsd);
+    if (isNaN(shipUsd)) shipUsd = 0;
+    // Packaging: type label + computed inner/outer carton totals (carton mode).
+    let pkgType = optText('dim-packaging');
+    if (/^select/i.test(pkgType)) pkgType = '';
+    const innerPer       = intOf('carton-inner-count');  // units per inner carton
+    const innersPerOuter = intOf('carton-outer-count');  // inner cartons per outer carton
+    const totalUnits     = intOf('pallet-total-cartons'); // (confusingly named) = total units
+    const unitsPerOuter  = innerPer * innersPerOuter;
+    const outerTotal     = unitsPerOuter > 0 ? Math.ceil(totalUnits / unitsPerOuter) : 0;
+    const innerTotal     = outerTotal * innersPerOuter;
+    return {
+      shipping:  { method: methodLabel, costUsd: shipUsd },
+      packaging: { type: pkgType, innerTotal, outerTotal },
     };
   }
 
@@ -24523,6 +24553,34 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   function _qbFmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  // Informational Shipping + Packaging blocks for the preview modal (not
+  // billed). Returns '' when there's nothing worth showing.
+  function _qbInfoSectionsHtml(payload) {
+    const esc = _esc;
+    const sh = payload.shipping || {}, pk = payload.packaging || {};
+    const blocks = [];
+    const row = (label, val) => `<div style="display:flex; justify-content:space-between; gap:12px; padding:3px 0; font-size:12.5px;"><span style="color:var(--text-muted);">${esc(label)}</span><span style="font-weight:600; text-align:right;">${esc(val)}</span></div>`;
+    if ((sh.method && sh.method.trim()) || (sh.costUsd > 0)) {
+      let s = `<div style="margin-top:16px;"><div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin-bottom:4px;">Shipping</div>`;
+      if (sh.method && sh.method.trim()) s += row('Method', sh.method);
+      if (sh.costUsd > 0) s += row('Estimated shipping cost', _qbFmtUsd(sh.costUsd));
+      s += `</div>`;
+      blocks.push(s);
+    }
+    if ((pk.type && pk.type.trim()) || pk.innerTotal > 0 || pk.outerTotal > 0) {
+      let s = `<div style="margin-top:16px;"><div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin-bottom:4px;">Packaging</div>`;
+      if (pk.type && pk.type.trim()) s += row('Packaging type', pk.type);
+      if (pk.innerTotal > 0) s += row('Inner cartons (total)', pk.innerTotal.toLocaleString('en-US'));
+      if (pk.outerTotal > 0) s += row('Outer cartons (total)', pk.outerTotal.toLocaleString('en-US'));
+      s += `</div>`;
+      blocks.push(s);
+    }
+    if (!blocks.length) return '';
+    return `<div style="margin-top:14px; padding-top:12px; border-top:1px dashed var(--border);">`
+      + `<div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">For reference — not added to the total:</div>`
+      + blocks.join('') + `</div>`;
+  }
 
   // Render the invoice preview into the modal from _qbPending, then show it.
   function _openQbInvoiceModal() {
@@ -24582,6 +24640,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         + `<div style="display:flex; justify-content:flex-end; margin-top:12px;">`
         + `<div style="min-width:220px; font-size:14px; display:flex; justify-content:space-between; font-weight:700; border-top:2px solid var(--border); padding-top:8px;">`
         + `<span>Total</span><span>${_qbFmtUsd(payload._displayTotal)}</span></div></div>`
+        + _qbInfoSectionsHtml(payload)
         + foot;
     }
     const sb = document.getElementById('qb-inv-send-btn');
@@ -24616,6 +24675,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const billBlock = `<strong>${esc(payload.client_name)}</strong>`
       + (payload.client_email ? `<br>${esc(payload.client_email)}` : '')
       + (addrLines ? `<br>${addrLines}` : '');
+    const sh = payload.shipping || {}, pk = payload.packaging || {};
+    const infoRow = (l, v) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280;">${esc(l)}</td><td style="padding:4px 0;font-weight:600;">${esc(v)}</td></tr>`;
+    const infoBlocks = [];
+    if ((sh.method && sh.method.trim()) || sh.costUsd > 0) {
+      let r = '';
+      if (sh.method && sh.method.trim()) r += infoRow('Method', sh.method);
+      if (sh.costUsd > 0) r += infoRow('Estimated shipping cost', usd(sh.costUsd));
+      infoBlocks.push(`<div class="info-sec"><div class="info-title">Shipping</div><table>${r}</table></div>`);
+    }
+    if ((pk.type && pk.type.trim()) || pk.innerTotal > 0 || pk.outerTotal > 0) {
+      let r = '';
+      if (pk.type && pk.type.trim()) r += infoRow('Packaging type', pk.type);
+      if (pk.innerTotal > 0) r += infoRow('Inner cartons (total)', pk.innerTotal.toLocaleString('en-US'));
+      if (pk.outerTotal > 0) r += infoRow('Outer cartons (total)', pk.outerTotal.toLocaleString('en-US'));
+      infoBlocks.push(`<div class="info-sec"><div class="info-title">Packaging</div><table>${r}</table></div>`);
+    }
+    const infoHtml = infoBlocks.length
+      ? `<div class="info-wrap"><div class="info-note">For reference — not added to the total</div><div class="info-grid">${infoBlocks.join('')}</div></div>`
+      : '';
     const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Invoice — ${esc(payload.client_name)}</title>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
@@ -24634,6 +24712,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   table.items tbody td{padding:10px 12px;border-bottom:1px solid #f0f2f5;}
   table.items tbody td.r{text-align:right;white-space:nowrap;}
   .total-row td{padding:12px;font-weight:800;font-size:15px;border-top:2px solid #E8751A;}
+  .info-wrap{margin-top:26px;padding-top:14px;border-top:1px dashed #e5e7eb;}
+  .info-note{font-size:10px;color:#9ba3c0;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;}
+  .info-grid{display:flex;gap:40px;flex-wrap:wrap;}
+  .info-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9ba3c0;margin-bottom:5px;}
+  .info-sec table{border-collapse:collapse;font-size:13px;}
   .total-row td.accent{color:#E8751A;text-align:right;}
   .footer{margin-top:30px;padding-top:16px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ba3c0;line-height:1.7;}
   .footer a{color:#E8751A;text-decoration:none;}
@@ -24657,6 +24740,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   </tr></thead><tbody>${rows.join('')}</tbody>
   <tfoot><tr class="total-row"><td colspan="3" style="text-align:right;">Total</td><td class="accent">${usd(payload._displayTotal)}</td></tr></tfoot>
   </table>
+  ${infoHtml}
   <div class="footer">Market Sculpt LLC &nbsp;·&nbsp; <a href="https://marketsculpt.com">marketsculpt.com</a><br>Questions? <a href="mailto:parker@marketsculpt.com">parker@marketsculpt.com</a></div>
   <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),350));<\/script>
 </body></html>`;
@@ -24680,6 +24764,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             workbook_id: dbId, client_name: payload.client_name, client_email: payload.client_email,
             bill_addr: payload.bill_addr, ship_addr: payload.ship_addr, memo: payload.memo,
             lines: payload.lines, fees: payload.fees,
+            shipping: payload.shipping, packaging: payload.packaging,
           });
           if (res && res.success) { qbNum = res.docNumber || ''; _saveQbInvoiceRef(key, res); _renderQbInvoiceButton(); }
           else { _msToast('QuickBooks: ' + ((res && res.error) || 'create failed') + ' — still sending the PDF to Slack.', 'warn'); }
@@ -24764,6 +24849,31 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(26, 29, 46);
     doc.text('Total', W - M - 210, fy + 2);
     doc.text(_qbFmtUsd(p._displayTotal), W - M, fy + 2, { align: 'right' });
+    // Informational Shipping + Packaging sections (not billed).
+    let iy = fy + 30;
+    const sh = p.shipping || {}, pk = p.packaging || {};
+    const infoLine = (label, val) => {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90, 95, 110);
+      doc.text(String(label), M, iy);
+      doc.text(String(val), M + 170, iy);
+      iy += 15;
+    };
+    const section = (title) => {
+      iy += 6;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(155, 163, 192);
+      doc.text(String(title).toUpperCase(), M, iy); iy += 15;
+    };
+    if ((sh.method && sh.method.trim()) || sh.costUsd > 0) {
+      section('Shipping');
+      if (sh.method && sh.method.trim()) infoLine('Method', sh.method);
+      if (sh.costUsd > 0) infoLine('Estimated shipping cost', _qbFmtUsd(sh.costUsd));
+    }
+    if ((pk.type && pk.type.trim()) || pk.innerTotal > 0 || pk.outerTotal > 0) {
+      section('Packaging');
+      if (pk.type && pk.type.trim()) infoLine('Packaging type', pk.type);
+      if (pk.innerTotal > 0) infoLine('Inner cartons (total)', pk.innerTotal.toLocaleString('en-US'));
+      if (pk.outerTotal > 0) infoLine('Outer cartons (total)', pk.outerTotal.toLocaleString('en-US'));
+    }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(155, 163, 192);
     doc.text('Market Sculpt LLC   ·   marketsculpt.com   ·   parker@marketsculpt.com', W / 2, doc.internal.pageSize.getHeight() - 40, { align: 'center' });
     const uri = doc.output('datauristring');

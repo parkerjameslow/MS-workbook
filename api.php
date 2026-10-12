@@ -7200,6 +7200,21 @@ switch ($action) {
         if ($itemErr !== '') { echo json_encode(['success' => false, 'error' => $itemErr]); break; }
         if (!$invLines) { echo json_encode(['success' => false, 'error' => 'No billable lines on this workbook.']); break; }
 
+        // Informational Shipping + Packaging — non-charge DescriptionOnly lines
+        // so they show on the invoice without affecting the balance.
+        $sh = is_array($input['shipping'] ?? null) ? $input['shipping'] : [];
+        $pk = is_array($input['packaging'] ?? null) ? $input['packaging'] : [];
+        $fmtUsd = fn($n) => '$' . number_format((float)$n, 2);
+        $shParts = [];
+        if (trim((string)($sh['method'] ?? '')) !== '') $shParts[] = 'Method: ' . trim((string)$sh['method']);
+        if ((float)($sh['costUsd'] ?? 0) > 0)            $shParts[] = 'Est. cost: ' . $fmtUsd($sh['costUsd']);
+        if ($shParts) $invLines[] = ['DetailType' => 'DescriptionOnly', 'Description' => 'Shipping — ' . implode(' · ', $shParts)];
+        $pkParts = [];
+        if (trim((string)($pk['type'] ?? '')) !== '')  $pkParts[] = 'Type: ' . trim((string)$pk['type']);
+        if ((int)($pk['innerTotal'] ?? 0) > 0)          $pkParts[] = 'Inner cartons: ' . (int)$pk['innerTotal'];
+        if ((int)($pk['outerTotal'] ?? 0) > 0)          $pkParts[] = 'Outer cartons: ' . (int)$pk['outerTotal'];
+        if ($pkParts) $invLines[] = ['DetailType' => 'DescriptionOnly', 'Description' => 'Packaging — ' . implode(' · ', $pkParts)];
+
         $inv = ['CustomerRef' => ['value' => $cust['id']], 'Line' => $invLines];
         $email = trim((string)($input['client_email'] ?? ''));
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) $inv['BillEmail'] = ['Address' => $email];
