@@ -21279,6 +21279,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let tierCount = 3;
   let _filling = false; // true while fillWorkbook is running, prevents auto-save
   let _appReady = false; // true after init completes — blocks all saves until then
+  // Per-workbook snapshot of the detail AS LOADED (keyed client|wbId). Sent
+  // with every save so the server can 3-way merge — it only overwrites a
+  // field this editor actually changed, so a concurrent save can't blank a
+  // field someone else filled.
+  let _wbBaseDetail = {};
 
   function addTierRow(qty = '', unitPrice = '') {
     tierCount++;
@@ -33046,6 +33051,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // without expanding.
       _collapseHeavySectionsOnOpen();
       _updateAllSectionSummaries();
+      // Snapshot the loaded detail as this editor's merge base.
+      try { _wbBaseDetail[`${clientName}|${workbookId}`] = collectWorkbookDetail(); } catch (e) {}
       // Wrap any [data-rich] textarea in the formatting / AI toolbar.
       // Idempotent — safe to re-call when switching workbooks.
       if (typeof initRichEditors === 'function') initRichEditors();
@@ -33209,8 +33216,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
     showSaveStatus('saving');
     // create_revision: true on navigation saves — these become history entries
-    apiCall('save_workbook_detail', { id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: true })
-      .then(r => showSaveStatus(r && r.success ? 'saved' : 'error'));
+    apiCall('save_workbook_detail', { id: dbId, detail: detail, base: _wbBaseDetail[key], changed_by: getCurrentUser(), create_revision: true })
+      .then(r => { showSaveStatus(r && r.success ? 'saved' : 'error'); if (r && r.success) { try { _wbBaseDetail[key] = detail; } catch (e) {} } });
     saveToLocalStorage();
   }
 
@@ -35255,11 +35262,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Save to DB — autosave does NOT create a revision (only nav saves do)
       const dbId = dbWorkbookMap[key] || currentWorkbookId;
       showSaveStatus('saving');
-      apiCall('save_workbook_detail', { id: dbId, detail: detail, changed_by: getCurrentUser(), create_revision: false })
+      apiCall('save_workbook_detail', { id: dbId, detail: detail, base: _wbBaseDetail[key], changed_by: getCurrentUser(), create_revision: false })
         .then(r => {
           _wbSavePending = false;   // server round-trip done — reconcile may resume
           showSaveStatus(r && r.success ? 'saved' : 'error');
           if (r && r.success) {
+            // Our changes are now the baseline for the next merge.
+            try { _wbBaseDetail[key] = detail; } catch (e) {}
             // Clear the live-broadcast local-dirty flag on every input
             // we just persisted — the server now has our values, so
             // it's safe for an incoming broadcast to update them later.
@@ -35319,7 +35328,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     saveToLocalStorage();
     // Use sendBeacon so the request survives page unload
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
-    const payload = JSON.stringify({ action: 'save_workbook_detail', id: dbId, detail: detail });
+    const payload = JSON.stringify({ action: 'save_workbook_detail', id: dbId, detail: detail, base: _wbBaseDetail[key] });
     navigator.sendBeacon('api.php', new Blob([payload], { type: 'application/json' }));
   });
 

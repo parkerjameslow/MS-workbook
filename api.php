@@ -3059,6 +3059,40 @@ switch ($action) {
         if (!is_array($currentArr)) $currentArr = [];
 
         $incomingArr  = is_array($input['detail'] ?? null) ? $input['detail'] : [];
+
+        // ── NON-DESTRUCTIVE MERGE ─────────────────────────────────────────
+        // A save must never wipe a field this editor didn't touch — otherwise
+        // two people with the same workbook open clobber each other (person B
+        // saving their whole copy blanks the Outer Carton dims person A just
+        // entered). So we 3-way merge: start from the AUTHORITATIVE current DB
+        // state and only overwrite a field when THIS editor actually changed
+        // it (incoming differs from the base they loaded). Intentional clears
+        // still work (cleared ≠ base → written as empty). When no base is
+        // supplied (e.g. an unload beacon), fall back to "an empty incoming
+        // value never overwrites a non-empty current value."
+        $hasBase = is_array($input['base'] ?? null);
+        $baseArr = $hasBase ? $input['base'] : [];
+        $isEmptyVal = function ($v) {
+            if ($v === null || $v === false) return true;
+            if (is_string($v)) return trim($v) === '';
+            if (is_array($v))  return count($v) === 0;
+            return false;
+        };
+        $mergedArr = $currentArr; // authoritative base = whatever's in the DB now
+        foreach ($incomingArr as $k => $iv) {
+            if ($hasBase) {
+                $changed = !array_key_exists($k, $baseArr)
+                    || json_encode($iv) !== json_encode($baseArr[$k]);
+                if ($changed) $mergedArr[$k] = $iv;
+                // unchanged by this editor → keep the current DB value
+            } else {
+                $cv = $currentArr[$k] ?? null;
+                // No base: only let a non-empty incoming overwrite; an empty
+                // incoming can't blank an existing non-empty value.
+                if (!$isEmptyVal($iv) || $isEmptyVal($cv)) $mergedArr[$k] = $iv;
+            }
+        }
+        $incomingArr  = $mergedArr;
         $incomingJson = json_encode($incomingArr);
 
         // ── GUARD HELPERS ──────────────────────────────────────────────────
