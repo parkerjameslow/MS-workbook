@@ -7961,31 +7961,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="status-bar status-bar--pinned" id="status-bar">
     <div class="status-bar-left">
       <div class="status-label">Status</div>
+      <!-- The status pill shows which Pipeline COLUMN this workbook is in
+           (rendered by renderStatusBar → _wbColumnPillHtml). -->
       <div class="status-flow" id="status-flow">
         <!-- populated by JS -->
       </div>
-      <!-- Which pipeline column this workbook currently lives in. -->
-      <span id="wb-column-pill" title="Pipeline stage — where this workbook sits on the board"></span>
     </div>
     <div class="status-actions" style="display:flex; gap:6px; align-items:center;">
-      <!-- Workflow-stage action stack: groups stage-specific buttons
-           in a single vertical column so the status-bar row stays
-           compact. Each inner button manages its own visibility:
-             • Sent to RFQ      — stage 1 only (Quote Submitted).
-             • Send for Review  — stage 1 only (flow doesn't auto-
-                                  advance; flips to 'Sent ✓' in place).
-             • Notify Client    — stage 2 only (Quote to Client).
-           Before this stacking, Notify Client sat free in the action
-           row and visually overlapped the Ordered step label. Folding
-           it into the stack restores clean spacing in the row. -->
-      <!-- Stage-action buttons — one clean horizontal row of uniform pills.
-           Each is styled by renderStatusBar: outlined-accent when actionable
-           at the current stage, muted+disabled otherwise (never restacks). -->
       <div id="rfq-btn-stack" class="wb-stage-btn-group">
-        <!-- "Send to RFQ" and "Send for Review" buttons removed — stage moves
-             are now handled by dragging the card on the Pipeline board. -->
-        <button id="btn-notify-quote" class="wb-stage-btn" onclick="openNotifyModal('quote_ready')"
-          title="Email this quote to the client">
+        <!-- Notify Client is always available now; it opens an editable
+             quote preview before anything is sent. Stage moves live on the
+             Pipeline board, so the old advance/back buttons were removed. -->
+        <button id="btn-notify-quote" class="wb-stage-btn active" onclick="openNotifyModal('quote_ready')"
+          title="Preview, edit, and email this quote to the client">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           <span>Notify Client</span>
         </button>
@@ -7995,10 +7983,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span>Watchers</span>
         <span class="wb-watchers-count" id="watchers-count">0</span>
       </button>
-      <span class="status-actions-sep"></span>
-      <button class="btn-back-step" id="btn-back-step" onclick="revertStatus()" title="Go back one step">←</button>
-      <button class="btn-advance" id="btn-advance" onclick="advanceStatus()">
-        Mark as Entered →
+      <!-- Primary action (replaces the old stage-advance button): always
+           available; opens the QB invoice preview, or alerts if there are
+           no billable items yet. Label flips to "QB Invoice #NN" once made. -->
+      <button class="btn-advance" id="btn-qb-invoice" data-mode="create" onclick="createQbInvoice(this)"
+        title="Create a QuickBooks invoice from this workbook's client quote">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        Create QB Invoice
       </button>
     </div>
   </div><!-- /.status-bar -->
@@ -9317,14 +9308,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- ── Tab: Pricing ── -->
   <div id="wb-tab-pricing" class="wb-tab-content">
 
-  <!-- Create a QuickBooks invoice from this workbook's client quote.
-       Flips to "QB Invoice #NN" (opens it) once one has been created. -->
-  <div style="display:flex; justify-content:flex-end; padding:2px 0 12px;">
-    <button type="button" id="btn-qb-invoice" data-mode="create" class="btn btn-ghost" onclick="createQbInvoice(this)" title="Create a QuickBooks invoice from this workbook's client quote" style="display:inline-flex; align-items:center; gap:7px;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-      Create QB Invoice
-    </button>
-  </div>
+  <!-- (The "Create QB Invoice" button lives in the workbook status bar now,
+       so it's available from every tab.) -->
 
   <!-- ── Card: Delivered Cost Summary ── -->
   <div class="section-card" data-section="pricing-summary">
@@ -24512,12 +24497,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const key = `${currentClient}|${currentWorkbookId}`;
     // Already invoiced → just open it.
     const existing = (workbookDetail[key] || {});
-    if (existing.qbInvoiceUrl && (!btn || btn.dataset.mode === 'view')) {
+    if (existing.qbInvoiceUrl && btn && btn.dataset.mode === 'view') {
       window.open(existing.qbInvoiceUrl, '_blank', 'noopener');
       return;
     }
+    // The Client Quote scrape needs the Pricing tab rendered + visible
+    // (innerText is empty on a hidden tab). Switch to it first — the preview
+    // modal then opens on top of it, so the button works from any tab.
+    const pricingTab = document.getElementById('wb-tab-pricing');
+    if (pricingTab && !pricingTab.classList.contains('active')) {
+      const pbtn = document.querySelector('.wb-tab[onclick*="pricing"]');
+      if (pbtn && typeof switchWbTab === 'function') switchWbTab('pricing', pbtn);
+      else { try { renderPricingTab(); } catch (_) {} }
+    }
     const payload = _collectQbInvoicePayload();
-    if (!payload) { _msToast('No billable lines — set Sale Per / add items on the Pricing tab first.', 'error'); return; }
+    if (!payload) { _msToast('No billable items on this workbook yet — add items / set Sale Per on the Pricing tab first.', 'error'); return; }
     // Preview + export work without QuickBooks — only the push to QBO needs it.
     let st = null;
     try { st = await apiCall('qbo_status', {}); } catch (_) {}
@@ -25486,27 +25480,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     for (let i = flowSteps.length - 1; i >= 0; i--) {
       if (flow[flowSteps[i]]) { currentIdx = i; break; }
     }
-    // A single "where is it now" bubble instead of the multi-step strip.
-    const _curLabel = currentIdx >= 0 ? flowLabels[currentIdx] : 'Not started';
-    statusFlow.innerHTML = `<span class="status-bubble${currentIdx >= 0 ? ' active' : ''}" title="Current workflow stage — advance it with the buttons on the right">${_curLabel}</span>`;
+    // The status pill shows the Pipeline COLUMN this workbook is in
+    // (not the granular flow step). Stage moves happen on the board.
+    statusFlow.innerHTML = (currentClient && currentWorkbookId)
+      ? _wbColumnPillHtml(currentClient, currentWorkbookId)
+      : `<span class="wb-col-pill" style="background:#f3f4f6;color:#4b5563;">Not started</span>`;
 
-    // Pipeline-column pill — where the workbook currently lives on the board.
-    const colPill = document.getElementById('wb-column-pill');
-    if (colPill && currentClient && currentWorkbookId) {
-      colPill.innerHTML = _wbColumnPillHtml(currentClient, currentWorkbookId);
-    }
-
-    const advanceBtn = document.getElementById('btn-advance');
-    const backBtn = document.getElementById('btn-back-step');
-    backBtn.disabled = currentIdx < 0;
-
-    if (currentIdx < flowSteps.length - 1) {
-      advanceBtn.textContent = flowLabels[currentIdx + 1];
-      advanceBtn.disabled = false;
-    } else {
-      advanceBtn.textContent = 'Completed';
-      advanceBtn.disabled = true;
-    }
+    // Keep the status-bar "Create QB Invoice" button in sync with its state.
+    try { _renderQbInvoiceButton(); } catch (_) {}
 
     // Stage-action buttons — ONE clean horizontal row of uniform pills.
     // Each is outlined-accent when actionable at the current stage, muted +
@@ -25549,14 +25530,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         : 'Mark this workbook as ready for review — emails Jackson + Parker.';
     }
 
-    // Notify Client — actionable once the quote is at (or past) Quote-to-Client.
+    // Notify Client — always available now; opens an editable quote preview.
     const notifyBtn = document.getElementById('btn-notify-quote');
     if (notifyBtn) {
-      const applicable = !!flow.quoteClient;
-      notifyBtn.className = 'wb-stage-btn' + (applicable ? ' active' : '');
-      notifyBtn.disabled = !applicable;
-      notifyBtn.title = applicable ? 'Email this quote to the client'
-        : 'Available once the quote is sent to the client';
+      notifyBtn.className = 'wb-stage-btn active';
+      notifyBtn.disabled = false;
+      notifyBtn.title = 'Preview, edit, and email this quote to the client';
     }
 
     // Lock Product Overview tab once Quote to Client (index 2) or beyond
