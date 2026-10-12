@@ -355,10 +355,13 @@ function portalItemsContent(string $clientName, array $items): string {
           . '</div>';
     $board = '<div class="cp-board-wrap"><div class="cp-board" id="cp-board">' . $colsHtml . '</div>'
            . '<div class="cp-board-fade" id="cp-board-fade"><span>›</span></div></div>';
+    // Watermark sits as a background layer BEHIND the board, so the cards
+    // render on top of it.
+    $boardArea = '<div class="cp-board-area">' . $note . $board . '</div>';
     $script = '<script>(function(){var b=document.getElementById("cp-board"),f=document.getElementById("cp-board-fade");'
             . 'if(!b||!f)return;function u(){f.style.opacity=(b.scrollWidth-b.clientWidth-b.scrollLeft>8)?"1":"0";}'
             . 'b.addEventListener("scroll",u);window.addEventListener("resize",u);setTimeout(u,60);})();</script>';
-    return $header . $summary . $board . $note . $script;
+    return $header . $summary . $boardArea . $script;
 }
 
 function cpFmtDate(string $d): string { $ts = strtotime($d); return $ts ? date('M j, Y', $ts) : htmlspecialchars($d); }
@@ -542,7 +545,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .cp-rail-labels { display: flex; justify-content: space-between; margin-top: 7px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #a9b0c2; }
 
 .cp-footnote { font-size: 12.5px; color: #9ba3c0; line-height: 1.7; text-align: center; padding: 6px 8px; }
-.cp-watermark { display:flex; align-items:center; justify-content:center; min-height: 160px; margin-top: -40px; user-select:none; pointer-events:none; overflow:hidden; }
+.cp-board-area { position: relative; }
+.cp-watermark { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; z-index:0; margin:0; user-select:none; pointer-events:none; overflow:visible; }
 .cp-wm-img { width: min(920px, 92%); height:auto; opacity: 0.08; }
 .cp-wm-mark { font-size: clamp(40px, 9vw, 120px); font-weight: 900; letter-spacing: -3px; color: #E8751A; opacity: 0.07; white-space: nowrap; line-height: 1; }
 .cp-wm-sculpt { color: #9ca3af; font-weight: 300; margin-left: 4px; }
@@ -550,7 +554,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 .footer-bar a { color: #E8751A; text-decoration: none; }
 
 /* Pipeline-style board: colored column headers, cards stacked below */
-.cp-board-wrap { position:relative; }
+.cp-board-wrap { position:relative; z-index:1; }
 .cp-board { display:flex; gap:16px; overflow-x:auto; padding-bottom:14px; align-items:flex-start; scrollbar-width:thin; }
 .cp-board::-webkit-scrollbar { height:9px; }
 .cp-board::-webkit-scrollbar-thumb { background:#cbd2df; border-radius:99px; }
