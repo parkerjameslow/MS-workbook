@@ -9317,13 +9317,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <!-- ── Tab: Pricing ── -->
   <div id="wb-tab-pricing" class="wb-tab-content">
 
-  <!-- Placeholder action — will become "Create QB Invoice" once the
-       QuickBooks invoice sync ships. For now it just says coming soon. -->
+  <!-- Create a QuickBooks invoice from this workbook's client quote.
+       Flips to "QB Invoice #NN" (opens it) once one has been created. -->
   <div style="display:flex; justify-content:flex-end; padding:2px 0 12px;">
-    <button type="button" class="btn btn-ghost" onclick="_qbInvoiceComingSoon()" title="Create a QuickBooks invoice from this workbook (coming soon)" style="display:inline-flex; align-items:center; gap:7px;">
+    <button type="button" id="btn-qb-invoice" data-mode="create" class="btn btn-ghost" onclick="createQbInvoice(this)" title="Create a QuickBooks invoice from this workbook's client quote" style="display:inline-flex; align-items:center; gap:7px;">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
       Create QB Invoice
-      <span style="font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); border:1px solid var(--border); border-radius:99px; padding:1px 6px;">Soon</span>
     </button>
   </div>
 
@@ -24440,10 +24439,154 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
   }
   function qboConnect() { window.location.href = 'api.php?action=qbo_connect'; }
-  // Placeholder for the future workbook → QuickBooks invoice action.
-  function _qbInvoiceComingSoon() {
-    if (typeof _msToast === 'function') _msToast('Create QB Invoice — coming soon 🚧');
-    else alert('Coming soon');
+
+  // ── Workbook → QuickBooks Invoice ────────────────────────────────────────
+  // Parse a formatted quote string ("1,000", "$0.076", "$1,234.00") to a number.
+  function _qbNum(v) {
+    const n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+
+  // Build the invoice payload from the open workbook's Client Quote. Reuses
+  // _collectClientQuoteForExport() (Sale-Per / kit math) for line items and
+  // appliedFeesList() for numeric fee amounts. Returns null if nothing is
+  // billable. Skips variant-group HEADER rows (expandable parents) and kit
+  // members so amounts aren't double-counted.
+  function _collectQbInvoicePayload() {
+    let data = _collectClientQuoteForExport();
+    if (!data) { try { renderPricingTab(); } catch (_) {} data = _collectClientQuoteForExport(); }
+    if (!data) return null;
+    const lines = [];
+    (data.lineItems || []).forEach(it => {
+      if (it.kind === 'variant') {
+        lines.push({ name: String(it.label || '').replace(/^└\s*/, '').trim() || 'Item', qty: _qbNum(it.qty), unitPrice: _qbNum(it.sale), lineTotal: _qbNum(it.total) });
+      } else if (it.kind === 'parent' && !it.expandable) {
+        lines.push({ name: String(it.label || '').trim() || 'Item', qty: _qbNum(it.qty), unitPrice: _qbNum(it.sale), lineTotal: _qbNum(it.total) });
+      }
+      // expandable parent (variant header), combineMember, fee/feeZero → skip
+    });
+    const billLines = lines.filter(l => (l.lineTotal || 0) !== 0 || (l.qty > 0 && l.unitPrice > 0));
+    let fees = [];
+    try {
+      fees = (appliedFeesList() || []).map(f => ({
+        name: [f.label, f.desc].filter(Boolean).join(' — ') || 'Fee',
+        amount: _qbNum(f.usd),
+      })).filter(f => f.amount !== 0);
+    } catch (_) {}
+    if (!billLines.length && !fees.length) return null;
+    const cd = (typeof clientDetails !== 'undefined' && clientDetails[currentClient]) ? clientDetails[currentClient] : {};
+    const productName = (document.getElementById('product-name')?.value || '').trim();
+    const total = billLines.reduce((s, l) => s + (l.lineTotal || 0), 0) + fees.reduce((s, f) => s + (f.amount || 0), 0);
+    return {
+      client_name: currentClient,
+      client_email: cd.email || '',
+      bill_addr: cd.billing_address || '',
+      ship_addr: cd.shipping_address || '',
+      memo: productName,
+      lines: billLines,
+      fees,
+      _displayTotal: total,
+      _nLines: billLines.length + fees.length,
+    };
+  }
+
+  async function createQbInvoice(btn) {
+    if (!currentClient || !currentWorkbookId) { _msToast('Open a workbook first.', 'error'); return; }
+    const key = `${currentClient}|${currentWorkbookId}`;
+    // Already invoiced → just open it.
+    const existing = (workbookDetail[key] || {});
+    if (existing.qbInvoiceUrl && (!btn || btn.dataset.mode === 'view')) {
+      window.open(existing.qbInvoiceUrl, '_blank', 'noopener');
+      return;
+    }
+    const payload = _collectQbInvoicePayload();
+    if (!payload) { _msToast('No billable lines — set Sale Per / add items on the Pricing tab first.', 'error'); return; }
+    let st = null;
+    try { st = await apiCall('qbo_status', {}); } catch (_) {}
+    if (!st || !st.configured) { _msToast('QuickBooks isn\'t set up yet — open Billings to connect it.', 'error'); return; }
+    if (!st.connected)        { _msToast('QuickBooks isn\'t connected — connect it in Billings first.', 'error'); return; }
+    const env = st.environment || 'production';
+    const totalStr = '$' + (payload._displayTotal || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const warn = env === 'production'
+      ? '\n\n⚠️ This creates a REAL invoice in your live QuickBooks.'
+      : '\n\n(Sandbox test company.)';
+    if (existing.qbInvoiceNumber) {
+      if (!confirm(`This workbook already has QB invoice #${existing.qbInvoiceNumber}. Create ANOTHER invoice?${warn}`)) return;
+    }
+    if (!confirm(`Create a QuickBooks invoice for ${payload.client_name}?\n\n${payload._nLines} line${payload._nLines === 1 ? '' : 's'} · ${totalStr}${warn}`)) return;
+
+    const oldHtml = btn ? btn.innerHTML : null;
+    if (btn) { btn.disabled = true; btn.innerHTML = 'Creating…'; }
+    try {
+      const dbId = dbWorkbookMap[key] || currentWorkbookId;
+      const res = await apiCall('qbo_create_invoice', {
+        workbook_id: dbId,
+        client_name: payload.client_name,
+        client_email: payload.client_email,
+        bill_addr: payload.bill_addr,
+        ship_addr: payload.ship_addr,
+        memo: payload.memo,
+        lines: payload.lines,
+        fees: payload.fees,
+      });
+      if (res && res.success) {
+        _msToast(`QB invoice ${res.docNumber ? '#' + res.docNumber : 'created'} for ${res.customerName}.`, 'success');
+        _saveQbInvoiceRef(key, res);
+        _renderQbInvoiceButton();
+        if (res.url) window.open(res.url, '_blank', 'noopener');
+      } else {
+        _msToast('QuickBooks: ' + ((res && res.error) ? res.error : 'invoice failed.'), 'error');
+        if (btn && oldHtml != null) { btn.disabled = false; btn.innerHTML = oldHtml; }
+      }
+    } catch (e) {
+      console.error('[createQbInvoice]', e);
+      _msToast('Network error creating the invoice.', 'error');
+      if (btn && oldHtml != null) { btn.disabled = false; btn.innerHTML = oldHtml; }
+    }
+  }
+
+  // Persist the QB invoice reference on the workbook. Merge-safe partial save
+  // (only the qbInvoice* fields) so a concurrent editor isn't clobbered, plus
+  // the in-memory detail so the button + client views reflect it immediately.
+  function _saveQbInvoiceRef(key, res) {
+    const d = workbookDetail[key] || (workbookDetail[key] = {});
+    const prev = { qbInvoiceId: d.qbInvoiceId, qbInvoiceNumber: d.qbInvoiceNumber, qbInvoiceUrl: d.qbInvoiceUrl, qbInvoiceAt: d.qbInvoiceAt };
+    d.qbInvoiceId     = String(res.invoiceId || '');
+    d.qbInvoiceNumber = String(res.docNumber || '');
+    d.qbInvoiceUrl    = String(res.url || '');
+    d.qbInvoiceAt     = new Date().toISOString();
+    try { saveToLocalStorage(); } catch (_) {}
+    try {
+      const [cn, wid] = key.split('|');
+      const dbId = dbWorkbookMap[key] || wid;
+      const p = apiCall('save_workbook_detail', {
+        id: dbId,
+        detail: { qbInvoiceId: d.qbInvoiceId, qbInvoiceNumber: d.qbInvoiceNumber, qbInvoiceUrl: d.qbInvoiceUrl, qbInvoiceAt: d.qbInvoiceAt },
+        base: prev,
+        changed_by: getCurrentUser(),
+      });
+      if (p && typeof p.catch === 'function') p.catch(e => console.warn('[qbInvoice save]', e));
+    } catch (e) { console.warn('[qbInvoice save]', e); }
+  }
+
+  // Reflect invoice state on the Pricing-tab button: "Create QB Invoice" when
+  // none, or "QB Invoice #NN" (opens it) once invoiced.
+  function _renderQbInvoiceButton() {
+    const btn = document.getElementById('btn-qb-invoice');
+    if (!btn) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    const d = workbookDetail[key] || {};
+    const fileSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>';
+    if (d.qbInvoiceNumber && d.qbInvoiceUrl) {
+      btn.dataset.mode = 'view';
+      btn.title = 'Open this QuickBooks invoice (created ' + (d.qbInvoiceAt ? new Date(d.qbInvoiceAt).toLocaleDateString() : '') + '). Click to view; use + to invoice again.';
+      btn.innerHTML = fileSvg + ' QB Invoice #' + _esc(d.qbInvoiceNumber)
+        + ' <span style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#059669;border:1px solid rgba(5,150,105,.4);border-radius:99px;padding:1px 6px;">✓</span>';
+    } else {
+      btn.dataset.mode = 'create';
+      btn.title = 'Create a QuickBooks invoice from this workbook’s client quote';
+      btn.innerHTML = fileSvg + ' Create QB Invoice';
+    }
   }
   async function qboDisconnect() {
     if (!confirm('Disconnect QuickBooks? Client sync and invoice creation will stop until you reconnect.')) return;
@@ -26324,6 +26467,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function renderPricingTab() {
     try { _renderPricingTabInner(); }
     catch (e) { try { console.error('[MS renderPricingTab]', e); } catch (_) {} }
+    try { _renderQbInvoiceButton(); } catch (_) {}
   }
   function _renderPricingTabInner() {
     // RFQ input handlers + workbook-load already keep _lastRfqPriceSummary
@@ -27803,7 +27947,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
       if (tr.classList.contains('cq-parent-row')) {
         const isExpandable = !tr.classList.contains('no-variants');
-        const item = { kind: 'parent', label: cellText(1), qty: cellText(2), sale: cellText(3), total: cellText(4) };
+        // expandable === true → this is a variant GROUP header; its variant
+        // rows carry the billable amounts (so QB invoicing skips the header
+        // to avoid double-counting). false → a standalone/kit line to bill.
+        const item = { kind: 'parent', expandable: isExpandable, label: cellText(1), qty: cellText(2), sale: cellText(3), total: cellText(4) };
         lineItems.push(item);
         if (isExpandable && parentId) variantParents[parentId] = item;
         return;
@@ -35401,6 +35548,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // silently drop the workbook out of the Orders "Ready to Order" list.
       movedToOrders:   !!existing.movedToOrders,
       movedToOrdersAt: existing.movedToOrdersAt || null,
+      // QuickBooks invoice reference (written by createQbInvoice, not DOM-
+      // driven) — preserve so a full-detail save doesn't drop the link.
+      qbInvoiceId:     existing.qbInvoiceId || '',
+      qbInvoiceNumber: existing.qbInvoiceNumber || '',
+      qbInvoiceUrl:    existing.qbInvoiceUrl || '',
+      qbInvoiceAt:     existing.qbInvoiceAt || null,
       // Per-step milestone watchers — managed by the Watchers modal, not
       // DOM-driven. Preserve the live in-memory value from existing so
       // an autosave after add/remove doesn't clobber it.

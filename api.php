@@ -1296,6 +1296,83 @@ function qbo_api(PDO $pdo, string $method, string $path, $body = null): array {
     return ['code' => $code, 'data' => $resp ? json_decode($resp, true) : null];
 }
 
+// ── QBO invoice helpers (Phase 3: workbook → QuickBooks Invoice) ──────────
+// Escape a value for a QBO query string (single quotes are doubled).
+function qbo_q_esc(string $s): string { return str_replace("'", "''", $s); }
+
+// Run a QBO Query and return its QueryResponse array (or []).
+function qbo_query(PDO $pdo, string $query): array {
+    $r = qbo_api($pdo, 'GET', '/query?query=' . rawurlencode($query));
+    return (isset($r['data']['QueryResponse']) && is_array($r['data']['QueryResponse']))
+        ? $r['data']['QueryResponse'] : [];
+}
+
+// Pull a human-readable error out of a qbo_api result.
+function qbo_err(array $res, string $what): string {
+    $f = $res['data']['Fault']['Error'][0] ?? null;
+    if ($f) {
+        $msg = trim((string)($f['Message'] ?? 'QuickBooks error'));
+        if (!empty($f['Detail'])) $msg .= ' — ' . trim((string)$f['Detail']);
+        return $msg;
+    }
+    if (!empty($res['error'])) return (string)$res['error'];
+    return 'Failed to create ' . $what . ' (HTTP ' . ($res['code'] ?? '?') . ')';
+}
+
+// Find a Customer by exact DisplayName, else create one.
+// Returns ['id'=>..,'name'=>..] or ['error'=>..].
+function qbo_find_or_create_customer(PDO $pdo, string $name, string $email = '', array $billLines = [], array $shipLines = []): array {
+    $name = trim($name);
+    if ($name === '') return ['error' => 'client name required'];
+    $qr = qbo_query($pdo, "SELECT Id, DisplayName FROM Customer WHERE DisplayName = '" . qbo_q_esc($name) . "'");
+    if (!empty($qr['Customer'][0]['Id'])) {
+        return ['id' => (string)$qr['Customer'][0]['Id'], 'name' => (string)($qr['Customer'][0]['DisplayName'] ?? $name)];
+    }
+    $body = ['DisplayName' => $name];
+    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $body['PrimaryEmailAddr'] = ['Address' => $email];
+    }
+    $mkAddr = function (array $lines) {
+        $lines = array_values(array_filter(array_map(fn($l) => trim((string)$l), $lines), fn($l) => $l !== ''));
+        if (!$lines) return null;
+        $a = [];
+        foreach (array_slice($lines, 0, 5) as $i => $l) { $a['Line' . ($i + 1)] = $l; }
+        return $a;
+    };
+    if ($b = $mkAddr($billLines)) $body['BillAddr'] = $b;
+    if ($s = $mkAddr($shipLines)) $body['ShipAddr'] = $s;
+    $res = qbo_api($pdo, 'POST', '/customer', $body);
+    if (!empty($res['data']['Customer']['Id'])) {
+        return ['id' => (string)$res['data']['Customer']['Id'], 'name' => (string)($res['data']['Customer']['DisplayName'] ?? $name)];
+    }
+    return ['error' => qbo_err($res, 'customer')];
+}
+
+// Find (or create) a generic Service item — QBO requires an ItemRef on every
+// sales line, so all workbook lines hang off one "MarketSculpt Product" item
+// (the real product name goes in the line Description).
+// Returns ['id'=>..] or ['error'=>..].
+function qbo_find_or_create_item(PDO $pdo): array {
+    $itemName = 'MarketSculpt Product';
+    $qr = qbo_query($pdo, "SELECT Id, Name FROM Item WHERE Name = '" . qbo_q_esc($itemName) . "'");
+    if (!empty($qr['Item'][0]['Id'])) return ['id' => (string)$qr['Item'][0]['Id']];
+    // Creating a Service item needs an income account to book sales against.
+    $acc = qbo_query($pdo, "SELECT Id FROM Account WHERE AccountType = 'Income' MAXRESULTS 1");
+    $incomeId = $acc['Account'][0]['Id'] ?? null;
+    if (!$incomeId) {
+        $acc2 = qbo_query($pdo, "SELECT Id FROM Account WHERE Classification = 'Revenue' MAXRESULTS 1");
+        $incomeId = $acc2['Account'][0]['Id'] ?? null;
+    }
+    if (!$incomeId) return ['error' => 'No income account found in QuickBooks to attach the product item to.'];
+    $res = qbo_api($pdo, 'POST', '/item', [
+        'Name' => $itemName,
+        'Type' => 'Service',
+        'IncomeAccountRef' => ['value' => (string)$incomeId],
+    ]);
+    if (!empty($res['data']['Item']['Id'])) return ['id' => (string)$res['data']['Item']['Id']];
+    return ['error' => qbo_err($res, 'item')];
+}
+
 function ms_sms_configured(): bool {
     return TWILIO_ACCOUNT_SID !== '' && TWILIO_AUTH_TOKEN !== '' && TWILIO_FROM_NUMBER !== '';
 }
@@ -7015,6 +7092,92 @@ switch ($action) {
         }
         $pdo->exec("DELETE FROM qbo_connection WHERE id = 1");
         echo json_encode(['success' => true]);
+        break;
+    }
+    case 'qbo_create_invoice': {
+        // Workbook → QuickBooks Invoice. The client computes the quote lines
+        // (reusing the Client-Quote / Sale-Per math) and POSTs them here; we
+        // find-or-create the Customer + a generic Service item, then create
+        // the Invoice. One-way MS→QBO.
+        if (!qbo_configured()) { echo json_encode(['success' => false, 'error' => 'QuickBooks isn\'t configured yet.']); break; }
+        if (!qbo_get_connection($pdo)) { echo json_encode(['success' => false, 'error' => 'QuickBooks isn\'t connected. Connect it in Billings first.']); break; }
+
+        $clientName = trim((string)($input['client_name'] ?? ''));
+        if ($clientName === '') { echo json_encode(['success' => false, 'error' => 'client_name required']); break; }
+
+        $lines = is_array($input['lines'] ?? null) ? $input['lines'] : [];
+        $fees  = is_array($input['fees']  ?? null) ? $input['fees']  : [];
+
+        $splitAddr = function ($v) {
+            if (is_array($v)) return $v;
+            return preg_split('/\r?\n/', (string)$v);
+        };
+        $cust = qbo_find_or_create_customer(
+            $pdo, $clientName, (string)($input['client_email'] ?? ''),
+            $splitAddr($input['bill_addr'] ?? ''), $splitAddr($input['ship_addr'] ?? '')
+        );
+        if (!empty($cust['error'])) { echo json_encode(['success' => false, 'error' => $cust['error']]); break; }
+
+        $item = qbo_find_or_create_item($pdo);
+        if (!empty($item['error'])) { echo json_encode(['success' => false, 'error' => $item['error']]); break; }
+        $itemRef = ['value' => $item['id']];
+
+        $invLines = [];
+        foreach ($lines as $ln) {
+            if (!is_array($ln)) continue;
+            $nm   = trim((string)($ln['name'] ?? 'Item'));
+            $qty  = (float)($ln['qty'] ?? 0);
+            $unit = (float)($ln['unitPrice'] ?? 0);
+            $amt  = isset($ln['lineTotal']) ? (float)$ln['lineTotal'] : round($qty * $unit, 2);
+            if ($qty <= 0 && $unit <= 0 && $amt == 0) continue;
+            $sd = ['ItemRef' => $itemRef];
+            if ($qty  > 0) $sd['Qty'] = $qty;
+            if ($unit > 0) $sd['UnitPrice'] = round($unit, 4);
+            $invLines[] = [
+                'DetailType'          => 'SalesItemLineDetail',
+                'Amount'              => round($amt, 2),
+                'Description'         => $nm !== '' ? $nm : 'Item',
+                'SalesItemLineDetail' => $sd,
+            ];
+        }
+        foreach ($fees as $fe) {
+            if (!is_array($fe)) continue;
+            $nm  = trim((string)($fe['name'] ?? 'Fee'));
+            $amt = (float)($fe['amount'] ?? 0);
+            if ($amt == 0) continue;
+            $invLines[] = [
+                'DetailType'          => 'SalesItemLineDetail',
+                'Amount'              => round($amt, 2),
+                'Description'         => $nm !== '' ? $nm : 'Fee',
+                'SalesItemLineDetail' => ['ItemRef' => $itemRef, 'Qty' => 1, 'UnitPrice' => round($amt, 2)],
+            ];
+        }
+        if (!$invLines) { echo json_encode(['success' => false, 'error' => 'No billable lines on this workbook.']); break; }
+
+        $inv = ['CustomerRef' => ['value' => $cust['id']], 'Line' => $invLines];
+        $email = trim((string)($input['client_email'] ?? ''));
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) $inv['BillEmail'] = ['Address' => $email];
+        $memo = trim((string)($input['memo'] ?? ''));
+        if ($memo !== '') $inv['CustomerMemo'] = ['value' => mb_substr($memo, 0, 1000)];
+
+        $res = qbo_api($pdo, 'POST', '/invoice', $inv);
+        if (empty($res['data']['Invoice']['Id'])) {
+            echo json_encode(['success' => false, 'error' => qbo_err($res, 'invoice')]);
+            break;
+        }
+        $invObj = $res['data']['Invoice'];
+        $invId  = (string)$invObj['Id'];
+        $uiBase = QBO_ENVIRONMENT === 'sandbox' ? 'https://app.sandbox.qbo.intuit.com' : 'https://app.qbo.intuit.com';
+        echo json_encode([
+            'success'      => true,
+            'invoiceId'    => $invId,
+            'docNumber'    => (string)($invObj['DocNumber'] ?? ''),
+            'total'        => $invObj['TotalAmt'] ?? null,
+            'customerId'   => $cust['id'],
+            'customerName' => $cust['name'],
+            'environment'  => QBO_ENVIRONMENT,
+            'url'          => $uiBase . '/app/invoice?txnId=' . $invId,
+        ]);
         break;
     }
 
