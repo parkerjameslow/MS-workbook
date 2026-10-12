@@ -12012,6 +12012,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- ── QuickBooks invoice preview (shown before anything is sent to QBO) ── -->
+<div class="modal-overlay" id="qb-invoice-modal" onclick="if(event.target===this)closeQbInvoiceModal()" style="display:none; z-index:1270;">
+  <div class="modal" style="max-width:600px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0; display:flex; align-items:center; gap:10px;">
+      <span>QuickBooks invoice preview</span>
+      <span id="qb-inv-env" style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; padding:2px 8px; border-radius:99px;"></span>
+    </div>
+    <div id="qb-inv-body" style="overflow-y:auto; flex:1 1 auto; margin-top:12px; font-size:13px; color:var(--text);"></div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
+      <button type="button" class="btn btn-ghost" onclick="closeQbInvoiceModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="qb-inv-create-btn" onclick="_qbInvoiceConfirmCreate(this)">Create invoice</button>
+    </div>
+  </div>
+</div>
+
 <!-- Sample notes (comments + follow-up checklist) render INLINE under each
      Samples row — see _sampleNotesPanelInner / renderSamplesTable — so no
      modal here. Data lives in the ms_sample_meta app_state blob. -->
@@ -24490,6 +24505,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     };
   }
 
+  let _qbPending = null; // pending preview state while the QB invoice modal is open
   async function createQbInvoice(btn) {
     if (!currentClient || !currentWorkbookId) { _msToast('Open a workbook first.', 'error'); return; }
     const key = `${currentClient}|${currentWorkbookId}`;
@@ -24506,19 +24522,82 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!st || !st.configured) { _msToast('QuickBooks isn\'t set up yet — open Billings to connect it.', 'error'); return; }
     if (!st.connected)        { _msToast('QuickBooks isn\'t connected — connect it in Billings first.', 'error'); return; }
     const env = st.environment || 'production';
-    const totalStr = '$' + (payload._displayTotal || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const warn = env === 'production'
-      ? '\n\n⚠️ This creates a REAL invoice in your live QuickBooks.'
-      : '\n\n(Sandbox test company.)';
-    if (existing.qbInvoiceNumber) {
-      if (!confirm(`This workbook already has QB invoice #${existing.qbInvoiceNumber}. Create ANOTHER invoice?${warn}`)) return;
-    }
-    if (!confirm(`Create a QuickBooks invoice for ${payload.client_name}?\n\n${payload._nLines} line${payload._nLines === 1 ? '' : 's'} · ${totalStr}${warn}`)) return;
+    const dbId = dbWorkbookMap[key] || currentWorkbookId;
+    _qbPending = { key, dbId, payload, env };
+    _openQbInvoiceModal();
+  }
 
-    const oldHtml = btn ? btn.innerHTML : null;
-    if (btn) { btn.disabled = true; btn.innerHTML = 'Creating…'; }
+  function _qbFmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  // Render the invoice preview into the modal from _qbPending, then show it.
+  function _openQbInvoiceModal() {
+    if (!_qbPending) return;
+    const { payload, env, key } = _qbPending;
+    const existing = workbookDetail[key] || {};
+    const esc = _esc;
+    const envEl = document.getElementById('qb-inv-env');
+    if (envEl) {
+      const prod = env === 'production';
+      envEl.textContent = prod ? 'Live' : 'Sandbox';
+      envEl.style.background = prod ? 'rgba(220,38,38,.12)' : 'rgba(5,150,105,.12)';
+      envEl.style.color      = prod ? '#dc2626' : '#059669';
+    }
+    const cell = 'padding:8px 6px; border-bottom:1px solid var(--border);';
+    const cellR = cell + ' text-align:right; white-space:nowrap;';
+    const rows = [];
+    payload.lines.forEach(l => {
+      rows.push(`<tr><td style="${cell}">${esc(l.name)}</td>`
+        + `<td style="${cellR}">${(l.qty || 0).toLocaleString('en-US')}</td>`
+        + `<td style="${cellR}">${_qbFmtUsd(l.unitPrice)}</td>`
+        + `<td style="${cellR}">${_qbFmtUsd(l.lineTotal)}</td></tr>`);
+    });
+    payload.fees.forEach(f => {
+      rows.push(`<tr><td style="${cell}">${esc(f.name)}</td>`
+        + `<td style="${cellR}">1</td>`
+        + `<td style="${cellR}">${_qbFmtUsd(f.amount)}</td>`
+        + `<td style="${cellR}">${_qbFmtUsd(f.amount)}</td></tr>`);
+    });
+    const already = existing.qbInvoiceNumber
+      ? `<div style="background:rgba(251,175,52,.12); border:1px solid rgba(251,175,52,.4); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:12.5px;">This workbook already has QB invoice <strong>#${esc(existing.qbInvoiceNumber)}</strong>. Creating another will make a second invoice.</div>`
+      : '';
+    const foot = env === 'production'
+      ? `<div style="background:rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.35); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">⚠️ This creates a <strong>real invoice</strong> in your live QuickBooks company.</div>`
+      : `<div style="background:rgba(5,150,105,.10); border:1px solid rgba(5,150,105,.30); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">Sandbox test company — safe to try.</div>`;
+    const email = payload.client_email ? `<div style="color:var(--text-muted); font-size:12px;">${esc(payload.client_email)}</div>` : '';
+    const hCell = 'padding:6px; border-bottom:2px solid var(--border); color:var(--text-muted); font-size:11px;';
+    const body = document.getElementById('qb-inv-body');
+    if (body) {
+      body.innerHTML = `${already}`
+        + `<div style="margin-bottom:12px;"><span style="color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em;">Bill to</span>`
+        + `<div style="font-weight:700; font-size:14px;">${esc(payload.client_name)}</div>${email}</div>`
+        + `<table style="width:100%; border-collapse:collapse; font-size:13px;"><thead><tr>`
+        + `<th style="text-align:left; ${hCell} text-transform:uppercase; letter-spacing:.03em;">Product / service</th>`
+        + `<th style="text-align:right; ${hCell}">Qty</th>`
+        + `<th style="text-align:right; ${hCell}">Rate</th>`
+        + `<th style="text-align:right; ${hCell}">Amount</th></tr></thead>`
+        + `<tbody>${rows.join('')}</tbody></table>`
+        + `<div style="display:flex; justify-content:flex-end; margin-top:12px;">`
+        + `<div style="min-width:220px; font-size:14px; display:flex; justify-content:space-between; font-weight:700; border-top:2px solid var(--border); padding-top:8px;">`
+        + `<span>Total</span><span>${_qbFmtUsd(payload._displayTotal)}</span></div></div>`
+        + foot;
+    }
+    const cb = document.getElementById('qb-inv-create-btn');
+    if (cb) { cb.disabled = false; cb.textContent = 'Create invoice'; }
+    const m = document.getElementById('qb-invoice-modal');
+    if (m) { m.classList.add('open'); m.style.display = 'flex'; }
+  }
+
+  function closeQbInvoiceModal() {
+    const m = document.getElementById('qb-invoice-modal');
+    if (m) { m.classList.remove('open'); m.style.display = 'none'; }
+    _qbPending = null;
+  }
+
+  async function _qbInvoiceConfirmCreate(confirmBtn) {
+    if (!_qbPending) { closeQbInvoiceModal(); return; }
+    const { key, dbId, payload } = _qbPending;
+    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Creating…'; }
     try {
-      const dbId = dbWorkbookMap[key] || currentWorkbookId;
       const res = await apiCall('qbo_create_invoice', {
         workbook_id: dbId,
         client_name: payload.client_name,
@@ -24533,15 +24612,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         _msToast(`QB invoice ${res.docNumber ? '#' + res.docNumber : 'created'} for ${res.customerName}.`, 'success');
         _saveQbInvoiceRef(key, res);
         _renderQbInvoiceButton();
+        closeQbInvoiceModal();
         if (res.url) window.open(res.url, '_blank', 'noopener');
       } else {
         _msToast('QuickBooks: ' + ((res && res.error) ? res.error : 'invoice failed.'), 'error');
-        if (btn && oldHtml != null) { btn.disabled = false; btn.innerHTML = oldHtml; }
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Create invoice'; }
       }
     } catch (e) {
-      console.error('[createQbInvoice]', e);
+      console.error('[qbInvoiceConfirmCreate]', e);
       _msToast('Network error creating the invoice.', 'error');
-      if (btn && oldHtml != null) { btn.disabled = false; btn.innerHTML = oldHtml; }
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Create invoice'; }
     }
   }
 
