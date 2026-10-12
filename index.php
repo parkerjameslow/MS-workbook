@@ -12023,7 +12023,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
       <button type="button" class="btn btn-ghost" onclick="closeQbInvoiceModal()">Cancel</button>
       <button type="button" class="btn btn-ghost" id="qb-inv-download-btn" onclick="_exportInvoicePDF()">Download / print</button>
-      <button type="button" class="btn btn-primary" id="qb-inv-create-btn" onclick="_qbInvoiceConfirmCreate(this)">Create invoice</button>
+      <button type="button" class="btn btn-primary" id="qb-inv-send-btn" onclick="_qbInvoiceSend(this)">Send invoice</button>
     </div>
   </div>
 </div>
@@ -24568,7 +24568,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ? `<div style="background:rgba(251,175,52,.12); border:1px solid rgba(251,175,52,.4); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:12.5px;">This workbook already has QB invoice <strong>#${esc(existing.qbInvoiceNumber)}</strong>. Creating another will make a second invoice.</div>`
       : '';
     const foot = !connected
-      ? `<div style="background:rgba(107,114,128,.10); border:1px solid rgba(107,114,128,.3); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">QuickBooks isn’t connected, so this can’t be pushed to QBO yet — but you can <strong>download the invoice</strong> and send it manually. Connect in Billings to create it in QuickBooks.</div>`
+      ? `<div style="background:rgba(107,114,128,.10); border:1px solid rgba(107,114,128,.3); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">QuickBooks isn’t connected — <strong>Send invoice</strong> will still post the PDF to <strong>#accounting</strong>, it just won’t be created in QuickBooks. Connect in Billings to also create it there.</div>`
       : (env === 'production'
         ? `<div style="background:rgba(220,38,38,.10); border:1px solid rgba(220,38,38,.35); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">⚠️ This creates a <strong>real invoice</strong> in your live QuickBooks company.</div>`
         : `<div style="background:rgba(5,150,105,.10); border:1px solid rgba(5,150,105,.30); border-radius:8px; padding:8px 12px; margin-top:14px; font-size:12.5px;">Sandbox test company — safe to try.</div>`);
@@ -24590,12 +24590,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         + `<span>Total</span><span>${_qbFmtUsd(payload._displayTotal)}</span></div></div>`
         + foot;
     }
-    const cb = document.getElementById('qb-inv-create-btn');
-    if (cb) {
-      cb.disabled = !connected;
-      cb.textContent = connected ? 'Create invoice' : 'Connect QuickBooks to create';
-      cb.style.opacity = connected ? '' : '.55';
-    }
+    const sb = document.getElementById('qb-inv-send-btn');
+    if (sb) { sb.disabled = false; sb.textContent = 'Send invoice'; sb.style.opacity = ''; }
     const m = document.getElementById('qb-invoice-modal');
     if (m) { m.classList.add('open'); m.style.display = 'flex'; }
   }
@@ -24675,36 +24671,109 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     win.document.open(); win.document.write(html); win.document.close();
   }
 
-  async function _qbInvoiceConfirmCreate(confirmBtn) {
+  // "Send invoice": create it in QuickBooks (if connected), generate the PDF,
+  // and post that PDF to the #accounting Slack channel.
+  async function _qbInvoiceSend(btn) {
     if (!_qbPending) { closeQbInvoiceModal(); return; }
-    const { key, dbId, payload } = _qbPending;
-    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Creating…'; }
+    const { key, dbId, payload, connected } = _qbPending;
+    const orig = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    let qbNum = '';
     try {
-      const res = await apiCall('qbo_create_invoice', {
-        workbook_id: dbId,
-        client_name: payload.client_name,
-        client_email: payload.client_email,
-        bill_addr: payload.bill_addr,
-        ship_addr: payload.ship_addr,
-        memo: payload.memo,
-        lines: payload.lines,
-        fees: payload.fees,
-      });
-      if (res && res.success) {
-        _msToast(`QB invoice ${res.docNumber ? '#' + res.docNumber : 'created'} for ${res.customerName}.`, 'success');
-        _saveQbInvoiceRef(key, res);
-        _renderQbInvoiceButton();
+      if (connected) {
+        try {
+          const res = await apiCall('qbo_create_invoice', {
+            workbook_id: dbId, client_name: payload.client_name, client_email: payload.client_email,
+            bill_addr: payload.bill_addr, ship_addr: payload.ship_addr, memo: payload.memo,
+            lines: payload.lines, fees: payload.fees,
+          });
+          if (res && res.success) { qbNum = res.docNumber || ''; _saveQbInvoiceRef(key, res); _renderQbInvoiceButton(); }
+          else { _msToast('QuickBooks: ' + ((res && res.error) || 'create failed') + ' — still sending the PDF to Slack.', 'warn'); }
+        } catch (_) { _msToast('QuickBooks push failed — still sending the PDF to Slack.', 'warn'); }
+      }
+      let b64;
+      try { b64 = await _buildInvoicePdfBase64(); }
+      catch (e) { console.error('[invoice pdf]', e); _msToast('Couldn\'t generate the invoice PDF.', 'error'); if (btn) { btn.disabled = false; btn.textContent = orig; } return; }
+      const totalStr = _qbFmtUsd(payload._displayTotal);
+      const who = (typeof getCurrentUser === 'function' ? getCurrentUser() : '') || '';
+      const comment = `Invoice for *${payload.client_name}* — ${totalStr}` + (qbNum ? ` (QB #${qbNum})` : '') + (who ? `\nSent from MS-Workbook by ${who}` : '');
+      const fnameDate = new Date().toISOString().slice(0, 10);
+      const filename = `Invoice_${String(payload.client_name || 'client').replace(/[^A-Za-z0-9]+/g, '-')}_${fnameDate}.pdf`;
+      const up = await apiCall('slack_send_invoice', { pdf_base64: b64, filename, comment });
+      if (up && up.success) {
+        _msToast(`Invoice sent to #${String(up.channel || 'accounting').replace(/^#/, '')}.`, 'success');
         closeQbInvoiceModal();
-        if (res.url) window.open(res.url, '_blank', 'noopener');
       } else {
-        _msToast('QuickBooks: ' + ((res && res.error) ? res.error : 'invoice failed.'), 'error');
-        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Create invoice'; }
+        _msToast('Slack: ' + ((up && up.error) ? up.error : 'couldn\'t post to the channel.'), 'error');
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
       }
     } catch (e) {
-      console.error('[qbInvoiceConfirmCreate]', e);
-      _msToast('Network error creating the invoice.', 'error');
-      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Create invoice'; }
+      console.error('[qbInvoiceSend]', e);
+      _msToast('Network error sending the invoice.', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
     }
+  }
+
+  // Lazy-load jsPDF (+ autotable) once, from the CDN the app already uses.
+  let _jspdfLoading = null;
+  function _jspdfReady() {
+    if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable) return Promise.resolve();
+    if (_jspdfLoading) return _jspdfLoading;
+    const load = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('load failed: ' + src)); document.head.appendChild(s); });
+    _jspdfLoading = load('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+      .then(() => load('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'));
+    return _jspdfLoading;
+  }
+
+  // Build the invoice PDF from _qbPending.payload and return its base64 body.
+  async function _buildInvoicePdfBase64() {
+    await _jspdfReady();
+    const { jsPDF } = window.jspdf;
+    const p = _qbPending.payload;
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 48;
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(232, 117, 26);
+    doc.text('Market Sculpt', M, 56);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(107, 114, 128);
+    doc.text('INVOICE', M, 70);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(26, 29, 46);
+    doc.text('Invoice', W - M, 54, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(55, 65, 81);
+    doc.text('Date: ' + dateStr, W - M, 70, { align: 'right' });
+    doc.text('Terms: Due on receipt', W - M, 84, { align: 'right' });
+    doc.setDrawColor(232, 117, 26); doc.setLineWidth(2); doc.line(M, 96, W - M, 96);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(155, 163, 192);
+    doc.text('BILL TO', M, 120);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(26, 29, 46);
+    doc.text(String(p.client_name || ''), M, 136);
+    let by = 150;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(55, 65, 81);
+    if (p.client_email) { doc.text(String(p.client_email), M, by); by += 13; }
+    String(p.bill_addr || '').split(/\r?\n/).filter(x => x.trim()).forEach(l => { doc.text(l, M, by); by += 13; });
+    const body = [];
+    (p.lines || []).forEach(l => body.push([l.name, (l.qty || 0).toLocaleString('en-US'), _qbFmtUsd(l.unitPrice), _qbFmtUsd(l.lineTotal)]));
+    (p.fees || []).forEach(f => body.push([f.name, '1', _qbFmtUsd(f.amount), _qbFmtUsd(f.amount)]));
+    doc.autoTable({
+      startY: Math.max(by + 12, 172),
+      head: [['Product / service', 'Qty', 'Rate', 'Amount']],
+      body,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 6, textColor: [26, 29, 46], lineColor: [235, 237, 240] },
+      headStyles: { fillColor: [248, 249, 251], textColor: [107, 114, 128], fontStyle: 'bold', fontSize: 9, halign: 'left' },
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+      margin: { left: M, right: M },
+    });
+    let fy = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 200) + 24;
+    doc.setDrawColor(232, 117, 26); doc.setLineWidth(1.5); doc.line(W - M - 210, fy - 12, W - M, fy - 12);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(26, 29, 46);
+    doc.text('Total', W - M - 210, fy + 2);
+    doc.text(_qbFmtUsd(p._displayTotal), W - M, fy + 2, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(155, 163, 192);
+    doc.text('Market Sculpt LLC   ·   marketsculpt.com   ·   parker@marketsculpt.com', W / 2, doc.internal.pageSize.getHeight() - 40, { align: 'center' });
+    const uri = doc.output('datauristring');
+    return String(uri).split(',')[1];
   }
 
   // Persist the QB invoice reference on the workbook. Merge-safe partial save

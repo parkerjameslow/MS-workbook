@@ -593,6 +593,11 @@ if (!defined('SLACK_BOT_TOKEN')) { $v = getenv('SLACK_BOT_TOKEN'); define('SLACK
 // Slack USER token (xoxp-…) with search:read — enables workspace-wide name
 // search (bot tokens can't call search.messages). Optional.
 if (!defined('SLACK_USER_TOKEN')) { $v = getenv('SLACK_USER_TOKEN'); define('SLACK_USER_TOKEN', is_string($v) ? $v : ''); }
+// Channel the "Send invoice" action posts the invoice PDF to. A channel id
+// (C…/G…) is used directly; a #name (or bare name) is resolved via
+// conversations.list. The bot (SLACK_BOT_TOKEN, needs files:write +
+// channels:read) must be a MEMBER of this channel. Defaults to #accounting.
+if (!defined('SLACK_ACCOUNTING_CHANNEL')) { $v = getenv('SLACK_ACCOUNTING_CHANNEL'); define('SLACK_ACCOUNTING_CHANNEL', is_string($v) && $v !== '' ? $v : 'accounting'); }
 // Trello REST API key + token:
 if (!defined('TRELLO_KEY'))   { $v = getenv('TRELLO_KEY');   define('TRELLO_KEY',   is_string($v) ? $v : ''); }
 if (!defined('TRELLO_TOKEN')) { $v = getenv('TRELLO_TOKEN'); define('TRELLO_TOKEN', is_string($v) ? $v : ''); }
@@ -785,6 +790,32 @@ function parker_slack_channel_id(string $raw): string {
     if ($raw === '') return '';
     if (preg_match('/\b([CG][A-Z0-9]{8,})\b/', $raw, $m)) return $m[1]; // id or URL w/ id
     return ''; // a bare #name would need a lookup; handled by search fallback
+}
+
+// Resolve a Slack channel reference to a channel id. Accepts a raw id (C…/G…),
+// or a #name / bare name which is looked up via conversations.list (bot token;
+// needs channels:read + groups:read). Returns '' if not found.
+function slack_resolve_channel_id(string $raw): string {
+    $raw = trim($raw);
+    if ($raw === '') return '';
+    $direct = parker_slack_channel_id($raw);
+    if ($direct !== '') return $direct;
+    $name = ltrim($raw, '#');
+    $name = strtolower(trim($name));
+    if ($name === '') return '';
+    $cursor = '';
+    for ($i = 0; $i < 10; $i++) { // up to ~10k channels
+        $params = ['types' => 'public_channel,private_channel', 'limit' => 1000, 'exclude_archived' => 'true'];
+        if ($cursor !== '') $params['cursor'] = $cursor;
+        $r = parker_slack_api('conversations.list', $params);
+        if (!is_array($r) || empty($r['ok'])) break;
+        foreach (($r['channels'] ?? []) as $c) {
+            if (strtolower((string)($c['name'] ?? '')) === $name) return (string)($c['id'] ?? '');
+        }
+        $cursor = $r['response_metadata']['next_cursor'] ?? '';
+        if ($cursor === '') break;
+    }
+    return '';
 }
 
 // Find recent Slack messages mentioning each watched client. Prefers a
@@ -7191,6 +7222,68 @@ switch ($action) {
             'environment'  => QBO_ENVIRONMENT,
             'url'          => $uiBase . '/app/invoice?txnId=' . $invId,
         ]);
+        break;
+    }
+    case 'slack_send_invoice': {
+        // Upload an invoice PDF (generated client-side) to the accounting
+        // Slack channel. Uses the modern external-upload flow: get a one-time
+        // URL, PUT the bytes, then complete+share to the channel.
+        if (SLACK_BOT_TOKEN === '' || !function_exists('curl_init')) {
+            echo json_encode(['success' => false, 'error' => 'Slack isn\'t configured (SLACK_BOT_TOKEN).']); break;
+        }
+        $b64 = (string)($input['pdf_base64'] ?? '');
+        $b64 = preg_replace('/^data:[^,]*,/', '', $b64); // tolerate a data-uri prefix
+        $pdf = base64_decode($b64, true);
+        if ($pdf === false || strlen($pdf) < 100) { echo json_encode(['success' => false, 'error' => 'Invalid PDF data.']); break; }
+        $fn = trim((string)($input['filename'] ?? 'invoice.pdf'));
+        if ($fn === '') $fn = 'invoice.pdf';
+        $fn = preg_replace('/[^A-Za-z0-9._-]+/', '-', $fn);
+        if (!preg_match('/\.pdf$/i', $fn)) $fn .= '.pdf';
+        $comment = trim((string)($input['comment'] ?? 'New invoice'));
+        $chRaw = trim((string)($input['channel'] ?? ''));
+        if ($chRaw === '') $chRaw = SLACK_ACCOUNTING_CHANNEL;
+        $chId = slack_resolve_channel_id($chRaw);
+        if ($chId === '') {
+            echo json_encode(['success' => false, 'error' => 'Couldn\'t find the "' . $chRaw . '" channel. Invite the bot to it (needs channels:read + files:write).']); break;
+        }
+        $len = strlen($pdf);
+        $u = parker_slack_api('files.getUploadURLExternal', ['filename' => $fn, 'length' => $len]);
+        if (!is_array($u) || empty($u['ok']) || empty($u['upload_url']) || empty($u['file_id'])) {
+            echo json_encode(['success' => false, 'error' => 'Slack upload init failed: ' . ($u['error'] ?? 'unknown')]); break;
+        }
+        $tmp = tempnam(sys_get_temp_dir(), 'inv');
+        file_put_contents($tmp, $pdf);
+        $ch = curl_init($u['upload_url']);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => ['file' => new CURLFile($tmp, 'application/pdf', $fn)],
+            CURLOPT_TIMEOUT        => 40,
+        ]);
+        curl_exec($ch);
+        $upCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        @unlink($tmp);
+        if ($upCode < 200 || $upCode >= 300) { echo json_encode(['success' => false, 'error' => 'Slack file upload failed (HTTP ' . $upCode . ')']); break; }
+        $payload = json_encode([
+            'files'           => [['id' => $u['file_id'], 'title' => $fn]],
+            'channel_id'      => $chId,
+            'initial_comment' => $comment,
+        ]);
+        $ch = curl_init('https://slack.com/api/files.completeUploadExternal');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . SLACK_BOT_TOKEN, 'Content-Type: application/json; charset=utf-8'],
+            CURLOPT_TIMEOUT        => 20,
+        ]);
+        $done = json_decode((string)curl_exec($ch), true);
+        curl_close($ch);
+        if (!is_array($done) || empty($done['ok'])) {
+            echo json_encode(['success' => false, 'error' => 'Slack share failed: ' . ($done['error'] ?? 'unknown')]); break;
+        }
+        echo json_encode(['success' => true, 'channel' => $chRaw]);
         break;
     }
 
