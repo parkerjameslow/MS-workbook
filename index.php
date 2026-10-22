@@ -24196,8 +24196,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return all.slice(0, n || 3);
   }
   // Render the "Recently started" strip into whichever host(s) are present
-  // (top of the Pipeline board and the Clients gallery).
-  function renderRecentWorkbooks() {
+  // (top of the Pipeline board and the Clients gallery). Named *Strip to avoid
+  // colliding with the pre-existing renderRecentWorkbooks() feature.
+  function renderRecentWbStrip() {
     const list = _recentWorkbooks(3);
     let html = '';
     if (list.length) {
@@ -24229,7 +24230,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const link = document.getElementById('nav-clients-link');
     if (link) link.classList.add('active');
     showView('view-clients');
-    try { renderRecentWorkbooks(); } catch (_) {}
+    try { renderRecentWbStrip(); } catch (_) {}
     const grid = document.getElementById('clients-grid');
     if (!grid) return;
     const q = (document.getElementById('clients-search')?.value || '').trim().toLowerCase();
@@ -46257,7 +46258,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   function renderPipelineBoard() {
     document.getElementById('header-title').textContent = 'Pipeline';
-    try { renderRecentWorkbooks(); } catch (_) {}
+    try { renderRecentWbStrip(); } catch (_) {}
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const link = document.getElementById('nav-pipeline-link');
