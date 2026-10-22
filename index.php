@@ -6075,6 +6075,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background-attachment: scroll;
       position: relative;
     }
+    /* "Recently started" workbooks strip (top of Pipeline + Clients). */
+    .recent-wb-strip { margin: 0 0 14px; }
+    .recent-wb-strip:empty { display: none; }
+    .recent-wb-inner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .recent-wb-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); white-space: nowrap; }
+    .recent-wb-cards { display: flex; gap: 10px; flex-wrap: wrap; }
+    .recent-wb-card { display: flex; flex-direction: column; gap: 2px; min-width: 150px; max-width: 250px; padding: 8px 13px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; text-decoration: none; transition: border-color 0.12s, background 0.12s; }
+    .recent-wb-card:hover { border-color: var(--accent); background: var(--surface2); }
+    .recent-wb-prod { font-size: 13px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .recent-wb-sub { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
     /* Clients card gallery (#/clients) — A-Z rail on the left + grid. */
     .clients-layout { display: flex; align-items: flex-start; gap: 10px; }
     .clients-az-rail {
@@ -10778,6 +10789,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button class="btn btn-ghost" onclick="refreshAllTracking(this)" title="Re-check every shipment's carrier tracking now" style="font-size:12px; border:1px solid var(--border);">↻ Refresh all tracking</button>
       <span style="font-size:11px; color:var(--text-muted);" title="Drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.">Every workbook by stage</span>
     </div>
+    <div id="recent-wb-pipeline" class="recent-wb-strip"></div>
     <div id="pipeline-board" class="crm-board"></div>
   </main>
 </div><!-- /#view-pipeline -->
@@ -10796,6 +10808,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         style="flex:0 1 240px; min-width:160px; padding:7px 10px; font-size:13px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
       <span id="clients-count-note" style="font-size:11px; color:var(--text-muted);"></span>
     </div>
+    <div id="recent-wb-clients" class="recent-wb-strip"></div>
     <div class="clients-layout">
       <!-- A-Z jump rail (iPhone-contacts style) — populated by renderClientsView. -->
       <div id="clients-az-rail" class="clients-az-rail" aria-label="Jump to letter"></div>
@@ -24170,6 +24183,41 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return a;
   }
 
+  // The N most recently STARTED (created) workbooks across all clients.
+  function _recentWorkbooks(n) {
+    const all = [];
+    for (const [cn, items] of Object.entries(clientData || {})) {
+      (items || []).forEach(it => {
+        if (!it || it.id == null) return;
+        all.push({ clientName: cn, id: it.id, product: it.product || 'Untitled', ts: Date.parse(it.createdAt || it.updatedAt || '') || 0 });
+      });
+    }
+    all.sort((a, b) => (b.ts - a.ts) || (b.id - a.id));
+    return all.slice(0, n || 3);
+  }
+  // Render the "Recently started" strip into whichever host(s) are present
+  // (top of the Pipeline board and the Clients gallery).
+  function renderRecentWorkbooks() {
+    const list = _recentWorkbooks(3);
+    let html = '';
+    if (list.length) {
+      const cards = list.map(w => {
+        const href = `#/client/${encodeURIComponent(w.clientName)}/workbook/${w.id}`;
+        const when = w.ts ? new Date(w.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        const sub = _esc(w.clientName) + (when ? ' · ' + _esc(when) : '');
+        return `<a class="recent-wb-card" href="${href}" title="Open ${_esc(w.product)} — ${_esc(w.clientName)}">
+            <span class="recent-wb-prod">${_esc(w.product)}</span>
+            <span class="recent-wb-sub">${sub}</span>
+          </a>`;
+      }).join('');
+      html = `<div class="recent-wb-inner"><span class="recent-wb-label">Recently started</span><div class="recent-wb-cards">${cards}</div></div>`;
+    }
+    ['recent-wb-pipeline', 'recent-wb-clients'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    });
+  }
+
   // Clients card gallery (#/clients) — alphabetical grid, each card shows
   // the client's logo (falls back to an initial), name and workbook count.
   // Click opens the client detail. Replaces the old inline nav list.
@@ -24181,6 +24229,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const link = document.getElementById('nav-clients-link');
     if (link) link.classList.add('active');
     showView('view-clients');
+    try { renderRecentWorkbooks(); } catch (_) {}
     const grid = document.getElementById('clients-grid');
     if (!grid) return;
     const q = (document.getElementById('clients-search')?.value || '').trim().toLowerCase();
@@ -46208,6 +46257,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   function renderPipelineBoard() {
     document.getElementById('header-title').textContent = 'Pipeline';
+    try { renderRecentWorkbooks(); } catch (_) {}
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const link = document.getElementById('nav-pipeline-link');
