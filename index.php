@@ -13886,6 +13886,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="art-tile-badge art-tile-badge--light">3D</div>
         </div>
         <button type="button" class="art-tile-clicker" data-art-url="${urlAttr}" title="Click to open in 3D viewer"></button>${removeBtnHtml}`;
+    } else if (kind === 'design' && (String(url).split('.').pop() || '').toLowerCase() === 'ai') {
+      // Illustrator files are PDF-compatible (CS3+), so render a live preview
+      // of the artwork via pdf.js. The 🎨 card shows until the canvas renders
+      // (or stays, if the file wasn't saved PDF-compatible).
+      const label = _artFileBasename(url).toUpperCase();
+      return `<div class="ai-thumb" data-ai-url="${urlAttr}" style="position:absolute; inset:0; background:var(--surface2); display:flex; align-items:center; justify-content:center; overflow:hidden; pointer-events:none;">
+          <canvas style="max-width:100%; max-height:100%; display:none;"></canvas>
+          <div class="ai-thumb-fallback" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;">
+            <span style="font-size:34px; line-height:1;">🎨</span>
+            <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; padding:0 6px;">${label}</span>
+          </div>
+          <div class="art-tile-badge art-tile-badge--light">AI</div>
+        </div>
+        <button type="button" class="art-tile-clicker" data-art-url="${urlAttr}" title="Click to preview the artwork"></button>${removeBtnHtml}`;
     }
     const icon = _artFileIcon(kind);
     const label = _artFileBasename(url).toUpperCase();
@@ -13947,6 +13961,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>`;
       gallery.insertBefore(load, addBtn);
     });
+    try { _hydrateAiThumbs(gallery); } catch (_) {}
   }
 
   function renderArtGallery() { _renderFileGallery('artGallery'); }
@@ -14026,6 +14041,42 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // not needed for our supported browsers. AI files route here
       // too (PDF-compatible from CS3 onward).
       content.innerHTML = `<iframe src="${url}" title="PDF preview"></iframe>`;
+    } else if (kind === 'design' && (String(url).split('.').pop() || '').toLowerCase() === 'ai') {
+      // Render the Illustrator artwork (every artboard = a PDF page) via
+      // pdf.js. Fetched as bytes so the browser never auto-downloads it.
+      content.innerHTML = `<div id="ai-preview-scroll" style="max-height:88vh; overflow:auto; background:#2b2b2b; padding:16px; display:flex; flex-direction:column; gap:14px; align-items:center; border-radius:8px;">
+          <div id="ai-preview-loading" style="color:#cbd5e1; font-size:13px; display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.25); border-top-color:#fff; border-radius:50%; animation:art3dSpin 0.8s linear infinite;"></span>
+            Rendering artwork…
+          </div>
+          <style>@keyframes art3dSpin { to { transform: rotate(360deg); } }</style>
+        </div>`;
+      overlay.classList.add('open');
+      try {
+        const lib = await _ensurePdfJs();
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const pdf = await lib.getDocument({ data: await resp.arrayBuffer() }).promise;
+        const host = document.getElementById('ai-preview-scroll');
+        if (!host) return;
+        const loading = document.getElementById('ai-preview-loading');
+        if (loading) loading.remove();
+        for (let p = 1; p <= pdf.numPages; p++) {
+          const page = await pdf.getPage(p);
+          const vp = page.getViewport({ scale: 1.6 });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.ceil(vp.width); canvas.height = Math.ceil(vp.height);
+          canvas.style.maxWidth = '100%'; canvas.style.height = 'auto';
+          canvas.style.boxShadow = '0 2px 14px rgba(0,0,0,0.55)';
+          canvas.style.background = '#fff';
+          host.appendChild(canvas);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        }
+      } catch (e) {
+        const host = document.getElementById('ai-preview-scroll');
+        if (host) host.innerHTML = `<div style="color:#fca5a5; text-align:center; padding:24px; font-size:13px; line-height:1.6;">Couldn't render this .ai (it may not be saved “PDF Compatible”).<br><a href="${url}" target="_blank" rel="noopener" download style="color:#fb923c;">Download the file</a> to open it in Illustrator.</div>`;
+      }
+      return;
     } else if (kind === 'video') {
       content.innerHTML = `<video src="${url}" controls autoplay></video>`;
     } else if (kind === '3d') {
@@ -31095,6 +31146,43 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       out += content.items.map(i => i.str).join(' ') + '\n\n';
     }
     return out.trim();
+  }
+
+  // Render a PDF-compatible file's (incl. Illustrator .ai) page to a canvas
+  // via pdf.js — fetched as bytes so the browser never tries to download/embed
+  // it. Returns the loaded pdf doc (for page count). Throws if not renderable.
+  async function _renderPdfPageToCanvas(url, canvas, pageNum, maxWidth) {
+    const lib = await _ensurePdfJs();
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const buf = await resp.arrayBuffer();
+    const pdf = await lib.getDocument({ data: buf }).promise;
+    const page = await pdf.getPage(pageNum || 1);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.max(0.1, Math.min(3, (maxWidth || 260) / base.width));
+    const vp = page.getViewport({ scale });
+    canvas.width = Math.ceil(vp.width);
+    canvas.height = Math.ceil(vp.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    return pdf;
+  }
+
+  // Fill in any .ai thumbnail tiles under `root` by rendering page 1 with
+  // pdf.js. On failure (file not saved PDF-compatible, or unreachable) the
+  // existing 🎨 .AI fallback card stays.
+  function _hydrateAiThumbs(root) {
+    const scope = root || document;
+    scope.querySelectorAll('.ai-thumb[data-ai-url]:not([data-ai-done])').forEach(el => {
+      el.setAttribute('data-ai-done', '1');
+      const url = el.getAttribute('data-ai-url');
+      const canvas = el.querySelector('canvas');
+      const fallback = el.querySelector('.ai-thumb-fallback');
+      if (!canvas || !url) return;
+      _renderPdfPageToCanvas(url, canvas, 1, 260).then(() => {
+        canvas.style.display = 'block';
+        if (fallback) fallback.style.display = 'none';
+      }).catch(() => { /* keep the fallback card */ });
+    });
   }
 
   function renderClientConvos(clientName) {
