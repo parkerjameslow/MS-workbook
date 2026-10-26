@@ -2814,21 +2814,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Transparent hit layer so a click on the embed/video (which eats
        pointer events in Safari) still reaches the tile's toggle handler. */
     .rfq-imgpick-hit { position:absolute; inset:0; background:rgba(0,0,0,0.001); cursor:pointer; }
+    /* Selected = accent border only (no checkmark overlay — the line's own
+       sections already show only what's attached). */
     .rfq-imgpick-item.selected { border-color: var(--accent); }
-    .rfq-imgpick-item.selected::after {
-      content: '✓';
-      position: absolute;
-      top: 4px; right: 4px;
-      width: 20px; height: 20px;
-      border-radius: 50%;
-      background: var(--accent);
-      color: #fff;
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 20px;
-      text-align: center;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.35);
-    }
     .rfq-imgpick-empty {
       grid-column: 1 / -1;   /* span the whole grid so the text doesn't wrap into a 1-word column */
       text-align: center;
