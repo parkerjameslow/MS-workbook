@@ -8060,15 +8060,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
     <div class="section-body">
 
-      <!-- Design File — prominent per-workbook design / spec upload. -->
-      <div class="design-file-block">
-        <div class="design-file-head">
-          <span class="design-file-title"><i style="font-style:normal;">🎨</i> Design File</span>
-          <span class="design-file-sub">Upload the artwork / spec file for this product (AI, PDF, PSD, EPS, image…)</span>
-        </div>
-        <div id="design-file-slot" class="design-file-slot"><!-- rendered by renderDesignFile() --></div>
-      </div>
-
       <!-- Basic info grid -->
       <div class="form-grid form-grid-2">
         <div class="field">
@@ -8185,6 +8176,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="hidden" id="pantone-text" />
         <input type="hidden" id="cmyk" />
         <input type="hidden" id="color-notes" />
+      </div>
+
+      <!-- Design File — prominent per-workbook design / spec upload. -->
+      <div class="design-file-block">
+        <div class="design-file-head">
+          <span class="design-file-title"><i style="font-style:normal;">🎨</i> Design File</span>
+          <span class="design-file-sub">Upload the artwork / spec file for this product (AI, PDF, PSD, EPS, image…)</span>
+        </div>
+        <div id="design-file-slot" class="design-file-slot"><!-- rendered by renderDesignFile() --></div>
       </div>
 
       <!-- Product Images -->
