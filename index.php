@@ -15065,12 +15065,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const rL = layout.bW, rW = layout.bL;            // rotated case footprint
     if (rL <= 0 || rW <= 0) return { count: 0 };
     // Strip A: the gap to the right of the block (x: occL→L) × full W.
-    const aCols = (L - occL) > 0 ? Math.floor((L - occL) / rL) : 0;
-    const aRows = Math.floor(W / rW);
+    const aCols = (L - occL) > 0 ? _fitN(L - occL, rL) : 0;
+    const aRows = _fitN(W, rW);
     const stripA = aCols * aRows;
     // Strip B: the gap above the block (z: occW→W) × full L.
-    const bCols = Math.floor(L / rL);
-    const bRows = (W - occW) > 0 ? Math.floor((W - occW) / rW) : 0;
+    const bCols = _fitN(L, rL);
+    const bRows = (W - occW) > 0 ? _fitN(W - occW, rW) : 0;
     const stripB = bCols * bRows;
     if (stripA <= 0 && stripB <= 0) return { count: 0 };
     return stripA >= stripB
@@ -15147,10 +15147,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     isoFace(ctx, [p(wx,wy,wz+bd), p(wx+bw,wy,wz+bd), p(wx+bw,wy+bh,wz+bd), p(wx,wy+bh,wz+bd)], shadeRgb(hex, -40));
   }
 
+  // Epsilon so an EXACT fit (e.g. 2×22" = 44" after overhang) isn't dropped to
+  // a smaller count by float error — 111.76/55.88 can land on 1.9999999.
+  const _FIT_EPS = 1e-6;
+  function _fitN(span, unit) { return unit > 0 ? Math.floor(span / unit + _FIT_EPS) : 0; }
   function bestPalletOrientation(bL, bW) {
     const L = _effPalletL(), W = _effPalletW();   // honors the 2" overhang toggle
-    const o1 = { cols: Math.floor(L/bL), rows: Math.floor(W/bW), bL, bW };
-    const o2 = { cols: Math.floor(L/bW), rows: Math.floor(W/bL), bL: bW, bW: bL };
+    const o1 = { cols: _fitN(L, bL), rows: _fitN(W, bW), bL, bW };
+    const o2 = { cols: _fitN(L, bW), rows: _fitN(W, bL), bL: bW, bW: bL };
     return (o1.cols * o1.rows >= o2.cols * o2.rows) ? o1 : o2;
   }
 
