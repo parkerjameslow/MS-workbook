@@ -19144,7 +19144,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     });
   }
 
-  // Enable/disable every editable control inside one section card.
+  // Is this section currently editable? (either the tab isn't locked, or the
+  // operator unlocked this specific section via its Edit button). The deep
+  // edit guards (RFQ delete/add/image/options) call this so a locked workbook
+  // still allows full editing — including deleting line items — in an unlocked
+  // section.
+  function _sectionEditable(key) { return !_wbLocked || _unlockedSections.has(key); }
+
+  // Enable/disable EVERY editable control inside one section card — form inputs,
+  // buttons, and the non-form clickable controls (RFQ row/variant delete ×,
+  // image tiles) that the lock blocks via pointer-events.
   function _applySectionUnlock(card, on) {
     if (!card) return;
     card.querySelectorAll('input:not([type="hidden"]), textarea, select').forEach(el => {
@@ -19157,6 +19166,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       btn.disabled = !on;
       btn.style.opacity = on ? '' : '0.6';
       btn.style.cursor = on ? '' : 'default';
+    });
+    // Clickable non-form controls (delete ×, variant delete, image tiles) are
+    // disabled via pointer-events when locked — restore them when unlocking.
+    card.querySelectorAll('.remove-tier, .rfq-img-tile').forEach(el => {
+      el.style.pointerEvents = on ? '' : 'none';
+      el.style.opacity = on ? '' : '0.3';
     });
   }
 
@@ -19739,7 +19754,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     _updateVarAddRow(id);   // place trailing button below last variant (or parent if none)
     renderRfqLineImages(id); // draw assigned-image thumbnails (before the lock pass below)
     recalcRfqTotals();
-    if (_wbLocked) {
+    if (_wbLocked && !_unlockedSections.has('rfq')) {
       tr.querySelectorAll('input, select, textarea, button, span.remove-tier').forEach(el => {
         if (el.tagName === 'SPAN') { el.style.pointerEvents = 'none'; el.style.opacity = '0.3'; }
         else { el.disabled = true; el.style.opacity = '0.6'; el.style.cursor = 'not-allowed'; }
@@ -19798,20 +19813,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           ${inner}${badge}
         </div>`;
     }
-    if (_wbLocked) {
+    if (_wbLocked && !_unlockedSections.has('rfq')) {
       cell.querySelectorAll('.rfq-img-tile').forEach(el => { el.style.pointerEvents = 'none'; el.style.opacity = '0.5'; });
     }
   }
 
   function removeRfqLineImage(id, url) {
-    if (_wbLocked) return;
+    if (!_sectionEditable('rfq')) return;
     setRfqRowImages(id, getRfqRowImages(id).filter(u => u !== url));
     // Keep the open picker (if any) in sync
     if (_rfqPickerTargetId === id) renderRfqImagePickerGrid();
   }
 
   function openRfqImagePicker(id) {
-    if (_wbLocked) return;
+    if (!_sectionEditable('rfq')) return;
     _rfqPickerTargetId = id;
     // Label the modal with the line item's name (or its row number)
     const tr = document.getElementById(`rfq-${id}`);
@@ -21059,7 +21074,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function selectRfqOption(id, idx) {
-    if (_wbLocked) return;
+    if (!_sectionEditable('rfq')) return;
     const tr = document.getElementById('rfq-' + id);
     if (!tr) return;
     tr.dataset.compSelected = idx;
@@ -21072,7 +21087,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // selected index so the right option stays quoted; clearing the last option
   // reverts the line to plain (keeping its current values).
   function removeRfqComparable(id, idx) {
-    if (_wbLocked) return;
+    if (!_sectionEditable('rfq')) return;
     const tr = document.getElementById('rfq-' + id);
     if (!tr) return;
     let opts = [];
@@ -21104,7 +21119,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function openRfqOptions(id) {
-    if (_wbLocked) return;
+    if (!_sectionEditable('rfq')) return;
     const tr = document.getElementById('rfq-' + id);
     if (!tr) return;
     let opts = [];
@@ -21236,7 +21251,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Move an RFQ line up/down (dir -1 | +1). The first line stays pinned:
   // nothing moves to index 0, and index 0 itself never moves.
   function moveRfqParent(id, dir) {
-    if (_wbLocked) return;
+    if (!_sectionEditable('rfq')) return;
     const tbody = document.getElementById('rfq-body');
     if (!tbody) return;
     const parents = [...tbody.querySelectorAll('tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])')];
