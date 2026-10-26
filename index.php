@@ -2974,7 +2974,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .section-edit-btn:hover { background: rgba(232,117,26,0.15); }
     .section-edit-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     /* Design File uploader (Product Overview). */
-    .design-file-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+    .design-file-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin: 20px 0 18px; }
     .design-file-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
     .design-file-title { font-size: 14px; font-weight: 800; color: var(--text); }
     .design-file-sub { font-size: 12px; color: var(--text-muted); }
