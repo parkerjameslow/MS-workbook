@@ -2765,6 +2765,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rfq-line-thumb:hover .rfq-thumb-remove { opacity: 1; }
 
     /* RFQ image-picker modal grid */
+    .rfq-factory-row {
+      display: flex; align-items: center; gap: 10px;
+      margin: 0 0 16px; padding: 10px 12px;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+    }
+    .rfq-factory-row label {
+      font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-muted); white-space: nowrap;
+    }
+    .rfq-factory-row select {
+      flex: 1 1 auto; min-width: 0;
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 9px 10px; font-size: 13px; background: var(--surface); color: var(--text);
+      cursor: pointer;
+    }
     .rfq-imgpick-grid {
       max-height: 52vh;
       overflow-y: auto;
@@ -11927,9 +11942,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div class="modal-overlay" id="rfq-image-picker-modal" onclick="if(event.target===this)closeRfqImagePicker()" style="z-index:1100;">
   <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden;">
     <div class="modal-title" style="flex-shrink:0;">Line Item Specs</div>
-    <p style="color:var(--text-muted); font-size:13px; margin:-10px 0 16px; flex-shrink:0;">
+    <p style="color:var(--text-muted); font-size:13px; margin:-10px 0 14px; flex-shrink:0;">
       Tap to attach or remove a file from <strong id="rfq-imgpick-item-name">this line item</strong>. Choose from the shared <strong>Product Images</strong> and <strong>Design File</strong>, or <strong>Upload</strong> art specific to this line.
     </p>
+    <div class="rfq-factory-row" style="flex-shrink:0;">
+      <label for="rfq-factory-select">Factory</label>
+      <select id="rfq-factory-select" onchange="onRfqFactoryChange(this.value)"><!-- populated by JS --></select>
+    </div>
     <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
     <div class="modal-actions" style="margin-top:18px; flex-shrink:0;">
       <button type="button" class="btn btn-primary" onclick="closeRfqImagePicker()">Done</button>
@@ -19925,7 +19944,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return out;
   }
 
-  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = [], comparableOptions = [], selectedOptionIdx = null, specs = []) {
+  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = [], comparableOptions = [], selectedOptionIdx = null, specs = [], factory = '') {
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
@@ -19998,6 +20017,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const _attached = Array.from(new Set([...(Array.isArray(images) ? images : []), ..._specUrls]));
     tr.dataset.images = JSON.stringify(_attached);
     tr.dataset.specs = '[]';
+    tr.dataset.factory = (typeof factory === 'string') ? factory : '';   // which factory this line's spec goes to (global list)
     tbody.appendChild(tr);
     // Comparable options: the selected option's name/price/lead were already
     // materialized into item/priceRmb/leadTime by collectRfqItems on save, so
@@ -20025,6 +20045,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // gallery (_productImages), so no new upload/storage path is needed.
   let _rfqPickerTargetId = null;
   let _rfqPickerShowAllProducts = false;   // Product Images section: expanded to full gallery?
+
+  // ── Factory list (GLOBAL — shared across all workbooks) ──────────────
+  // Persisted in app_state key `ms_factories` (a JSON array of names). The
+  // Specs modal's dropdown picks which factory a line's spec goes to; the
+  // selection is stored PER LINE on tr.dataset.factory (collected + restored
+  // like images/specs). The list itself is maintained once and offered in
+  // every workbook.
+  let _factories = [];
+  let _factoriesLoaded = false;
+  async function loadFactories() {
+    if (_factoriesLoaded) return _factories;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_factories' });
+      if (r && r.success && r.value) {
+        const arr = JSON.parse(r.value);
+        if (Array.isArray(arr)) _factories = arr.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim());
+      }
+    } catch (e) {}
+    _factoriesLoaded = true;
+    return _factories;
+  }
+  function saveFactories() {
+    try {
+      apiCall('save_app_state', { key: 'ms_factories', value: JSON.stringify(_factories), changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }).catch(() => {});
+    } catch (e) {}
+  }
+  function _rfqFactoryEsc(v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function renderRfqFactorySelect() {
+    const sel = document.getElementById('rfq-factory-select');
+    if (!sel) return;
+    const tr = _rfqPickerTargetId != null ? document.getElementById(`rfq-${_rfqPickerTargetId}`) : null;
+    const cur = (tr && tr.dataset.factory) || '';
+    const list = _factories.slice();
+    // Keep a legacy/current value visible even if it's not in the global list.
+    if (cur && !list.some(f => f.toLowerCase() === cur.toLowerCase())) list.push(cur);
+    list.sort((a, b) => a.localeCompare(b));
+    let opts = `<option value="">— Select factory —</option>`;
+    opts += list.map(f => `<option value="${_rfqFactoryEsc(f)}"${f === cur ? ' selected' : ''}>${_rfqFactoryEsc(f)}</option>`).join('');
+    opts += `<option value="__add__">+ Add new factory…</option>`;
+    sel.innerHTML = opts;
+  }
+  function onRfqFactoryChange(value) {
+    if (_rfqPickerTargetId == null) return;
+    const tr = document.getElementById(`rfq-${_rfqPickerTargetId}`);
+    if (!tr) return;
+    if (value === '__add__') {
+      const name = (prompt('New factory name:') || '').trim();
+      if (!name) { renderRfqFactorySelect(); return; }     // cancelled — restore prior selection
+      const existing = _factories.find(f => f.toLowerCase() === name.toLowerCase());
+      if (!existing) { _factories.push(name); saveFactories(); }
+      tr.dataset.factory = existing || name;
+      renderRfqFactorySelect();
+    } else {
+      tr.dataset.factory = value;
+    }
+    if (!_filling) { try { autoSaveWorkbook(); } catch (e) {} }
+  }
 
   function getRfqRowImages(id) {
     const tr = document.getElementById(`rfq-${id}`);
@@ -20174,6 +20251,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const nameEl = document.getElementById('rfq-imgpick-item-name');
     if (nameEl) nameEl.textContent = name;
     renderRfqImagePickerGrid();
+    renderRfqFactorySelect();                               // immediate (current value + Add)
+    loadFactories().then(() => renderRfqFactorySelect());   // then fill in the global list
     document.getElementById('rfq-image-picker-modal').classList.add('open');
   }
 
@@ -20416,7 +20495,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           incoming.forEach(rfqItem => {
             addRfqRow(rfqItem.item || '', rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb,
                       rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [],
-                      rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || []);
+                      rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || [], rfqItem.factory || '');
           });
           while (document.querySelectorAll('#rfq-body tr').length < 3) addRfqRow();
         } finally { _filling = prevFilling; }
@@ -21367,6 +21446,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         variants,
         images: getRfqRowImages(id),   // assigned product-image URLs
         specs: getRfqRowSpecs(id),     // per-line uploaded design/spec files
+        factory: (row.dataset.factory || ''),   // which factory this line goes to
         comparableOptions: compOptions,
         selectedOptionIdx: compSelected
       });
@@ -33958,7 +34038,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           // First row: replace empty or old "Main Item" placeholder with the actual product name
           let itemName = rfqItem.item;
           if (idx === 0 && (!itemName || itemName === 'Main Item')) itemName = data.product || '';
-          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [], rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || []);
+          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [], rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || [], rfqItem.factory || '');
         });
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
