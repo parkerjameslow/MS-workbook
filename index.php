@@ -2766,13 +2766,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     /* RFQ image-picker modal grid */
     .rfq-imgpick-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-      gap: 10px;
       max-height: 52vh;
       overflow-y: auto;
       padding: 2px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
     }
+    .rfq-imgpick-sec-title {
+      font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin: 0 0 9px;
+    }
+    .rfq-imgpick-sec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+      gap: 10px;
+    }
+    .rfq-imgpick-sec + .rfq-imgpick-sec { border-top: 1px solid var(--border); padding-top: 14px; }
     .rfq-imgpick-item {
       position: relative;
       aspect-ratio: 1;
@@ -11911,7 +11922,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden;">
     <div class="modal-title" style="flex-shrink:0;">Line Item Specs</div>
     <p style="color:var(--text-muted); font-size:13px; margin:-10px 0 16px; flex-shrink:0;">
-      Tap to attach or remove a file from <strong id="rfq-imgpick-item-name">this line item</strong>. Pulls from <strong>Product Images</strong> (Workbook tab), the <strong>Design File</strong>, and the <strong>Art</strong> tab &mdash; or use <strong>Upload</strong> to add a new one.
+      Tap to attach or remove a file from <strong id="rfq-imgpick-item-name">this line item</strong>. Choose from the shared <strong>Product Images</strong> and <strong>Design File</strong>, or <strong>Upload</strong> art specific to this line.
     </p>
     <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
     <div class="modal-actions" style="margin-top:18px; flex-shrink:0;">
@@ -20161,58 +20172,59 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Everything an operator can attach to a line item: the Product Images
   // gallery PLUS any files uploaded on the Art tab (images render as
   // thumbnails; other art files — PDF/CAD/etc — show as an icon tile).
-  function _rfqPickerSources() {
-    const out = [], seen = new Set();
+  // The picker is grouped into three sections for the given line:
+  //  • product  — the shared Product Images gallery (pick any to attach)
+  //  • design   — the single workbook Design File
+  //  • lineArt  — art/spec files that belong to THIS line only (its own
+  //               breakdown of the design). We deliberately do NOT show the
+  //               whole Art-tab pool or other lines' art here — new line art
+  //               is added via Upload. Already-assigned art for this line
+  //               (not a product image, not the design file) surfaces here.
+  function _rfqPickerGroups(targetId) {
     const kindOf = (url) => (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
-    (Array.isArray(_productImages) ? _productImages : []).forEach(i => {
-      if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: 'image', from: 'product' }); }
+    const prodSet = new Set((Array.isArray(_productImages) ? _productImages : []).map(i => i && i.url).filter(Boolean));
+    const product = [...prodSet].map(url => ({ url, kind: 'image' }));
+    const design = (_designFile) ? [{ url: _designFile, kind: kindOf(_designFile) }] : [];
+    const seen = new Set();
+    const lineArt = [];
+    getRfqRowImages(targetId).forEach(url => {
+      if (!url || prodSet.has(url) || url === _designFile || seen.has(url)) return;
+      seen.add(url);
+      lineArt.push({ url, kind: kindOf(url) });
     });
-    // The Product Overview Design File.
-    if (_designFile && !seen.has(_designFile)) { seen.add(_designFile); out.push({ url: _designFile, kind: kindOf(_designFile), from: 'design' }); }
-    (Array.isArray(_artImages) ? _artImages : []).forEach(i => {
-      if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: kindOf(i.url), from: 'art' }); }
-    });
-    // Also surface anything already assigned to ANY RFQ line item. Images
-    // attached earlier live on the row (tr.dataset.images) and may no longer
-    // be in the galleries above — without this they'd be invisible in the
-    // picker for a new line even though they exist in the workbook.
-    document.querySelectorAll('#rfq-body tr[id^="rfq-"]').forEach(tr => {
-      const id = parseInt(tr.id.replace('rfq-', ''), 10);
-      if (Number.isNaN(id)) return;
-      getRfqRowImages(id).forEach(url => {
-        if (url && !seen.has(url)) { seen.add(url); out.push({ url, kind: kindOf(url), from: 'used' }); }
-      });
-    });
-    return out;
+    return { product, design, lineArt };
+  }
+  function _rfqPickerTileHtml(s, assigned) {
+    const sel = assigned.has(s.url) ? ' selected' : '';
+    const esc = s.url.replace(/'/g, "\\'");
+    let inner;
+    if (s.kind === 'image') {
+      inner = `<img src="${s.url}" alt="" />`;
+    } else if (s.kind === 'pdf') {
+      // Render the first PDF page as a real thumbnail, same as the Art tab.
+      inner = `<div class="rfq-imgpick-embed"><embed src="${s.url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1" type="application/pdf" /></div>`
+            + `<span class="rfq-imgpick-badge">PDF</span><span class="rfq-imgpick-hit"></span>`;
+    } else if (s.kind === 'video') {
+      inner = `<div class="rfq-imgpick-embed"><video src="${s.url}" muted preload="metadata" playsinline></video></div>`
+            + `<span class="rfq-imgpick-badge">VIDEO</span><span class="rfq-imgpick-hit"></span>`;
+    } else {
+      inner = `<div class="rfq-imgpick-file"><div style="font-size:26px; line-height:1;">${_artFileIcon(s.kind)}</div><div class="rfq-imgpick-ext">${_artFileBasename(s.url)}</div></div>`;
+    }
+    return `<div class="rfq-imgpick-item${sel}" onclick="toggleRfqPickImage('${esc}')" title="${assigned.has(s.url) ? 'Assigned — tap to remove' : 'Tap to assign'}">${inner}</div>`;
   }
   function renderRfqImagePickerGrid() {
     const grid = document.getElementById('rfq-imgpick-grid');
     if (!grid) return;
-    const sources = _rfqPickerSources();
-    const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file to this line (AI, PDF, PSD, image…)"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
+    const g = _rfqPickerGroups(_rfqPickerTargetId);
     const assigned = new Set(getRfqRowImages(_rfqPickerTargetId));
-    grid.innerHTML = uploadTile + sources.map(s => {
-      const sel = assigned.has(s.url) ? ' selected' : '';
-      const esc = s.url.replace(/'/g, "\\'");
-      const tag = s.from === 'art' ? `<span class="rfq-imgpick-tag">Art</span>`
-                : s.from === 'design' ? `<span class="rfq-imgpick-tag">Design</span>` : '';
-      let inner;
-      if (s.kind === 'image') {
-        inner = `<img src="${s.url}" alt="" />`;
-      } else if (s.kind === 'pdf') {
-        // Render the first PDF page as a real thumbnail, same as the Art tab.
-        inner = `<div class="rfq-imgpick-embed"><embed src="${s.url}#toolbar=0&navpanes=0&scrollbar=0&view=Fit&page=1" type="application/pdf" /></div>`
-              + `<span class="rfq-imgpick-badge">PDF</span><span class="rfq-imgpick-hit"></span>`;
-      } else if (s.kind === 'video') {
-        inner = `<div class="rfq-imgpick-embed"><video src="${s.url}" muted preload="metadata" playsinline></video></div>`
-              + `<span class="rfq-imgpick-badge">VIDEO</span><span class="rfq-imgpick-hit"></span>`;
-      } else {
-        inner = `<div class="rfq-imgpick-file"><div style="font-size:26px; line-height:1;">${_artFileIcon(s.kind)}</div><div class="rfq-imgpick-ext">${_artFileBasename(s.url)}</div></div>`;
-      }
-      return `<div class="rfq-imgpick-item${sel}" onclick="toggleRfqPickImage('${esc}')" title="${assigned.has(s.url) ? 'Assigned — tap to remove' : 'Tap to assign'}">
-        ${inner}${tag}
-      </div>`;
-    }).join('');
+    const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file for this line (AI, PDF, PSD, image…)"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
+    const sec = (title, bodyHtml) => `<div class="rfq-imgpick-sec"><div class="rfq-imgpick-sec-title">${title}</div><div class="rfq-imgpick-sec-grid">${bodyHtml}</div></div>`;
+    const tiles = (arr) => arr.map(s => _rfqPickerTileHtml(s, assigned)).join('');
+    let html = '';
+    html += sec('Product Images', g.product.length ? tiles(g.product) : `<div class="rfq-imgpick-empty">No product images yet &mdash; add them on the Workbook tab.</div>`);
+    if (g.design.length) html += sec('Design File', tiles(g.design));
+    html += sec('Art for this line', uploadTile + tiles(g.lineArt));
+    grid.innerHTML = html;
   }
 
   function toggleRfqPickImage(url) {
