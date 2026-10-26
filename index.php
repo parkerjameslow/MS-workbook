@@ -2987,13 +2987,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .design-file-item { position: relative; width: 132px; height: 112px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
     .df-replace { font-size: 12px; font-weight: 600; color: var(--accent); background: none; border: 1px solid var(--border); border-radius: 6px; padding: 7px 14px; cursor: pointer; font-family: inherit; }
     .df-replace:hover { border-color: var(--accent); }
+    .df-stack { display: flex; flex-direction: column; gap: 5px; }
+    .df-fname { max-width: 132px; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* Per-line RFQ specs (design-file breakdown, under the line's image). */
-    .rfq-specs-cell { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; align-items: center; }
-    .rfq-spec-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 96px; font-size: 10px; font-weight: 600; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
-    .rfq-spec-name { color: var(--accent); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .rfq-spec-del { color: var(--text-muted); cursor: pointer; font-weight: 700; line-height: 1; }
-    .rfq-spec-del:hover { color: var(--danger); }
-    .rfq-spec-add { font-size: 10px; font-weight: 700; color: var(--accent); cursor: pointer; border: 1px dashed var(--accent); border-radius: 6px; padding: 2px 8px; background: rgba(232,117,26,0.05); white-space: nowrap; }
+    .rfq-specs-cell { margin-top: 6px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+    .rfq-spec-item { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 58px; }
+    .rfq-spec-thumb { position: relative; width: 52px; height: 52px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface2); cursor: pointer; box-sizing: border-box; }
+    .rfq-spec-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .rfq-spec-fname { font-size: 9px; color: var(--text-muted); max-width: 58px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+    .rfq-spec-add { font-size: 10px; font-weight: 700; color: var(--accent); cursor: pointer; border: 1px dashed var(--accent); border-radius: 6px; padding: 3px 8px; background: rgba(232,117,26,0.05); white-space: nowrap; }
     .rfq-spec-add:hover { background: rgba(232,117,26,0.12); }
     .specs-box-viz {
       width: 100%;
@@ -13806,6 +13808,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // as detail.designFile. Reuses upload_art_file (accepts any file) and the
   // shared file tile (so .ai renders a live thumbnail).
   let _designFile = '';
+  let _designFileName = '';
   function renderDesignFile() {
     const slot = document.getElementById('design-file-slot');
     if (!slot) return;
@@ -13817,7 +13820,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
     const removeBtn = `<button class="img-remove" onclick="removeDesignFile(event)" title="Remove">✕</button>`;
-    slot.innerHTML = `<div class="image-gallery-item design-file-item">${_buildFileTileInner(_designFile, removeBtn)}</div>
+    const name = _designFileName || (typeof _artFileBasename === 'function' ? _artFileBasename(_designFile) : String(_designFile).split('/').pop());
+    slot.innerHTML = `<div class="df-stack">
+          <div class="image-gallery-item design-file-item">${_buildFileTileInner(_designFile, removeBtn)}</div>
+          <div class="df-fname" title="${_esc(name)}">${_esc(name)}</div>
+        </div>
         <button type="button" class="df-replace" onclick="uploadDesignFile()">Replace</button>`;
     try { _hydrateAiThumbs(slot); } catch (_) {}
   }
@@ -13837,6 +13844,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (data && data.success && data.url) {
         const old = _designFile;
         _designFile = data.url;
+        _designFileName = data.originalName || f.name || '';
         if (old && old !== data.url && old.startsWith('uploads/')) { try { apiCall('delete_image', { url: old }); } catch (_) {} }
         renderDesignFile();
         saveDesignFile();
@@ -13854,6 +13862,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!confirm('Remove the design file?')) return;
     if (_designFile.startsWith('uploads/')) { try { apiCall('delete_image', { url: _designFile }); } catch (_) {} }
     _designFile = '';
+    _designFileName = '';
     renderDesignFile();
     saveDesignFile();
   }
@@ -13862,6 +13871,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const key = `${currentClient}|${currentWorkbookId}`;
     if (!workbookDetail[key]) workbookDetail[key] = {};
     workbookDetail[key].designFile = _designFile;
+    workbookDetail[key].designFileName = _designFileName;
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
   // Lightweight progress paint — updates the in-flight tiles' bars/labels
@@ -19979,34 +19989,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // ── RFQ line SPECS — per-line design/spec file(s) (the breakdown of the
   // workbook's overall Design File into each line item). Stored on the row
   // as tr.dataset.specs (JSON URL array); uploaded via upload_art_file.
+  // Specs are stored as {url, name} (name = the uploaded file's original name,
+  // since the server saves a random uniqid filename). Legacy string entries are
+  // normalized to {url, name:''}.
   function getRfqRowSpecs(id) {
     const tr = document.getElementById(`rfq-${id}`);
     if (!tr) return [];
-    try { const a = JSON.parse(tr.dataset.specs || '[]'); return Array.isArray(a) ? a : []; }
-    catch (e) { return []; }
+    try {
+      const a = JSON.parse(tr.dataset.specs || '[]');
+      if (!Array.isArray(a)) return [];
+      return a.map(x => (typeof x === 'string') ? { url: x, name: '' } : { url: (x && x.url) || '', name: (x && x.name) || '' }).filter(x => x.url);
+    } catch (e) { return []; }
   }
-  function setRfqRowSpecs(id, urls) {
+  function setRfqRowSpecs(id, specs) {
     const tr = document.getElementById(`rfq-${id}`);
     if (!tr) return;
-    tr.dataset.specs = JSON.stringify(urls);
+    tr.dataset.specs = JSON.stringify(specs);
     renderRfqLineSpecs(id);
     if (!_filling) autoSaveWorkbook();
   }
   function renderRfqLineSpecs(id) {
     const cell = document.getElementById(`rfq-specscell-${id}`);
     if (!cell) return;
-    const urls = getRfqRowSpecs(id);
+    const specs = getRfqRowSpecs(id);
     const esc = _esc;
     let html = '';
-    urls.forEach(u => {
-      const name = (typeof _artFileBasename === 'function') ? _artFileBasename(u) : String(u).split('/').pop();
+    specs.forEach(s => {
+      const u = s.url;
+      const name = s.name || (typeof _artFileBasename === 'function' ? _artFileBasename(u) : String(u).split('/').pop());
       const ua = String(u).replace(/'/g, "\\'");
-      html += `<span class="rfq-spec-chip" title="${esc(u)}">`
-        + `<span class="rfq-spec-name" onclick="openArtPreview('${ua}')">${esc(name)}</span>`
-        + `<span class="rfq-spec-del remove-tier" onclick="removeRfqSpec(${id}, '${ua}')" title="Remove spec">&times;</span></span>`;
+      const removeBtn = `<button class="img-remove remove-tier" onclick="removeRfqSpec(${id}, '${ua}')" title="Remove">✕</button>`;
+      html += `<div class="rfq-spec-item" title="${esc(name)}">`
+        + `<div class="rfq-spec-thumb">${_buildFileTileInner(u, removeBtn)}</div>`
+        + `<div class="rfq-spec-fname">${esc(name)}</div></div>`;
     });
-    html += `<span class="rfq-spec-add" onclick="uploadRfqSpec(${id})" title="Upload a design / spec file for this line">+ ${urls.length ? 'Spec' : 'Specs'}</span>`;
+    html += `<div class="rfq-spec-add" onclick="uploadRfqSpec(${id})" title="Upload a design / spec file for this line">+ ${specs.length ? 'Spec' : 'Specs'}</div>`;
     cell.innerHTML = html;
+    try { _hydrateAiThumbs(cell); } catch (_) {}
   }
   function uploadRfqSpec(id) {
     if (!_sectionEditable('rfq')) { if (typeof showToast === 'function') showToast('Unlock the RFQ section (Edit) to change specs.', 'warn'); return; }
@@ -20022,7 +20041,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       for (const f of files) {
         const data = await _uploadArtFileXhr(f, dbId);
         if (data && data.success && data.url) {
-          const cur = getRfqRowSpecs(id); cur.push(data.url); setRfqRowSpecs(id, cur);
+          const cur = getRfqRowSpecs(id); cur.push({ url: data.url, name: data.originalName || f.name || '' }); setRfqRowSpecs(id, cur);
         } else if (typeof showToast === 'function') {
           showToast('Spec upload failed: ' + ((data && data.error) || ''), 'error');
         }
@@ -20033,7 +20052,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function removeRfqSpec(id, url) {
     if (!_sectionEditable('rfq')) { if (typeof showToast === 'function') showToast('Unlock the RFQ section (Edit) to remove specs.', 'warn'); return; }
     if (url && String(url).startsWith('uploads/')) { try { apiCall('delete_image', { url }); } catch (_) {} }
-    setRfqRowSpecs(id, getRfqRowSpecs(id).filter(u => u !== url));
+    setRfqRowSpecs(id, getRfqRowSpecs(id).filter(s => s.url !== url));
   }
 
   function renderRfqLineImages(id) {
@@ -33483,6 +33502,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // inherit the previous one's (the guarded restore block below sets it when
     // detail exists).
     _designFile = '';
+    _designFileName = '';
     try { renderDesignFile(); } catch (_) {}
     // Save previous workbook immediately before switching to a different one
     const switching = currentClient && currentWorkbookId &&
@@ -33703,6 +33723,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (palletFitEl) palletFitEl.checked = !!data.palletFitToPallet;
       // Product Overview design file.
       _designFile = data.designFile || '';
+      _designFileName = data.designFileName || '';
       renderDesignFile();
       // Product Dimensions lock — restore the checkbox state then call
       // the toggle so the disabled state on the dim inputs matches.
@@ -36404,6 +36425,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       qbInvoiceAt:     existing.qbInvoiceAt || null,
       // Product Overview design file (not a DOM input — kept in _designFile).
       designFile:      _designFile || '',
+      designFileName:  _designFileName || '',
       // Per-step milestone watchers — managed by the Watchers modal, not
       // DOM-driven. Preserve the live in-memory value from existing so
       // an autosave after add/remove doesn't clobber it.
