@@ -2773,11 +2773,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       flex-direction: column;
       gap: 16px;
     }
+    .rfq-imgpick-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 9px; }
     .rfq-imgpick-sec-title {
       font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
       color: var(--text-muted);
-      margin: 0 0 9px;
     }
+    .rfq-imgpick-choose {
+      border: 1px solid var(--border); background: var(--surface2); color: var(--accent);
+      font-size: 11px; font-weight: 700; border-radius: 6px; padding: 3px 9px; cursor: pointer;
+      white-space: nowrap; transition: border-color 0.12s, background 0.12s;
+    }
+    .rfq-imgpick-choose:hover { border-color: var(--accent); }
     .rfq-imgpick-sec-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
@@ -20018,6 +20024,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // row (tr.dataset.images). URLs reference the workbook's Product Images
   // gallery (_productImages), so no new upload/storage path is needed.
   let _rfqPickerTargetId = null;
+  let _rfqPickerShowAllProducts = false;   // Product Images section: expanded to full gallery?
 
   function getRfqRowImages(id) {
     const tr = document.getElementById(`rfq-${id}`);
@@ -20159,6 +20166,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function openRfqImagePicker(id) {
     if (!_sectionEditable('rfq')) return;
     _rfqPickerTargetId = id;
+    _rfqPickerShowAllProducts = false;   // each open starts collapsed (one image)
     // Label the modal with the line item's name (or its row number)
     const tr = document.getElementById(`rfq-${id}`);
     const itemInput = tr ? tr.querySelectorAll('input:not([type="checkbox"])')[1] : null;
@@ -20182,8 +20190,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   //               (not a product image, not the design file) surfaces here.
   function _rfqPickerGroups(targetId) {
     const kindOf = (url) => (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
-    const prodSet = new Set((Array.isArray(_productImages) ? _productImages : []).map(i => i && i.url).filter(Boolean));
-    const product = [...prodSet].map(url => ({ url, kind: 'image' }));
+    const assignedSet = new Set(getRfqRowImages(targetId));
+    const prodAll = [...new Set((Array.isArray(_productImages) ? _productImages : []).map(i => i && i.url).filter(Boolean))];
+    const prodSet = new Set(prodAll);
+    // Split the shared product gallery into the one(s) already on THIS line vs
+    // the rest (only revealed when the operator taps "Choose from gallery").
+    const productAssigned = prodAll.filter(u => assignedSet.has(u)).map(url => ({ url, kind: 'image' }));
+    const productRest = prodAll.filter(u => !assignedSet.has(u)).map(url => ({ url, kind: 'image' }));
     const design = (_designFile) ? [{ url: _designFile, kind: kindOf(_designFile) }] : [];
     const seen = new Set();
     const lineArt = [];
@@ -20192,7 +20205,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       seen.add(url);
       lineArt.push({ url, kind: kindOf(url) });
     });
-    return { product, design, lineArt };
+    return { productAssigned, productRest, design, lineArt };
   }
   function _rfqPickerTileHtml(s, assigned) {
     const sel = assigned.has(s.url) ? ' selected' : '';
@@ -20218,13 +20231,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const g = _rfqPickerGroups(_rfqPickerTargetId);
     const assigned = new Set(getRfqRowImages(_rfqPickerTargetId));
     const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file for this line (AI, PDF, PSD, image…)"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
-    const sec = (title, bodyHtml) => `<div class="rfq-imgpick-sec"><div class="rfq-imgpick-sec-title">${title}</div><div class="rfq-imgpick-sec-grid">${bodyHtml}</div></div>`;
+    const sec = (title, bodyHtml, actionHtml) => `<div class="rfq-imgpick-sec"><div class="rfq-imgpick-sec-head"><div class="rfq-imgpick-sec-title">${title}</div>${actionHtml || ''}</div><div class="rfq-imgpick-sec-grid">${bodyHtml}</div></div>`;
     const tiles = (arr) => arr.map(s => _rfqPickerTileHtml(s, assigned)).join('');
     let html = '';
-    html += sec('Product Images', g.product.length ? tiles(g.product) : `<div class="rfq-imgpick-empty">No product images yet &mdash; add them on the Workbook tab.</div>`);
+    // Product Images — by default only the image(s) already on this line.
+    // "Choose from gallery" reveals the rest of the shared gallery to pick from.
+    let prodBody = g.productAssigned.length
+      ? tiles(g.productAssigned)
+      : `<div class="rfq-imgpick-empty">No product image on this line yet${g.productRest.length ? ' — tap “Choose from gallery”.' : ' — add one on the Workbook tab.'}</div>`;
+    if (_rfqPickerShowAllProducts && g.productRest.length) prodBody += tiles(g.productRest);
+    const prodAction = g.productRest.length
+      ? `<button type="button" class="rfq-imgpick-choose" onclick="_rfqTogglePickerProducts()">${_rfqPickerShowAllProducts ? 'Hide gallery' : 'Choose from gallery'}</button>`
+      : '';
+    html += sec('Product Images', prodBody, prodAction);
     if (g.design.length) html += sec('Design File', tiles(g.design));
     html += sec('Art for this line', uploadTile + tiles(g.lineArt));
     grid.innerHTML = html;
+  }
+  function _rfqTogglePickerProducts() {
+    _rfqPickerShowAllProducts = !_rfqPickerShowAllProducts;
+    renderRfqImagePickerGrid();
   }
 
   function toggleRfqPickImage(url) {
