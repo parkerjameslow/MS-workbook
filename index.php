@@ -2845,6 +2845,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       flex: 0 0 auto; background: transparent; border: 0; box-shadow: none;
       accent-color: var(--accent); cursor: pointer;
     }
+    /* Compact side-by-side pallet mode chips (short label + hover title). */
+    .pallet-opts-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 14px; align-items: center; }
+    .pallet-opt-chip { margin-bottom: 0; padding: 7px 12px; white-space: nowrap; }
+    .pallet-opt-chip:has(input:checked) { border-color: var(--accent); background: rgba(232,117,26,0.10); color: var(--accent); }
     /* Visually disable the Inner / Outer Carton sections when manual
        mode is on — operator knows they're irrelevant to the pallet
        math while the checkbox is ticked. */
@@ -8887,54 +8891,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span>Loose Load (no pallet)</span>
         </label>
       </div>
-      <!-- Manual mode checkbox — when ON, the pallet calc skips the
-           inner/outer carton dims and computes how many products fit
-           directly on a 40 × 48 pallet base using just the product
-           dimensions. Useful for crates / unboxed items where the
-           cartonization pipeline doesn't apply. The Inner / Outer
-           Carton sections on the Workbook tab gray out so the
-           operator knows they're not in play. -->
-      <label class="pallet-manual-toggle">
-        <input type="checkbox" id="pallet-manual" onchange="onPalletManualToggle()" />
-        <span>Product Only Override — fit products directly on the pallet base (skip carton dimensions)</span>
-      </label>
-      <!-- Manual Pallet Override — the case-dims sibling of Manual mode.
-           When ON, the Pallet View + Container View build from the
-           Case Only Override case dimensions (case L × W × H, case
-           weight, products/case) instead of the outer carton. Scoped
-           to pallet + container ONLY — freight / shipping stay on their
-           normal carton/product path (unlike the full Case Only
-           Override checkbox in Product Dimensions, which reroutes
-           everything). Ticking it enables the Case Only fields for
-           entry without flipping that global mode. -->
-      <label class="pallet-manual-toggle" id="pallet-case-override-wrap" style="margin-top:8px;">
-        <input type="checkbox" id="pallet-case-override" onchange="onPalletCaseOverrideToggle()" />
-        <span>Case Product Override — build the pallet &amp; container from the <strong>Case Only Override</strong> case dimensions</span>
-      </label>
-      <div id="pallet-case-override-hint" style="font-size:11px; color:var(--text-muted); line-height:1.5; margin:4px 0 0 30px;">
-        Reads the case L × W × H, weight &amp; products/case from the <strong>Case Only Override</strong> block in Product Dimensions. Only the Pallet &amp; Container views change — freight stays on the carton/product path.
+      <!-- Pallet mode options — compact side-by-side chips. Short label shown;
+           full description on hover (title). Mutually exclusive (one at a time),
+           enforced by _enforcePalletModeExclusive; the 4 mm divider is a
+           sub-option shown only in Product Override mode. -->
+      <div class="pallet-opts-row">
+        <label class="pallet-manual-toggle pallet-opt-chip" title="Product Override — fit products directly on the pallet base (skip carton dimensions)">
+          <input type="checkbox" id="pallet-manual" onchange="onPalletManualToggle()" />
+          <span>Product Override</span>
+        </label>
+        <label class="pallet-manual-toggle pallet-opt-chip" id="pallet-case-override-wrap" title="Case Override — build the pallet &amp; container from the Case Only Override case dimensions. Reads the case L×W×H, weight &amp; products/case; only the Pallet &amp; Container views change (freight stays on the carton/product path).">
+          <input type="checkbox" id="pallet-case-override" onchange="onPalletCaseOverrideToggle()" />
+          <span>Case Override</span>
+        </label>
+        <label class="pallet-manual-toggle pallet-opt-chip" id="pallet-divider-wrap" style="display:none;" title="Add 4 mm divider between products (cardboard / foam separators)">
+          <input type="checkbox" id="pallet-divider" onchange="renderPalletViz(); if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook();" />
+          <span>4 mm divider</span>
+        </label>
+        <label class="pallet-manual-toggle pallet-opt-chip" id="pallet-overhang-wrap" title="Allow 2″ overhang — cases may hang 2″ past each edge (fit on a 44 × 52 in footprint)">
+          <input type="checkbox" id="pallet-overhang" onchange="onPalletOverhangToggle()" />
+          <span>2″ overhang</span>
+        </label>
+        <label class="pallet-manual-toggle pallet-opt-chip" id="pallet-fit-wrap" title="Fit to pallet — fill the leftover edge space with rotated cases (no wasted border)">
+          <input type="checkbox" id="pallet-fit" onchange="onPalletFitToggle()" />
+          <span>Fit to pallet</span>
+        </label>
       </div>
-      <!-- 4mm divider toggle — only meaningful in manual mode. Adds a
-           0.4 cm gap on every side of every product (between items on
-           a layer AND between layers) so the operator can plan for
-           cardboard/foam separators between adjacent crates. Hidden in
-           carton mode (the carton model already accounts for spacing). -->
-      <label class="pallet-manual-toggle" id="pallet-divider-wrap" style="display:none; margin-top:8px;">
-        <input type="checkbox" id="pallet-divider" onchange="renderPalletViz(); if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook();" />
-        <span>Add 4 mm divider between products (cardboard / foam separators)</span>
-      </label>
-      <!-- Allow 2" overhang — cases hang 2" past each pallet edge (usable base
-           becomes 44 × 52 in) → more cases per layer. -->
-      <label class="pallet-manual-toggle" id="pallet-overhang-wrap" style="margin-top:8px;">
-        <input type="checkbox" id="pallet-overhang" onchange="onPalletOverhangToggle()" />
-        <span>Allow 2″ overhang — cases may hang 2″ past each edge (fit on a 44 × 52 in footprint)</span>
-      </label>
-      <!-- Fit to pallet — fill the leftover strip with rotated (90°) cases so
-           no edge space is wasted → more cases per layer (mixed orientation). -->
-      <label class="pallet-manual-toggle" id="pallet-fit-wrap" style="margin-top:8px;">
-        <input type="checkbox" id="pallet-fit" onchange="onPalletFitToggle()" />
-        <span>Fit to pallet — fill the leftover edge space with rotated cases (no wasted border)</span>
-      </label>
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
         <div id="pallet-viz-col" style="flex:0 1 540px; min-width:300px; max-width:540px; display:flex; flex-direction:column; gap:14px;">
           <canvas id="pallet-canvas" width="540" height="420" style="width:100%; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
@@ -15095,12 +15077,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? { count: stripA, strip: 'A', cols: aCols, rows: aRows, rL, rW, startL: occL, startW: 0 }
       : { count: stripB, strip: 'B', cols: bCols, rows: bRows, rL, rW, startL: 0, startW: occW };
   }
+  // The pallet mode toggles are mutually exclusive — only ONE at a time:
+  // Product Only Override / Case Product Override / Allow 2" overhang /
+  // Fit to pallet. Turning one ON unchecks the others and runs their OFF
+  // side-effects. (The 4 mm divider is a sub-option, not part of this group.)
+  function _enforcePalletModeExclusive(activeId) {
+    const activeEl = document.getElementById(activeId);
+    if (!activeEl || !activeEl.checked) return;   // only enforce when turning ON
+    [['pallet-manual', onPalletManualToggle],
+     ['pallet-case-override', onPalletCaseOverrideToggle],
+     ['pallet-overhang', onPalletOverhangToggle],
+     ['pallet-fit', onPalletFitToggle]].forEach(([id, h]) => {
+      if (id === activeId) return;
+      const el = document.getElementById(id);
+      if (el && el.checked) { el.checked = false; try { h(); } catch (_) {} }  // run its off side-effects
+    });
+  }
   function onPalletOverhangToggle() {
+    _enforcePalletModeExclusive('pallet-overhang');
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof calcFreight === 'function') calcFreight();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
   function onPalletFitToggle() {
+    _enforcePalletModeExclusive('pallet-fit');
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof calcFreight === 'function') calcFreight();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
@@ -15167,6 +15167,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function onPalletManualToggle() {
     const cb = document.getElementById('pallet-manual');
     const on = !!(cb && cb.checked);
+    _enforcePalletModeExclusive('pallet-manual');
     // Mutually exclusive with the Manual Pallet Override (case dims) —
     // product-dims manual mode wins when the operator picks it. Only
     // clear it (don't disable) so the operator can always switch to the
@@ -15479,6 +15480,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const cb = document.getElementById('pallet-case-override');
     if (!cb) return;
     const on = !!cb.checked;
+    _enforcePalletModeExclusive('pallet-case-override');
     if (on) {
       // Mutually exclusive with pallet Manual mode (product dims) —
       // case dims win.
