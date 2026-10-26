@@ -8896,7 +8896,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            operator knows they're not in play. -->
       <label class="pallet-manual-toggle">
         <input type="checkbox" id="pallet-manual" onchange="onPalletManualToggle()" />
-        <span>Manual mode — fit products directly on the pallet base (skip carton dimensions)</span>
+        <span>Product Only Override — fit products directly on the pallet base (skip carton dimensions)</span>
       </label>
       <!-- Manual Pallet Override — the case-dims sibling of Manual mode.
            When ON, the Pallet View + Container View build from the
@@ -8909,7 +8909,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            entry without flipping that global mode. -->
       <label class="pallet-manual-toggle" id="pallet-case-override-wrap" style="margin-top:8px;">
         <input type="checkbox" id="pallet-case-override" onchange="onPalletCaseOverrideToggle()" />
-        <span>Manual Pallet Override — build the pallet &amp; container from the <strong>Case Only Override</strong> case dimensions</span>
+        <span>Case Product Override — build the pallet &amp; container from the <strong>Case Only Override</strong> case dimensions</span>
       </label>
       <div id="pallet-case-override-hint" style="font-size:11px; color:var(--text-muted); line-height:1.5; margin:4px 0 0 30px;">
         Reads the case L × W × H, weight &amp; products/case from the <strong>Case Only Override</strong> block in Product Dimensions. Only the Pallet &amp; Container views change — freight stays on the carton/product path.
