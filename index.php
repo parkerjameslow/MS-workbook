@@ -2958,6 +2958,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       cursor: pointer;
       transition: color 0.15s, border-color 0.15s, background 0.15s;
     }
+    /* "Edit" button on the Dimensions & Carton Specifications header — unlocks
+       the section when the workbook tab is otherwise locked (Quote to Client+). */
+    .section-edit-btn {
+      font-family: inherit; font-size: 11px; font-weight: 700;
+      color: var(--accent); background: rgba(232,117,26,0.08);
+      border: 1px solid rgba(232,117,26,0.4); border-radius: 6px;
+      padding: 3px 10px; margin-left: 10px; cursor: pointer; white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .section-edit-btn:hover { background: rgba(232,117,26,0.15); }
+    .section-edit-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .specs-box-viz {
       width: 100%;
       height: auto;
@@ -19100,6 +19111,69 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   let rfqCount = 0;
   let _rfqVarCount = 0;
   let _wbLocked = false;
+  // Per-section unlock overrides: section keys (data-section) the operator has
+  // re-enabled via the header "Edit" button while the Workbook tab is otherwise
+  // locked (Quote to Client +). Lets them correct any section after the workbook
+  // has advanced into Shipments. Cleared when the tab unlocks or a different
+  // workbook is opened.
+  const _unlockedSections = new Set();
+
+  // Inject an "Edit" button into every editable section header on the Workbook
+  // tab (idempotent). Hidden until the tab is locked.
+  function _ensureSectionEditButtons() {
+    const tab = document.getElementById('wb-tab-workbook');
+    if (!tab) return;
+    tab.querySelectorAll('.section-card[data-section]').forEach(card => {
+      const header = card.querySelector('.section-header');
+      if (!header || header.querySelector('.section-edit-btn')) return;
+      // Only sections that actually have editable inputs get a button.
+      const hasEditable = card.querySelector('input:not([type="hidden"]):not([readonly]), textarea:not([readonly]), select');
+      if (!hasEditable) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'section-edit-btn';
+      btn.style.display = 'none';
+      btn.innerHTML = '✎ Edit';
+      btn.title = 'These fields lock after Quote to Client — click to edit them anyway';
+      btn.onclick = (e) => { e.stopPropagation(); unlockSection(btn); };
+      const chevron = header.querySelector('.section-chevron');
+      if (chevron) header.insertBefore(btn, chevron); else header.appendChild(btn);
+    });
+  }
+
+  // Enable/disable every editable control inside one section card.
+  function _applySectionUnlock(card, on) {
+    if (!card) return;
+    card.querySelectorAll('input:not([type="hidden"]), textarea, select').forEach(el => {
+      if (on && el.hasAttribute('readonly')) { el.disabled = false; el.style.opacity = ''; return; } // computed field — leave read-only but not greyed
+      el.disabled = !on;
+      el.style.opacity = on ? '' : '0.6';
+      el.style.cursor = on ? '' : 'not-allowed';
+    });
+    card.querySelectorAll('button:not(.section-edit-btn)').forEach(btn => {
+      btn.disabled = !on;
+      btn.style.opacity = on ? '' : '0.6';
+      btn.style.cursor = on ? '' : 'default';
+    });
+  }
+
+  // Toggle editing of one section from its header "Edit" button — lets the
+  // operator correct a section after the workbook has advanced into Shipments
+  // (where the whole tab is otherwise locked).
+  function unlockSection(btn) {
+    const card = btn && btn.closest ? btn.closest('.section-card') : null;
+    if (!card) return;
+    const key = card.getAttribute('data-section') || '';
+    const nowOn = !_unlockedSections.has(key);
+    if (nowOn) _unlockedSections.add(key); else _unlockedSections.delete(key);
+    _applySectionUnlock(card, nowOn);
+    btn.classList.toggle('active', nowOn);
+    btn.innerHTML = nowOn ? '🔓 Done editing' : '✎ Edit';
+    if (nowOn && typeof showToast === 'function') {
+      const name = (card.querySelector('.section-title')?.textContent || 'Section').trim();
+      showToast(`${name} unlocked — edits save automatically.`, 'info');
+    }
+  }
   let _draggingVarId = null; // tracks which variant row is being dragged
 
   // ── RFQ bulk-select state + Combined Groups ───────────────────────
@@ -26691,12 +26765,31 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       el.style.opacity = locked ? '0.6' : '';
       el.style.cursor = locked ? 'not-allowed' : '';
     });
-    // Also disable RFQ table add/remove buttons and image upload
-    tab.querySelectorAll('button:not(.wb-tab)').forEach(btn => {
+    // Also disable RFQ table add/remove buttons and image upload — but NOT the
+    // per-section "Edit" button (it's what re-enables a locked section).
+    tab.querySelectorAll('button:not(.wb-tab):not(.section-edit-btn)').forEach(btn => {
       btn.disabled = locked;
       btn.style.opacity = locked ? '0.6' : '';
       btn.style.cursor = locked ? 'default' : '';
     });
+    // Per-section "Edit" buttons: present on every editable section header,
+    // shown only while locked. Re-apply any section the operator unlocked so
+    // the override survives this re-lock.
+    _ensureSectionEditButtons();
+    tab.querySelectorAll('.section-edit-btn').forEach(b => { b.style.display = locked ? '' : 'none'; });
+    if (locked) {
+      _unlockedSections.forEach(key => {
+        const card = tab.querySelector(`.section-card[data-section="${key}"]`);
+        if (card) {
+          _applySectionUnlock(card, true);
+          const b = card.querySelector('.section-edit-btn');
+          if (b) { b.classList.add('active'); b.innerHTML = '🔓 Done editing'; }
+        }
+      });
+    } else {
+      _unlockedSections.clear();
+      tab.querySelectorAll('.section-edit-btn').forEach(b => { b.classList.remove('active'); b.innerHTML = '✎ Edit'; });
+    }
     // Show/hide lock banner
     let banner = document.getElementById('wb-lock-banner');
     if (locked) {
@@ -26704,7 +26797,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         banner = document.createElement('div');
         banner.id = 'wb-lock-banner';
         banner.style.cssText = 'background:rgba(251,113,133,0.1); border:1px solid rgba(251,113,133,0.3); color:var(--text-muted); font-size:12px; padding:6px 14px; border-radius:6px; margin-bottom:12px; text-align:center;';
-        banner.textContent = '🔒 Fields are locked after Quote to Client. Use ← to go back and unlock.';
+        banner.textContent = '🔒 Fields lock after Quote to Client. Click “Edit” on any section to change it.';
         tab.insertBefore(banner, tab.firstChild);
       }
     } else {
@@ -33112,6 +33205,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
   }
   function _fillWorkbookInner(clientName, workbookId) {
+    // Fresh workbook → drop any per-section edit unlocks from the last one.
+    try { _unlockedSections.clear(); } catch (_) {}
     // Save previous workbook immediately before switching to a different one
     const switching = currentClient && currentWorkbookId &&
                       (currentClient !== clientName || currentWorkbookId !== workbookId);
