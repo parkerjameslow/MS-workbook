@@ -19136,8 +19136,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       btn.innerHTML = '✎ Edit';
       btn.title = 'These fields lock after Quote to Client — click to edit them anyway';
       btn.onclick = (e) => { e.stopPropagation(); unlockSection(btn); };
+      // Insert before the chevron (into the chevron's actual parent, which may
+      // not be the header itself), else just append to the header.
       const chevron = header.querySelector('.section-chevron');
-      if (chevron) header.insertBefore(btn, chevron); else header.appendChild(btn);
+      if (chevron && chevron.parentNode) chevron.parentNode.insertBefore(btn, chevron);
+      else header.appendChild(btn);
     });
   }
 
