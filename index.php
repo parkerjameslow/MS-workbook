@@ -2780,6 +2780,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 9px 10px; font-size: 13px; background: var(--surface); color: var(--text);
       cursor: pointer;
     }
+    .rfq-imgpick-scrollwrap { position: relative; }
     .rfq-imgpick-grid {
       max-height: 52vh;
       overflow-y: auto;
@@ -2787,6 +2788,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       display: flex;
       flex-direction: column;
       gap: 16px;
+    }
+    /* Bottom fade + "more below" hint — shown only while there is content
+       below the fold, hidden once scrolled to the bottom. */
+    .rfq-imgpick-fade {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 48px;
+      pointer-events: none;
+      display: flex; align-items: flex-end; justify-content: center;
+      background: linear-gradient(to bottom, rgba(0,0,0,0), var(--surface) 80%);
+      opacity: 0; transition: opacity 0.15s;
+    }
+    .rfq-imgpick-scrollwrap.can-scroll:not(.at-bottom) .rfq-imgpick-fade { opacity: 1; }
+    .rfq-imgpick-morechev {
+      font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-muted); padding-bottom: 5px;
     }
     .rfq-imgpick-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 9px; }
     .rfq-imgpick-sec-title {
@@ -11949,7 +11964,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <label for="rfq-factory-select">Factory</label>
       <select id="rfq-factory-select" onchange="onRfqFactoryChange(this.value)"><!-- populated by JS --></select>
     </div>
-    <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
+    <div class="rfq-imgpick-scrollwrap">
+      <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
+      <div class="rfq-imgpick-fade" aria-hidden="true"><span class="rfq-imgpick-morechev">⌄ more below</span></div>
+    </div>
     <div class="modal-actions" style="margin-top:18px; flex-shrink:0;">
       <button type="button" class="btn btn-primary" onclick="closeRfqImagePicker()">Done</button>
     </div>
@@ -20345,6 +20363,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     html += sec('Design File', uploadTile + tiles(g.design));
     html += sec('Art for this line', uploadTile + tiles(g.lineArt));
     grid.innerHTML = html;
+    grid.onscroll = _updateRfqPickerFade;
+    requestAnimationFrame(_updateRfqPickerFade);
+  }
+  // Toggle the bottom "⌄ more below" fade based on the grid's scroll position,
+  // so it's obvious another section (Design File / Art) sits below the fold.
+  function _updateRfqPickerFade() {
+    const grid = document.getElementById('rfq-imgpick-grid');
+    const wrap = grid && grid.closest('.rfq-imgpick-scrollwrap');
+    if (!grid || !wrap) return;
+    const canScroll = (grid.scrollHeight - grid.clientHeight) > 4;
+    const atBottom  = (grid.scrollTop + grid.clientHeight) >= (grid.scrollHeight - 4);
+    wrap.classList.toggle('can-scroll', canScroll);
+    wrap.classList.toggle('at-bottom', atBottom);
   }
   function _rfqTogglePickerProducts() {
     _rfqPickerShowAllProducts = !_rfqPickerShowAllProducts;
