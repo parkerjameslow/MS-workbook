@@ -17408,6 +17408,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       drawIsoBox(ctx, 0, 0, 0, PALLET_L, palletDeckCm, PALLET_W, s, ox, oy, '#a8a8a8');
     }
 
+    // Overhang on → dashed outline of the effective 44×52 fit footprint
+    // (centered on the pallet) so the extra 2"-per-edge zone is always visible.
+    if (_palletOverhangOn()) {
+      const _eL = _effPalletL(), _eW = _effPalletW();
+      const _x0 = (PALLET_L - _eL) / 2, _x1 = _x0 + _eL;
+      const _z0 = (PALLET_W - _eW) / 2, _z1 = _z0 + _eW;
+      const _cA = isoProj(_x0, palletDeckCm, _z0, s, ox, oy);
+      const _cB = isoProj(_x1, palletDeckCm, _z0, s, ox, oy);
+      const _cC = isoProj(_x1, palletDeckCm, _z1, s, ox, oy);
+      const _cD = isoProj(_x0, palletDeckCm, _z1, s, ox, oy);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.strokeStyle = 'rgba(232,117,26,0.75)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(_cA.x, _cA.y); ctx.lineTo(_cB.x, _cB.y); ctx.lineTo(_cC.x, _cC.y); ctx.lineTo(_cD.x, _cD.y); ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Draw boxes back-to-front: diag 0 (back corner) → max (front corner)
     // Each cell occupies layout.bL × layout.bW (including the divider
     // pad); the actual drawn box is the cell minus pad on each axis,
@@ -17420,12 +17440,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // the stack sits centered instead of jammed into the back corner.
     const occupiedL = layout.cols * layout.bL;
     const occupiedW = layout.rows * layout.bW;
-    // Center on the EFFECTIVE footprint (so a 2" overhang shows symmetrically);
-    // when "Fit to pallet" adds rotated cases, pack into the corner so the
-    // leftover strip (where those cases go) sits on the far edges.
+    // Center on the REAL 40×48 pallet (NOT clamped to 0) so when a 2" overhang
+    // lets the load exceed the pallet, the cases draw hanging symmetrically past
+    // both edges. Fit-to-pallet packs into the corner so the rotated leftover
+    // cases sit on the far edges.
     const _fitPack = _palletFitToPalletOn() && _fitExtra.count > 0;
-    const offsetX = _fitPack ? 0 : Math.max(0, (_effPalletL() - occupiedL) / 2);
-    const offsetZ = _fitPack ? 0 : Math.max(0, (_effPalletW() - occupiedW) / 2);
+    const offsetX = _fitPack ? 0 : (PALLET_L - occupiedL) / 2;
+    const offsetZ = _fitPack ? 0 : (PALLET_W - occupiedW) / 2;
     for (let layer = 0; layer < showLayers; layer++) {
       for (let diag = 0; diag <= layout.cols + layout.rows - 2; diag++) {
         for (let col = Math.max(0, diag - layout.rows + 1); col <= Math.min(diag, layout.cols - 1); col++) {
