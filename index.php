@@ -13973,17 +13973,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (kind === 'image') {
       return `<img src="${url}" alt="File" onclick="openArtPreview('${urlAttr}')" />${removeBtnHtml}`;
     } else if (kind === 'pdf') {
-      // A static card (NOT a live <embed>): a PDF plugin composites in its
-      // own native layer that can swallow the click on some tabs (the
-      // Workbook tab did, the Art tab didn't) regardless of pointer-events,
-      // so clicks never reached the previewer. The inner card is
-      // pointer-events:none, so the tile's own click handler always fires.
+      // Render page 1 as a live thumbnail via pdf.js (fetched as bytes → canvas,
+      // so no native plugin layer). Falls back to the 📄 card until it renders.
       const label = _artFileBasename(url).toUpperCase();
-      return `<div style="position:absolute; inset:0; background:var(--surface2); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; pointer-events:none;">
-          <span style="font-size:34px; line-height:1;">📄</span>
-          <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; padding:0 6px;">${label}</span>
+      return `<div class="ai-thumb" data-ai-url="${urlAttr}" style="position:absolute; inset:0; background:var(--surface2); display:flex; align-items:center; justify-content:center; overflow:hidden; pointer-events:none;">
+          <canvas style="max-width:100%; max-height:100%; display:none;"></canvas>
+          <div class="ai-thumb-fallback" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;">
+            <span style="font-size:34px; line-height:1;">📄</span>
+            <span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; padding:0 6px;">${label}</span>
+          </div>
           <div class="art-tile-badge art-tile-badge--light">PDF</div>
-        </div>${removeBtnHtml}`;
+        </div>
+        <button type="button" class="art-tile-clicker" data-art-url="${urlAttr}" title="Click to preview"></button>${removeBtnHtml}`;
     } else if (kind === 'video') {
       return `<div style="position:absolute; inset:0; background:#000; pointer-events:none;">
           <video src="${url}" muted preload="metadata" playsinline style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
@@ -14149,18 +14150,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const kind = (typeof _artFileKind === 'function') ? _artFileKind(url) : 'file';
     if (kind === 'image') {
       content.innerHTML = `<img src="${url}" alt="Art preview" />`;
-    } else if (kind === 'pdf') {
-      // Plain iframe — browsers render PDFs natively; PDF.js fallback
-      // not needed for our supported browsers. AI files route here
-      // too (PDF-compatible from CS3 onward).
-      content.innerHTML = `<iframe src="${url}" title="PDF preview"></iframe>`;
-    } else if (kind === 'design' && (String(url).split('.').pop() || '').toLowerCase() === 'ai') {
-      // Render the Illustrator artwork (every artboard = a PDF page) via
-      // pdf.js. Fetched as bytes so the browser never auto-downloads it.
-      content.innerHTML = `<div id="ai-preview-scroll" style="max-height:88vh; overflow:auto; background:#2b2b2b; padding:16px; display:flex; flex-direction:column; gap:14px; align-items:center; border-radius:8px;">
+    } else if (kind === 'pdf' || (kind === 'design' && (String(url).split('.').pop() || '').toLowerCase() === 'ai')) {
+      // Render PDFs AND Illustrator .ai (PDF-compatible) via pdf.js, page by
+      // page, into canvases. We do NOT use a native <iframe>/<embed> here: a
+      // PDF plugin composites in its own layer that sits ABOVE the overlay and
+      // swallows clicks — including on the ✕ close button, which then did
+      // nothing. Canvases are normal DOM, so the ✕ (and backdrop) work.
+      content.innerHTML = `<div id="ai-preview-scroll" style="max-height:88vh; width:100%; overflow:auto; background:#2b2b2b; padding:16px; display:flex; flex-direction:column; gap:14px; align-items:center; border-radius:8px;">
           <div id="ai-preview-loading" style="color:#cbd5e1; font-size:13px; display:flex; align-items:center; gap:8px;">
             <span style="display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.25); border-top-color:#fff; border-radius:50%; animation:art3dSpin 0.8s linear infinite;"></span>
-            Rendering artwork…
+            Rendering…
           </div>
           <style>@keyframes art3dSpin { to { transform: rotate(360deg); } }</style>
         </div>`;
@@ -14187,7 +14186,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         }
       } catch (e) {
         const host = document.getElementById('ai-preview-scroll');
-        if (host) host.innerHTML = `<div style="color:#fca5a5; text-align:center; padding:24px; font-size:13px; line-height:1.6;">Couldn't render this .ai (it may not be saved “PDF Compatible”).<br><a href="${url}" target="_blank" rel="noopener" download style="color:#fb923c;">Download the file</a> to open it in Illustrator.</div>`;
+        if (host) host.innerHTML = `<div style="color:#fca5a5; text-align:center; padding:24px; font-size:13px; line-height:1.6;">Couldn't render this file for preview.<br><a href="${url}" target="_blank" rel="noopener" download style="color:#fb923c;">Download it</a> to open it directly.</div>`;
       }
       return;
     } else if (kind === 'video') {
