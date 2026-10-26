@@ -8923,6 +8923,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="checkbox" id="pallet-divider" onchange="renderPalletViz(); if(typeof autoSaveWorkbook==='function' && !_filling) autoSaveWorkbook();" />
         <span>Add 4 mm divider between products (cardboard / foam separators)</span>
       </label>
+      <!-- Allow 2" overhang — cases hang 2" past each pallet edge (usable base
+           becomes 44 × 52 in) → more cases per layer. -->
+      <label class="pallet-manual-toggle" id="pallet-overhang-wrap" style="margin-top:8px;">
+        <input type="checkbox" id="pallet-overhang" onchange="onPalletOverhangToggle()" />
+        <span>Allow 2″ overhang — cases may hang 2″ past each edge (fit on a 44 × 52 in footprint)</span>
+      </label>
+      <!-- Fit to pallet — fill the leftover strip with rotated (90°) cases so
+           no edge space is wasted → more cases per layer (mixed orientation). -->
+      <label class="pallet-manual-toggle" id="pallet-fit-wrap" style="margin-top:8px;">
+        <input type="checkbox" id="pallet-fit" onchange="onPalletFitToggle()" />
+        <span>Fit to pallet — fill the leftover edge space with rotated cases (no wasted border)</span>
+      </label>
       <div style="display:flex; gap:32px; align-items:flex-start; flex-wrap:wrap;">
         <div id="pallet-viz-col" style="flex:0 1 540px; min-width:300px; max-width:540px; display:flex; flex-direction:column; gap:14px;">
           <canvas id="pallet-canvas" width="540" height="420" style="width:100%; height:auto; border-radius:8px; background:var(--surface2); display:block;"></canvas>
@@ -15052,6 +15064,47 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   const PALLET_L = 101.6;    // cm (40 in)
   const PALLET_W = 121.92;   // cm (48 in)
   const PALLET_DECK = 15;    // cm pallet deck height
+  // "Allow 2 inch overhang" — cases may hang 2" past EACH edge, so the usable
+  // fit footprint grows by 2×2" on each axis (40×48 → 44×52). More cases/layer.
+  const PALLET_OVERHANG_CM = 5.08; // 2 in
+  // Checkboxes are the single source of truth (read at use-time) so fills and
+  // multi-user reconciles that only set .checked stay in sync automatically.
+  function _palletOverhangOn() { return !!document.getElementById('pallet-overhang')?.checked; }
+  function _palletFitToPalletOn() { return !!document.getElementById('pallet-fit')?.checked; }
+  function _effPalletL() { return PALLET_L + (_palletOverhangOn() ? 2 * PALLET_OVERHANG_CM : 0); }
+  function _effPalletW() { return PALLET_W + (_palletOverhangOn() ? 2 * PALLET_OVERHANG_CM : 0); }
+  // Given the primary grid `layout` (cols×rows of bL×bW), compute how many
+  // extra rotated cases fit in the better leftover strip. Returns
+  // {count, strip, cols, rows} for the viz to draw; 0 when the toggle is off.
+  function _palletFitExtra(layout) {
+    if (!_palletFitToPalletOn() || !layout || layout.cols < 1 || layout.rows < 1) return { count: 0 };
+    const L = _effPalletL(), W = _effPalletW();
+    const occL = layout.cols * layout.bL, occW = layout.rows * layout.bW;
+    const rL = layout.bW, rW = layout.bL;            // rotated case footprint
+    if (rL <= 0 || rW <= 0) return { count: 0 };
+    // Strip A: the gap to the right of the block (x: occL→L) × full W.
+    const aCols = (L - occL) > 0 ? Math.floor((L - occL) / rL) : 0;
+    const aRows = Math.floor(W / rW);
+    const stripA = aCols * aRows;
+    // Strip B: the gap above the block (z: occW→W) × full L.
+    const bCols = Math.floor(L / rL);
+    const bRows = (W - occW) > 0 ? Math.floor((W - occW) / rW) : 0;
+    const stripB = bCols * bRows;
+    if (stripA <= 0 && stripB <= 0) return { count: 0 };
+    return stripA >= stripB
+      ? { count: stripA, strip: 'A', cols: aCols, rows: aRows, rL, rW, startL: occL, startW: 0 }
+      : { count: stripB, strip: 'B', cols: bCols, rows: bRows, rL, rW, startL: 0, startW: occW };
+  }
+  function onPalletOverhangToggle() {
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  function onPalletFitToggle() {
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
   const MAX_LOAD_H_DEFAULT = 152.4; // cm default max stack height (60 in)
   const ISO_COS30 = Math.cos(Math.PI / 6); // 0.866
   const ISO_SIN30 = 0.5;
@@ -15095,8 +15148,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function bestPalletOrientation(bL, bW) {
-    const o1 = { cols: Math.floor(PALLET_L/bL), rows: Math.floor(PALLET_W/bW), bL, bW };
-    const o2 = { cols: Math.floor(PALLET_L/bW), rows: Math.floor(PALLET_W/bL), bL: bW, bW: bL };
+    const L = _effPalletL(), W = _effPalletW();   // honors the 2" overhang toggle
+    const o1 = { cols: Math.floor(L/bL), rows: Math.floor(W/bW), bL, bW };
+    const o2 = { cols: Math.floor(L/bW), rows: Math.floor(W/bL), bL: bW, bW: bL };
     return (o1.cols * o1.rows >= o2.cols * o2.rows) ? o1 : o2;
   }
 
@@ -17234,7 +17288,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const dividerOn = manualOn && !!document.getElementById('pallet-divider')?.checked;
     const padCm = dividerOn ? 0.4 : 0;
     const layout = bestPalletOrientation(bL + padCm, bW + padCm);
-    const perLayer = layout.cols * layout.rows;
+    const _fitExtra = _palletFitExtra(layout); // layout.bL/bW already include padCm
+    const perLayer = layout.cols * layout.rows + (_fitExtra.count || 0);
 
     // Footprint too large to fit on pallet. We do NOT assume overhang —
     // if a single unit is wider than 40×48 in, then 0 fit per pallet.
@@ -17363,8 +17418,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // the stack sits centered instead of jammed into the back corner.
     const occupiedL = layout.cols * layout.bL;
     const occupiedW = layout.rows * layout.bW;
-    const offsetX = Math.max(0, (PALLET_L - occupiedL) / 2);
-    const offsetZ = Math.max(0, (PALLET_W - occupiedW) / 2);
+    // Center on the EFFECTIVE footprint (so a 2" overhang shows symmetrically);
+    // when "Fit to pallet" adds rotated cases, pack into the corner so the
+    // leftover strip (where those cases go) sits on the far edges.
+    const _fitPack = _palletFitToPalletOn() && _fitExtra.count > 0;
+    const offsetX = _fitPack ? 0 : Math.max(0, (_effPalletL() - occupiedL) / 2);
+    const offsetZ = _fitPack ? 0 : Math.max(0, (_effPalletW() - occupiedW) / 2);
     for (let layer = 0; layer < showLayers; layer++) {
       for (let diag = 0; diag <= layout.cols + layout.rows - 2; diag++) {
         for (let col = Math.max(0, diag - layout.rows + 1); col <= Math.min(diag, layout.cols - 1); col++) {
@@ -17372,6 +17431,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           drawIsoBox(ctx,
             offsetX + col * layout.bL, palletDeckCm + layer * stackPitchH, offsetZ + row * layout.bW,
             drawL, bH, drawW, s, ox, oy, '#E8751A');
+        }
+      }
+      // "Fit to pallet" — rotated cases filling the leftover edge strip.
+      if (_fitExtra.count > 0) {
+        const exDrawL = _fitExtra.rL - padCm, exDrawW = _fitExtra.rW - padCm;
+        for (let c = 0; c < _fitExtra.cols; c++) {
+          for (let r = 0; r < _fitExtra.rows; r++) {
+            drawIsoBox(ctx,
+              offsetX + _fitExtra.startL + c * _fitExtra.rL, palletDeckCm + layer * stackPitchH, offsetZ + _fitExtra.startW + r * _fitExtra.rW,
+              exDrawL, bH, exDrawW, s, ox, oy, '#f59e0b');
+          }
         }
       }
     }
@@ -33436,6 +33506,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // back on shows their previous choice.
       const palletDividerEl = document.getElementById('pallet-divider');
       if (palletDividerEl) palletDividerEl.checked = !!data.palletDivider;
+      // Pallet fit toggles — restore the checkbox AND the module flags the
+      // fit math reads.
+      const palletOverhangEl = document.getElementById('pallet-overhang');
+      if (palletOverhangEl) palletOverhangEl.checked = !!data.palletOverhang;
+      const palletFitEl = document.getElementById('pallet-fit');
+      if (palletFitEl) palletFitEl.checked = !!data.palletFitToPallet;
       // Product Dimensions lock — restore the checkbox state then call
       // the toggle so the disabled state on the dim inputs matches.
       const productLockEl = document.getElementById('product-dims-lock');
@@ -35918,6 +35994,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       weightOnlyKg:       _v('weight-only-kg'),
       weightOnlyLbs:      _v('weight-only-lbs'),
       palletDivider:    !!document.getElementById('pallet-divider')?.checked,
+      palletOverhang:   !!document.getElementById('pallet-overhang')?.checked,
+      palletFitToPallet:!!document.getElementById('pallet-fit')?.checked,
       palletMaxHeight:  (() => { const v = parseFloat(document.getElementById('pallet-max-height')?.value); return (!isNaN(v) && v > 0) ? v : null; })(),
       palletNotes:      _v('pallet-notes'),
       palletStackNotes: _v('pallet-stack-notes'),
@@ -44356,6 +44434,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const checkboxFields = [
       ['palletManualMode',     'pallet-manual'],
       ['palletDivider',        'pallet-divider'],
+      ['palletOverhang',       'pallet-overhang'],
+      ['palletFitToPallet',    'pallet-fit'],
       ['productDimsLocked',    'product-dims-lock'],
       ['freightCostOverrideOn','freight-cost-override-toggle'],
       ['weightOnlyOverride',   'weight-only-override'],
