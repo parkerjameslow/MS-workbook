@@ -2973,6 +2973,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .section-edit-btn:hover { background: rgba(232,117,26,0.15); }
     .section-edit-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    /* Design File uploader (Product Overview). */
+    .design-file-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; }
+    .design-file-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .design-file-title { font-size: 14px; font-weight: 800; color: var(--text); }
+    .design-file-sub { font-size: 12px; color: var(--text-muted); }
+    .design-file-slot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .design-file-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 170px; height: 112px; border: 2px dashed var(--accent); border-radius: 10px; background: rgba(232,117,26,0.05); color: var(--accent); cursor: pointer; text-align: center; transition: background 0.15s; box-sizing: border-box; }
+    .design-file-drop:hover { background: rgba(232,117,26,0.12); }
+    .df-icon { font-size: 26px; line-height: 1; }
+    .df-text { font-size: 13px; font-weight: 700; }
+    .df-hint { font-size: 10px; color: var(--text-muted); }
+    .design-file-item { position: relative; width: 132px; height: 112px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+    .df-replace { font-size: 12px; font-weight: 600; color: var(--accent); background: none; border: 1px solid var(--border); border-radius: 6px; padding: 7px 14px; cursor: pointer; font-family: inherit; }
+    .df-replace:hover { border-color: var(--accent); }
     .specs-box-viz {
       width: 100%;
       height: auto;
@@ -8045,6 +8059,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
     <div class="section-body">
+
+      <!-- Design File — prominent per-workbook design / spec upload. -->
+      <div class="design-file-block">
+        <div class="design-file-head">
+          <span class="design-file-title"><i style="font-style:normal;">🎨</i> Design File</span>
+          <span class="design-file-sub">Upload the artwork / spec file for this product (AI, PDF, PSD, EPS, image…)</span>
+        </div>
+        <div id="design-file-slot" class="design-file-slot"><!-- rendered by renderDesignFile() --></div>
+      </div>
 
       <!-- Basic info grid -->
       <div class="form-grid form-grid-2">
@@ -13768,6 +13791,70 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       resolve.__xhr = xhr;
       xhr.send(fd);
     });
+  }
+
+  // ── Design File (Product Overview) ───────────────────────────────────
+  // One prominent per-workbook design/spec file (AI/PDF/PSD/image…), stored
+  // as detail.designFile. Reuses upload_art_file (accepts any file) and the
+  // shared file tile (so .ai renders a live thumbnail).
+  let _designFile = '';
+  function renderDesignFile() {
+    const slot = document.getElementById('design-file-slot');
+    if (!slot) return;
+    if (!_designFile) {
+      slot.innerHTML = `<div class="design-file-drop" onclick="uploadDesignFile()" title="Upload a design / spec file">
+          <div class="df-icon">⬆</div><div class="df-text">Upload Design File</div>
+          <div class="df-hint">AI, PDF, PSD, EPS, image…</div>
+        </div>`;
+      return;
+    }
+    const removeBtn = `<button class="img-remove" onclick="removeDesignFile(event)" title="Remove">✕</button>`;
+    slot.innerHTML = `<div class="image-gallery-item design-file-item">${_buildFileTileInner(_designFile, removeBtn)}</div>
+        <button type="button" class="df-replace" onclick="uploadDesignFile()">Replace</button>`;
+    try { _hydrateAiThumbs(slot); } catch (_) {}
+  }
+  function uploadDesignFile() {
+    if (_wbLocked && !_unlockedSections.has('overview')) { if (typeof showToast === 'function') showToast('Unlock Product Overview (Edit) to change the design file.', 'warn'); return; }
+    if (!currentClient || !currentWorkbookId) { if (typeof showToast === 'function') showToast('Open a workbook first.', 'error'); return; }
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.ai,.pdf,.psd,.eps,.svg,.png,.jpg,.jpeg,.webp,.tif,.tiff,.heic,.heif,.indd,.sketch,.xd,.fig,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+    inp.onchange = async (e) => {
+      const f = (e.target.files || [])[0];
+      if (!f) return;
+      const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+      const slot = document.getElementById('design-file-slot');
+      if (slot) slot.innerHTML = `<div class="design-file-drop"><div class="df-text">Uploading…</div></div>`;
+      const data = await _uploadArtFileXhr(f, dbId);
+      if (data && data.success && data.url) {
+        const old = _designFile;
+        _designFile = data.url;
+        if (old && old !== data.url && old.startsWith('uploads/')) { try { apiCall('delete_image', { url: old }); } catch (_) {} }
+        renderDesignFile();
+        saveDesignFile();
+      } else {
+        if (typeof showToast === 'function') showToast('Design file upload failed: ' + ((data && data.error) || ''), 'error');
+        renderDesignFile();
+      }
+    };
+    inp.click();
+  }
+  function removeDesignFile(e) {
+    if (e) e.stopPropagation();
+    if (!_designFile) return;
+    if (_wbLocked && !_unlockedSections.has('overview')) { if (typeof showToast === 'function') showToast('Unlock Product Overview (Edit) to remove the design file.', 'warn'); return; }
+    if (!confirm('Remove the design file?')) return;
+    if (_designFile.startsWith('uploads/')) { try { apiCall('delete_image', { url: _designFile }); } catch (_) {} }
+    _designFile = '';
+    renderDesignFile();
+    saveDesignFile();
+  }
+  function saveDesignFile() {
+    if (!currentClient || !currentWorkbookId) return;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (!workbookDetail[key]) workbookDetail[key] = {};
+    workbookDetail[key].designFile = _designFile;
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
   // Lightweight progress paint — updates the in-flight tiles' bars/labels
   // without rebuilding the whole gallery on every progress event.
@@ -33322,6 +33409,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _fillWorkbookInner(clientName, workbookId) {
     // Fresh workbook → drop any per-section edit unlocks from the last one.
     try { _unlockedSections.clear(); } catch (_) {}
+    // Reset the design file up front so a workbook with no saved detail doesn't
+    // inherit the previous one's (the guarded restore block below sets it when
+    // detail exists).
+    _designFile = '';
+    try { renderDesignFile(); } catch (_) {}
     // Save previous workbook immediately before switching to a different one
     const switching = currentClient && currentWorkbookId &&
                       (currentClient !== clientName || currentWorkbookId !== workbookId);
@@ -33539,6 +33631,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (palletOverhangEl) palletOverhangEl.checked = !!data.palletOverhang;
       const palletFitEl = document.getElementById('pallet-fit');
       if (palletFitEl) palletFitEl.checked = !!data.palletFitToPallet;
+      // Product Overview design file.
+      _designFile = data.designFile || '';
+      renderDesignFile();
       // Product Dimensions lock — restore the checkbox state then call
       // the toggle so the disabled state on the dim inputs matches.
       const productLockEl = document.getElementById('product-dims-lock');
@@ -36237,6 +36332,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       qbInvoiceNumber: existing.qbInvoiceNumber || '',
       qbInvoiceUrl:    existing.qbInvoiceUrl || '',
       qbInvoiceAt:     existing.qbInvoiceAt || null,
+      // Product Overview design file (not a DOM input — kept in _designFile).
+      designFile:      _designFile || '',
       // Per-step milestone watchers — managed by the Watchers modal, not
       // DOM-driven. Preserve the live in-memory value from existing so
       // an autosave after add/remove doesn't clobber it.
