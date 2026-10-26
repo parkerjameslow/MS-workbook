@@ -17693,7 +17693,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div style="margin-top:16px; padding:10px 12px; border:1px dashed var(--border); border-radius:8px; font-size:12px; color:var(--text-muted); line-height:1.5;">
           Cartons floor-load straight into the container — see the <strong>40' HC Container View</strong> below for cartons per container &amp; containers needed.
-        </div>`;
+        </div>
+        ${(palletsNeeded && palletsNeeded > 0) ? `
+        <div style="margin-top:10px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2); line-height:1.5;">
+          <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">If palletized instead</span>
+          &nbsp;·&nbsp; <strong style="color:var(--accent); font-size:16px;">${palletsNeeded.toLocaleString()}</strong>
+          <span style="font-size:12px; color:var(--text-muted);">pallet${palletsNeeded === 1 ? '' : 's'}${totalPerPallet > 0 ? ` &nbsp;·&nbsp; ${totalPerPallet.toLocaleString()} / pallet` : ''}</span>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px; opacity:0.85;">View-only estimate — this shipment is set to Loose Load.</div>
+        </div>` : ''}`;
     }
     // Pallet-based stats — skipped in Loose Load (the carton summary above
     // replaced it). Container view still renders below in BOTH modes.
