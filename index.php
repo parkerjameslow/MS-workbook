@@ -2817,6 +2817,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Selected = accent border only (no checkmark overlay — the line's own
        sections already show only what's attached). */
     .rfq-imgpick-item.selected { border-color: var(--accent); }
+    /* ✕ remove button — top corner of an attached tile. Sits above the PDF/
+       video embed + hit layer so it's always clickable. */
+    .rfq-imgpick-x {
+      position: absolute; top: 4px; right: 4px; z-index: 5;
+      width: 20px; height: 20px; padding: 0;
+      border: none; border-radius: 50%;
+      background: rgba(17,17,17,0.72); color: #fff;
+      font-size: 14px; font-weight: 700; line-height: 20px; text-align: center;
+      cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+      transition: background 0.12s;
+    }
+    .rfq-imgpick-x:hover { background: #dc2626; }
     .rfq-imgpick-empty {
       grid-column: 1 / -1;   /* span the whole grid so the text doesn't wrap into a 1-word column */
       text-align: center;
@@ -20211,7 +20223,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     } else {
       inner = `<div class="rfq-imgpick-file"><div style="font-size:26px; line-height:1;">${_artFileIcon(s.kind)}</div><div class="rfq-imgpick-ext">${_artFileBasename(s.url)}</div></div>`;
     }
-    return `<div class="rfq-imgpick-item${sel}" onclick="toggleRfqPickImage('${esc}')" title="${assigned.has(s.url) ? 'Assigned — tap to remove' : 'Tap to assign'}">${inner}</div>`;
+    // Attached tiles (on this line) get an ✕ remove button (with a confirm),
+    // not a silent tap-to-remove. Unattached gallery tiles stay tap-to-add.
+    if (assigned.has(s.url)) {
+      const x = `<button type="button" class="rfq-imgpick-x" onclick="event.stopPropagation(); removeRfqPickFile('${esc}')" title="Remove from this line item">&times;</button>`;
+      return `<div class="rfq-imgpick-item selected" title="On this line item">${inner}${x}</div>`;
+    }
+    return `<div class="rfq-imgpick-item" onclick="toggleRfqPickImage('${esc}')" title="Tap to add to this line item">${inner}</div>`;
   }
   function renderRfqImagePickerGrid() {
     const grid = document.getElementById('rfq-imgpick-grid');
@@ -20245,6 +20263,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (_rfqPickerTargetId == null) return;
     const current = getRfqRowImages(_rfqPickerTargetId);
     const next = current.includes(url) ? current.filter(u => u !== url) : [...current, url];
+    setRfqRowImages(_rfqPickerTargetId, next);
+    renderRfqImagePickerGrid();
+  }
+
+  // ✕ on an attached tile — remove it from THIS line item, with a confirm so a
+  // mis-tap can't silently drop a file. Only detaches from the line; the file
+  // itself stays in its gallery / the Art pool.
+  function removeRfqPickFile(url) {
+    if (_rfqPickerTargetId == null) return;
+    if (!confirm('Remove this file from this line item?')) return;
+    const next = getRfqRowImages(_rfqPickerTargetId).filter(u => u !== url);
     setRfqRowImages(_rfqPickerTargetId, next);
     renderRfqImagePickerGrid();
   }
