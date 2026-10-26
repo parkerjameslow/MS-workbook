@@ -5,3 +5,6 @@ api.local.php
 # Editor / OS noise
 .DS_Store
 *.swp
+
+# Claude Code session data / worktrees — never deploy to live
+.claude/

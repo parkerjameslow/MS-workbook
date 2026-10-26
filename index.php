@@ -2820,6 +2820,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 40px 20px;
       line-height: 1.5;
     }
+    /* The "Upload" tile — first cell of the picker grid; dashed so it reads
+       as an add-slot, not a selectable asset. */
+    .rfq-imgpick-upload {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px;
+      border-style: dashed;
+      background: var(--surface2);
+      color: var(--text-muted);
+    }
+    .rfq-imgpick-upload:hover { border-color: var(--accent); color: var(--accent); }
+    /* Per-line "Specs" button (RFQ row) — replaces the old image cell. Shows a
+       file icon + "Specs" and a count badge once files are attached. */
+    .rfq-specs-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 12px; font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.12s, color 0.12s, background 0.12s;
+      white-space: nowrap;
+    }
+    .rfq-specs-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .rfq-specs-btn.has-assets { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface2)); }
+    .rfq-specs-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 17px; height: 17px; padding: 0 4px;
+      border-radius: 9px;
+      background: var(--accent); color: #fff;
+      font-size: 10px; font-weight: 800; line-height: 1;
+    }
 
     /* Pallet view manual-mode checkbox — sits at the top of the pallet
        section. Compact pill so it doesn't compete with the canvas. */
@@ -8324,7 +8357,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div style="font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); margin-top:2px; line-height:1;">Combine</div>
             </th>
             <th>#</th>
-            <th style="text-align:center;" title="Assigned product image">IMAGE</th>
+            <th style="text-align:center;" title="Attach Product Images, Design File &amp; Art Files to each line">SPECS</th>
             <th>SKU</th>
             <th>ITEM</th>
             <th>QTY</th>
@@ -11876,9 +11909,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      target line live; changes autosave immediately. -->
 <div class="modal-overlay" id="rfq-image-picker-modal" onclick="if(event.target===this)closeRfqImagePicker()" style="z-index:1100;">
   <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden;">
-    <div class="modal-title" style="flex-shrink:0;">Assign Files to Line Item</div>
+    <div class="modal-title" style="flex-shrink:0;">Line Item Specs</div>
     <p style="color:var(--text-muted); font-size:13px; margin:-10px 0 16px; flex-shrink:0;">
-      Tap to attach or remove a file from <strong id="rfq-imgpick-item-name">this line item</strong>. These come from the <strong>Product Images</strong> gallery (Workbook tab) and the <strong>Art</strong> tab.
+      Tap to attach or remove a file from <strong id="rfq-imgpick-item-name">this line item</strong>. Pulls from <strong>Product Images</strong> (Workbook tab), the <strong>Design File</strong>, and the <strong>Art</strong> tab &mdash; or use <strong>Upload</strong> to add a new one.
     </p>
     <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
     <div class="modal-actions" style="margin-top:18px; flex-shrink:0;">
@@ -19910,7 +19943,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
       </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="text-align:center; padding:10px 4px 0;"><div class="rfq-img-cell" id="rfq-imgcell-${id}"></div><div class="rfq-specs-cell" id="rfq-specscell-${id}"></div></td>
+      <td style="text-align:center; padding:12px 4px 0;"><button type="button" class="rfq-specs-btn" id="rfq-specsbtn-${id}" onclick="openRfqImagePicker(${id})" title="Attach Product Images, Design File & Art Files to this line"></button></td>
       <td>
         <input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" />
         <div class="rfq-item-links">
@@ -19941,8 +19974,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove line item">&times;</span>
       </td>
     `;
-    tr.dataset.images = JSON.stringify(Array.isArray(images) ? images : []);
-    tr.dataset.specs = JSON.stringify(Array.isArray(specs) ? specs : []);
+    // Unified "attached assets" for the line = Product Images + Art + Design
+    // File + uploads, all in dataset.images. Legacy per-line specs (dataset.specs,
+    // which could be strings or {url,name}) are migrated in once, then cleared.
+    const _specUrls = (Array.isArray(specs) ? specs : []).map(s => (typeof s === 'string') ? s : (s && s.url)).filter(Boolean);
+    const _attached = Array.from(new Set([...(Array.isArray(images) ? images : []), ..._specUrls]));
+    tr.dataset.images = JSON.stringify(_attached);
+    tr.dataset.specs = '[]';
     tbody.appendChild(tr);
     // Comparable options: the selected option's name/price/lead were already
     // materialized into item/priceRmb/leadTime by collectRfqItems on save, so
@@ -19954,8 +19992,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     variants.forEach(v => addRfqVariantRow(id, v.variant, v.qty, v.priceRmb, v.leadTime, v.sku || ''));
     _updateVarAddRow(id);   // place trailing button below last variant (or parent if none)
-    renderRfqLineImages(id); // draw assigned-image thumbnails (before the lock pass below)
-    renderRfqLineSpecs(id);  // draw per-line design/spec files
+    renderRfqSpecsBtn(id);   // the per-line "Specs (N)" button (replaces image/specs cells)
     recalcRfqTotals();
     if (_wbLocked && !_unlockedSections.has('rfq')) {
       tr.querySelectorAll('input, select, textarea, button, span.remove-tier').forEach(el => {
@@ -19982,8 +20019,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const tr = document.getElementById(`rfq-${id}`);
     if (!tr) return;
     tr.dataset.images = JSON.stringify(urls);
-    renderRfqLineImages(id);
+    renderRfqSpecsBtn(id);
     if (!_filling) autoSaveWorkbook();
+  }
+
+  // The per-line "Specs (N)" button — replaces the old image + specs cells.
+  // N = attached assets (Product Images + Design File + Art Files + uploads,
+  // all tracked in dataset.images). Opens the picker modal.
+  function renderRfqSpecsBtn(id) {
+    const btn = document.getElementById(`rfq-specsbtn-${id}`);
+    if (!btn) return;
+    const n = getRfqRowImages(id).length;
+    btn.classList.toggle('has-assets', n > 0);
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`
+      + `<span>Specs</span>${n ? `<span class="rfq-specs-count">${n}</span>` : ''}`;
   }
 
   // ── RFQ line SPECS — per-line design/spec file(s) (the breakdown of the
@@ -20056,10 +20105,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   }
 
   function renderRfqLineImages(id) {
-    // Renders the single image tile that sits in front of the SKU field.
-    // Empty → a dashed "+ Photo" add tile (mirrors the Product Images
-    // gallery add button); populated → the first assigned image as a
-    // thumbnail with a "+N" badge for the rest. Either opens the picker.
+    // The per-line image/specs UI is now a single "Specs (N)" button; keep this
+    // shim so every existing caller still refreshes that button.
+    renderRfqSpecsBtn(id);
     const cell = document.getElementById(`rfq-imgcell-${id}`);
     if (!cell) return;
     const urls = getRfqRowImages(id);
@@ -20119,6 +20167,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     (Array.isArray(_productImages) ? _productImages : []).forEach(i => {
       if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: 'image', from: 'product' }); }
     });
+    // The Product Overview Design File.
+    if (_designFile && !seen.has(_designFile)) { seen.add(_designFile); out.push({ url: _designFile, kind: kindOf(_designFile), from: 'design' }); }
     (Array.isArray(_artImages) ? _artImages : []).forEach(i => {
       if (i && i.url && !seen.has(i.url)) { seen.add(i.url); out.push({ url: i.url, kind: kindOf(i.url), from: 'art' }); }
     });
@@ -20139,15 +20189,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const grid = document.getElementById('rfq-imgpick-grid');
     if (!grid) return;
     const sources = _rfqPickerSources();
-    if (!sources.length) {
-      grid.innerHTML = `<div class="rfq-imgpick-empty">Nothing to attach yet. Add images in the <strong>Product Images</strong> gallery on the Workbook tab, or upload files on the <strong>Art</strong> tab — they'll all show up here to choose from.</div>`;
-      return;
-    }
+    const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file to this line (AI, PDF, PSD, image…)"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
     const assigned = new Set(getRfqRowImages(_rfqPickerTargetId));
-    grid.innerHTML = sources.map(s => {
+    grid.innerHTML = uploadTile + sources.map(s => {
       const sel = assigned.has(s.url) ? ' selected' : '';
       const esc = s.url.replace(/'/g, "\\'");
-      const tag = s.from === 'art' ? `<span class="rfq-imgpick-tag">Art</span>` : '';
+      const tag = s.from === 'art' ? `<span class="rfq-imgpick-tag">Art</span>`
+                : s.from === 'design' ? `<span class="rfq-imgpick-tag">Design</span>` : '';
       let inner;
       if (s.kind === 'image') {
         inner = `<img src="${s.url}" alt="" />`;
@@ -20173,6 +20221,39 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const next = current.includes(url) ? current.filter(u => u !== url) : [...current, url];
     setRfqRowImages(_rfqPickerTargetId, next);
     renderRfqImagePickerGrid();
+  }
+
+  // Upload new file(s) straight from the Specs picker: they land in the Art
+  // pool (so they show on the Art tab + picker) AND auto-attach to this line.
+  async function uploadRfqPickerFile() {
+    if (_rfqPickerTargetId == null) return;
+    if (!_sectionEditable('rfq')) { if (typeof showToast === 'function') showToast('Unlock the RFQ section (Edit) to add files.', 'warn'); return; }
+    if (!currentClient || !currentWorkbookId) return;
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.multiple = true;
+    inp.accept = '.ai,.pdf,.psd,.eps,.svg,.png,.jpg,.jpeg,.webp,.tif,.tiff,.heic,.heif,.indd,.sketch,.xd,.fig,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+    inp.onchange = async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      const id = _rfqPickerTargetId;
+      const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+      for (const f of files) {
+        const data = await _uploadArtFileXhr(f, dbId);
+        if (data && data.success && data.url) {
+          if (!Array.isArray(_artImages)) _artImages = [];
+          if (!_artImages.some(i => i && i.url === data.url)) _artImages.push({ url: data.url });
+          const cur = getRfqRowImages(id);
+          if (!cur.includes(data.url)) setRfqRowImages(id, [...cur, data.url]);
+        } else if (typeof showToast === 'function') {
+          showToast('Upload failed: ' + ((data && data.error) || ''), 'error');
+        }
+      }
+      try { if (typeof saveArtList === 'function') saveArtList(); } catch (_) {}
+      try { if (typeof _renderBothGalleries === 'function') _renderBothGalleries(); } catch (_) {}
+      renderRfqImagePickerGrid();
+    };
+    inp.click();
   }
 
   function closeRfqImagePicker() {
