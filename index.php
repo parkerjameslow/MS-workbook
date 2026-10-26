@@ -2987,6 +2987,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .design-file-item { position: relative; width: 132px; height: 112px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
     .df-replace { font-size: 12px; font-weight: 600; color: var(--accent); background: none; border: 1px solid var(--border); border-radius: 6px; padding: 7px 14px; cursor: pointer; font-family: inherit; }
     .df-replace:hover { border-color: var(--accent); }
+    /* Per-line RFQ specs (design-file breakdown, under the line's image). */
+    .rfq-specs-cell { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+    .rfq-spec-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 96px; font-size: 10px; font-weight: 600; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; }
+    .rfq-spec-name { color: var(--accent); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rfq-spec-del { color: var(--text-muted); cursor: pointer; font-weight: 700; line-height: 1; }
+    .rfq-spec-del:hover { color: var(--danger); }
+    .rfq-spec-add { font-size: 10px; font-weight: 700; color: var(--accent); cursor: pointer; border: 1px dashed var(--accent); border-radius: 6px; padding: 2px 8px; background: rgba(232,117,26,0.05); white-space: nowrap; }
+    .rfq-spec-add:hover { background: rgba(232,117,26,0.12); }
     .specs-box-viz {
       width: 100%;
       height: auto;
@@ -19790,7 +19798,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       addRfqRow(
         it.item, it.sku, it.qty, it.priceRmb, it.leadTime,
         it.sample, it.variants, it.images,
-        it.comparableOptions, it.selectedOptionIdx
+        it.comparableOptions, it.selectedOptionIdx, it.specs
       );
       const newIdx = startIdx + k;
       newIdxs.push(newIdx);
@@ -19858,7 +19866,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return out;
   }
 
-  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = [], comparableOptions = [], selectedOptionIdx = null) {
+  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = [], comparableOptions = [], selectedOptionIdx = null, specs = []) {
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
@@ -19893,7 +19901,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
       </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="text-align:center; padding:10px 4px 0;"><div class="rfq-img-cell" id="rfq-imgcell-${id}"></div></td>
+      <td style="text-align:center; padding:10px 4px 0;"><div class="rfq-img-cell" id="rfq-imgcell-${id}"></div><div class="rfq-specs-cell" id="rfq-specscell-${id}"></div></td>
       <td>
         <input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" />
         <div class="rfq-item-links">
@@ -19925,6 +19933,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </td>
     `;
     tr.dataset.images = JSON.stringify(Array.isArray(images) ? images : []);
+    tr.dataset.specs = JSON.stringify(Array.isArray(specs) ? specs : []);
     tbody.appendChild(tr);
     // Comparable options: the selected option's name/price/lead were already
     // materialized into item/priceRmb/leadTime by collectRfqItems on save, so
@@ -19937,6 +19946,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     variants.forEach(v => addRfqVariantRow(id, v.variant, v.qty, v.priceRmb, v.leadTime, v.sku || ''));
     _updateVarAddRow(id);   // place trailing button below last variant (or parent if none)
     renderRfqLineImages(id); // draw assigned-image thumbnails (before the lock pass below)
+    renderRfqLineSpecs(id);  // draw per-line design/spec files
     recalcRfqTotals();
     if (_wbLocked && !_unlockedSections.has('rfq')) {
       tr.querySelectorAll('input, select, textarea, button, span.remove-tier').forEach(el => {
@@ -19965,6 +19975,66 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.dataset.images = JSON.stringify(urls);
     renderRfqLineImages(id);
     if (!_filling) autoSaveWorkbook();
+  }
+
+  // ── RFQ line SPECS — per-line design/spec file(s) (the breakdown of the
+  // workbook's overall Design File into each line item). Stored on the row
+  // as tr.dataset.specs (JSON URL array); uploaded via upload_art_file.
+  function getRfqRowSpecs(id) {
+    const tr = document.getElementById(`rfq-${id}`);
+    if (!tr) return [];
+    try { const a = JSON.parse(tr.dataset.specs || '[]'); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function setRfqRowSpecs(id, urls) {
+    const tr = document.getElementById(`rfq-${id}`);
+    if (!tr) return;
+    tr.dataset.specs = JSON.stringify(urls);
+    renderRfqLineSpecs(id);
+    if (!_filling) autoSaveWorkbook();
+  }
+  function renderRfqLineSpecs(id) {
+    const cell = document.getElementById(`rfq-specscell-${id}`);
+    if (!cell) return;
+    const urls = getRfqRowSpecs(id);
+    const esc = _esc;
+    let html = '';
+    urls.forEach(u => {
+      const name = (typeof _artFileBasename === 'function') ? _artFileBasename(u) : String(u).split('/').pop();
+      const ua = String(u).replace(/'/g, "\\'");
+      html += `<span class="rfq-spec-chip" title="${esc(u)}">`
+        + `<span class="rfq-spec-name" onclick="openArtPreview('${ua}')">${esc(name)}</span>`
+        + `<span class="rfq-spec-del remove-tier" onclick="removeRfqSpec(${id}, '${ua}')" title="Remove spec">&times;</span></span>`;
+    });
+    html += `<span class="rfq-spec-add" onclick="uploadRfqSpec(${id})" title="Upload a design / spec file for this line">+ ${urls.length ? 'Spec' : 'Specs'}</span>`;
+    cell.innerHTML = html;
+  }
+  function uploadRfqSpec(id) {
+    if (!_sectionEditable('rfq')) { if (typeof showToast === 'function') showToast('Unlock the RFQ section (Edit) to change specs.', 'warn'); return; }
+    if (!currentClient || !currentWorkbookId) return;
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.multiple = true;
+    inp.accept = '.ai,.pdf,.psd,.eps,.svg,.png,.jpg,.jpeg,.webp,.tif,.tiff,.heic,.heif,.indd,.sketch,.xd,.fig,.doc,.docx,.xls,.xlsx,.ppt,.pptx';
+    inp.onchange = async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+      for (const f of files) {
+        const data = await _uploadArtFileXhr(f, dbId);
+        if (data && data.success && data.url) {
+          const cur = getRfqRowSpecs(id); cur.push(data.url); setRfqRowSpecs(id, cur);
+        } else if (typeof showToast === 'function') {
+          showToast('Spec upload failed: ' + ((data && data.error) || ''), 'error');
+        }
+      }
+    };
+    inp.click();
+  }
+  function removeRfqSpec(id, url) {
+    if (!_sectionEditable('rfq')) { if (typeof showToast === 'function') showToast('Unlock the RFQ section (Edit) to remove specs.', 'warn'); return; }
+    if (url && String(url).startsWith('uploads/')) { try { apiCall('delete_image', { url }); } catch (_) {} }
+    setRfqRowSpecs(id, getRfqRowSpecs(id).filter(u => u !== url));
   }
 
   function renderRfqLineImages(id) {
@@ -20179,7 +20249,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           incoming.forEach(rfqItem => {
             addRfqRow(rfqItem.item || '', rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb,
                       rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [],
-                      rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx);
+                      rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || []);
           });
           while (document.querySelectorAll('#rfq-body tr').length < 3) addRfqRow();
         } finally { _filling = prevFilling; }
@@ -21129,6 +21199,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         sample: sampleCheck?.checked || false,
         variants,
         images: getRfqRowImages(id),   // assigned product-image URLs
+        specs: getRfqRowSpecs(id),     // per-line uploaded design/spec files
         comparableOptions: compOptions,
         selectedOptionIdx: compSelected
       });
@@ -33718,7 +33789,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           // First row: replace empty or old "Main Item" placeholder with the actual product name
           let itemName = rfqItem.item;
           if (idx === 0 && (!itemName || itemName === 'Main Item')) itemName = data.product || '';
-          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [], rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx);
+          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [], rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || []);
         });
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
