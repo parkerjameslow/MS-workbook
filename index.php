@@ -20182,26 +20182,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // thumbnails; other art files — PDF/CAD/etc — show as an icon tile).
   // The picker is grouped into three sections for the given line:
   //  • product  — the shared Product Images gallery (pick any to attach)
-  //  • design   — the single workbook Design File
-  //  • lineArt  — art/spec files that belong to THIS line only (its own
-  //               breakdown of the design). We deliberately do NOT show the
-  //               whole Art-tab pool or other lines' art here — new line art
-  //               is added via Upload. Already-assigned art for this line
-  //               (not a product image, not the design file) surfaces here.
+  //  • design   — the Design File(s): the workbook Design File plus any PDF /
+  //               spec sheet attached to this line (PDFs are design docs)
+  //  • lineArt  — the remaining art/spec files that belong to THIS line only
+  //               (its own breakdown of the design). We deliberately do NOT
+  //               show the whole Art-tab pool or other lines' art — new files
+  //               are added via Upload (a PDF routes to Design File by kind).
   function _rfqPickerGroups(targetId) {
     const kindOf = (url) => (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
-    const assignedSet = new Set(getRfqRowImages(targetId));
+    const assigned = getRfqRowImages(targetId);
+    const assignedSet = new Set(assigned);
     const prodAll = [...new Set((Array.isArray(_productImages) ? _productImages : []).map(i => i && i.url).filter(Boolean))];
     const prodSet = new Set(prodAll);
     // Split the shared product gallery into the one(s) already on THIS line vs
     // the rest (only revealed when the operator taps "Choose from gallery").
     const productAssigned = prodAll.filter(u => assignedSet.has(u)).map(url => ({ url, kind: 'image' }));
     const productRest = prodAll.filter(u => !assignedSet.has(u)).map(url => ({ url, kind: 'image' }));
-    const design = (_designFile) ? [{ url: _designFile, kind: kindOf(_designFile) }] : [];
-    const seen = new Set();
+    // Design File = the workbook Design File (pickable even if not yet on the
+    // line) + every PDF attached to this line (spec sheets are design docs).
+    const design = [];
+    const designSeen = new Set();
+    if (_designFile) { designSeen.add(_designFile); design.push({ url: _designFile, kind: kindOf(_designFile) }); }
+    assigned.forEach(url => {
+      if (!url || prodSet.has(url) || designSeen.has(url)) return;
+      if (kindOf(url) === 'pdf') { designSeen.add(url); design.push({ url, kind: 'pdf' }); }
+    });
+    // Art = anything else attached to this line (not a product image, not a
+    // Design File entry) — e.g. .ai / .psd / loose images uploaded to the line.
+    const seen = new Set(designSeen);
     const lineArt = [];
-    getRfqRowImages(targetId).forEach(url => {
-      if (!url || prodSet.has(url) || url === _designFile || seen.has(url)) return;
+    assigned.forEach(url => {
+      if (!url || prodSet.has(url) || seen.has(url)) return;
       seen.add(url);
       lineArt.push({ url, kind: kindOf(url) });
     });
@@ -20250,7 +20261,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? `<button type="button" class="rfq-imgpick-choose" onclick="_rfqTogglePickerProducts()">${_rfqPickerShowAllProducts ? 'Hide gallery' : 'Choose from gallery'}</button>`
       : '';
     html += sec('Product Images', prodBody, prodAction);
-    if (g.design.length) html += sec('Design File', tiles(g.design));
+    // Design File — always shown, above Art. Upload here too; a PDF lands in
+    // this section automatically (PDFs are treated as design docs).
+    html += sec('Design File', uploadTile + tiles(g.design));
     html += sec('Art for this line', uploadTile + tiles(g.lineArt));
     grid.innerHTML = html;
   }
