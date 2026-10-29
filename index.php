@@ -20351,17 +20351,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file for this line (AI, PDF, PSD, image…)"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
     const sec = (title, bodyHtml, actionHtml) => `<div class="rfq-imgpick-sec"><div class="rfq-imgpick-sec-head"><div class="rfq-imgpick-sec-title">${title}</div>${actionHtml || ''}</div><div class="rfq-imgpick-sec-grid">${bodyHtml}</div></div>`;
     const tiles = (arr) => arr.map(s => _rfqPickerTileHtml(s, assigned)).join('');
-    // Each section shows only this line's files by default; "Choose existing"
-    // reveals the matching-kind files from the workbook + Art tab to attach.
-    const chooseBtn = (key, n, label) => n
-      ? `<button type="button" class="rfq-imgpick-choose" onclick="_rfqToggleExpand('${key}')">${_rfqPickerExpanded[key] ? 'Hide' : label}</button>`
-      : '';
     let html = '';
     // Product Images — Upload tile + this line's images; "Choose from gallery"
-    // reveals existing images (workbook + Art tab) to attach.
+    // (always available) reveals existing images (workbook + Art tab) to attach.
+    const prodChoose = `<button type="button" class="rfq-imgpick-choose" onclick="_rfqToggleExpand('product')">${_rfqPickerExpanded.product ? 'Hide' : 'Choose from gallery'}</button>`;
     let prodBody = uploadTile + tiles(g.productAssigned);
-    if (_rfqPickerExpanded.product) prodBody += tiles(g.imageRest);
-    html += sec('Product Images', prodBody, chooseBtn('product', g.imageRest.length, 'Choose from gallery'));
+    if (_rfqPickerExpanded.product) {
+      prodBody += g.imageRest.length
+        ? tiles(g.imageRest)
+        : `<div class="rfq-imgpick-empty">No other images in this workbook yet — upload one, or add images on the Workbook tab.</div>`;
+    }
+    html += sec('Product Images', prodBody, prodChoose);
     // Design File — Upload only (no gallery chooser; new design files are
     // uploaded, a PDF routes here automatically by kind).
     html += sec('Design File', uploadTile + tiles(g.design));
