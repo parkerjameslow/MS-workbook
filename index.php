@@ -20289,10 +20289,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const kindOf = (url) => (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
     const assigned = getRfqRowImages(targetId);
     const assignedSet = new Set(assigned);
-    // The whole existing-asset pool to pick from = Product Images gallery
-    // (Workbook tab) + every file on the Art tab (any kind). Each section's
-    // "Choose existing" reveals the files OF ITS KIND from this pool, so a line
-    // can attach an image / PDF / art file even before any is on the line.
+    // The pick-from pool is THIS WORKBOOK's files only: the Product Images
+    // gallery (Workbook tab) + every file on the Art tab. The Product Images
+    // "Choose from gallery" chooser shows images AND Adobe/design (.ai/.psd…)
+    // files from this pool, so a line can attach anything uploaded to this
+    // workbook even before any is on the line.
     const prodGallery = (Array.isArray(_productImages) ? _productImages : []).map(i => i && i.url).filter(Boolean);
     const artPoolAll  = (Array.isArray(_artImages) ? _artImages : []).map(i => i && i.url).filter(Boolean);
     const pool = [...new Set([...prodGallery, ...artPoolAll])];
@@ -20312,12 +20313,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       else if (k === 'pdf') design.push({ url, kind: 'pdf' });
       else                  lineArt.push({ url, kind: k });
     });
-    // Rest pools (existing assets not already on this line), split per section.
-    const rest = pool.filter(u => !assignedSet.has(u) && u !== _designFile);
-    const imageRest  = rest.filter(u => kindOf(u) === 'image').map(url => ({ url, kind: 'image' }));
-    const designRest = rest.filter(u => kindOf(u) === 'pdf').map(url => ({ url, kind: 'pdf' }));
-    const artRest    = rest.filter(u => { const k = kindOf(u); return k !== 'image' && k !== 'pdf'; }).map(url => ({ url, kind: kindOf(url) }));
-    return { productAssigned, imageRest, design, designRest, lineArt, artRest };
+    // Gallery chooser pool = this workbook's images + Adobe/design files not
+    // already on the line. (Picking routes by kind: image→Product, .ai→Art.)
+    const galleryRest = pool
+      .filter(u => !assignedSet.has(u) && u !== _designFile)
+      .filter(u => { const k = kindOf(u); return k === 'image' || k === 'design'; })
+      .map(url => ({ url, kind: kindOf(url) }));
+    return { productAssigned, design, lineArt, galleryRest };
   }
   function _rfqPickerTileHtml(s, assigned) {
     const sel = assigned.has(s.url) ? ' selected' : '';
@@ -20357,9 +20359,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const prodChoose = `<button type="button" class="rfq-imgpick-choose" onclick="_rfqToggleExpand('product')">${_rfqPickerExpanded.product ? 'Hide' : 'Choose from gallery'}</button>`;
     let prodBody = uploadTile + tiles(g.productAssigned);
     if (_rfqPickerExpanded.product) {
-      prodBody += g.imageRest.length
-        ? tiles(g.imageRest)
-        : `<div class="rfq-imgpick-empty">No other images in this workbook yet — upload one, or add images on the Workbook tab.</div>`;
+      prodBody += g.galleryRest.length
+        ? tiles(g.galleryRest)
+        : `<div class="rfq-imgpick-empty">No other images or design files uploaded to this workbook yet — use Upload, or add images on the Workbook tab.</div>`;
     }
     html += sec('Product Images', prodBody, prodChoose);
     // Design File — Upload only (no gallery chooser; new design files are
