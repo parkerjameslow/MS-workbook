@@ -2780,8 +2780,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 9px 10px; font-size: 13px; background: var(--surface); color: var(--text);
       cursor: pointer;
     }
-    .rfq-gallery-cta { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; flex-wrap: wrap; }
-    .rfq-gallery-cta span { font-size: 12px; color: var(--text-muted); flex: 1 1 180px; min-width: 0; }
+    /* A gallery file already used in ANOTHER section — dimmed; tap moves it here. */
+    .rfq-imgpick-elsewhere { opacity: 0.45; }
+    .rfq-imgpick-elsewhere:hover { opacity: 0.85; }
     .rfq-imgpick-scrollwrap { position: relative; }
     .rfq-imgpick-grid {
       max-height: 52vh;
@@ -11969,15 +11970,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden;">
     <div class="modal-title" style="flex-shrink:0;">Line Item Specs</div>
     <p style="color:var(--text-muted); font-size:13px; margin:-10px 0 14px; flex-shrink:0;">
-      Tap to attach or remove a file from <strong id="rfq-imgpick-item-name">this line item</strong>. Choose from the shared <strong>Product Images</strong> and <strong>Design File</strong>, or <strong>Upload</strong> art specific to this line.
+      Attach files to <strong id="rfq-imgpick-item-name">this line item</strong>. Use each section's <strong>Choose File</strong> to pick (or upload) a file — it lands in that section.
     </p>
     <div class="rfq-factory-row" style="flex-shrink:0;">
       <label for="rfq-factory-select">Factory</label>
       <select id="rfq-factory-select" onchange="onRfqFactoryChange(this.value)"><!-- populated by JS --></select>
-    </div>
-    <div class="rfq-gallery-cta" style="flex-shrink:0;">
-      <button type="button" class="rfq-imgpick-choose" onclick="openRfqGalleryModal()">Choose from gallery</button>
-      <span>Attach files already uploaded to this workbook — each sorts into its section (images, design file, art).</span>
     </div>
     <div class="rfq-imgpick-scrollwrap">
       <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
@@ -11995,9 +11992,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      to the open line item. -->
 <div class="modal-overlay" id="rfq-gallery-modal" onclick="if(event.target===this)closeRfqGalleryModal()" style="z-index:1200;">
   <div class="modal" style="max-width:620px; display:flex; flex-direction:column; overflow:hidden;">
-    <div class="modal-title" style="flex-shrink:0;">Choose from Gallery</div>
+    <div class="modal-title" style="flex-shrink:0;">Choose File → <span id="rfq-gallery-target" style="color:var(--accent);">Product Images</span></div>
     <p style="color:var(--text-muted); font-size:13px; margin:-10px 0 16px; flex-shrink:0;">
-      Every file uploaded to this workbook. Tap to attach or remove it from this line item.
+      Every file uploaded to this workbook — or <strong>Upload</strong> a new one. Tap a file to add it to the <strong id="rfq-gallery-target2">this</strong> section (tap again to remove).
     </p>
     <div class="rfq-gallery-grid" id="rfq-gallery-grid"><!-- populated by JS --></div>
     <div class="modal-actions" style="margin-top:18px; flex-shrink:0;">
@@ -19994,7 +19991,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return out;
   }
 
-  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = [], comparableOptions = [], selectedOptionIdx = null, specs = [], factory = '') {
+  function addRfqRow(item = '', sku = '', qty = '', priceRmb = '', leadTime = '', sample = false, variants = [], images = [], comparableOptions = [], selectedOptionIdx = null, specs = [], factory = '', fileSections = {}) {
     rfqCount++;
     const id = rfqCount;
     const tbody = document.getElementById('rfq-body');
@@ -20068,6 +20065,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.dataset.images = JSON.stringify(_attached);
     tr.dataset.specs = '[]';
     tr.dataset.factory = (typeof factory === 'string') ? factory : '';   // which factory this line's spec goes to (global list)
+    tr.dataset.fileSections = JSON.stringify((fileSections && typeof fileSections === 'object') ? fileSections : {});   // url → section pin
     tbody.appendChild(tr);
     // Comparable options: the selected option's name/price/lead were already
     // materialized into item/priceRmb/leadTime by collectRfqItems on save, so
@@ -20164,6 +20162,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!tr) return;
     tr.dataset.images = JSON.stringify(urls);
     renderRfqSpecsBtn(id);
+    if (!_filling) autoSaveWorkbook();
+  }
+
+  // Per-line "which section is this file pinned to" map { url: 'product'|
+  // 'design'|'art' }. A file the operator chose via a section's "Choose File"
+  // button shows in THAT section regardless of its kind. Files with no entry
+  // fall back to kind-based classification (image→product, pdf→design, else→art).
+  function getRfqRowFileSections(id) {
+    const tr = document.getElementById(`rfq-${id}`);
+    if (!tr) return {};
+    try { const o = JSON.parse(tr.dataset.fileSections || '{}'); return (o && typeof o === 'object') ? o : {}; }
+    catch (e) { return {}; }
+  }
+  function setRfqRowFileSection(id, url, section) {
+    const tr = document.getElementById(`rfq-${id}`);
+    if (!tr) return;
+    const map = getRfqRowFileSections(id);
+    if (section) map[url] = section; else delete map[url];
+    tr.dataset.fileSections = JSON.stringify(map);
     if (!_filling) autoSaveWorkbook();
   }
 
@@ -20318,23 +20335,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _rfqPickerGroups(targetId) {
     const kindOf = (url) => (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
     const assigned = getRfqRowImages(targetId);
-    // Attached files split BY KIND: images → Product Images, PDFs → Design
-    // File, everything else (.ai/.psd/.eps…) → Art for this line. The pick-from
-    // pool (Product Images gallery + Art tab + Design File) lives in the
-    // "Choose from gallery" modal (_rfqGalleryPool), not here.
+    const pins = getRfqRowFileSections(targetId);   // url → 'product'|'design'|'art'
+    // A file goes to the section it was PINNED to (via that section's "Choose
+    // File" button); otherwise it falls back to kind (image→product, pdf→design,
+    // else→art). The pick-from pool lives in the gallery modal (_rfqGalleryPool).
+    const sectionFor = (url) => {
+      const p = pins[url];
+      if (p === 'product' || p === 'design' || p === 'art') return p;
+      const k = kindOf(url);
+      return k === 'image' ? 'product' : (k === 'pdf' ? 'design' : 'art');
+    };
     const productAssigned = [];
     const design = [];
     const lineArt = [];
     const seen = new Set();
-    // Workbook Design File first — pickable even if not yet on the line.
+    // Workbook Design File first — always in the Design File section.
     if (_designFile) { seen.add(_designFile); design.push({ url: _designFile, kind: kindOf(_designFile) }); }
     assigned.forEach(url => {
       if (!url || seen.has(url)) return;
       seen.add(url);
-      const k = kindOf(url);
-      if (k === 'image')    productAssigned.push({ url, kind: 'image' });
-      else if (k === 'pdf') design.push({ url, kind: 'pdf' });
-      else                  lineArt.push({ url, kind: k });
+      const s = sectionFor(url);
+      const tile = { url, kind: kindOf(url) };
+      if (s === 'product') productAssigned.push(tile);
+      else if (s === 'design') design.push(tile);
+      else lineArt.push(tile);
     });
     return { productAssigned, design, lineArt };
   }
@@ -20384,18 +20408,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!grid) return;
     const g = _rfqPickerGroups(_rfqPickerTargetId);
     const assigned = new Set(getRfqRowImages(_rfqPickerTargetId));
-    const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file for this line (AI, PDF, PSD, image…)"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
     const sec = (title, bodyHtml, actionHtml) => `<div class="rfq-imgpick-sec"><div class="rfq-imgpick-sec-head"><div class="rfq-imgpick-sec-title">${title}</div>${actionHtml || ''}</div><div class="rfq-imgpick-sec-grid">${bodyHtml}</div></div>`;
     const tiles = (arr) => arr.map(s => _rfqPickerTileHtml(s, assigned)).join('');
+    // Each section has its OWN "Choose File" button — whatever you pick in the
+    // gallery is pinned to the section you launched it from (not sorted by kind).
+    const chooseBtn = (section) => `<button type="button" class="rfq-imgpick-choose" onclick="openRfqGalleryModal('${section}')">Choose File</button>`;
+    const emptyNote = (txt) => `<div class="rfq-imgpick-empty">${txt}</div>`;
     let html = '';
-    // Each section is Upload + this line's files OF THAT KIND. Picking from the
-    // workbook gallery is a top-level action (above the sections), since a
-    // picked file sorts into its own section by kind (e.g. a PDF → Design File).
-    html += sec('Product Images', uploadTile + tiles(g.productAssigned));
-    // Design File — a PDF routes here automatically by kind.
-    html += sec('Design File', uploadTile + tiles(g.design));
-    // Art for this line — Upload only.
-    html += sec('Art for this line', uploadTile + tiles(g.lineArt));
+    html += sec('Product Images', tiles(g.productAssigned) || emptyNote('Nothing yet — tap “Choose File”.'), chooseBtn('product'));
+    html += sec('Design File', tiles(g.design) || emptyNote('Nothing yet — tap “Choose File”.'), chooseBtn('design'));
+    html += sec('Art for this line', tiles(g.lineArt) || emptyNote('Nothing yet — tap “Choose File”.'), chooseBtn('art'));
     grid.innerHTML = html;
     try { if (typeof _hydrateAiThumbs === 'function') _hydrateAiThumbs(grid); } catch (_) {}
     grid.onscroll = _updateRfqPickerFade;
@@ -20435,14 +20457,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!confirm('Remove this file from this line item?')) return;
     const next = getRfqRowImages(_rfqPickerTargetId).filter(u => u !== url);
     setRfqRowImages(_rfqPickerTargetId, next);
+    setRfqRowFileSection(_rfqPickerTargetId, url, null);   // clear its section pin
     _rerenderRfqPickers();
   }
 
-  // ── "Choose from gallery" modal — every file uploaded to THIS workbook
-  // (Product Images + Art tab + the Design File), tap to attach/detach to the
-  // line. Nested above the Specs modal.
-  function openRfqGalleryModal() {
+  // ── "Choose File" gallery modal — every file uploaded to THIS workbook
+  // (Product Images + Art tab + the Design File). Launched from a SECTION's
+  // "Choose File" button; whatever you pick is pinned to THAT section. Nested
+  // above the Specs modal.
+  let _rfqGalleryTargetSection = 'product';
+  const _RFQ_SECTION_LABEL = { product: 'Product Images', design: 'Design File', art: 'Art for this line' };
+  function openRfqGalleryModal(section) {
     if (_rfqPickerTargetId == null) return;
+    _rfqGalleryTargetSection = (section === 'design' || section === 'art') ? section : 'product';
+    const lblText = _RFQ_SECTION_LABEL[_rfqGalleryTargetSection] || 'this section';
+    const lbl = document.getElementById('rfq-gallery-target');
+    if (lbl) lbl.textContent = lblText;
+    const lbl2 = document.getElementById('rfq-gallery-target2');
+    if (lbl2) lbl2.textContent = lblText;
     renderRfqGalleryGrid();
     const m = document.getElementById('rfq-gallery-modal');
     if (m) m.classList.add('open');
@@ -20463,34 +20495,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const grid = document.getElementById('rfq-gallery-grid');
     if (!grid) return;
     const assigned = new Set(getRfqRowImages(_rfqPickerTargetId));
+    const pins = getRfqRowFileSections(_rfqPickerTargetId);
     const pool = _rfqGalleryPool();
-    if (!pool.length) {
-      grid.innerHTML = `<div class="rfq-imgpick-empty">No files uploaded to this workbook yet — use Upload on a section, or add images on the Workbook tab.</div>`;
-      return;
-    }
-    grid.innerHTML = pool.map(s => {
+    // First tile: upload a brand-new file straight into the launching section.
+    const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file into this section"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
+    const tilesHtml = pool.map(s => {
       const esc = s.url.replace(/'/g, "\\'");
-      const sel = assigned.has(s.url) ? ' selected' : '';
-      return `<div class="rfq-imgpick-item${sel}" onclick="toggleRfqGalleryPick('${esc}')" title="${assigned.has(s.url) ? 'On this line — tap to remove' : 'Tap to add to this line'}">${_rfqPickerThumbInner(s)}</div>`;
+      const here = assigned.has(s.url) && (pins[s.url] || _rfqDefaultSection(s.url)) === _rfqGalleryTargetSection;
+      const elsewhere = assigned.has(s.url) && !here;
+      const sel = here ? ' selected' : '';
+      const title = here ? 'In this section — tap to remove' : (elsewhere ? 'Used in another section — tap to move it here' : 'Tap to add to this section');
+      const dim = elsewhere ? ' rfq-imgpick-elsewhere' : '';
+      return `<div class="rfq-imgpick-item${sel}${dim}" onclick="toggleRfqGalleryPick('${esc}')" title="${title}">${_rfqPickerThumbInner(s)}</div>`;
     }).join('');
+    grid.innerHTML = uploadTile + tilesHtml;
     try { if (typeof _hydrateAiThumbs === 'function') _hydrateAiThumbs(grid); } catch (_) {}
   }
-  // Frictionless toggle inside the gallery modal (no ✕/confirm — that's the
-  // Specs sections' semantics). Re-renders the modal grid in place.
+  function _rfqDefaultSection(url) {
+    const k = (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
+    return k === 'image' ? 'product' : (k === 'pdf' ? 'design' : 'art');
+  }
+  // Tap in the gallery: add+pin to the launching section, move it there if it's
+  // on another section, or remove it if it's already in this one. No confirm.
   function toggleRfqGalleryPick(url) {
     if (_rfqPickerTargetId == null) return;
-    const cur = getRfqRowImages(_rfqPickerTargetId);
-    const next = cur.includes(url) ? cur.filter(u => u !== url) : [...cur, url];
-    setRfqRowImages(_rfqPickerTargetId, next);
+    const id = _rfqPickerTargetId;
+    const cur = getRfqRowImages(id);
+    const pins = getRfqRowFileSections(id);
+    const curSection = cur.includes(url) ? (pins[url] || _rfqDefaultSection(url)) : null;
+    if (curSection === _rfqGalleryTargetSection) {
+      // Already in this section → remove from the line.
+      setRfqRowImages(id, cur.filter(u => u !== url));
+      setRfqRowFileSection(id, url, null);
+    } else {
+      // Add (if needed) and pin to the launching section.
+      if (!cur.includes(url)) setRfqRowImages(id, [...cur, url]);
+      setRfqRowFileSection(id, url, _rfqGalleryTargetSection);
+    }
     renderRfqGalleryGrid();
   }
 
-  // Upload new file(s) straight from the Specs picker: they land in the Art
-  // pool (so they show on the Art tab + picker) AND auto-attach to this line.
+  // Upload new file(s) from the gallery modal's Upload tile: they land in the
+  // Art pool (so they show on the Art tab) AND attach to this line, PINNED to
+  // the section the gallery was launched from.
   async function uploadRfqPickerFile() {
     if (_rfqPickerTargetId == null) return;
     if (!_sectionEditable('rfq')) { if (typeof showToast === 'function') showToast('Unlock the RFQ section (Edit) to add files.', 'warn'); return; }
     if (!currentClient || !currentWorkbookId) return;
+    const section = _rfqGalleryTargetSection;
     const inp = document.createElement('input');
     inp.type = 'file';
     inp.multiple = true;
@@ -20507,13 +20559,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           if (!_artImages.some(i => i && i.url === data.url)) _artImages.push({ url: data.url });
           const cur = getRfqRowImages(id);
           if (!cur.includes(data.url)) setRfqRowImages(id, [...cur, data.url]);
+          setRfqRowFileSection(id, data.url, section);   // pin to the launching section
         } else if (typeof showToast === 'function') {
           showToast('Upload failed: ' + ((data && data.error) || ''), 'error');
         }
       }
       try { if (typeof saveArtList === 'function') saveArtList(); } catch (_) {}
       try { if (typeof _renderBothGalleries === 'function') _renderBothGalleries(); } catch (_) {}
-      renderRfqImagePickerGrid();
+      _rerenderRfqPickers();
     };
     inp.click();
   }
@@ -20610,7 +20663,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           incoming.forEach(rfqItem => {
             addRfqRow(rfqItem.item || '', rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb,
                       rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [],
-                      rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || [], rfqItem.factory || '');
+                      rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || [], rfqItem.factory || '', rfqItem.fileSections || {});
           });
           while (document.querySelectorAll('#rfq-body tr').length < 3) addRfqRow();
         } finally { _filling = prevFilling; }
@@ -21562,6 +21615,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         images: getRfqRowImages(id),   // assigned product-image URLs
         specs: getRfqRowSpecs(id),     // per-line uploaded design/spec files
         factory: (row.dataset.factory || ''),   // which factory this line goes to
+        fileSections: getRfqRowFileSections(id), // url → pinned section
         comparableOptions: compOptions,
         selectedOptionIdx: compSelected
       });
@@ -34153,7 +34207,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           // First row: replace empty or old "Main Item" placeholder with the actual product name
           let itemName = rfqItem.item;
           if (idx === 0 && (!itemName || itemName === 'Main Item')) itemName = data.product || '';
-          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [], rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || [], rfqItem.factory || '');
+          addRfqRow(itemName, rfqItem.sku || '', rfqItem.qty, rfqItem.priceRmb, rfqItem.leadTime, rfqItem.sample || false, rfqItem.variants || [], rfqItem.images || [], rfqItem.comparableOptions || [], rfqItem.selectedOptionIdx, rfqItem.specs || [], rfqItem.factory || '', rfqItem.fileSections || {});
         });
       } else if (data.qty || data.unitPriceRmb) {
         // Legacy: migrate single-row quote data to first RFQ row
