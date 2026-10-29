@@ -20062,7 +20062,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // row (tr.dataset.images). URLs reference the workbook's Product Images
   // gallery (_productImages), so no new upload/storage path is needed.
   let _rfqPickerTargetId = null;
-  let _rfqPickerShowAllProducts = false;   // Product Images section: expanded to full gallery?
+  let _rfqPickerExpanded = {};   // per-section "Choose existing" expand state {product,design,art}
 
   // ── Factory list (GLOBAL — shared across all workbooks) ──────────────
   // Persisted in app_state key `ms_factories` (a JSON array of names). The
@@ -20261,7 +20261,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function openRfqImagePicker(id) {
     if (!_sectionEditable('rfq')) return;
     _rfqPickerTargetId = id;
-    _rfqPickerShowAllProducts = false;   // each open starts collapsed (one image)
+    _rfqPickerExpanded = {};   // each open starts collapsed (only this line's files)
     // Label the modal with the line item's name (or its row number)
     const tr = document.getElementById(`rfq-${id}`);
     const itemInput = tr ? tr.querySelectorAll('input:not([type="checkbox"])')[1] : null;
@@ -20289,12 +20289,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const kindOf = (url) => (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
     const assigned = getRfqRowImages(targetId);
     const assignedSet = new Set(assigned);
-    // "Choose from gallery" pool = existing IMAGES anywhere in the workbook:
-    // the Product Images gallery (Workbook tab) PLUS image files on the Art
-    // tab — so a line can pull an image even before any product image exists.
+    // The whole existing-asset pool to pick from = Product Images gallery
+    // (Workbook tab) + every file on the Art tab (any kind). Each section's
+    // "Choose existing" reveals the files OF ITS KIND from this pool, so a line
+    // can attach an image / PDF / art file even before any is on the line.
     const prodGallery = (Array.isArray(_productImages) ? _productImages : []).map(i => i && i.url).filter(Boolean);
-    const artImages   = (Array.isArray(_artImages) ? _artImages : []).map(i => i && i.url).filter(u => u && kindOf(u) === 'image');
-    const imagePool   = [...new Set([...prodGallery, ...artImages])];
+    const artPoolAll  = (Array.isArray(_artImages) ? _artImages : []).map(i => i && i.url).filter(Boolean);
+    const pool = [...new Set([...prodGallery, ...artPoolAll])];
     // Attached files split BY KIND: images → Product Images, PDFs → Design
     // File, everything else (.ai/.psd/.eps…) → Art for this line.
     const productAssigned = [];
@@ -20311,9 +20312,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       else if (k === 'pdf') design.push({ url, kind: 'pdf' });
       else                  lineArt.push({ url, kind: k });
     });
-    // Rest of the image pool (not already on this line) — revealed by "Choose".
-    const productRest = imagePool.filter(u => !assignedSet.has(u)).map(url => ({ url, kind: 'image' }));
-    return { productAssigned, productRest, design, lineArt };
+    // Rest pools (existing assets not already on this line), split per section.
+    const rest = pool.filter(u => !assignedSet.has(u) && u !== _designFile);
+    const imageRest  = rest.filter(u => kindOf(u) === 'image').map(url => ({ url, kind: 'image' }));
+    const designRest = rest.filter(u => kindOf(u) === 'pdf').map(url => ({ url, kind: 'pdf' }));
+    const artRest    = rest.filter(u => { const k = kindOf(u); return k !== 'image' && k !== 'pdf'; }).map(url => ({ url, kind: kindOf(url) }));
+    return { productAssigned, imageRest, design, designRest, lineArt, artRest };
   }
   function _rfqPickerTileHtml(s, assigned) {
     const sel = assigned.has(s.url) ? ' selected' : '';
@@ -20347,21 +20351,26 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file for this line (AI, PDF, PSD, image…)"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
     const sec = (title, bodyHtml, actionHtml) => `<div class="rfq-imgpick-sec"><div class="rfq-imgpick-sec-head"><div class="rfq-imgpick-sec-title">${title}</div>${actionHtml || ''}</div><div class="rfq-imgpick-sec-grid">${bodyHtml}</div></div>`;
     const tiles = (arr) => arr.map(s => _rfqPickerTileHtml(s, assigned)).join('');
-    let html = '';
-    // Product Images — by default only the image(s) already on this line.
-    // "Choose from gallery" reveals the rest of the shared gallery to pick from.
-    let prodBody = g.productAssigned.length
-      ? tiles(g.productAssigned)
-      : `<div class="rfq-imgpick-empty">No product image on this line yet${g.productRest.length ? ' — tap “Choose from gallery”.' : ' — add one on the Workbook tab.'}</div>`;
-    if (_rfqPickerShowAllProducts && g.productRest.length) prodBody += tiles(g.productRest);
-    const prodAction = g.productRest.length
-      ? `<button type="button" class="rfq-imgpick-choose" onclick="_rfqTogglePickerProducts()">${_rfqPickerShowAllProducts ? 'Hide gallery' : 'Choose from gallery'}</button>`
+    // Each section shows only this line's files by default; "Choose existing"
+    // reveals the matching-kind files from the workbook + Art tab to attach.
+    const chooseBtn = (key, n, label) => n
+      ? `<button type="button" class="rfq-imgpick-choose" onclick="_rfqToggleExpand('${key}')">${_rfqPickerExpanded[key] ? 'Hide' : label}</button>`
       : '';
-    html += sec('Product Images', prodBody, prodAction);
+    let html = '';
+    // Product Images
+    let prodBody = tiles(g.productAssigned);
+    if (_rfqPickerExpanded.product) prodBody += tiles(g.imageRest);
+    if (!prodBody) prodBody = `<div class="rfq-imgpick-empty">No product image on this line yet${g.imageRest.length ? ' — tap “Choose from gallery”.' : ' — add one on the Workbook tab.'}</div>`;
+    html += sec('Product Images', prodBody, chooseBtn('product', g.imageRest.length, 'Choose from gallery'));
     // Design File — always shown, above Art. Upload here too; a PDF lands in
     // this section automatically (PDFs are treated as design docs).
-    html += sec('Design File', uploadTile + tiles(g.design));
-    html += sec('Art for this line', uploadTile + tiles(g.lineArt));
+    let designBody = uploadTile + tiles(g.design);
+    if (_rfqPickerExpanded.design) designBody += tiles(g.designRest);
+    html += sec('Design File', designBody, chooseBtn('design', g.designRest.length, 'Choose existing'));
+    // Art for this line
+    let artBody = uploadTile + tiles(g.lineArt);
+    if (_rfqPickerExpanded.art) artBody += tiles(g.artRest);
+    html += sec('Art for this line', artBody, chooseBtn('art', g.artRest.length, 'Choose existing'));
     grid.innerHTML = html;
     grid.onscroll = _updateRfqPickerFade;
     requestAnimationFrame(_updateRfqPickerFade);
@@ -20377,8 +20386,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     wrap.classList.toggle('can-scroll', canScroll);
     wrap.classList.toggle('at-bottom', atBottom);
   }
-  function _rfqTogglePickerProducts() {
-    _rfqPickerShowAllProducts = !_rfqPickerShowAllProducts;
+  function _rfqToggleExpand(key) {
+    _rfqPickerExpanded[key] = !_rfqPickerExpanded[key];
     renderRfqImagePickerGrid();
   }
 
