@@ -7948,6 +7948,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="user-dropdown-item" onclick="openChangePasswordModal(); closeUserDropdown()">Change Password</button>
         <button class="user-dropdown-item" onclick="openHistoryModal(); closeUserDropdown()">History</button>
         <button class="user-dropdown-item" id="theme-dropdown-btn" onclick="toggleTheme()">Light Mode</button>
+        <button class="user-dropdown-item" id="lang-dropdown-btn" onclick="toggleLanguage()" data-i18n-skip>中文</button>
         <?php if ($_msRole === 'admin'): ?>
         <button class="user-dropdown-item" onclick="openUsersModal(); closeUserDropdown()">Manage Users</button>
         <?php endif; ?>
@@ -13021,6 +13022,169 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const btn = document.getElementById('theme-dropdown-btn');
     if (btn) btn.textContent = isDark ? 'Dark Mode' : 'Light Mode';
   }
+
+  /* ── Language (English ⇄ 简体中文) ──────────────────────────────────────
+     Self-contained, dictionary-based UI translation — nothing is sent to any
+     outside service. `I18N_ZH` maps an exact (trimmed) English UI string to its
+     Chinese translation. When Chinese is on we walk the DOM translating known
+     strings, and a MutationObserver translates anything rendered afterward
+     (modals, table rows, etc.). Switching back to English restores originals.
+     To translate more of the app, add entries to I18N_ZH — keys must match the
+     real DOM text EXACTLY (mind casing/punctuation; CSS uppercasing doesn't
+     change the underlying text). User data (names, prices, free text) never
+     matches a key, so it's left untouched. */
+  const I18N_ZH = {
+    // Account / top bar
+    "Logged in as": "登录用户", "Change Password": "修改密码", "History": "历史记录",
+    "Light Mode": "浅色模式", "Dark Mode": "深色模式", "Manage Users": "用户管理",
+    "Print / Export": "打印 / 导出", "Log Out": "退出登录", "Pallet Calc": "托盘计算",
+    "Account": "账户", "Settings": "设置", "Language": "语言",
+    // Navigation / sidebar
+    "Home": "主页", "Clients": "客户", "Client": "客户", "Workbooks": "工作簿",
+    "Workbook": "工作簿", "Design": "设计", "Production": "生产", "Shipments": "货运",
+    "Billings": "账单", "Billing": "账单信息", "Inventory": "库存", "Reports": "报表",
+    "Commissions": "佣金", "CRM": "客户关系管理", "SKUs & Variants": "SKU 与变体",
+    "AI Assistant": "AI 助手", "Pipeline": "流程看板", "Samples": "样品", "Sample": "样品",
+    "Orders": "订单", "Shipment": "货运",
+    // Workbook detail / actions
+    "Back to Workbooks": "返回工作簿", "Overview": "概览", "Product Overview": "产品概览",
+    "Pricing": "定价", "RFQ": "询价", "Quote": "报价", "Status": "状态",
+    "Watchers": "关注者", "Notify Client": "通知客户", "Send to Portal": "发送至门户",
+    "Create QB Invoice": "创建 QB 发票", "Client Quote": "客户报价",
+    "Send for Review": "提交审核", "Quote Details": "报价明细",
+    // RFQ table headers (literal uppercase in the markup)
+    "Combine": "合并", "SPECS": "规格", "Specs": "规格", "ITEM": "产品", "Item": "产品",
+    "QTY": "数量", "Qty": "数量", "Quantity": "数量", "UNIT PRICE (RMB)": "单价（人民币）",
+    "UNIT PRICE (USD)": "单价（美元）", "TOTAL (USD)": "总计（美元）", "LEAD TIME": "交货期",
+    "Lead Time": "交货期", "SAMPLE": "样品", "Options": "选项", "+ Add Variant": "+ 添加变体",
+    "+ Add Line Item": "+ 添加行项目", "Enter Item": "输入产品", "SKU": "货号",
+    // Specs modal
+    "Line Item Specs": "行项目规格", "Product Images": "产品图片", "Design File": "设计文件",
+    "Art for this line": "该行美工文件", "Choose File": "选择文件",
+    "Choose from gallery": "从图库选择", "Choose from Gallery": "从图库选择",
+    "Upload": "上传", "Factory": "工厂", "— Select factory —": "— 选择工厂 —",
+    "+ Add new factory…": "+ 添加新工厂…", "⌄ more below": "⌄ 更多内容",
+    // Common buttons / actions
+    "Save": "保存", "Cancel": "取消", "Edit": "编辑", "Delete": "删除", "Remove": "移除",
+    "Add": "添加", "Done": "完成", "Done editing": "完成编辑", "Close": "关闭",
+    "Confirm": "确认", "Next": "下一步", "Back": "返回", "Search": "搜索", "Filter": "筛选",
+    "New": "新建", "Create": "创建", "Update": "更新", "Submit": "提交", "Send": "发送",
+    "Print": "打印", "Export": "导出", "Download": "下载", "View": "查看", "Manage": "管理",
+    "Apply": "应用", "Reset": "重置", "Yes": "是", "No": "否", "OK": "确定", "Continue": "继续",
+    "Select": "选择", "Clear": "清除", "Refresh": "刷新", "Duplicate": "复制", "Move": "移动",
+    "Archive": "归档", "Restore": "恢复", "Rename": "重命名", "Convert to Client": "转为客户",
+    // Statuses / pipeline
+    "Review": "审核", "Ready For Review": "待审核", "Quote to Client": "向客户报价",
+    "Ordered": "已下单", "In Production": "生产中", "Produced": "已生产", "Shipped": "已发货",
+    "In Transit": "运输中", "Delivered": "已送达", "Received": "已收货", "Pending": "待处理",
+    "Draft": "草稿", "Approved": "已批准", "Completed": "已完成", "Sent to Factory": "已发送至工厂",
+    "Design Approved": "设计已批准",
+    // Pricing
+    "Unit Price": "单价", "Total": "总计", "Subtotal": "小计", "Price": "价格", "Cost": "成本",
+    "Margin": "利润", "Sale Price": "销售价", "Sale Per": "销售单价", "Product Cost": "产品成本",
+    "Tiered Pricing": "阶梯定价", "Total Order": "订单总额", "days": "天",
+    // Shipping / freight / pallet
+    "Freight": "运费", "Pallet": "托盘", "Container": "集装箱", "Carton": "纸箱",
+    "Dimensions": "尺寸", "Carton Specifications": "纸箱规格", "Weight": "重量",
+    "Volume": "体积", "Tracking": "物流跟踪", "Pallet View": "托盘视图",
+    "Container View": "集装箱视图", "Case Override": "装箱覆盖", "Product Override": "产品覆盖",
+    // Clients
+    "Add Client": "添加客户", "Shipping": "收货信息", "Same as shipping": "与收货地址相同",
+    "Contact": "联系人", "Email": "电子邮件", "Phone": "电话", "Address": "地址",
+    "Notes": "备注", "Comments": "评论", "Company": "公司", "Account Manager": "客户经理",
+    "Salesperson": "销售人员",
+    // Misc
+    "Loading…": "加载中…", "Loading...": "加载中…", "No results": "无结果",
+    "Product Images gallery": "产品图片库", "Art": "美工", "Images": "图片", "Files": "文件"
+  };
+  let _lang = 'en';
+  let _i18nObserver = null;
+  const _i18nDone = [];   // {kind:'text'|'attr', node?, el?, attr?, orig}
+  function _zhLookup(s) { const k = (s == null ? '' : String(s)).trim(); return k ? (I18N_ZH[k] || null) : null; }
+  function _i18nTranslateTextNode(node) {
+    const raw = node.nodeValue;
+    if (!raw || !raw.trim()) return;
+    const p = node.parentNode;
+    if (p) {
+      const tag = p.nodeName;
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA') return;
+      if (p.closest && p.closest('[data-i18n-skip]')) return;
+    }
+    const trimmed = raw.trim();
+    const v = _zhLookup(trimmed);
+    if (v == null) return;
+    const i = raw.indexOf(trimmed);
+    const lead = raw.slice(0, i), trail = raw.slice(i + trimmed.length);
+    _i18nDone.push({ kind: 'text', node, orig: raw });
+    node.nodeValue = lead + v + trail;
+  }
+  function _i18nTranslateAttr(el, attr) {
+    const val = el.getAttribute && el.getAttribute(attr);
+    if (!val) return;
+    const v = _zhLookup(val);
+    if (v == null) return;
+    _i18nDone.push({ kind: 'attr', el, attr, orig: val });
+    el.setAttribute(attr, v);
+  }
+  function _i18nTranslateTree(root) {
+    if (!root) return;
+    if (root.nodeType === 3) { _i18nTranslateTextNode(root); return; }
+    if (root.nodeType !== 1 && root.nodeType !== 9 && root.nodeType !== 11) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(n) {
+        const p = n.parentNode;
+        if (!p) return NodeFilter.FILTER_REJECT;
+        const tag = p.nodeName;
+        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA') return NodeFilter.FILTER_REJECT;
+        if (p.closest && p.closest('[data-i18n-skip]')) return NodeFilter.FILTER_REJECT;
+        return n.nodeValue && n.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      }
+    });
+    const texts = [];
+    let c; while ((c = walker.nextNode())) texts.push(c);
+    texts.forEach(_i18nTranslateTextNode);
+    const attrEls = [];
+    if (root.nodeType === 1 && (root.hasAttribute('placeholder') || root.hasAttribute('title'))) attrEls.push(root);
+    if (root.querySelectorAll) root.querySelectorAll('[placeholder],[title]').forEach(e => attrEls.push(e));
+    attrEls.forEach(e => { _i18nTranslateAttr(e, 'placeholder'); _i18nTranslateAttr(e, 'title'); });
+  }
+  function _i18nRestore() {
+    // reverse so the earliest-captured (true) original wins if a node was
+    // re-translated after a dynamic text change.
+    for (let i = _i18nDone.length - 1; i >= 0; i--) {
+      const r = _i18nDone[i];
+      try { if (r.kind === 'text') r.node.nodeValue = r.orig; else r.el.setAttribute(r.attr, r.orig); } catch (e) {}
+    }
+    _i18nDone.length = 0;
+  }
+  function _i18nStartObserver() {
+    if (_i18nObserver) return;
+    _i18nObserver = new MutationObserver(muts => {
+      if (_lang !== 'zh') return;
+      for (const m of muts) {
+        if (!m.addedNodes) continue;
+        m.addedNodes.forEach(n => { try { _i18nTranslateTree(n); } catch (e) {} });
+      }
+    });
+    _i18nObserver.observe(document.body, { childList: true, subtree: true });
+  }
+  function _i18nStopObserver() { if (_i18nObserver) { _i18nObserver.disconnect(); _i18nObserver = null; } }
+  function applyLanguage(lang) {
+    lang = (lang === 'zh') ? 'zh' : 'en';
+    _lang = lang;
+    try { localStorage.setItem('ms_lang', lang); } catch (e) {}
+    try { document.documentElement.setAttribute('lang', lang === 'zh' ? 'zh-CN' : 'en'); } catch (e) {}
+    const btn = document.getElementById('lang-dropdown-btn');
+    if (btn) btn.textContent = (lang === 'zh') ? 'English' : '中文';
+    if (lang === 'zh') { _i18nTranslateTree(document.body); _i18nStartObserver(); }
+    else { _i18nStopObserver(); _i18nRestore(); }
+  }
+  function toggleLanguage() { applyLanguage(_lang === 'zh' ? 'en' : 'zh'); closeUserDropdown(); }
+  (function _initLang() {
+    const run = () => { let l = 'en'; try { l = localStorage.getItem('ms_lang') || 'en'; } catch (e) {} applyLanguage(l === 'zh' ? 'zh' : 'en'); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+    else run();
+  })();
 
   /* ── User Dropdown ──────────────────────────────────────────────────────── */
   function toggleUserDropdown() {
