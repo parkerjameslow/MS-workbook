@@ -2780,6 +2780,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       padding: 9px 10px; font-size: 13px; background: var(--surface); color: var(--text);
       cursor: pointer;
     }
+    .rfq-gallery-cta { display: flex; align-items: center; gap: 10px; margin: 0 0 16px; flex-wrap: wrap; }
+    .rfq-gallery-cta span { font-size: 12px; color: var(--text-muted); flex: 1 1 180px; min-width: 0; }
     .rfq-imgpick-scrollwrap { position: relative; }
     .rfq-imgpick-grid {
       max-height: 52vh;
@@ -11973,6 +11975,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <label for="rfq-factory-select">Factory</label>
       <select id="rfq-factory-select" onchange="onRfqFactoryChange(this.value)"><!-- populated by JS --></select>
     </div>
+    <div class="rfq-gallery-cta" style="flex-shrink:0;">
+      <button type="button" class="rfq-imgpick-choose" onclick="openRfqGalleryModal()">Choose from gallery</button>
+      <span>Attach files already uploaded to this workbook — each sorts into its section (images, design file, art).</span>
+    </div>
     <div class="rfq-imgpick-scrollwrap">
       <div class="rfq-imgpick-grid" id="rfq-imgpick-grid"><!-- populated by JS --></div>
       <div class="rfq-imgpick-fade" aria-hidden="true"><span class="rfq-imgpick-morechev">⌄ more below</span></div>
@@ -20382,11 +20388,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sec = (title, bodyHtml, actionHtml) => `<div class="rfq-imgpick-sec"><div class="rfq-imgpick-sec-head"><div class="rfq-imgpick-sec-title">${title}</div>${actionHtml || ''}</div><div class="rfq-imgpick-sec-grid">${bodyHtml}</div></div>`;
     const tiles = (arr) => arr.map(s => _rfqPickerTileHtml(s, assigned)).join('');
     let html = '';
-    // Product Images — Upload tile + this line's images; "Choose from gallery"
-    // opens a modal listing every file uploaded to this workbook.
-    const prodChoose = `<button type="button" class="rfq-imgpick-choose" onclick="openRfqGalleryModal()">Choose from gallery</button>`;
-    html += sec('Product Images', uploadTile + tiles(g.productAssigned), prodChoose);
-    // Design File — Upload only (a PDF routes here automatically by kind).
+    // Each section is Upload + this line's files OF THAT KIND. Picking from the
+    // workbook gallery is a top-level action (above the sections), since a
+    // picked file sorts into its own section by kind (e.g. a PDF → Design File).
+    html += sec('Product Images', uploadTile + tiles(g.productAssigned));
+    // Design File — a PDF routes here automatically by kind.
     html += sec('Design File', uploadTile + tiles(g.design));
     // Art for this line — Upload only.
     html += sec('Art for this line', uploadTile + tiles(g.lineArt));
