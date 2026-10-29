@@ -20357,10 +20357,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       ? `<button type="button" class="rfq-imgpick-choose" onclick="_rfqToggleExpand('${key}')">${_rfqPickerExpanded[key] ? 'Hide' : label}</button>`
       : '';
     let html = '';
-    // Product Images
-    let prodBody = tiles(g.productAssigned);
+    // Product Images — Upload tile + this line's images; "Choose from gallery"
+    // reveals existing images (workbook + Art tab) to attach.
+    let prodBody = uploadTile + tiles(g.productAssigned);
     if (_rfqPickerExpanded.product) prodBody += tiles(g.imageRest);
-    if (!prodBody) prodBody = `<div class="rfq-imgpick-empty">No product image on this line yet${g.imageRest.length ? ' — tap “Choose from gallery”.' : ' — add one on the Workbook tab.'}</div>`;
     html += sec('Product Images', prodBody, chooseBtn('product', g.imageRest.length, 'Choose from gallery'));
     // Design File — always shown, above Art. Upload here too; a PDF lands in
     // this section automatically (PDFs are treated as design docs).
