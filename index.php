@@ -20289,30 +20289,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const kindOf = (url) => (typeof _artFileKind === 'function' ? _artFileKind(url) : 'image');
     const assigned = getRfqRowImages(targetId);
     const assignedSet = new Set(assigned);
-    const prodAll = [...new Set((Array.isArray(_productImages) ? _productImages : []).map(i => i && i.url).filter(Boolean))];
-    const prodSet = new Set(prodAll);
-    // Split the shared product gallery into the one(s) already on THIS line vs
-    // the rest (only revealed when the operator taps "Choose from gallery").
-    const productAssigned = prodAll.filter(u => assignedSet.has(u)).map(url => ({ url, kind: 'image' }));
-    const productRest = prodAll.filter(u => !assignedSet.has(u)).map(url => ({ url, kind: 'image' }));
-    // Design File = the workbook Design File (pickable even if not yet on the
-    // line) + every PDF attached to this line (spec sheets are design docs).
+    // "Choose from gallery" pool = existing IMAGES anywhere in the workbook:
+    // the Product Images gallery (Workbook tab) PLUS image files on the Art
+    // tab — so a line can pull an image even before any product image exists.
+    const prodGallery = (Array.isArray(_productImages) ? _productImages : []).map(i => i && i.url).filter(Boolean);
+    const artImages   = (Array.isArray(_artImages) ? _artImages : []).map(i => i && i.url).filter(u => u && kindOf(u) === 'image');
+    const imagePool   = [...new Set([...prodGallery, ...artImages])];
+    // Attached files split BY KIND: images → Product Images, PDFs → Design
+    // File, everything else (.ai/.psd/.eps…) → Art for this line.
+    const productAssigned = [];
     const design = [];
-    const designSeen = new Set();
-    if (_designFile) { designSeen.add(_designFile); design.push({ url: _designFile, kind: kindOf(_designFile) }); }
-    assigned.forEach(url => {
-      if (!url || prodSet.has(url) || designSeen.has(url)) return;
-      if (kindOf(url) === 'pdf') { designSeen.add(url); design.push({ url, kind: 'pdf' }); }
-    });
-    // Art = anything else attached to this line (not a product image, not a
-    // Design File entry) — e.g. .ai / .psd / loose images uploaded to the line.
-    const seen = new Set(designSeen);
     const lineArt = [];
+    const seen = new Set();
+    // Workbook Design File first — pickable even if not yet on the line.
+    if (_designFile) { seen.add(_designFile); design.push({ url: _designFile, kind: kindOf(_designFile) }); }
     assigned.forEach(url => {
-      if (!url || prodSet.has(url) || seen.has(url)) return;
+      if (!url || seen.has(url)) return;
       seen.add(url);
-      lineArt.push({ url, kind: kindOf(url) });
+      const k = kindOf(url);
+      if (k === 'image')    productAssigned.push({ url, kind: 'image' });
+      else if (k === 'pdf') design.push({ url, kind: 'pdf' });
+      else                  lineArt.push({ url, kind: k });
     });
+    // Rest of the image pool (not already on this line) — revealed by "Choose".
+    const productRest = imagePool.filter(u => !assignedSet.has(u)).map(url => ({ url, kind: 'image' }));
     return { productAssigned, productRest, design, lineArt };
   }
   function _rfqPickerTileHtml(s, assigned) {
