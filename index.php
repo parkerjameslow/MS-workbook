@@ -20362,15 +20362,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     let prodBody = uploadTile + tiles(g.productAssigned);
     if (_rfqPickerExpanded.product) prodBody += tiles(g.imageRest);
     html += sec('Product Images', prodBody, chooseBtn('product', g.imageRest.length, 'Choose from gallery'));
-    // Design File — always shown, above Art. Upload here too; a PDF lands in
-    // this section automatically (PDFs are treated as design docs).
-    let designBody = uploadTile + tiles(g.design);
-    if (_rfqPickerExpanded.design) designBody += tiles(g.designRest);
-    html += sec('Design File', designBody, chooseBtn('design', g.designRest.length, 'Choose existing'));
-    // Art for this line
-    let artBody = uploadTile + tiles(g.lineArt);
-    if (_rfqPickerExpanded.art) artBody += tiles(g.artRest);
-    html += sec('Art for this line', artBody, chooseBtn('art', g.artRest.length, 'Choose existing'));
+    // Design File — Upload only (no gallery chooser; new design files are
+    // uploaded, a PDF routes here automatically by kind).
+    html += sec('Design File', uploadTile + tiles(g.design));
+    // Art for this line — Upload only (no gallery chooser).
+    html += sec('Art for this line', uploadTile + tiles(g.lineArt));
     grid.innerHTML = html;
     grid.onscroll = _updateRfqPickerFade;
     requestAnimationFrame(_updateRfqPickerFade);
