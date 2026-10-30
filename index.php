@@ -2795,8 +2795,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-suffix-wrap { position:relative; display:inline-flex; align-items:center; }
     .qq-suffix-wrap input { padding-right:20px; }
     .qq-suffix { position:absolute; right:8px; font-size:12px; color:var(--text-muted); pointer-events:none; }
-    .qq-scroll { display:inline-block; max-width:100%; overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface); vertical-align:top; }
-    .qq-table { border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
+    .qq-scroll { display:block; width:100%; overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface); box-sizing:border-box; }
+    .qq-table { border-collapse:collapse; font-size:12.5px; white-space:nowrap; width:100%; table-layout:fixed; }
     .qq-table th, .qq-table td { padding:6px 8px; border-bottom:1px solid var(--border); text-align:right; }
     .qq-table tbody tr:last-child td { border-bottom:none; }
     /* number + reorder controls */
@@ -2812,8 +2812,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-table thead th { position:sticky; top:0; background:var(--surface2); z-index:2; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); }
     .qq-table thead tr.qq-grp th { text-align:center; font-size:10px; color:#fff; }
     .qq-grp-rmb { background:#2563eb; } .qq-grp-usd { background:#2563eb; } .qq-grp-sale { background:#1e40af; }
-    .qq-table td input { width:84px; box-sizing:border-box; border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--text); text-align:right; font-family:inherit; transition:border-color 0.12s, box-shadow 0.12s; }
-    .qq-table td.qq-text input { width:160px; text-align:left; }
+    .qq-table td input { width:100%; min-width:0; box-sizing:border-box; border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--text); text-align:right; font-family:inherit; transition:border-color 0.12s, box-shadow 0.12s; }
+    .qq-table td.qq-text input { text-align:left; }
+    .qq-table th, .qq-table td { overflow:hidden; }
     .qq-table td input::placeholder { color:var(--text-muted); opacity:0.55; }
     .qq-table td input:hover { border-color:var(--text-muted); }
     .qq-table td input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow, rgba(59,130,246,0.15)); outline:none; }
@@ -2827,7 +2828,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-rm:hover { color:#dc2626; }
     .qq-table tfoot td { font-weight:800; background:var(--surface2); border-top:2px solid var(--border); }
     .qq-sub { font-size:8px; opacity:0.7; font-weight:700; letter-spacing:0.02em; }
-    .qq-view-btn { border:1px solid var(--accent); color:var(--accent); background:transparent; font-size:11px; font-weight:700; border-radius:7px; padding:5px 12px; cursor:pointer; white-space:nowrap; transition:background 0.12s, color 0.12s; }
+    .qq-view-btn { border:1px solid var(--accent); color:var(--accent); background:transparent; font-size:11px; font-weight:700; border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap; transition:background 0.12s, color 0.12s; }
+    #qq-table td:nth-last-child(2), #qq-table td:last-child, #qq-table th:nth-last-child(2), #qq-table th:last-child { padding-left:4px; padding-right:4px; }
     .qq-view-btn:hover { background:var(--accent); color:#fff; }
     .qq-pos { color:#16a34a; }
     /* Totals summary tiles under the grid */
@@ -11127,18 +11129,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <table class="qq-table" id="qq-table">
         <thead>
           <tr>
-            <th style="width:62px;">#</th>
-            <th class="qq-in">Product</th>
-            <th class="qq-in">MOQ / Color</th>
-            <th class="qq-in">Total MOQ</th>
-            <th class="qq-in">QTY</th>
-            <th class="qq-in">RMB Per</th>
-            <th class="qq-in">Master pack</th>
-            <th class="qq-in">Shipping KG</th>
-            <th class="qq-in">RMB / KG</th>
-            <th class="qq-in">Sale (USD)</th>
-            <th></th>
-            <th></th>
+            <th style="width:5%;">#</th>
+            <th style="width:14%;">Product</th>
+            <th style="width:12%;">MOQ / Color</th>
+            <th style="width:9%;">Total MOQ</th>
+            <th style="width:8%;">QTY</th>
+            <th style="width:8%;">RMB Per</th>
+            <th style="width:9%;">Master pack</th>
+            <th style="width:9%;">Shipping KG</th>
+            <th style="width:8%;">RMB / KG</th>
+            <th style="width:8%;">Sale (USD)</th>
+            <th style="width:7%;">Results</th>
+            <th style="width:3%;"></th>
           </tr>
         </thead>
         <tbody id="qq-body"><!-- populated by JS --></tbody>
