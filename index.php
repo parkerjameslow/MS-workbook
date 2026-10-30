@@ -8156,6 +8156,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
     <div class="status-actions" style="display:flex; gap:6px; align-items:center;">
+      <!-- Commit to Client — only shown for draft (Client Quotes) workbooks;
+           creates a client and moves this draft into their workbooks. -->
+      <button id="btn-commit-draft" onclick="commitDraftToClient()" class="wb-stage-btn" style="display:none; background:#16a34a; border-color:#16a34a; color:#fff;" title="Create a client and move this draft into their workbooks">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span>Commit to Client</span>
+      </button>
       <div id="rfq-btn-stack" class="wb-stage-btn-group">
         <!-- Notify Client is always available now; it opens an editable
              quote preview before anything is sent. Stage moves live on the
@@ -24582,7 +24588,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function rebuildSidebar() {
     const searchEl = document.getElementById('sidebar-search');
     if (searchEl) { searchEl.textContent = ''; document.getElementById('sidebar-search-ph').style.display = ''; }
-    const sorted = Object.keys(clientData).sort();
+    const sorted = _hideQuotesClient(Object.keys(clientData)).sort();
 
     // ── Starred list (legacy nav section — removed; starred clients now
     // sort to the top of the Clients card gallery. Guarded in case the
@@ -24745,6 +24751,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Clients
     Object.keys(_clientData || {}).forEach(name => {
+      if (_isQuotesClient(name)) return;   // draft-quote holding client is hidden
       const d = _clientDetails[name] || {};
       const fields = [name, d.email, d.phone, d.primary_contact, d.email2, d.phone2, d.primary_contact2, d.notes, d.account_manager, d.salesperson]
         .filter(Boolean).join(' ').toLowerCase();
@@ -24761,6 +24768,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // ── Workbooks (active + archived). dateCreated is "DD MMM YY"; we
     // approximate recency from the workbook id which auto-increments.
     Object.entries(_clientData || {}).forEach(([clientName, items]) => {
+      if (_isQuotesClient(clientName)) return;   // drafts aren't searchable until committed
       (items || []).forEach(wb => {
         const detail = _workbookDetail[`${clientName}|${wb.id}`] || {};
         const rfqText = (detail.rfqItems || []).flatMap(i => {
@@ -25300,7 +25308,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const grid = document.getElementById('clients-grid');
     if (!grid) return;
     const q = (document.getElementById('clients-search')?.value || '').trim().toLowerCase();
-    const all = Object.keys(clientData || {});
+    const all = _hideQuotesClient(Object.keys(clientData || {}));
     const filtered = q ? all.filter(n => n.toLowerCase().includes(q)) : all;
     // Starred clients float to the TOP, each group alphabetical.
     const collator = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
@@ -25484,7 +25492,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // Group recent workbooks by client; each item carries its status.
     const groups = [];
-    Object.keys(clientData || {}).forEach(name => {
+    _hideQuotesClient(Object.keys(clientData || {})).forEach(name => {
       const recent = (clientData[name] || [])
         .map(it => ({ it, ts: _recentWbTimestamp(it), added: _recentWbAddedTs(it), st: _recentWbStatus(it.flow || {}) }))
         .filter(x => x.ts >= cutoff);
@@ -26223,7 +26231,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }).join('');
     wrap.innerHTML=html;
     const dl=document.getElementById('parker-client-list');
-    if(dl && typeof clientData==='object' && clientData){ dl.innerHTML=Object.keys(clientData).sort().map(n=>`<option value="${_pkEsc(n)}">`).join(''); }
+    if(dl && typeof clientData==='object' && clientData){ dl.innerHTML=_hideQuotesClient(Object.keys(clientData)).sort().map(n=>`<option value="${_pkEsc(n)}">`).join(''); }
   }
   function _parkerSetFilter(name){ _parkerFilter=name; _parkerRenderAll(); }
   function _parkerFilterIdx(i){ const a=_parkerAccounts[i]; if(!a) return; _parkerFilter=(_parkerFilter===a.name)?null:a.name; _parkerRenderAll(); }
@@ -30551,7 +30559,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     // Populate dropdown from live client list
     sel.innerHTML = '<option value="">Select a client…</option>';
-    Object.keys(clientData).sort().forEach(name => {
+    _hideQuotesClient(Object.keys(clientData)).sort().forEach(name => {
       const opt = document.createElement('option');
       opt.value = name;
       opt.textContent = name;
@@ -30796,7 +30804,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       : '—';
 
     // Build client options
-    const clientOptions = Object.keys(clientData).sort().map(n =>
+    const clientOptions = _hideQuotesClient(Object.keys(clientData)).sort().map(n =>
       `<option value="${n.replace(/"/g,'&quot;')}"${n === clientName ? ' selected' : ''}>${n}</option>`
     ).join('');
 
@@ -31957,6 +31965,90 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     location.hash = `#/client/${encodeURIComponent(client)}/workbook/${newId}`;
   }
 
+  /* ── Client Quotes = DRAFT WORKBOOKS ───────────────────────────────────
+     Client Quotes is a staging area of REAL workbooks not yet tied to a
+     client. They live under a hidden holding client (QUOTES_CLIENT) so they
+     reuse the ENTIRE workbook system (full UI, RFQ, pricing, pallet, autosave)
+     and are hidden from every normal client/workbook listing until committed.
+     Commit creates a NEW client and moves the workbook to it. */
+  const QUOTES_CLIENT = 'Client Quotes';
+  // Use the literal (not the const) so these stay safe even if a listing runs
+  // during init before the const initializes (no TDZ throw).
+  function _isQuotesClient(n) { return n === 'Client Quotes'; }
+  function _hideQuotesClient(names) { return (names || []).filter(n => n !== 'Client Quotes'); }
+  async function _ensureQuotesClient() {
+    if (dbClientMap[QUOTES_CLIENT]) { if (!clientData[QUOTES_CLIENT]) clientData[QUOTES_CLIENT] = []; return dbClientMap[QUOTES_CLIENT]; }
+    try {
+      const r = await apiCall('add_client', { name: QUOTES_CLIENT });
+      if (r && r.success) { dbClientMap[QUOTES_CLIENT] = parseInt(r.id); if (!clientData[QUOTES_CLIENT]) clientData[QUOTES_CLIENT] = []; try { saveToLocalStorage(); } catch (e) {} }
+      else { try { await loadFromDatabase(); } catch (e) {} }   // probably already exists server-side
+    } catch (e) { try { await loadFromDatabase(); } catch (_) {} }
+    return dbClientMap[QUOTES_CLIENT];
+  }
+  // Nav entry — ensure the holding client, then open its dashboard (this IS the
+  // Client Quotes area; it reuses the exact client-workbook list UI).
+  async function openClientQuotes() {
+    await _ensureQuotesClient();
+    if (typeof rebuildSidebar === 'function') rebuildSidebar();
+    location.hash = '#/client/' + encodeURIComponent(QUOTES_CLIENT);
+  }
+  // "+ New Quote" — create a draft workbook under the holding client, open it.
+  async function newQuoteWorkbook() {
+    const name = (prompt('Name this quote (product / project):', '') || '').trim();
+    if (!name) return;
+    const clientId = await _ensureQuotesClient();
+    if (!clientId) { alert('Could not set up the Client Quotes area. Please try again.'); return; }
+    let newId;
+    try {
+      const r = await apiCall('add_workbook', { client_id: clientId, product_name: name, description: name, allow_duplicate: true, detail: {} });
+      if (r && r.success) newId = parseInt(r.id); else { alert('Could not create the quote workbook: ' + ((r && r.error) || '')); return; }
+    } catch (e) { alert('Could not create the quote workbook (network error).'); return; }
+    const items = clientData[QUOTES_CLIENT] || [];
+    const today = new Date();
+    const dateStr = today.getDate() + ' ' + today.toLocaleString('en-US', { month: 'short' }) + ' ' + String(today.getFullYear()).slice(2);
+    items.push({ id: newId, product: name, description: name, dateCreated: dateStr, dateSubmitted: '', flow: { prepChina: true, chinaSubmits: false, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } });
+    clientData[QUOTES_CLIENT] = items;
+    dbWorkbookMap[`${QUOTES_CLIENT}|${newId}`] = newId;
+    try { saveToLocalStorage(); } catch (e) {}
+    _wbBackHash = '#/client/' + encodeURIComponent(QUOTES_CLIENT);
+    _wbBackLabel = 'Client Quotes';
+    location.hash = `#/client/${encodeURIComponent(QUOTES_CLIENT)}/workbook/${newId}`;
+  }
+  // Commit the OPEN draft to a NEW client (Parker's choice: always create new).
+  async function commitDraftToClient() {
+    if (currentClient !== QUOTES_CLIENT || !currentWorkbookId) return;
+    const prod = (document.getElementById('product-name') && document.getElementById('product-name').value || '').trim();
+    const newClient = (prompt('Commit this quote to a client.\n\nClient / company name:', prod) || '').trim();
+    if (!newClient) return;
+    if (_isQuotesClient(newClient)) { alert('Pick a real client name.'); return; }
+    try { if (typeof autoSaveWorkbook === 'function') await autoSaveWorkbook(); } catch (_) {}
+    // Resolve or create the destination client.
+    let clientId = dbClientMap[newClient];
+    if (!clientId) {
+      const existing = Object.keys(clientData).find(n => n.toLowerCase() === newClient.toLowerCase() && !_isQuotesClient(n));
+      if (existing && dbClientMap[existing]) clientId = dbClientMap[existing];
+    }
+    if (!clientId) {
+      try {
+        const r = await apiCall('add_client', { name: newClient });
+        if (r && r.success) { clientId = parseInt(r.id); dbClientMap[newClient] = clientId; if (!clientData[newClient]) clientData[newClient] = []; }
+        else if (!/exists/i.test((r && r.error) || '')) { alert('Could not create client: ' + ((r && r.error) || '')); return; }
+      } catch (e) { alert('Could not create client (network error).'); return; }
+    }
+    // Move the workbook out of the holding client into the real client.
+    const wbDbId = dbWorkbookMap[`${QUOTES_CLIENT}|${currentWorkbookId}`] || currentWorkbookId;
+    let newWbId = currentWorkbookId;
+    try {
+      const r = await apiCall('move_workbook', { id: wbDbId, target_client: newClient });
+      if (!r || !r.success) { alert('Could not commit: ' + ((r && r.error) || 'move failed')); return; }
+      newWbId = r.new_workbook_id || currentWorkbookId;
+    } catch (e) { alert('Could not commit (network error).'); return; }
+    try { await loadFromDatabase(); } catch (_) {}
+    if (typeof rebuildSidebar === 'function') rebuildSidebar();
+    if (typeof _msToast === 'function') _msToast(`Committed to ${newClient} — opening workbook…`, 'success');
+    location.hash = `#/client/${encodeURIComponent(newClient)}/workbook/${newWbId}`;
+  }
+
   function showView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
@@ -32364,6 +32456,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function renderClientDetailCard(clientName) {
     const wrap = document.getElementById('client-detail-card-wrap');
     if (!wrap) return;
+    // Client Quotes holding "client" — show a plain header, not the full client
+    // card (no rename / delete / billing / financials for the drafts bucket).
+    if (_isQuotesClient(clientName)) {
+      wrap.innerHTML = `<div class="section-card" style="margin-bottom:14px;"><div style="padding:18px 20px;">
+        <div style="font-size:22px; font-weight:800; color:var(--text);">Client Quotes</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:5px; line-height:1.5;">Draft workbooks waiting to be committed to a real client. Build one like any other workbook &mdash; open it and hit <strong>Commit to Client</strong> when the prospect says yes, or delete it if it goes nowhere.</div>
+      </div></div>`;
+      return;
+    }
     const d = clientDetails[clientName] || {};
     const items = clientData[clientName] || [];
     const total = items.length;
@@ -33069,7 +33170,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       description: 'Every open workbook (flow not complete) with its current step and dollar value still in motion.',
       icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>',
       filters: [
-        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ..._hideQuotesClient(Object.keys(clientData)).sort()] },
         { id: 'am',     label: 'Account Mgr', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
         { id: 'sp',     label: 'Salesperson', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
       ],
@@ -33111,7 +33212,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       description: 'How many quotes turn into confirmed orders, by client. Higher conversion = healthier pipeline.',
       icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>',
       filters: [
-        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ..._hideQuotesClient(Object.keys(clientData)).sort()] },
         { id: 'am',     label: 'Account Mgr', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
       ],
       columns: [
@@ -33241,7 +33342,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       description: 'Effective margin per workbook based on Pricing-tab Total Landed Cost vs the Sale Per. Flag thin-margin work.',
       icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
       filters: [
-        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ..._hideQuotesClient(Object.keys(clientData)).sort()] },
         { id: 'band',   label: 'Margin Band', type: 'select', optionsFn: () => ['', '< 25%', '25–40%', '40–60%', '> 60%'] },
       ],
       columns: [
@@ -33290,7 +33391,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       description: 'Workbooks the client filled out via the intake link — these need a quick once-over before quoting.',
       icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
       filters: [
-        { id: 'client',  label: 'Client',     type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'client',  label: 'Client',     type: 'select', optionsFn: () => ['', ..._hideQuotesClient(Object.keys(clientData)).sort()] },
         { id: 'maxAge',  label: 'Max Age (days)', type: 'days' },
       ],
       columns: [
@@ -33449,7 +33550,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         { id: 'hasOrder',        label: 'On an Order' },
       ],
       filters: [
-        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ...Object.keys(clientData).sort()] },
+        { id: 'client', label: 'Client',      type: 'select', optionsFn: () => ['', ..._hideQuotesClient(Object.keys(clientData)).sort()] },
         { id: 'am',     label: 'Account Mgr', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
         { id: 'sp',     label: 'Salesperson', type: 'select', optionsFn: () => ['', 'Parker Low', 'Jackson Hollberg'] },
         { id: 'step',   label: 'Step',        type: 'select', optionsFn: () => ['', ...flowLabels] },
@@ -34419,6 +34520,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   function renderDashboard(clientName) {
     _clientWbBulkClient = clientName;   // remembered for the bulk RFQ/Samples action
+    // On the Client Quotes (holding) dashboard, the "+ Add Workbook" buttons
+    // become "+ New Quote" (a draft under the holding client).
+    try {
+      const _isQ = _isQuotesClient(clientName);
+      document.querySelectorAll('#view-dashboard .btn-create').forEach(b => {
+        b.textContent = _isQ ? '+ New Quote' : '+ Add Workbook';
+        b.onclick = _isQ ? newQuoteWorkbook : openNewWorkbookModal;
+      });
+    } catch (e) {}
     // Workbooks stay in the client view through the whole process, then
     // auto-exit once every shipment carrying them is marked received
     // (after the receiving audit). Display-only filter — the workbook
@@ -34632,12 +34742,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Back button context
     const backBtn = document.getElementById('btn-back');
     if (backBtn) {
-      const bHash  = _wbBackHash  || `#/client/${encodeURIComponent(clientName)}`;
-      const bLabel = _wbBackLabel || 'Back to Workbooks';
+      const _isDraft = _isQuotesClient(clientName);
+      const bHash  = _wbBackHash  || (_isDraft ? '#/quotes' : `#/client/${encodeURIComponent(clientName)}`);
+      const bLabel = _wbBackLabel || (_isDraft ? 'Client Quotes' : 'Back to Workbooks');
       backBtn.textContent = `← ${bLabel}`;
       backBtn.onclick = (e) => { e.preventDefault(); _wbBackHash = null; _wbBackLabel = null; location.hash = bHash; };
       _wbBackHash = null; _wbBackLabel = null;
     }
+    // "Commit to Client" shows only for draft (Client Quotes) workbooks.
+    const _commitBtn = document.getElementById('btn-commit-draft');
+    if (_commitBtn) _commitBtn.style.display = _isQuotesClient(clientName) ? '' : 'none';
 
     // Reset to default Workbook tab
     document.querySelectorAll('.wb-tab-content').forEach(el => el.classList.remove('active'));
@@ -37031,9 +37145,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return;
     }
 
-    // Match: #/quotes — standalone Client Quotes (quick PO for prospects).
+    // Match: #/quotes — Client Quotes = draft workbooks under the hidden
+    // holding client. Redirect to that client's dashboard (reuses the exact
+    // workbook list UI). openClientQuotes ensures the holding client exists.
     if (hash === '#/quotes') {
-      renderQuotesView();
+      openClientQuotes();
       return;
     }
 
@@ -37183,6 +37299,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Gather all workbooks with their client name
     const all = [];
     for (const [client, items] of Object.entries(clientData)) {
+      if (_isQuotesClient(client)) continue;   // drafts stay in Client Quotes only
       items.forEach(item => all.push({ ...item, client }));
     }
 
@@ -39875,7 +39992,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
 
       // Seed any missing clients
-      for (const name of Object.keys(clientData).sort()) {
+      for (const name of _hideQuotesClient(Object.keys(clientData)).sort()) {
         if (!dbClientMap[name]) {
           const r = await apiCall('add_client', { name });
           if (r.success) dbClientMap[name] = r.id;
@@ -42848,7 +42965,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Populate client filter dropdown
     const sel = document.getElementById('ship-order-picker-client');
     sel.innerHTML = '<option value="">All clients</option>';
-    Object.keys(clientData).sort().forEach(name => {
+    _hideQuotesClient(Object.keys(clientData)).sort().forEach(name => {
       const opt = document.createElement('option');
       opt.value = name; opt.textContent = name;
       sel.appendChild(opt);
@@ -42885,7 +43002,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
-    const sortedClients = Object.keys(clientData).sort();
+    const sortedClients = _hideQuotesClient(Object.keys(clientData)).sort();
 
     // Group orders by client
     const clients = filterClient ? [filterClient] : sortedClients;
@@ -43086,7 +43203,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     const allSamples = collectAllSamples();
     const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
-    const sortedClients = Object.keys(clientData).sort();
+    const sortedClients = _hideQuotesClient(Object.keys(clientData)).sort();
 
     const matched = allSamples.filter(sm => {
       if (filterClient && sm.clientName !== filterClient) return false;
@@ -46736,7 +46853,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Populate client dropdown
     const sel = document.getElementById('order-picker-client');
     sel.innerHTML = '<option value="">Select a client…</option>';
-    Object.keys(clientData).sort().forEach(name => {
+    _hideQuotesClient(Object.keys(clientData)).sort().forEach(name => {
       const opt = document.createElement('option');
       opt.value = name;
       opt.textContent = name;
@@ -46799,7 +46916,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     ];
 
     const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
-    const color = palette[Object.keys(clientData).sort().indexOf(clientName) % palette.length];
+    const color = palette[_hideQuotesClient(Object.keys(clientData)).sort().indexOf(clientName) % palette.length];
 
     const buckets = {};
     statusGroups.forEach(g => { buckets[g.key] = []; });
@@ -47731,6 +47848,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const RANK = { unstaged: 0, samples: 1, rfq: 2, review: 3, orders: 4 };
     const consider = (cn, wid, stage) => {
       if (cn == null || wid == null) return;
+      if (_isQuotesClient(cn)) return;   // draft quotes never show on the Pipeline board
       const key = `${cn}|${wid}`;
       if (claimed.has(key)) return;
       if (!meta[key]) meta[key] = { key, clientName: cn, workbookId: wid, product: _wbProduct(cn, wid), detail: workbookDetail[key] || {} };
@@ -51379,7 +51497,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Determine which clients to show: single client or all if "Multiple Clients"
     const isMulti = o.clientName === 'Multiple Clients';
     const allowedClients = isMulti
-      ? Object.keys(clientData)
+      ? _hideQuotesClient(Object.keys(clientData))
       : [o.clientName];
 
     // Status groups: latest → earliest
