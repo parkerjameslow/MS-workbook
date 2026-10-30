@@ -34194,6 +34194,41 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _appliedFeeOverrides = Object.create(null);
     _rfqPrimaryId = null;   // reset the primary-line choice per workbook (data branch reloads it)
 
+    // ── Reset all TOGGLE controls (checkboxes / radios / pickers) ──────
+    // The sweep above clears text inputs, but a brand-new (no-data) workbook
+    // also inherited the previous workbook's CHECKBOX/RADIO state — pallet
+    // manual / case override, 2″ overhang, fit-to-pallet, divider, case-only,
+    // weight-only, the pallet-vs-loose load radio, and the freight weight
+    // basis. Default them all OFF here and fire each handler so the dependent
+    // UI (gray-outs, pallet/container viz) resets too. The data branch below
+    // re-applies saved values for workbooks that have them. _filling is true
+    // here, so the handlers skip autosave.
+    const _resetToggle = (id, handler) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.checked = false;
+      if (typeof handler === 'function') { try { handler(); } catch (_) {} }
+    };
+    _resetToggle('show-in-portal');
+    _resetToggle('product-dims-lock', typeof onProductDimsLockToggle === 'function' ? onProductDimsLockToggle : null);
+    _resetToggle('freight-cost-override-toggle', typeof onShippingCostOverrideToggle === 'function' ? onShippingCostOverrideToggle : null);
+    _resetToggle('weight-only-override', typeof onWeightOnlyToggle === 'function' ? onWeightOnlyToggle : null);
+    _resetToggle('case-only-override', typeof onCaseOnlyToggle === 'function' ? onCaseOnlyToggle : null);
+    _resetToggle('pallet-case-override', typeof onPalletCaseOverrideToggle === 'function' ? onPalletCaseOverrideToggle : null);
+    _resetToggle('pallet-manual', typeof onPalletManualToggle === 'function' ? onPalletManualToggle : null);
+    _resetToggle('pallet-divider');
+    _resetToggle('pallet-overhang');
+    _resetToggle('pallet-fit');
+    // Pallet load mode → default back to "pallet" (not loose).
+    const _plLoadPallet = document.getElementById('pallet-load-pallet');
+    const _plLoadLoose  = document.getElementById('pallet-load-loose');
+    if (_plLoadLoose)  _plLoadLoose.checked = false;
+    if (_plLoadPallet) _plLoadPallet.checked = true;
+    if (typeof onPalletLoadModeChange === 'function') { try { onPalletLoadModeChange(); } catch (_) {} }
+    // Freight weight basis → default (chargeable).
+    _freightWeightBasis = 'chargeable';
+    if (typeof _syncFreightBasisButtons === 'function') { try { _syncFreightBasisButtons(); } catch (_) {} }
+
     function _s(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
 
     if (data && !Array.isArray(data) && (data.client || data.product || data.productImages || data.productImage)) {
