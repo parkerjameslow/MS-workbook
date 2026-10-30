@@ -11135,7 +11135,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <tbody id="qq-body"><!-- populated by JS --></tbody>
       </table>
     </div>
-    <div class="qq-summary" id="qq-summary"><!-- totals summary --></div>
   </main>
 </div><!-- /#view-quickquote -->
 
