@@ -2855,9 +2855,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     @media (max-width:520px) { .qq-res-cols { grid-template-columns:1fr; } }
     /* totals tucked into the Profit hero tile */
     .qq-hero-totals { width:100%; margin-top:9px; display:flex; flex-direction:column; gap:3px; }
-    .qq-hero-totals > div { display:flex; justify-content:space-between; gap:8px; font-size:11px; }
-    .qq-hero-totals span:first-child { color:var(--text-muted); font-weight:700; }
-    .qq-hero-totals span:last-child { font-weight:700; font-variant-numeric:tabular-nums; }
+    .qq-hero-totals > div { display:flex; justify-content:space-between; gap:10px; font-size:10.5px; white-space:nowrap; }
+    .qq-hero-totals span:first-child { color:var(--text-muted); font-weight:700; white-space:nowrap; }
+    .qq-hero-totals span:last-child { font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
     .qq-res-row { display:flex; justify-content:space-between; gap:12px; padding:5px 2px; font-size:13.5px; }
     .qq-res-row > span:first-child { color:var(--text-muted); }
     .qq-res-row > span:last-child { font-weight:700; font-variant-numeric:tabular-nums; }
