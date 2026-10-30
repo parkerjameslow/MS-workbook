@@ -11039,14 +11039,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
     <div style="overflow-y:auto; flex:1 1 auto; margin-top:12px; padding-right:4px;">
       <div class="qe-grid3">
-        <label class="qe-field"><span>Quote #</span><input type="text" id="quote-number" placeholder="Q-0001"></label>
-        <label class="qe-field"><span>Date</span><input type="date" id="qe-date"></label>
-        <label class="qe-field"><span>Valid until</span><input type="date" id="quote-valid"></label>
+        <label class="qe-field"><span>Quote #</span><input type="text" id="quote-number" placeholder="Q-0001" oninput="_quoteAutosave()"></label>
+        <label class="qe-field"><span>Date</span><input type="date" id="qe-date" oninput="_quoteAutosave()"></label>
+        <label class="qe-field"><span>Valid until</span><input type="date" id="quote-valid" oninput="_quoteAutosave()"></label>
       </div>
       <div class="qe-grid3" style="margin-top:10px;">
-        <label class="qe-field"><span>Customer / Company *</span><input type="text" id="quote-customer" placeholder="Company name"></label>
-        <label class="qe-field"><span>Contact</span><input type="text" id="quote-contact" placeholder="Contact name"></label>
-        <label class="qe-field"><span>Email</span><input type="email" id="quote-email" placeholder="name@company.com"></label>
+        <label class="qe-field"><span>Customer / Company *</span><input type="text" id="quote-customer" placeholder="Company name" oninput="_quoteAutosave()"></label>
+        <label class="qe-field"><span>Contact</span><input type="text" id="quote-contact" placeholder="Contact name" oninput="_quoteAutosave()"></label>
+        <label class="qe-field"><span>Email</span><input type="email" id="quote-email" placeholder="name@company.com" oninput="_quoteAutosave()"></label>
       </div>
       <div style="margin-top:18px;">
         <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Line Items</div>
@@ -11074,7 +11074,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="qe-tot-row"><span>Additional fees</span><span id="qe-fees-total">$0.00</span></div>
         <div class="qe-tot-row qe-tot-grand"><span>Total</span><span id="quote-grand-total">$0.00</span></div>
       </div>
-      <label class="qe-field" style="margin-top:18px;"><span>Notes / Terms</span><textarea id="quote-notes" rows="3" placeholder="Payment terms, lead time, validity, etc."></textarea></label>
+      <label class="qe-field" style="margin-top:18px;"><span>Notes / Terms</span><textarea id="quote-notes" rows="3" placeholder="Payment terms, lead time, validity, etc." oninput="_quoteAutosave()"></textarea></label>
       <div id="quote-committed-note" style="display:none; margin-top:12px; font-size:12px; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px 12px;"></div>
     </div>
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:8px; flex-wrap:wrap;">
@@ -31684,6 +31684,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const cell = document.getElementById(`quote-line-total-${i}`);
     if (cell) cell.textContent = _quoteUsd(_quoteNum(_quoteDraft.lines[i].qty) * _quoteNum(_quoteDraft.lines[i].unitPrice));
     _quoteRefreshTotal();
+    _quoteAutosave();
   }
   function _quoteRefreshTotal() {
     if (!_quoteDraft) return;
@@ -31696,6 +31697,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!_quoteDraft) return;
     _quoteDraft.shipping = val;
     _quoteRefreshTotal();
+    _quoteAutosave();
   }
   function _renderQuoteFees() {
     const tb = document.getElementById('qe-fees');
@@ -31713,28 +31715,33 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!_quoteDraft || !_quoteDraft.fees[i]) return;
     _quoteDraft.fees[i][field] = val;
     _quoteRefreshTotal();
+    _quoteAutosave();
   }
   function _quoteAddFee() {
     if (!_quoteDraft) return;
     if (!Array.isArray(_quoteDraft.fees)) _quoteDraft.fees = [];
     _quoteDraft.fees.push({ desc: '', amount: '' });
     _renderQuoteFees();
+    _quoteAutosave();
   }
   function _quoteRemoveFee(i) {
     if (!_quoteDraft) return;
     _quoteDraft.fees.splice(i, 1);
     _renderQuoteFees();
+    _quoteAutosave();
   }
   function _quoteAddLine() {
     if (!_quoteDraft) return;
     _quoteDraft.lines.push({ product: '', qty: '', unitPrice: '' });
     _renderQuoteLines();
+    _quoteAutosave();
   }
   function _quoteRemoveLine(i) {
     if (!_quoteDraft) return;
     _quoteDraft.lines.splice(i, 1);
     if (!_quoteDraft.lines.length) _quoteDraft.lines.push({ product: '', qty: '', unitPrice: '' });
     _renderQuoteLines();
+    _quoteAutosave();
   }
   function _readQuoteScalars() {
     if (!_quoteDraft) return;
@@ -31837,6 +31844,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const idx = _quotes.findIndex(x => x.id === _quoteDraft.id);
     if (idx >= 0) _quotes[idx] = _quoteDraft; else _quotes.push(_quoteDraft);
     saveQuotes();
+  }
+  // Autosave the open quote so edits persist WITHOUT a manual Save — a refresh
+  // (or walking away) can't lose in-progress shipping/fees/line changes. Reads
+  // the scalar fields into the draft, then debounces a server save. Skips a
+  // brand-new quote that has no content yet so we don't create empty records.
+  let _quoteSaveTimer = null;
+  function _quoteAutosave() {
+    if (!_quoteDraft) return;
+    _readQuoteScalars();   // pull customer/contact/email/notes/shipping/etc. into the draft
+    const hasContent = (_quoteDraft.customer || '').trim()
+      || (_quoteDraft.lines || []).some(l => (l.product || '').trim() || l.qty || l.unitPrice)
+      || (_quoteDraft.fees || []).some(f => (f.desc || '').trim() || f.amount)
+      || (_quoteDraft.notes || '').trim() || (_quoteDraft.shipping || '');
+    if (!hasContent) return;
+    clearTimeout(_quoteSaveTimer);
+    _quoteSaveTimer = setTimeout(() => { try { _upsertQuoteDraft(); _renderQuotesList(); } catch (e) {} }, 500);
   }
   async function sendQuoteToClient() {
     if (!_quoteDraft) return;
