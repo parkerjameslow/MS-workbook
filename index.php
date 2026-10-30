@@ -2847,8 +2847,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-hero-input { width:92px; border:1px solid var(--border); border-radius:7px; padding:4px 6px; font-size:19px; font-weight:800; text-align:center; background:var(--surface); color:var(--text); font-family:inherit; }
     .qq-hero-cur { font-size:15px; font-weight:800; color:var(--text-muted); }
     .qq-hero-pct { width:48px; border:1px solid var(--border); border-radius:6px; padding:2px 5px; font-size:12px; font-weight:700; text-align:right; background:var(--surface); color:var(--text); font-family:inherit; }
-    .qq-hero-use { border:none; background:transparent; color:var(--accent); font-size:11px; font-weight:700; cursor:pointer; padding:0; text-decoration:underline; }
-    .qq-hero-use:hover { opacity:0.8; }
+    .qq-hero-use { border:1px solid var(--accent); background:transparent; color:var(--accent); font-size:11px; font-weight:700; border-radius:7px; padding:4px 10px; cursor:pointer; white-space:nowrap; transition:background 0.12s, color 0.12s; }
+    .qq-hero-use:hover { background:var(--accent); color:#fff; }
     .qq-res-sec { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin:0 0 6px; border-bottom:1px solid var(--border); padding-bottom:5px; }
     /* two-column flow of the detail sections so the modal doesn't scroll */
     .qq-res-cols { display:grid; grid-template-columns:repeat(2,1fr); gap:14px 26px; margin-top:16px; }
