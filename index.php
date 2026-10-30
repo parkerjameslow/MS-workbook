@@ -2768,8 +2768,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Client Quote editor */
     .qe-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     @media (max-width: 560px) { .qe-grid3 { grid-template-columns: 1fr; } }
-    .qe-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-    .qe-field > span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+    .qe-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    /* Reserve 2 lines for the label and bottom-align it, so a label that wraps
+       (e.g. "Customer / Company *") keeps its input level with the row's others. */
+    .qe-field > span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); line-height: 1.25; min-height: 28px; display: flex; align-items: flex-end; }
     .qe-field input, .qe-field textarea {
       width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px;
       padding: 9px 10px; font-size: 13px; background: var(--surface); color: var(--text); font-family: inherit;
