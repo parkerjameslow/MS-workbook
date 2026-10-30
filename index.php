@@ -2819,6 +2819,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-rm:hover { color:#dc2626; }
     .qq-table tfoot td { font-weight:800; background:var(--surface2); border-top:2px solid var(--border); }
     .qq-sub { font-size:8px; opacity:0.7; font-weight:700; letter-spacing:0.02em; }
+    .qq-view-btn { border:1px solid var(--accent); color:var(--accent); background:transparent; font-size:11px; font-weight:700; border-radius:7px; padding:5px 12px; cursor:pointer; white-space:nowrap; transition:background 0.12s, color 0.12s; }
+    .qq-view-btn:hover { background:var(--accent); color:#fff; }
+    .qq-pos { color:#16a34a; }
+    /* Totals summary tiles under the grid */
+    .qq-summary { display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; margin-top:16px; }
+    .qq-stat-lead { align-self:center; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-right:4px; }
+    .qq-stat { min-width:120px; border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:10px 14px; }
+    .qq-stat-lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); }
+    .qq-stat-val { font-size:17px; font-weight:800; margin-top:3px; font-variant-numeric:tabular-nums; }
+    /* Results modal */
+    .qq-hero-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:4px; }
+    .qq-hero { border:1px solid var(--border); border-radius:10px; background:var(--surface2); padding:12px 14px; text-align:center; }
+    .qq-hero-lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); }
+    .qq-hero-val { font-size:20px; font-weight:800; margin-top:4px; font-variant-numeric:tabular-nums; }
+    .qq-res-sec { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin:16px 0 6px; border-bottom:1px solid var(--border); padding-bottom:5px; }
+    .qq-res-row { display:flex; justify-content:space-between; gap:12px; padding:5px 2px; font-size:13.5px; }
+    .qq-res-row > span:first-child { color:var(--text-muted); }
+    .qq-res-row > span:last-child { font-weight:700; font-variant-numeric:tabular-nums; }
     /* Compact (default): hide the intermediate breakdown columns + the RMB/USD
        banner so the sheet fits one screen without horizontal scroll. */
     #qq-table.qq-compact .qq-adv { display:none; }
@@ -11088,52 +11106,43 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label class="qq-setting"><span>Suggested markup</span><span class="qq-suffix-wrap"><input type="text" inputmode="decimal" id="qq-markup" value="40" oninput="qqSettingChanged()"><span class="qq-suffix">%</span></span></label>
         <label class="qq-setting"><span>China split</span><span class="qq-suffix-wrap"><input type="text" inputmode="decimal" id="qq-china" value="10" oninput="qqSettingChanged()"><span class="qq-suffix">%</span></span></label>
         <label class="qq-setting"><span>FX (¥1 = $)</span><input type="text" inputmode="decimal" id="qq-fx" placeholder="auto" oninput="qqSettingChanged()" style="width:84px;"></label>
-        <button type="button" class="btn btn-ghost" id="qq-breakdown-btn" onclick="qqToggleBreakdown()">Show breakdown</button>
         <button type="button" class="btn btn-primary" onclick="qqAddRow()">+ Add Row</button>
       </div>
     </div>
     <div class="qq-scroll">
       <table class="qq-table" id="qq-table">
         <thead>
-          <tr class="qq-grp">
-            <th colspan="8"></th>
-            <th colspan="2" class="qq-grp-rmb">RMB</th>
-            <th colspan="5" class="qq-grp-usd">USD</th>
-            <th></th>
-            <th class="qq-grp-sale">Sale</th>
-            <th colspan="3" class="qq-grp-usd">USD</th>
-            <th></th>
-          </tr>
           <tr>
             <th class="qq-in">Product</th>
-            <th class="qq-in qq-adv">MOQ / Color</th>
-            <th class="qq-in qq-adv">Total MOQ</th>
+            <th class="qq-in">MOQ / Color</th>
+            <th class="qq-in">Total MOQ</th>
             <th class="qq-in">QTY</th>
             <th class="qq-in">RMB Per</th>
             <th class="qq-in">Master pack</th>
             <th class="qq-in">Shipping KG</th>
             <th class="qq-in">RMB / KG</th>
-            <th class="qq-adv">Ship Per<br><span class="qq-sub">RMB</span></th>
-            <th class="qq-adv">Ship Total<br><span class="qq-sub">RMB</span></th>
-            <th class="qq-adv">Price Per<br><span class="qq-sub">USD</span></th>
-            <th class="qq-adv">Ship Per<br><span class="qq-sub">USD</span></th>
-            <th class="qq-adv">Ship Total<br><span class="qq-sub">USD</span></th>
-            <th>Landed Per</th>
-            <th>Cost EXT</th>
-            <th title="Landed Per × (1 + markup)">Suggested</th>
-            <th class="qq-in">Sale</th>
-            <th>Total</th>
-            <th>Profit</th>
-            <th title="Profit × China split">China</th>
+            <th class="qq-in">Sale (USD)</th>
+            <th></th>
             <th></th>
           </tr>
         </thead>
         <tbody id="qq-body"><!-- populated by JS --></tbody>
-        <tfoot id="qq-foot"><!-- totals --></tfoot>
       </table>
     </div>
+    <div class="qq-summary" id="qq-summary"><!-- totals summary --></div>
   </main>
 </div><!-- /#view-quickquote -->
+
+<!-- Quick Quote per-row results modal -->
+<div class="modal-overlay" id="qq-result-modal" onclick="if(event.target===this)qqCloseResult()" style="z-index:1150;">
+  <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" style="flex-shrink:0;" id="qq-result-title">Results</div>
+    <div id="qq-result-body" style="overflow-y:auto; flex:1 1 auto; margin-top:10px;"><!-- JS --></div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
+      <button type="button" class="btn btn-primary" onclick="qqCloseResult()">Done</button>
+    </div>
+  </div>
+</div>
 
 <!-- Client Quote editor modal -->
 <div class="modal-overlay" id="quote-editor-modal" onclick="if(event.target===this)closeQuoteEditor()" style="z-index:1100;">
@@ -32224,21 +32233,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function renderQuickQuoteView() {
     showView('view-quickquote');
     try { document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active')); const n = document.getElementById('nav-quickquote-link'); if (n) n.classList.add('active'); } catch (e) {}
-    _qqApplyCompact();
     loadQuickQuote().then(() => { _qqSyncSettings(); _qqRender(); });
-  }
-  function _qqApplyCompact() {
-    let compact = true;   // default = compact (fits one screen)
-    try { if (localStorage.getItem('ms_qq_compact') === '0') compact = false; } catch (e) {}
-    const t = document.getElementById('qq-table'); if (t) t.classList.toggle('qq-compact', compact);
-    const b = document.getElementById('qq-breakdown-btn'); if (b) b.textContent = compact ? 'Show breakdown' : 'Hide breakdown';
-  }
-  function qqToggleBreakdown() {
-    const t = document.getElementById('qq-table'); if (!t) return;
-    const compact = !t.classList.contains('qq-compact');
-    t.classList.toggle('qq-compact', compact);
-    try { localStorage.setItem('ms_qq_compact', compact ? '1' : '0'); } catch (e) {}
-    const b = document.getElementById('qq-breakdown-btn'); if (b) b.textContent = compact ? 'Show breakdown' : 'Hide breakdown';
   }
   function _qqSyncSettings() {
     const set = (id, v) => { const e = document.getElementById(id); if (e && document.activeElement !== e) e.value = (v == null ? '' : v); };
@@ -32258,81 +32253,95 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _qqRender(); saveQuickQuote();
     setTimeout(() => { const rows = document.querySelectorAll('#qq-body tr'); const last = rows[rows.length - 1]; const inp = last && last.querySelector('input'); if (inp) inp.focus(); }, 30);
   }
-  function qqRemoveRow(i) { _qq.rows.splice(i, 1); _qqRender(); saveQuickQuote(); }
+  function qqRemoveRow(i) { _qq.rows.splice(i, 1); _qqRender(); saveQuickQuote(); if (_qqResultIdx === i) qqCloseResult(); }
   function qqInput(i, field, val) {
     if (!_qq.rows[i]) return;
     _qq.rows[i][field] = val;
-    _qqRecalcRow(i);
-    _qqRenderFoot();
+    _qqRenderSummary();
+    if (_qqResultIdx === i) _qqRenderResult(i);   // live-update the open results modal
     saveQuickQuote();
   }
-  function qqUseSuggested(i) {
-    const r = _qq.rows[i]; if (!r) return;
-    r.sale = (Math.round(_qqCompute(r).suggested * 1000) / 1000);
-    _qqRender(); saveQuickQuote();
-  }
+  // Grid = YELLOW INPUTS ONLY + a Results button per row. Computed numbers live
+  // in the per-row results modal + the totals summary below the grid.
   function _qqRowHtml(r, i) {
-    const c = _qqCompute(r);
     const inp = (field, val, cls) => `<td class="qq-in ${cls || ''}"><input type="text" value="${_qqEsc(val)}" oninput="qqInput(${i},'${field}',this.value)"></td>`;
-    const cell = (k, v, neg, adv) => `<td class="qq-calc${neg ? ' qq-neg' : ''}${adv ? ' qq-adv' : ''}" id="qq-c-${k}-${i}">${v}</td>`;
     return `<tr data-qq="${i}">
       ${inp('product', r.product, 'qq-text')}
-      ${inp('moqColor', r.moqColor, 'qq-text qq-adv')}
-      ${inp('totalMoq', r.totalMoq, 'qq-text qq-adv')}
+      ${inp('moqColor', r.moqColor, 'qq-text')}
+      ${inp('totalMoq', r.totalMoq, 'qq-text')}
       ${inp('qty', r.qty)}
       ${inp('rmbPer', r.rmbPer)}
       ${inp('masterPack', r.masterPack)}
       ${inp('shipKg', r.shipKg)}
       ${inp('rmbPerKg', r.rmbPerKg)}
-      ${cell('shipPerRmb', _qqRmb(c.shipPerRmb), false, true)}
-      ${cell('shipTotRmb', _qqRmb(c.shipTotRmb), false, true)}
-      ${cell('pricePerUsd', _qqUsd(c.pricePerUsd), false, true)}
-      ${cell('shipPerUsd', _qqUsd(c.shipPerUsd), false, true)}
-      ${cell('shipTotUsd', _qqUsd(c.shipTotUsd), false, true)}
-      ${cell('landedPer', _qqUsd(c.landedPer))}
-      ${cell('costExt', _qqUsd(c.costExt))}
-      <td class="qq-calc" id="qq-c-suggested-${i}" title="Click to use as Sale" style="cursor:pointer;" onclick="qqUseSuggested(${i})">${_qqUsd3(c.suggested)}</td>
       ${inp('sale', r.sale)}
-      ${cell('total', _qqUsd(c.total), c.total < 0)}
-      <td class="qq-calc qq-profit${c.profit < 0 ? ' qq-neg' : ''}" id="qq-c-profit-${i}">${_qqUsd(c.profit)}</td>
-      ${cell('china', _qqUsd(c.chinaUsd), c.chinaUsd < 0)}
+      <td style="text-align:center;"><button type="button" class="qq-view-btn" onclick="qqOpenResult(${i})">Results</button></td>
       <td style="text-align:center;"><span class="qq-rm" onclick="qqRemoveRow(${i})" title="Remove row">&times;</span></td>
     </tr>`;
   }
-  function _qqRecalcRow(i) {
-    const r = _qq.rows[i]; if (!r) return;
-    const c = _qqCompute(r);
-    const set = (k, v, neg) => { const e = document.getElementById(`qq-c-${k}-${i}`); if (e) { e.textContent = v; if (neg !== undefined) e.classList.toggle('qq-neg', neg); } };
-    set('shipPerRmb', _qqRmb(c.shipPerRmb)); set('shipTotRmb', _qqRmb(c.shipTotRmb));
-    set('pricePerUsd', _qqUsd(c.pricePerUsd)); set('shipPerUsd', _qqUsd(c.shipPerUsd)); set('shipTotUsd', _qqUsd(c.shipTotUsd));
-    set('landedPer', _qqUsd(c.landedPer)); set('costExt', _qqUsd(c.costExt)); set('suggested', _qqUsd3(c.suggested));
-    set('total', _qqUsd(c.total), c.total < 0); set('profit', _qqUsd(c.profit), c.profit < 0); set('china', _qqUsd(c.chinaUsd), c.chinaUsd < 0);
-  }
   function _qqRender() {
     const body = document.getElementById('qq-body'); if (!body) return;
-    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="21" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderFoot(); return; }
+    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="11" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderSummary(); return; }
     body.innerHTML = _qq.rows.map((r, i) => _qqRowHtml(r, i)).join('');
-    _qqRenderFoot();
+    _qqRenderSummary();
   }
-  function _qqRenderFoot() {
-    const foot = document.getElementById('qq-foot'); if (!foot) return;
-    if (!_qq.rows.length) { foot.innerHTML = ''; return; }
+  // Totals across all rows — shown as clean stat tiles under the grid.
+  function _qqRenderSummary() {
+    const host = document.getElementById('qq-summary'); if (!host) return;
+    if (!_qq.rows.length) { host.innerHTML = ''; return; }
     let costExt = 0, total = 0, profit = 0, china = 0;
     _qq.rows.forEach(r => { const c = _qqCompute(r); costExt += c.costExt; total += c.total; profit += c.profit; china += c.chinaUsd; });
-    const b = adv => `<td class="${adv ? 'qq-adv' : ''}"></td>`;   // one aligned cell per column
-    foot.innerHTML = `<tr>
-      <td style="text-align:left; color:var(--text-muted); font-weight:800;">Totals</td>
-      ${b(true)}${b(true)}
-      ${b()}${b()}${b()}${b()}${b()}
-      ${b(true)}${b(true)}${b(true)}${b(true)}${b(true)}
-      ${b()}
-      <td>${_qqUsd(costExt)}</td>
-      ${b()}${b()}
-      <td>${_qqUsd(total)}</td>
-      <td class="qq-profit${profit < 0 ? ' qq-neg' : ''}">${_qqUsd(profit)}</td>
-      <td class="${china < 0 ? ' qq-neg' : ''}">${_qqUsd(china)}</td>
-      ${b()}
-    </tr>`;
+    const tile = (lbl, val, cls) => `<div class="qq-stat"><div class="qq-stat-lbl">${lbl}</div><div class="qq-stat-val ${cls || ''}">${val}</div></div>`;
+    host.innerHTML = `<div class="qq-stat-lead">Totals</div>`
+      + tile('Cost', _qqUsd(costExt))
+      + tile('Revenue', _qqUsd(total))
+      + tile('Profit', _qqUsd(profit), profit < 0 ? 'qq-neg' : 'qq-pos')
+      + tile('China', _qqUsd(china));
+  }
+  // ── Per-row results modal ──
+  let _qqResultIdx = null;
+  function qqOpenResult(i) {
+    if (!_qq.rows[i]) return;
+    _qqResultIdx = i;
+    _qqRenderResult(i);
+    const m = document.getElementById('qq-result-modal'); if (m) m.classList.add('open');
+  }
+  function qqCloseResult() {
+    const m = document.getElementById('qq-result-modal'); if (m) m.classList.remove('open');
+    _qqResultIdx = null;
+  }
+  function qqUseSuggested(i) {
+    const r = _qq.rows[i]; if (!r) return;
+    r.sale = (Math.round(_qqCompute(r).suggested * 1000) / 1000);
+    _qqRender(); _qqRenderResult(i); saveQuickQuote();
+  }
+  function _qqRenderResult(i) {
+    const r = _qq.rows[i]; if (!r) return;
+    const c = _qqCompute(r);
+    const title = document.getElementById('qq-result-title');
+    if (title) title.textContent = 'Results — ' + (r.product && r.product.trim() ? r.product.trim() : `Row ${i + 1}`);
+    const body = document.getElementById('qq-result-body'); if (!body) return;
+    const row = (lbl, val, cls) => `<div class="qq-res-row"><span>${lbl}</span><span class="${cls || ''}">${val}</span></div>`;
+    const hero = (lbl, val, cls) => `<div class="qq-hero"><div class="qq-hero-lbl">${lbl}</div><div class="qq-hero-val ${cls || ''}">${val}</div></div>`;
+    body.innerHTML = `
+      <div class="qq-hero-grid">
+        ${hero('Suggested / unit', _qqUsd3(c.suggested))}
+        ${hero('Sale / unit', _qqNum(r.sale) ? _qqUsd3(_qqNum(r.sale)) : '—')}
+        ${hero('Profit', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}
+      </div>
+      <div style="display:flex; justify-content:flex-end; margin:4px 0 14px;"><button type="button" class="qq-view-btn" onclick="qqUseSuggested(${i})">Use suggested as Sale</button></div>
+      <div class="qq-res-sec">Per unit (USD)</div>
+      ${row('Price (product)', _qqUsd3(c.pricePerUsd))}
+      ${row('Shipping', _qqUsd3(c.shipPerUsd))}
+      ${row('Landed cost', _qqUsd3(c.landedPer))}
+      <div class="qq-res-sec">Order totals (USD)</div>
+      ${row('Cost EXT', _qqUsd(c.costExt))}
+      ${row('Revenue (Total)', _qqUsd(c.total))}
+      ${row('Profit', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}
+      ${row('China split', _qqUsd(c.chinaUsd))}
+      <div class="qq-res-sec">Shipping (RMB)</div>
+      ${row('Ship / unit', _qqRmb(c.shipPerRmb))}
+      ${row('Ship total', _qqRmb(c.shipTotRmb))}`;
   }
 
   function showView(viewId) {
