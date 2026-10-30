@@ -5509,6 +5509,69 @@ switch ($action) {
         }
         break;
 
+    case 'send_client_quote':
+        // Email a Client Quote (quick PO) to the prospect. Builds a branded
+        // HTML quote from the posted fields and sends via the shared SMTP
+        // helper. Recipient = the quote's email; sender context is the logged-
+        // in operator (cc'd when it's a valid email).
+        $to = trim((string)($input['email'] ?? ''));
+        if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['success' => false, 'error' => 'A valid client email is required.']);
+            break;
+        }
+        $qNumber   = trim((string)($input['number'] ?? 'Quote'));
+        $qCustomer = trim((string)($input['customer'] ?? ''));
+        $qContact  = trim((string)($input['contact'] ?? ''));
+        $qDate     = trim((string)($input['date'] ?? ''));
+        $qValid    = trim((string)($input['validUntil'] ?? ''));
+        $qNotes    = trim((string)($input['notes'] ?? ''));
+        $qLines    = is_array($input['lines'] ?? null) ? $input['lines'] : [];
+        $qEsc   = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
+        $qMoney = function ($n) { return '$' . number_format((float)$n, 2); };
+        $qNum   = function ($n) { $f = (float)$n; return rtrim(rtrim(number_format($f, 2, '.', ','), '0'), '.'); };
+        $rowsHtml = ''; $qTotal = 0;
+        foreach ($qLines as $l) {
+            if (!is_array($l)) continue;
+            $p = trim((string)($l['product'] ?? ''));
+            $qty = (float)($l['qty'] ?? 0);
+            $up  = (float)($l['unitPrice'] ?? 0);
+            if ($p === '' && $qty == 0 && $up == 0) continue;
+            $lt = $qty * $up; $qTotal += $lt;
+            $cell = 'padding:8px 10px;border-bottom:1px solid #eee;font-size:14px;color:#1a1d2e;';
+            $rowsHtml .= '<tr>'
+                . '<td style="' . $cell . '">' . $qEsc($p) . '</td>'
+                . '<td style="' . $cell . 'text-align:right;">' . $qEsc($qNum($qty)) . '</td>'
+                . '<td style="' . $cell . 'text-align:right;">' . $qMoney($up) . '</td>'
+                . '<td style="' . $cell . 'text-align:right;font-weight:700;">' . $qMoney($lt) . '</td>'
+                . '</tr>';
+        }
+        if ($rowsHtml === '') { echo json_encode(['success' => false, 'error' => 'The quote has no line items.']); break; }
+        $greeting = $qContact !== '' ? $qEsc($qContact) : ($qCustomer !== '' ? $qEsc($qCustomer) : 'there');
+        $th = 'padding:8px 10px;border-bottom:2px solid #1a1d2e;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;';
+        $body = '<h1 style="margin:0 0 6px;font-size:24px;font-weight:800;color:#1a1d2e;">Your Quote</h1>'
+              . '<p style="margin:0 0 18px;font-size:15px;color:#4b5563;line-height:1.6;">Hi ' . $greeting . ', thank you for your interest. Please find your quote below.</p>'
+              . '<p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Quote <strong style="color:#1a1d2e;">' . $qEsc($qNumber) . '</strong>'
+              . ($qDate !== '' ? ' &nbsp;&middot;&nbsp; ' . $qEsc($qDate) : '')
+              . ($qValid !== '' ? ' &nbsp;&middot;&nbsp; valid until ' . $qEsc($qValid) : '') . '</p>'
+              . '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:14px 0;">'
+              . '<thead><tr>'
+              . '<th style="' . $th . 'text-align:left;">Product</th>'
+              . '<th style="' . $th . 'text-align:right;">Qty</th>'
+              . '<th style="' . $th . 'text-align:right;">Unit Price</th>'
+              . '<th style="' . $th . 'text-align:right;">Total</th>'
+              . '</tr></thead><tbody>' . $rowsHtml . '</tbody></table>'
+              . '<p style="margin:0;text-align:right;font-size:20px;font-weight:800;color:#1a1d2e;">Total: ' . $qMoney($qTotal) . '</p>'
+              . ($qNotes !== '' ? '<div style="margin-top:22px;padding-top:16px;border-top:1px solid #eee;"><p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Notes / Terms</p><p style="margin:0;font-size:14px;color:#4b5563;line-height:1.6;">' . nl2br($qEsc($qNotes)) . '</p></div>' : '');
+        $html = ms_email_wrap('Quote ' . $qNumber, 'Your quote from Market Sculpt', $body);
+        $subject = 'Your Quote ' . $qNumber . ' — Market Sculpt';
+        $cc = [];
+        $ccIn = trim((string)($input['cc'] ?? ''));
+        if ($ccIn !== '' && filter_var($ccIn, FILTER_VALIDATE_EMAIL)) $cc[] = $ccIn;
+        $res = ms_smtp_send([$to], $subject, $html, $cc);
+        if ($res && !empty($res['ok'])) echo json_encode(['success' => true]);
+        else echo json_encode(['success' => false, 'error' => ($res['error'] ?? 'Email failed')]);
+        break;
+
     case 'upload_video':
         if (empty($_FILES['video']) || empty($_POST['workbook_id'])) {
             echo json_encode(['success' => false, 'error' => 'Video file and workbook_id required']);

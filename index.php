@@ -11055,9 +11055,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:8px; flex-wrap:wrap;">
       <button type="button" class="btn btn-ghost danger" id="quote-delete-btn" onclick="deleteCurrentQuote()">Delete</button>
       <button type="button" class="btn btn-ghost" onclick="closeQuoteEditor()">Close</button>
-      <button type="button" class="btn btn-ghost" onclick="printQuote()">Print / PO</button>
+      <button type="button" class="btn btn-ghost" onclick="previewQuote()">Preview</button>
+      <button type="button" class="btn btn-ghost" onclick="sendQuoteToClient()">Send to Client</button>
       <button type="button" class="btn btn-primary" onclick="saveCurrentQuote()">Save</button>
       <button type="button" class="btn btn-primary" id="quote-commit-btn" onclick="commitQuoteToWorkbook()" style="background:#16a34a; border-color:#16a34a;">Commit to Client + Workbook</button>
+    </div>
+  </div>
+</div>
+
+<!-- Client Quote preview modal — renders the printable quote in an iframe. -->
+<div class="modal-overlay" id="quote-preview-modal" onclick="if(event.target===this)closeQuotePreview()" style="z-index:1200;">
+  <div class="modal" style="max-width:720px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 36px);">
+    <div class="modal-title" style="flex-shrink:0;">Quote Preview</div>
+    <iframe id="quote-preview-frame" title="Quote preview" style="flex:1 1 auto; width:100%; min-height:440px; border:1px solid var(--border); border-radius:8px; background:#fff; margin-top:10px;"></iframe>
+    <div class="modal-actions" style="margin-top:14px; flex-shrink:0; gap:8px; flex-wrap:wrap;">
+      <button type="button" class="btn btn-ghost" onclick="closeQuotePreview()">Close</button>
+      <button type="button" class="btn btn-ghost" onclick="printQuote()">Print</button>
+      <button type="button" class="btn btn-primary" onclick="sendQuoteToClient()">Send to Client</button>
     </div>
   </div>
 </div>
@@ -31689,33 +31703,90 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _renderQuotesList();
     closeQuoteEditor();
   }
-  function printQuote() {
-    if (!_quoteDraft) return;
-    _readQuoteScalars();
-    const q = _quoteDraft;
+  // Full printable/preview HTML document for a quote (used by both Preview and
+  // Print so they match exactly).
+  function _quoteDocHtml(q) {
     const rows = (q.lines || []).filter(l => (l.product || '').trim() || l.qty || l.unitPrice).map(l =>
       `<tr><td>${_quoteEsc(l.product)}</td><td style="text-align:right;">${_quoteEsc(l.qty)}</td><td style="text-align:right;">${_quoteUsd(_quoteNum(l.unitPrice))}</td><td style="text-align:right;">${_quoteUsd(_quoteNum(l.qty) * _quoteNum(l.unitPrice))}</td></tr>`).join('');
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Quote ${_quoteEsc(q.number)}</title>
+    return `<!doctype html><html><head><meta charset="utf-8"><title>Quote ${_quoteEsc(q.number)}</title>
       <style>
-        body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;max-width:720px;margin:32px auto;padding:0 24px;}
-        h1{font-size:22px;margin:0 0 2px;} .muted{color:#666;font-size:13px;}
-        .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:20px;}
+        body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;max-width:720px;margin:28px auto;padding:0 24px;}
+        h1{font-size:22px;margin:0 0 2px;color:#111;} .muted{color:#666;font-size:13px;}
+        .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #E8751A;padding-bottom:14px;margin-bottom:20px;}
         table{width:100%;border-collapse:collapse;margin-top:10px;} th,td{padding:8px 10px;font-size:13px;border-bottom:1px solid #ddd;text-align:left;}
         th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#666;}
         .tot{text-align:right;font-size:18px;font-weight:800;margin-top:14px;}
         .box{margin-top:8px;font-size:13px;line-height:1.5;} .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#666;}
       </style></head><body>
-      <div class="hdr"><div><h1>MarketSculpt</h1><div class="muted">Quotation</div></div>
+      <div class="hdr"><div><h1>Market Sculpt</h1><div class="muted">Quotation</div></div>
         <div style="text-align:right;"><div><strong>${_quoteEsc(q.number)}</strong></div><div class="muted">${_quoteEsc(q.date || '')}</div>${q.validUntil ? `<div class="muted">Valid until ${_quoteEsc(q.validUntil)}</div>` : ''}</div></div>
       <div class="box"><span class="lbl">Prepared for</span><br><strong>${_quoteEsc(q.customer || '')}</strong>${q.contact ? '<br>' + _quoteEsc(q.contact) : ''}${q.email ? '<br>' + _quoteEsc(q.email) : ''}</div>
       <table><thead><tr><th>Product</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Total</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="tot">Total: ${_quoteUsd(_quoteTotal(q))}</div>
       ${q.notes ? `<div class="box" style="margin-top:20px;"><span class="lbl">Notes / Terms</span><br>${_quoteEsc(q.notes).replace(/\n/g, '<br>')}</div>` : ''}
       </body></html>`;
+  }
+  function previewQuote() {
+    if (!_quoteDraft) return;
+    _readQuoteScalars();
+    const frame = document.getElementById('quote-preview-frame');
+    if (frame) frame.srcdoc = _quoteDocHtml(_quoteDraft);
+    const m = document.getElementById('quote-preview-modal');
+    if (m) m.classList.add('open');
+  }
+  function closeQuotePreview() {
+    const m = document.getElementById('quote-preview-modal');
+    if (m) m.classList.remove('open');
+  }
+  function printQuote() {
+    if (!_quoteDraft) return;
+    _readQuoteScalars();
+    const html = _quoteDocHtml(_quoteDraft);
     const w = window.open('', '_blank');
     if (!w) { alert('Allow pop-ups to print the quote.'); return; }
     w.document.open(); w.document.write(html); w.document.close();
     setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 300);
+  }
+  // Upsert the current draft into the saved list WITHOUT closing the editor
+  // (used by Send, which keeps the editor open to reflect the new status).
+  function _upsertQuoteDraft() {
+    if (!_quoteDraft) return;
+    _quoteDraft.updatedAt = new Date().toISOString();
+    if (!_quoteDraft.createdAt) _quoteDraft.createdAt = _quoteDraft.updatedAt;
+    const idx = _quotes.findIndex(x => x.id === _quoteDraft.id);
+    if (idx >= 0) _quotes[idx] = _quoteDraft; else _quotes.push(_quoteDraft);
+    saveQuotes();
+  }
+  async function sendQuoteToClient() {
+    if (!_quoteDraft) return;
+    _readQuoteScalars();
+    const email = (_quoteDraft.email || '').trim();
+    if (!email) { alert("Add the client's email first."); return; }
+    const live = (_quoteDraft.lines || []).filter(l => (l.product || '').trim() || l.qty || l.unitPrice);
+    if (!live.length) { alert('Add at least one line item first.'); return; }
+    if (!confirm(`Email quote ${_quoteDraft.number} to ${email}?`)) return;
+    const btns = Array.from(document.querySelectorAll('[onclick="sendQuoteToClient()"]'));
+    btns.forEach(b => { b.disabled = true; b.dataset._t = b.textContent; b.textContent = 'Sending…'; });
+    const restore = () => btns.forEach(b => { b.disabled = false; if (b.dataset._t) b.textContent = b.dataset._t; });
+    try {
+      const r = await apiCall('send_client_quote', {
+        email, number: _quoteDraft.number, customer: _quoteDraft.customer, contact: _quoteDraft.contact,
+        date: _quoteDraft.date, validUntil: _quoteDraft.validUntil, notes: _quoteDraft.notes, lines: live
+      });
+      if (r && r.success) {
+        if (_quoteDraft.status !== 'committed') _quoteDraft.status = 'sent';
+        _quoteDraft.sentAt = new Date().toISOString();
+        _upsertQuoteDraft();
+        _renderQuotesList();
+        _fillQuoteEditor();   // refresh status pill
+        closeQuotePreview();
+        if (typeof _msToast === 'function') _msToast('Quote emailed to ' + email, 'success');
+      } else {
+        alert('Could not send the quote: ' + ((r && r.error) || 'unknown error'));
+      }
+    } catch (e) {
+      alert('Could not send the quote (network error).');
+    } finally { restore(); }
   }
   async function commitQuoteToWorkbook() {
     if (!_quoteDraft) return;
