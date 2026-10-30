@@ -7765,13 +7765,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </a>
   </div>
 
-  <!-- Client Quotes — standalone quick-quote area (prospect PO without a
-       full workbook); commit to a client + workbook when they say yes. -->
-  <div style="padding: 0 10px 8px;">
-    <a id="nav-quotes-link" href="#/quotes" onclick="event.preventDefault(); location.hash='#/quotes'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
-      <span>Client Quotes</span>
-    </a>
-  </div>
 
   <!-- Recent WB — pinned below the two orange pills, matching their
        Market Sculpt orange. Opens a workbook-layout view of the last
@@ -7779,6 +7772,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <div style="padding: 0 10px 8px;">
     <a id="nav-recent-link" href="#/recent" onclick="event.preventDefault(); location.hash='#/recent'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
       <span>Recent WB</span>
+    </a>
+  </div>
+
+  <!-- Client Quotes — standalone quick-quote area (prospect PO without a
+       full workbook); commit to a client + workbook when they say yes. -->
+  <div style="padding: 0 10px 8px;">
+    <a id="nav-quotes-link" href="#/quotes" onclick="event.preventDefault(); location.hash='#/quotes'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+      <span>Client Quotes</span>
     </a>
   </div>
 
