@@ -2789,6 +2789,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qe-ship-wrap { position: relative; display: inline-flex; align-items: center; }
     .qe-ship-prefix { position: absolute; left: 9px; font-size: 13px; color: var(--text-muted); pointer-events: none; }
     .qe-totals input#qe-shipping { width: 120px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px 7px 18px; font-size: 13px; text-align: right; background: var(--surface); color: var(--text); }
+    /* Quick Quote — internal margin calculator grid */
+    .qq-setting { display:flex; flex-direction:column; gap:3px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); }
+    .qq-setting input { width:70px; border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:13px; background:var(--surface); color:var(--text); text-align:right; }
+    .qq-suffix-wrap { position:relative; display:inline-flex; align-items:center; }
+    .qq-suffix-wrap input { padding-right:20px; }
+    .qq-suffix { position:absolute; right:8px; font-size:12px; color:var(--text-muted); pointer-events:none; }
+    .qq-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+    .qq-table { border-collapse:collapse; width:100%; font-size:12.5px; white-space:nowrap; }
+    .qq-table th, .qq-table td { padding:6px 8px; border-bottom:1px solid var(--border); border-right:1px solid var(--border); text-align:right; }
+    .qq-table thead th { position:sticky; top:0; background:var(--surface2); z-index:2; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); }
+    .qq-table thead tr.qq-grp th { text-align:center; font-size:10px; color:#fff; }
+    .qq-grp-rmb { background:#2563eb; } .qq-grp-usd { background:#2563eb; } .qq-grp-sale { background:#1e40af; }
+    .qq-table th.qq-in, .qq-table td.qq-in { background:rgba(234,179,8,0.10); }
+    .qq-table thead th.qq-in { background:rgba(234,179,8,0.22); color:#92610a; }
+    .qq-table td input { width:100%; min-width:70px; box-sizing:border-box; border:1px solid transparent; border-radius:6px; padding:5px 6px; font-size:12.5px; background:transparent; color:var(--text); text-align:right; font-family:inherit; }
+    .qq-table td.qq-in input { min-width:84px; }
+    .qq-table td input:focus { border-color:var(--accent); background:var(--surface); outline:none; }
+    .qq-table td.qq-text input { text-align:left; }
+    .qq-table td.qq-text { text-align:left; }
+    .qq-table td.qq-calc { color:var(--text); font-variant-numeric:tabular-nums; }
+    .qq-table td.qq-neg { color:#dc2626; }
+    .qq-table td.qq-profit { font-weight:700; }
+    .qq-table tbody tr:hover td { background:rgba(127,127,127,0.04); }
+    .qq-table tbody tr:hover td.qq-in { background:rgba(234,179,8,0.16); }
+    .qq-rm { color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1; }
+    .qq-rm:hover { color:#dc2626; }
+    .qq-table tfoot td { font-weight:800; background:var(--surface2); border-top:2px solid var(--border); }
     /* Client Quotes list table */
     .quotes-tbl { width: 100%; border-collapse: collapse; }
     .quotes-tbl th { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
@@ -7785,11 +7812,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </a>
   </div>
 
-  <!-- Client Quotes — standalone quick-quote area (prospect PO without a
-       full workbook); commit to a client + workbook when they say yes. -->
+  <!-- Client Quotes — staging area of draft workbooks; commit to a client
+       when they say yes. Quick Quote = internal margin calculator. -->
   <div style="padding: 0 10px 8px;">
     <a id="nav-quotes-link" href="#/quotes" onclick="event.preventDefault(); location.hash='#/quotes'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
       <span>Client Quotes</span>
+    </a>
+    <a id="nav-quickquote-link" href="#/quickquote" onclick="event.preventDefault(); location.hash='#/quickquote'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px; margin-top:4px;">
+      <span>Quick Quote</span>
     </a>
   </div>
 
@@ -11036,6 +11066,66 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="quotes-list"><!-- populated by JS --></div>
   </main>
 </div><!-- /#view-quotes -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: QUICK QUOTE — internal margin calculator (never sent to client).
+     Mirrors Parker's Excel "Quote Sheet": enter the yellow input columns and
+     the rest compute. Persists so rows can be looked up / updated later.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-quickquote" class="view">
+  <main class="container" style="max-width:none; padding:0 16px 28px;">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 0;">
+      <h1 style="font-size:24px; font-weight:800; color:var(--text); margin:0;">Quick Quote</h1>
+      <span style="font-size:13px; color:var(--text-muted);">Internal margin calculator &mdash; never sent to a client. Enter the yellow columns; the rest fill in. Autosaves.</span>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+        <label class="qq-setting"><span>Suggested markup</span><span class="qq-suffix-wrap"><input type="text" inputmode="decimal" id="qq-markup" value="40" oninput="qqSettingChanged()"><span class="qq-suffix">%</span></span></label>
+        <label class="qq-setting"><span>China split</span><span class="qq-suffix-wrap"><input type="text" inputmode="decimal" id="qq-china" value="10" oninput="qqSettingChanged()"><span class="qq-suffix">%</span></span></label>
+        <label class="qq-setting"><span>FX (¥1 = $)</span><input type="text" inputmode="decimal" id="qq-fx" placeholder="auto" oninput="qqSettingChanged()" style="width:84px;"></label>
+        <button type="button" class="btn btn-primary" onclick="qqAddRow()">+ Add Row</button>
+      </div>
+    </div>
+    <div class="qq-scroll">
+      <table class="qq-table" id="qq-table">
+        <thead>
+          <tr class="qq-grp">
+            <th colspan="8"></th>
+            <th colspan="2" class="qq-grp-rmb">RMB</th>
+            <th colspan="5" class="qq-grp-usd">USD</th>
+            <th></th>
+            <th class="qq-grp-sale">Sale</th>
+            <th colspan="3" class="qq-grp-usd">USD</th>
+            <th></th>
+          </tr>
+          <tr>
+            <th class="qq-in">Product</th>
+            <th class="qq-in">MOQ / Color</th>
+            <th class="qq-in">Total MOQ</th>
+            <th class="qq-in">QTY</th>
+            <th class="qq-in">RMB Per</th>
+            <th class="qq-in">Master pack</th>
+            <th class="qq-in">Shipping KG</th>
+            <th class="qq-in">RMB / KG</th>
+            <th>Ship Per</th>
+            <th>Ship Total</th>
+            <th>Price Per</th>
+            <th>Ship Per</th>
+            <th>Ship Total</th>
+            <th>Landed Per</th>
+            <th>Cost EXT</th>
+            <th title="Landed Per × (1 + markup)">Suggested</th>
+            <th class="qq-in">Sale</th>
+            <th>Total</th>
+            <th>Profit</th>
+            <th title="Profit × China split">China</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="qq-body"><!-- populated by JS --></tbody>
+        <tfoot id="qq-foot"><!-- totals --></tfoot>
+      </table>
+    </div>
+  </main>
+</div><!-- /#view-quickquote -->
 
 <!-- Client Quote editor modal -->
 <div class="modal-overlay" id="quote-editor-modal" onclick="if(event.target===this)closeQuoteEditor()" style="z-index:1100;">
@@ -32072,6 +32162,149 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     location.hash = `#/client/${encodeURIComponent(newClient)}/workbook/${newWbId}`;
   }
 
+  /* ── Quick Quote — internal margin calculator (never sent to a client) ──
+     Mirrors Parker's Excel Quote Sheet: enter the yellow input columns, the
+     rest compute. One persistent sheet in app_state `ms_quick_quote` so rows
+     can be looked up / updated later. Formulas:
+       shipPerRmb = shipKg*rmbPerKg / masterPack;  shipTotRmb = shipPerRmb*qty
+       pricePerUsd = rmbPer*fx;  shipPerUsd = shipPerRmb*fx;  shipTotUsd = shipTotRmb*fx
+       landedPer = pricePerUsd + shipPerUsd;  costExt = landedPer*qty
+       suggested = landedPer*(1+markup%);  total = sale*qty;  profit = total-costExt
+       china = profit*chinaSplit%     (fx = ¥1→$, app rate unless overridden) */
+  let _qq = { markup: 40, china: 10, fx: '', rows: [] };
+  let _qqLoaded = false;
+  let _qqSaveTimer = null;
+  async function loadQuickQuote(force) {
+    if (_qqLoaded && !force) return _qq;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_quick_quote' });
+      if (r && r.success && r.value) { const o = JSON.parse(r.value); if (o && typeof o === 'object') _qq = Object.assign({ markup: 40, china: 10, fx: '', rows: [] }, o); }
+    } catch (e) {}
+    if (!Array.isArray(_qq.rows)) _qq.rows = [];
+    _qqLoaded = true;
+    return _qq;
+  }
+  function saveQuickQuote() {
+    clearTimeout(_qqSaveTimer);
+    _qqSaveTimer = setTimeout(() => {
+      try { apiCall('save_app_state', { key: 'ms_quick_quote', value: JSON.stringify(_qq), changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }).catch(() => {}); } catch (e) {}
+    }, 500);
+  }
+  function _qqEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function _qqNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/[, ]/g, '')); return isFinite(n) ? n : 0; }
+  function _qqFx() { const o = _qqNum(_qq.fx); if (o > 0) return o; return (typeof _fxUsdFromRmbPrecise === 'function') ? _fxUsdFromRmbPrecise(1) : (1 / ((typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.24)); }
+  function _qqUsd(n) { return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function _qqUsd3(n) { return '$' + (Math.round(n * 1000) / 1000).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
+  function _qqRmb(n) { return '¥' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function _qqCompute(r) {
+    const fx = _qqFx();
+    const qty = _qqNum(r.qty), rmbPer = _qqNum(r.rmbPer), master = _qqNum(r.masterPack), shipKg = _qqNum(r.shipKg), rmbKg = _qqNum(r.rmbPerKg), sale = _qqNum(r.sale);
+    const markup = _qqNum(_qq.markup) / 100, china = _qqNum(_qq.china) / 100;
+    const shipPerRmb = master > 0 ? (shipKg * rmbKg) / master : 0;
+    const shipTotRmb = shipPerRmb * qty;
+    const pricePerUsd = rmbPer * fx;
+    const shipPerUsd = shipPerRmb * fx;
+    const shipTotUsd = shipTotRmb * fx;
+    const landedPer = pricePerUsd + shipPerUsd;
+    const costExt = landedPer * qty;
+    const suggested = landedPer * (1 + markup);
+    const total = sale * qty;
+    const profit = total - costExt;
+    const chinaUsd = profit * china;
+    return { shipPerRmb, shipTotRmb, pricePerUsd, shipPerUsd, shipTotUsd, landedPer, costExt, suggested, total, profit, chinaUsd };
+  }
+  function renderQuickQuoteView() {
+    showView('view-quickquote');
+    try { document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active')); const n = document.getElementById('nav-quickquote-link'); if (n) n.classList.add('active'); } catch (e) {}
+    loadQuickQuote().then(() => { _qqSyncSettings(); _qqRender(); });
+  }
+  function _qqSyncSettings() {
+    const set = (id, v) => { const e = document.getElementById(id); if (e && document.activeElement !== e) e.value = (v == null ? '' : v); };
+    set('qq-markup', _qq.markup); set('qq-china', _qq.china); set('qq-fx', _qq.fx);
+    const fxEl = document.getElementById('qq-fx');
+    if (fxEl) { try { fxEl.placeholder = (typeof _fxUsdFromRmbPrecise === 'function' ? _fxUsdFromRmbPrecise(1) : 0).toFixed(4); } catch (e) {} }
+  }
+  function qqSettingChanged() {
+    _qq.markup = document.getElementById('qq-markup').value;
+    _qq.china = document.getElementById('qq-china').value;
+    _qq.fx = document.getElementById('qq-fx').value;
+    _qqRender(); saveQuickQuote();
+  }
+  function qqAddRow() {
+    if (!Array.isArray(_qq.rows)) _qq.rows = [];
+    _qq.rows.push({ product: '', moqColor: '', totalMoq: '', qty: '', rmbPer: '', masterPack: '', shipKg: '', rmbPerKg: '', sale: '' });
+    _qqRender(); saveQuickQuote();
+    setTimeout(() => { const rows = document.querySelectorAll('#qq-body tr'); const last = rows[rows.length - 1]; const inp = last && last.querySelector('input'); if (inp) inp.focus(); }, 30);
+  }
+  function qqRemoveRow(i) { _qq.rows.splice(i, 1); _qqRender(); saveQuickQuote(); }
+  function qqInput(i, field, val) {
+    if (!_qq.rows[i]) return;
+    _qq.rows[i][field] = val;
+    _qqRecalcRow(i);
+    _qqRenderFoot();
+    saveQuickQuote();
+  }
+  function qqUseSuggested(i) {
+    const r = _qq.rows[i]; if (!r) return;
+    r.sale = (Math.round(_qqCompute(r).suggested * 1000) / 1000);
+    _qqRender(); saveQuickQuote();
+  }
+  function _qqRowHtml(r, i) {
+    const c = _qqCompute(r);
+    const inp = (field, val, cls) => `<td class="qq-in ${cls || ''}"><input type="text" value="${_qqEsc(val)}" oninput="qqInput(${i},'${field}',this.value)"></td>`;
+    const cell = (k, v, neg) => `<td class="qq-calc${neg ? ' qq-neg' : ''}" id="qq-c-${k}-${i}">${v}</td>`;
+    return `<tr data-qq="${i}">
+      ${inp('product', r.product, 'qq-text')}
+      ${inp('moqColor', r.moqColor, 'qq-text')}
+      ${inp('totalMoq', r.totalMoq, 'qq-text')}
+      ${inp('qty', r.qty)}
+      ${inp('rmbPer', r.rmbPer)}
+      ${inp('masterPack', r.masterPack)}
+      ${inp('shipKg', r.shipKg)}
+      ${inp('rmbPerKg', r.rmbPerKg)}
+      ${cell('shipPerRmb', _qqRmb(c.shipPerRmb))}
+      ${cell('shipTotRmb', _qqRmb(c.shipTotRmb))}
+      ${cell('pricePerUsd', _qqUsd(c.pricePerUsd))}
+      ${cell('shipPerUsd', _qqUsd(c.shipPerUsd))}
+      ${cell('shipTotUsd', _qqUsd(c.shipTotUsd))}
+      ${cell('landedPer', _qqUsd(c.landedPer))}
+      ${cell('costExt', _qqUsd(c.costExt))}
+      <td class="qq-calc" id="qq-c-suggested-${i}" title="Click to use as Sale" style="cursor:pointer;" onclick="qqUseSuggested(${i})">${_qqUsd3(c.suggested)}</td>
+      ${inp('sale', r.sale)}
+      ${cell('total', _qqUsd(c.total), c.total < 0)}
+      <td class="qq-calc qq-profit${c.profit < 0 ? ' qq-neg' : ''}" id="qq-c-profit-${i}">${_qqUsd(c.profit)}</td>
+      ${cell('china', _qqUsd(c.chinaUsd), c.chinaUsd < 0)}
+      <td style="text-align:center;"><span class="qq-rm" onclick="qqRemoveRow(${i})" title="Remove row">&times;</span></td>
+    </tr>`;
+  }
+  function _qqRecalcRow(i) {
+    const r = _qq.rows[i]; if (!r) return;
+    const c = _qqCompute(r);
+    const set = (k, v, neg) => { const e = document.getElementById(`qq-c-${k}-${i}`); if (e) { e.textContent = v; if (neg !== undefined) e.classList.toggle('qq-neg', neg); } };
+    set('shipPerRmb', _qqRmb(c.shipPerRmb)); set('shipTotRmb', _qqRmb(c.shipTotRmb));
+    set('pricePerUsd', _qqUsd(c.pricePerUsd)); set('shipPerUsd', _qqUsd(c.shipPerUsd)); set('shipTotUsd', _qqUsd(c.shipTotUsd));
+    set('landedPer', _qqUsd(c.landedPer)); set('costExt', _qqUsd(c.costExt)); set('suggested', _qqUsd3(c.suggested));
+    set('total', _qqUsd(c.total), c.total < 0); set('profit', _qqUsd(c.profit), c.profit < 0); set('china', _qqUsd(c.chinaUsd), c.chinaUsd < 0);
+  }
+  function _qqRender() {
+    const body = document.getElementById('qq-body'); if (!body) return;
+    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="21" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderFoot(); return; }
+    body.innerHTML = _qq.rows.map((r, i) => _qqRowHtml(r, i)).join('');
+    _qqRenderFoot();
+  }
+  function _qqRenderFoot() {
+    const foot = document.getElementById('qq-foot'); if (!foot) return;
+    let costExt = 0, total = 0, profit = 0, china = 0;
+    _qq.rows.forEach(r => { const c = _qqCompute(r); costExt += c.costExt; total += c.total; profit += c.profit; china += c.chinaUsd; });
+    foot.innerHTML = _qq.rows.length ? `<tr>
+      <td colspan="14" style="text-align:right;">Totals</td>
+      <td>${_qqUsd(costExt)}</td><td></td><td></td>
+      <td>${_qqUsd(total)}</td>
+      <td class="${profit < 0 ? 'qq-neg' : ''}">${_qqUsd(profit)}</td>
+      <td class="${china < 0 ? 'qq-neg' : ''}">${_qqUsd(china)}</td><td></td>
+    </tr>` : '';
+  }
+
   function showView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
@@ -37173,6 +37406,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // workbook list UI). openClientQuotes ensures the holding client exists.
     if (hash === '#/quotes') {
       openClientQuotes();
+      return;
+    }
+
+    // Match: #/quickquote — internal margin calculator (never sent to client).
+    if (hash === '#/quickquote') {
+      renderQuickQuoteView();
       return;
     }
 
