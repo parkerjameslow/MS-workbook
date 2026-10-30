@@ -32440,7 +32440,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <div class="qq-hero-lbl">Profit (total)</div>
           <div class="qq-hero-val ${c.profit < 0 ? 'qq-neg' : 'qq-pos'}" id="qq-r-profit">${_qqUsd(c.profit)}</div>
           <div class="qq-hero-totals">
-            <div><span>Cost EXT</span><span id="qq-r-costext">${_qqUsd(c.costExt)}</span></div>
+            <div><span>Total Cost</span><span id="qq-r-costext">${_qqUsd(c.costExt)}</span></div>
             <div><span>Revenue</span><span id="qq-r-revenue">${_qqUsd(c.total)}</span></div>
           </div>
         </div>
