@@ -2795,16 +2795,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-suffix-wrap { position:relative; display:inline-flex; align-items:center; }
     .qq-suffix-wrap input { padding-right:20px; }
     .qq-suffix { position:absolute; right:8px; font-size:12px; color:var(--text-muted); pointer-events:none; }
-    .qq-scroll { overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
-    .qq-table { border-collapse:collapse; width:100%; font-size:12.5px; white-space:nowrap; }
-    .qq-table th, .qq-table td { padding:6px 8px; border-bottom:1px solid var(--border); border-right:1px solid var(--border); text-align:right; }
+    .qq-scroll { display:inline-block; max-width:100%; overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface); vertical-align:top; }
+    .qq-table { border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
+    .qq-table th, .qq-table td { padding:7px 10px; border-bottom:1px solid var(--border); text-align:right; }
+    .qq-table th:not(:last-child), .qq-table td:not(:last-child) { border-right:1px solid var(--border); }
+    .qq-table tbody tr:last-child td { border-bottom:none; }
     .qq-table thead th { position:sticky; top:0; background:var(--surface2); z-index:2; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); }
     .qq-table thead tr.qq-grp th { text-align:center; font-size:10px; color:#fff; }
     .qq-grp-rmb { background:#2563eb; } .qq-grp-usd { background:#2563eb; } .qq-grp-sale { background:#1e40af; }
     .qq-table th.qq-in, .qq-table td.qq-in { background:rgba(234,179,8,0.10); }
     .qq-table thead th.qq-in { background:rgba(234,179,8,0.22); color:#92610a; }
-    .qq-table td input { width:100%; min-width:70px; box-sizing:border-box; border:1px solid transparent; border-radius:6px; padding:5px 6px; font-size:12.5px; background:transparent; color:var(--text); text-align:right; font-family:inherit; }
-    .qq-table td.qq-in input { min-width:84px; }
+    .qq-table td input { width:76px; box-sizing:border-box; border:1px solid transparent; border-radius:6px; padding:5px 7px; font-size:12.5px; background:transparent; color:var(--text); text-align:right; font-family:inherit; }
+    .qq-table td.qq-text input { width:150px; }
     .qq-table td input:focus { border-color:var(--accent); background:var(--surface); outline:none; }
     .qq-table td.qq-text input { text-align:left; }
     .qq-table td.qq-text { text-align:left; }
@@ -2821,10 +2823,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        banner so the sheet fits one screen without horizontal scroll. */
     #qq-table.qq-compact .qq-adv { display:none; }
     #qq-table.qq-compact tr.qq-grp { display:none; }
-    #qq-table.qq-compact th, #qq-table.qq-compact td { padding:6px 7px; }
-    #qq-table.qq-compact { width:100%; }
-    /* let columns shrink to fit one screen in compact mode */
-    #qq-table.qq-compact td input, #qq-table.qq-compact td.qq-in input { min-width:0; }
     /* Client Quotes list table */
     .quotes-tbl { width: 100%; border-collapse: collapse; }
     .quotes-tbl th { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
@@ -32318,15 +32316,23 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _qqRenderFoot() {
     const foot = document.getElementById('qq-foot'); if (!foot) return;
+    if (!_qq.rows.length) { foot.innerHTML = ''; return; }
     let costExt = 0, total = 0, profit = 0, china = 0;
     _qq.rows.forEach(r => { const c = _qqCompute(r); costExt += c.costExt; total += c.total; profit += c.profit; china += c.chinaUsd; });
-    foot.innerHTML = _qq.rows.length ? `<tr>
-      <td colspan="14" style="text-align:right;">Totals</td>
-      <td>${_qqUsd(costExt)}</td><td></td><td></td>
+    const b = adv => `<td class="${adv ? 'qq-adv' : ''}"></td>`;   // one aligned cell per column
+    foot.innerHTML = `<tr>
+      <td style="text-align:left; color:var(--text-muted); font-weight:800;">Totals</td>
+      ${b(true)}${b(true)}
+      ${b()}${b()}${b()}${b()}${b()}
+      ${b(true)}${b(true)}${b(true)}${b(true)}${b(true)}
+      ${b()}
+      <td>${_qqUsd(costExt)}</td>
+      ${b()}${b()}
       <td>${_qqUsd(total)}</td>
-      <td class="${profit < 0 ? 'qq-neg' : ''}">${_qqUsd(profit)}</td>
-      <td class="${china < 0 ? 'qq-neg' : ''}">${_qqUsd(china)}</td><td></td>
-    </tr>` : '';
+      <td class="qq-profit${profit < 0 ? ' qq-neg' : ''}">${_qqUsd(profit)}</td>
+      <td class="${china < 0 ? ' qq-neg' : ''}">${_qqUsd(china)}</td>
+      ${b()}
+    </tr>`;
   }
 
   function showView(viewId) {
