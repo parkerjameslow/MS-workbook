@@ -2797,24 +2797,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-suffix { position:absolute; right:8px; font-size:12px; color:var(--text-muted); pointer-events:none; }
     .qq-scroll { display:inline-block; max-width:100%; overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface); vertical-align:top; }
     .qq-table { border-collapse:collapse; font-size:12.5px; white-space:nowrap; }
-    .qq-table th, .qq-table td { padding:7px 10px; border-bottom:1px solid var(--border); text-align:right; }
-    .qq-table th:not(:last-child), .qq-table td:not(:last-child) { border-right:1px solid var(--border); }
+    .qq-table th, .qq-table td { padding:6px 8px; border-bottom:1px solid var(--border); text-align:right; }
     .qq-table tbody tr:last-child td { border-bottom:none; }
+    /* number + reorder controls */
+    .qq-numcell { text-align:center; white-space:nowrap; cursor:grab; user-select:none; }
+    .qq-numcell:active { cursor:grabbing; }
+    .qq-num { display:inline-block; font-weight:800; font-size:12px; color:var(--text-muted); margin-right:5px; vertical-align:middle; }
+    .qq-move { display:inline-flex; flex-direction:column; gap:1px; vertical-align:middle; }
+    .qq-move button { border:1px solid var(--border); background:var(--surface); color:var(--text-muted); font-size:7px; line-height:1; width:18px; height:12px; padding:0; border-radius:3px; cursor:pointer; }
+    .qq-move button:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+    .qq-move button:disabled { opacity:0.3; cursor:default; }
+    .qq-dragging { opacity:0.45; }
+    .qq-dragover td { box-shadow:inset 0 2px 0 var(--accent); }
     .qq-table thead th { position:sticky; top:0; background:var(--surface2); z-index:2; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); }
     .qq-table thead tr.qq-grp th { text-align:center; font-size:10px; color:#fff; }
     .qq-grp-rmb { background:#2563eb; } .qq-grp-usd { background:#2563eb; } .qq-grp-sale { background:#1e40af; }
-    .qq-table th.qq-in, .qq-table td.qq-in { background:rgba(234,179,8,0.10); }
-    .qq-table thead th.qq-in { background:rgba(234,179,8,0.22); color:#92610a; }
-    .qq-table td input { width:76px; box-sizing:border-box; border:1px solid transparent; border-radius:6px; padding:5px 7px; font-size:12.5px; background:transparent; color:var(--text); text-align:right; font-family:inherit; }
-    .qq-table td.qq-text input { width:150px; }
-    .qq-table td input:focus { border-color:var(--accent); background:var(--surface); outline:none; }
+    .qq-table td input { width:84px; box-sizing:border-box; border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--text); text-align:right; font-family:inherit; transition:border-color 0.12s, box-shadow 0.12s; }
+    .qq-table td.qq-text input { width:160px; text-align:left; }
+    .qq-table td input::placeholder { color:var(--text-muted); opacity:0.55; }
+    .qq-table td input:hover { border-color:var(--text-muted); }
+    .qq-table td input:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow, rgba(59,130,246,0.15)); outline:none; }
     .qq-table td.qq-text input { text-align:left; }
     .qq-table td.qq-text { text-align:left; }
     .qq-table td.qq-calc { color:var(--text); font-variant-numeric:tabular-nums; }
     .qq-table td.qq-neg { color:#dc2626; }
     .qq-table td.qq-profit { font-weight:700; }
     .qq-table tbody tr:hover td { background:rgba(127,127,127,0.04); }
-    .qq-table tbody tr:hover td.qq-in { background:rgba(234,179,8,0.16); }
     .qq-rm { color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1; }
     .qq-rm:hover { color:#dc2626; }
     .qq-table tfoot td { font-weight:800; background:var(--surface2); border-top:2px solid var(--border); }
@@ -11119,6 +11127,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <table class="qq-table" id="qq-table">
         <thead>
           <tr>
+            <th style="width:62px;">#</th>
             <th class="qq-in">Product</th>
             <th class="qq-in">MOQ / Color</th>
             <th class="qq-in">Total MOQ</th>
@@ -32262,7 +32271,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _qqRender(); saveQuickQuote();
     setTimeout(() => { const rows = document.querySelectorAll('#qq-body tr'); const last = rows[rows.length - 1]; const inp = last && last.querySelector('input'); if (inp) inp.focus(); }, 30);
   }
-  function qqRemoveRow(i) { _qq.rows.splice(i, 1); _qqRender(); saveQuickQuote(); if (_qqResultIdx === i) qqCloseResult(); }
+  function qqRemoveRow(i) {
+    const r = _qq.rows[i];
+    const name = (r && r.product && r.product.trim()) ? `"${r.product.trim()}"` : 'this line item';
+    if (!confirm(`Delete ${name}? This can't be undone.`)) return;
+    _qq.rows.splice(i, 1);
+    if (_qqResultIdx === i) qqCloseResult();
+    _qqRender(); saveQuickQuote();
+  }
   function qqInput(i, field, val) {
     if (!_qq.rows[i]) return;
     _qq.rows[i][field] = val;
@@ -32273,8 +32289,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // Grid = YELLOW INPUTS ONLY + a Results button per row. Computed numbers live
   // in the per-row results modal + the totals summary below the grid.
   function _qqRowHtml(r, i) {
-    const inp = (field, val, cls) => `<td class="qq-in ${cls || ''}"><input type="text" value="${_qqEsc(val)}" oninput="qqInput(${i},'${field}',this.value)"></td>`;
-    return `<tr data-qq="${i}">
+    const last = _qq.rows.length - 1;
+    const inp = (field, val, cls) => `<td class="qq-cell ${cls || ''}"><input type="text" value="${_qqEsc(val)}" oninput="qqInput(${i},'${field}',this.value)"></td>`;
+    return `<tr data-qq="${i}" ondragover="qqDragOver(event,${i})" ondrop="qqDrop(event,${i})">
+      <td class="qq-numcell" draggable="true" ondragstart="qqDragStart(event,${i})" ondragend="qqDragEnd(event)" title="Drag to reorder">
+        <span class="qq-num">${i + 1}</span>
+        <span class="qq-move">
+          <button type="button" onclick="qqMoveRow(${i},-1)" ${i === 0 ? 'disabled' : ''} title="Move up">&#9650;</button>
+          <button type="button" onclick="qqMoveRow(${i},1)" ${i === last ? 'disabled' : ''} title="Move down">&#9660;</button>
+        </span>
+      </td>
       ${inp('product', r.product, 'qq-text')}
       ${inp('moqColor', r.moqColor, 'qq-text')}
       ${inp('totalMoq', r.totalMoq, 'qq-text')}
@@ -32285,14 +32309,34 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${inp('rmbPerKg', r.rmbPerKg)}
       ${inp('sale', r.sale)}
       <td style="text-align:center;"><button type="button" class="qq-view-btn" onclick="qqOpenResult(${i})">Results</button></td>
-      <td style="text-align:center;"><span class="qq-rm" onclick="qqRemoveRow(${i})" title="Remove row">&times;</span></td>
+      <td style="text-align:center;"><span class="qq-rm" onclick="qqRemoveRow(${i})" title="Delete line item">&times;</span></td>
     </tr>`;
   }
   function _qqRender() {
     const body = document.getElementById('qq-body'); if (!body) return;
-    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="11" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderSummary(); return; }
+    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="12" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderSummary(); return; }
     body.innerHTML = _qq.rows.map((r, i) => _qqRowHtml(r, i)).join('');
     _qqRenderSummary();
+  }
+  function qqMoveRow(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= _qq.rows.length) return;
+    const t = _qq.rows[i]; _qq.rows[i] = _qq.rows[j]; _qq.rows[j] = t;
+    if (_qqResultIdx === i) _qqResultIdx = j; else if (_qqResultIdx === j) _qqResultIdx = i;
+    _qqRender(); saveQuickQuote();
+  }
+  let _qqDragIdx = null;
+  function qqDragStart(e, i) { _qqDragIdx = i; try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); } catch (_) {} const tr = e.target.closest('tr'); if (tr) tr.classList.add('qq-dragging'); }
+  function qqDragEnd(e) { _qqDragIdx = null; document.querySelectorAll('#qq-body tr.qq-dragging, #qq-body tr.qq-dragover').forEach(t => t.classList.remove('qq-dragging', 'qq-dragover')); }
+  function qqDragOver(e, i) { if (_qqDragIdx == null) return; e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch (_) {} const tr = e.currentTarget; document.querySelectorAll('#qq-body tr.qq-dragover').forEach(t => { if (t !== tr) t.classList.remove('qq-dragover'); }); if (tr) tr.classList.add('qq-dragover'); }
+  function qqDrop(e, i) {
+    if (_qqDragIdx == null) return;
+    e.preventDefault();
+    const from = _qqDragIdx; _qqDragIdx = null;
+    if (from === i || from < 0 || from >= _qq.rows.length) { _qqRender(); return; }
+    const item = _qq.rows.splice(from, 1)[0];
+    _qq.rows.splice(i, 0, item);
+    _qqRender(); saveQuickQuote();
   }
   // Totals across all rows — shown as clean stat tiles under the grid.
   function _qqRenderSummary() {
@@ -32357,9 +32401,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     set('qq-r-suggested', _qqUsd3(c.suggested));
     set('qq-r-salepct', _qqNum(r.sale) ? (_qqPct(c.salePct) + ' over cost') : 'enter a sale price');
     set('qq-r-price', _qqUsd3(c.pricePerUsd)); set('qq-r-ship', _qqUsd3(c.shipPerUsd)); set('qq-r-landed', _qqUsd3(c.landedPer));
-    set('qq-r-costext', _qqUsd(c.costExt)); set('qq-r-revenue', _qqUsd(c.total));
+    set('qq-r-costext', _qqUsd(c.costExt)); set('qq-r-shiptotusd', _qqUsd(c.shipTotUsd)); set('qq-r-revenue', _qqUsd(c.total));
     set('qq-r-profit', _qqUsd(c.profit), c.profit < 0); set('qq-r-profit2', _qqUsd(c.profit), c.profit < 0);
-    set('qq-r-china', _qqUsd(c.chinaUsd));
     set('qq-r-shipunit', _qqRmb(c.shipPerRmb)); set('qq-r-shiptot', _qqRmb(c.shipTotRmb));
   }
   function _qqRenderResult(i) {
@@ -32379,12 +32422,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <div class="qq-hero">
           <div class="qq-hero-lbl">Sale / unit</div>
           <div class="qq-hero-val"><span class="qq-hero-cur">$</span><input type="text" inputmode="decimal" class="qq-hero-input" value="${_qqEsc(r.sale)}" placeholder="0.00" oninput="qqResultSale(${i}, this.value)"></div>
-          <div class="qq-hero-sub" id="qq-r-salepct">${_qqNum(r.sale) ? (_qqPct(c.salePct) + ' over cost') : 'enter a sale price'}</div>
+          <div class="qq-hero-sub"><span id="qq-r-salepct">${_qqNum(r.sale) ? (_qqPct(c.salePct) + ' over cost') : 'enter a sale price'}</span></div>
+          <div class="qq-hero-sub"><button type="button" class="qq-hero-use" onclick="qqUseSuggested(${i})">Use suggested</button></div>
         </div>
         <div class="qq-hero">
           <div class="qq-hero-lbl">Profit</div>
           <div class="qq-hero-val ${c.profit < 0 ? 'qq-neg' : 'qq-pos'}" id="qq-r-profit">${_qqUsd(c.profit)}</div>
-          <div class="qq-hero-sub"><button type="button" class="qq-hero-use" onclick="qqUseSuggested(${i})">Use suggested</button></div>
+          <div class="qq-hero-sub">&nbsp;</div>
         </div>
       </div>
       <div class="qq-res-sec">Per unit (USD)</div>
@@ -32393,9 +32437,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${row('Landed cost', 'qq-r-landed', _qqUsd3(c.landedPer))}
       <div class="qq-res-sec">Order totals (USD)</div>
       ${row('Cost EXT', 'qq-r-costext', _qqUsd(c.costExt))}
+      ${row('Shipping (total)', 'qq-r-shiptotusd', _qqUsd(c.shipTotUsd))}
       ${row('Revenue (Total)', 'qq-r-revenue', _qqUsd(c.total))}
       ${row('Profit', 'qq-r-profit2', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}
-      ${row('China split', 'qq-r-china', _qqUsd(c.chinaUsd))}
       <div class="qq-res-sec">Shipping (RMB)</div>
       ${row('Ship / unit', 'qq-r-shipunit', _qqRmb(c.shipPerRmb))}
       ${row('Ship total', 'qq-r-shiptot', _qqRmb(c.shipTotRmb))}`;
