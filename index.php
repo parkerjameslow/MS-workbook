@@ -2816,6 +2816,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-rm { color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1; }
     .qq-rm:hover { color:#dc2626; }
     .qq-table tfoot td { font-weight:800; background:var(--surface2); border-top:2px solid var(--border); }
+    .qq-sub { font-size:8px; opacity:0.7; font-weight:700; letter-spacing:0.02em; }
+    /* Compact (default): hide the intermediate breakdown columns + the RMB/USD
+       banner so the sheet fits one screen without horizontal scroll. */
+    #qq-table.qq-compact .qq-adv { display:none; }
+    #qq-table.qq-compact tr.qq-grp { display:none; }
+    #qq-table.qq-compact th, #qq-table.qq-compact td { padding:6px 7px; }
+    #qq-table.qq-compact { width:100%; }
+    /* let columns shrink to fit one screen in compact mode */
+    #qq-table.qq-compact td input, #qq-table.qq-compact td.qq-in input { min-width:0; }
     /* Client Quotes list table */
     .quotes-tbl { width: 100%; border-collapse: collapse; }
     .quotes-tbl th { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
@@ -11081,6 +11090,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label class="qq-setting"><span>Suggested markup</span><span class="qq-suffix-wrap"><input type="text" inputmode="decimal" id="qq-markup" value="40" oninput="qqSettingChanged()"><span class="qq-suffix">%</span></span></label>
         <label class="qq-setting"><span>China split</span><span class="qq-suffix-wrap"><input type="text" inputmode="decimal" id="qq-china" value="10" oninput="qqSettingChanged()"><span class="qq-suffix">%</span></span></label>
         <label class="qq-setting"><span>FX (¥1 = $)</span><input type="text" inputmode="decimal" id="qq-fx" placeholder="auto" oninput="qqSettingChanged()" style="width:84px;"></label>
+        <button type="button" class="btn btn-ghost" id="qq-breakdown-btn" onclick="qqToggleBreakdown()">Show breakdown</button>
         <button type="button" class="btn btn-primary" onclick="qqAddRow()">+ Add Row</button>
       </div>
     </div>
@@ -11098,18 +11108,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </tr>
           <tr>
             <th class="qq-in">Product</th>
-            <th class="qq-in">MOQ / Color</th>
-            <th class="qq-in">Total MOQ</th>
+            <th class="qq-in qq-adv">MOQ / Color</th>
+            <th class="qq-in qq-adv">Total MOQ</th>
             <th class="qq-in">QTY</th>
             <th class="qq-in">RMB Per</th>
             <th class="qq-in">Master pack</th>
             <th class="qq-in">Shipping KG</th>
             <th class="qq-in">RMB / KG</th>
-            <th>Ship Per</th>
-            <th>Ship Total</th>
-            <th>Price Per</th>
-            <th>Ship Per</th>
-            <th>Ship Total</th>
+            <th class="qq-adv">Ship Per<br><span class="qq-sub">RMB</span></th>
+            <th class="qq-adv">Ship Total<br><span class="qq-sub">RMB</span></th>
+            <th class="qq-adv">Price Per<br><span class="qq-sub">USD</span></th>
+            <th class="qq-adv">Ship Per<br><span class="qq-sub">USD</span></th>
+            <th class="qq-adv">Ship Total<br><span class="qq-sub">USD</span></th>
             <th>Landed Per</th>
             <th>Cost EXT</th>
             <th title="Landed Per × (1 + markup)">Suggested</th>
@@ -32216,7 +32226,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function renderQuickQuoteView() {
     showView('view-quickquote');
     try { document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active')); const n = document.getElementById('nav-quickquote-link'); if (n) n.classList.add('active'); } catch (e) {}
+    _qqApplyCompact();
     loadQuickQuote().then(() => { _qqSyncSettings(); _qqRender(); });
+  }
+  function _qqApplyCompact() {
+    let compact = true;   // default = compact (fits one screen)
+    try { if (localStorage.getItem('ms_qq_compact') === '0') compact = false; } catch (e) {}
+    const t = document.getElementById('qq-table'); if (t) t.classList.toggle('qq-compact', compact);
+    const b = document.getElementById('qq-breakdown-btn'); if (b) b.textContent = compact ? 'Show breakdown' : 'Hide breakdown';
+  }
+  function qqToggleBreakdown() {
+    const t = document.getElementById('qq-table'); if (!t) return;
+    const compact = !t.classList.contains('qq-compact');
+    t.classList.toggle('qq-compact', compact);
+    try { localStorage.setItem('ms_qq_compact', compact ? '1' : '0'); } catch (e) {}
+    const b = document.getElementById('qq-breakdown-btn'); if (b) b.textContent = compact ? 'Show breakdown' : 'Hide breakdown';
   }
   function _qqSyncSettings() {
     const set = (id, v) => { const e = document.getElementById(id); if (e && document.activeElement !== e) e.value = (v == null ? '' : v); };
@@ -32252,21 +32276,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqRowHtml(r, i) {
     const c = _qqCompute(r);
     const inp = (field, val, cls) => `<td class="qq-in ${cls || ''}"><input type="text" value="${_qqEsc(val)}" oninput="qqInput(${i},'${field}',this.value)"></td>`;
-    const cell = (k, v, neg) => `<td class="qq-calc${neg ? ' qq-neg' : ''}" id="qq-c-${k}-${i}">${v}</td>`;
+    const cell = (k, v, neg, adv) => `<td class="qq-calc${neg ? ' qq-neg' : ''}${adv ? ' qq-adv' : ''}" id="qq-c-${k}-${i}">${v}</td>`;
     return `<tr data-qq="${i}">
       ${inp('product', r.product, 'qq-text')}
-      ${inp('moqColor', r.moqColor, 'qq-text')}
-      ${inp('totalMoq', r.totalMoq, 'qq-text')}
+      ${inp('moqColor', r.moqColor, 'qq-text qq-adv')}
+      ${inp('totalMoq', r.totalMoq, 'qq-text qq-adv')}
       ${inp('qty', r.qty)}
       ${inp('rmbPer', r.rmbPer)}
       ${inp('masterPack', r.masterPack)}
       ${inp('shipKg', r.shipKg)}
       ${inp('rmbPerKg', r.rmbPerKg)}
-      ${cell('shipPerRmb', _qqRmb(c.shipPerRmb))}
-      ${cell('shipTotRmb', _qqRmb(c.shipTotRmb))}
-      ${cell('pricePerUsd', _qqUsd(c.pricePerUsd))}
-      ${cell('shipPerUsd', _qqUsd(c.shipPerUsd))}
-      ${cell('shipTotUsd', _qqUsd(c.shipTotUsd))}
+      ${cell('shipPerRmb', _qqRmb(c.shipPerRmb), false, true)}
+      ${cell('shipTotRmb', _qqRmb(c.shipTotRmb), false, true)}
+      ${cell('pricePerUsd', _qqUsd(c.pricePerUsd), false, true)}
+      ${cell('shipPerUsd', _qqUsd(c.shipPerUsd), false, true)}
+      ${cell('shipTotUsd', _qqUsd(c.shipTotUsd), false, true)}
       ${cell('landedPer', _qqUsd(c.landedPer))}
       ${cell('costExt', _qqUsd(c.costExt))}
       <td class="qq-calc" id="qq-c-suggested-${i}" title="Click to use as Sale" style="cursor:pointer;" onclick="qqUseSuggested(${i})">${_qqUsd3(c.suggested)}</td>
