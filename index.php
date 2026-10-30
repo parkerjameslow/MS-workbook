@@ -2853,6 +2853,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-res-row { display:flex; justify-content:space-between; gap:12px; padding:5px 2px; font-size:13.5px; }
     .qq-res-row > span:first-child { color:var(--text-muted); }
     .qq-res-row > span:last-child { font-weight:700; font-variant-numeric:tabular-nums; }
+    .qq-res-row > span.qq-strong { color:var(--accent); }
     /* Compact (default): hide the intermediate breakdown columns + the RMB/USD
        banner so the sheet fits one screen without horizontal scroll. */
     #qq-table.qq-compact .qq-adv { display:none; }
@@ -32402,7 +32403,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const set = (id, v, neg) => { const e = document.getElementById(id); if (e) { e.textContent = v; if (neg !== undefined) { e.classList.toggle('qq-neg', neg); e.classList.toggle('qq-pos', !neg); } } };
     set('qq-r-suggested', _qqUsd3(c.suggested));
     set('qq-r-salepct', _qqNum(r.sale) ? (_qqPct(c.salePct) + ' over cost') : 'enter a sale price');
-    set('qq-r-price', _qqUsd3(c.pricePerUsd)); set('qq-r-ship', _qqUsd3(c.shipPerUsd)); set('qq-r-landed', _qqUsd3(c.landedPer));
+    set('qq-r-price', _qqUsd3(c.pricePerUsd)); set('qq-r-ship', _qqUsd3(c.shipPerUsd)); set('qq-r-shipusd2', _qqUsd3(c.shipPerUsd)); set('qq-r-landed', _qqUsd3(c.landedPer));
     set('qq-r-costext', _qqUsd(c.costExt)); set('qq-r-shiptotusd', _qqUsd(c.shipTotUsd)); set('qq-r-revenue', _qqUsd(c.total));
     set('qq-r-profit', _qqUsd(c.profit), c.profit < 0); set('qq-r-profit2', _qqUsd(c.profit), c.profit < 0);
     set('qq-r-shipunit', _qqRmb(c.shipPerRmb)); set('qq-r-shiptot', _qqRmb(c.shipTotRmb));
@@ -32433,18 +32434,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <div class="qq-hero-sub">&nbsp;</div>
         </div>
       </div>
-      <div class="qq-res-sec">Per unit (USD)</div>
-      ${row('Price (product)', 'qq-r-price', _qqUsd3(c.pricePerUsd))}
+      <div class="qq-res-sec">Cost per unit (USD)</div>
+      ${row('Product price', 'qq-r-price', _qqUsd3(c.pricePerUsd))}
       ${row('Shipping', 'qq-r-ship', _qqUsd3(c.shipPerUsd))}
-      ${row('Landed cost', 'qq-r-landed', _qqUsd3(c.landedPer))}
+      ${row('Landed cost', 'qq-r-landed', _qqUsd3(c.landedPer), 'qq-strong')}
+      <div class="qq-res-sec">Shipping</div>
+      ${row('Per unit (RMB)', 'qq-r-shipunit', _qqRmb(c.shipPerRmb))}
+      ${row('Per unit (USD)', 'qq-r-shipusd2', _qqUsd3(c.shipPerUsd))}
+      ${row('Total (RMB)', 'qq-r-shiptot', _qqRmb(c.shipTotRmb))}
+      ${row('Total (USD)', 'qq-r-shiptotusd', _qqUsd(c.shipTotUsd))}
       <div class="qq-res-sec">Order totals (USD)</div>
       ${row('Cost EXT', 'qq-r-costext', _qqUsd(c.costExt))}
-      ${row('Shipping (total)', 'qq-r-shiptotusd', _qqUsd(c.shipTotUsd))}
       ${row('Revenue (Total)', 'qq-r-revenue', _qqUsd(c.total))}
-      ${row('Profit', 'qq-r-profit2', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}
-      <div class="qq-res-sec">Shipping (RMB)</div>
-      ${row('Ship / unit', 'qq-r-shipunit', _qqRmb(c.shipPerRmb))}
-      ${row('Ship total', 'qq-r-shiptot', _qqRmb(c.shipTotRmb))}`;
+      ${row('Profit', 'qq-r-profit2', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}`;
   }
 
   function showView(viewId) {
