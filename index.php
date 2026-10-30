@@ -2831,8 +2831,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Results modal */
     .qq-hero-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:4px; }
     .qq-hero { border:1px solid var(--border); border-radius:10px; background:var(--surface2); padding:12px 14px; text-align:center; }
-    .qq-hero-lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); }
-    .qq-hero-val { font-size:20px; font-weight:800; margin-top:4px; font-variant-numeric:tabular-nums; }
+    .qq-hero-lbl { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); min-height:24px; display:flex; align-items:center; justify-content:center; }
+    .qq-hero-val { font-size:20px; font-weight:800; margin-top:4px; font-variant-numeric:tabular-nums; display:flex; align-items:center; justify-content:center; gap:1px; }
+    .qq-hero-sub { font-size:11px; color:var(--text-muted); margin-top:6px; min-height:18px; display:flex; align-items:center; justify-content:center; gap:4px; }
+    .qq-hero-input { width:92px; border:1px solid var(--border); border-radius:7px; padding:4px 6px; font-size:19px; font-weight:800; text-align:center; background:var(--surface); color:var(--text); font-family:inherit; }
+    .qq-hero-cur { font-size:15px; font-weight:800; color:var(--text-muted); }
+    .qq-hero-pct { width:48px; border:1px solid var(--border); border-radius:6px; padding:2px 5px; font-size:12px; font-weight:700; text-align:right; background:var(--surface); color:var(--text); font-family:inherit; }
+    .qq-hero-use { border:none; background:transparent; color:var(--accent); font-size:11px; font-weight:700; cursor:pointer; padding:0; text-decoration:underline; }
+    .qq-hero-use:hover { opacity:0.8; }
     .qq-res-sec { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin:16px 0 6px; border-bottom:1px solid var(--border); padding-bottom:5px; }
     .qq-res-row { display:flex; justify-content:space-between; gap:12px; padding:5px 2px; font-size:13.5px; }
     .qq-res-row > span:first-child { color:var(--text-muted); }
@@ -32216,7 +32222,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqCompute(r) {
     const fx = _qqFx();
     const qty = _qqNum(r.qty), rmbPer = _qqNum(r.rmbPer), master = _qqNum(r.masterPack), shipKg = _qqNum(r.shipKg), rmbKg = _qqNum(r.rmbPerKg), sale = _qqNum(r.sale);
-    const markup = _qqNum(_qq.markup) / 100, china = _qqNum(_qq.china) / 100;
+    // Per-row markup override (set from the Results modal); else the global.
+    const markupPct = (r.markup != null && String(r.markup).trim() !== '') ? _qqNum(r.markup) : _qqNum(_qq.markup);
+    const markup = markupPct / 100, china = _qqNum(_qq.china) / 100;
     const shipPerRmb = master > 0 ? (shipKg * rmbKg) / master : 0;
     const shipTotRmb = shipPerRmb * qty;
     const pricePerUsd = rmbPer * fx;
@@ -32228,7 +32236,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const total = sale * qty;
     const profit = total - costExt;
     const chinaUsd = profit * china;
-    return { shipPerRmb, shipTotRmb, pricePerUsd, shipPerUsd, shipTotUsd, landedPer, costExt, suggested, total, profit, chinaUsd };
+    // % the chosen Sale sits above landed cost (the real margin markup).
+    const salePct = landedPer > 0 ? (sale / landedPer - 1) * 100 : 0;
+    return { shipPerRmb, shipTotRmb, pricePerUsd, shipPerUsd, shipTotUsd, landedPer, costExt, suggested, total, profit, chinaUsd, markupPct, salePct };
   }
   function renderQuickQuoteView() {
     showView('view-quickquote');
@@ -32313,7 +32323,45 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function qqUseSuggested(i) {
     const r = _qq.rows[i]; if (!r) return;
     r.sale = (Math.round(_qqCompute(r).suggested * 1000) / 1000);
-    _qqRender(); _qqRenderResult(i); saveQuickQuote();
+    _qqSyncGridSale(i);
+    _qqRenderResult(i);   // safe: button click, no modal input focused
+    _qqRenderSummary(); saveQuickQuote();
+  }
+  function _qqPct(n) { return (n >= 0 ? '+' : '') + (Math.round(n * 10) / 10).toFixed(1) + '%'; }
+  function _qqSyncGridSale(i) {
+    const tr = document.querySelector(`#qq-body tr[data-qq="${i}"]`);
+    if (!tr) return;
+    const inp = tr.querySelectorAll('input')[8];   // 9th input = Sale
+    if (inp && document.activeElement !== inp) inp.value = (_qq.rows[i].sale == null ? '' : _qq.rows[i].sale);
+  }
+  // Sale edited INSIDE the modal → update deps in place (keep the sale input).
+  function qqResultSale(i, val) {
+    if (!_qq.rows[i]) return;
+    _qq.rows[i].sale = val;
+    _qqSyncGridSale(i);
+    _qqUpdateResultDeps(i);
+    _qqRenderSummary();
+    saveQuickQuote();
+  }
+  // Suggested markup % edited in the modal → per-row override; recompute.
+  function qqResultMarkup(i, val) {
+    if (!_qq.rows[i]) return;
+    _qq.rows[i].markup = val;
+    _qqUpdateResultDeps(i);
+    _qqRenderSummary();
+    saveQuickQuote();
+  }
+  function _qqUpdateResultDeps(i) {
+    const r = _qq.rows[i]; if (!r) return;
+    const c = _qqCompute(r);
+    const set = (id, v, neg) => { const e = document.getElementById(id); if (e) { e.textContent = v; if (neg !== undefined) { e.classList.toggle('qq-neg', neg); e.classList.toggle('qq-pos', !neg); } } };
+    set('qq-r-suggested', _qqUsd3(c.suggested));
+    set('qq-r-salepct', _qqNum(r.sale) ? (_qqPct(c.salePct) + ' over cost') : 'enter a sale price');
+    set('qq-r-price', _qqUsd3(c.pricePerUsd)); set('qq-r-ship', _qqUsd3(c.shipPerUsd)); set('qq-r-landed', _qqUsd3(c.landedPer));
+    set('qq-r-costext', _qqUsd(c.costExt)); set('qq-r-revenue', _qqUsd(c.total));
+    set('qq-r-profit', _qqUsd(c.profit), c.profit < 0); set('qq-r-profit2', _qqUsd(c.profit), c.profit < 0);
+    set('qq-r-china', _qqUsd(c.chinaUsd));
+    set('qq-r-shipunit', _qqRmb(c.shipPerRmb)); set('qq-r-shiptot', _qqRmb(c.shipTotRmb));
   }
   function _qqRenderResult(i) {
     const r = _qq.rows[i]; if (!r) return;
@@ -32321,27 +32369,37 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const title = document.getElementById('qq-result-title');
     if (title) title.textContent = 'Results — ' + (r.product && r.product.trim() ? r.product.trim() : `Row ${i + 1}`);
     const body = document.getElementById('qq-result-body'); if (!body) return;
-    const row = (lbl, val, cls) => `<div class="qq-res-row"><span>${lbl}</span><span class="${cls || ''}">${val}</span></div>`;
-    const hero = (lbl, val, cls) => `<div class="qq-hero"><div class="qq-hero-lbl">${lbl}</div><div class="qq-hero-val ${cls || ''}">${val}</div></div>`;
+    const row = (lbl, id, val, cls) => `<div class="qq-res-row"><span>${lbl}</span><span id="${id}" class="${cls || ''}">${val}</span></div>`;
     body.innerHTML = `
       <div class="qq-hero-grid">
-        ${hero('Suggested / unit', _qqUsd3(c.suggested))}
-        ${hero('Sale / unit', _qqNum(r.sale) ? _qqUsd3(_qqNum(r.sale)) : '—')}
-        ${hero('Profit', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}
+        <div class="qq-hero">
+          <div class="qq-hero-lbl">Suggested / unit</div>
+          <div class="qq-hero-val" id="qq-r-suggested">${_qqUsd3(c.suggested)}</div>
+          <div class="qq-hero-sub"><input type="text" inputmode="decimal" class="qq-hero-pct" value="${_qqEsc(c.markupPct)}" oninput="qqResultMarkup(${i}, this.value)"><span>% over cost</span></div>
+        </div>
+        <div class="qq-hero">
+          <div class="qq-hero-lbl">Sale / unit</div>
+          <div class="qq-hero-val"><span class="qq-hero-cur">$</span><input type="text" inputmode="decimal" class="qq-hero-input" value="${_qqEsc(r.sale)}" placeholder="0.00" oninput="qqResultSale(${i}, this.value)"></div>
+          <div class="qq-hero-sub" id="qq-r-salepct">${_qqNum(r.sale) ? (_qqPct(c.salePct) + ' over cost') : 'enter a sale price'}</div>
+        </div>
+        <div class="qq-hero">
+          <div class="qq-hero-lbl">Profit</div>
+          <div class="qq-hero-val ${c.profit < 0 ? 'qq-neg' : 'qq-pos'}" id="qq-r-profit">${_qqUsd(c.profit)}</div>
+          <div class="qq-hero-sub"><button type="button" class="qq-hero-use" onclick="qqUseSuggested(${i})">Use suggested</button></div>
+        </div>
       </div>
-      <div style="display:flex; justify-content:flex-end; margin:4px 0 14px;"><button type="button" class="qq-view-btn" onclick="qqUseSuggested(${i})">Use suggested as Sale</button></div>
       <div class="qq-res-sec">Per unit (USD)</div>
-      ${row('Price (product)', _qqUsd3(c.pricePerUsd))}
-      ${row('Shipping', _qqUsd3(c.shipPerUsd))}
-      ${row('Landed cost', _qqUsd3(c.landedPer))}
+      ${row('Price (product)', 'qq-r-price', _qqUsd3(c.pricePerUsd))}
+      ${row('Shipping', 'qq-r-ship', _qqUsd3(c.shipPerUsd))}
+      ${row('Landed cost', 'qq-r-landed', _qqUsd3(c.landedPer))}
       <div class="qq-res-sec">Order totals (USD)</div>
-      ${row('Cost EXT', _qqUsd(c.costExt))}
-      ${row('Revenue (Total)', _qqUsd(c.total))}
-      ${row('Profit', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}
-      ${row('China split', _qqUsd(c.chinaUsd))}
+      ${row('Cost EXT', 'qq-r-costext', _qqUsd(c.costExt))}
+      ${row('Revenue (Total)', 'qq-r-revenue', _qqUsd(c.total))}
+      ${row('Profit', 'qq-r-profit2', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}
+      ${row('China split', 'qq-r-china', _qqUsd(c.chinaUsd))}
       <div class="qq-res-sec">Shipping (RMB)</div>
-      ${row('Ship / unit', _qqRmb(c.shipPerRmb))}
-      ${row('Ship total', _qqRmb(c.shipTotRmb))}`;
+      ${row('Ship / unit', 'qq-r-shipunit', _qqRmb(c.shipPerRmb))}
+      ${row('Ship total', 'qq-r-shiptot', _qqRmb(c.shipTotRmb))}`;
   }
 
   function showView(viewId) {
