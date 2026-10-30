@@ -2849,7 +2849,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-hero-pct { width:48px; border:1px solid var(--border); border-radius:6px; padding:2px 5px; font-size:12px; font-weight:700; text-align:right; background:var(--surface); color:var(--text); font-family:inherit; }
     .qq-hero-use { border:none; background:transparent; color:var(--accent); font-size:11px; font-weight:700; cursor:pointer; padding:0; text-decoration:underline; }
     .qq-hero-use:hover { opacity:0.8; }
-    .qq-res-sec { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin:16px 0 6px; border-bottom:1px solid var(--border); padding-bottom:5px; }
+    .qq-res-sec { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin:0 0 6px; border-bottom:1px solid var(--border); padding-bottom:5px; }
+    /* two-column flow of the detail sections so the modal doesn't scroll */
+    .qq-res-cols { display:grid; grid-template-columns:repeat(2,1fr); gap:14px 26px; margin-top:16px; }
+    @media (max-width:520px) { .qq-res-cols { grid-template-columns:1fr; } }
+    /* totals tucked into the Profit hero tile */
+    .qq-hero-totals { width:100%; margin-top:9px; display:flex; flex-direction:column; gap:3px; }
+    .qq-hero-totals > div { display:flex; justify-content:space-between; gap:8px; font-size:11px; }
+    .qq-hero-totals span:first-child { color:var(--text-muted); font-weight:700; }
+    .qq-hero-totals span:last-child { font-weight:700; font-variant-numeric:tabular-nums; }
     .qq-res-row { display:flex; justify-content:space-between; gap:12px; padding:5px 2px; font-size:13.5px; }
     .qq-res-row > span:first-child { color:var(--text-muted); }
     .qq-res-row > span:last-child { font-weight:700; font-variant-numeric:tabular-nums; }
@@ -32429,24 +32437,29 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <div class="qq-hero-sub"><button type="button" class="qq-hero-use" onclick="qqUseSuggested(${i})">Use suggested</button></div>
         </div>
         <div class="qq-hero">
-          <div class="qq-hero-lbl">Profit</div>
+          <div class="qq-hero-lbl">Profit (total)</div>
           <div class="qq-hero-val ${c.profit < 0 ? 'qq-neg' : 'qq-pos'}" id="qq-r-profit">${_qqUsd(c.profit)}</div>
-          <div class="qq-hero-sub">&nbsp;</div>
+          <div class="qq-hero-totals">
+            <div><span>Cost EXT</span><span id="qq-r-costext">${_qqUsd(c.costExt)}</span></div>
+            <div><span>Revenue</span><span id="qq-r-revenue">${_qqUsd(c.total)}</span></div>
+          </div>
         </div>
       </div>
-      <div class="qq-res-sec">Cost per unit (USD)</div>
-      ${row('Product price', 'qq-r-price', _qqUsd3(c.pricePerUsd))}
-      ${row('Shipping', 'qq-r-ship', _qqUsd3(c.shipPerUsd))}
-      ${row('Landed cost', 'qq-r-landed', _qqUsd3(c.landedPer), 'qq-strong')}
-      <div class="qq-res-sec">Shipping</div>
-      ${row('Per unit (RMB)', 'qq-r-shipunit', _qqRmb(c.shipPerRmb))}
-      ${row('Per unit (USD)', 'qq-r-shipusd2', _qqUsd3(c.shipPerUsd))}
-      ${row('Total (RMB)', 'qq-r-shiptot', _qqRmb(c.shipTotRmb))}
-      ${row('Total (USD)', 'qq-r-shiptotusd', _qqUsd(c.shipTotUsd))}
-      <div class="qq-res-sec">Order totals (USD)</div>
-      ${row('Cost EXT', 'qq-r-costext', _qqUsd(c.costExt))}
-      ${row('Revenue (Total)', 'qq-r-revenue', _qqUsd(c.total))}
-      ${row('Profit', 'qq-r-profit2', _qqUsd(c.profit), c.profit < 0 ? 'qq-neg' : 'qq-pos')}`;
+      <div class="qq-res-cols">
+        <div class="qq-res-group">
+          <div class="qq-res-sec">Cost per unit (USD)</div>
+          ${row('Product price', 'qq-r-price', _qqUsd3(c.pricePerUsd))}
+          ${row('Shipping', 'qq-r-ship', _qqUsd3(c.shipPerUsd))}
+          ${row('Landed cost', 'qq-r-landed', _qqUsd3(c.landedPer), 'qq-strong')}
+        </div>
+        <div class="qq-res-group">
+          <div class="qq-res-sec">Shipping</div>
+          ${row('Per unit (RMB)', 'qq-r-shipunit', _qqRmb(c.shipPerRmb))}
+          ${row('Per unit (USD)', 'qq-r-shipusd2', _qqUsd3(c.shipPerUsd))}
+          ${row('Total (RMB)', 'qq-r-shiptot', _qqRmb(c.shipTotRmb))}
+          ${row('Total (USD)', 'qq-r-shiptotusd', _qqUsd(c.shipTotUsd))}
+        </div>
+      </div>`;
   }
 
   function showView(viewId) {
