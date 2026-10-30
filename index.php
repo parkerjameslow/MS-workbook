@@ -2779,6 +2779,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qe-table td { padding: 4px 6px; vertical-align: middle; }
     .qe-table input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; padding: 8px; font-size: 13px; background: var(--surface); color: var(--text); }
     .qe-table td input[inputmode="decimal"] { text-align: right; }
+    .qe-totals { margin-top: 16px; margin-left: auto; width: 100%; max-width: 320px; }
+    .qe-tot-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; font-size: 13px; color: var(--text); }
+    .qe-tot-row > span:first-child { color: var(--text-muted); font-weight: 600; }
+    .qe-tot-grand { border-top: 2px solid var(--border); margin-top: 4px; padding-top: 9px; font-size: 16px; font-weight: 800; }
+    .qe-tot-grand > span:first-child { color: var(--text); font-weight: 800; }
+    .qe-ship-wrap { position: relative; display: inline-flex; align-items: center; }
+    .qe-ship-prefix { position: absolute; left: 9px; font-size: 13px; color: var(--text-muted); pointer-events: none; }
+    .qe-totals input#qe-shipping { width: 120px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px 7px 18px; font-size: 13px; text-align: right; background: var(--surface); color: var(--text); }
     /* Client Quotes list table */
     .quotes-tbl { width: 100%; border-collapse: collapse; }
     .quotes-tbl th { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
@@ -11044,10 +11052,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <thead><tr><th style="text-align:left;">Product</th><th style="width:90px;">Qty</th><th style="width:120px;">Unit Price (USD)</th><th style="width:110px; text-align:right;">Total</th><th style="width:28px;"></th></tr></thead>
           <tbody id="quote-lines"><!-- JS --></tbody>
         </table>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+        <div style="margin-top:10px;">
           <button type="button" class="rfq-add-variant-link" onclick="_quoteAddLine()">+ Add line</button>
-          <div style="font-size:15px; font-weight:800;">Total: <span id="quote-grand-total">$0.00</span></div>
         </div>
+      </div>
+      <div style="margin-top:18px;">
+        <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Additional Fees</div>
+        <table class="qe-table">
+          <thead><tr><th style="text-align:left;">Description</th><th style="width:150px; text-align:right;">Amount (USD)</th><th style="width:28px;"></th></tr></thead>
+          <tbody id="qe-fees"><!-- JS --></tbody>
+        </table>
+        <div style="margin-top:10px;">
+          <button type="button" class="rfq-add-variant-link" onclick="_quoteAddFee()">+ Add fee</button>
+        </div>
+      </div>
+      <div class="qe-totals">
+        <div class="qe-tot-row"><span>Subtotal</span><span id="qe-subtotal">$0.00</span></div>
+        <div class="qe-tot-row"><span>Shipping</span><span class="qe-ship-wrap"><span class="qe-ship-prefix">$</span><input type="text" inputmode="decimal" id="qe-shipping" placeholder="0.00" oninput="_quoteShippingInput(this.value)"></span></div>
+        <div class="qe-tot-row"><span>Additional fees</span><span id="qe-fees-total">$0.00</span></div>
+        <div class="qe-tot-row qe-tot-grand"><span>Total</span><span id="quote-grand-total">$0.00</span></div>
       </div>
       <label class="qe-field" style="margin-top:18px;"><span>Notes / Terms</span><textarea id="quote-notes" rows="3" placeholder="Payment terms, lead time, validity, etc."></textarea></label>
       <div id="quote-committed-note" style="display:none; margin-top:12px; font-size:12px; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px 12px;"></div>
@@ -31545,7 +31568,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _quoteEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function _quoteNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n) ? n : 0; }
-  function _quoteTotal(q) { return (q && q.lines || []).reduce((s, l) => s + _quoteNum(l.qty) * _quoteNum(l.unitPrice), 0); }
+  function _quoteLinesSubtotal(q) { return (q && q.lines || []).reduce((s, l) => s + _quoteNum(l.qty) * _quoteNum(l.unitPrice), 0); }
+  function _quoteFeesTotal(q) { return (q && q.fees || []).reduce((s, f) => s + _quoteNum(f.amount), 0); }
+  // Grand total = line items + shipping + additional fees. (Callers that show
+  // "the total" — list, print, email — use this.)
+  function _quoteTotal(q) { return _quoteLinesSubtotal(q) + _quoteNum(q && q.shipping) + _quoteFeesTotal(q); }
   function _quoteUsd(n) { return '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function _nextQuoteNumber() {
     let max = 0;
@@ -31598,7 +31625,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           id: 'q_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           number: _nextQuoteNumber(), customer: '', contact: '', email: '',
           date: new Date().toISOString().slice(0, 10), validUntil: '', status: 'draft',
-          notes: '', lines: [{ product: '', qty: '', unitPrice: '' }], committedTo: null
+          notes: '', lines: [{ product: '', qty: '', unitPrice: '' }], shipping: '', fees: [], committedTo: null
         };
       }
       _fillQuoteEditor();
@@ -31615,8 +31642,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = (v == null ? '' : v); };
     set('quote-number', q.number); set('qe-date', q.date); set('quote-valid', q.validUntil);
     set('quote-customer', q.customer); set('quote-contact', q.contact); set('quote-email', q.email);
-    set('quote-notes', q.notes);
+    set('quote-notes', q.notes); set('qe-shipping', q.shipping);
     _renderQuoteLines();
+    _renderQuoteFees();
     const pill = document.getElementById('quote-status-pill');
     if (pill) { pill.textContent = (q.status || 'draft').toUpperCase(); }
     const committed = !!q.committedTo;
@@ -31656,8 +31684,44 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _quoteRefreshTotal();
   }
   function _quoteRefreshTotal() {
-    const el = document.getElementById('quote-grand-total');
-    if (el && _quoteDraft) el.textContent = _quoteUsd(_quoteTotal(_quoteDraft));
+    if (!_quoteDraft) return;
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    set('qe-subtotal', _quoteUsd(_quoteLinesSubtotal(_quoteDraft)));
+    set('qe-fees-total', _quoteUsd(_quoteFeesTotal(_quoteDraft)));
+    set('quote-grand-total', _quoteUsd(_quoteTotal(_quoteDraft)));
+  }
+  function _quoteShippingInput(val) {
+    if (!_quoteDraft) return;
+    _quoteDraft.shipping = val;
+    _quoteRefreshTotal();
+  }
+  function _renderQuoteFees() {
+    const tb = document.getElementById('qe-fees');
+    if (!tb || !_quoteDraft) return;
+    if (!Array.isArray(_quoteDraft.fees)) _quoteDraft.fees = [];
+    tb.innerHTML = _quoteDraft.fees.map((f, i) => `
+      <tr>
+        <td><input type="text" value="${_quoteEsc(f.desc)}" oninput="_quoteFeeInput(${i},'desc',this.value)" placeholder="e.g. Tooling, plates, setup"></td>
+        <td><input type="text" inputmode="decimal" value="${_quoteEsc(f.amount)}" oninput="_quoteFeeInput(${i},'amount',this.value)" placeholder="0.00"></td>
+        <td style="text-align:center;"><span class="remove-tier" onclick="_quoteRemoveFee(${i})" title="Remove fee">&times;</span></td>
+      </tr>`).join('');
+    _quoteRefreshTotal();
+  }
+  function _quoteFeeInput(i, field, val) {
+    if (!_quoteDraft || !_quoteDraft.fees[i]) return;
+    _quoteDraft.fees[i][field] = val;
+    _quoteRefreshTotal();
+  }
+  function _quoteAddFee() {
+    if (!_quoteDraft) return;
+    if (!Array.isArray(_quoteDraft.fees)) _quoteDraft.fees = [];
+    _quoteDraft.fees.push({ desc: '', amount: '' });
+    _renderQuoteFees();
+  }
+  function _quoteRemoveFee(i) {
+    if (!_quoteDraft) return;
+    _quoteDraft.fees.splice(i, 1);
+    _renderQuoteFees();
   }
   function _quoteAddLine() {
     if (!_quoteDraft) return;
@@ -31676,7 +31740,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _quoteDraft.number = (get('quote-number').trim() || _quoteDraft.number);
     _quoteDraft.date = get('qe-date'); _quoteDraft.validUntil = get('quote-valid');
     _quoteDraft.customer = get('quote-customer').trim(); _quoteDraft.contact = get('quote-contact').trim(); _quoteDraft.email = get('quote-email').trim();
-    _quoteDraft.notes = get('quote-notes');
+    _quoteDraft.notes = get('quote-notes'); _quoteDraft.shipping = get('qe-shipping');
   }
   function saveCurrentQuote() {
     if (!_quoteDraft) return false;
@@ -31684,6 +31748,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!_quoteDraft.customer) { alert('Enter a customer / company name.'); return false; }
     _quoteDraft.lines = (_quoteDraft.lines || []).filter(l => (l.product || '').trim() || l.qty || l.unitPrice);
     if (!_quoteDraft.lines.length) _quoteDraft.lines = [{ product: '', qty: '', unitPrice: '' }];
+    _quoteDraft.fees = (_quoteDraft.fees || []).filter(f => (f.desc || '').trim() || f.amount);
     _quoteDraft.updatedAt = new Date().toISOString();
     if (!_quoteDraft.createdAt) _quoteDraft.createdAt = _quoteDraft.updatedAt;
     const idx = _quotes.findIndex(x => x.id === _quoteDraft.id);
@@ -31722,9 +31787,23 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <div style="text-align:right;"><div><strong>${_quoteEsc(q.number)}</strong></div><div class="muted">${_quoteEsc(q.date || '')}</div>${q.validUntil ? `<div class="muted">Valid until ${_quoteEsc(q.validUntil)}</div>` : ''}</div></div>
       <div class="box"><span class="lbl">Prepared for</span><br><strong>${_quoteEsc(q.customer || '')}</strong>${q.contact ? '<br>' + _quoteEsc(q.contact) : ''}${q.email ? '<br>' + _quoteEsc(q.email) : ''}</div>
       <table><thead><tr><th>Product</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Total</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="tot">Total: ${_quoteUsd(_quoteTotal(q))}</div>
+      ${_quoteDocSummaryHtml(q)}
       ${q.notes ? `<div class="box" style="margin-top:20px;"><span class="lbl">Notes / Terms</span><br>${_quoteEsc(q.notes).replace(/\n/g, '<br>')}</div>` : ''}
       </body></html>`;
+  }
+  // Subtotal / shipping / fees / grand-total block + an itemized fee list,
+  // shared by the printable doc (email builds its own equivalent server-side).
+  function _quoteDocSummaryHtml(q) {
+    const sub = _quoteLinesSubtotal(q), ship = _quoteNum(q.shipping), feesT = _quoteFeesTotal(q);
+    const fees = (q.fees || []).filter(f => (f.desc || '').trim() || f.amount);
+    const feeRows = fees.map(f => `<tr><td colspan="3" style="text-align:right; border:none; color:#666;">${_quoteEsc(f.desc || 'Fee')}</td><td style="text-align:right; border:none;">${_quoteUsd(_quoteNum(f.amount))}</td></tr>`).join('');
+    const line = (label, val, strong) => `<tr><td colspan="3" style="text-align:right; border:none; ${strong ? 'font-weight:800;font-size:16px;' : 'color:#666;'}">${label}</td><td style="text-align:right; border:none; ${strong ? 'font-weight:800;font-size:16px;' : ''}">${val}</td></tr>`;
+    return `<table style="margin-top:6px;"><tbody>
+      ${line('Subtotal', _quoteUsd(sub))}
+      ${ship ? line('Shipping', _quoteUsd(ship)) : ''}
+      ${feeRows}
+      ${line('Total', _quoteUsd(_quoteTotal(q)), true)}
+    </tbody></table>`;
   }
   function previewQuote() {
     if (!_quoteDraft) return;
@@ -31769,9 +31848,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     btns.forEach(b => { b.disabled = true; b.dataset._t = b.textContent; b.textContent = 'Sending…'; });
     const restore = () => btns.forEach(b => { b.disabled = false; if (b.dataset._t) b.textContent = b.dataset._t; });
     try {
+      const liveFees = (_quoteDraft.fees || []).filter(f => (f.desc || '').trim() || f.amount);
       const r = await apiCall('send_client_quote', {
         email, number: _quoteDraft.number, customer: _quoteDraft.customer, contact: _quoteDraft.contact,
-        date: _quoteDraft.date, validUntil: _quoteDraft.validUntil, notes: _quoteDraft.notes, lines: live
+        date: _quoteDraft.date, validUntil: _quoteDraft.validUntil, notes: _quoteDraft.notes, lines: live,
+        shipping: _quoteDraft.shipping, fees: liveFees
       });
       if (r && r.success) {
         if (_quoteDraft.status !== 'committed') _quoteDraft.status = 'sent';
@@ -31822,7 +31903,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }));
     const detail = {
       client, product, desc, rfqItems,
-      committedFromQuote: { number: _quoteDraft.number, total: _quoteTotal(_quoteDraft), lines: _quoteDraft.lines, customer, contact: _quoteDraft.contact, email: _quoteDraft.email }
+      committedFromQuote: { number: _quoteDraft.number, total: _quoteTotal(_quoteDraft), lines: _quoteDraft.lines, shipping: _quoteDraft.shipping, fees: _quoteDraft.fees, customer, contact: _quoteDraft.contact, email: _quoteDraft.email }
     };
     // 3. Create the workbook.
     let newId;

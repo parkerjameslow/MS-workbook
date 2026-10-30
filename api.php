@@ -5546,6 +5546,21 @@ switch ($action) {
                 . '</tr>';
         }
         if ($rowsHtml === '') { echo json_encode(['success' => false, 'error' => 'The quote has no line items.']); break; }
+        // Shipping + additional fees → extra summary rows + grand total.
+        $qSubtotal = $qTotal;
+        $qShipping = (float)($input['shipping'] ?? 0);
+        $qFees     = is_array($input['fees'] ?? null) ? $input['fees'] : [];
+        $sumCell = 'padding:6px 10px;border:none;font-size:14px;color:#1a1d2e;text-align:right;';
+        $summaryHtml = '<tr><td colspan="3" style="' . $sumCell . 'color:#6b7280;">Subtotal</td><td style="' . $sumCell . '">' . $qMoney($qSubtotal) . '</td></tr>';
+        if ($qShipping != 0) { $qTotal += $qShipping; $summaryHtml .= '<tr><td colspan="3" style="' . $sumCell . 'color:#6b7280;">Shipping</td><td style="' . $sumCell . '">' . $qMoney($qShipping) . '</td></tr>'; }
+        foreach ($qFees as $f) {
+            if (!is_array($f)) continue;
+            $fd = trim((string)($f['desc'] ?? ''));
+            $fa = (float)($f['amount'] ?? 0);
+            if ($fd === '' && $fa == 0) continue;
+            $qTotal += $fa;
+            $summaryHtml .= '<tr><td colspan="3" style="' . $sumCell . 'color:#6b7280;">' . $qEsc($fd !== '' ? $fd : 'Fee') . '</td><td style="' . $sumCell . '">' . $qMoney($fa) . '</td></tr>';
+        }
         $greeting = $qContact !== '' ? $qEsc($qContact) : ($qCustomer !== '' ? $qEsc($qCustomer) : 'there');
         $th = 'padding:8px 10px;border-bottom:2px solid #1a1d2e;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;';
         $body = '<h1 style="margin:0 0 6px;font-size:24px;font-weight:800;color:#1a1d2e;">Your Quote</h1>'
@@ -5560,6 +5575,7 @@ switch ($action) {
               . '<th style="' . $th . 'text-align:right;">Unit Price</th>'
               . '<th style="' . $th . 'text-align:right;">Total</th>'
               . '</tr></thead><tbody>' . $rowsHtml . '</tbody></table>'
+              . '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 6px;"><tbody>' . $summaryHtml . '</tbody></table>'
               . '<p style="margin:0;text-align:right;font-size:20px;font-weight:800;color:#1a1d2e;">Total: ' . $qMoney($qTotal) . '</p>'
               . ($qNotes !== '' ? '<div style="margin-top:22px;padding-top:16px;border-top:1px solid #eee;"><p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280;">Notes / Terms</p><p style="margin:0;font-size:14px;color:#4b5563;line-height:1.6;">' . nl2br($qEsc($qNotes)) . '</p></div>' : '');
         $html = ms_email_wrap('Quote ' . $qNumber, 'Your quote from Market Sculpt', $body);
