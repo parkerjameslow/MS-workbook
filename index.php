@@ -7998,6 +7998,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="user-dropdown-item" onclick="openUsersModal(); closeUserDropdown()">Manage Users</button>
         <?php endif; ?>
         <button class="user-dropdown-item" onclick="window.print(); closeUserDropdown()">Print / Export</button>
+        <button class="user-dropdown-item" onclick="exportAllData(); closeUserDropdown()">Export All Data (Backup)</button>
         <hr class="user-dropdown-divider">
         <a class="user-dropdown-item danger" href="logout.php">Log Out</a>
       </div>
@@ -13318,6 +13319,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     else { _i18nStopObserver(); _i18nRestore(); }
   }
   function toggleLanguage() { applyLanguage(_lang === 'zh' ? 'en' : 'zh'); closeUserDropdown(); }
+
+  // One-click full backup — downloads a JSON of every client, workbook (with
+  // detail, incl. archived) and shared app_state blob. A safety net the
+  // operator can hold; nothing is sent anywhere but their own download.
+  async function exportAllData() {
+    try {
+      if (typeof _msToast === 'function') _msToast('Preparing backup…', 'info');
+      const r = await apiCall('export_backup', {});
+      if (!r || !r.success) { alert('Could not generate the backup: ' + ((r && r.error) || 'unknown error')); return; }
+      const blob = new Blob([JSON.stringify(r, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const d = new Date();
+      const p = n => String(n).padStart(2, '0');
+      const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+      const a = document.createElement('a');
+      a.href = url; a.download = `marketsculpt-backup_${stamp}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 2000);
+      const c = r.counts || {};
+      if (typeof _msToast === 'function') _msToast(`Backup downloaded — ${c.clients || 0} clients, ${c.workbooks || 0} workbooks.`, 'success');
+    } catch (e) { alert('Could not generate the backup (network error).'); }
+  }
   (function _initLang() {
     const run = () => { let l = 'en'; try { l = localStorage.getItem('ms_lang') || 'en'; } catch (e) {} applyLanguage(l === 'zh' ? 'zh' : 'en'); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);

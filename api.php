@@ -3808,6 +3808,39 @@ switch ($action) {
         ]);
         break;
 
+    case 'export_backup':
+        // Full-data backup: every client + workbook (with detail, INCLUDING
+        // archived/deleted so nothing is lost) + all shared app_state blobs
+        // (orders, shipments, CRM, factories, saved reports, etc.). Returned
+        // as one JSON the operator downloads.
+        $bkClients = $pdo->query("SELECT * FROM clients ORDER BY name ASC")->fetchAll();
+        $bkWorkbooks = $pdo->query("
+            SELECT w.*, c.name AS client_name
+            FROM workbooks w JOIN clients c ON w.client_id = c.id
+            ORDER BY c.name, w.product_name
+        ")->fetchAll();
+        foreach ($bkWorkbooks as &$bw) {
+            $bw['detail'] = $bw['detail_json'] ? json_decode($bw['detail_json'], true) : null;
+            unset($bw['detail_json']);
+        }
+        unset($bw);
+        $bkAppState = [];
+        try {
+            foreach ($pdo->query("SELECT key_name, value_json, rev FROM app_state")->fetchAll() as $r) {
+                $bkAppState[$r['key_name']] = ['value' => json_decode($r['value_json'], true), 'rev' => (int)$r['rev']];
+            }
+        } catch (Exception $e) { /* app_state table may not exist on very old installs */ }
+        echo json_encode([
+            'success'     => true,
+            'backup'      => true,
+            'generatedAt' => date('c'),
+            'counts'      => ['clients' => count($bkClients), 'workbooks' => count($bkWorkbooks), 'appStateKeys' => count($bkAppState)],
+            'clients'     => $bkClients,
+            'workbooks'   => $bkWorkbooks,
+            'appState'    => $bkAppState,
+        ]);
+        break;
+
     case 'upload_image':
         if (empty($_FILES['image']) || empty($_POST['workbook_id'])) {
             echo json_encode(['success' => false, 'error' => 'Image file and workbook_id required']);
