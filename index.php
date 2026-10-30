@@ -2765,6 +2765,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .rfq-line-thumb:hover .rfq-thumb-remove { opacity: 1; }
 
     /* RFQ image-picker modal grid */
+    /* Client Quote editor */
+    .qe-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 560px) { .qe-grid3 { grid-template-columns: 1fr; } }
+    .qe-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .qe-field > span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+    .qe-field input, .qe-field textarea {
+      width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 8px;
+      padding: 9px 10px; font-size: 13px; background: var(--surface); color: var(--text); font-family: inherit;
+    }
+    .qe-table { width: 100%; border-collapse: collapse; }
+    .qe-table th { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 4px 6px; border-bottom: 1px solid var(--border); }
+    .qe-table td { padding: 4px 6px; vertical-align: middle; }
+    .qe-table input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; padding: 8px; font-size: 13px; background: var(--surface); color: var(--text); }
+    .qe-table td input[inputmode="decimal"] { text-align: right; }
+    /* Client Quotes list table */
+    .quotes-tbl { width: 100%; border-collapse: collapse; }
+    .quotes-tbl th { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+    .quotes-tbl td { padding: 11px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .quotes-tbl tbody tr { cursor: pointer; }
+    .quotes-tbl tbody tr:hover { background: var(--surface2); }
+    .quote-status { font-size: 9px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 99px; padding: 2px 8px; }
+    .quote-status.draft { background: rgba(120,120,120,0.15); color: var(--text-muted); }
+    .quote-status.sent { background: rgba(59,130,246,0.15); color: #3b82f6; }
+    .quote-status.won { background: rgba(22,163,74,0.15); color: #16a34a; }
+    .quote-status.lost { background: rgba(220,38,38,0.15); color: #dc2626; }
+    .quote-status.committed { background: rgba(22,163,74,0.18); color: #16a34a; }
     .rfq-factory-row {
       display: flex; align-items: center; gap: 10px;
       margin: 0 0 16px; padding: 10px 12px;
@@ -7739,6 +7765,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </a>
   </div>
 
+  <!-- Client Quotes — standalone quick-quote area (prospect PO without a
+       full workbook); commit to a client + workbook when they say yes. -->
+  <div style="padding: 0 10px 8px;">
+    <a id="nav-quotes-link" href="#/quotes" onclick="event.preventDefault(); location.hash='#/quotes'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+      <span>Client Quotes</span>
+    </a>
+  </div>
+
   <!-- Recent WB — pinned below the two orange pills, matching their
        Market Sculpt orange. Opens a workbook-layout view of the last
        ~2 weeks' workbooks, grouped by client. -->
@@ -10968,6 +11002,64 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="recent-content"></div>
   </main>
 </div><!-- /#view-recent -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: CLIENT QUOTES — lightweight PO-style quotes for prospects.
+     A dumbed-down workbook: customer + products + prices. If the prospect
+     says yes, "Commit to Client + Workbook" spins up the real thing.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-quotes" class="view">
+  <main class="container" style="max-width:1040px; padding:0 16px 28px;">
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:14px 0;">
+      <h1 style="font-size:24px; font-weight:800; color:var(--text); margin:0;">Client Quotes</h1>
+      <span style="font-size:13px; color:var(--text-muted); flex:1 1 220px; min-width:0;">Quick PO-style quotes for prospects &mdash; commit one to a client + workbook when they say yes.</span>
+      <button type="button" class="btn btn-primary" onclick="openQuoteEditor(null)">+ New Quote</button>
+    </div>
+    <div id="quotes-list"><!-- populated by JS --></div>
+  </main>
+</div><!-- /#view-quotes -->
+
+<!-- Client Quote editor modal -->
+<div class="modal-overlay" id="quote-editor-modal" onclick="if(event.target===this)closeQuoteEditor()" style="z-index:1100;">
+  <div class="modal" style="max-width:780px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 36px);">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-shrink:0;">
+      <div class="modal-title" style="margin:0;">Client Quote</div>
+      <span id="quote-status-pill" style="font-size:10px; font-weight:800; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-muted); border:1px solid var(--border); border-radius:99px; padding:3px 10px;">DRAFT</span>
+    </div>
+    <div style="overflow-y:auto; flex:1 1 auto; margin-top:12px; padding-right:4px;">
+      <div class="qe-grid3">
+        <label class="qe-field"><span>Quote #</span><input type="text" id="quote-number" placeholder="Q-0001"></label>
+        <label class="qe-field"><span>Date</span><input type="date" id="qe-date"></label>
+        <label class="qe-field"><span>Valid until</span><input type="date" id="quote-valid"></label>
+      </div>
+      <div class="qe-grid3" style="margin-top:10px;">
+        <label class="qe-field"><span>Customer / Company *</span><input type="text" id="quote-customer" placeholder="Company name"></label>
+        <label class="qe-field"><span>Contact</span><input type="text" id="quote-contact" placeholder="Contact name"></label>
+        <label class="qe-field"><span>Email</span><input type="email" id="quote-email" placeholder="name@company.com"></label>
+      </div>
+      <div style="margin-top:18px;">
+        <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Line Items</div>
+        <table class="qe-table">
+          <thead><tr><th style="text-align:left;">Product</th><th style="width:90px;">Qty</th><th style="width:120px;">Unit Price (USD)</th><th style="width:110px; text-align:right;">Total</th><th style="width:28px;"></th></tr></thead>
+          <tbody id="quote-lines"><!-- JS --></tbody>
+        </table>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+          <button type="button" class="rfq-add-variant-link" onclick="_quoteAddLine()">+ Add line</button>
+          <div style="font-size:15px; font-weight:800;">Total: <span id="quote-grand-total">$0.00</span></div>
+        </div>
+      </div>
+      <label class="qe-field" style="margin-top:18px;"><span>Notes / Terms</span><textarea id="quote-notes" rows="3" placeholder="Payment terms, lead time, validity, etc."></textarea></label>
+      <div id="quote-committed-note" style="display:none; margin-top:12px; font-size:12px; color:var(--text-muted); background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px 12px;"></div>
+    </div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:8px; flex-wrap:wrap;">
+      <button type="button" class="btn btn-ghost danger" id="quote-delete-btn" onclick="deleteCurrentQuote()">Delete</button>
+      <button type="button" class="btn btn-ghost" onclick="closeQuoteEditor()">Close</button>
+      <button type="button" class="btn btn-ghost" onclick="printQuote()">Print / PO</button>
+      <button type="button" class="btn btn-primary" onclick="saveCurrentQuote()">Save</button>
+      <button type="button" class="btn btn-primary" id="quote-commit-btn" onclick="commitQuoteToWorkbook()" style="background:#16a34a; border-color:#16a34a;">Commit to Client + Workbook</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: BILLINGS — QuickBooks Online connection + sync
@@ -31416,6 +31508,277 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   /* ── Router ─────────────────────────────────────────────────────────────── */
+  /* ── Client Quotes ──────────────────────────────────────────────────
+     Lightweight PO-style quotes for prospects who aren't committed yet.
+     Stored globally in app_state `ms_client_quotes` (JSON array). When a
+     prospect says yes, commitQuoteToWorkbook() creates (or links) a client
+     and a workbook pre-seeded with the quote's products + quantities. */
+  let _quotes = [];
+  let _quotesLoaded = false;
+  let _quoteDraft = null;   // working copy in the editor
+  async function loadQuotes(force) {
+    if (_quotesLoaded && !force) return _quotes;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_client_quotes' });
+      if (r && r.success && r.value) { const a = JSON.parse(r.value); if (Array.isArray(a)) _quotes = a; }
+    } catch (e) {}
+    _quotesLoaded = true;
+    return _quotes;
+  }
+  function saveQuotes() {
+    try { apiCall('save_app_state', { key: 'ms_client_quotes', value: JSON.stringify(_quotes), changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }).catch(() => {}); } catch (e) {}
+  }
+  function _quoteEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function _quoteNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n) ? n : 0; }
+  function _quoteTotal(q) { return (q && q.lines || []).reduce((s, l) => s + _quoteNum(l.qty) * _quoteNum(l.unitPrice), 0); }
+  function _quoteUsd(n) { return '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function _nextQuoteNumber() {
+    let max = 0;
+    _quotes.forEach(q => { const m = String(q.number || '').match(/(\d+)/); if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; } });
+    return 'Q-' + String(max + 1).padStart(4, '0');
+  }
+  function renderQuotesView() {
+    showView('view-quotes');
+    try {
+      document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+      const nav = document.getElementById('nav-quotes-link'); if (nav) nav.classList.add('active');
+    } catch (e) {}
+    const host = document.getElementById('quotes-list');
+    if (host) host.innerHTML = '<div style="color:var(--text-muted); padding:24px;">Loading…</div>';
+    loadQuotes().then(() => _renderQuotesList());
+  }
+  function _renderQuotesList() {
+    const host = document.getElementById('quotes-list');
+    if (!host) return;
+    if (!_quotes.length) {
+      host.innerHTML = `<div style="color:var(--text-muted); padding:40px 20px; text-align:center; border:1px dashed var(--border); border-radius:12px;">No quotes yet.<br>Click <strong>“+ New Quote”</strong> to make a quick PO for a prospect.</div>`;
+      return;
+    }
+    const rows = _quotes.slice().sort((a, b) => String(b.updatedAt || b.date || '').localeCompare(String(a.updatedAt || a.date || ''))).map(q => {
+      const st = (q.status || 'draft').toLowerCase();
+      const nLines = (q.lines || []).filter(l => (l.product || '').trim()).length;
+      const committed = q.committedTo ? ` → <span style="color:#16a34a;">${_quoteEsc(q.committedTo.client)}</span>` : '';
+      return `<tr onclick="openQuoteEditor('${_quoteEsc(q.id)}')">
+        <td style="font-weight:700; white-space:nowrap;">${_quoteEsc(q.number || '')}</td>
+        <td>${_quoteEsc(q.customer || '—')}${committed}</td>
+        <td style="color:var(--text-muted);">${nLines} item${nLines === 1 ? '' : 's'}</td>
+        <td style="text-align:right; font-weight:700;">${_quoteUsd(_quoteTotal(q))}</td>
+        <td><span class="quote-status ${st}">${st}</span></td>
+        <td style="color:var(--text-muted); white-space:nowrap;">${_quoteEsc(q.date || '')}</td>
+      </tr>`;
+    }).join('');
+    host.innerHTML = `<table class="quotes-tbl">
+      <thead><tr><th>Quote #</th><th>Customer</th><th>Items</th><th style="text-align:right;">Total</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  }
+  function openQuoteEditor(id) {
+    loadQuotes().then(() => {
+      if (id) {
+        const q = _quotes.find(x => x.id === id);
+        if (!q) return;
+        _quoteDraft = JSON.parse(JSON.stringify(q));
+        if (!Array.isArray(_quoteDraft.lines) || !_quoteDraft.lines.length) _quoteDraft.lines = [{ product: '', qty: '', unitPrice: '' }];
+      } else {
+        _quoteDraft = {
+          id: 'q_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          number: _nextQuoteNumber(), customer: '', contact: '', email: '',
+          date: new Date().toISOString().slice(0, 10), validUntil: '', status: 'draft',
+          notes: '', lines: [{ product: '', qty: '', unitPrice: '' }], committedTo: null
+        };
+      }
+      _fillQuoteEditor();
+      document.getElementById('quote-editor-modal').classList.add('open');
+    });
+  }
+  function closeQuoteEditor() {
+    const m = document.getElementById('quote-editor-modal');
+    if (m) m.classList.remove('open');
+    _quoteDraft = null;
+  }
+  function _fillQuoteEditor() {
+    const q = _quoteDraft; if (!q) return;
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = (v == null ? '' : v); };
+    set('quote-number', q.number); set('qe-date', q.date); set('quote-valid', q.validUntil);
+    set('quote-customer', q.customer); set('quote-contact', q.contact); set('quote-email', q.email);
+    set('quote-notes', q.notes);
+    _renderQuoteLines();
+    const pill = document.getElementById('quote-status-pill');
+    if (pill) { pill.textContent = (q.status || 'draft').toUpperCase(); }
+    const committed = !!q.committedTo;
+    const cb = document.getElementById('quote-commit-btn');
+    if (cb) { cb.disabled = committed; cb.style.opacity = committed ? '0.5' : ''; cb.style.cursor = committed ? 'not-allowed' : ''; cb.textContent = committed ? 'Committed ✓' : 'Commit to Client + Workbook'; }
+    const note = document.getElementById('quote-committed-note');
+    if (note) {
+      if (committed) { note.style.display = ''; note.innerHTML = `Committed to <strong>${_quoteEsc(q.committedTo.client)}</strong> — <a href="#" onclick="event.preventDefault(); _openCommittedWorkbook()">open workbook →</a>`; }
+      else note.style.display = 'none';
+    }
+    const del = document.getElementById('quote-delete-btn');
+    if (del) del.style.display = (_quotes.some(x => x.id === q.id)) ? '' : 'none';
+  }
+  function _openCommittedWorkbook() {
+    const q = _quoteDraft; if (!q || !q.committedTo) return;
+    closeQuoteEditor();
+    location.hash = `#/client/${encodeURIComponent(q.committedTo.client)}/workbook/${q.committedTo.workbookId}`;
+  }
+  function _renderQuoteLines() {
+    const tb = document.getElementById('quote-lines');
+    if (!tb || !_quoteDraft) return;
+    tb.innerHTML = _quoteDraft.lines.map((l, i) => `
+      <tr>
+        <td><input type="text" value="${_quoteEsc(l.product)}" oninput="_quoteLineInput(${i},'product',this.value)" placeholder="Product / description"></td>
+        <td><input type="text" inputmode="decimal" value="${_quoteEsc(l.qty)}" oninput="_quoteLineInput(${i},'qty',this.value)" placeholder="0"></td>
+        <td><input type="text" inputmode="decimal" value="${_quoteEsc(l.unitPrice)}" oninput="_quoteLineInput(${i},'unitPrice',this.value)" placeholder="0.00"></td>
+        <td style="text-align:right; white-space:nowrap; font-weight:600;" id="quote-line-total-${i}">${_quoteUsd(_quoteNum(l.qty) * _quoteNum(l.unitPrice))}</td>
+        <td style="text-align:center;"><span class="remove-tier" onclick="_quoteRemoveLine(${i})" title="Remove line">&times;</span></td>
+      </tr>`).join('');
+    _quoteRefreshTotal();
+  }
+  function _quoteLineInput(i, field, val) {
+    if (!_quoteDraft || !_quoteDraft.lines[i]) return;
+    _quoteDraft.lines[i][field] = val;
+    const cell = document.getElementById(`quote-line-total-${i}`);
+    if (cell) cell.textContent = _quoteUsd(_quoteNum(_quoteDraft.lines[i].qty) * _quoteNum(_quoteDraft.lines[i].unitPrice));
+    _quoteRefreshTotal();
+  }
+  function _quoteRefreshTotal() {
+    const el = document.getElementById('quote-grand-total');
+    if (el && _quoteDraft) el.textContent = _quoteUsd(_quoteTotal(_quoteDraft));
+  }
+  function _quoteAddLine() {
+    if (!_quoteDraft) return;
+    _quoteDraft.lines.push({ product: '', qty: '', unitPrice: '' });
+    _renderQuoteLines();
+  }
+  function _quoteRemoveLine(i) {
+    if (!_quoteDraft) return;
+    _quoteDraft.lines.splice(i, 1);
+    if (!_quoteDraft.lines.length) _quoteDraft.lines.push({ product: '', qty: '', unitPrice: '' });
+    _renderQuoteLines();
+  }
+  function _readQuoteScalars() {
+    if (!_quoteDraft) return;
+    const get = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+    _quoteDraft.number = (get('quote-number').trim() || _quoteDraft.number);
+    _quoteDraft.date = get('qe-date'); _quoteDraft.validUntil = get('quote-valid');
+    _quoteDraft.customer = get('quote-customer').trim(); _quoteDraft.contact = get('quote-contact').trim(); _quoteDraft.email = get('quote-email').trim();
+    _quoteDraft.notes = get('quote-notes');
+  }
+  function saveCurrentQuote() {
+    if (!_quoteDraft) return false;
+    _readQuoteScalars();
+    if (!_quoteDraft.customer) { alert('Enter a customer / company name.'); return false; }
+    _quoteDraft.lines = (_quoteDraft.lines || []).filter(l => (l.product || '').trim() || l.qty || l.unitPrice);
+    if (!_quoteDraft.lines.length) _quoteDraft.lines = [{ product: '', qty: '', unitPrice: '' }];
+    _quoteDraft.updatedAt = new Date().toISOString();
+    if (!_quoteDraft.createdAt) _quoteDraft.createdAt = _quoteDraft.updatedAt;
+    const idx = _quotes.findIndex(x => x.id === _quoteDraft.id);
+    if (idx >= 0) _quotes[idx] = _quoteDraft; else _quotes.push(_quoteDraft);
+    saveQuotes();
+    if (typeof _msToast === 'function') _msToast('Quote saved.', 'success');
+    _renderQuotesList();
+    closeQuoteEditor();
+    return true;
+  }
+  function deleteCurrentQuote() {
+    if (!_quoteDraft) return;
+    if (!_quotes.some(x => x.id === _quoteDraft.id)) { closeQuoteEditor(); return; }
+    if (!confirm('Delete this quote? This cannot be undone.')) return;
+    _quotes = _quotes.filter(x => x.id !== _quoteDraft.id);
+    saveQuotes();
+    _renderQuotesList();
+    closeQuoteEditor();
+  }
+  function printQuote() {
+    if (!_quoteDraft) return;
+    _readQuoteScalars();
+    const q = _quoteDraft;
+    const rows = (q.lines || []).filter(l => (l.product || '').trim() || l.qty || l.unitPrice).map(l =>
+      `<tr><td>${_quoteEsc(l.product)}</td><td style="text-align:right;">${_quoteEsc(l.qty)}</td><td style="text-align:right;">${_quoteUsd(_quoteNum(l.unitPrice))}</td><td style="text-align:right;">${_quoteUsd(_quoteNum(l.qty) * _quoteNum(l.unitPrice))}</td></tr>`).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Quote ${_quoteEsc(q.number)}</title>
+      <style>
+        body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;max-width:720px;margin:32px auto;padding:0 24px;}
+        h1{font-size:22px;margin:0 0 2px;} .muted{color:#666;font-size:13px;}
+        .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:20px;}
+        table{width:100%;border-collapse:collapse;margin-top:10px;} th,td{padding:8px 10px;font-size:13px;border-bottom:1px solid #ddd;text-align:left;}
+        th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#666;}
+        .tot{text-align:right;font-size:18px;font-weight:800;margin-top:14px;}
+        .box{margin-top:8px;font-size:13px;line-height:1.5;} .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#666;}
+      </style></head><body>
+      <div class="hdr"><div><h1>MarketSculpt</h1><div class="muted">Quotation</div></div>
+        <div style="text-align:right;"><div><strong>${_quoteEsc(q.number)}</strong></div><div class="muted">${_quoteEsc(q.date || '')}</div>${q.validUntil ? `<div class="muted">Valid until ${_quoteEsc(q.validUntil)}</div>` : ''}</div></div>
+      <div class="box"><span class="lbl">Prepared for</span><br><strong>${_quoteEsc(q.customer || '')}</strong>${q.contact ? '<br>' + _quoteEsc(q.contact) : ''}${q.email ? '<br>' + _quoteEsc(q.email) : ''}</div>
+      <table><thead><tr><th>Product</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Unit Price</th><th style="text-align:right;">Total</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="tot">Total: ${_quoteUsd(_quoteTotal(q))}</div>
+      ${q.notes ? `<div class="box" style="margin-top:20px;"><span class="lbl">Notes / Terms</span><br>${_quoteEsc(q.notes).replace(/\n/g, '<br>')}</div>` : ''}
+      </body></html>`;
+    const w = window.open('', '_blank');
+    if (!w) { alert('Allow pop-ups to print the quote.'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(() => { try { w.focus(); w.print(); } catch (e) {} }, 300);
+  }
+  async function commitQuoteToWorkbook() {
+    if (!_quoteDraft) return;
+    if (_quoteDraft.committedTo) { alert('This quote is already committed to a workbook.'); return; }
+    _readQuoteScalars();
+    const customer = _quoteDraft.customer;
+    if (!customer) { alert('Enter a customer / company name first.'); return; }
+    const liveLines = (_quoteDraft.lines || []).filter(l => (l.product || '').trim() || l.qty);
+    if (!liveLines.length) { alert('Add at least one product line first.'); return; }
+    if (!confirm(`Create a client "${customer}" (if new) and a workbook from this quote?`)) return;
+    const btn = document.getElementById('quote-commit-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Committing…'; }
+    const fail = (msg) => { alert(msg); if (btn) { btn.disabled = false; btn.textContent = 'Commit to Client + Workbook'; } };
+    // 1. Resolve or create the client (case-insensitive match against existing).
+    let client = customer;
+    const existing = Object.keys(clientData).find(n => n.toLowerCase() === client.toLowerCase());
+    if (existing) client = existing;
+    let clientId = dbClientMap[client];
+    if (!clientId) {
+      try {
+        const r = await apiCall('add_client', { name: client });
+        if (r && r.success) { clientId = parseInt(r.id); dbClientMap[client] = clientId; if (!clientData[client]) clientData[client] = []; }
+        else { return fail('Could not create client: ' + ((r && r.error) || 'unknown error')); }
+      } catch (e) { return fail('Could not create client (network error).'); }
+    }
+    // 2. Build the workbook detail from the quote lines (products + qty; the
+    //    quoted USD prices are stored for reference — RFQ cost is priced later).
+    const product = (liveLines[0].product || '').trim() || ('Quote ' + _quoteDraft.number);
+    const desc = 'From client quote ' + _quoteDraft.number;
+    const rfqItems = liveLines.map(l => ({
+      item: (l.product || '').trim(), sku: '', qty: String(l.qty || ''), priceRmb: '', leadTime: '',
+      sample: false, variants: [], images: [], specs: [], factory: '', fileSections: {}
+    }));
+    const detail = {
+      client, product, desc, rfqItems,
+      committedFromQuote: { number: _quoteDraft.number, total: _quoteTotal(_quoteDraft), lines: _quoteDraft.lines, customer, contact: _quoteDraft.contact, email: _quoteDraft.email }
+    };
+    // 3. Create the workbook.
+    let newId;
+    try {
+      const r = await apiCall('add_workbook', { client_id: clientId, product_name: product, description: desc, allow_duplicate: true, detail });
+      if (r && r.success) newId = parseInt(r.id); else { return fail('Could not create workbook: ' + ((r && r.error) || 'unknown error')); }
+    } catch (e) { return fail('Could not create workbook (network error).'); }
+    // 4. Local state so the workbook opens pre-filled (fill reads workbookDetail).
+    try { workbookDetail[`${client}|${newId}`] = detail; } catch (e) {}
+    const items = clientData[client] || [];
+    const today = new Date();
+    const dateStr = today.getDate() + ' ' + today.toLocaleString('en-US', { month: 'short' }) + ' ' + String(today.getFullYear()).slice(2);
+    items.push({ id: newId, product, description: desc, dateCreated: dateStr, dateSubmitted: '', flow: { prepChina: true, chinaSubmits: false, shippingDims: false, quoteClient: false, clientApproved: false, officeInvoice: false, confirmedPayment: false, orderChina: false } });
+    clientData[client] = items;
+    dbWorkbookMap[`${client}|${newId}`] = newId;
+    try { saveToLocalStorage(); } catch (e) {}
+    // 5. Mark the quote committed + persist.
+    _quoteDraft.committedTo = { client, workbookId: newId };
+    _quoteDraft.status = 'committed';
+    _quoteDraft.updatedAt = new Date().toISOString();
+    const idx = _quotes.findIndex(x => x.id === _quoteDraft.id);
+    if (idx >= 0) _quotes[idx] = _quoteDraft; else _quotes.push(_quoteDraft);
+    saveQuotes();
+    closeQuoteEditor();
+    if (typeof _msToast === 'function') _msToast(`Committed — opening ${client}'s workbook…`, 'success');
+    location.hash = `#/client/${encodeURIComponent(client)}/workbook/${newId}`;
+  }
+
   function showView(viewId) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(viewId).classList.add('active');
@@ -36487,6 +36850,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Match: #/recent — recent workbooks grouped by client.
     if (hash === '#/recent') {
       renderRecentWorkbooksView();
+      return;
+    }
+
+    // Match: #/quotes — standalone Client Quotes (quick PO for prospects).
+    if (hash === '#/quotes') {
+      renderQuotesView();
       return;
     }
 
