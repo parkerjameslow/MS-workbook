@@ -8926,6 +8926,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('inner')" title="Clear all Inner Carton fields">Clear</button>
             </div>
           </div>
+          <!-- Product ships as-is: no inner box, so the inner carton = the
+               product dimensions with NO inner wall (4mm/7mm) added. -->
+          <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none; font-size:12px; font-weight:700; color:var(--text); margin:2px 0 8px;">
+            <input type="checkbox" id="inner-no-box" onchange="onInnerNoBoxToggle()"
+              style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;" />
+            Product ships as-is (no inner box)
+          </label>
+          <div id="inner-no-box-hint" style="display:none; font-size:11px; color:var(--text-muted); line-height:1.5; margin:-4px 0 10px;">Inner carton = product dimensions · no inner wall · 1 unit per inner.</div>
           <div class="specs-dim-grid">
             <div></div>
             <div class="specs-unit-header">cm</div>
@@ -15217,6 +15225,28 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // dims via autoCalcCartons (which would re-derive from arrangement).
   // Instead, just propagate the new inner dims FORWARD to the outer
   // carton if outer arrangement is set.
+  // "Product ships as-is (no inner box)" toggle. When on, the inner carton is
+  // driven entirely from the product (1×1×1, no wall) and its manual fields are
+  // locked/dimmed so the operator isn't tempted to fight the auto value.
+  function onInnerNoBoxToggle() {
+    const on = !!document.getElementById('inner-no-box')?.checked;
+    const hint = document.getElementById('inner-no-box-hint');
+    if (hint) hint.style.display = on ? '' : 'none';
+    if (on) {
+      const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      setV('carton-inner-row', 1); setV('carton-inner-side', 1); setV('carton-inner-stack', 1);
+      setV('carton-inner-count', 1);
+    }
+    // Lock the manual inner fields while linked to the product.
+    ['carton-inner-row','carton-inner-side','carton-inner-stack','carton-inner-count','carton-inner-wall',
+     'carton-inner-l-cm','carton-inner-l-in','carton-inner-w-cm','carton-inner-w-in','carton-inner-h-cm','carton-inner-h-in']
+      .forEach(id => { const el = document.getElementById(id); if (el) { el.disabled = on; el.style.opacity = on ? '0.55' : ''; } });
+    try { autoCalcCartons(); } catch (_) {}
+    try { updateOuterWeightHint(); } catch (_) {}
+    try { renderBoxViz('inner'); } catch (_) {}
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+
   function recalcOuterFromInner() {
     // Outer is a FIXED container (user-entered dims) that inner cartons fit
     // into, so a changed inner size no longer resizes the outer — it only
@@ -15698,7 +15728,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sideQty  = parseInt(document.getElementById('carton-inner-side')?.value);
     const stackQty = parseInt(document.getElementById('carton-inner-stack')?.value);
     const wallSel  = parseInt(document.getElementById('carton-inner-wall')?.value) || 1;
-    const wallCm   = wallSel === 2 ? 0.7 : 0.4;  // single ≈ 4mm, double ≈ 7mm
+    // "Product ships as-is (no inner box)" → the inner carton IS the product,
+    // so there's no inner wall to add and exactly one unit per inner.
+    const innerNoBox = !!document.getElementById('inner-no-box')?.checked;
+    const wallCm   = innerNoBox ? 0 : (wallSel === 2 ? 0.7 : 0.4);  // single ≈ 4mm, double ≈ 7mm
     const PADDING = 2; // 2cm fallback for the legacy bestCartonDims path
 
     if (!pL || !pW || !pH) return;
@@ -15716,13 +15749,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       el.textContent = `${nx} × ${ny}${layerNote}  =  ${nx * ny * nz} ${itemWord}`;
     };
 
-    const useArrangement = (rowQty >= 1) || (sideQty >= 1) || (stackQty >= 1);
+    const useArrangement = innerNoBox || (rowQty >= 1) || (sideQty >= 1) || (stackQty >= 1);
 
     // ── Inner carton: explicit Row × Side × Height path takes precedence ──
     if (useArrangement) {
-      const r = rowQty   >= 1 ? rowQty   : 1;
-      const s = sideQty  >= 1 ? sideQty  : 1;
-      const h = stackQty >= 1 ? stackQty : 1;
+      // No-inner-box → force a 1×1×1 arrangement so the inner carton equals
+      // the product footprint exactly (with wallCm already 0 above).
+      const r = innerNoBox ? 1 : (rowQty   >= 1 ? rowQty   : 1);
+      const s = innerNoBox ? 1 : (sideQty  >= 1 ? sideQty  : 1);
+      const h = innerNoBox ? 1 : (stackQty >= 1 ? stackQty : 1);
       const innerL = pL * r + 2 * wallCm;
       const innerW = pW * s + 2 * wallCm;
       const innerH = pH * h + 2 * wallCm;
@@ -35839,6 +35874,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _resetToggle('product-dims-lock', typeof onProductDimsLockToggle === 'function' ? onProductDimsLockToggle : null);
     _resetToggle('freight-cost-override-toggle', typeof onShippingCostOverrideToggle === 'function' ? onShippingCostOverrideToggle : null);
     _resetToggle('weight-only-override', typeof onWeightOnlyToggle === 'function' ? onWeightOnlyToggle : null);
+    _resetToggle('inner-no-box', typeof onInnerNoBoxToggle === 'function' ? onInnerNoBoxToggle : null);
     _resetToggle('case-only-override', typeof onCaseOnlyToggle === 'function' ? onCaseOnlyToggle : null);
     _resetToggle('pallet-case-override', typeof onPalletCaseOverrideToggle === 'function' ? onPalletCaseOverrideToggle : null);
     _resetToggle('pallet-manual', typeof onPalletManualToggle === 'function' ? onPalletManualToggle : null);
@@ -35980,6 +36016,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (weightOnlyEl) {
         weightOnlyEl.checked = !!data.weightOnlyOverride;
         if (typeof onWeightOnlyToggle === 'function') onWeightOnlyToggle();
+      }
+      // "Product ships as-is (no inner box)" — restore + re-apply the lock/calc.
+      const innerNoBoxEl = document.getElementById('inner-no-box');
+      if (innerNoBoxEl) {
+        innerNoBoxEl.checked = !!data.cartonNoInnerBox;
+        if (typeof onInnerNoBoxToggle === 'function') onInnerNoBoxToggle();
       }
       // Case Only Override — restore every field then flip the toggle
       // so the gray-out + enable state on the surrounding columns
@@ -38459,6 +38501,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // anything other than "Other".
       productSubcategoryOther:  _v('product-subcategory-other'),
       productSubcategoryOther2: _v('product-subcategory-other-2'),
+      // "Product ships as-is (no inner box)" — inner carton = product dims, no wall.
+      cartonNoInnerBox: !!document.getElementById('inner-no-box')?.checked,
       // Pallet manual-mode flag — when true, the Pallet View ignores
       // outer carton dims and fits products directly on the 40 × 48
       // pallet base. Used for crates / unboxed shipments.
