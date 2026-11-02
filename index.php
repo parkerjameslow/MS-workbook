@@ -2832,6 +2832,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-table tbody tr:hover td { background:rgba(127,127,127,0.04); }
     .qq-rm { color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1; }
     .qq-rm:hover { color:#dc2626; }
+    /* Auto-suggested Sale (markup default, not yet overridden) — subtle accent. */
+    .qq-table td.qq-sale-auto input { color:var(--accent); font-style:italic; border-style:dashed; }
+    .qq-table td.qq-sale-auto input:focus { font-style:normal; border-style:solid; }
+    .qq-hero-input-auto { color:var(--accent); font-style:italic; }
+    .qq-hero-input-auto:focus { color:var(--text); font-style:normal; }
+    /* KG / LB unit toggle in the Shipping column header. */
+    .qq-unit-btn { font:inherit; font-size:10px; font-weight:800; letter-spacing:0.03em; color:var(--accent); background:rgba(107,147,255,0.12); border:1px solid var(--accent); border-radius:6px; padding:1px 6px; margin-left:2px; cursor:pointer; vertical-align:middle; }
+    .qq-unit-btn:hover { background:var(--accent); color:#fff; }
     .qq-table tfoot td { font-weight:800; background:var(--surface2); border-top:2px solid var(--border); }
     .qq-sub { font-size:8px; opacity:0.7; font-weight:700; letter-spacing:0.02em; }
     .qq-view-btn { border:1px solid var(--accent); color:var(--accent); background:transparent; font-size:11px; font-weight:700; border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap; transition:background 0.12s, color 0.12s; }
@@ -11254,7 +11262,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label class="qq-setting"><span>Suggested markup</span><span class="qq-suffix-wrap"><input type="text" inputmode="decimal" id="qq-markup" value="40" oninput="qqSettingChanged()"><span class="qq-suffix">%</span></span></label>
         <label class="qq-setting"><span>China split</span><span class="qq-suffix-wrap"><input type="text" inputmode="decimal" id="qq-china" value="10" oninput="qqSettingChanged()"><span class="qq-suffix">%</span></span></label>
         <label class="qq-setting"><span>FX (¥1 = $)</span><input type="text" inputmode="decimal" id="qq-fx" placeholder="auto" oninput="qqSettingChanged()" style="width:84px;"></label>
-        <button type="button" class="btn btn-primary" onclick="qqAddRow()">+ Add Row</button>
       </div>
     </div>
     <div class="qq-scroll">
@@ -11268,7 +11275,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <th style="width:8%;">QTY</th>
             <th style="width:8%;">RMB Per</th>
             <th style="width:9%;">Master pack</th>
-            <th style="width:9%;">Shipping KG</th>
+            <th style="width:9%;">Shipping <button type="button" id="qq-ship-unit-btn" class="qq-unit-btn" onclick="qqToggleShipUnit()" title="Switch weight unit (KG / LB)">KG</button></th>
             <th style="width:8%;">RMB / KG</th>
             <th style="width:8%;">Sale (USD)</th>
             <th style="width:7%;">Results</th>
@@ -11277,6 +11284,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </thead>
         <tbody id="qq-body"><!-- populated by JS --></tbody>
       </table>
+    </div>
+    <div style="margin-top:12px;">
+      <button type="button" class="btn btn-primary" onclick="qqAddRow()">+ Add Row</button>
     </div>
   </main>
 </div><!-- /#view-quickquote -->
@@ -32759,14 +32769,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
        landedPer = pricePerUsd + shipPerUsd;  costExt = landedPer*qty
        suggested = landedPer*(1+markup%);  total = sale*qty;  profit = total-costExt
        china = profit*chinaSplit%     (fx = ¥1→$, app rate unless overridden) */
-  let _qq = { markup: 40, china: 10, fx: '', rows: [] };
+  let _qq = { markup: 40, china: 10, fx: '', shipUnit: 'kg', rows: [] };
   let _qqLoaded = false;
   let _qqSaveTimer = null;
   async function loadQuickQuote(force) {
     if (_qqLoaded && !force) return _qq;
     try {
       const r = await apiCall('get_app_state', { key: 'ms_quick_quote' });
-      if (r && r.success && r.value) { const o = JSON.parse(r.value); if (o && typeof o === 'object') _qq = Object.assign({ markup: 40, china: 10, fx: '', rows: [] }, o); }
+      if (r && r.success && r.value) { const o = JSON.parse(r.value); if (o && typeof o === 'object') _qq = Object.assign({ markup: 40, china: 10, fx: '', shipUnit: 'kg', rows: [] }, o); }
     } catch (e) {}
     if (!Array.isArray(_qq.rows)) _qq.rows = [];
     _qqLoaded = true;
@@ -32786,10 +32796,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqRmb(n) { return '¥' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function _qqCompute(r) {
     const fx = _qqFx();
-    const qty = _qqNum(r.qty), rmbPer = _qqNum(r.rmbPer), master = _qqNum(r.masterPack), shipKg = _qqNum(r.shipKg), rmbKg = _qqNum(r.rmbPerKg), sale = _qqNum(r.sale);
+    const qty = _qqNum(r.qty), rmbPer = _qqNum(r.rmbPer), master = _qqNum(r.masterPack), shipWt = _qqNum(r.shipKg), rmbKg = _qqNum(r.rmbPerKg);
     // Per-row markup override (set from the Results modal); else the global.
     const markupPct = (r.markup != null && String(r.markup).trim() !== '') ? _qqNum(r.markup) : _qqNum(_qq.markup);
     const markup = markupPct / 100, china = _qqNum(_qq.china) / 100;
+    // Shipping weight unit — the operator picks KG or LB for the Shipping
+    // column; LB is converted to kg since the freight rate is RMB per kg.
+    const shipUnit = (_qq.shipUnit === 'lb') ? 'lb' : 'kg';
+    const shipKg = shipUnit === 'lb' ? shipWt * 0.45359237 : shipWt;
     const shipPerRmb = master > 0 ? (shipKg * rmbKg) / master : 0;
     const shipTotRmb = shipPerRmb * qty;
     const pricePerUsd = rmbPer * fx;
@@ -32798,12 +32812,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const landedPer = pricePerUsd + shipPerUsd;
     const costExt = landedPer * qty;
     const suggested = landedPer * (1 + markup);
+    // Sale defaults to the suggested (markup) price until the operator types
+    // one — so the Sale column auto-fills at the markup % once cost is in.
+    const saleIsAuto = (r.sale == null || String(r.sale).trim() === '');
+    const sale = saleIsAuto ? suggested : _qqNum(r.sale);
     const total = sale * qty;
     const profit = total - costExt;
     const chinaUsd = profit * china;
     // % the chosen Sale sits above landed cost (the real margin markup).
     const salePct = landedPer > 0 ? (sale / landedPer - 1) * 100 : 0;
-    return { shipPerRmb, shipTotRmb, pricePerUsd, shipPerUsd, shipTotUsd, landedPer, costExt, suggested, total, profit, chinaUsd, markupPct, salePct };
+    return { shipPerRmb, shipTotRmb, pricePerUsd, shipPerUsd, shipTotUsd, landedPer, costExt, suggested, total, profit, chinaUsd, markupPct, salePct, sale, saleIsAuto, shipUnit };
   }
   function renderQuickQuoteView() {
     showView('view-quickquote');
@@ -32812,7 +32830,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { const h = document.getElementById('header-title'); if (h) h.textContent = 'Quick Quote'; } catch (e) {}
     try { document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active')); } catch (e) {}
     try { document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active')); const n = document.getElementById('nav-quickquote-link'); if (n) n.classList.add('active'); } catch (e) {}
-    loadQuickQuote().then(() => { _qqSyncSettings(); _qqRender(); });
+    loadQuickQuote().then(() => { _qqSyncSettings(); _qqUpdateShipUnitBtn(); _qqRender(); });
   }
   function _qqSyncSettings() {
     const set = (id, v) => { const e = document.getElementById(id); if (e && document.activeElement !== e) e.value = (v == null ? '' : v); };
@@ -32824,6 +32842,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _qq.markup = document.getElementById('qq-markup').value;
     _qq.china = document.getElementById('qq-china').value;
     _qq.fx = document.getElementById('qq-fx').value;
+    _qqRender(); saveQuickQuote();
+  }
+  // Shipping-weight unit toggle (KG ⇄ LB), applies to the whole sheet. LB is
+  // converted to kg in _qqCompute since the freight rate is RMB per kg.
+  function _qqUpdateShipUnitBtn() {
+    const b = document.getElementById('qq-ship-unit-btn');
+    if (b) b.textContent = (_qq.shipUnit === 'lb') ? 'LB' : 'KG';
+  }
+  function qqToggleShipUnit() {
+    _qq.shipUnit = (_qq.shipUnit === 'lb') ? 'kg' : 'lb';
+    _qqUpdateShipUnitBtn();
     _qqRender(); saveQuickQuote();
   }
   function qqAddRow() {
@@ -32843,6 +32872,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function qqInput(i, field, val) {
     if (!_qq.rows[i]) return;
     _qq.rows[i][field] = val;
+    // Keep the auto-suggested Sale live as the cost columns are typed (the
+    // sync is a no-op when the Sale cell itself is the one being edited).
+    if (field !== 'sale') { try { _qqSyncGridSale(i); } catch (e) {} }
     _qqRenderSummary();
     if (_qqResultIdx === i) _qqRenderResult(i);   // live-update the open results modal
     saveQuickQuote();
@@ -32868,7 +32900,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${inp('masterPack', r.masterPack)}
       ${inp('shipKg', r.shipKg)}
       ${inp('rmbPerKg', r.rmbPerKg)}
-      ${inp('sale', r.sale)}
+      ${(() => {
+        const c = _qqCompute(r);
+        const manual = !(c.saleIsAuto);
+        const disp = manual ? r.sale : (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '');
+        const title = (!manual && c.suggested > 0) ? `Auto — suggested at ${Math.round(c.markupPct)}% markup. Type to override.` : '';
+        return `<td class="qq-cell${!manual && c.suggested > 0 ? ' qq-sale-auto' : ''}"><input type="text" value="${_qqEsc(disp)}" title="${_qqEsc(title)}" oninput="qqInput(${i},'sale',this.value)"></td>`;
+      })()}
       <td style="text-align:center;"><button type="button" class="qq-view-btn" onclick="qqOpenResult(${i})">Results</button></td>
       <td style="text-align:center;"><span class="qq-rm" onclick="qqRemoveRow(${i})" title="Delete line item">&times;</span></td>
     </tr>`;
@@ -32936,7 +32974,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const tr = document.querySelector(`#qq-body tr[data-qq="${i}"]`);
     if (!tr) return;
     const inp = tr.querySelectorAll('input')[8];   // 9th input = Sale
-    if (inp && document.activeElement !== inp) inp.value = (_qq.rows[i].sale == null ? '' : _qq.rows[i].sale);
+    if (inp && document.activeElement !== inp) {
+      const r = _qq.rows[i];
+      const manual = !(r.sale == null || String(r.sale).trim() === '');
+      const c = _qqCompute(r);
+      inp.value = manual ? r.sale : (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '');
+      const cell = inp.closest('td');
+      if (cell) cell.classList.toggle('qq-sale-auto', !manual && c.suggested > 0);
+    }
   }
   // Sale edited INSIDE the modal → update deps in place (keep the sale input).
   function qqResultSale(i, val) {
@@ -32960,7 +33005,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const c = _qqCompute(r);
     const set = (id, v, neg) => { const e = document.getElementById(id); if (e) { e.textContent = v; if (neg !== undefined) { e.classList.toggle('qq-neg', neg); e.classList.toggle('qq-pos', !neg); } } };
     set('qq-r-suggested', _qqUsd3(c.suggested));
-    set('qq-r-salepct', _qqNum(r.sale) ? (_qqPct(c.salePct) + ' over cost') : 'enter a sale price');
+    set('qq-r-salepct', c.sale > 0 ? (_qqPct(c.salePct) + ' over cost' + (c.saleIsAuto ? ' · auto' : '')) : 'enter a sale price');
     set('qq-r-price', _qqUsd3(c.pricePerUsd)); set('qq-r-ship', _qqUsd3(c.shipPerUsd)); set('qq-r-shipusd2', _qqUsd3(c.shipPerUsd)); set('qq-r-landed', _qqUsd3(c.landedPer));
     set('qq-r-costext', _qqUsd(c.costExt)); set('qq-r-shiptotusd', _qqUsd(c.shipTotUsd)); set('qq-r-revenue', _qqUsd(c.total));
     set('qq-r-profit', _qqUsd(c.profit), c.profit < 0); set('qq-r-profit2', _qqUsd(c.profit), c.profit < 0);
@@ -32982,8 +33027,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         </div>
         <div class="qq-hero">
           <div class="qq-hero-lbl">Sale / unit</div>
-          <div class="qq-hero-val"><span class="qq-hero-cur">$</span><input type="text" inputmode="decimal" class="qq-hero-input" value="${_qqEsc(r.sale)}" placeholder="0.00" oninput="qqResultSale(${i}, this.value)"></div>
-          <div class="qq-hero-sub"><span id="qq-r-salepct">${_qqNum(r.sale) ? (_qqPct(c.salePct) + ' over cost') : 'enter a sale price'}</span></div>
+          <div class="qq-hero-val"><span class="qq-hero-cur">$</span><input type="text" inputmode="decimal" class="qq-hero-input${c.saleIsAuto && c.suggested > 0 ? ' qq-hero-input-auto' : ''}" value="${_qqEsc(c.saleIsAuto ? (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '') : r.sale)}" placeholder="0.00" oninput="qqResultSale(${i}, this.value)"></div>
+          <div class="qq-hero-sub"><span id="qq-r-salepct">${c.sale > 0 ? (_qqPct(c.salePct) + ' over cost' + (c.saleIsAuto ? ' · auto' : '')) : 'enter a sale price'}</span></div>
           <div class="qq-hero-sub"><button type="button" class="qq-hero-use" onclick="qqUseSuggested(${i})">Use suggested</button></div>
         </div>
         <div class="qq-hero">
