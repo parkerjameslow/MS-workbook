@@ -34999,7 +34999,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const parseDate = d => {
       if (!d) return new Date(0);
       const parts = d.split(' ');
-      return new Date(2000 + parseInt(parts[2]), months[parts[1]], parseInt(parts[0]));
+      // Month may be a 3- or 4-letter abbreviation ("Sep"/"Sept") — normalise.
+      const mon = months[(parts[1] || '').slice(0, 3)] || 0;
+      return new Date(2000 + parseInt(parts[2]), mon, parseInt(parts[0]));
     };
     // Pull each workbook's cached Total Landed Cost from the Pricing
     // tab so we can show a Landed Cost column on this dashboard +
@@ -35030,15 +35032,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     };
 
     const dir = _clientSortDir === 'asc' ? 1 : -1;
+    // Creation order = the workbook id (auto-increments), the reliable
+    // "newest created" key (the dateCreated string can tie or mis-parse).
+    const createdKey = it => parseInt(it.id) || 0;
     items.sort((a, b) => {
       if (_clientSortField === 'product') return dir * a.product.localeCompare(b.product);
+      if (_clientSortField === 'date') return dir * (createdKey(a) - createdKey(b));
       if (_clientSortField === 'dateSubmitted') return dir * (parseDate(a.dateSubmitted) - parseDate(b.dateSubmitted));
       if (_clientSortField === 'status') return dir * (getCurrentStepName(a.flow) || '').localeCompare(getCurrentStepName(b.flow) || '');
       if (_clientSortField === 'landed')  return dir * (_landedFor(a) - _landedFor(b));
-      // Default: furthest-along first, then newest date as tiebreaker
-      const scoreDiff = flowScore(b.flow) - flowScore(a.flow);
-      if (scoreDiff !== 0) return scoreDiff;
-      return parseDate(b.dateCreated) - parseDate(a.dateCreated);
+      // Default (and any unknown field): last created on top.
+      return createdKey(b) - createdKey(a);
     });
 
     const _fmtUsdShort = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -37743,7 +37747,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const parseDate = d => {
       if (!d) return new Date(0);
       const parts = d.split(' ');
-      return new Date(2000 + parseInt(parts[2]), months[parts[1]], parseInt(parts[0]));
+      // Month may be a 3- or 4-letter abbreviation ("Sep"/"Sept") — normalise.
+      const mon = months[(parts[1] || '').slice(0, 3)] || 0;
+      return new Date(2000 + parseInt(parts[2]), mon, parseInt(parts[0]));
     };
     const dir = _homeSortDir === 'asc' ? 1 : -1;
     all.sort((a, b) => {
