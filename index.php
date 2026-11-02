@@ -32807,6 +32807,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function renderQuickQuoteView() {
     showView('view-quickquote');
+    // Reset the top-bar title — otherwise it keeps the last workbook's name
+    // (e.g. "CANDY PAN — CANDY PAN (MEGA)") even though this is a standalone tool.
+    try { const h = document.getElementById('header-title'); if (h) h.textContent = 'Quick Quote'; } catch (e) {}
+    try { document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active')); } catch (e) {}
     try { document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active')); const n = document.getElementById('nav-quickquote-link'); if (n) n.classList.add('active'); } catch (e) {}
     loadQuickQuote().then(() => { _qqSyncSettings(); _qqRender(); });
   }
