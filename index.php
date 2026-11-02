@@ -27616,22 +27616,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // name (bold) with the variant SKUs listed inline in muted mono
     // type. If a qty was entered we append ' = N' to match the on-
     // screen design. Variant qtys roll up to the parent row's Qty cell.
+    const _rmbNum = v => parseFloat(String(v == null ? '' : v).replace(/,/g, '')) || 0;
     const lineRows = items.map((it, idx) => {
       const parentName = (it.item || `Item ${idx + 1}`).trim();
       const variants   = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty || v.priceRmb || v.sku)) : [];
-      let qty = 0;
+      let qty = 0, lineRmb = 0;
       const variantSkus = [];
       if (variants.length) {
         variants.forEach(v => {
           qty += parseFloat(String(v.qty || '').replace(/,/g, '')) || 0;
+          lineRmb += _rmbNum(v.priceRmb);
           const code = String(v.sku || v.variant || '').trim();
           if (code) variantSkus.push(code);
         });
       } else {
         qty = parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
+        lineRmb = _rmbNum(it.priceRmb);
       }
-      const lineTotal = qty > 0 && salePerUsd > 0 ? qty * salePerUsd : 0;
-      return { idx: idx + 1, parentName, variantSkus, qty, lineTotal };
+      // A $0-cost line doesn't inherit the Sale Per — it quotes at $0.
+      const lineSale  = (salePerUsd > 0 && lineRmb > 0) ? salePerUsd : 0;
+      const lineTotal = qty > 0 && lineSale > 0 ? qty * lineSale : 0;
+      return { idx: idx + 1, parentName, variantSkus, qty, lineSale, lineTotal };
     });
 
     // Applied additional fees (Added Shipping Cost for Air + UPS,
@@ -27659,7 +27664,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <td class="nq-num-cell">${r.idx}</td>
             <td><span class="nq-item-parent">${_escHtml(r.parentName)}</span>${variantList}</td>
             <td class="nq-right" style="font-weight:600;">${r.qty > 0 ? intFmt(r.qty) : '—'}</td>
-            <td class="nq-right">${salePerUsd > 0 ? '$' + fmt2(salePerUsd) : '—'}</td>
+            <td class="nq-right">${r.lineSale > 0 ? '$' + fmt2(r.lineSale) : '—'}</td>
             <td class="nq-right nq-total-cell">${r.lineTotal > 0 ? '$' + fmt2(r.lineTotal) : '—'}</td>
           </tr>`;
         }).join('');
@@ -28971,13 +28976,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             // matches the header. Otherwise fall back to the computed
             // landed×margin path.
             let pSale, pTotal;
-            if (_cqHaveSalePer) {
+            // A line only takes the Sale Per when it has its OWN cost (RMB).
+            // A $0-RMB line (e.g. a bundled kit accessory) must NOT inherit the
+            // price of the line above — otherwise its full price duplicates
+            // into the Total. So zero-cost lines show $0.
+            const pRmb = _msNumFromInput(pInputs[3]);
+            if (_cqHaveSalePer && pRmb > 0) {
               pSale  = _cqSalePer;
               pTotal = pQty > 0 ? _msCeil2(pQty * pSale) : 0;
             } else {
-              // No Sale Per committed → show — (0 renders as a dash below).
-              // The quote must not display a fabricated price the operator
-              // hasn't set — no landed×margin, no cost fallback.
+              // No Sale Per committed, or this line has no cost of its own →
+              // show — (0 renders as a dash below). The quote must not display
+              // a fabricated or inherited price the operator hasn't set.
               pSale  = 0;
               pTotal = 0;
             }
@@ -29044,15 +29054,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               const vSku  = (vSkuInput && vSkuInput.value || '').trim();
               const vName = (vi[0]?.value || '').trim();
               const vQty  = _scaleQty(_msIntFromInput(vi[1]));
+              const vRmb  = _msNumFromInput(vi[2]);
               const vLead = parseInt(_msStripCommasStr(vi[3]?.value)) || 0;
-              // When Sale Per is typed, every variant uses it as the
-              // per-unit price. Otherwise fall back to the per-row
-              // landed×margin computation.
+              // Same rule as the parent line: a variant takes the Sale Per only
+              // when it has its own RMB cost. A $0-cost variant shows $0 rather
+              // than inheriting the price.
               let vSale;
-              if (_cqHaveSalePer) {
+              if (_cqHaveSalePer && vRmb > 0) {
                 vSale = _cqSalePer;
               } else {
-                // No Sale Per committed → no price (renders as — below).
+                // No Sale Per committed, or no cost on this variant → no price.
                 vSale = 0;
               }
               const vTotal  = vQty > 0 && vSale > 0 ? _msCeil2(vQty * vSale) : 0;
