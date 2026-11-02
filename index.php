@@ -35278,7 +35278,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <td class="col-flow">${_wbColumnPillHtml(clientName, item.id)}</td>
         <td class="col-portal">${_wbPortalCellHtml(clientName, item.id)}</td>
         <td class="col-mobile-status">${_wbColumnPillHtml(clientName, item.id)}</td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); openStageMoveModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', 'list')">Move…</a><a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); openStageMoveModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', 'list')">Move…</a>${isCompleted ? `<a onclick="event.stopPropagation(); unmarkWbCompleted('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Move to Active</a>` : `<a onclick="event.stopPropagation(); markWbCompleted('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Move to Completed</a>`}<a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `};
 
@@ -36428,11 +36428,43 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const ships = _wbShipmentsFor(clientName, workbookId);
     return ships.length > 0 && ships.every(s => s && s.status === 'received');
   }
-  // "Completed" for the client Workbooks list: it reached the tail of the
-  // pipeline (a delivered shipment = Receiving) or every shipment carrying it
-  // is received. These drop into the collapsed COMPLETED drawer instead of the
-  // day-to-day list — never deleted, so they can still be opened / duplicated.
+  // Workbooks Parker manually sent to COMPLETED via the row ⋮ menu (keyed
+  // `client|id`), persisted in app_state ms_wb_completed. Loaded once at start.
+  let _wbManualCompleted = new Set();
+  async function loadWbCompleted() {
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_wb_completed' });
+      let v = []; if (r && r.success && r.value) { try { v = JSON.parse(r.value); } catch (_) {} }
+      _wbManualCompleted = new Set(Array.isArray(v) ? v : []);
+    } catch (e) { _wbManualCompleted = new Set(); }
+  }
+  function _saveWbCompleted() {
+    try { apiCall('save_app_state', { key: 'ms_wb_completed', value: JSON.stringify(Array.from(_wbManualCompleted)), changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }).catch(() => {}); } catch (e) {}
+  }
+  function markWbCompleted(clientName, workbookId) {
+    _wbManualCompleted.add(`${clientName}|${workbookId}`);
+    _saveWbCompleted();
+    try { renderDashboard(clientName); } catch (_) {}
+    if (typeof showToast === 'function') showToast('Moved to Completed', 'success');
+  }
+  function unmarkWbCompleted(clientName, workbookId) {
+    _wbManualCompleted.delete(`${clientName}|${workbookId}`);
+    _saveWbCompleted();
+    try { renderDashboard(clientName); } catch (_) {}
+    if (typeof showToast === 'function') {
+      // If it's still completed by STATUS (Receiving / received), the manual
+      // un-flag won't bring it back — say so instead of looking like a no-op.
+      if (_wbIsCompleted(clientName, workbookId)) showToast('Still in Receiving / received — it stays in Completed until its shipment moves back.', 'warn');
+      else showToast('Moved back to the active list', 'success');
+    }
+  }
+  // "Completed" for the client Workbooks list: Parker manually completed it, OR
+  // it reached the tail of the pipeline (a delivered shipment = Receiving), OR
+  // every shipment carrying it is received. These drop into the collapsed
+  // COMPLETED drawer instead of the day-to-day list — never deleted, so they
+  // can still be opened / duplicated / moved back.
   function _wbIsCompleted(clientName, workbookId) {
+    if (_wbManualCompleted.has(`${clientName}|${workbookId}`)) return true;
     if (_wbFullyReceived(clientName, workbookId)) return true;
     const detail = workbookDetail[`${clientName}|${workbookId}`];
     return (typeof _pipelineStageFor === 'function')
@@ -40570,6 +40602,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     loadCrm();
     if (typeof _updateCrmNavBadge === 'function') _updateCrmNavBadge();
     if (typeof _parkerUpdateNavBadge === 'function') _parkerUpdateNavBadge();
+    // Manual "Completed" flags (app_state) — load, then repaint the dashboard
+    // if it's the current view so completed workbooks land in the drawer.
+    if (typeof loadWbCompleted === 'function') loadWbCompleted().then(() => {
+      try {
+        const dv = document.getElementById('view-dashboard');
+        if (dv && dv.classList.contains('active') && _clientWbBulkClient) renderDashboard(_clientWbBulkClient);
+      } catch (_) {}
+    });
     rebuildSidebar();
     rebuildShipmentsNav();
     rebuildOrdersNav();
