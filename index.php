@@ -8202,6 +8202,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <p style="color:var(--text-muted); font-size:16px; margin:0 0 16px;">No workbooks yet for this client.</p>
           <button class="btn-create" onclick="openNewWorkbookModal()" style="font-size:14px;">+ Add Workbook</button>
         </div>
+        <!-- COMPLETED drawer — workbooks that reached Receiving / fully received.
+             Out of the day-to-day list but kept here (collapsed) so they can
+             still be opened or duplicated. Rendered by _renderDashCompleted. -->
+        <div id="dash-completed" style="display:none; margin-top:14px;"></div>
       </div>
     </div>
   </main>
@@ -35106,23 +35110,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         b.onclick = _isQ ? newQuoteWorkbook : openNewWorkbookModal;
       });
     } catch (e) {}
-    // Workbooks stay in the client view through the whole process, then
-    // auto-exit once every shipment carrying them is marked received
-    // (after the receiving audit). Display-only filter — the workbook
-    // data is never deleted, so un-marking a shipment brings it back.
-    const items = [...(clientData[clientName] || [])]
-      .filter(it => !_wbFullyReceived(clientName, it.id));
+    // All of this client's workbooks. Completed ones (Receiving / fully
+    // received) are no longer dropped — they move to the COMPLETED drawer
+    // below, so they stay reachable for opening / duplicating.
+    const items = [...(clientData[clientName] || [])];
     const tbody = document.getElementById('dash-tbody');
     const emptyState = document.getElementById('dash-empty');
     const table = document.getElementById('dash-table');
-
-    if (items.length === 0) {
-      table.style.display = 'none';
-      emptyState.style.display = 'block';
-    } else {
-      table.style.display = '';
-      emptyState.style.display = 'none';
-    }
 
     // ── Flow-progress score (higher = further along) ─────────────────────
     const flowScore = flow => flowSteps.filter(s => flow[s]).length;
@@ -35195,7 +35189,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     const _fmtUsdShort = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
-    tbody.innerHTML = items.map(item => {
+    const buildRow = (item, isCompleted) => {
       const complete = isFlowComplete(item.flow);
       const stepName = getCurrentStepName(item.flow);
       const stepClass = complete ? 'complete' : 'in-progress';
@@ -35230,7 +35224,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
       return `
       <tr class="${complete ? 'row-complete' : ''}${pendingReview ? ' row-pending-review' : ''}" onclick="location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">
-        <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="client-wb-cb" data-wb-id="${item.id}" data-wb-product="${String(item.product||'').replace(/"/g,'&quot;')}" ${_clientWbSelected.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleClientWbSelection(${item.id}, this.checked)" title="Select to bulk-move to RFQ / Samples" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></td>
+        <td style="text-align:center;" onclick="event.stopPropagation();">${isCompleted ? '' : `<input type="checkbox" class="client-wb-cb" data-wb-id="${item.id}" data-wb-product="${String(item.product||'').replace(/"/g,'&quot;')}" ${_clientWbSelected.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleClientWbSelection(${item.id}, this.checked)" title="Select to bulk-move to RFQ / Samples" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" />`}</td>
         <td class="product-name">${item.product}${pendingBadge}</td>
         <td class="col-landed">${landedCell}</td>
         <td class="col-date-created"><span class="date-full">${item.dateCreated}</span><span class="date-short">${shortDate(item.dateCreated)}</span></td>
@@ -35241,7 +35235,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <td class="col-mobile-status">${_wbColumnPillHtml(clientName, item.id)}</td>
         <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); openStageMoveModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', 'list')">Move…</a><a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
-    `}).join('');
+    `};
+
+    // Split into the day-to-day list and the COMPLETED drawer.
+    const activeItems    = items.filter(it => !_wbIsCompleted(clientName, it.id));
+    const completedItems = items.filter(it =>  _wbIsCompleted(clientName, it.id));
+
+    // Empty state only when the client has NOTHING active and nothing done.
+    const showTable = activeItems.length > 0;
+    table.style.display = showTable ? '' : 'none';
+    emptyState.style.display = (activeItems.length === 0 && completedItems.length === 0) ? 'block' : 'none';
+
+    tbody.innerHTML = activeItems.map(it => buildRow(it, false)).join('');
+    _renderDashCompleted(clientName, completedItems, buildRow);
 
     // Keep the bulk-select bar + header checkbox in step with any
     // selection carried across a re-render.
@@ -35253,6 +35259,47 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     renderClientDetailCard(clientName);
     showView('view-dashboard');
     addRecentNav({ type: 'client', label: clientName, href: `#/client/${encodeURIComponent(clientName)}` });
+  }
+
+  // COMPLETED drawer under the client Workbooks list — collapsed by default so
+  // finished workbooks stay out of the day-to-day view but remain one click
+  // from Open / Duplicate. Open state is sticky across re-renders this session.
+  let _dashCompletedOpen = false;
+  function toggleDashCompleted() {
+    _dashCompletedOpen = !_dashCompletedOpen;
+    const body = document.getElementById('dash-completed-body');
+    const car  = document.getElementById('dash-completed-caret');
+    if (body) body.style.display = _dashCompletedOpen ? '' : 'none';
+    if (car)  car.textContent = _dashCompletedOpen ? '▾' : '▸';
+  }
+  function _renderDashCompleted(clientName, completed, buildRow) {
+    const host = document.getElementById('dash-completed');
+    if (!host) return;
+    if (!completed || !completed.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
+    host.style.display = '';
+    const rows = completed.map(it => buildRow(it, true)).join('');
+    const thead = `<thead><tr>
+      <th style="width:56px;"></th>
+      <th>Product</th>
+      <th class="col-landed">Client Quote Total</th>
+      <th class="col-date-created">Date Created</th>
+      <th class="col-date-submitted">Date Submitted</th>
+      <th class="col-order">Order</th>
+      <th class="col-flow">Pipeline Stage</th>
+      <th class="col-portal">Customer Portal</th>
+      <th class="col-mobile-status">Status</th>
+      <th></th>
+    </tr></thead>`;
+    host.innerHTML = `
+      <button type="button" onclick="toggleDashCompleted()" style="display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:11px 14px; cursor:pointer; font-family:inherit; color:var(--text);">
+        <span id="dash-completed-caret" style="font-size:12px; color:var(--text-muted);">${_dashCompletedOpen ? '▾' : '▸'}</span>
+        <span style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em;">Completed</span>
+        <span style="font-size:11px; font-weight:600; color:var(--text-muted);">Shipped &amp; received — kept for reference / duplicating</span>
+        <span style="margin-left:auto; font-size:12px; font-weight:800; background:rgba(124,58,237,.14); color:#7c3aed; padding:1px 10px; border-radius:999px;">${completed.length}</span>
+      </button>
+      <div id="dash-completed-body" style="display:${_dashCompletedOpen ? '' : 'none'}; margin-top:8px; overflow-x:auto; opacity:.92;">
+        <table class="dash-table">${thead}<tbody>${rows}</tbody></table>
+      </div>`;
   }
 
   // Tab name to switch to after fillWorkbook completes. Set by the
@@ -36335,6 +36382,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _wbFullyReceived(clientName, workbookId) {
     const ships = _wbShipmentsFor(clientName, workbookId);
     return ships.length > 0 && ships.every(s => s && s.status === 'received');
+  }
+  // "Completed" for the client Workbooks list: it reached the tail of the
+  // pipeline (a delivered shipment = Receiving) or every shipment carrying it
+  // is received. These drop into the collapsed COMPLETED drawer instead of the
+  // day-to-day list — never deleted, so they can still be opened / duplicated.
+  function _wbIsCompleted(clientName, workbookId) {
+    if (_wbFullyReceived(clientName, workbookId)) return true;
+    const detail = workbookDetail[`${clientName}|${workbookId}`];
+    return (typeof _pipelineStageFor === 'function')
+      && _pipelineStageFor(clientName, workbookId, detail) === 'receiving';
   }
 
   function collectAllSamples() {
