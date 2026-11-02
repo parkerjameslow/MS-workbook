@@ -48110,14 +48110,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // confirmed-but-not-yet-shipped without those orders cluttering
   // the main Orders queue.
   function _orderWorkbookIsOnShipment(clientName, workbookId) {
-    if (typeof shipmentData !== 'object' || !shipmentData) return false;
-    const target = String(workbookId);
-    return Object.values(shipmentData).some(sh => {
-      const ents = Array.isArray(sh && sh.entries) ? sh.entries : [];
-      return ents.some(e =>
-        e && String(e.workbookId) === target && (!clientName || e.clientName === clientName)
-      );
-    });
+    // A workbook counts as "on a shipment" whether the shipment lists it
+    // directly ({clientName,workbookId}) OR references its ORDER ({orderId}).
+    // Shipments built from an order store the order ref, not each workbook —
+    // the old direct-only check missed those, so an order whose workbooks had
+    // shipped never left In Production. _wbShipmentsFor resolves every entry
+    // shape (direct / via order / via sample), so reuse it as the one source
+    // of truth and keep this matcher consistent with the rest of the board.
+    return (typeof _wbShipmentsFor === 'function')
+      ? _wbShipmentsFor(clientName, workbookId).length > 0
+      : false;
   }
   function _orderHasAnyWorkbookOnShipment(o) {
     if (!o || !Array.isArray(o.entries)) return false;
