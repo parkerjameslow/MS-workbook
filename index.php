@@ -6954,14 +6954,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sc-wb-pill-arrow { font-size: 11px; opacity: 0.75; flex-shrink: 0; }
     /* Right: stats + status inline */
     .sc-right-wrap {
-      flex: 1;
+      flex: 1; min-width: 0;
       display: flex; align-items: center; justify-content: space-between; gap: 16px;
       border-left: 2px solid var(--border); padding-left: 16px;
     }
-    .sc-stats-row { font-size: 12px; color: var(--text-muted); white-space: nowrap; display: flex; align-items: center; gap: 0; }
+    /* Stats can shrink and wrap to two lines when the card is tight, so they
+       yield space to the controls column instead of shoving it off-screen. */
+    .sc-stats-row { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; flex-wrap: wrap; gap: 0 2px; min-width: 0; }
     .sc-stat-inline { color: var(--text); font-weight: 600; }
     .sc-divider { margin: 0 10px; opacity: 0.25; }
-    .sc-right { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; flex-shrink: 0; min-width: 90px; }
+    /* Fixed-width right rail: the status <select> + per-order move buttons form
+       a tidy column that never stretches past the card edge. Long button labels
+       ellipsize inside the rail instead of overflowing the viewport. */
+    .sc-right { display: flex; flex-direction: column; align-items: stretch; gap: 6px; flex: 0 0 190px; max-width: 210px; min-width: 160px; }
     .sc-right .ship-status-badge { width: 100%; text-align: center; box-sizing: border-box; }
     .sc-right .shipment-container-tag { width: 100%; text-align: center; }
     .ship-status-badge {
