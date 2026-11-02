@@ -4353,6 +4353,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     /* ── Modal ──────────────────────────────────────────────────────────── */
+    /* ── Factories (supplier directory + profile) ───────────────── */
+    .factories-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; }
+    .factory-card {
+      background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px;
+      cursor:pointer; transition:box-shadow .15s, border-color .15s, transform .08s; min-width:0;
+    }
+    .factory-card:hover { border-color:var(--accent); box-shadow:var(--shadow); transform:translateY(-1px); }
+    .factory-card-top { display:flex; align-items:center; gap:12px; }
+    .factory-logo {
+      width:46px; height:46px; border-radius:12px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+      font-weight:800; font-size:15px; color:#fff; letter-spacing:.02em;
+    }
+    .factory-card-name { font-weight:700; font-size:15px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .factory-card-loc { font-size:12px; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .factory-card-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; font-size:11.5px; color:var(--text-muted); }
+    .factory-chip { background:var(--surface2); border:1px solid var(--border); border-radius:999px; padding:2px 9px; }
+    .factory-stars { color:#f59e0b; letter-spacing:1px; font-size:13px; }
+    .factory-status { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+    .factory-status.active   { background:rgba(22,163,74,.14); color:#16a34a; }
+    .factory-status.prospect { background:rgba(217,119,6,.15); color:#d97706; }
+    .factory-status.inactive { background:var(--surface2); color:var(--text-muted); }
+    /* Profile */
+    .fp-head { display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+    .fp-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:18px; }
+    .fp-panel { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; min-width:0; }
+    .fp-panel h3 { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin:0 0 12px; }
+    .fp-field { margin-bottom:12px; }
+    .fp-field:last-child { margin-bottom:0; }
+    .fp-field label { display:block; font-size:11px; font-weight:700; color:var(--text-muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:.03em; }
+    .fp-input, .fp-textarea, .fp-select {
+      width:100%; box-sizing:border-box; font-family:inherit; font-size:13px; color:var(--text);
+      background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; outline:none;
+    }
+    .fp-input:focus, .fp-textarea:focus, .fp-select:focus { border-color:var(--accent); }
+    .fp-textarea { resize:vertical; min-height:72px; line-height:1.5; }
+    .fp-two { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .fp-star { cursor:pointer; font-size:22px; color:var(--border); line-height:1; background:none; border:none; padding:0 1px; font-family:inherit; }
+    .fp-star.on { color:#f59e0b; }
+    .fp-usage-row { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:9px; text-decoration:none; color:inherit; }
+    .fp-usage-row:hover { background:var(--surface2); }
+    .fp-usage-row .p { font-weight:600; font-size:13px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .fp-usage-row .c { font-size:11.5px; color:var(--text-muted); }
+
     /* ── Parker — Account Command Center ─────────────────────────── */
     /* Needs-Attention action buckets (top of cockpit) */
     .pk-att-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(255px,1fr)); gap:12px; }
@@ -8022,6 +8065,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span>Billings</span>
         </a>
 
+        <!-- Factories — supplier profiles (contact, capabilities, products sourced). -->
+        <a id="nav-factories-link" href="#/factories" onclick="event.preventDefault(); location.hash='#/factories'" class="nav-flat-link">
+          <span>Factories</span>
+        </a>
+
         <!-- Commissions — no nav badge per operator preference. -->
         <a id="nav-commissions-link" href="#/commissions" onclick="event.preventDefault(); location.hash='#/commissions'" class="nav-flat-link">
           <span>Commissions</span>
@@ -11116,6 +11164,36 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </main>
 </div><!-- /#view-clients -->
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     VIEW: FACTORIES (supplier directory) + FACTORY PROFILE
+     Internal → Factories. Gallery of suppliers (names from ms_factories +
+     anything referenced on RFQ lines); click → an editable profile with
+     contact, capabilities, terms, rating, notes, and the products sourced
+     there (scanned from workbook RFQ lines). Profiles persist in app_state
+     ms_factory_profiles; names stay in ms_factories for the RFQ dropdown.
+══════════════════════════════════════════════════════════════════════ -->
+<div id="view-factories" class="view">
+  <main class="container" style="max-width:none; padding:0 16px 24px;">
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 0 10px;">
+      <h1 style="font-size:18px; font-weight:700; color:var(--text); margin:0;">Factories</h1>
+      <input type="text" id="factories-search" placeholder="Search factories…" oninput="renderFactoriesView()" autocomplete="off"
+        style="flex:0 1 240px; min-width:160px; padding:7px 10px; font-size:13px; font-family:inherit; border:1px solid var(--border); border-radius:6px; background:var(--surface2); color:var(--text); outline:none;" />
+      <span id="factories-count-note" style="font-size:11px; color:var(--text-muted);"></span>
+      <button class="btn btn-primary" onclick="addFactory()" style="margin-left:auto; font-size:13px;">+ Add Factory</button>
+    </div>
+    <div id="factories-grid" class="factories-grid"></div>
+  </main>
+</div><!-- /#view-factories -->
+
+<div id="view-factory" class="view">
+  <main class="container" style="max-width:1100px; padding:0 16px 40px;">
+    <div style="padding:14px 0 8px;">
+      <a href="#/factories" style="font-size:13px; color:var(--accent); text-decoration:none; font-weight:600;">← All factories</a>
+    </div>
+    <div id="factory-profile"><!-- rendered by renderFactoryProfile --></div>
+  </main>
+</div><!-- /#view-factory -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
      VIEW: RECENT WORKBOOKS
@@ -20659,6 +20737,226 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tr.dataset.factory = value;
     }
     if (!_filling) { try { autoSaveWorkbook(); } catch (e) {} }
+  }
+
+  // ── Factory profiles (Internal → Factories) ───────────────────────
+  // Names live in ms_factories (for the RFQ dropdown); rich profiles live in
+  // ms_factory_profiles, an object keyed by factory name.
+  let _factoryProfiles = {};
+  let _factoryProfilesLoaded = false;
+  async function loadFactoryProfiles() {
+    if (_factoryProfilesLoaded) return _factoryProfiles;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_factory_profiles' });
+      if (r && r.success && r.value) {
+        const o = JSON.parse(r.value);
+        if (o && typeof o === 'object' && !Array.isArray(o)) _factoryProfiles = o;
+      }
+    } catch (e) {}
+    _factoryProfilesLoaded = true;
+    return _factoryProfiles;
+  }
+  function _saveFactoryProfiles() {
+    try { apiCall('save_app_state', { key: 'ms_factory_profiles', value: JSON.stringify(_factoryProfiles), changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }).catch(() => {}); } catch (e) {}
+  }
+  function _factEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function _factColor(name) {
+    const palette = ['#6b93ff','#f59e0b','#22c55e','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8','#e8751a','#14b8a6'];
+    let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
+  }
+  function _factInitials(name) {
+    const parts = String(name).trim().split(/\s+/).filter(Boolean);
+    return ((parts[0] || '?')[0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+  }
+  // Every factory name known to the app: the saved list + any profile keys +
+  // any factory referenced on an RFQ line across all workbooks.
+  function _factoryAllNames() {
+    const set = new Map(); // lowercase → display name (first seen)
+    const add = n => { n = (n || '').trim(); if (n && !set.has(n.toLowerCase())) set.set(n.toLowerCase(), n); };
+    (_factories || []).forEach(add);
+    Object.keys(_factoryProfiles || {}).forEach(add);
+    try {
+      Object.values(workbookDetail || {}).forEach(d => {
+        if (d && Array.isArray(d.rfqItems)) d.rfqItems.forEach(it => { if (it && it.factory) add(it.factory); });
+      });
+    } catch (e) {}
+    return Array.from(set.values());
+  }
+  // Products sourced at this factory — scanned from workbook RFQ lines.
+  function _factoryUsage(name) {
+    const want = String(name).toLowerCase();
+    const out = []; const seen = new Set();
+    try {
+      Object.entries(workbookDetail || {}).forEach(([key, d]) => {
+        if (!d || !Array.isArray(d.rfqItems)) return;
+        const uses = d.rfqItems.some(it => it && (it.factory || '').toLowerCase() === want);
+        if (!uses || seen.has(key)) return;
+        seen.add(key);
+        const [cn, wid] = key.split('|');
+        if (_isQuotesClient && _isQuotesClient(cn)) return;
+        out.push({ client: cn, product: d.product || `Workbook #${wid}`, href: `#/client/${encodeURIComponent(cn)}/workbook/${wid}` });
+      });
+    } catch (e) {}
+    out.sort((a, b) => a.client.localeCompare(b.client));
+    return out;
+  }
+
+  async function openFactoriesView() {
+    await loadFactories(); await loadFactoryProfiles();
+    renderFactoriesView();
+  }
+  function renderFactoriesView() {
+    const titleEl = document.getElementById('header-title');
+    if (titleEl) titleEl.textContent = 'Factories';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-factories-link');
+    if (link) link.classList.add('active');
+    showView('view-factories');
+    const grid = document.getElementById('factories-grid');
+    if (!grid) return;
+    const q = (document.getElementById('factories-search')?.value || '').trim().toLowerCase();
+    let names = _factoryAllNames();
+    if (q) names = names.filter(n => n.toLowerCase().includes(q) || ((_factoryProfiles[n] && (_factoryProfiles[n].country || _factoryProfiles[n].categories) || '').toLowerCase().includes(q)));
+    names.sort((a, b) => a.localeCompare(b));
+    const note = document.getElementById('factories-count-note');
+    if (note) note.textContent = `${names.length} factor${names.length === 1 ? 'y' : 'ies'}`;
+    if (!names.length) {
+      grid.innerHTML = `<div style="grid-column:1/-1; padding:44px; text-align:center; color:var(--text-muted); font-size:13px;">No factories${q ? ' match your search' : ' yet — add one or pick a factory on an RFQ line'}.</div>`;
+      return;
+    }
+    grid.innerHTML = names.map(name => {
+      const p = _factoryProfiles[name] || {};
+      const enc = encodeURIComponent(name).replace(/'/g, '%27');
+      const loc = [p.city, p.country].filter(Boolean).join(', ');
+      const usage = _factoryUsage(name);
+      const rating = parseInt(p.rating) || 0;
+      const stars = rating ? `<span class="factory-stars" title="${rating}/5">${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}</span>` : '';
+      const st = (p.status || '').toLowerCase();
+      const statusPill = st ? `<span class="factory-status ${st}">${_factEsc(p.status)}</span>` : '';
+      return `<div class="factory-card" onclick="location.hash='#/factory/${enc}'" title="Open ${_factEsc(name)}">
+        <div class="factory-card-top">
+          <div class="factory-logo" style="background:${_factColor(name)};">${_factEsc(_factInitials(name))}</div>
+          <div style="min-width:0;">
+            <div class="factory-card-name">${_factEsc(name)}</div>
+            <div class="factory-card-loc">${loc ? _factEsc(loc) : 'No location set'}</div>
+          </div>
+        </div>
+        <div class="factory-card-meta">
+          ${statusPill}${stars}
+          <span class="factory-chip">${usage.length} product${usage.length === 1 ? '' : 's'}</span>
+          ${p.leadTime ? `<span class="factory-chip">${_factEsc(p.leadTime)} lead</span>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function openFactoryProfile(name) {
+    await loadFactories(); await loadFactoryProfiles();
+    renderFactoryProfile(name);
+  }
+  function renderFactoryProfile(name) {
+    const titleEl = document.getElementById('header-title');
+    if (titleEl) titleEl.textContent = name;
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const link = document.getElementById('nav-factories-link');
+    if (link) link.classList.add('active');
+    showView('view-factory');
+    const host = document.getElementById('factory-profile');
+    if (!host) return;
+    const p = _factoryProfiles[name] || {};
+    const enc = encodeURIComponent(name).replace(/'/g, '%27');
+    const esc = _factEsc;
+    const field = (label, key, placeholder) => `<div class="fp-field"><label>${label}</label><input class="fp-input" value="${esc(p[key] || '')}" placeholder="${esc(placeholder || '')}" onchange="saveFactoryField('${enc}','${key}',this.value)"></div>`;
+    const area  = (label, key, placeholder) => `<div class="fp-field"><label>${label}</label><textarea class="fp-textarea" placeholder="${esc(placeholder || '')}" onchange="saveFactoryField('${enc}','${key}',this.value)">${esc(p[key] || '')}</textarea></div>`;
+    const rating = parseInt(p.rating) || 0;
+    const stars = [1,2,3,4,5].map(n => `<button type="button" class="fp-star${n <= rating ? ' on' : ''}" onclick="setFactoryRating('${enc}',${n})" title="${n} star${n===1?'':'s'}">${n <= rating ? '★' : '☆'}</button>`).join('');
+    const statusOpts = ['active','prospect','inactive'].map(s => `<option value="${s}"${(p.status||'active')===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+    const usage = _factoryUsage(name);
+    const clientsN = new Set(usage.map(u => u.client)).size;
+    const usageHtml = usage.length
+      ? usage.map(u => `<a class="fp-usage-row" href="${esc(u.href)}"><span style="flex:1; min-width:0;"><span class="p">${esc(u.product)}</span><span class="c"> · ${esc(u.client)}</span></span><span style="color:var(--text-muted);">→</span></a>`).join('')
+      : `<div style="font-size:12.5px; color:var(--text-muted); padding:6px 2px;">No products reference this factory yet. Pick it on an RFQ line (Specs → Factory) and it'll show here.</div>`;
+    host.innerHTML = `
+      <div class="fp-head">
+        <div class="factory-logo" style="width:58px; height:58px; font-size:19px; background:${_factColor(name)};">${esc(_factInitials(name))}</div>
+        <div style="flex:1; min-width:0;">
+          <h1 style="margin:0; font-size:22px; font-weight:800; color:var(--text);">${esc(name)}</h1>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:6px; flex-wrap:wrap;">
+            <span class="fp-stars-row">${stars}</span>
+            <span style="font-size:12px; color:var(--text-muted);">${usage.length} product${usage.length===1?'':'s'} · ${clientsN} client${clientsN===1?'':'s'}</span>
+          </div>
+        </div>
+        <button class="btn btn-ghost" onclick="deleteFactory('${enc}')" style="font-size:12px; color:var(--danger); border:1px solid var(--border);">Delete</button>
+      </div>
+      <div class="fp-grid">
+        <div class="fp-panel">
+          <h3>Overview</h3>
+          <div class="fp-field"><label>Status</label><select class="fp-select" onchange="saveFactoryField('${enc}','status',this.value)">${statusOpts}</select></div>
+          <div class="fp-two">${field('Country','country','China')}${field('City / Region','city','Shenzhen')}</div>
+          ${field('Website','website','example.com')}
+        </div>
+        <div class="fp-panel">
+          <h3>Contact</h3>
+          ${field('Contact name','contactName','')}
+          <div class="fp-two">${field('Email','email','')}${field('Phone','phone','')}</div>
+          ${field('WeChat / WhatsApp','wechat','')}
+          ${area('Address','address','')}
+        </div>
+        <div class="fp-panel">
+          <h3>Capabilities &amp; terms</h3>
+          ${field('Product categories','categories','e.g. bags, packaging, textiles')}
+          <div class="fp-two">${field('Typical MOQ','moq','1,000')}${field('Lead time','leadTime','30 days')}</div>
+          ${field('Payment terms','paymentTerms','30% deposit / 70% balance')}
+          ${field('Certifications','certifications','BSCI, ISO 9001, FSC')}
+        </div>
+        <div class="fp-panel">
+          <h3>Notes</h3>
+          ${area('Internal notes','notes','Quality, responsiveness, pricing, history…')}
+        </div>
+        <div class="fp-panel" style="grid-column:1/-1;">
+          <h3>Products sourced here</h3>
+          <div style="display:flex; flex-direction:column; gap:2px;">${usageHtml}</div>
+        </div>
+      </div>`;
+  }
+
+  function saveFactoryField(encName, key, value) {
+    const name = decodeURIComponent(encName);
+    const p = _factoryProfiles[name] || (_factoryProfiles[name] = { createdAt: new Date().toISOString() });
+    p[key] = value;
+    p.updatedAt = new Date().toISOString();
+    _saveFactoryProfiles();
+  }
+  function setFactoryRating(encName, n) {
+    const name = decodeURIComponent(encName);
+    const p = _factoryProfiles[name] || (_factoryProfiles[name] = { createdAt: new Date().toISOString() });
+    // Click the current rating again to clear it.
+    p.rating = (parseInt(p.rating) || 0) === n ? 0 : n;
+    p.updatedAt = new Date().toISOString();
+    _saveFactoryProfiles();
+    renderFactoryProfile(name);
+  }
+  async function addFactory() {
+    const name = (prompt('New factory name:') || '').trim();
+    if (!name) return;
+    await loadFactories();
+    if (!_factories.some(f => f.toLowerCase() === name.toLowerCase())) { _factories.push(name); saveFactories(); }
+    if (!_factoryProfiles[name]) { _factoryProfiles[name] = { status: 'active', createdAt: new Date().toISOString() }; _saveFactoryProfiles(); }
+    location.hash = `#/factory/${encodeURIComponent(name).replace(/'/g, '%27')}`;
+  }
+  function deleteFactory(encName) {
+    const name = decodeURIComponent(encName);
+    const usage = _factoryUsage(name);
+    const warn = usage.length ? `\n\n${usage.length} product${usage.length === 1 ? '' : 's'} still reference it (those RFQ lines keep the name).` : '';
+    if (!confirm(`Delete the factory profile for “${name}”?${warn}\n\nThis removes it from the Factories list and the RFQ dropdown.`)) return;
+    delete _factoryProfiles[name];
+    _saveFactoryProfiles();
+    _factories = (_factories || []).filter(f => f.toLowerCase() !== name.toLowerCase());
+    saveFactories();
+    location.hash = '#/factories';
   }
 
   function getRfqRowImages(id) {
@@ -37883,6 +38181,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return;
     }
 
+    // Match: #/factories — supplier directory.
+    if (hash === '#/factories') {
+      openFactoriesView();
+      return;
+    }
+    // Match: #/factory/{name} — one factory's profile (hash is already decoded).
+    const facMatch = hash.match(/^#\/factory\/(.+)$/);
+    if (facMatch) {
+      openFactoryProfile(facMatch[1]);
+      return;
+    }
+
     // Match: #/assistant — Claude-powered chat assistant.
     if (hash === '#/assistant') {
       renderAssistantView();
@@ -40613,6 +40923,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         if (dv && dv.classList.contains('active') && _clientWbBulkClient) renderDashboard(_clientWbBulkClient);
       } catch (_) {}
     });
+    if (typeof loadFactoryProfiles === 'function') loadFactoryProfiles();
     rebuildSidebar();
     rebuildShipmentsNav();
     rebuildOrdersNav();
