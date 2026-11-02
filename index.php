@@ -4354,6 +4354,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     /* ── Modal ──────────────────────────────────────────────────────────── */
     /* ── Parker — Account Command Center ─────────────────────────── */
+    /* Needs-Attention action buckets (top of cockpit) */
+    .pk-att-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(255px,1fr)); gap:12px; }
+    .pk-att { border:1px solid var(--border); border-radius:12px; background:var(--card); overflow:hidden; display:flex; flex-direction:column; min-width:0; }
+    .pk-att-head { display:flex; align-items:center; gap:8px; padding:11px 14px; font-weight:800; font-size:13px; border-bottom:1px solid var(--border); }
+    .pk-att-count { margin-left:auto; font-size:12px; font-weight:800; padding:1px 9px; border-radius:999px; }
+    .pk-att-red   .pk-att-head { color:#ef4444; } .pk-att-red   .pk-att-count { background:rgba(239,68,68,.14);  color:#ef4444; }
+    .pk-att-amber .pk-att-head { color:#d97706; } .pk-att-amber .pk-att-count { background:rgba(217,119,6,.16);  color:#d97706; }
+    .pk-att-blue  .pk-att-head { color:var(--accent); } .pk-att-blue .pk-att-count { background:rgba(107,147,255,.16); color:var(--accent); }
+    .pk-att-body { padding:6px; display:flex; flex-direction:column; gap:2px; max-height:270px; overflow:auto; }
+    .pk-att-item { display:block; padding:8px 10px; border-radius:8px; text-decoration:none; color:inherit; }
+    a.pk-att-item { cursor:pointer; } a.pk-att-item:hover { background:var(--surface2); }
+    .pk-att-item .t { font-weight:600; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pk-att-item .s { font-size:11.5px; color:var(--text-muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pk-att-more { padding:6px 10px; font-size:11.5px; color:var(--text-muted); }
     .parker-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
     .parker-panel-head { font-size:13px; font-weight:800; color:var(--text); padding:12px 16px; border-bottom:1px solid var(--border); background:rgba(127,127,127,0.04); }
     .parker-panel-body { padding:10px 16px 14px; display:flex; flex-direction:column; gap:8px; min-height:52px; }
@@ -8013,8 +8027,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
         <!-- Parker — personal, PIN-gated Account Command Center. Sits at
              the bottom of Internal; selecting it prompts for the PIN. -->
-        <a id="nav-parker-link" href="#/parker" onclick="event.preventDefault(); location.hash='#/parker'" class="nav-flat-link" style="font-weight:800; color:var(--accent);">
+        <a id="nav-parker-link" href="#/parker" onclick="event.preventDefault(); location.hash='#/parker'" class="nav-flat-link" style="font-weight:800; color:var(--accent); display:flex; align-items:center; gap:8px;">
           <span>Parker</span>
+          <span id="nav-parker-attention-badge" title="Items needing your attention" style="display:none; margin-left:auto; min-width:18px; text-align:center; font-size:11px; font-weight:800; background:#ef4444; color:#fff; padding:1px 7px; border-radius:999px;"></span>
         </a>
       </div>
     </div>
@@ -11267,7 +11282,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 </div><!-- /#view-billings -->
 
 <!-- ══════════════════════════════════════════════════════════════════════
-     VIEW: PARKER — Account Command Center (PIN-gated: 1124)
+     VIEW: PARKER — Account Command Center (PIN-gated: 3333)
      Personal cockpit for the account manager. Two data layers:
        • Operational (computed live from the app): reorder countdowns off
          finished shipments, incoming shipments, watched-account status.
@@ -11312,6 +11327,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div id="parker-accounts" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"></div>
         <button class="btn btn-ghost" onclick="openParkerAddModal()" style="font-size:12px; border:1px dashed var(--border);">Add New</button>
       </div>
+
+      <!-- Needs Attention — live action buckets (what to DO, computed from
+           the app's own data, not the AI brief). Rendered by _parkerRenderAttention. -->
+      <div id="parker-attention" style="margin-bottom:18px;"></div>
 
       <!-- Intel panels -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px;">
@@ -26284,13 +26303,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     PARKER — Account Command Center (PIN-gated: 1124)
+     PARKER — Account Command Center (PIN-gated: 3333)
      Two data layers: OPERATIONAL (computed live here from shipments /
      reorders) and INTEL (Slack/email/Trello, written into app_state
      `ms_parker_brief` by the 8am MST agent). Watchlist + reorder
      reminders persist in ms_parker_accounts / ms_parker_reorders.
      ══════════════════════════════════════════════════════════════════ */
-  const PARKER_PIN = '1124';
+  const PARKER_PIN = '3333';
   let _parkerAccounts = [];      // [{id,name,slack,email,web,trello,notes,addedAt}]
   let _parkerReorders = [];      // [{id,shipmentId,account,label,finishedOn,reorderDate,note,done}]
   let _parkerBrief = null;       // {generatedAt,generatedBy,intel:{urgentToday,thisWeek,needsReply,trending}}
@@ -26383,6 +26402,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   function _parkerRenderAll(){
     _parkerEnsurePlans();
+    _parkerRenderAttention();
     _parkerRenderAccounts();
     _parkerRenderIntel();
     _parkerRenderMeetings();
@@ -26462,6 +26482,115 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _pkFill('parker-week', f(intel.thisWeek).concat(opWeek), 'Nothing flagged for this week.');
     _pkFill('parker-reply', f(intel.needsReply), 'No unanswered messages yet — the 8am MST agent fills this (or ask me to refresh).');
     _pkFill('parker-trending', f(intel.trending), 'No trends yet — the morning agent surfaces these.');
+  }
+
+  // ── Needs Attention — live action buckets ─────────────────────────
+  // The cockpit's "what do I DO" layer. Everything here is computed from the
+  // app's own records (shipments, pipeline stage ages, orders, reorders), not
+  // the AI brief — so it's always current and every row is one click from the
+  // thing you act on. SLA = days a workbook/order may sit in a stage before
+  // it's "stuck". Entity stages (shipments/receiving) are handled by the
+  // Confirm-delivery bucket instead, so they're left out of the stage SLAs.
+  const _PK_STAGE_SLA = { unstaged:7, rfq:7, review:5, samples:21, orders:10, production:45 };
+  const _PK_STAGE_LBL = { unstaged:'Unstaged', rfq:'RFQ', review:'Ready for Review', samples:'Samples', orders:'Orders', production:'In Production', shipments:'Shipments', receiving:'Receiving' };
+  // Resolve a shipment's primary client (any entry shape), for account filtering.
+  function _pkShipClient(s){
+    for(const e of (s.entries||[])){
+      if(e.clientName) return e.clientName;
+      if(e.orderId!=null && typeof orderData==='object' && orderData[e.orderId]){
+        const oe=(orderData[e.orderId].entries||[])[0]; if(oe&&oe.clientName) return oe.clientName;
+      }
+    }
+    const se=(s.sampleEntries||[])[0]; return se?se.clientName:'';
+  }
+  function _parkerComputeAttention(){
+    const confirmB=[], stuck=[], changes=[], reorder=[];
+    // 1 · Delivery / receipt confirmations
+    try {
+      Object.values(typeof shipmentData==='object'?shipmentData:{}).forEach(s=>{
+        if(!s||s.id==null||s.status==='received') return;
+        const client=_pkShipClient(s);
+        const bucket=(typeof _trackBucket==='function')?_trackBucket(s):{key:''};
+        if(bucket.key==='delivered' && s.status!=='delivered' && s.status!=='received'){
+          confirmB.push({title:(s.name||('Shipment #'+s.id)), sub:'Carrier shows delivered — confirm receipt', href:'#/shipment/'+s.id, client});
+        } else if(s.status==='delivered'){
+          const d=(typeof _pipelineDaysSince==='function')?_pipelineDaysSince(s.deliveredOn||s.receivedAt||s.createdAt):null;
+          if(d===null||d>=3) confirmB.push({title:(s.name||('Shipment #'+s.id)), sub:'In Receiving — mark received after audit'+(d?(' · '+d+'d'):''), href:'#/shipment/'+s.id, client, days:(d||0)});
+        }
+      });
+    } catch(e){}
+    // 2 · Stuck in a pipeline stage past its SLA (workbook + order cards)
+    try {
+      (typeof collectPipeline==='function'?collectPipeline():[]).forEach(c=>{
+        const sla=_PK_STAGE_SLA[c.stage]; if(!sla) return;
+        const d=(typeof _pipelineDaysSince==='function')?_pipelineDaysSince(c.since):null;
+        if(d===null||d<=sla) return;
+        if(c.kind==='wb'){
+          stuck.push({title:c.product, sub:_PK_STAGE_LBL[c.stage]+' · '+d+'d · '+c.clientName, href:'#/client/'+encodeURIComponent(c.clientName)+'/workbook/'+c.workbookId, client:c.clientName, days:d});
+        } else if(c.kind==='order'){
+          stuck.push({title:c.title, sub:_PK_STAGE_LBL[c.stage]+' · '+d+'d', href:'#/order/'+c.id, client:(c.clients&&c.clients[0])||'', days:d});
+        }
+      });
+      stuck.sort((a,b)=>b.days-a.days);
+    } catch(e){}
+    // 3 · Orders a client has flagged for a change
+    try {
+      Object.values(typeof orderData==='object'?orderData:{}).forEach(o=>{
+        if(o&&o.changeRequested) changes.push({title:(o.clientName||'Order')+' — '+(o.name||('Order #'+o.id)), sub:'Change requested by client', href:'#/order/'+o.id, client:o.clientName});
+      });
+    } catch(e){}
+    // 4 · Reorders due or overdue (within a week)
+    try {
+      (typeof _parkerReorders!=='undefined'?_parkerReorders:[]||[]).forEach(r=>{
+        if(!r||r.done) return;
+        const d=_pkDaysUntil(r.reorderDate); if(d===null||d>7) return;
+        reorder.push({title:(r.label||'Reorder'), sub:(d<0?('Overdue '+(-d)+'d'):(d===0?'Due today':('Due in '+d+'d')))+(r.account?(' · '+r.account):''), href:null, client:r.account, days:d});
+      });
+      reorder.sort((a,b)=>a.days-b.days);
+    } catch(e){}
+    return { confirmB, stuck, changes, reorder };
+  }
+  function _parkerAttentionTotal(a){ a=a||_parkerComputeAttention(); return a.confirmB.length+a.stuck.length+a.changes.length+a.reorder.length; }
+  function _parkerUpdateNavBadge(a){
+    try {
+      const total=_parkerAttentionTotal(a);
+      const el=document.getElementById('nav-parker-attention-badge');
+      if(el){ el.textContent=total>0?String(total):''; el.style.display=total>0?'inline-block':'none'; }
+    } catch(e){}
+  }
+  function _parkerRenderAttention(){
+    const host=document.getElementById('parker-attention'); if(!host) return;
+    const a=_parkerComputeAttention();
+    _parkerUpdateNavBadge(a); // badge reflects the GLOBAL total (ignores chip filter)
+    const flt=x=>!_parkerFilter || x.client===_parkerFilter;
+    const confirmB=a.confirmB.filter(flt), stuck=a.stuck.filter(flt), changes=a.changes.filter(flt), reorder=a.reorder.filter(flt);
+    const total=confirmB.length+stuck.length+changes.length+reorder.length;
+    if(total===0){
+      host.innerHTML='<div style="display:flex; align-items:center; gap:8px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); font-size:13px; color:var(--text-muted);"><span style="font-size:15px; color:#16a34a;">✓</span> You\'re clear — nothing needs action right now'+(_parkerFilter?(' for '+_pkEsc(_parkerFilter)):'')+'.</div>';
+      return;
+    }
+    const bucket=(label,tone,items)=>{
+      if(!items.length) return '';
+      const rows=items.slice(0,6).map(it=>{
+        const inner='<div class="t">'+_pkEsc(it.title)+'</div><div class="s">'+_pkEsc(it.sub)+'</div>';
+        return it.href ? '<a class="pk-att-item" href="'+_pkEsc(it.href)+'">'+inner+'</a>'
+                       : '<div class="pk-att-item">'+inner+'</div>';
+      }).join('');
+      const more=items.length>6?'<div class="pk-att-more">+'+(items.length-6)+' more</div>':'';
+      return '<div class="pk-att pk-att-'+tone+'"><div class="pk-att-head">'+label+'<span class="pk-att-count">'+items.length+'</span></div><div class="pk-att-body">'+rows+more+'</div></div>';
+    };
+    host.innerHTML=
+      '<div style="display:flex; align-items:center; gap:8px; margin:0 0 10px; flex-wrap:wrap;">'
+        +'<span style="font-size:12px; font-weight:800; color:var(--text); text-transform:uppercase; letter-spacing:.5px;">Needs attention</span>'
+        +'<span style="font-size:12px; font-weight:800; background:#ef4444; color:#fff; padding:1px 9px; border-radius:999px;">'+total+'</span>'
+        +'<span style="font-size:12px; color:var(--text-muted);">— act on these first</span>'
+      +'</div>'
+      +'<div class="pk-att-grid">'
+        +bucket('Confirm delivery','red',confirmB)
+        +bucket('Change requested','red',changes)
+        +bucket('Stuck in stage','amber',stuck)
+        +bucket('Reorder due','blue',reorder)
+      +'</div>';
   }
   // Eye-catching column badge for Trello items: shows the list and how long
   // the card's been sitting there, colored by staleness (green→amber→red).
@@ -40338,6 +40467,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     loadCommissions();
     loadCrm();
     if (typeof _updateCrmNavBadge === 'function') _updateCrmNavBadge();
+    if (typeof _parkerUpdateNavBadge === 'function') _parkerUpdateNavBadge();
     rebuildSidebar();
     rebuildShipmentsNav();
     rebuildOrdersNav();
@@ -40395,6 +40525,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (ordersFromDB || shipmentsFromDB) {
       rebuildOrdersNav();
       rebuildShipmentsNav();
+      if (typeof _parkerUpdateNavBadge === 'function') _parkerUpdateNavBadge();
       // If the current view is an order or shipment, re-render it with fresh data
       const h = location.hash;
       if (h.startsWith('#/order') || h.startsWith('#/shipment') || h.startsWith('#/orders') || h.startsWith('#/shipments')) {
