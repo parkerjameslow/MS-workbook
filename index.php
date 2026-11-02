@@ -12447,6 +12447,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- ── Move a workbook through the pipeline columns (from a list row or the
+     workbook status bubble) — same move logic as dragging on the board ── -->
+<div class="modal-overlay" id="stage-move-modal" onclick="if(event.target===this)closeStageMoveModal()" style="z-index:1266;">
+  <div class="modal" style="max-width:420px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+    <div class="modal-title" id="stage-move-title" style="flex-shrink:0;">Move workbook</div>
+    <p id="stage-move-sub" style="color:var(--text-muted); font-size:12.5px; margin:-6px 0 12px; flex-shrink:0;"></p>
+    <div id="stage-move-body" style="overflow-y:auto; flex:1 1 auto; display:flex; flex-direction:column; gap:6px;"></div>
+    <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
+      <button type="button" class="btn btn-ghost" onclick="closeStageMoveModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── QuickBooks invoice preview (shown before anything is sent to QBO) ── -->
 <div class="modal-overlay" id="qb-invoice-modal" onclick="if(event.target===this)closeQbInvoiceModal()" style="display:none; z-index:1270;">
   <div class="modal" style="max-width:600px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
@@ -26931,10 +26944,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     for (let i = flowSteps.length - 1; i >= 0; i--) {
       if (flow[flowSteps[i]]) { currentIdx = i; break; }
     }
-    // The status pill shows the Pipeline COLUMN this workbook is in
-    // (not the granular flow step). Stage moves happen on the board.
+    // The status pill shows the Pipeline COLUMN this workbook is in (not the
+    // granular flow step). It's clickable → the Move picker, so a stage can be
+    // changed right here without opening the Pipeline board.
     statusFlow.innerHTML = (currentClient && currentWorkbookId)
-      ? _wbColumnPillHtml(currentClient, currentWorkbookId)
+      ? `<span class="wb-stage-move" onclick="openStageMoveModal(currentClient, currentWorkbookId, 'wb')" title="Move this workbook to another stage" style="display:inline-flex; align-items:center; gap:7px; cursor:pointer;">${_wbColumnPillHtml(currentClient, currentWorkbookId)}<span style="font-size:10.5px; font-weight:800; letter-spacing:.03em; color:var(--text-muted); text-transform:uppercase;">Move ▾</span></span>`
       : `<span class="wb-col-pill" style="background:#f3f4f6;color:#4b5563;">Not started</span>`;
 
     // Keep the status-bar "Create QB Invoice" button in sync with its state.
@@ -35096,7 +35110,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <td class="col-flow">${_wbColumnPillHtml(clientName, item.id)}</td>
         <td class="col-portal">${_wbPortalCellHtml(clientName, item.id)}</td>
         <td class="col-mobile-status">${_wbColumnPillHtml(clientName, item.id)}</td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(clientName).replace(/'/g,'%27')}/workbook/${item.id}'">Edit</a>${pendingReview ? `<a onclick="event.stopPropagation(); clearPendingReview('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Clear Pending Review</a>` : ''}<a onclick="event.stopPropagation(); openStageMoveModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', 'list')">Move…</a><a onclick="event.stopPropagation(); duplicateWorkbook('${clientName.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${clientName.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
     `}).join('');
 
@@ -37802,7 +37816,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           </div>
         </td>
         <td class="col-mobile-status"><span class="mobile-status-badge ${stepClass}">${stepName}</span></td>
-        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); duplicateWorkbook('${item.client.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${item.client.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
+        <td><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">View</a><a onclick="event.stopPropagation(); location.hash='#/client/${encodeURIComponent(item.client)}/workbook/${item.id}'">Edit</a><a onclick="event.stopPropagation(); openStageMoveModal('${item.client.replace(/'/g, "\\'")}', '${item.id}', 'recent')">Move…</a><a onclick="event.stopPropagation(); duplicateWorkbook('${item.client.replace(/'/g, "\\'")}', '${item.id}')">Duplicate</a><a onclick="event.stopPropagation(); openDeleteModal('${item.client.replace(/'/g, "\\'")}', '${item.id}', '${item.product.replace(/'/g, "\\'")}')">Delete</a></div></td>
       </tr>
       `;
     }).join('');
@@ -48781,8 +48795,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Order entity cards move between Orders and In Production only.
     if (String(key).indexOf('order:') === 0) { _pipelineMoveOrder(String(key).slice(6), targetCol); return; }
     const [clientName, workbookId] = key.split('|');
+    _pipelineMoveWorkbook(clientName, workbookId, targetCol);
+  }
+
+  // Shared "move a workbook to a pipeline column" routine — used by the board
+  // drop handler AND by the Move menu on workbook list rows / the workbook
+  // status bubble, so every surface moves a workbook the exact same way.
+  // opts.rerender (optional) is forwarded to _doPipelineMove so a move from a
+  // non-board surface refreshes THAT surface in place instead of yanking the
+  // operator onto the board.
+  function _pipelineMoveWorkbook(clientName, workbookId, targetCol, opts) {
+    const key = `${clientName}|${workbookId}`;
     const detail = workbookDetail[key];
-    if (!detail) return;
+    if (!detail) { showToast('Open this workbook once so its details load, then try moving it.', 'warn'); return; }
     const fromStage = _pipelineStageFor(clientName, workbookId, detail);
     if (fromStage === targetCol) return;
     const lbl = (id) => (PIPELINE_COLUMNS.find(c => c.id === id) || {}).label || id;
@@ -48800,7 +48825,91 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       showToast('This workbook is in an order or shipment — move it from that view.', 'warn');
       return;
     }
-    _doPipelineMove(clientName, workbookId, targetCol);
+    _doPipelineMove(clientName, workbookId, targetCol, opts);
+  }
+
+  // ── Move menu (list rows + workbook status bubble) ─────────────────
+  // A small picker that moves a workbook through the pipeline columns from
+  // anywhere — same move logic as dragging on the board, so operators don't
+  // have to open the board to advance a stage. `from` ('list' | 'wb' |
+  // 'recent') controls which surface repaints in place after the move.
+  let _stageMoveCtx = null;
+  function openStageMoveModal(clientName, workbookId, from) {
+    const key = `${clientName}|${workbookId}`;
+    let detail = workbookDetail[key];
+    if (!detail && currentClient === clientName && String(currentWorkbookId) === String(workbookId)
+        && typeof collectWorkbookDetail === 'function') {
+      try { detail = collectWorkbookDetail(); } catch (e) {}
+    }
+    if (!detail) { showToast('Open this workbook once so its details load, then move it.', 'warn'); return; }
+    _stageMoveCtx = { clientName, workbookId, from: from || 'list' };
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const curStage = _pipelineStageFor(clientName, workbookId, detail);
+    const prod = detail.product ? detail.product : `Workbook #${workbookId}`;
+    const inOrder = (typeof _wbInAnyOrder === 'function') && _wbInAnyOrder(clientName, workbookId);
+    const onShip  = (typeof _wbShipmentsFor === 'function') && _wbShipmentsFor(clientName, workbookId).length > 0;
+    const locked  = inOrder || onShip || !PIPELINE_FLAG_STAGES.has(curStage);
+    const t = document.getElementById('stage-move-title'); if (t) t.textContent = `Move “${prod}”`;
+    const sub = document.getElementById('stage-move-sub');
+    if (sub) {
+      sub.textContent = onShip
+        ? 'This workbook is on a shipment — set its stage from the Shipments / Receiving view.'
+        : inOrder
+        ? 'This workbook is in an order — advance it from the Orders / In Production view.'
+        : !PIPELINE_FLAG_STAGES.has(curStage)
+        ? 'This stage is managed from its own view.'
+        : 'Pick a column to move this workbook to.';
+    }
+    const body = document.getElementById('stage-move-body');
+    if (body) {
+      body.innerHTML = PIPELINE_COLUMNS.map(col => {
+        const isCur = col.id === curStage;
+        const isFlag = PIPELINE_FLAG_STAGES.has(col.id);
+        const clickable = !isCur && isFlag && !locked;
+        const note = isCur ? 'Current' : (!isFlag ? 'Own view' : '');
+        const dot = `<span style="width:10px;height:10px;border-radius:50%;background:${col.fg};flex-shrink:0;"></span>`;
+        const right = note ? `<span style="margin-left:auto;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);">${esc(note)}</span>` : '';
+        const base = 'display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;box-sizing:border-box;';
+        if (clickable) {
+          return `<button type="button" onclick="stageMovePick('${col.id}')" title="Move to ${esc(col.label)}"
+            style="${base}background:${col.bg};color:${col.fg};border:1px solid transparent;cursor:pointer;">${dot}<span>${esc(col.label)}</span>${right}</button>`;
+        }
+        return `<div style="${base}background:var(--surface2);border:1px solid var(--border);${isCur ? '' : 'opacity:.55;'}cursor:default;">${dot}<span style="color:${isCur ? col.fg : 'var(--text-muted)'};">${esc(col.label)}</span>${right}</div>`;
+      }).join('');
+    }
+    const m = document.getElementById('stage-move-modal');
+    if (m) m.classList.add('open');
+  }
+  function closeStageMoveModal() {
+    const m = document.getElementById('stage-move-modal');
+    if (m) m.classList.remove('open');
+    _stageMoveCtx = null;
+  }
+  // Repaint whichever surface the Move menu was opened from (optimistic +
+  // any later rollback both route here via _doPipelineMove's rerender hook).
+  function _stageMoveRerender() {
+    const c = _stageMoveCtx; if (!c) return;
+    try {
+      if (c.from === 'wb') {
+        if (currentClient === c.clientName && String(currentWorkbookId) === String(c.workbookId)) {
+          const it = (clientData[c.clientName] || []).find(i => String(i.id) === String(c.workbookId));
+          renderStatusBar(it && it.flow);
+        }
+      } else if (c.from === 'recent' && typeof renderRecentWorkbooksView === 'function') {
+        renderRecentWorkbooksView();
+      } else {
+        renderDashboard(c.clientName);
+      }
+    } catch (e) {}
+  }
+  function stageMovePick(colId) {
+    const c = _stageMoveCtx; if (!c) return;
+    // Hide the modal but KEEP _stageMoveCtx — _doPipelineMove's async rollback
+    // may still call _stageMoveRerender after the server responds.
+    const m = document.getElementById('stage-move-modal');
+    if (m) m.classList.remove('open');
+    _pipelineMoveWorkbook(c.clientName, c.workbookId, colId, { rerender: _stageMoveRerender });
+    setTimeout(() => { _stageMoveCtx = null; }, 6000);
   }
 
   // Drag a STAGING workbook (not yet in an order) onto In Production: mint its
@@ -48916,7 +49025,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     showToast(targetCol === 'production' ? 'Order moved to In Production' : 'Order moved back to Orders', 'success');
   }
 
-  async function _doPipelineMove(clientName, workbookId, targetStage) {
+  async function _doPipelineMove(clientName, workbookId, targetStage, opts) {
+    opts = opts || {};
+    // Which view to repaint after the move. Defaults to the Pipeline board
+    // (the drag source); the Move menu on other surfaces passes its own so a
+    // move there refreshes in place without navigating onto the board.
+    const _rerender = (typeof opts.rerender === 'function') ? opts.rerender : renderPipelineBoard;
     const key = `${clientName}|${workbookId}`;
     const detail = workbookDetail[key];
     if (!detail) return;
@@ -48977,7 +49091,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
     }
     try { saveToLocalStorage(); } catch (_) {}
-    renderPipelineBoard();
+    _rerender();
     try { rebuildRfqNav(); } catch (_) {}
     try { rebuildReviewNav(); } catch (_) {}
     try { rebuildSamplesNav(); } catch (_) {}
@@ -48998,7 +49112,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         detail.rfqItems.forEach((it, i) => { if (it) it.sample = !!_prevFlags.samples[i]; });
       }
       try { saveToLocalStorage(); } catch (_) {}
-      renderPipelineBoard();
+      _rerender();
       try { rebuildRfqNav(); } catch (_) {}
       try { rebuildReviewNav(); } catch (_) {}
       try { rebuildSamplesNav(); } catch (_) {}
