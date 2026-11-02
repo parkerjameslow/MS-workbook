@@ -41288,6 +41288,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const list = document.getElementById('pick-ship-list');
     if (!list) return;
     const orderId = _pendingOrderIdForPicker;
+    // Up-front warning when this order already sits on a shipment (including a
+    // Delivered/Received one that's filtered out of the list below) — so the
+    // operator doesn't make a second shipment without realizing.
+    const _pickExisting = _orderShipmentsList(orderData[orderId]);
+    const _dispLbl = st => ((typeof _SHIP_STATUS_DISPLAY === 'object' && _SHIP_STATUS_DISPLAY[st]) || {}).label || st || '';
+    const _dupBanner = _pickExisting.length
+      ? `<div style="padding:10px 12px; margin-bottom:10px; border:1px solid #fed7aa; background:#fff7ed; border-radius:10px; font-size:12px; color:#9a3412; line-height:1.5;">⚠ This order is already on ${_pickExisting.length} shipment${_pickExisting.length > 1 ? 's' : ''}: ${_pickExisting.map(s => `<strong>${(s.name || ('Shipment #' + s.id)).replace(/</g, '&lt;')}</strong> (${_dispLbl(s.status)})`).join(', ')}. Adding it again shows the same workbooks twice.</div>`
+      : '';
     // Show shipments across the lifecycle — operator wants visibility
     // into open AND in-flight containers so the picker doubles as a
     // "where did orders go?" map. Delivered + Received are hidden:
@@ -41305,7 +41313,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         return (parseInt(b.id) || 0) - (parseInt(a.id) || 0);
       });
     if (all.length === 0) {
-      list.innerHTML = `<div style="padding:24px 16px; text-align:center; color:var(--text-muted); font-size:13px; border:1px dashed var(--border); border-radius:10px;">
+      list.innerHTML = _dupBanner + `<div style="padding:24px 16px; text-align:center; color:var(--text-muted); font-size:13px; border:1px dashed var(--border); border-radius:10px;">
         No shipments yet — use <strong>+ Create New Shipment</strong> above to start one.
       </div>`;
       return;
@@ -41315,7 +41323,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // the manifest. Render those non-clickable but still visible so
     // the operator can see where past orders ended up.
     const closedStatuses = new Set(['in_transit', 'delivered', 'received']);
-    list.innerHTML = all.map(s => {
+    list.innerHTML = _dupBanner + all.map(s => {
       const sid = s.id;
       const disp = _SHIP_STATUS_DISPLAY[s.status] || { label: (s.status || 'unknown').toUpperCase(), bg: '#f3f4f6', fg: '#4b5563' };
       const entryCount  = Array.isArray(s.entries) ? s.entries.length : 0;
@@ -41347,6 +41355,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const s = shipmentData[shipmentId];
     const o = orderData[orderId];
     if (!s || !o) return;
+    if (!_confirmDuplicateOrderShipment(o, shipmentId)) return;
     s.entries = s.entries || [];
     const oid = parseInt(orderId);
     if (!s.entries.some(e => parseInt(e.orderId) === oid)) {
@@ -41363,6 +41372,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   function _createNewShipmentForCurrentOrder() {
+    // Guard the duplicate footgun: if the order's workbooks already sit on a
+    // shipment, confirm before minting a second one that shows them twice.
+    const _o = orderData[_pendingOrderIdForPicker];
+    if (_o && !_confirmDuplicateOrderShipment(_o, null)) return;
     // Stash the order id so createShipment auto-attaches it after the
     // shipment is minted. Close the picker, open the new-shipment
     // modal — the existing form/submit flow handles the rest.
@@ -43494,6 +43507,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const id        = String(order.id);
         const isChecked = _shipOrderPickerSelected.has(id);
         const inShip    = alreadyIn.has(id);
+        // On a DIFFERENT shipment already? Flag it so picking here doesn't
+        // silently duplicate the order across two shipments.
+        const onOther   = !inShip && _orderShipmentsList(order).some(sh => String(sh.id) !== String(_currentShipmentId));
         const wbCount   = (order.entries || []).length;
 
         // Sum the per-workbook stats across this order so we can show
@@ -43538,7 +43554,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           </div>
           <div class="wb-picker-info">
             <div class="wb-picker-product">${order.name}</div>
-            <div class="wb-picker-client">${clientName} &nbsp;·&nbsp; ${wbCount} workbook${wbCount !== 1 ? 's' : ''}${inShip ? ' · Already in shipment' : ''}</div>
+            <div class="wb-picker-client">${clientName} &nbsp;·&nbsp; ${wbCount} workbook${wbCount !== 1 ? 's' : ''}${inShip ? ' · Already in shipment' : (onOther ? ' · <span style="color:#c2410c; font-weight:600;">⚠ On another shipment</span>' : '')}</div>
             <div class="wb-picker-tiers">${statStr}</div>
           </div>
           <div style="width:20px; height:20px; border-radius:4px; border:2px solid ${isChecked ? 'var(--accent)' : 'var(--border)'}; background:${isChecked ? 'var(--accent)' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all 0.15s;">
@@ -43728,6 +43744,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
+    // Duplicate guard: warn once if any selected order already sits on a
+    // DIFFERENT shipment (would show the same workbooks in two places).
+    const _dupOrders = [];
+    _shipOrderPickerSelected.forEach(id => {
+      const o = orderData[parseInt(id)];
+      if (o && _orderShipmentsList(o).some(sh => String(sh.id) !== String(_currentShipmentId))) _dupOrders.push(o);
+    });
+    if (_dupOrders.length) {
+      const names = _dupOrders.map(o => `• ${o.clientName || ''} — ${o.name || ('Order #' + o.id)}`).join('\n');
+      if (!confirm(`${_dupOrders.length} selected order${_dupOrders.length > 1 ? 's are' : ' is'} already on another shipment:\n${names}\n\nAdding ${_dupOrders.length > 1 ? 'them' : 'it'} here shows the same workbooks in two places on the board. Continue?`)) return;
+    }
     s.entries = s.entries || [];
     _shipOrderPickerSelected.forEach(id => {
       const orderId = parseInt(id);
@@ -48124,6 +48151,31 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _orderHasAnyWorkbookOnShipment(o) {
     if (!o || !Array.isArray(o.entries)) return false;
     return o.entries.some(e => _orderWorkbookIsOnShipment(e.clientName, e.workbookId));
+  }
+  // Distinct shipments currently carrying ANY workbook of this order — any
+  // status, so a Delivered/Received shipment (hidden from the pickers) still
+  // surfaces. Powers the "already on a shipment" duplicate guard.
+  function _orderShipmentsList(o) {
+    if (!o || !Array.isArray(o.entries) || typeof _wbShipmentsFor !== 'function') return [];
+    const seen = new Set(); const out = [];
+    o.entries.forEach(e => {
+      _wbShipmentsFor(e.clientName, e.workbookId).forEach(s => {
+        if (s && s.id != null && !seen.has(String(s.id))) { seen.add(String(s.id)); out.push(s); }
+      });
+    });
+    return out;
+  }
+  // Confirm (true = proceed) before attaching an order to a shipment when its
+  // workbooks are already on OTHER shipment(s) — the footgun that makes the
+  // same order show twice on the board. excludeShipmentId is the shipment
+  // being added to, so re-adding to one the order's already on isn't flagged.
+  function _confirmDuplicateOrderShipment(o, excludeShipmentId) {
+    const existing = _orderShipmentsList(o).filter(s => String(s.id) !== String(excludeShipmentId));
+    if (!existing.length) return true;
+    const disp = st => ((typeof _SHIP_STATUS_DISPLAY === 'object' && _SHIP_STATUS_DISPLAY[st]) || {}).label || st || '';
+    const names = existing.map(s => `• ${s.name || ('Shipment #' + s.id)} — ${disp(s.status)}`).join('\n');
+    const n = existing.length;
+    return confirm(`This order's workbooks are already on ${n} shipment${n > 1 ? 's' : ''}:\n${names}\n\nAdding it to another shipment shows the same workbooks in two places on the board. Add it anyway?`);
   }
   // An order is "in Fulfillment" iff it's been Notify-Client'd at
   // least once AND none of its workbooks have landed on a Shipment
