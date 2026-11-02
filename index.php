@@ -4363,10 +4363,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pk-att-amber .pk-att-head { color:#d97706; } .pk-att-amber .pk-att-count { background:rgba(217,119,6,.16);  color:#d97706; }
     .pk-att-blue  .pk-att-head { color:var(--accent); } .pk-att-blue .pk-att-count { background:rgba(107,147,255,.16); color:var(--accent); }
     .pk-att-body { padding:6px; display:flex; flex-direction:column; gap:2px; max-height:270px; overflow:auto; }
-    .pk-att-item { display:block; padding:8px 10px; border-radius:8px; text-decoration:none; color:inherit; }
-    a.pk-att-item { cursor:pointer; } a.pk-att-item:hover { background:var(--surface2); }
-    .pk-att-item .t { font-weight:600; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .pk-att-item .s { font-size:11.5px; color:var(--text-muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pk-att-item-row { display:flex; align-items:center; gap:6px; border-radius:8px; }
+    .pk-att-item-row:hover { background:var(--surface2); }
+    .pk-att-main { display:block; flex:1 1 auto; min-width:0; padding:8px 10px; border-radius:8px; text-decoration:none; color:inherit; }
+    a.pk-att-main { cursor:pointer; }
+    .pk-att-main .t { font-weight:600; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pk-att-main .s { font-size:11.5px; color:var(--text-muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pk-att-actions { display:flex; align-items:center; gap:4px; flex:0 0 auto; padding-right:6px; }
+    .pk-att-btn { font-size:11px; font-weight:700; padding:4px 9px; border-radius:7px; border:1px solid var(--accent); background:rgba(107,147,255,.12); color:var(--accent); cursor:pointer; font-family:inherit; white-space:nowrap; }
+    .pk-att-btn:hover { background:var(--accent); color:#fff; }
+    .pk-att-x { font-size:12px; line-height:1; width:22px; height:22px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; font-family:inherit; flex:0 0 auto; }
+    .pk-att-x:hover { border-color:#ef4444; color:#ef4444; }
     .pk-att-more { padding:6px 10px; font-size:11.5px; color:var(--text-muted); }
     .parker-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
     .parker-panel-head { font-size:13px; font-weight:800; color:var(--text); padding:12px 16px; border-bottom:1px solid var(--border); background:rgba(127,127,127,0.04); }
@@ -26359,14 +26366,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _pkParse(res){ try { return (res&&res.success&&res.value)?JSON.parse(res.value):[]; } catch(e){ return []; } }
   async function _parkerLoad(){
     try {
-      const [a,r,b,m]=await Promise.all([
+      const [a,r,b,m,dz]=await Promise.all([
         apiCall('get_app_state',{key:'ms_parker_accounts'}),
         apiCall('get_app_state',{key:'ms_parker_reorders'}),
         apiCall('get_app_state',{key:'ms_parker_brief'}),
         apiCall('get_app_state',{key:'ms_parker_meetings'}),
+        apiCall('get_app_state',{key:'ms_parker_att_dismissed'}),
       ]);
       _parkerAccounts=_pkParse(a); _parkerReorders=_pkParse(r); _parkerMeetings=_pkParse(m);
       try { _parkerBrief=(b&&b.success&&b.value)?JSON.parse(b.value):null; } catch(e){ _parkerBrief=null; }
+      try { const d=(dz&&dz.success&&dz.value)?JSON.parse(dz.value):[]; _parkerAttDismissed=new Set(Array.isArray(d)?d:[]); } catch(e){ _parkerAttDismissed=new Set(); }
     } catch(e){ console.warn('parker load',e); }
     if(!Array.isArray(_parkerAccounts)) _parkerAccounts=[];
     if(!Array.isArray(_parkerReorders)) _parkerReorders=[];
@@ -26495,6 +26504,26 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // thing you act on. SLA = days a workbook/order may sit in a stage before
   // it's "stuck". Entity stages (shipments/receiving) are handled by the
   // Confirm-delivery bucket instead, so they're left out of the stage SLAs.
+  let _parkerAttDismissed = new Set();   // item keys Parker removed from his checklist
+  function _parkerSaveDismissed(){
+    try { apiCall('save_app_state',{key:'ms_parker_att_dismissed', value:JSON.stringify(Array.from(_parkerAttDismissed)), changed_by:(typeof getCurrentUser==='function'?getCurrentUser():'')}).catch(()=>{}); } catch(e){}
+  }
+  function _parkerDismissAtt(key){
+    if(!key) return;
+    _parkerAttDismissed.add(key);
+    _parkerSaveDismissed();
+    _parkerRenderAttention();
+  }
+  function _parkerResetDismissed(){
+    _parkerAttDismissed.clear();
+    _parkerSaveDismissed();
+    _parkerRenderAttention();
+  }
+  // "Mark received" straight from a Confirm-delivery item → the real receiving
+  // audit modal (returnTo 'cockpit' so confirm repaints the cockpit + badge).
+  function _parkerMarkReceived(shipId){
+    if(typeof openReceivedModal==='function') openReceivedModal(shipId, 'cockpit');
+  }
   const _PK_STAGE_SLA = { unstaged:7, rfq:7, review:5, samples:21, orders:10, production:45 };
   const _PK_STAGE_LBL = { unstaged:'Unstaged', rfq:'RFQ', review:'Ready for Review', samples:'Samples', orders:'Orders', production:'In Production', shipments:'Shipments', receiving:'Receiving' };
   // Resolve a shipment's primary client (any entry shape), for account filtering.
@@ -26516,10 +26545,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const client=_pkShipClient(s);
         const bucket=(typeof _trackBucket==='function')?_trackBucket(s):{key:''};
         if(bucket.key==='delivered' && s.status!=='delivered' && s.status!=='received'){
-          confirmB.push({title:(s.name||('Shipment #'+s.id)), sub:'Carrier shows delivered — confirm receipt', href:'#/shipment/'+s.id, client});
+          confirmB.push({key:'ship:'+s.id, shipId:s.id, canReceive:true, title:(s.name||('Shipment #'+s.id)), sub:'Carrier shows delivered — confirm receipt', href:'#/shipment/'+s.id, client});
         } else if(s.status==='delivered'){
           const d=(typeof _pipelineDaysSince==='function')?_pipelineDaysSince(s.deliveredOn||s.receivedAt||s.createdAt):null;
-          if(d===null||d>=3) confirmB.push({title:(s.name||('Shipment #'+s.id)), sub:'In Receiving — mark received after audit'+(d?(' · '+d+'d'):''), href:'#/shipment/'+s.id, client, days:(d||0)});
+          if(d===null||d>=3) confirmB.push({key:'ship:'+s.id, shipId:s.id, canReceive:true, title:(s.name||('Shipment #'+s.id)), sub:'In Receiving — mark received after audit'+(d?(' · '+d+'d'):''), href:'#/shipment/'+s.id, client, days:(d||0)});
         }
       });
     } catch(e){}
@@ -26530,9 +26559,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const d=(typeof _pipelineDaysSince==='function')?_pipelineDaysSince(c.since):null;
         if(d===null||d<=sla) return;
         if(c.kind==='wb'){
-          stuck.push({title:c.product, sub:_PK_STAGE_LBL[c.stage]+' · '+d+'d · '+c.clientName, href:'#/client/'+encodeURIComponent(c.clientName)+'/workbook/'+c.workbookId, client:c.clientName, days:d});
+          stuck.push({key:'swb:'+c.clientName+'|'+c.workbookId, title:c.product, sub:_PK_STAGE_LBL[c.stage]+' · '+d+'d · '+c.clientName, href:'#/client/'+encodeURIComponent(c.clientName)+'/workbook/'+c.workbookId, client:c.clientName, days:d});
         } else if(c.kind==='order'){
-          stuck.push({title:c.title, sub:_PK_STAGE_LBL[c.stage]+' · '+d+'d', href:'#/order/'+c.id, client:(c.clients&&c.clients[0])||'', days:d});
+          stuck.push({key:'sord:'+c.id, title:c.title, sub:_PK_STAGE_LBL[c.stage]+' · '+d+'d', href:'#/order/'+c.id, client:(c.clients&&c.clients[0])||'', days:d});
         }
       });
       stuck.sort((a,b)=>b.days-a.days);
@@ -26540,7 +26569,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // 3 · Orders a client has flagged for a change
     try {
       Object.values(typeof orderData==='object'?orderData:{}).forEach(o=>{
-        if(o&&o.changeRequested) changes.push({title:(o.clientName||'Order')+' — '+(o.name||('Order #'+o.id)), sub:'Change requested by client', href:'#/order/'+o.id, client:o.clientName});
+        if(o&&o.changeRequested) changes.push({key:'chg:'+o.id, title:(o.clientName||'Order')+' — '+(o.name||('Order #'+o.id)), sub:'Change requested by client', href:'#/order/'+o.id, client:o.clientName});
       });
     } catch(e){}
     // 4 · Reorders due or overdue (within a week)
@@ -26548,11 +26577,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       (typeof _parkerReorders!=='undefined'?_parkerReorders:[]||[]).forEach(r=>{
         if(!r||r.done) return;
         const d=_pkDaysUntil(r.reorderDate); if(d===null||d>7) return;
-        reorder.push({title:(r.label||'Reorder'), sub:(d<0?('Overdue '+(-d)+'d'):(d===0?'Due today':('Due in '+d+'d')))+(r.account?(' · '+r.account):''), href:null, client:r.account, days:d});
+        reorder.push({key:'ro:'+(r.id||r.label||(r.account+'|'+r.reorderDate)), title:(r.label||'Reorder'), sub:(d<0?('Overdue '+(-d)+'d'):(d===0?'Due today':('Due in '+d+'d')))+(r.account?(' · '+r.account):''), href:null, client:r.account, days:d});
       });
       reorder.sort((a,b)=>a.days-b.days);
     } catch(e){}
-    return { confirmB, stuck, changes, reorder };
+    // Drop anything Parker has dismissed from his checklist; count how many
+    // were hidden so the UI can offer a "reset".
+    let hidden=0;
+    const keep=arr=>arr.filter(it=>{ if(it.key && _parkerAttDismissed.has(it.key)){ hidden++; return false; } return true; });
+    return { confirmB:keep(confirmB), stuck:keep(stuck), changes:keep(changes), reorder:keep(reorder), hidden };
   }
   function _parkerAttentionTotal(a){ a=a||_parkerComputeAttention(); return a.confirmB.length+a.stuck.length+a.changes.length+a.reorder.length; }
   function _parkerUpdateNavBadge(a){
@@ -26569,16 +26602,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const flt=x=>!_parkerFilter || x.client===_parkerFilter;
     const confirmB=a.confirmB.filter(flt), stuck=a.stuck.filter(flt), changes=a.changes.filter(flt), reorder=a.reorder.filter(flt);
     const total=confirmB.length+stuck.length+changes.length+reorder.length;
+    const resetFooter = a.hidden>0
+      ? '<div style="margin-top:10px; font-size:11.5px; color:var(--text-muted);">'+a.hidden+' item'+(a.hidden===1?'':'s')+' hidden from your checklist · <a href="#" onclick="event.preventDefault(); _parkerResetDismissed();" style="color:var(--accent); font-weight:600;">reset</a></div>'
+      : '';
     if(total===0){
-      host.innerHTML='<div style="display:flex; align-items:center; gap:8px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); font-size:13px; color:var(--text-muted);"><span style="font-size:15px; color:#16a34a;">✓</span> You\'re clear — nothing needs action right now'+(_parkerFilter?(' for '+_pkEsc(_parkerFilter)):'')+'.</div>';
+      host.innerHTML='<div style="display:flex; align-items:center; gap:8px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); font-size:13px; color:var(--text-muted);"><span style="font-size:15px; color:#16a34a;">✓</span> You\'re clear — nothing needs action right now'+(_parkerFilter?(' for '+_pkEsc(_parkerFilter)):'')+'.</div>'+resetFooter;
       return;
     }
+    // Escape a key/id for use inside a single-quoted JS string in an onclick attr.
+    const jk = v => _pkEsc(String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));
     const bucket=(label,tone,items)=>{
       if(!items.length) return '';
       const rows=items.slice(0,6).map(it=>{
         const inner='<div class="t">'+_pkEsc(it.title)+'</div><div class="s">'+_pkEsc(it.sub)+'</div>';
-        return it.href ? '<a class="pk-att-item" href="'+_pkEsc(it.href)+'">'+inner+'</a>'
-                       : '<div class="pk-att-item">'+inner+'</div>';
+        const main = it.href ? '<a class="pk-att-main" href="'+_pkEsc(it.href)+'">'+inner+'</a>'
+                             : '<div class="pk-att-main">'+inner+'</div>';
+        let actions='';
+        if(it.canReceive && it.shipId!=null)
+          actions+='<button type="button" class="pk-att-btn" onclick="event.stopPropagation(); _parkerMarkReceived(\''+jk(it.shipId)+'\')" title="Mark this shipment received">Mark received</button>';
+        if(it.key)
+          actions+='<button type="button" class="pk-att-x" onclick="event.stopPropagation(); _parkerDismissAtt(\''+jk(it.key)+'\')" title="Remove from checklist">✕</button>';
+        return '<div class="pk-att-item-row">'+main+'<div class="pk-att-actions">'+actions+'</div></div>';
       }).join('');
       const more=items.length>6?'<div class="pk-att-more">+'+(items.length-6)+' more</div>':'';
       return '<div class="pk-att pk-att-'+tone+'"><div class="pk-att-head">'+label+'<span class="pk-att-count">'+items.length+'</span></div><div class="pk-att-body">'+rows+more+'</div></div>';
@@ -26594,7 +26638,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         +bucket('Change requested','red',changes)
         +bucket('Stuck in stage','amber',stuck)
         +bucket('Reorder due','blue',reorder)
-      +'</div>';
+      +'</div>'
+      +resetFooter;
   }
   // Eye-catching column badge for Trello items: shows the list and how long
   // the card's been sitting there, colored by staleness (green→amber→red).
@@ -43552,6 +43597,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (dashView && dashView.classList.contains('active') && _clientWbBulkClient) {
         renderDashboard(_clientWbBulkClient);
       }
+    } catch (_) {}
+    // Keep Parker's cockpit + nudge badge in sync — marking a shipment received
+    // clears its "confirm delivery" item.
+    try { if (typeof _parkerUpdateNavBadge === 'function') _parkerUpdateNavBadge(); } catch (_) {}
+    try {
+      const pk = document.getElementById('view-parker');
+      if (pk && pk.classList.contains('active') && typeof _parkerRenderAll === 'function') _parkerRenderAll();
     } catch (_) {}
   }
 
