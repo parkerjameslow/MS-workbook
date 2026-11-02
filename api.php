@@ -5815,8 +5815,9 @@ switch ($action) {
 
         // Merge qty/cost into detail JSON, reset flow to 0
         $detail = json_decode($src['detail_json'] ?? '{}', true) ?: [];
-        if (!empty($input['qty']))  $detail['quoteClQty']      = $input['qty'];
-        if (!empty($input['cost'])) $detail['quoteClShipping']  = $input['cost'];
+        if (!empty($input['qty']))        $detail['quoteClQty']       = $input['qty'];
+        if (!empty($input['unit_price'])) $detail['quoteClUnitPrice']  = $input['unit_price'];
+        if (!empty($input['cost']))       $detail['quoteClShipping']   = $input['cost'];
 
         $newName = !empty($input['product_name']) ? trim($input['product_name']) : $src['product_name'] . ' (Copy)';
         $detail['product'] = $newName;

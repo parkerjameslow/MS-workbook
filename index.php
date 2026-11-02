@@ -2789,6 +2789,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qe-ship-wrap { position: relative; display: inline-flex; align-items: center; }
     .qe-ship-prefix { position: absolute; left: 9px; font-size: 13px; color: var(--text-muted); pointer-events: none; }
     .qe-totals input#qe-shipping { width: 120px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px 7px 18px; font-size: 13px; text-align: right; background: var(--surface); color: var(--text); }
+    /* Duplicate Workbook editable stat fields */
+    .dup-stat-lbl { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:5px; }
+    .dup-stat-input { width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:15px; background:var(--surface); color:var(--text); font-family:inherit; }
+    .dup-stat-input:focus { border-color:var(--accent); outline:none; box-shadow:0 0 0 3px var(--accent-glow, rgba(59,130,246,0.15)); }
+    .dup-stat-money { display:flex; align-items:center; gap:5px; }
+    .dup-stat-money > span { font-size:14px; color:var(--text-muted); }
     /* Quick Quote — internal margin calculator grid */
     .qq-setting { display:flex; flex-direction:column; gap:3px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); }
     .qq-setting input { width:70px; border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:13px; background:var(--surface); color:var(--text); text-align:right; }
@@ -30989,20 +30995,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
             <div style="display:grid;grid-template-columns:1fr 1fr;">
               <div style="padding:12px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);">
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Quantity</div>
-                <div id="dup-qty" style="font-size:15px;color:var(--text);">${srcQty || '—'}</div>
+                <div class="dup-stat-lbl">Quantity</div>
+                <input id="dup-qty" type="text" inputmode="numeric" class="dup-stat-input" value="${String(srcQty).replace(/"/g,'&quot;')}" placeholder="0" oninput="dupRecalcTotal()">
               </div>
               <div style="padding:12px 16px;border-bottom:1px solid var(--border);">
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Unit Price (USD)</div>
-                <div style="font-size:15px;color:var(--text);">${srcUnitPrice ? '$' + srcUnitPrice : '—'}</div>
+                <div class="dup-stat-lbl">Unit Price (USD)</div>
+                <div class="dup-stat-money"><span>$</span><input id="dup-unitprice" type="text" inputmode="decimal" class="dup-stat-input" value="${String(srcUnitPrice).replace(/"/g,'&quot;')}" placeholder="0.00" oninput="dupRecalcTotal()"></div>
               </div>
               <div style="padding:12px 16px;border-right:1px solid var(--border);">
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Shipping Cost (USD)</div>
-                <div id="dup-cost" style="font-size:15px;color:var(--text);">${srcCost ? '$' + srcCost : '—'}</div>
+                <div class="dup-stat-lbl">Shipping Cost (USD)</div>
+                <div class="dup-stat-money"><span>$</span><input id="dup-cost" type="text" inputmode="decimal" class="dup-stat-input" value="${String(srcCost).replace(/"/g,'&quot;')}" placeholder="0.00" oninput="dupRecalcTotal()"></div>
               </div>
               <div style="padding:12px 16px;">
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:5px;">Total Quote (USD)</div>
-                <div style="font-size:16px;font-weight:700;color:var(--text);">${srcTotal}</div>
+                <div class="dup-stat-lbl">Total Quote (USD)</div>
+                <div id="dup-total" style="font-size:16px;font-weight:700;color:var(--text);">${srcTotal}</div>
               </div>
             </div>
           </div>
@@ -31013,18 +31019,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     setTimeout(() => document.getElementById('dup-name')?.focus(), 50);
   }
 
+  // Live-update the Total Quote in the Duplicate modal as qty / unit / shipping
+  // are edited.
+  function dupRecalcTotal() {
+    const num = id => { const e = document.getElementById(id); return parseFloat((e && e.value || '').replace(/[,$ ]/g, '')) || 0; };
+    const t = num('dup-qty') * num('dup-unitprice') + num('dup-cost');
+    const el = document.getElementById('dup-total');
+    if (el) el.textContent = t > 0 ? '$' + t.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+  }
   async function confirmDuplicate(originalClient, srcDbId) {
     const newClient = document.getElementById('dup-client').value;
     const nameEl    = document.getElementById('dup-name');
     const newName   = nameEl.value.trim() || nameEl.placeholder;
-    const qty       = document.getElementById('dup-qty').textContent.replace('—','').trim();
-    const cost      = document.getElementById('dup-cost').textContent.replace('$','').replace('—','').trim();
+    const clean     = id => { const e = document.getElementById(id); return (e && e.value || '').replace(/[,$ ]/g, '').trim(); };
+    const qty       = clean('dup-qty');
+    const unitPrice = clean('dup-unitprice');
+    const cost      = clean('dup-cost');
     const errEl     = document.getElementById('dup-error');
     errEl.style.display = 'none';
     if (!newName) { errEl.textContent = 'Product name is required.'; errEl.style.display = 'block'; return; }
 
-    // Create duplicate with flow reset to 0
-    const r = await apiCall('duplicate_workbook', { id: srcDbId, target_client: newClient, product_name: newName, qty, cost });
+    // Create duplicate with flow reset to 0, carrying the edited quote figures.
+    const r = await apiCall('duplicate_workbook', { id: srcDbId, target_client: newClient, product_name: newName, qty, unit_price: unitPrice, cost });
     if (!r.success) { errEl.textContent = r.error || 'Duplicate failed.'; errEl.style.display = 'block'; return; }
 
     document.getElementById('duplicate-modal').remove();
