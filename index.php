@@ -36442,6 +36442,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { apiCall('save_app_state', { key: 'ms_wb_completed', value: JSON.stringify(Array.from(_wbManualCompleted)), changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }).catch(() => {}); } catch (e) {}
   }
   function markWbCompleted(clientName, workbookId) {
+    const it = (clientData[clientName] || []).find(i => String(i.id) === String(workbookId));
+    const name = (it && it.product) ? it.product : 'this workbook';
+    if (!confirm(`Move “${name}” to Completed?\n\nIt will drop out of ${clientName}'s active list into the COMPLETED drawer below. You can move it back anytime from its ⋮ menu.`)) return;
     _wbManualCompleted.add(`${clientName}|${workbookId}`);
     _saveWbCompleted();
     try { renderDashboard(clientName); } catch (_) {}
