@@ -2815,7 +2815,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-move button:disabled { opacity:0.3; cursor:default; }
     .qq-dragging { opacity:0.45; }
     .qq-dragover td { box-shadow:inset 0 2px 0 var(--accent); }
-    .qq-table thead th { position:sticky; top:0; background:var(--surface2); z-index:2; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); }
+    .qq-table thead th { position:sticky; top:0; background:var(--surface2); z-index:2; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); text-align:left; }
     .qq-table thead tr.qq-grp th { text-align:center; font-size:10px; color:#fff; }
     .qq-grp-rmb { background:#2563eb; } .qq-grp-usd { background:#2563eb; } .qq-grp-sale { background:#1e40af; }
     .qq-table td input { width:100%; min-width:0; box-sizing:border-box; border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:12.5px; background:var(--surface); color:var(--text); text-align:right; font-family:inherit; transition:border-color 0.12s, box-shadow 0.12s; }
@@ -11269,14 +11269,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <thead>
           <tr>
             <th style="width:5%;">#</th>
-            <th style="width:12%;">Product</th>
+            <th style="width:10%;">Product</th>
             <th style="width:9%;">Total MOQ</th>
             <th style="width:8%;">QTY</th>
             <th style="width:8%;">RMB Per</th>
             <th style="width:8%;">USD Per</th>
             <th style="width:8%;">Master pack</th>
             <th style="width:8%;">Shipping <button type="button" id="qq-ship-unit-btn" class="qq-unit-btn" onclick="qqToggleShipUnit()" title="Switch weight unit (KG / LB)">KG</button></th>
-            <th style="width:7%;">RMB / KG</th>
+            <th style="width:9%;">Shipping Rate <span style="font-weight:600; font-size:8px; opacity:0.75;">RMB/KG</span></th>
             <th style="width:8%;">Sale (USD)</th>
             <th style="width:9%;">Revenue</th>
             <th style="width:7%;">Results</th>
