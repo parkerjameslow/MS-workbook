@@ -11269,16 +11269,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <thead>
           <tr>
             <th style="width:5%;">#</th>
-            <th style="width:10%;">Product</th>
-            <th style="width:8%;">MOQ / Color</th>
+            <th style="width:12%;">Product</th>
             <th style="width:9%;">Total MOQ</th>
             <th style="width:8%;">QTY</th>
             <th style="width:8%;">RMB Per</th>
             <th style="width:8%;">USD Per</th>
-            <th style="width:9%;">Master pack</th>
-            <th style="width:9%;">Shipping <button type="button" id="qq-ship-unit-btn" class="qq-unit-btn" onclick="qqToggleShipUnit()" title="Switch weight unit (KG / LB)">KG</button></th>
-            <th style="width:8%;">RMB / KG</th>
+            <th style="width:8%;">Master pack</th>
+            <th style="width:8%;">Shipping <button type="button" id="qq-ship-unit-btn" class="qq-unit-btn" onclick="qqToggleShipUnit()" title="Switch weight unit (KG / LB)">KG</button></th>
+            <th style="width:7%;">RMB / KG</th>
             <th style="width:8%;">Sale (USD)</th>
+            <th style="width:9%;">Revenue</th>
             <th style="width:7%;">Results</th>
             <th style="width:3%;"></th>
           </tr>
@@ -32904,6 +32904,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Keep the auto-suggested Sale live as the cost columns are typed (the
     // sync is a no-op when the Sale cell itself is the one being edited).
     if (field !== 'sale') { try { _qqSyncGridSale(i); } catch (e) {} }
+    try { _qqSyncRevenue(i); } catch (e) {}
     _qqRenderSummary();
     if (_qqResultIdx === i) _qqRenderResult(i);   // live-update the open results modal
     saveQuickQuote();
@@ -32917,6 +32918,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     else if (fx > 0) r.rmbPer = String(Math.round((_qqNum(val) / fx) * 100) / 100);
     _qqSyncRmbCell(i);
     _qqSyncGridSale(i);
+    _qqSyncRevenue(i);
     _qqRenderSummary();
     if (_qqResultIdx === i) _qqRenderResult(i);
     saveQuickQuote();
@@ -32936,10 +32938,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const inp = tr.querySelector('.qq-rmb-input');
     if (inp && document.activeElement !== inp) inp.value = (_qq.rows[i].rmbPer == null ? '' : _qq.rows[i].rmbPer);
   }
+  // Live-update the read-only Revenue cell (Sale × Qty) as any field changes.
+  function _qqSyncRevenue(i) {
+    const tr = document.querySelector(`#qq-body tr[data-qq="${i}"]`);
+    if (!tr) return;
+    const cell = tr.querySelector('.qq-revenue');
+    if (cell) { const c = _qqCompute(_qq.rows[i]); cell.textContent = c.total > 0 ? _qqUsd(c.total) : '—'; }
+  }
   // Grid = YELLOW INPUTS ONLY + a Results button per row. Computed numbers live
   // in the per-row results modal + the totals summary below the grid.
   function _qqRowHtml(r, i) {
     const last = _qq.rows.length - 1;
+    const c = _qqCompute(r);
     const inp = (field, val, cls) => `<td class="qq-cell ${cls || ''}"><input type="text" value="${_qqEsc(val)}" oninput="qqInput(${i},'${field}',this.value)"></td>`;
     return `<tr data-qq="${i}" ondragover="qqDragOver(event,${i})" ondrop="qqDrop(event,${i})">
       <td class="qq-numcell" draggable="true" ondragstart="qqDragStart(event,${i})" ondragend="qqDragEnd(event)" title="Drag to reorder">
@@ -32950,7 +32960,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         </span>
       </td>
       ${inp('product', r.product, 'qq-text')}
-      ${inp('moqColor', r.moqColor, 'qq-text')}
       ${inp('totalMoq', r.totalMoq, 'qq-text')}
       ${inp('qty', r.qty)}
       <td class="qq-cell"><input type="text" class="qq-rmb-input" value="${_qqEsc(r.rmbPer)}" oninput="qqInput(${i},'rmbPer',this.value)"></td>
@@ -32964,12 +32973,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${inp('shipKg', r.shipKg)}
       ${inp('rmbPerKg', r.rmbPerKg)}
       ${(() => {
-        const c = _qqCompute(r);
         const manual = !(c.saleIsAuto);
         const disp = manual ? r.sale : (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '');
         const title = (!manual && c.suggested > 0) ? `Auto — suggested at ${Math.round(c.markupPct)}% markup. Type to override.` : '';
         return `<td class="qq-cell${!manual && c.suggested > 0 ? ' qq-sale-auto' : ''}"><input type="text" class="qq-sale-input" value="${_qqEsc(disp)}" title="${_qqEsc(title)}" oninput="qqInput(${i},'sale',this.value)"></td>`;
       })()}
+      <td class="qq-cell qq-calc qq-revenue" style="text-align:right; font-weight:700;">${c.total > 0 ? _qqUsd(c.total) : '—'}</td>
       <td style="text-align:center;"><button type="button" class="qq-view-btn" onclick="qqOpenResult(${i})">Results</button></td>
       <td style="text-align:center;"><span class="qq-rm" onclick="qqRemoveRow(${i})" title="Delete line item">&times;</span></td>
     </tr>`;
@@ -33031,6 +33040,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // tracking it as cost changes), rather than freezing a one-off number.
     r.saleManual = false; r.sale = '';
     _qqSyncGridSale(i);
+    _qqSyncRevenue(i);
     _qqRenderResult(i);   // safe: button click, no modal input focused
     _qqRenderSummary(); saveQuickQuote();
   }
@@ -33053,6 +33063,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!_qq.rows[i]) return;
     _qqMarkSale(_qq.rows[i], val);
     _qqSyncGridSale(i);
+    _qqSyncRevenue(i);
     _qqUpdateResultDeps(i);
     _qqRenderSummary();
     saveQuickQuote();
