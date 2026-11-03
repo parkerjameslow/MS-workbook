@@ -2837,6 +2837,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .qq-table td.qq-sale-auto input:focus { font-style:normal; border-style:solid; }
     .qq-hero-input-auto { color:var(--accent); font-style:italic; }
     .qq-hero-input-auto:focus { color:var(--text); font-style:normal; }
+    /* "% over cost" badge under each Sale cell (50% when auto). */
+    .qq-sale-pct { font-size:9px; font-weight:700; color:var(--text-muted); text-align:right; margin-top:2px; white-space:nowrap; }
+    .qq-table td.qq-sale-auto .qq-sale-pct { color:var(--accent); }
     /* KG / LB unit toggle in the Shipping column header. */
     .qq-unit-btn { font:inherit; font-size:10px; font-weight:800; letter-spacing:0.03em; color:var(--accent); background:rgba(107,147,255,0.12); border:1px solid var(--accent); border-radius:6px; padding:1px 6px; margin-left:2px; cursor:pointer; vertical-align:middle; }
     .qq-unit-btn:hover { background:var(--accent); color:#fff; }
@@ -32901,9 +32904,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     else _qq.rows[i][field] = val;
     // Typing RMB Per updates the sibling USD Per cell via the FX rate.
     if (field === 'rmbPer') { try { _qqSyncUsdCell(i); } catch (e) {} }
-    // Keep the auto-suggested Sale live as the cost columns are typed (the
-    // sync is a no-op when the Sale cell itself is the one being edited).
-    if (field !== 'sale') { try { _qqSyncGridSale(i); } catch (e) {} }
+    // Keep the auto-suggested Sale + its "% over cost" badge live as any column
+    // is typed (the input-value write is focus-guarded, so editing Sale is safe).
+    try { _qqSyncGridSale(i); } catch (e) {}
     try { _qqSyncRevenue(i); } catch (e) {}
     _qqRenderSummary();
     if (_qqResultIdx === i) _qqRenderResult(i);   // live-update the open results modal
@@ -32976,7 +32979,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const manual = !(c.saleIsAuto);
         const disp = manual ? r.sale : (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '');
         const title = (!manual && c.suggested > 0) ? `Auto — suggested at ${Math.round(c.markupPct)}% markup. Type to override.` : '';
-        return `<td class="qq-cell${!manual && c.suggested > 0 ? ' qq-sale-auto' : ''}"><input type="text" class="qq-sale-input" value="${_qqEsc(disp)}" title="${_qqEsc(title)}" oninput="qqInput(${i},'sale',this.value)"></td>`;
+        const pct = (c.sale > 0 && c.landedPer > 0) ? (Math.round(c.salePct) + '% over cost') : '';
+        return `<td class="qq-cell${!manual && c.suggested > 0 ? ' qq-sale-auto' : ''}"><input type="text" class="qq-sale-input" value="${_qqEsc(disp)}" title="${_qqEsc(title)}" oninput="qqInput(${i},'sale',this.value)"><div class="qq-sale-pct">${pct}</div></td>`;
       })()}
       <td class="qq-cell qq-calc qq-revenue" style="text-align:right; font-weight:700;">${c.total > 0 ? _qqUsd(c.total) : '—'}</td>
       <td style="text-align:center;"><button type="button" class="qq-view-btn" onclick="qqOpenResult(${i})">Results</button></td>
@@ -33048,15 +33052,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqSyncGridSale(i) {
     const tr = document.querySelector(`#qq-body tr[data-qq="${i}"]`);
     if (!tr) return;
+    const r = _qq.rows[i];
+    const c = _qqCompute(r);
+    const manual = !_qqSaleIsAuto(r);
     const inp = tr.querySelector('.qq-sale-input');   // queried by class (index-safe)
     if (inp && document.activeElement !== inp) {
-      const r = _qq.rows[i];
-      const manual = !_qqSaleIsAuto(r);
-      const c = _qqCompute(r);
       inp.value = manual ? r.sale : (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '');
       const cell = inp.closest('td');
       if (cell) cell.classList.toggle('qq-sale-auto', !manual && c.suggested > 0);
     }
+    // The "% over cost" badge updates even while the Sale field is focused.
+    const pctEl = tr.querySelector('.qq-sale-pct');
+    if (pctEl) pctEl.textContent = (c.sale > 0 && c.landedPer > 0) ? (Math.round(c.salePct) + '% over cost') : '';
   }
   // Sale edited INSIDE the modal → update deps in place (keep the sale input).
   function qqResultSale(i, val) {
