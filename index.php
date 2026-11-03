@@ -32805,6 +32805,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqUsd(n) { return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function _qqUsd3(n) { return '$' + (Math.round(n * 1000) / 1000).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
   function _qqRmb(n) { return '¥' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  // A row's Sale is "auto" (defaults to the suggested markup price) when it's
+  // blank or 0 — a $0 sale is never a real price in a margin calculator.
+  function _qqSaleIsAuto(r) {
+    return (r.sale == null || String(r.sale).trim() === '' || _qqNum(r.sale) === 0);
+  }
   function _qqCompute(r) {
     const fx = _qqFx();
     const qty = _qqNum(r.qty), rmbPer = _qqNum(r.rmbPer), master = _qqNum(r.masterPack), shipWt = _qqNum(r.shipKg), rmbKg = _qqNum(r.rmbPerKg);
@@ -32823,9 +32828,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const landedPer = pricePerUsd + shipPerUsd;
     const costExt = landedPer * qty;
     const suggested = landedPer * (1 + markup);
-    // Sale defaults to the suggested (markup) price until the operator types
-    // one — so the Sale column auto-fills at the markup % once cost is in.
-    const saleIsAuto = (r.sale == null || String(r.sale).trim() === '');
+    // Sale defaults to the suggested (markup) price until the operator types a
+    // real one — so the Sale column auto-fills at the markup % once cost is in.
+    // Blank OR 0 counts as "not set" (a $0 sale is never intended in a margin
+    // calc), so a leftover 0 still auto-populates.
+    const saleIsAuto = _qqSaleIsAuto(r);
     const sale = saleIsAuto ? suggested : _qqNum(r.sale);
     const total = sale * qty;
     const profit = total - costExt;
@@ -32987,7 +32994,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const inp = tr.querySelectorAll('input')[8];   // 9th input = Sale
     if (inp && document.activeElement !== inp) {
       const r = _qq.rows[i];
-      const manual = !(r.sale == null || String(r.sale).trim() === '');
+      const manual = !_qqSaleIsAuto(r);
       const c = _qqCompute(r);
       inp.value = manual ? r.sale : (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '');
       const cell = inp.closest('td');
