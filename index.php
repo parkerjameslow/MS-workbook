@@ -32805,10 +32805,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqUsd(n) { return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function _qqUsd3(n) { return '$' + (Math.round(n * 1000) / 1000).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
   function _qqRmb(n) { return '¥' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-  // A row's Sale is "auto" (defaults to the suggested markup price) when it's
-  // blank or 0 — a $0 sale is never a real price in a margin calculator.
+  // A row's Sale auto-fills with the suggested markup price unless the operator
+  // has explicitly typed a non-zero price (r.saleManual). Every row defaults to
+  // auto — including existing rows (no flag) and new ones — and a blank or 0 is
+  // always auto, so clearing a price reverts it to auto.
   function _qqSaleIsAuto(r) {
+    if (!r.saleManual) return true;
     return (r.sale == null || String(r.sale).trim() === '' || _qqNum(r.sale) === 0);
+  }
+  function _qqMarkSale(r, val) {
+    r.sale = val;
+    r.saleManual = !(String(val == null ? '' : val).trim() === '' || _qqNum(val) === 0);
   }
   function _qqCompute(r) {
     const fx = _qqFx();
@@ -32889,7 +32896,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function qqInput(i, field, val) {
     if (!_qq.rows[i]) return;
-    _qq.rows[i][field] = val;
+    if (field === 'sale') _qqMarkSale(_qq.rows[i], val);  // sets saleManual flag
+    else _qq.rows[i][field] = val;
     // Keep the auto-suggested Sale live as the cost columns are typed (the
     // sync is a no-op when the Sale cell itself is the one being edited).
     if (field !== 'sale') { try { _qqSyncGridSale(i); } catch (e) {} }
@@ -32982,7 +32990,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function qqUseSuggested(i) {
     const r = _qq.rows[i]; if (!r) return;
-    r.sale = (Math.round(_qqCompute(r).suggested * 1000) / 1000);
+    // Revert to auto so the Sale follows the suggested markup price (and keeps
+    // tracking it as cost changes), rather than freezing a one-off number.
+    r.saleManual = false; r.sale = '';
     _qqSyncGridSale(i);
     _qqRenderResult(i);   // safe: button click, no modal input focused
     _qqRenderSummary(); saveQuickQuote();
@@ -33004,7 +33014,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // Sale edited INSIDE the modal → update deps in place (keep the sale input).
   function qqResultSale(i, val) {
     if (!_qq.rows[i]) return;
-    _qq.rows[i].sale = val;
+    _qqMarkSale(_qq.rows[i], val);
     _qqSyncGridSale(i);
     _qqUpdateResultDeps(i);
     _qqRenderSummary();
