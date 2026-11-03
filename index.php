@@ -11269,11 +11269,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <thead>
           <tr>
             <th style="width:5%;">#</th>
-            <th style="width:14%;">Product</th>
-            <th style="width:12%;">MOQ / Color</th>
+            <th style="width:10%;">Product</th>
+            <th style="width:8%;">MOQ / Color</th>
             <th style="width:9%;">Total MOQ</th>
             <th style="width:8%;">QTY</th>
             <th style="width:8%;">RMB Per</th>
+            <th style="width:8%;">USD Per</th>
             <th style="width:9%;">Master pack</th>
             <th style="width:9%;">Shipping <button type="button" id="qq-ship-unit-btn" class="qq-unit-btn" onclick="qqToggleShipUnit()" title="Switch weight unit (KG / LB)">KG</button></th>
             <th style="width:8%;">RMB / KG</th>
@@ -32898,12 +32899,42 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!_qq.rows[i]) return;
     if (field === 'sale') _qqMarkSale(_qq.rows[i], val);  // sets saleManual flag
     else _qq.rows[i][field] = val;
+    // Typing RMB Per updates the sibling USD Per cell via the FX rate.
+    if (field === 'rmbPer') { try { _qqSyncUsdCell(i); } catch (e) {} }
     // Keep the auto-suggested Sale live as the cost columns are typed (the
     // sync is a no-op when the Sale cell itself is the one being edited).
     if (field !== 'sale') { try { _qqSyncGridSale(i); } catch (e) {} }
     _qqRenderSummary();
     if (_qqResultIdx === i) _qqRenderResult(i);   // live-update the open results modal
     saveQuickQuote();
+  }
+  // USD Per edited → back-solve RMB Per through the FX rate (so RMB stays the
+  // stored source of truth), then refresh the RMB cell + the auto Sale.
+  function qqUsdInput(i, val) {
+    const r = _qq.rows[i]; if (!r) return;
+    const fx = _qqFx();
+    if (String(val).trim() === '') r.rmbPer = '';
+    else if (fx > 0) r.rmbPer = String(Math.round((_qqNum(val) / fx) * 100) / 100);
+    _qqSyncRmbCell(i);
+    _qqSyncGridSale(i);
+    _qqRenderSummary();
+    if (_qqResultIdx === i) _qqRenderResult(i);
+    saveQuickQuote();
+  }
+  function _qqSyncUsdCell(i) {
+    const tr = document.querySelector(`#qq-body tr[data-qq="${i}"]`);
+    if (!tr) return;
+    const inp = tr.querySelector('.qq-usd-input');
+    if (inp && document.activeElement !== inp) {
+      const fx = _qqFx(), rmb = _qqNum(_qq.rows[i].rmbPer);
+      inp.value = (rmb > 0 && fx > 0) ? (Math.round(rmb * fx * 1000) / 1000) : '';
+    }
+  }
+  function _qqSyncRmbCell(i) {
+    const tr = document.querySelector(`#qq-body tr[data-qq="${i}"]`);
+    if (!tr) return;
+    const inp = tr.querySelector('.qq-rmb-input');
+    if (inp && document.activeElement !== inp) inp.value = (_qq.rows[i].rmbPer == null ? '' : _qq.rows[i].rmbPer);
   }
   // Grid = YELLOW INPUTS ONLY + a Results button per row. Computed numbers live
   // in the per-row results modal + the totals summary below the grid.
@@ -32922,7 +32953,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${inp('moqColor', r.moqColor, 'qq-text')}
       ${inp('totalMoq', r.totalMoq, 'qq-text')}
       ${inp('qty', r.qty)}
-      ${inp('rmbPer', r.rmbPer)}
+      <td class="qq-cell"><input type="text" class="qq-rmb-input" value="${_qqEsc(r.rmbPer)}" oninput="qqInput(${i},'rmbPer',this.value)"></td>
+      ${(() => {
+        const fx = _qqFx();
+        const rmb = _qqNum(r.rmbPer);
+        const usd = (rmb > 0 && fx > 0) ? (Math.round(rmb * fx * 1000) / 1000) : '';
+        return `<td class="qq-cell"><input type="text" class="qq-usd-input" value="${_qqEsc(usd)}" placeholder="auto" title="USD per unit — edits sync to RMB Per via the FX rate." oninput="qqUsdInput(${i},this.value)"></td>`;
+      })()}
       ${inp('masterPack', r.masterPack)}
       ${inp('shipKg', r.shipKg)}
       ${inp('rmbPerKg', r.rmbPerKg)}
@@ -32931,7 +32968,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const manual = !(c.saleIsAuto);
         const disp = manual ? r.sale : (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '');
         const title = (!manual && c.suggested > 0) ? `Auto — suggested at ${Math.round(c.markupPct)}% markup. Type to override.` : '';
-        return `<td class="qq-cell${!manual && c.suggested > 0 ? ' qq-sale-auto' : ''}"><input type="text" value="${_qqEsc(disp)}" title="${_qqEsc(title)}" oninput="qqInput(${i},'sale',this.value)"></td>`;
+        return `<td class="qq-cell${!manual && c.suggested > 0 ? ' qq-sale-auto' : ''}"><input type="text" class="qq-sale-input" value="${_qqEsc(disp)}" title="${_qqEsc(title)}" oninput="qqInput(${i},'sale',this.value)"></td>`;
       })()}
       <td style="text-align:center;"><button type="button" class="qq-view-btn" onclick="qqOpenResult(${i})">Results</button></td>
       <td style="text-align:center;"><span class="qq-rm" onclick="qqRemoveRow(${i})" title="Delete line item">&times;</span></td>
@@ -32939,7 +32976,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _qqRender() {
     const body = document.getElementById('qq-body'); if (!body) return;
-    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="12" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderSummary(); return; }
+    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="13" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderSummary(); return; }
     body.innerHTML = _qq.rows.map((r, i) => _qqRowHtml(r, i)).join('');
     _qqRenderSummary();
   }
@@ -33001,7 +33038,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqSyncGridSale(i) {
     const tr = document.querySelector(`#qq-body tr[data-qq="${i}"]`);
     if (!tr) return;
-    const inp = tr.querySelectorAll('input')[8];   // 9th input = Sale
+    const inp = tr.querySelector('.qq-sale-input');   // queried by class (index-safe)
     if (inp && document.activeElement !== inp) {
       const r = _qq.rows[i];
       const manual = !_qqSaleIsAuto(r);
