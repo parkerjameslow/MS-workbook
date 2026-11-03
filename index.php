@@ -11276,7 +11276,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <th style="width:8%;">USD Per</th>
             <th style="width:8%;">Master pack</th>
             <th style="width:8%;">Shipping <button type="button" id="qq-ship-unit-btn" class="qq-unit-btn" onclick="qqToggleShipUnit()" title="Switch weight unit (KG / LB)">KG</button></th>
-            <th style="width:9%;">Shipping Rate <span style="font-weight:600; font-size:8px; opacity:0.75;">RMB/KG</span></th>
+            <th style="width:9%;">Rate <span style="font-weight:600; font-size:8px; opacity:0.75;">RMB/KG</span></th>
             <th style="width:8%;">Sale (USD)</th>
             <th style="width:9%;">Revenue</th>
             <th style="width:7%;">Results</th>
