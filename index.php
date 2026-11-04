@@ -24313,9 +24313,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           // the Grand Total row is continuous edge-to-edge (no breaks
           // at the column gaps that per-cell borders would produce).
           const dividerCell = `<div class="ss-rfq-divider"></div>`;
+          // Grand Total QTY respects combined groups: each group contributes
+          // only its PRIMARY line's qty (the components fold into it — you're
+          // ordering 1,000 kits, not 4,000 component pieces). Ungrouped lines
+          // add their full qty. With no groups this equals the plain sum.
+          let _ssGrandQty = 0;
+          const _ssGrouped = new Set(), _ssGroupPrimary = new Set();
+          (Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => {
+            (g.itemIdxs || []).forEach(ix => _ssGrouped.add(ix));
+            if (g.primaryIdx != null) _ssGroupPrimary.add(g.primaryIdx);
+          });
+          items.forEach(it => {
+            if (!_ssGrouped.has(it.idx) || _ssGroupPrimary.has(it.idx)) _ssGrandQty += it.qty;
+          });
           const grandCells =
             `<div class="ss-rfq-grand-cell ss-rfq-grand-cell--label">Grand Total</div>` +
-            `<div class="ss-rfq-grand-cell">${_ssFmtInt(grandQty)}</div>` +
+            `<div class="ss-rfq-grand-cell">${_ssFmtInt(_ssGrandQty)}</div>` +
             `<div class="ss-rfq-grand-cell"></div>` +
             `<div class="ss-rfq-grand-cell"></div>` +
             `<div class="ss-rfq-grand-cell ss-rfq-accent">${_ssFmtUsd(grandTotal)}</div>` +
