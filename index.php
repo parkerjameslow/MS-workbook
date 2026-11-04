@@ -51789,13 +51789,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                   `<label onclick="event.stopPropagation();" style="display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--text); cursor:pointer; white-space:nowrap;">`
                   + `<input type="checkbox" ${on ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleOrderReview('${id}','${who}',this.checked)" style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;"> ${label}</label>`;
                 return `
-              <div style="margin-top:10px; display:flex; flex-direction:column; gap:5px; align-items:flex-end;">
+              <div style="margin-top:10px; display:flex; flex-direction:column; gap:5px; align-items:flex-start; width:100%;">
                 <span style="font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Review required</span>
                 ${mkCb('karen', 'Karen', o.reviewKaren)}
                 ${mkCb('jackson', 'Jackson', o.reviewJackson)}
               </div>
               <button ${bothReviewed ? '' : 'disabled'} onclick="event.stopPropagation(); moveOrderToProduction('${id}')"
-                style="margin-top:8px; padding:8px 14px; border-radius:8px; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; font-family:inherit; white-space:nowrap; ${bothReviewed ? 'background:var(--accent); color:#fff; cursor:pointer;' : 'background:var(--surface2); color:var(--text-muted); cursor:not-allowed; opacity:0.75;'}"
+                style="align-self:flex-start; margin-top:8px; padding:8px 14px; border-radius:8px; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; font-family:inherit; white-space:nowrap; ${bothReviewed ? 'background:var(--accent); color:#fff; cursor:pointer;' : 'background:var(--surface2); color:var(--text-muted); cursor:not-allowed; opacity:0.75;'}"
                 title="${bothReviewed ? 'Flip this order into the In Production lane, ready for shipment placement' : 'Both Karen and Jackson must review before this order can move to production'}">
                 + Move to Production
               </button>`;
