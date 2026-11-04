@@ -39007,11 +39007,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function doSaveWorkbook() {
     if (!currentClient || !currentWorkbookId) return;
     try {
-      // Refresh the pricing caches (pricingClientQuoteTotal / GrandTotalCost)
-      // before persisting so every surface that reads them — Order Sheet,
-      // client dashboard, Parker cockpit, fulfillment — sees the CURRENT
-      // numbers. They only auto-refresh on a Pricing-tab render otherwise, so
-      // an edit made elsewhere used to leave the order showing stale pricing.
+      // Refresh the pricing caches (pricingClientQuoteTotal / GrandTotalCost /
+      // pricingShipmentWeightKg) before persisting so every surface that reads
+      // them — Order Sheet, client dashboard, Parker cockpit, fulfillment —
+      // sees the CURRENT numbers. They only auto-refresh on a tab render
+      // otherwise, so an edit made elsewhere used to leave the order showing
+      // stale pricing. Run the FULL shipping chain in dependency order so a
+      // qty change (e.g. combining a kit to 1,000) flows all the way through:
+      //   renderPalletViz  → recomputes carton count + laden weight, writes
+      //                      pricingShipmentWeightKg (via renderContainerViz)
+      //   calcFreight      → repopulates the freight-wt-* cells + freight cost
+      //                      off the corrected weight
+      //   renderPricingTab → reads those cells → landed cost → profit
+      // Without this, the landed-cost cache kept a stale 4×-inflated freight
+      // (summed-component qty) and the order showed a phantom negative profit.
+      try { if (typeof renderPalletViz  === 'function') renderPalletViz(); }  catch (_) {}
+      try { if (typeof calcFreight      === 'function') calcFreight(); }      catch (_) {}
       try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
       const detail = collectWorkbookDetail();
       const key = `${currentClient}|${currentWorkbookId}`;
