@@ -17821,7 +17821,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const savingsBPct = landedA > 0 ? Math.round((savingsB / landedA) * 100) : 0;
     const savingsC    = landedA - landedC;
     const savingsCPct = landedA > 0 ? Math.round((savingsC / landedA) * 100) : 0;
-    const fmt$ = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt$ = (n) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const card = (kind, title, lines, footer, action, isLive) => {
       const colors = {
         actual: { bd:'var(--border)', bg:'var(--surface2)', accent:'var(--text)' },
@@ -20405,7 +20405,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const sumUsd = rows.reduce((s, r) => s + r.usd, 0);
     const primary = rows.find(r => r.domId === primaryDomId) || rows[0];
     const fmtN  = n => Number(n || 0).toLocaleString('en-US');
-    const fmt2  = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt2  = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const fmt3  = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     // Headline — the line the client will literally see on the
@@ -20698,7 +20698,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             onblur="_msFmtDecOnBlur(this); recalcRfqRow(${id})"
             style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-usd-${id}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—'}</td>
-      <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
+      <td class="total-cell" id="rfq-total-${id}" style="text-align:right;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits: 3}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td style="white-space:nowrap; text-align:center; padding-top:22px;">
         <span class="remove-tier" onclick="removeRfqRow(${id})" title="Remove line item">&times;</span>
@@ -21727,7 +21727,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const usdEl = document.getElementById(`rfq-usd-${id}`);
     const totalEl = document.getElementById(`rfq-total-${id}`);
     if (usdEl) usdEl.textContent   = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—';
-    if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
   }
@@ -21803,7 +21803,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // cells at the current FX as we pass, using the SAME formula recalcRfqRow
     // uses, so the lines always tie out to the grand total.
     const _rowUsd = (elId, r) => { const el = document.getElementById(elId); if (el) el.textContent = r ? '$' + _fxUsdFromRmbPrecise(r).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '—'; };
-    const _rowTot = (elId, q, r) => { const el = document.getElementById(elId); if (el) el.textContent = (q && r) ? '$' + (q * _fxUsdFromRmbPrecise(r)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; };
+    const _rowTot = (elId, q, r) => { const el = document.getElementById(elId); if (el) el.textContent = (q && r) ? '$' + (q * _fxUsdFromRmbPrecise(r)).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '—'; };
 
     parentRows.forEach(row => {
       const id      = parseInt(row.id.replace('rfq-', ''));
@@ -22132,7 +22132,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         return;
       }
       const f3 = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-      const f2 = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const f2 = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       const qStr = primaryQty.toLocaleString('en-US');
       // Primary is a real, changeable choice — render a dropdown of the
@@ -22374,7 +22374,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             onblur="_msFmtDecOnBlur(this); recalcRfqVariantRow(${vid})"
             style="${inputStyle} padding-left:28px;" /></div></td>
       <td class="tier-col-usd" id="rfq-var-usd-${vid}" style="color:var(--text); font-size:13px; text-align:right; font-weight:600; padding-right:12px;">${usdVal ? '$' + parseFloat(usdVal).toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—'}</td>
-      <td class="total-cell" id="rfq-var-total-${vid}" style="text-align:right; font-size:13px; padding-right:12px;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits:2}) : '—'}</td>
+      <td class="total-cell" id="rfq-var-total-${vid}" style="text-align:right; font-size:13px; padding-right:12px;">${totalVal ? '$' + parseFloat(totalVal).toLocaleString('en-US', {minimumFractionDigits: 3}) : '—'}</td>
       <td><div class="lead-time-suffix" style="position:relative;"><input type="text" placeholder="0" value="${leadTime}" oninput="recalcRfqTotals()" style="${inputStyle} padding-right:40px;" /></div></td>
       <td style="text-align:center;"><span class="remove-tier" onclick="removeRfqVariantRow(${vid})" title="Remove variant">&times;</span></td>
     `;
@@ -22472,7 +22472,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const usdEl = document.getElementById(`rfq-var-usd-${vid}`);
     const totalEl = document.getElementById(`rfq-var-total-${vid}`);
     if (usdEl) usdEl.textContent   = rmb ? '$' + usd.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) : '—';
-    if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    if (totalEl) totalEl.textContent = (qty && rmb) ? '$' + total.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
     const parentId = parseInt(row.dataset.rfqParent);
     if (parentId) syncParentQtyFromVariants(parentId);
     recalcRfqTotals();
@@ -22603,7 +22603,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       try { return _fxUsdFromRmbPrecise(n); } catch (_) { return 0; }
     };
     const quotedExt = lineQty > 0 ? unitUsdOf(opts[sel] || {}) * lineQty : 0;
-    const money2 = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money2 = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
     // Each option is a real table row whose cells sit in the SAME columns as
     // the line above (radio→select, name→Description, ¥→Unit ¥, $→Unit $,
@@ -22613,7 +22613,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const rmbN = parseFloat(String(o.priceRmb == null ? '' : o.priceRmb).replace(/,/g, ''));
       const hasRmb = rmbN && !isNaN(rmbN);
       const priceCell = hasRmb
-        ? `<td class="rfq-optc-price"><span class="currency-prefix currency-rmb rfq-optc-rmb">${rmbN.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></td>`
+        ? `<td class="rfq-optc-price"><span class="currency-prefix currency-rmb rfq-optc-rmb">${rmbN.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</span></td>`
         : `<td class="rfq-optc-price"><span class="rfq-optc-dash">—</span></td>`;
       const unitUsd = hasRmb ? _fxUsdFromRmbPrecise(rmbN) : 0;
       const ext = (lineQty > 0 && unitUsd > 0) ? unitUsd * lineQty : 0;
@@ -23114,7 +23114,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     tr.innerHTML = `
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600;">${id}</td>
       <td style="color:var(--text); font-size:13px;">${qty ? parseFloat(qty).toLocaleString('en-US') : '—'}</td>
-      <td style="color:var(--text); font-size:13px;">${unitPrice ? '¥ ' + parseFloat(unitPrice).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—'}</td>
+      <td style="color:var(--text); font-size:13px;">${unitPrice ? '¥ ' + parseFloat(unitPrice).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—'}</td>
       <td class="tier-col-usd" id="tier-usd-${id}" style="color:var(--text-muted); font-size:13px;">—</td>
       <td class="total-cell" id="tier-total-${id}">—</td>
       <td></td>
@@ -23136,12 +23136,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalEl = document.getElementById(`tier-total-${id}`);
     const usdEl = document.getElementById(`tier-usd-${id}`);
     if (!isNaN(rmb)) {
-      usdEl.textContent = '$' + usd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      usdEl.textContent = '$' + usd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     } else {
       usdEl.textContent = '—';
     }
     if (!isNaN(qty) && !isNaN(rmb)) {
-      totalEl.textContent = '$' + (qty * usd).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      totalEl.textContent = '$' + (qty * usd).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     } else {
       totalEl.textContent = '—';
     }
@@ -23254,7 +23254,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // bypass, typing a manual RMB into tier 2/3/4 on a variant
     // workbook left the USD frozen at the variant min/max range
     // because the range-display branch ignored the tier's own price.
-    const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     // Per-unit prices show three decimals here (matches the Pricing
     // tab Product Cost block) so qty × per-unit reconciles to the
     // Tier Total without ceil-to-cent drift on big orders.
@@ -23445,7 +23445,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const qtyP = parseInt(snap.appliedQty) || 0;
       const rmbP = parseFloat(_msStripCommasStr(tier1.dataset.price)) || 0;
       const usdP = rmbP > 0 ? _fxUsdFromRmb(rmbP) : 0;
-      const fmt2P = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      const fmt2P = v => v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
       const psP = _lastRfqPriceSummary;
       const useRangeP = psP && psP.hasVariants && psP.rmbMin > 0;
       let rmbTextP, usdTextP, totalTextP;
@@ -23490,7 +23490,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Strip commas before parsing — qty input holds "110,000" after blur
     // formatting, and parseFloat would stop at the comma → 110, making
     // every downstream tier total off by 1000×.
-    const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const ps   = _lastRfqPriceSummary;
     const useRange = ps && ps.hasVariants && ps.rmbMin > 0;
     const qtyNum   = parseFloat(_msStripCommasStr(qty));
@@ -23630,7 +23630,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalCharge = chargePerCarton * cartons;
     const rmb = totalCharge * rate;
     const usd = rmb / USD_TO_RMB;
-    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     // Raw rmb / usd are exposed alongside the formatted strings so the
     // Pricing tab's Shipping Cost block can sum across splits and
     // display a breakdown without having to re-derive the math.
@@ -23782,7 +23782,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _gtRmb += c.rmb;
       _gtUsd += c.usd;
     });
-    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const gtRmbStr = _gtUsd > 0 ? `¥${fmt2(_gtRmb)}` : '';
     const gtUsdStr = _gtUsd > 0 ? `$${fmt2(_gtUsd)}` : '';
     const gtHtml = _gtUsd > 0
@@ -24106,8 +24106,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pr = document.getElementById('pricing-extra-fee-rows');
     if (pr) {
       pr.innerHTML = _extraFeeRows.map(r => {
-        const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
-        const usdFmt = r.usd > 0 ? '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
+        const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits: 3}) : '—';
+        const usdFmt = r.usd > 0 ? '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits: 3}) : '—';
         return `<tr>
           <td style="padding:6px 12px; font-size:13px; color:var(--text-muted); white-space:nowrap;">${FEE_TYPE_LABELS[r.type]}</td>
           <td style="padding:6px 12px; font-size:13px;">${r.desc || ''}</td>
@@ -24145,8 +24145,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const pr = document.getElementById('pricing-extra-fee-rows');
     if (pr) {
       pr.innerHTML = _extraFeeRows.map(r => {
-        const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
-        const usdFmt = r.usd > 0 ? '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits:2}) : '—';
+        const rmbFmt = r.rmb > 0 ? '¥' + r.rmb.toLocaleString('en-US', {minimumFractionDigits: 3}) : '—';
+        const usdFmt = r.usd > 0 ? '$' + r.usd.toLocaleString('en-US', {minimumFractionDigits: 3}) : '—';
         return `<tr>
           <td style="padding:6px 12px;font-size:13px;color:var(--text-muted);white-space:nowrap;">${FEE_TYPE_LABELS[r.type]}</td>
           <td style="padding:6px 12px;font-size:13px;">${r.desc || ''}</td>
@@ -24290,7 +24290,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const el = document.querySelector(`.section-summary[data-section-summary="${name}"]`);
     if (el) el.innerHTML = html || '';
   }
-  const _ssFmtUsd = v => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const _ssFmtUsd = v => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   const _ssFmtInt = v => (v || 0).toLocaleString('en-US');
 
   function _updateSectionSummary(name) {
@@ -24327,7 +24327,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           // Grand totals at the top are derived from the per-item
           // sums — no double-counting (parent qty is ignored when
           // variants exist).
-          const fmt2  = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          const fmt2  = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
           const items = [];
           let grandTotal = 0, grandQty = 0, grandLead = 0;
           const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
@@ -24731,8 +24731,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const fees = collectWorkbookFees();
     const totalEl = document.getElementById('pricing-fees-applied-total');
 
-    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
+    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '';
 
     // BAIL-OUT: if the operator is actively typing in a fee override
     // input, don't re-render the body — that would destroy the input
@@ -24892,7 +24892,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (rmbEl) {
         const rmbNum = usdNum * (USD_TO_RMB || 0);
         rmbEl.textContent = rmbNum > 0
-          ? '¥' + rmbNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          ? '¥' + rmbNum.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
           : '';
       }
       if (inputEl) inputEl.style.borderColor = hasOver ? 'var(--accent)' : 'var(--border)';
@@ -24936,8 +24936,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const totalUsd = sample + tooling + die + plate + design + extraUsd;
     const totalRmb = sampleRmb + toolingRmb + dieRmb + plateRmb + extraRmb;
 
-    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
-    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
+    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
 
     // Sync descriptions to pricing tab description cells
     ['sample','tooling','die','plate','design'].forEach(id => {
@@ -24971,9 +24971,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="padding:8px 12px; font-size:13px;">${qty.toLocaleString()}</td>
-        <td style="padding:8px 12px; text-align:right; font-size:13px;">$${tierTotal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+        <td style="padding:8px 12px; text-align:right; font-size:13px;">$${tierTotal.toLocaleString('en-US',{minimumFractionDigits: 3,maximumFractionDigits: 3})}</td>
         <td style="padding:8px 12px; text-align:right; font-size:13px; color:var(--text-muted);">${fmtUsd(totalUsd)}</td>
-        <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:700; color:var(--accent);">$${grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+        <td style="padding:8px 12px; text-align:right; font-size:13px; font-weight:700; color:var(--accent);">$${grand.toLocaleString('en-US',{minimumFractionDigits: 3,maximumFractionDigits: 3})}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -26348,7 +26348,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _openQbInvoiceModal();
   }
 
-  function _qbFmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function _qbFmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
 
   // Informational Shipping + Packaging blocks for the preview modal (not
   // billed). Returns '' when there's nothing worth showing.
@@ -26458,7 +26458,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!_qbPending) { _msToast('Open the invoice preview first.', 'error'); return; }
     const { payload } = _qbPending;
     const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const usd = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const usd = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     const rows = [];
     payload.lines.forEach(l => {
@@ -27666,7 +27666,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ? applyRfqCombineGroups(_rawRfq, Array.isArray(d.combineGroups) ? d.combineGroups : [])
       : _rawRfq;
     const items = _withGroups.filter(i => i && (i.item || i.qty || (i.variants||[]).length));
-    const fmt2         = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt2         = v => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const intFmt       = v => Number(v || 0).toLocaleString('en-US');
 
     // Pull live values from the on-screen Client Quote header — these
@@ -27984,7 +27984,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       });
       const grandTotal = itemsTotal + feesBilledTotal;
       const workbookCount = entriesWithDetail.length;
-      const fmt$ = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      const fmt$ = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
 
       const lines = [];
       lines.push(`Hi ${contactName || clientEmail || 'Client'},`);
@@ -28818,7 +28818,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     //   • a clickable parent summary row (totals across its variants)
     //   • hidden variant rows revealed by toggleClientQuoteParent()
     // Add-Variant placeholder rows are skipped.
-    const _fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const _fmt2 = v => v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     // Per-unit Sale Price formatter — 3 decimals (thousandths) so a
     // $0.076 doesn't round to $0.08 and lose visible precision the
     // operator typed on the Pricing tab. Line totals + grand totals
@@ -29079,9 +29079,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                 _optCompareRows = `<tr class="cq-opt-compare cq-opt-compare-head"><td></td><td colspan="4" class="cq-opt-compare-title">Comparable options — pick the one sent to the client (others stay internal)</td></tr>` +
                   _opts.map((o, i) => {
                     const rmbN = parseFloat(String(o.priceRmb == null ? '' : o.priceRmb).replace(/,/g, ''));
-                    const rmb = (rmbN && !isNaN(rmbN)) ? '¥' + rmbN.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '¥—';
+                    const rmb = (rmbN && !isNaN(rmbN)) ? '¥' + rmbN.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '¥—';
                     let usd = '';
-                    if (rmbN && !isNaN(rmbN)) { try { usd = '$' + _fxUsdFromRmb(rmbN).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); } catch (e) {} }
+                    if (rmbN && !isNaN(rmbN)) { try { usd = '$' + _fxUsdFromRmb(rmbN).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); } catch (e) {} }
                     const nm = o.label ? _esc(o.label) : '(unnamed option)';
                     const sp = o.supplier ? ` <span class="cq-opt-supp">${_esc(o.supplier)}</span>` : '';
                     const on = i === _sel ? '<span class="cq-opt-onquote">✓ On quote</span>' : '';
@@ -29279,8 +29279,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (summaryEl) summaryEl.style.display = '';
 
     const e = id => document.getElementById(id);
-    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    const fmtUsd = v => v > 0 ? '$' + v.toLocaleString('en-US',{minimumFractionDigits: 3,maximumFractionDigits: 3}) : '—';
+    const fmtRmb = v => v > 0 ? '¥' + v.toLocaleString('en-US',{minimumFractionDigits: 3,maximumFractionDigits: 3}) : '—';
 
     // Tier data from Workbook tab — strip commas before parseInt so
     // "110,000" doesn't truncate to 110 and tank every downstream
@@ -29316,7 +29316,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // cell — both round UP so any margin nudge moves the displayed
     // price by at least a cent. Sale Per is a manual Client Quote
     // override and intentionally does NOT bleed into this block.
-    const fmt2 = v => v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const fmt2 = v => v.toLocaleString('en-US',{minimumFractionDigits: 3,maximumFractionDigits: 3});
     // Per-unit prices on the Pricing tab show three decimal places
     // (the "thousandth") because ceiling to the cent on a per-unit
     // value can drift the displayed × qty math from the actual total
@@ -29469,7 +29469,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (!host) return;
       const cache = _shipmentUpgradeFees();
       if (!cache.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
-      const f2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const f2 = v => (v || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       const baseLabelOf = bm => ({ slow:'Slow Boat', fast:'Fast Boat', airupp:'Air + UPS', directair:'Direct Air' }[bm] || bm);
       let anyApplied = false;
       const rows = cache.map(f => {
@@ -29955,7 +29955,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // back through this breakdown.
     if (e('ps-landed-math')) {
       const productTotalForLanded = tierQty > 0 ? tierQty * avgPerUnitUsd : 0;
-      const fmtCompact = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const fmtCompact = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
       const fmtQty     = q => q.toLocaleString('en-US');
       const feeSegment = (_appliedFeesTotal > 0)
         ? ` + ${fmtCompact(_appliedFeesTotal)} / ${fmtQty(tierQty)}`
@@ -30051,7 +30051,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   let _lastQuotePreflight = { level: 'ok', issues: [] };
   function _buildQuotePreflight(v) {
     const issues = [];
-    const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const money3 = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const hasFees = (v.feesTotal || 0) > 0;
 
@@ -30912,7 +30912,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         set('freight-out-charge',  fmt(totalActual));
         set('freight-out-formula', `${cartons.toLocaleString()} ${ship.unitLabelP} × ${actualKg} kg`);
         const costEl = document.getElementById('freight-out-cost');
-        if (costEl) costEl.textContent = '¥ ' + (totalActual * rate).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + ((totalActual * rate) / exchange).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+        if (costEl) costEl.textContent = '¥ ' + (totalActual * rate).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + '  /  $ ' + ((totalActual * rate) / exchange).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
         // Bars — Actual full, Volumetric blank, Chargeable = Actual.
         const setBar = (valId, barId, val, h) => {
           const v = document.getElementById(valId), b = document.getElementById(barId);
@@ -30945,13 +30945,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           const cw = totalActual;             // chargeable = actual
           const cr = cw * m.r;
           const cu = exchange > 0 ? cr / exchange : 0;
-          const combinedVal = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+          const combinedVal = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + '  /  $ ' + cu.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
           const wtEl  = document.getElementById('freight-wt-'  + m.key);
           const rmbEl = document.getElementById('freight-rmb-' + m.key);
           const usdEl = document.getElementById('freight-usd-' + m.key);
           if (wtEl)  wtEl.textContent  = cw.toFixed(2) + ' kg';
-          if (rmbEl) rmbEl.textContent = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-          if (usdEl) usdEl.textContent = '$ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+          if (rmbEl) rmbEl.textContent = '¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
+          if (usdEl) usdEl.textContent = '$ ' + cu.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
           const resEl = document.getElementById('freight-res-' + m.key);
           if (resEl) resEl.textContent = combinedVal;
         });
@@ -31009,7 +31009,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.getElementById('freight-out-vol').textContent     = totalVol.toFixed(2)     + ' kg  /  ' + (totalVol     * 2.20462).toFixed(2) + ' lbs';
     document.getElementById('freight-out-charge').textContent  = totalCharge.toFixed(2)  + ' kg  /  ' + (totalCharge  * 2.20462).toFixed(2) + ' lbs';
     document.getElementById('freight-out-formula').textContent = formulaStr;
-    document.getElementById('freight-out-cost').textContent    = '¥ ' + totalCostRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + totalCostUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + (overrideUsd !== null ? '  *' : '');
+    document.getElementById('freight-out-cost').textContent    = '¥ ' + totalCostRmb.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + '  /  $ ' + totalCostUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + (overrideUsd !== null ? '  *' : '');
 
     // Bar chart
     const maxWt = Math.max(totalActual, totalVol, 0.01);
@@ -31034,7 +31034,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const deltaKg = (chargePerCarton - billedPerCarton) * cartons; // ≥ 0
       if (deltaKg > 0.01) {
         const deltaRmb = deltaKg * rate;
-        extraEl.innerHTML = `vs Chargeable: <span>−¥ ${deltaRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}  /  −$ ${(deltaRmb / exchange).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span> (${deltaKg.toFixed(1)} kg less billed)`;
+        extraEl.innerHTML = `vs Chargeable: <span>−¥ ${deltaRmb.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}  /  −$ ${(deltaRmb / exchange).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</span> (${deltaKg.toFixed(1)} kg less billed)`;
         extraEl.style.display = 'block';
       } else {
         extraEl.style.display = 'none';
@@ -31043,7 +31043,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       verdictEl.className = 'freight-verdict volumetric';
       verdictEl.textContent = 'Volumetric weight applies — package is bulky/light.';
       const extraCostRmb = (volWeight - actualKg) * rate * cartons;
-      extraEl.innerHTML = 'Extra cost due to volumetric: <span>¥ ' + extraCostRmb.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + (extraCostRmb / exchange).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '</span>';
+      extraEl.innerHTML = 'Extra cost due to volumetric: <span>¥ ' + extraCostRmb.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + '  /  $ ' + (extraCostRmb / exchange).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + '</span>';
       extraEl.style.display = 'block';
     } else if (actualKg > volWeight) {
       verdictEl.className = 'freight-verdict actual';
@@ -31072,15 +31072,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const cu = cr / exchange;
       const haveData = cartons > 0 && cw > 0;
       const combinedVal = haveData
-        ? ('¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + '  /  $ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}))
+        ? ('¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + '  /  $ ' + cu.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}))
         : '—';
       // 5-column breakdown table
       const wtEl  = document.getElementById('freight-wt-'  + m.key);
       const rmbEl = document.getElementById('freight-rmb-' + m.key);
       const usdEl = document.getElementById('freight-usd-' + m.key);
       if (wtEl)  wtEl.textContent  = haveData ? (cw.toFixed(2) + ' kg') : '—';
-      if (rmbEl) rmbEl.textContent = haveData ? ('¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})) : '—';
-      if (usdEl) usdEl.textContent = haveData ? ('$ ' + cu.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})) : '—';
+      if (rmbEl) rmbEl.textContent = haveData ? ('¥ ' + cr.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})) : '—';
+      if (usdEl) usdEl.textContent = haveData ? ('$ ' + cu.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})) : '—';
       // Results panel comparison
       const resEl = document.getElementById('freight-res-' + m.key);
       if (resEl) resEl.textContent = combinedVal;
@@ -31128,7 +31128,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const delta = currentUsd - fastUsd;
     if (delta <= 0) { chip.style.display = 'none'; return; }
     const labels = { slow:'Slow Boat', fast:'Fast Boat', airupp:'Air + UPS', directair:'Direct Air' };
-    const f2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const f2 = v => v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const deltaEl = document.getElementById('freight-upgrade-delta');
     const subEl   = document.getElementById('freight-upgrade-sub');
     if (deltaEl) deltaEl.textContent = '$' + f2(delta);
@@ -31161,7 +31161,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const deltaRmb = deltaUsd * exchange;
     const labels = { airupp:'Air + UPS', directair:'Direct Air' };
     const modeLabel = labels[mode] || mode;
-    const f2 = v => v.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const f2 = v => v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const feeType = `Shipping Upgrade — ${modeLabel}`;
     const feeDesc = `${modeLabel} over Fast Boat baseline ($${f2(currentUsd)} − $${f2(fastUsd)}). Markup-only — bag Sale Per is unchanged; profit stays at Fast Boat baseline.`;
     const existing = _findShippingUpgradeFeeRow();
@@ -31194,7 +31194,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const unit = parseFloat(document.getElementById('quote-cl-unit-price')?.value) || 0;
     const shipping = parseFloat(document.getElementById('quote-cl-shipping')?.value) || 0;
     const total = (qty * unit) + shipping;
-    document.getElementById('quote-cl-total').value = total > 0 ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+    document.getElementById('quote-cl-total').value = total > 0 ? '$' + total.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '';
   }
 
   function emailQuote() {
@@ -31221,8 +31221,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const shipping = parseFloat(document.getElementById('inv-shipping')?.value) || 0;
     const subtotal = qty * unit;
     const total = subtotal + shipping;
-    document.getElementById('inv-subtotal').value = subtotal > 0 ? '$' + subtotal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
-    document.getElementById('inv-total').value = total > 0 ? '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+    document.getElementById('inv-subtotal').value = subtotal > 0 ? '$' + subtotal.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '';
+    document.getElementById('inv-total').value = total > 0 ? '$' + total.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '';
   }
 
   function fillQuoteInvoice(clientName, productName) {
@@ -31590,7 +31590,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const _u = parseFloat(srcUnitPrice) || 0;
     const _s = parseFloat(srcCost) || 0;
     const srcTotal = (_q * _u + _s) > 0
-      ? '$' + (_q * _u + _s).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})
+      ? '$' + (_q * _u + _s).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})
       : '—';
 
     // Build client options
@@ -31654,7 +31654,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const num = id => { const e = document.getElementById(id); return parseFloat((e && e.value || '').replace(/[,$ ]/g, '')) || 0; };
     const t = num('dup-qty') * num('dup-unitprice') + num('dup-cost');
     const el = document.getElementById('dup-total');
-    if (el) el.textContent = t > 0 ? '$' + t.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+    if (el) el.textContent = t > 0 ? '$' + t.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '—';
   }
   async function confirmDuplicate(originalClient, srcDbId) {
     const newClient = document.getElementById('dup-client').value;
@@ -32383,7 +32383,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // Grand total = line items + shipping + additional fees. (Callers that show
   // "the total" — list, print, email — use this.)
   function _quoteTotal(q) { return _quoteLinesSubtotal(q) + _quoteNum(q && q.shipping) + _quoteFeesTotal(q); }
-  function _quoteUsd(n) { return '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function _quoteUsd(n) { return '$' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
   function _nextQuoteNumber() {
     let max = 0;
     _quotes.forEach(q => { const m = String(q.number || '').match(/(\d+)/); if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; } });
@@ -32883,9 +32883,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function _qqNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/[, ]/g, '')); return isFinite(n) ? n : 0; }
   function _qqFx() { const o = _qqNum(_qq.fx); if (o > 0) return o; return (typeof _fxUsdFromRmbPrecise === 'function') ? _fxUsdFromRmbPrecise(1) : (1 / ((typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.24)); }
-  function _qqUsd(n) { return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function _qqUsd(n) { return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
   function _qqUsd3(n) { return '$' + (Math.round(n * 1000) / 1000).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
-  function _qqRmb(n) { return '¥' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function _qqRmb(n) { return '¥' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
   // A row's Sale auto-fills with the suggested markup price unless the operator
   // has explicitly typed a non-zero price (r.saleManual). Every row defaults to
   // auto — including existing rows (no flag) and new ones — and a blank or 0 is
@@ -33698,7 +33698,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     });
     pipelineUsd = Math.round(pipelineUsd * 100) / 100;
 
-    const fmtUsd = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtUsd = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
     // Initials from client name
     const initials = clientName.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -34272,7 +34272,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   // Helpers ────────────────────────────────────────────────────────────
   const _RPT_FMT_USD = v => (typeof v === 'number' && !isNaN(v))
-    ? '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+    ? '$' + v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})
     : '—';
   const _RPT_FMT_INT = v => (typeof v === 'number' && !isNaN(v))
     ? v.toLocaleString('en-US')
@@ -35784,7 +35784,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return createdKey(b) - createdKey(a);
     });
 
-    const _fmtUsdShort = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const _fmtUsdShort = v => '$' + v.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
 
     const buildRow = (item, isCompleted) => {
       const complete = isFlowComplete(item.flow);
@@ -37141,8 +37141,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const sc = SAMPLE_STATUS_COLORS[s.status] || SAMPLE_STATUS_COLORS.pending;
       const wbHref     = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
       const clientHref = `#/client/${encodeURIComponent(s.clientName)}`;
-      const rmb = s.priceRmb ? `¥${parseFloat(s.priceRmb).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
-      const usd = s.priceUsd ? `$${parseFloat(s.priceUsd).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      const rmb = s.priceRmb ? `¥${parseFloat(s.priceRmb).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—';
+      const usd = s.priceUsd ? `$${parseFloat(s.priceUsd).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—';
       const lead = s.leadTime ? `${s.leadTime}d` : '—';
       // Client → deterministic per-name color via _clientChipStyle (same hue
       // every render). Now clickable so users can drill into the client.
@@ -37643,7 +37643,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         { label: 'Line Items', value: totalLineItems, color: '#6b93ff' },
         { label: 'Total Qty', value: totalQty.toLocaleString('en-US'), color: '#f59e0b' },
         { label: 'Total (RMB)', value: `¥${Math.round(totalRmb).toLocaleString('en-US')}`, color: '#ef4444' },
-        { label: 'Total (USD)', value: `$${totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`, color: '#10b981' },
+        { label: 'Total (USD)', value: `$${totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}`, color: '#10b981' },
       ];
       statsRow.innerHTML = statCards.map(c => `
         <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;">
@@ -37677,7 +37677,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const wbHref = `#/client/${encodeURIComponent(r.clientName)}/workbook/${r.workbookId}`;
       const _checked = _rfqQueueSelected.has(r.workbookId) ? 'checked' : '';
       const rmb = r.totalRmb > 0 ? `¥${Math.round(r.totalRmb).toLocaleString('en-US')}` : '—';
-      const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—';
       // Whole row is the affordance to open the workbook so Karen can
       // edit it. Client name is intentionally non-navigable here — the
       // RFQ Queue is a workspace, not a client-browsing surface.
@@ -38146,7 +38146,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         { label: 'Line Items', value: totalLineItems, color: '#6b93ff' },
         { label: 'Total Qty', value: totalQty.toLocaleString('en-US'), color: '#f59e0b' },
         { label: 'Total (RMB)', value: `¥${Math.round(totalRmb).toLocaleString('en-US')}`, color: '#ef4444' },
-        { label: 'Total (USD)', value: `$${totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`, color: '#10b981' },
+        { label: 'Total (USD)', value: `$${totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}`, color: '#10b981' },
       ];
       statsRow.innerHTML = statCards.map(c => `
         <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px;">
@@ -38185,7 +38185,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     tbody.innerHTML = all.map(r => {
       const wbHref = `#/client/${encodeURIComponent(r.clientName)}/workbook/${r.workbookId}`;
       const rmb = r.totalRmb > 0 ? `¥${Math.round(r.totalRmb).toLocaleString('en-US')}` : '—';
-      const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '—';
+      const usd = r.totalUsd > 0 ? `$${r.totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—';
       const clientEsc = String(r.clientName || '').replace(/'/g, "\\'");
       const checked = _reviewSelected.has(r.workbookId) ? 'checked' : '';
       return `
@@ -39376,7 +39376,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         if (isNaN(d.getTime())) return '—';
         return `${d.toLocaleString('en-US', { month: 'long' })} ${d.getDate()}${ordinalSuffix(d.getDate())}`;
       };
-      const fmtUsd = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const fmtUsd = n => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
       // Pull "Our Cost (USD)" from the matching RFQ line on that workbook.
       const ourCostUsdFor = (row) => {
@@ -39663,7 +39663,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const r = Array.isArray(commissionsData) ? commissionsData.find(x => x.id == id) : null;
     if (!r) return;
     _commissionPaidConfirmId = id;
-    const fmtUsdHere = v => '$' + (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const fmtUsdHere = v => '$' + (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const setText = (id, t) => { const e = document.getElementById(id); if (e) e.textContent = t; };
     setText('comm-confirm-product',  r.product_name || `Workbook #${r.workbook_id}`);
     setText('comm-confirm-amount',   fmtUsdHere(r.commission_amount));
@@ -39843,7 +39843,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
 
     // ── Formatters ──
-    const fmtUsd  = n => '$' + (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtUsd  = n => '$' + (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const fmtUsd0 = n => '$' + Math.round(parseFloat(n) || 0).toLocaleString('en-US');
     const fmtPretty = iso => {
       if (!iso) return '—';
@@ -42913,7 +42913,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     if (emptyEl) emptyEl.style.display = 'none';
 
-    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
     // Build sample cards first (small, distinct from full order cards)
     // so the operator can see them at a glance underneath the orders.
@@ -44375,7 +44375,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const s = shipmentData[_currentShipmentId];
     const alreadyIn = new Set((s ? s.entries : []).filter(e => e.orderId).map(e => String(e.orderId)));
 
-    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const palette = ['#6b93ff','#f59e0b','#4ade80','#f472b6','#a78bfa','#34d399','#fb923c','#38bdf8'];
     const sortedClients = _hideQuotesClient(Object.keys(clientData)).sort();
 
@@ -44500,7 +44500,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       cbm      += d.cbm      || 0;
     });
     const fmtNum = n => n.toLocaleString('en-US');
-    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const fmtKg  = n => n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg';
     const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
     const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
@@ -48335,7 +48335,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${cbmPill}`
         : (w.cbm > 0 ? `— kg${cbmPill}` : '— kg');
       partsSummary.push(weightCbmStr);
-      partsSummary.push(w.cost > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
+      partsSummary.push(w.cost > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—');
       const tierStr = partsSummary.join(' · ');
       const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
@@ -48409,7 +48409,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       cbm      += d.cbm      || 0;
     });
     const fmtNum = n => n.toLocaleString('en-US');
-    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const fmtKg  = n => n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg';
     const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
     const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
@@ -48491,7 +48491,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // safe inside the CSV layer — sumCol below strips them before
     // re-parsing for the totals footer.
     const f2 = v => v > 0
-      ? parseFloat(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+      ? parseFloat(v).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})
       : '';
     const fmtQty = v => {
       const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
@@ -48607,7 +48607,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const v = parseFloat(String(r[idx] == null ? '' : r[idx]).replace(/,/g, ''));
       return s + (isFinite(v) ? v : 0);
     }, 0);
-    const fmtTot = v => (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const fmtTot = v => (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const itemRows = rows.filter(r => !isFeeRow(r) && !isVariantRow(r));
     const feeRows  = rows.filter(isFeeRow);
     const itemsRmb = sumCol(itemRows, 11), itemsUsd = sumCol(itemRows, 12);
@@ -49670,7 +49670,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _pipelineCardHtml(c) {
     const units = (c.units > 0) ? `${c.units.toLocaleString('en-US')} units` : '';
     const val = (c.value > 0)
-      ? `$${c.value.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
+      ? `$${c.value.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '';
     const sub = [_plEsc(c.clientName), units].filter(Boolean).join(' · ');
     const wbHref = `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`;
     const dragAttrs = c.movable
@@ -49691,7 +49691,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // Order entity card (Orders queue / In Production) — titled by client,
   // drills down to its workbooks. Click header → open the order.
   function _pipelineOrderCardHtml(c) {
-    const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}` : '';
+    const val = c.totalUsd > 0 ? `$${c.totalUsd.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '';
     const wbs = c.workbooks || [];
     const children = wbs.map(_pipelineChildLine).join('');
     const cid = _plCardId(c);
@@ -50333,7 +50333,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     (meta.assignees || []).forEach(n => _plModalAssignees.add(n));
     const col = PIPELINE_COLUMNS.find(x => x.id === c.stage) || {};
     const days = _pipelineDaysSince(c.since);
-    const money = v => '$' + (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = v => '$' + (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     document.getElementById('pl-modal-title').textContent = c.title || c.product || 'Card';
     document.getElementById('pl-modal-stage').innerHTML =
       `<span style="display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; background:${col.bg || '#eee'}; color:${col.fg || '#333'};">${_plEsc(col.label || c.stage)}</span>`
@@ -51164,7 +51164,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
     });
     const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
-    const usdStr  = agPrice > 0 ? '$' + agPrice.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+    const usdStr  = agPrice > 0 ? '$' + agPrice.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
 
     // Pills — Notified, Fulfillment Date, Lead. The fulfillment
     // date is the projected delivery date if everything ships on
@@ -51200,8 +51200,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       let wbRmb = '', wbUsd = '';
       if (wbTotalUsd > 0) {
         const totalRmb = wbTotalUsd * _fxRate;
-        wbUsd = `$${wbTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        wbUsd = `$${wbTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`;
+        wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`;
       }
       const priceStr = (wbRmb || wbUsd)
         ? `<span class="oc-wb-prices">${wbRmb ? `<span>${wbRmb}</span>` : ''}${wbUsd ? `<span style="${wbRmb ? 'border-left:1px solid var(--border); padding-left:10px; margin-left:10px;' : ''}color:var(--text);">${wbUsd}</span>` : ''}</span>`
@@ -51217,7 +51217,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Shipping + Total + Profit are visible at a glance. Reuses the
     // same Total = product+shipping logic and Profit = price -
     // (total + feesAsIs) so fee passthroughs don't inflate.
-    const fmtUsdT = n => n > 0 ? '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—';
+    const fmtUsdT = n => n > 0 ? '$' + n.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
     const fmtKgT  = n => n > 0 ? n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg' : '—';
     const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1}) : '—';
     const fmtNumT = n => n > 0 ? n.toLocaleString('en-US') : '—';
@@ -51226,7 +51226,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // is > 0 (matches fmtUsdT's behavior — no "¥0.00" noise on empty
     // workbooks). Inline-styled so it doesn't depend on a class that
     // could be missing from other surfaces.
-    const fmtRmbT = n => n > 0 ? `<span style="font-size:10px; color:var(--text-muted); font-weight:600; white-space:nowrap; line-height:1.1; margin-top:1px;">¥${(n * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : '';
+    const fmtRmbT = n => n > 0 ? `<span style="font-size:10px; color:var(--text-muted); font-weight:600; white-space:nowrap; line-height:1.1; margin-top:1px;">¥${(n * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</span>` : '';
     const cbmCapT = 67;
     const fillPctT  = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
     const cbmOverT  = agCbm > cbmCapT ? agCbm - cbmCapT : 0;
@@ -51277,7 +51277,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <div class="oc-grand-total">
             <span class="oc-grand-label">Total</span>
             <span class="oc-grand-usd">${usdStr}</span>
-            ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : ''}
+            ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</span>` : ''}
             <button onclick="event.stopPropagation(); openPickShipmentForOrder('${id}')"
               style="margin-top:10px; padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
               title="Pick a shipment to add this order to, or create a new one">
@@ -51341,7 +51341,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!staged.length) { host.style.display = 'none'; host.innerHTML = ''; return; }
     host.style.display = '';
     const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const int   = n => (Number(n) || 0).toLocaleString('en-US');
     const n = _stagedOrderSelected.size;
     const rows = staged.map(s => {
@@ -51640,8 +51640,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             let wbRmb = '', wbUsd = '';
             if (wbTotalUsd > 0) {
               const totalRmb = wbTotalUsd * _fxRate;
-              wbUsd = `$${wbTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-              wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              wbUsd = `$${wbTotalUsd.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`;
+              wbRmb = `¥${totalRmb.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`;
             }
             const priceStr = (wbRmb || wbUsd)
               ? `<span class="oc-wb-prices">${wbRmb ? `<span>${wbRmb}</span>` : ''}${wbUsd ? `<span style="${wbRmb ? 'border-left:1px solid var(--border); padding-left:10px; margin-left:10px;' : ''}color:var(--text);">${wbUsd}</span>` : ''}</span>`
@@ -51662,8 +51662,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // a non-zero header total.
       const headerUsd = agPrice > 0 ? agPrice : (tot.totalUsd || 0);
       const headerRmb = agPrice > 0 ? (agPrice * _fxRate) : (tot.totalRmb || 0);
-      const usdStr = headerUsd > 0 ? `$${headerUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—';
-      const rmbStr = headerRmb > 0 ? `¥${headerRmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '';
+      const usdStr = headerUsd > 0 ? `$${headerUsd.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}` : '—';
+      const rmbStr = headerRmb > 0 ? `¥${headerRmb.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}` : '';
       // Lead-time badge: max across all workbooks in the order. A
       // 30-day production workbook drives the whole order's earliest
       // possible ship date. Hidden when no workbook contributes a lead.
@@ -51818,13 +51818,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // operator can size the order at a glance from the list. Each
       // stat falls back to "—" individually so a partial order still
       // surfaces what it has.
-      const fmtUsdT = n => n > 0 ? '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—';
+      const fmtUsdT = n => n > 0 ? '$' + n.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
       const fmtKgT  = n => n > 0 ? n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg' : '—';
       const fmtCbmT = n => n > 0 ? n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1}) : '—';
       const fmtNumT = n => n > 0 ? n.toLocaleString('en-US') : '—';
       // RMB companion line under each USD stat — mirrors the In
       // Production card so both lanes show both currencies inline.
-      const fmtRmbT = n => n > 0 ? `<span style="font-size:10px; color:var(--text-muted); font-weight:600; white-space:nowrap; line-height:1.1; margin-top:1px;">¥${(n * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : '';
+      const fmtRmbT = n => n > 0 ? `<span style="font-size:10px; color:var(--text-muted); font-weight:600; white-space:nowrap; line-height:1.1; margin-top:1px;">¥${(n * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</span>` : '';
       const cbmCapT = 67;
       const fillPctT  = agCbm > 0 ? Math.min(100, (agCbm / cbmCapT) * 100) : 0;
       const cbmOverT  = agCbm > cbmCapT ? agCbm - cbmCapT : 0;
@@ -51875,7 +51875,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // contribution. Operator can still see WHICH workbook is
       // dominating each total at a glance.
       const _fxNow = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
-      const _fmtUsdLine = n => '$' + (n || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      const _fmtUsdLine = n => '$' + (n || 0).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
       const _costBreakdownLines = [];
       const _shipBreakdownLines = [];
       entries.forEach(e => {
@@ -51950,7 +51950,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <div class="oc-grand-total">
               <span class="oc-grand-label">Total</span>
               <span class="oc-grand-usd">${usdStr}</span>
-              ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : ''}
+              ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</span>` : ''}
               ${(() => {
                 const bothReviewed = !!o.reviewKaren && !!o.reviewJackson;
                 const mkCb = (who, label, on) =>
@@ -52435,7 +52435,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     const _fxNow = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
     const fmtUsd3 = v => '$' + (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3});
-    const fmtRmb  = v => '¥' + (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const fmtRmb  = v => '¥' + (parseFloat(v) || 0).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const fmtQty  = v => (parseFloat(v) || 0).toLocaleString('en-US');
     const esc     = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
@@ -52540,7 +52540,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // when the operator visits each workbook's Shipping / Pricing tab,
     // so older / never-opened workbooks contribute 0 until visited.
     let totalWeightKg = 0, totalCbm = 0;
-    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmt2 = v => v.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     // Hoisted so the tfoot (grand total) can also render the RMB
     // companion line — same fallback as the per-iteration constant
     // that used to live inside the .map callback.
@@ -52550,7 +52550,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // for the operator who needs to think in RMB.
     const rmbLine = (usd, opts) => {
       if (!(usd > 0)) return '';
-      const decimals = (opts && opts.decimals) || 2;
+      const decimals = (opts && opts.decimals) || 3;  // RMB → thousandths
       const v = (usd * _fxRate).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
       return `<div style="font-size:11px; color:var(--text-muted); opacity:0.75; font-weight:500; margin-top:1px;">¥${v}</div>`;
     };
@@ -53108,7 +53108,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       .filter(p => p && p.type === type)
       .reduce((s, p) => s + (parseFloat(p.amountUsd) || 0), 0);
 
-    const fmtUsd  = v => `$${(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const fmtUsd  = v => `$${(v || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`;
     const fmtDate = iso => {
       if (!iso) return '—';
       const d = new Date(iso); if (isNaN(d.getTime())) return iso;
@@ -53278,7 +53278,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           ? `${w.weightKg.toLocaleString('en-US', {maximumFractionDigits: 0})} kg${cbmPill}`
           : (w.cbm > 0 ? `— kg${cbmPill}` : '— kg');
         partsSummary.push(weightCbmStr);
-        partsSummary.push(w.cost > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '—');
+        partsSummary.push(w.cost > 0 ? `$${w.cost.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—');
         const tierStr = partsSummary.join(' · ');
         const item = { clientName, workbookId: wb.id, product, tierStr, key };
 
@@ -53357,7 +53357,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       cbm      += d.cbm      || 0;
     });
     const fmtNum = n => n.toLocaleString('en-US');
-    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const fmtUsd = n => '$' + n.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3});
     const fmtKg  = n => n.toLocaleString('en-US', {maximumFractionDigits: 0}) + ' kg';
     const fmtCbm = n => n.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
     const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
