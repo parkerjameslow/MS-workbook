@@ -41396,6 +41396,37 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   //               specs to drive the freight calc), fall back to
   //               product L × W × H × units / 1,000,000 so the CBM
   //               surfaces regardless of carton-spec completion.
+  // Combine-aware order quantity from a saved detail blob (no DOM). A
+  // combined kit counts as its PRIMARY line's qty (e.g. 1,000), never the
+  // sum of its component lines (4,000) — mirrors recalcRfqTotals' grandQtyKit
+  // but works off detail.rfqItems + detail.combineGroups so dashboards / the
+  // Orders page / shipment stats all read the same number the workbook shows.
+  // This is the single source that keeps carton count, weight, CBM, and
+  // freight from inflating 4× on kit workbooks.
+  function _combineAwareQtyFromDetail(d) {
+    d = d || {};
+    const items = Array.isArray(d.rfqItems) ? d.rfqItems : [];
+    const eff = it => {
+      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+      if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g, '')) || 0), 0);
+      return parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
+    };
+    const groups = Array.isArray(d.combineGroups) ? d.combineGroups : [];
+    if (!groups.length) return items.reduce((s, it) => s + eff(it), 0);
+    const grouped = new Set();
+    let sum = 0;
+    groups.forEach(g => {
+      const idxs = Array.isArray(g.itemIdxs) ? g.itemIdxs : [];
+      idxs.forEach(i => grouped.add(i));
+      let pIdx = (g.primaryIdx != null && g.primaryIdx !== '') ? parseInt(g.primaryIdx, 10)
+               : (idxs.length ? Math.min.apply(null, idxs) : -1);
+      const p = items[pIdx];
+      if (p) sum += eff(p);           // group contributes ONLY its primary's qty
+    });
+    items.forEach((it, i) => { if (!grouped.has(i)) sum += eff(it); });  // ungrouped lines full
+    return sum;
+  }
+
   function _wbStatsForPicker(detail) {
     const d = detail || {};
     const tiers     = Array.isArray(d.tiers) ? d.tiers : [];
@@ -41441,7 +41472,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g, '')) || 0), 0);
       return parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
     };
-    const rfqQtySum = _rfqItemsForUnits.reduce((s, it) => s + _itemEffQty(it), 0);
+    // Combine-aware: a kit's grouped component lines collapse to the
+    // primary's qty, so a 4-line kit reads 1,000 (not 4,000). Without this
+    // the weight/CBM rescale below multiplied the (correct) cached figures
+    // back up 4× whenever units(4,000) ≠ palletTotalCartons(1,000).
+    const rfqQtySum = _combineAwareQtyFromDetail(d);
     const units = rfqQtySum > 0
       ? rfqQtySum
       : ((!isNaN(palletTot) && palletTot > 0) ? palletTot : tierQty);
@@ -52461,8 +52496,30 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     tbody.innerHTML = entries.map((entry, idx) => {
       const key     = `${entry.clientName}|${entry.workbookId}`;
       const detail  = workbookDetail[key] || {};
-      totalWeightKg += parseFloat(detail.pricingShipmentWeightKg) || 0;
-      totalCbm      += parseFloat(detail.pricingShipmentCbm)      || 0;
+      // Weight + CBM: recompute from detail using the combine-aware qty
+      // rather than trusting pricingShipmentWeightKg / pricingShipmentCbm,
+      // which were cached on the summed-component qty (4,000) for kit
+      // workbooks and read 4× too high (15,504 kg / 45.9 CBM instead of
+      // ~3,630 kg / 11.5 CBM). calcWorkbookShipStats is combine-aware when
+      // handed the kit qty. _oshShipScale (fresh ÷ cached CBM) is the exact
+      // inflation factor used below to deflate the stale freight for profit.
+      const _oshCombineQty = _combineAwareQtyFromDetail(detail);
+      const _oshCachedCbm  = parseFloat(detail.pricingShipmentCbm) || 0;
+      let _oshWeightKg = parseFloat(detail.pricingShipmentWeightKg) || 0;
+      let _oshCbm      = _oshCachedCbm;
+      let _oshShipScale = 1;
+      try {
+        if (typeof calcWorkbookShipStats === 'function' && _oshCombineQty > 0) {
+          const _oshFresh = calcWorkbookShipStats(detail, _oshCombineQty);
+          if (_oshFresh && _oshFresh.totalWeightKg > 0) _oshWeightKg = _oshFresh.totalWeightKg;
+          if (_oshFresh && _oshFresh.totalCbm > 0) {
+            if (_oshCachedCbm > 0) _oshShipScale = _oshFresh.totalCbm / _oshCachedCbm;
+            _oshCbm = _oshFresh.totalCbm;
+          }
+        }
+      } catch (_) {}
+      totalWeightKg += _oshWeightKg;
+      totalCbm      += _oshCbm;
 
       // Detect a stale entry — the workbook the order references no
       // longer exists in clientData (archived / deleted on the
@@ -52652,7 +52709,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // therefore reflects product margin + fee markup × (rowQty /
       // wbTotalQty) — i.e. each row carries its proportional share of
       // the fee markup as profit.
-      const wbGrandTotalCost   = parseFloat(detail.pricingGrandTotalCost) || 0;
+      // Landed cost = product cost + freight. The freight half
+      // (pricingShippingCostUsd) was cached on the inflated 4,000-unit
+      // weight for kit workbooks, so rebuild landed as product +
+      // (freight × _oshShipScale), where _oshShipScale is the combine-aware
+      // CBM ratio computed above (≈0.25 for a 4-line kit). This turns the
+      // phantom negative profit back positive without needing the workbook
+      // re-saved. Fall back to the cached grand total when the split
+      // component caches aren't present (older workbooks).
+      const _oshProdCost = parseFloat(detail.pricingProductCostUsd);
+      const _oshShipCost = parseFloat(detail.pricingShippingCostUsd);
+      const wbGrandTotalCost = (!isNaN(_oshProdCost) && !isNaN(_oshShipCost))
+        ? (_oshProdCost + _oshShipCost * _oshShipScale)
+        : (parseFloat(detail.pricingGrandTotalCost) || 0);
       // ALL fees the workbook actually owes the supplier — use the
       // detail-driven fee list (not the cache) so workbooks whose
       // pricingAppliedFeesAsIs cache is missing still get correct
