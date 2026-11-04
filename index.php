@@ -16810,7 +16810,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof renderPalletViz === 'function') renderPalletViz();
   }
 
-  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg, unitCbmArg, unitWeightKgArg, totalCartonsArg, boxLArg, boxWArg, boxHArg) {
+  function renderContainerViz(palletsNeeded, palletStackHcm, drawCellL, drawCellW, layoutCols, layoutRows, padCm, palletWeightKgArg, unitsPerPalletArg, unitWordArg, unitCbmArg, unitWeightKgArg, totalCartonsArg, boxLArg, boxWArg, boxHArg, trueShipmentWeightKgArg) {
     const canvas = document.getElementById('container-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -17149,7 +17149,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const palletsRoomLeft = Math.max(0, palletsPerContainer - palletsInLast);
     const palletWeightKg = palletWeightKgArg && palletWeightKgArg > 0 ? palletWeightKgArg : 0;
     const lastContainerWeightKg = palletWeightKg * palletsInLast;
-    const totalShipmentWeightKg = palletWeightKg * palletsNeeded;
+    // Prefer the TRUE laden weight (actual cargo + pallet tare + dividers)
+    // passed from renderPalletViz. Fall back to full-pallet × count only
+    // when it wasn't supplied (legacy callers). The full-pallet product
+    // over-counts the partially-filled last pallet, so the passed value is
+    // the one that matches the pallet-stats "total shipment weight".
+    const totalShipmentWeightKg = (typeof trueShipmentWeightKgArg === 'number' && trueShipmentWeightKgArg > 0)
+      ? trueShipmentWeightKgArg
+      : palletWeightKg * palletsNeeded;
     // Cache total shipment weight on the workbook so the Add Workbook
     // to Order picker (and other dashboards) can show the order weight
     // without re-running the freight calc. Mirrors how
@@ -17467,7 +17474,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div>
               <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:4px;">Total Weight</div>
               <div style="font-size:18px; font-weight:700; color:var(--text); line-height:1.3;">${fmtKg(totalShipmentWeightKg)}</div>
-              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${palletsNeeded.toLocaleString()} pallets × ${fmtKg(palletWeightKg)}</div>
+              <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">${(totalCartonsCV > 0 && unitWeightKgArg > 0) ? `${totalCartonsCV.toLocaleString()} ${unitWord} × ${fmtKg(unitWeightKgArg)} + ${palletsNeeded.toLocaleString()} pallet${palletsNeeded === 1 ? '' : 's'} tare` : `${palletsNeeded.toLocaleString()} pallets × ${fmtKg(palletWeightKg)}`}</div>
             </div>` : ''}
             ${palletsNeeded > 0 ? `
             <div>
@@ -18698,11 +18705,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // render Total Weight, Total Volume, "+N more units palletized"
     // and "+N more loose units (in cardboard boxes)" accurately.
     const unitCbmM3 = (bL * bW * bH) / 1_000_000; // cm³ → m³
+    // TRUE laden weight — actual cargo (per-unit × ACTUAL cartons, not
+    // full-pallet × pallet count) + pallet tare + dividers per pallet.
+    // Passing this in keeps the container view's Total Weight equal to the
+    // pallet-stats "total shipment weight" (both include pallet weight);
+    // the old container math multiplied a FULL pallet by the pallet count,
+    // over-counting the partially-filled last pallet.
+    const _trueShipmentWeightKg = (unitWeightKg > 0 && totalCartons > 0)
+      ? (unitWeightKg * totalCartons) + (dividerWeightPerPalletKg * (palletsNeeded || 0)) + (PALLET_TARE_KG * (palletsNeeded || 0))
+      : 0;
     if (typeof renderContainerViz === 'function') {
       renderContainerViz(
         palletsNeeded || 0, totalH_cm, drawL, drawW, layout.cols, layout.rows, padCm,
         palletWeightKg, totalPerPallet, unitWordP,
-        unitCbmM3, unitWeightKg, totalCartons, bL, bW, bH
+        unitCbmM3, unitWeightKg, totalCartons, bL, bW, bH, _trueShipmentWeightKg
       );
     }
 
@@ -30555,11 +30571,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${!manualOn && ps.productsPerOuter > 0 ? stat(ps.outerQtyVal, 'inner cartons / outer') + stat(ps.productsPerOuter, 'products / outer carton') : ''}`;
 
     if (ps.totalCartons > 0) {
-      const shipmentLabel = manualOn
-        ? `Shipment of ${ps.totalCartons.toLocaleString()} units`
-        : `Shipment of ${ps.totalCartons.toLocaleString()} outer cartons`;
+      const shipUnitWord = manualOn ? 'units' : 'outer cartons';
       html += `<hr class="sh-pallet-divider">
-        <div class="sh-pallet-section-label">${shipmentLabel}</div>
+        <div style="grid-column:1 / -1; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin:2px 0 10px; padding:12px 14px; background:rgba(79,70,229,0.08); border:1px solid var(--accent); border-radius:10px;">
+          <span style="font-size:32px; font-weight:800; color:var(--accent); line-height:1;">${ps.totalCartons.toLocaleString()}</span>
+          <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text);">${shipUnitWord} in this shipment</span>
+        </div>
         ${stat(ps.palletsNeeded, 'pallets needed', true)}
         ${!manualOn && ps.totalInners > 0 ? stat(ps.totalInners, 'total inner cartons') : '<div></div>'}
         ${ps.totalProducts > 0 ? `<div class="sh-pallet-stat" style="grid-column:span 2;"><div class="sh-pallet-stat-val">${ps.totalProducts.toLocaleString()}</div><div class="sh-pallet-stat-lbl">total products</div></div>` : ''}`;
@@ -30577,7 +30594,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _shipUnit() {
     const manualOn = !!document.getElementById('pallet-manual')?.checked;
     const get = id => parseFloat(document.getElementById(id)?.value) || 0;
-    const totalUnits = _msIntFromInput(document.getElementById('pallet-total-cartons'));
+    // Use the canonical combine-aware total (grandQtyKit = 1,000 for a
+    // combined kit), NOT the raw pallet-total input — that input can lag
+    // behind the RFQ sync and still hold the 4-line component sum (4,000),
+    // which made the carton count (and therefore actual weight) 4× too big.
+    const totalUnits = (typeof _msEffectiveTotalUnits === 'function')
+      ? _msEffectiveTotalUnits()
+      : _msIntFromInput(document.getElementById('pallet-total-cartons'));
     // Weight-only override: skip dim-driven math entirely and pass
     // through the operator's Case Qty + per-case Weight as the ship
     // unit. Dims = 0 so volumetric weight collapses to 0; chargeable
