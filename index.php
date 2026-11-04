@@ -52473,7 +52473,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           _wbCostRmbSum += q * r; _wbCostQty += q;
         }
       });
-      const wbCostRmbPerUnit = _wbCostQty > 0 ? _wbCostRmbSum / _wbCostQty : 0;
+      // Displayed qty respects the workbook's combine groups: a group counts
+      // only its primary line's qty (you're ordering 1,000 kits, not 4,000
+      // component pieces); ungrouped lines add full qty.
+      const _oshCg = Array.isArray(detail.combineGroups) ? detail.combineGroups : [];
+      let wbDisplayQty = wbTotalQty;
+      if (_oshCg.length) {
+        const _grp = new Set(), _grpPrim = new Set();
+        _oshCg.forEach(g => { (g.itemIdxs || []).forEach(ix => _grp.add(ix)); if (g.primaryIdx != null) _grpPrim.add(g.primaryIdx); });
+        const _all = Array.isArray(detail.rfqItems) ? detail.rfqItems : [];
+        wbDisplayQty = _all.reduce((s, it, ix) => s + ((!_grp.has(ix) || _grpPrim.has(ix)) ? itemEffQty(it) : 0), 0);
+      }
+      // Header cost/unit uses the DISPLAYED qty so cost/unit × qty ties to the
+      // total product cost (per-kit cost for a combined kit, not a blended
+      // per-component-piece figure).
+      const wbCostRmbPerUnit = wbDisplayQty > 0 ? _wbCostRmbSum / wbDisplayQty : 0;
       // Per-unit sale price cascade — matches the PDF / CSV path so
       // every export surface shows the same number:
       //   1. pricingSalePer (operator-typed Sale Per — fees-free,
@@ -52622,7 +52636,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           ${_artPill}
           ${splitBadges}
         </td>
-        <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>
+        <td style="text-align:right;">${wbDisplayQty > 0 ? wbDisplayQty.toLocaleString('en-US') : '—'}</td>
         ${costCell(wbCostRmbPerUnit)}
         <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' : '—'}</td>
         <td style="text-align:right;">${wbTotal > 0 ? '<div style="font-weight:700;">$' + fmt2(wbTotal) + '</div>' : '—'}</td>
