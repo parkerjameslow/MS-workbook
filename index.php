@@ -49755,10 +49755,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (fromStage === targetCol) return;
     const lbl = (id) => (PIPELINE_COLUMNS.find(c => c.id === id) || {}).label || id;
     if (!PIPELINE_FLAG_STAGES.has(targetCol)) {
-      if (fromStage === 'orders' && targetCol === 'production') {
-        // Workbook still in Orders STAGING (no order yet). Prompt: add it to an
-        // existing order, create a new one, or jump to the workbook / Orders.
-        _openPipelineOrderPrompt(clientName, workbookId, detail);
+      // Entity stages (In Production / Shipments / Receiving) are order- or
+      // shipment-driven, but the Move menu can still DRIVE them: each pick
+      // kicks off the matching flow so the operator reaches any bucket from
+      // one place instead of hunting through Orders / Shipments views.
+      if (targetCol === 'production') {
+        if (fromStage === 'orders') {
+          // Workbook sits in Orders STAGING (no order yet). Prompt: add it to
+          // an existing order, create a new one, or jump to the workbook.
+          _openPipelineOrderPrompt(clientName, workbookId, detail);
+        } else {
+          // Any other stage → mint (or reuse) an order and push it to
+          // In Production in one step.
+          _pipelineStagedWorkbookToProduction(clientName, workbookId, detail);
+        }
+      } else if (targetCol === 'shipments') {
+        _pipelineWorkbookToShipment(clientName, workbookId, detail);
+      } else if (targetCol === 'receiving') {
+        _pipelineWorkbookToReceiving(clientName, workbookId, detail);
       } else {
         showToast(`${lbl(targetCol)} is managed from its own view — advance the order/shipment there.`, 'warn');
       }
@@ -49795,21 +49809,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const t = document.getElementById('stage-move-title'); if (t) t.textContent = `Move “${prod}”`;
     const sub = document.getElementById('stage-move-sub');
     if (sub) {
-      sub.textContent = onShip
-        ? 'This workbook is on a shipment — set its stage from the Shipments / Receiving view.'
-        : inOrder
-        ? 'This workbook is in an order — advance it from the Orders / In Production view.'
-        : !PIPELINE_FLAG_STAGES.has(curStage)
-        ? 'This stage is managed from its own view.'
-        : 'Pick a column to move this workbook to.';
+      sub.textContent = 'Pick any column to move this workbook to — pipeline stages move it directly, while In Production / Shipments / Receiving kick off the matching order or shipment step.';
     }
     const body = document.getElementById('stage-move-body');
     if (body) {
       body.innerHTML = PIPELINE_COLUMNS.map(col => {
         const isCur = col.id === curStage;
         const isFlag = PIPELINE_FLAG_STAGES.has(col.id);
-        const clickable = !isCur && isFlag && !locked;
-        const note = isCur ? 'Current' : (!isFlag ? 'Own view' : '');
+        // Flag stages are a direct move (blocked only when the wb is locked
+        // into an order/shipment). Entity stages (production/shipments/
+        // receiving) are ALWAYS pickable now — the pick routes through the
+        // matching order/shipment flow (_pipelineMoveWorkbook decides).
+        const clickable = !isCur && (isFlag ? !locked : true);
+        const note = isCur ? 'Current' : (!isFlag ? 'Starts a step' : '');
         const dot = `<span style="width:10px;height:10px;border-radius:50%;background:${col.fg};flex-shrink:0;"></span>`;
         const right = note ? `<span style="margin-left:auto;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);">${esc(note)}</span>` : '';
         const base = 'display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:10px;font-family:inherit;font-size:13px;font-weight:600;box-sizing:border-box;';
@@ -49878,6 +49890,53 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { rebuildOrdersNav(); } catch (_) {}
     const prod = (detail && detail.product) ? detail.product : 'workbook';
     showToast(`Created ${orderData[id].name} for “${prod}” and moved it to In Production`, 'success');
+  }
+
+  // Move-menu → Shipments. A shipment holds ORDERS, so route the workbook's
+  // order into the "Add to Shipment" picker. No order yet → mint one (→ In
+  // Production) first, then open the picker for it. Already on a shipment →
+  // just jump to the Shipments view.
+  function _pipelineWorkbookToShipment(clientName, workbookId, detail) {
+    if (typeof _wbShipmentsFor === 'function') {
+      const ships = _wbShipmentsFor(clientName, workbookId);
+      if (ships && ships.length) {
+        showToast('This workbook is already on a shipment.', 'info');
+        location.hash = '#/shipments';
+        return;
+      }
+    }
+    let orders = (typeof _wbOrdersFor === 'function') ? _wbOrdersFor(clientName, workbookId) : [];
+    if (!orders || !orders.length) {
+      // Needs an order before it can join a shipment — create one in
+      // production, then re-resolve.
+      _pipelineStagedWorkbookToProduction(clientName, workbookId, detail);
+      orders = (typeof _wbOrdersFor === 'function') ? _wbOrdersFor(clientName, workbookId) : [];
+    }
+    if (orders && orders.length && typeof openPickShipmentForOrder === 'function') {
+      openPickShipmentForOrder(orders[0].id);
+    } else {
+      showToast('Could not resolve an order for this workbook — add it to an order first.', 'warn');
+    }
+  }
+
+  // Move-menu → Receiving. Receiving is a shipment STATUS (delivered), not a
+  // flag/drag. If the workbook is on a shipment, flip that shipment to
+  // Delivered (onShipmentCardStatusChange enforces carrier/tracking + routes
+  // to Receiving). If it isn't shipped yet, send the operator to the shipment
+  // flow — a workbook can't be received before it ships.
+  function _pipelineWorkbookToReceiving(clientName, workbookId, detail) {
+    const ships = (typeof _wbShipmentsFor === 'function') ? _wbShipmentsFor(clientName, workbookId) : [];
+    if (ships && ships.length) {
+      const sid = ships[0].id;
+      if (typeof onShipmentCardStatusChange === 'function') {
+        onShipmentCardStatusChange(sid, 'delivered');
+      } else {
+        location.hash = '#/shipments';
+      }
+      return;
+    }
+    showToast('Add this workbook to a shipment first — mark the shipment Delivered to reach Receiving.', 'warn');
+    _pipelineWorkbookToShipment(clientName, workbookId, detail);
   }
 
   // Prompt shown when a staging workbook is dragged to In Production: it isn't
