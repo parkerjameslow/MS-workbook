@@ -10698,19 +10698,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button onclick="closeCombineRfqModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
-      <p style="margin:0; font-size:13px; color:var(--text-muted);">Combining <strong id="combine-rfq-count" style="color:var(--text);">0 items</strong>. The Client Quote and PDFs will show ONE line for this group (using the primary item's qty, with summed RMB + USD per-unit prices). Your RFQ section stays unchanged.</p>
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Combining <strong id="combine-rfq-count" style="color:var(--text);">0 items</strong>. The Client Quote and PDFs will show ONE line for this group — the <strong>top line item</strong> is the main item (its qty drives the line), with summed RMB + USD per-unit prices. Your RFQ section stays unchanged.</p>
       <div>
         <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Group Label (what the client sees)</label>
         <input id="combine-rfq-label" type="text" class="form-input" style="width:100%;" placeholder="e.g. Plushie" autocomplete="off"
                oninput="_renderCombineRfqPreview()" />
-      </div>
-      <div>
-        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Primary item (qty source)</label>
-        <div class="ship-select-wrap">
-          <select id="combine-rfq-primary" class="form-input" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding-right:28px; cursor:pointer;"
-                  onchange="_renderCombineRfqPreview()"></select>
-        </div>
-        <p style="font-size:11px; color:var(--text-muted); margin:4px 0 0;">The client sees the primary item's qty (e.g. 1,000 plushies, not 5,000 component pieces).</p>
+        <p style="font-size:11px; color:var(--text-muted); margin:4px 0 0;">Pre-filled from the top line item — edit if you want a different name.</p>
       </div>
 
       <!-- Live preview — rebuilt on every label / primary change so
@@ -20252,6 +20245,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     return -1;
   }
+  // The TOP (first in the RFQ table) currently-selected row's domId — this is
+  // always the group's primary (generally the main item), so there's no primary
+  // picker any more.
+  function _rfqTopSelectedDomId() {
+    const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
+    for (const tr of parents) {
+      const m = tr.id && tr.id.match(/^rfq-(\d+)$/);
+      if (m && _rfqSelected.has(parseInt(m[1], 10))) return parseInt(m[1], 10);
+    }
+    return _rfqSelected.size ? Array.from(_rfqSelected)[0] : -1;
+  }
   function _rfqDomIdFromIdx(idx) {
     const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
     const tr = parents[idx];
@@ -20284,9 +20288,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const host = document.getElementById('combine-rfq-preview');
     if (!host) return;
     const labelInp = document.getElementById('combine-rfq-label');
-    const primarySel = document.getElementById('combine-rfq-primary');
     const label = (labelInp ? labelInp.value : '').trim() || '(unnamed group)';
-    const primaryDomId = primarySel ? parseInt(primarySel.value, 10) : NaN;
+    const primaryDomId = _rfqTopSelectedDomId();
     // Collect every currently-selected row's data so the preview
     // shows what's actually being merged (label, qty source, summed
     // RMB + USD, full component list).
@@ -20351,38 +20354,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       alert('Pick at least 2 items to combine.');
       return;
     }
-    const primarySel = document.getElementById('combine-rfq-primary');
-    primarySel.innerHTML = '';
-    Array.from(_rfqSelected).forEach((domId, i) => {
-      const label = _rfqRowName(domId);
-      const opt = document.createElement('option');
-      opt.value = String(domId);
-      opt.textContent = label;
-      if (i === 0) opt.selected = true;
-      primarySel.appendChild(opt);
-    });
     const lbl = document.getElementById('combine-rfq-count');
     if (lbl) lbl.textContent = _rfqSelected.size === 1 ? '1 item' : `${_rfqSelected.size} items`;
-    document.getElementById('combine-rfq-label').value = '';
+    // Pre-fill the label from the TOP line item (the main item), which is also
+    // always the primary — no picker needed.
+    const topDomId = _rfqTopSelectedDomId();
+    document.getElementById('combine-rfq-label').value = topDomId >= 0 ? (_rfqRowName(topDomId) || '') : '';
     document.getElementById('combine-rfq-error').style.display = 'none';
     _renderCombineRfqPreview();
     document.getElementById('combine-rfq-modal').style.display = 'flex';
-    setTimeout(() => { try { document.getElementById('combine-rfq-label').focus(); } catch {} }, 50);
+    setTimeout(() => { try { const i = document.getElementById('combine-rfq-label'); if (i) { i.focus(); i.select(); } } catch {} }, 50);
   }
   function closeCombineRfqModal() {
     document.getElementById('combine-rfq-modal').style.display = 'none';
   }
   function confirmCombineRfqModal() {
     const label = document.getElementById('combine-rfq-label').value.trim();
-    const primaryDomId = parseInt(document.getElementById('combine-rfq-primary').value, 10);
+    // Primary is always the top selected line item — no picker.
+    const primaryDomId = _rfqTopSelectedDomId();
     const errEl = document.getElementById('combine-rfq-error');
     if (!label) {
       errEl.textContent = 'Group label is required (this is what the client sees).';
-      errEl.style.display = 'block';
-      return;
-    }
-    if (!isFinite(primaryDomId)) {
-      errEl.textContent = 'Pick a primary item to source the qty from.';
       errEl.style.display = 'block';
       return;
     }
