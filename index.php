@@ -20206,32 +20206,72 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // from that group (via Manage). Membership is positional: itemIdxs index
   // into the parent rows in DOM order (same enumeration collectRfqItems
   // uses), so we map index → group label and lock those rows.
+  // Per-group colors used to visually bracket combined rows in the RFQ table.
+  const _RFQ_GRP_PALETTE = ['107,147,255','34,197,94','245,158,11','168,85,247','236,72,153','20,184,166'];
   function _refreshRfqCombineMembership() {
     const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
-    const labelByIdx = new Map();
-    (Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => {
-      (g.itemIdxs || []).forEach(idx => labelByIdx.set(idx, g.label || 'a combined group'));
+    // idx → { label, rgb, isPrimary, isFirst, isLast } so each grouped row gets
+    // a tint + left accent, the group is bracketed top/bottom, and the primary
+    // row carries a "⛓ label" chip.
+    const info = new Map();
+    (Array.isArray(_combineGroups) ? _combineGroups : []).forEach((g, gi) => {
+      const rgb = _RFQ_GRP_PALETTE[gi % _RFQ_GRP_PALETTE.length];
+      const idxs = (g.itemIdxs || []).slice().sort((a, b) => a - b);
+      idxs.forEach((idx, mi) => {
+        info.set(idx, { label: g.label || 'a combined group', rgb,
+          isPrimary: (g.primaryIdx != null) ? (idx === g.primaryIdx) : (mi === 0),
+          isFirst: mi === 0, isLast: mi === idxs.length - 1 });
+      });
     });
     parents.forEach((row, idx) => {
+      const gi = info.get(idx);
       const cb = row.querySelector('.rfq-row-checkbox');
-      if (!cb) return;
-      if (labelByIdx.has(idx)) {
-        cb.checked = false;
-        cb.disabled = true;
-        cb.title = `Already combined into "${labelByIdx.get(idx)}" — remove it from that group (Manage) to re-combine`;
-        cb.style.opacity = '0.35';
-        cb.style.cursor = 'not-allowed';
-        const rid = parseInt(cb.getAttribute('data-rfq-id'), 10);
-        if (isFinite(rid)) _rfqSelected.delete(rid);
-      } else {
-        cb.disabled = false;
-        cb.title = 'Select to combine this line with others into one Client Quote line';
-        cb.style.opacity = '';
-        cb.style.cursor = 'pointer';
+      if (cb) {
+        if (gi) {
+          cb.checked = false;
+          cb.disabled = true;
+          cb.title = `Already combined into "${gi.label}" — remove it from that group (Manage) to re-combine`;
+          cb.style.opacity = '0.35';
+          cb.style.cursor = 'not-allowed';
+          const rid = parseInt(cb.getAttribute('data-rfq-id'), 10);
+          if (isFinite(rid)) _rfqSelected.delete(rid);
+        } else {
+          cb.disabled = false;
+          cb.title = 'Select to combine this line with others into one Client Quote line';
+          cb.style.opacity = '';
+          cb.style.cursor = 'pointer';
+        }
       }
+      _applyRfqRowGroupStyle(row, gi);
     });
     _syncRfqHeaderCheckbox();
     updateRfqBulkBar();
+  }
+  function _applyRfqRowGroupStyle(row, gi) {
+    row.querySelectorAll(':scope > td').forEach(td => {
+      td.style.background = ''; td.style.borderLeft = ''; td.style.borderTop = ''; td.style.borderBottom = '';
+    });
+    const oldChip = row.querySelector('.rfq-grp-chip');
+    if (oldChip) oldChip.remove();
+    if (!gi) return;
+    const tds = row.querySelectorAll(':scope > td');
+    tds.forEach((td, ci) => {
+      td.style.background = `rgba(${gi.rgb},0.06)`;
+      if (ci === 0) td.style.borderLeft = `3px solid rgba(${gi.rgb},0.95)`;
+      if (gi.isFirst) td.style.borderTop = `2px solid rgba(${gi.rgb},0.45)`;
+      if (gi.isLast) td.style.borderBottom = `2px solid rgba(${gi.rgb},0.45)`;
+    });
+    if (gi.isPrimary) {
+      const itemInput = row.querySelectorAll('input:not([type="checkbox"])')[1];
+      const itemCell = itemInput ? itemInput.closest('td') : (tds[1] || null);
+      if (itemCell) {
+        const chip = document.createElement('span');
+        chip.className = 'rfq-grp-chip';
+        chip.textContent = '⛓ ' + gi.label;
+        chip.style.cssText = `display:inline-block; margin-top:6px; font-size:10px; font-weight:800; letter-spacing:.03em; color:#fff; background:rgba(${gi.rgb},0.95); padding:2px 9px; border-radius:999px;`;
+        itemCell.appendChild(chip);
+      }
+    }
   }
 
   // Map an in-memory rfq row id to its corresponding position in
@@ -20632,6 +20672,27 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         if (el.tagName === 'SPAN') { el.style.pointerEvents = 'none'; el.style.opacity = '0.3'; }
         else { el.disabled = true; el.style.opacity = '0.6'; el.style.cursor = 'not-allowed'; }
       });
+    }
+    // Interactive add (the "+ Add Line Item" button → addRfqRow() with no args)
+    // on a workbook that already has a combined group: offer to fold the new
+    // line into the (most recent) group so the operator doesn't have to re-run
+    // the combine flow.
+    if (arguments.length === 0 && !_filling && Array.isArray(_combineGroups) && _combineGroups.length > 0) {
+      const g = _combineGroups[_combineGroups.length - 1];
+      const gLabel = (g && g.label) ? g.label : 'the current group';
+      setTimeout(() => {
+        try {
+          if (confirm(`Add this new line to the combined group “${gLabel}”?`)) {
+            const newIdx = _rfqIdxFromDomId(id);
+            if (newIdx >= 0 && g && Array.isArray(g.itemIdxs) && g.itemIdxs.indexOf(newIdx) === -1) {
+              g.itemIdxs.push(newIdx);
+              updateRfqGroupsBar();
+              try { recalcRfqTotals(); } catch (e) {}
+              if (typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
+            }
+          }
+        } catch (e) {}
+      }, 30);
     }
   }
 
