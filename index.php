@@ -20208,40 +20208,60 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // uses), so we map index → group label and lock those rows.
   // Per-group colors used to visually bracket combined rows in the RFQ table.
   const _RFQ_GRP_PALETTE = ['107,147,255','34,197,94','245,158,11','168,85,247','236,72,153','20,184,166'];
+  // Collapse/expand a combined group's non-primary rows in the RFQ table.
+  function toggleRfqGroupCollapse(gid) {
+    const g = (_combineGroups || []).find(x => x && x.id === gid);
+    if (!g) return;
+    g.collapsed = !(g.collapsed !== false);   // default-true → toggles to false, etc.
+    _refreshRfqCombineMembership();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+  }
+  // Hide / show a parent row together with its variant + "add variant" rows.
+  function _rfqRowGroupHide(row, rid, hide) {
+    const mark = el => { if (!el) return; el.style.display = hide ? 'none' : ''; if (hide) el.setAttribute('data-rfq-grp-hidden','1'); else el.removeAttribute('data-rfq-grp-hidden'); };
+    mark(row);
+    if (isFinite(rid)) {
+      document.querySelectorAll(`[data-rfq-parent="${rid}"]`).forEach(mark);
+      mark(document.querySelector(`[data-rfq-add-for="${rid}"]`));
+    }
+  }
   function _refreshRfqCombineMembership() {
+    // Un-hide anything a previous collapse hid, so the state rebuilds cleanly.
+    document.querySelectorAll('#rfq-body [data-rfq-grp-hidden]').forEach(el => { el.style.display = ''; el.removeAttribute('data-rfq-grp-hidden'); });
     const parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
-    // idx → { label, rgb, isPrimary, isFirst, isLast } so each grouped row gets
-    // a tint + left accent, the group is bracketed top/bottom, and the primary
-    // row carries a "⛓ label" chip.
     const info = new Map();
     (Array.isArray(_combineGroups) ? _combineGroups : []).forEach((g, gi) => {
       const rgb = _RFQ_GRP_PALETTE[gi % _RFQ_GRP_PALETTE.length];
       const idxs = (g.itemIdxs || []).slice().sort((a, b) => a - b);
+      const collapsed = g.collapsed !== false;   // default collapsed
       idxs.forEach((idx, mi) => {
-        info.set(idx, { label: g.label || 'a combined group', rgb,
-          isPrimary: (g.primaryIdx != null) ? (idx === g.primaryIdx) : (mi === 0),
-          isFirst: mi === 0, isLast: mi === idxs.length - 1 });
+        const isPrimary = (g.primaryIdx != null) ? (idx === g.primaryIdx) : (mi === 0);
+        info.set(idx, { gid: g.id, label: g.label || 'a combined group', rgb, isPrimary,
+          // When collapsed, only the primary shows → it's both top & bottom of
+          // the bracket; when expanded, bracket the first/last members.
+          isFirst: collapsed ? isPrimary : (mi === 0),
+          isLast:  collapsed ? isPrimary : (mi === idxs.length - 1),
+          memberCount: idxs.length, collapsed });
       });
     });
     parents.forEach((row, idx) => {
       const gi = info.get(idx);
+      const rid = parseInt((row.id.match(/^rfq-(\d+)$/) || [])[1], 10);
       const cb = row.querySelector('.rfq-row-checkbox');
       if (cb) {
         if (gi) {
-          cb.checked = false;
-          cb.disabled = true;
+          cb.checked = false; cb.disabled = true;
           cb.title = `Already combined into "${gi.label}" — remove it from that group (Manage) to re-combine`;
-          cb.style.opacity = '0.35';
-          cb.style.cursor = 'not-allowed';
-          const rid = parseInt(cb.getAttribute('data-rfq-id'), 10);
+          cb.style.opacity = '0.35'; cb.style.cursor = 'not-allowed';
           if (isFinite(rid)) _rfqSelected.delete(rid);
         } else {
           cb.disabled = false;
           cb.title = 'Select to combine this line with others into one Client Quote line';
-          cb.style.opacity = '';
-          cb.style.cursor = 'pointer';
+          cb.style.opacity = ''; cb.style.cursor = 'pointer';
         }
       }
+      // Collapse: hide non-primary members of a collapsed group.
+      if (gi && gi.collapsed && !gi.isPrimary) _rfqRowGroupHide(row, rid, true);
       _applyRfqRowGroupStyle(row, gi);
     });
     _syncRfqHeaderCheckbox();
@@ -20265,10 +20285,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const itemInput = row.querySelectorAll('input:not([type="checkbox"])')[1];
       const itemCell = itemInput ? itemInput.closest('td') : (tds[1] || null);
       if (itemCell) {
+        const chevron = gi.collapsed ? '▸' : '▾';
+        const extra = gi.memberCount - 1;
         const chip = document.createElement('span');
         chip.className = 'rfq-grp-chip';
-        chip.textContent = '⛓ ' + gi.label;
-        chip.style.cssText = `display:inline-block; margin-top:6px; font-size:10px; font-weight:800; letter-spacing:.03em; color:#fff; background:rgba(${gi.rgb},0.95); padding:2px 9px; border-radius:999px;`;
+        chip.title = gi.collapsed ? 'Expand to edit the combined lines' : 'Collapse the combined lines';
+        chip.textContent = `${chevron} ⛓ ${gi.label}` + (extra > 0 ? ` · +${extra}` : '');
+        chip.style.cssText = `display:inline-block; margin-top:6px; font-size:10px; font-weight:800; letter-spacing:.03em; color:#fff; background:rgba(${gi.rgb},0.95); padding:2px 9px; border-radius:999px; cursor:pointer;`;
+        chip.onclick = (e) => { e.stopPropagation(); toggleRfqGroupCollapse(gi.gid); };
         itemCell.appendChild(chip);
       }
     }
@@ -20432,7 +20456,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       return;
     }
     const gid = 'g' + Date.now() + Math.floor(Math.random() * 1000);
-    _combineGroups.push({ id: gid, label, primaryIdx, itemIdxs });
+    _combineGroups.push({ id: gid, label, primaryIdx, itemIdxs, collapsed: true });
     closeCombineRfqModal();
     deselectAllRfqRows();
     updateRfqGroupsBar();
