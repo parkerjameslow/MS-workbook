@@ -50648,9 +50648,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // separate movedToProductionAt audit field so a later check can tell
   // "moved manually" from "Notify-Client'd". Reversible via
   // moveOrderBackToOrders.
+  // Karen / Jackson sign-off gate on an order card — both must be checked
+  // before "Move to Production" enables. Persists on the order.
+  function toggleOrderReview(orderId, who, checked) {
+    const o = orderData[orderId];
+    if (!o) return;
+    if (who === 'karen')   o.reviewKaren   = !!checked;
+    if (who === 'jackson') o.reviewJackson = !!checked;
+    if (typeof saveOrders === 'function') saveOrders();
+    try { if (typeof renderOrdersList === 'function' && location.hash.indexOf('#/orders') === 0) renderOrdersList(); } catch (_) {}
+    try { if (typeof _renderOrderDetailLaneControls === 'function') _renderOrderDetailLaneControls(); } catch (_) {}
+  }
   function moveOrderToProduction(orderId) {
     const o = orderData[orderId];
     if (!o) return;
+    // Both reviewers must sign off first (the card gates the button too).
+    if (!(o.reviewKaren && o.reviewJackson)) {
+      if (typeof showToast === 'function') showToast('Both Karen and Jackson must review this order before it moves to production.', 'warn');
+      return;
+    }
     if (o.notifiedAt) {
       if (typeof renderOrdersList === 'function') renderOrdersList();
       return;
@@ -50806,8 +50822,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                 style="padding:7px 12px; border-radius:8px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">← Move to Orders</button>`;
     } else {
       lane = 'In Orders Queue'; laneBg = '#eef2ff'; laneFg = '#4f46e5'; laneBd = '#c7d2fe';
-      buttons = `<button onclick="moveOrderToProduction('${_currentOrderId}')"
-                         style="padding:7px 12px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Move to Production</button>`;
+      const _bothReviewed = !!o.reviewKaren && !!o.reviewJackson;
+      const _revCb = (who, label, on) =>
+        `<label style="display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--text); cursor:pointer; white-space:nowrap;">`
+        + `<input type="checkbox" ${on ? 'checked' : ''} onchange="toggleOrderReview('${_currentOrderId}','${who}',this.checked)" style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;"> ${label}</label>`;
+      buttons = `
+        <span style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Review:</span>
+        ${_revCb('karen', 'Karen', o.reviewKaren)}
+        ${_revCb('jackson', 'Jackson', o.reviewJackson)}
+        <button ${_bothReviewed ? '' : 'disabled'} onclick="moveOrderToProduction('${_currentOrderId}')"
+                style="padding:7px 12px; border-radius:8px; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; font-family:inherit; ${_bothReviewed ? 'background:var(--accent); color:#fff; cursor:pointer;' : 'background:var(--surface2); color:var(--text-muted); cursor:not-allowed; opacity:0.75;'}"
+                title="${_bothReviewed ? 'Move this order into In Production' : 'Both Karen and Jackson must review first'}">+ Move to Production</button>`;
     }
     host.innerHTML = `
       <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-right:2px;">Lane</span>
@@ -51758,11 +51783,23 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               <span class="oc-grand-label">Total</span>
               <span class="oc-grand-usd">${usdStr}</span>
               ${agPrice > 0 ? `<span style="font-size:12px; color:var(--text-muted); font-weight:700; margin-top:1px;">¥${(agPrice * _fxRate).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>` : ''}
-              <button onclick="event.stopPropagation(); moveOrderToProduction('${id}')"
-                style="margin-top:10px; padding:8px 14px; border-radius:8px; background:var(--accent); color:#fff; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
-                title="Flip this order into the In Production lane so it'\''s ready for shipment placement">
+              ${(() => {
+                const bothReviewed = !!o.reviewKaren && !!o.reviewJackson;
+                const mkCb = (who, label, on) =>
+                  `<label onclick="event.stopPropagation();" style="display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; color:var(--text); cursor:pointer; white-space:nowrap;">`
+                  + `<input type="checkbox" ${on ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleOrderReview('${id}','${who}',this.checked)" style="width:14px; height:14px; accent-color:var(--accent); cursor:pointer; margin:0;"> ${label}</label>`;
+                return `
+              <div style="margin-top:10px; display:flex; flex-direction:column; gap:5px; align-items:flex-end;">
+                <span style="font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Review required</span>
+                ${mkCb('karen', 'Karen', o.reviewKaren)}
+                ${mkCb('jackson', 'Jackson', o.reviewJackson)}
+              </div>
+              <button ${bothReviewed ? '' : 'disabled'} onclick="event.stopPropagation(); moveOrderToProduction('${id}')"
+                style="margin-top:8px; padding:8px 14px; border-radius:8px; border:none; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; font-family:inherit; white-space:nowrap; ${bothReviewed ? 'background:var(--accent); color:#fff; cursor:pointer;' : 'background:var(--surface2); color:var(--text-muted); cursor:not-allowed; opacity:0.75;'}"
+                title="${bothReviewed ? 'Flip this order into the In Production lane, ready for shipment placement' : 'Both Karen and Jackson must review before this order can move to production'}">
                 + Move to Production
-              </button>
+              </button>`;
+              })()}
             </div>
           </div>
         </div>
@@ -52342,8 +52379,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // line's own RMB cost.
     const costCell = (rmb) => {
       if (!(rmb > 0)) return '<td style="text-align:right; color:var(--text-muted);">—</td>';
-      const usd = (typeof _fxUsdFromRmb === 'function') ? _fxUsdFromRmb(rmb) : (rmb / _fxRate);
-      const r = rmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      // Per-unit cost — both RMB and USD shown to the thousandth (3 dp).
+      const usd = (rmb / _fxRate);
+      const r = rmb.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       const u = usd.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
       return `<td style="text-align:right;"><div style="color:var(--text); font-weight:600;">¥${r}</div><div style="font-size:11px; color:var(--text-muted); opacity:0.8; margin-top:1px;">$${u}</div></td>`;
     };
