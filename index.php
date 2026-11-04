@@ -32794,6 +32794,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (r && r.success && r.value) { const o = JSON.parse(r.value); if (o && typeof o === 'object') _qq = Object.assign({ markup: 40, china: 10, fx: '', shipUnit: 'kg', rows: [] }, o); }
     } catch (e) {}
     if (!Array.isArray(_qq.rows)) _qq.rows = [];
+    // Markup is global now — drop any legacy per-row markup overrides so every
+    // row follows the global (fixes rows that kept an old 45% etc.).
+    _qq.rows.forEach(r => { if (r && r.markup != null) delete r.markup; });
     _qqLoaded = true;
     return _qq;
   }
@@ -32824,8 +32827,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqCompute(r) {
     const fx = _qqFx();
     const qty = _qqNum(r.qty), rmbPer = _qqNum(r.rmbPer), master = _qqNum(r.masterPack), shipWt = _qqNum(r.shipKg), rmbKg = _qqNum(r.rmbPerKg);
-    // Per-row markup override (set from the Results modal); else the global.
-    const markupPct = (r.markup != null && String(r.markup).trim() !== '') ? _qqNum(r.markup) : _qqNum(_qq.markup);
+    // Markup is GLOBAL (the "Suggested markup" setting) — one rate for every
+    // row, so changing it moves all auto rows together. Per-row customization
+    // is done by typing a specific Sale price, not a separate markup.
+    const markupPct = _qqNum(_qq.markup);
     const markup = markupPct / 100, china = _qqNum(_qq.china) / 100;
     // Shipping weight unit — the operator picks KG or LB for the Shipping
     // column; LB is converted to kg since the freight rate is RMB per kg.
@@ -33077,8 +33082,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   // Suggested markup % edited in the modal → per-row override; recompute.
   function qqResultMarkup(i, val) {
-    if (!_qq.rows[i]) return;
-    _qq.rows[i].markup = val;
+    // Markup is global now — editing it here changes the "Suggested markup"
+    // for every row. Mirror it into the header field and clear any stale
+    // per-row overrides, then refresh all rows' Sale + badges in place.
+    _qq.markup = val;
+    const mEl = document.getElementById('qq-markup');
+    if (mEl && document.activeElement !== mEl) mEl.value = val;
+    (_qq.rows || []).forEach((r, idx) => {
+      if (r) delete r.markup;
+      try { _qqSyncGridSale(idx); _qqSyncRevenue(idx); } catch (e) {}
+    });
     _qqUpdateResultDeps(i);
     _qqRenderSummary();
     saveQuickQuote();
