@@ -16386,15 +16386,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     return ppo > 0 ? ppo : 0;  // 0 here means "carton mode but not configured yet"
   }
   function _msEffectiveTotalUnits() {
+    // Total Units to Ship is ALWAYS the live RFQ Grand Total qty — and that
+    // qty is combine-aware (grandQtyKit): a combined kit counts as its
+    // primary qty (e.g. 1,000), never the sum of its component lines
+    // (4,000). The RFQ is the single source of truth, so it wins over both
+    // the read-only input and the case math (pc × co, which sums every
+    // ungrouped line and would re-inflate a kit back to 4,000).
+    const rfqQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && (_lastRfqPriceSummary.grandQtyKit || _lastRfqPriceSummary.grandQty)) || 0;
+    if (rfqQty > 0) return rfqQty;
+    // Fallbacks only while the RFQ summary isn't ready yet (load-time race).
     const palletInput = _msIntFromInput(document.getElementById('pallet-total-cartons'));
     if (_msShipMode() !== 'case') return palletInput;
     const pc = _msIntFromInput(document.getElementById('case-only-products-per'));
     const co = _msIntFromInput(document.getElementById('case-only-cases-order'));
     const caseTotal = (pc > 0 && co > 0) ? pc * co : 0;
-    // Case math wins when the pallet-total input is empty (load-time
-    // race) OR when the operator has bumped the input ABOVE the case
-    // math via Apply Full Container Pitch — Math.max picks whichever
-    // is larger, so both behaviors are preserved.
     return Math.max(caseTotal, palletInput);
   }
   // Pallet vs Loose-Load — when the operator picks Loose Load, the
