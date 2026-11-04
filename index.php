@@ -12043,6 +12043,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <tr>
               <th>Item</th>
               <th style="text-align:right;">Qty</th>
+              <th style="text-align:right;">Cost / Unit</th>
               <th style="text-align:right;">Sale / Unit</th>
               <th style="text-align:right;">Total</th>
               <th style="text-align:right;" title="Billed Additional Fees on this workbook. Complimentary fees are excluded — they appear on the invoice at $0.00 with a Complimentary tag.">Fees</th>
@@ -52337,6 +52338,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const v = (usd * _fxRate).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
       return `<div style="font-size:11px; color:var(--text-muted); opacity:0.75; font-weight:500; margin-top:1px;">¥${v}</div>`;
     };
+    // Cost / Unit cell — RMB on top (primary), USD smaller below. Takes the
+    // line's own RMB cost.
+    const costCell = (rmb) => {
+      if (!(rmb > 0)) return '<td style="text-align:right; color:var(--text-muted);">—</td>';
+      const usd = (typeof _fxUsdFromRmb === 'function') ? _fxUsdFromRmb(rmb) : (rmb / _fxRate);
+      const r = rmb.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const u = usd.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      return `<td style="text-align:right;"><div style="color:var(--text); font-weight:600;">¥${r}</div><div style="font-size:11px; color:var(--text-muted); opacity:0.8; margin-top:1px;">$${u}</div></td>`;
+    };
 
     tbody.innerHTML = entries.map((entry, idx) => {
       const key     = `${entry.clientName}|${entry.workbookId}`;
@@ -52354,7 +52364,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const isMissing = !liveWb && !detail.product;
       if (isMissing) {
         return `<tr class="order-sheet-wb-header" style="background:rgba(220,38,38,0.06);">
-          <td colspan="7" style="border-top:1px dashed var(--danger, #dc2626); border-bottom:1px dashed var(--danger, #dc2626); padding:12px 14px;">
+          <td colspan="8" style="border-top:1px dashed var(--danger, #dc2626); border-bottom:1px dashed var(--danger, #dc2626); padding:12px 14px;">
             <div style="display:flex; align-items:center; gap:10px;">
               <span style="font-size:14px;">⚠</span>
               <div style="flex:1; min-width:0;">
@@ -52410,6 +52420,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Billable qty = units on lines that actually have a cost. Drives the
       // items total + profit spread so $0-cost lines contribute nothing.
       const wbBillQty = rfqItems.reduce((s, it) => s + (_oshLineRmb(it) > 0 ? itemEffQty(it) : 0), 0);
+      // Blended product cost per unit (RMB) for the workbook header row.
+      let _wbCostRmbSum = 0, _wbCostQty = 0;
+      rfqItems.forEach(it => {
+        const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+        if (vs.length) vs.forEach(v => {
+          const q = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
+          const r = parseFloat(String(v.priceRmb || '').replace(/,/g,'')) || parseFloat(it.priceRmb) || 0;
+          _wbCostRmbSum += q * r; _wbCostQty += q;
+        });
+        else {
+          const q = parseFloat(String(it.qty || '').replace(/,/g,'')) || 0;
+          const r = parseFloat(String(it.priceRmb || '').replace(/,/g,'')) || 0;
+          _wbCostRmbSum += q * r; _wbCostQty += q;
+        }
+      });
+      const wbCostRmbPerUnit = _wbCostQty > 0 ? _wbCostRmbSum / _wbCostQty : 0;
       // Per-unit sale price cascade — matches the PDF / CSV path so
       // every export surface shows the same number:
       //   1. pricingSalePer (operator-typed Sale Per — fees-free,
@@ -52559,8 +52585,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           ${splitBadges}
         </td>
         <td style="text-align:right;">${wbTotalQty > 0 ? wbTotalQty.toLocaleString('en-US') : '—'}</td>
-        <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
-        <td style="text-align:right;">${wbTotal > 0 ? '<div style="font-weight:700;">$' + fmt2(wbTotal) + '</div>' + rmbLine(wbTotal) : '—'}</td>
+        ${costCell(wbCostRmbPerUnit)}
+        <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' : '—'}</td>
+        <td style="text-align:right;">${wbTotal > 0 ? '<div style="font-weight:700;">$' + fmt2(wbTotal) + '</div>' : '—'}</td>
         <td style="text-align:right;">${wbBilledFees > 0 ? '<div style="font-weight:600; color:#E8751A;">$' + fmt2(wbBilledFees) + '</div>' + rmbLine(wbBilledFees) : '<span style="color:var(--text-muted);">—</span>'}</td>
         ${profitCell(wbProfit, haveProfit)}
         <td style="text-align:right; color:var(--text-muted);">${leadStr}</td>
@@ -52575,7 +52602,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const detailStyle = isExpanded ? '' : 'display:none;';
       if (rfqItems.length === 0) {
         rows += `<tr data-osh-wb="${esc(key)}" style="${detailStyle}">
-          <td colspan="8" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
+          <td colspan="9" style="padding:8px 12px 12px 36px; color:var(--text-muted); font-size:12px; font-style:italic;">No line items</td>
         </tr>`;
       } else {
         // Per UX direction — when a workbook is EXPANDED, show its
@@ -52608,8 +52635,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                   ${prefix}<span style="color:var(--text); font-weight:500;">${esc(vLabel)}</span>
                 </td>
                 <td style="text-align:right;">${vQty > 0 ? vQty.toLocaleString('en-US') : '—'}</td>
-                <td style="text-align:right; color:var(--text-muted);">${vSale > 0 ? '<div>$' + fmt3(vSale) + '</div>' + rmbLine(vSale, {decimals:3}) : '—'}</td>
-                <td style="text-align:right;">${vTot > 0 ? '<div style="font-weight:600;">$' + fmt2(vTot) + '</div>' + rmbLine(vTot) : '—'}</td>
+                ${costCell(vRmb)}
+                <td style="text-align:right; color:var(--text-muted);">${vSale > 0 ? '<div>$' + fmt3(vSale) + '</div>' : '—'}</td>
+                <td style="text-align:right;">${vTot > 0 ? '<div style="font-weight:600;">$' + fmt2(vTot) + '</div>' : '—'}</td>
                 <td style="text-align:right; color:var(--text-muted);">—</td>
                 ${profitCell(vProfit, haveProfit && vQty > 0)}
                 <td></td>
@@ -52626,8 +52654,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
               <td style="padding-left:36px;">${esc(item.item || '—')}</td>
               <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
-              <td style="text-align:right; color:var(--text-muted);">${iSale > 0 ? '<div>$' + fmt3(iSale) + '</div>' + rmbLine(iSale, {decimals:3}) : '—'}</td>
-              <td style="text-align:right;">${iTot > 0 ? '<div style="font-weight:600;">$' + fmt2(iTot) + '</div>' + rmbLine(iTot) : '—'}</td>
+              ${costCell(iRmb)}
+              <td style="text-align:right; color:var(--text-muted);">${iSale > 0 ? '<div>$' + fmt3(iSale) + '</div>' : '—'}</td>
+              <td style="text-align:right;">${iTot > 0 ? '<div style="font-weight:600;">$' + fmt2(iTot) + '</div>' : '—'}</td>
               <td style="text-align:right; color:var(--text-muted);">—</td>
               ${profitCell(iProfit, haveProfit && itemQty > 0)}
               <td></td>
@@ -52664,6 +52693,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                 ${tag}
               </label>
             </td>
+            <td style="text-align:right; color:var(--text-muted);">—</td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
             <td style="text-align:right; color:var(--text-muted);">—</td>
@@ -52704,7 +52734,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const showShipRow = totalCbm > 0 || totalWeightKg > 0;
     const shipRow = showShipRow
       ? `<tr>
-          <td colspan="3" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
+          <td colspan="4" style="font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); padding-top:4px;">Shipment</td>
           <td colspan="5" style="text-align:right; font-size:12px; padding-top:4px;">
             <span style="color:var(--text-muted); margin-right:14px;">Weight: <strong style="color:var(--text);">${wtStr}</strong></span>
             <span style="color:var(--text-muted);">CBM: <strong style="color:var(--text);">${cbmHtml}</strong></span>
@@ -52720,10 +52750,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const profitColor   = grandProfitUsd > 0 ? '#10b981' : grandProfitUsd < 0 ? '#dc2626' : 'var(--text-muted)';
     const grandProfitStr = grandProfitUsd !== 0 ? `$${fmt2(grandProfitUsd)}` : '—';
     tfoot.innerHTML = `<tr>
-      <td colspan="3" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
+      <td colspan="4" style="font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted);">Grand Total</td>
       <td style="text-align:right;">
         <div style="font-size:15px; font-weight:800;">${grandUsdStr}</div>
-        ${grandUsd > 0 ? `<div style="font-size:12px; color:var(--text-muted); opacity:0.8; font-weight:600; margin-top:1px;">¥${fmt2(grandUsd * _fxRate)}</div>` : ''}
       </td>
       <td style="text-align:right;" title="Sum of billed Additional Fees across every workbook on this order. Complimentary fees excluded.">
         ${grandFeesUsd > 0 ? `<div style="font-size:14px; font-weight:800; color:#E8751A;">$${fmt2(grandFeesUsd)}</div><div style="font-size:12px; color:var(--text-muted); opacity:0.8; font-weight:600; margin-top:1px;">¥${fmt2(grandFeesUsd * _fxRate)}</div>` : '<span style="color:var(--text-muted);">—</span>'}
