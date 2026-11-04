@@ -9317,14 +9317,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                  compatibility with saved data + downstream callers. -->
             <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; gap:8px;">
               <label id="pallet-total-label" style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Total Units to Ship</label>
-              <button type="button" id="pallet-total-resync-btn" onclick="resyncPalletTotalUnitsFromRfq()" style="display:none; font-size:11px; font-weight:600; color:var(--accent); background:none; border:none; padding:0; cursor:pointer; text-decoration:underline;" title="Re-pull this value from the RFQ Grand Total qty">↻ Sync from RFQ</button>
             </div>
-            <input type="text" inputmode="numeric" min="0" placeholder="e.g. 6,000" id="pallet-total-cartons" data-num-int="1"
-              style="width:100%; box-sizing:border-box;"
-              oninput="this.dataset.looseTopOff=''; if(typeof _clearFullContainerPitchSnap==='function')_clearFullContainerPitchSnap(); renderPalletViz(); syncShippingDims(); calcFreight(); if(typeof _refreshPalletTotalHint==='function')_refreshPalletTotalHint();"
-              onfocus="_msStripCommasOnFocus(this)"
-              onblur="_msFmtIntOnBlur(this); renderPalletViz();" />
-            <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Auto-filled from <strong>RFQ Grand Total qty</strong> — override if shipping a partial.</div>
+            <input type="text" id="pallet-total-cartons" data-num-int="1" readonly tabindex="-1"
+              style="width:100%; box-sizing:border-box; background:var(--surface2); color:var(--text-muted); cursor:default;"
+              title="Always comes from the RFQ Grand Total qty — edit the RFQ to change it." />
+            <div id="pallet-total-hint" style="font-size:11px; color:var(--text-muted); margin-top:4px;">Always from the <strong>RFQ Grand Total qty</strong>.</div>
           </div>
         </div>
       </div>
@@ -16439,33 +16436,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
-  function applyTotalUnitsSuggestion(units, looseUnitsCount) {
-    const el = document.getElementById('pallet-total-cartons');
-    if (!el) return;
-    const v = parseInt(units);
-    if (isNaN(v) || v < 0) return;
-    el.value = String(v);
-    // Update auto-sync marker so the new value isn't immediately
-    // overwritten by the next RFQ recalc — this is an explicit
-    // override applied via the suggestion button.
-    el.dataset.lastRfqSync = ''; // let the override stand
-    // When the operator clicks "↻ Top Off", we receive a positive
-    // looseUnitsCount — the products that should be shipped LOOSE
-    // (cardboard, no pallet) inside the leftover container CBM. The
-    // container viz reads this flag to render those products in blue
-    // so they're visually distinct from the orange palletized goods.
-    // Cleared when the operator types a new value into the input.
-    if (looseUnitsCount && looseUnitsCount > 0) {
-      el.dataset.looseTopOff = String(looseUnitsCount);
-    } else {
-      el.dataset.looseTopOff = '';
-    }
-    if (typeof renderPalletViz === 'function') renderPalletViz();
-    if (typeof syncShippingDims === 'function') syncShippingDims();
-    if (typeof calcFreight === 'function') calcFreight();
-    if (typeof _refreshPalletTotalHint === 'function') _refreshPalletTotalHint();
-    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
-  }
+  // Container-fill "bump the units" suggestions were removed — Total Units to
+  // Ship is always the real RFQ qty now, so this is a no-op kept only so any
+  // lingering caller doesn't throw.
+  function applyTotalUnitsSuggestion(units, looseUnitsCount) { /* removed: units are RFQ-locked */ }
 
   // ── Full Container Pitch — apply / revert ─────────────────────────────
   // Wraps applyTotalUnitsSuggestion with a snapshot of the previous
@@ -16674,38 +16648,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // After every sync attempt, refresh the hint text so the operator
   // can see the live RFQ qty and the override status.
   function syncManualPalletTotalUnits() {
+    // Total Units to Ship is now ALWAYS the RFQ Grand Total qty — no overrides,
+    // no container-pitch hypotheticals. The field is read-only; this just keeps
+    // it mirrored to the live RFQ qty.
     const input = document.getElementById('pallet-total-cartons');
     if (!input) return;
     const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
-    const last    = input.dataset.lastRfqSync || '';
-    const current = String(input.value || '').trim();
-    const target  = grandQty > 0 ? String(grandQty) : '';
-
-    if (target) {
-      // Sync if empty, matches the last auto-synced value, or already
-      // happens to match grandQty (the load-time recovery case).
-      if (current === '' || current === last || current === target) {
-        if (current !== target) {
-          input.value = target;
-          // Reverting to the clean RFQ qty has to wipe any stashed
-          // loose top-off — otherwise the previously-applied Full
-          // Container Pitch flag lingers and the container viz keeps
-          // drawing leftover blue boxes while the Hypothetical panel
-          // computes against a phantom palletized subset. Also drop
-          // the Full Container Pitch snapshot so the button rebuilds
-          // its "Apply" affordance from a clean baseline.
-          input.dataset.looseTopOff = '';
-          if (typeof _clearFullContainerPitchSnap === 'function') _clearFullContainerPitchSnap();
-          if (typeof renderPalletViz === 'function') renderPalletViz();
-          if (typeof syncShippingDims === 'function') syncShippingDims();
-          if (typeof calcFreight === 'function') calcFreight();
-          if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
-        }
-        input.dataset.lastRfqSync = target;
-      }
+    const target   = grandQty > 0 ? String(grandQty) : '';
+    const current  = String(input.value || '').replace(/,/g, '').trim();
+    if (current !== target) {
+      input.value = target ? parseInt(target).toLocaleString('en-US') : '';
+      if (typeof renderPalletViz === 'function') renderPalletViz();
+      if (typeof syncShippingDims === 'function') syncShippingDims();
+      if (typeof calcFreight === 'function') calcFreight();
     }
-    // Update hint + show/hide the re-sync button so the operator
-    // always sees whether the field is locked to RFQ or overridden.
+    input.dataset.lastRfqSync = target;
     _refreshPalletTotalHint();
   }
 
@@ -16737,25 +16694,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Refresh the small hint text under the Total Units input + show the
   // "Sync from RFQ" button only when the input is genuinely overridden.
   function _refreshPalletTotalHint() {
-    const input = document.getElementById('pallet-total-cartons');
-    const hint  = document.getElementById('pallet-total-hint');
-    const btn   = document.getElementById('pallet-total-resync-btn');
-    if (!input || !hint) return;
+    const hint = document.getElementById('pallet-total-hint');
+    if (!hint) return;
     const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
-    const current  = String(input.value || '').trim();
-    const target   = grandQty > 0 ? String(grandQty) : '';
-    if (!grandQty) {
-      hint.innerHTML = `Will auto-fill from <strong>RFQ Grand Total qty</strong> once the RFQ is filled in.`;
-      if (btn) btn.style.display = 'none';
-      return;
-    }
-    if (current === target) {
-      hint.innerHTML = `Synced with <strong>RFQ Grand Total qty</strong> (${grandQty.toLocaleString()} units).`;
-      if (btn) btn.style.display = 'none';
-    } else {
-      hint.innerHTML = `Overridden — <strong>RFQ Grand Total</strong> is <strong>${grandQty.toLocaleString()}</strong> units.`;
-      if (btn) btn.style.display = '';
-    }
+    hint.innerHTML = grandQty > 0
+      ? `From <strong>RFQ Grand Total qty</strong> (${grandQty.toLocaleString()} units).`
+      : `Will fill from <strong>RFQ Grand Total qty</strong> once the RFQ is entered.`;
   }
 
   // ── 40' High Cube container viz ─────────────────────────────────────
@@ -17406,7 +17350,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                </span>
              </summary>
              <div style="padding:0 12px 12px;">
-               ${palletsRoomLeft > 0 ? `<div style="display:flex; justify-content:flex-end; margin-bottom:6px;"><button type="button" style="${upBtn} margin-left:0;" onclick="applyTotalUnitsSuggestion(${targetFillPallets})" title="Bump Total Units to ${targetFillPallets.toLocaleString()} to fill the last container with pallets">↻ Fill</button></div>` : ''}
                <div style="font-size:13px; color:var(--text); line-height:1.55;">
                  <div>+ <strong style="color:var(--accent);">${palletsRoomLeft}</strong> more pallet${palletsRoomLeft === 1 ? '' : 's'}</div>
                  ${unitsPerPallet > 0
@@ -17424,7 +17367,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                <div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">
                  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
                    <div style="font-size:11px; font-weight:700; color:var(--accent);">↳ Top-Off Capacity</div>
-                   <button type="button" style="${upBtn}" onclick="applyTotalUnitsSuggestion(${targetFillWithLoose}, ${looseFit * productsPerItem})" title="Bump Total Units to ${targetFillWithLoose.toLocaleString()} — pallets + loose top-off in blue">↻ Top Off</button>
                  </div>
                  <div style="font-size:13px; color:var(--text); line-height:1.5;">
                    You could top off the last container with up to
@@ -17586,21 +17528,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // price = _lastRfqPriceSummary.grandUsdUnit (single price) or
   // grandUsd / grandQty (weighted across variants).
   function _renderContainerHypotheticals(ctx) {
-    try { return _renderContainerHypotheticalsInner(ctx); }
-    catch (e) {
-      try {
-        console.error('[MS hypothetical] threw', e);
-        const host = document.getElementById('container-hypothetical');
-        if (host) {
-          host.innerHTML = `
-            <div style="padding:12px 14px; border:1px dashed #ef4444; border-radius:8px; font-size:12px; color:#ef4444; line-height:1.55; font-family:monospace;">
-              <strong>Hypothetical threw:</strong> ${String(e && e.message || e)} —
-              this means a silent exception was eating the re-render, leaving stale content.
-              Screenshot this; the message names the broken function.
-            </div>`;
-        }
-      } catch (_) {}
-    }
+    // Hypothetical "fill the container" scenarios were removed (Parker) — the
+    // pallet/container view now shows only the real, as-entered shipment so
+    // there's one set of numbers and nothing to accidentally quote against.
+    // Panel left empty; the inner builder is retained but no longer called.
+    const host = document.getElementById('container-hypothetical');
+    if (host) host.innerHTML = '';
   }
   function _renderContainerHypotheticalsInner(ctx) {
     const host = document.getElementById('container-hypothetical');
@@ -18618,21 +18551,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                 <strong style="color:var(--accent);">~${looseFitInRemaining.toLocaleString()}</strong>
                 more loose ${unitWordP} (cardboard, no pallet, 80% packing efficiency).
               </div>` : ''}
-              <div style="margin-top:12px; padding-top:10px; border-top:1px dashed var(--border); font-size:12px; color:var(--text); line-height:1.6;">
-                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px;">
-                  <span>↳ Fill 1 container with pallets:</span>
-                  <strong>${newUnitsPerContainer.toLocaleString()}</strong>
-                  <span style="color:var(--text-muted);">${unitWordP}</span>
-                  <button type="button" style="${upBtnStyle}" onclick="applyTotalUnitsSuggestion(${newUnitsPerContainer})" title="Set Total Units to Ship to ${newUnitsPerContainer.toLocaleString()}">↻ Update Units</button>
-                </div>
-                ${looseFitInRemaining > 0 ? `
-                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px;">
-                  <span>↳ Fill 1 container w/ loose top-off:</span>
-                  <strong>${looseTotal.toLocaleString()}</strong>
-                  <span style="color:var(--text-muted);">${unitWordP}</span>
-                  <button type="button" style="${upBtnStyle}" onclick="applyTotalUnitsSuggestion(${looseTotal}, ${looseFitInRemaining * (manualOn ? 1 : ((parseInt(document.getElementById('carton-inner-count')?.value)||0) * (parseInt(document.getElementById('carton-outer-count')?.value)||0) || 1))})" title="Set Total Units to ${looseTotal.toLocaleString()} — pallets + loose top-off in blue">↻ Update Units</button>
-                </div>` : ''}
-              </div>
             </div>`;
         }
       }
@@ -29235,10 +29153,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Shipping Per + Total Landed all reflect the higher qty quote
     // the client will see. Hitting Revert clears the snapshot, which
     // drops effectiveQty back to the tier qty automatically.
-    const _pitchOn    = !!window._fullContainerPitchSnap;
-    const _pitchQty   = _pitchOn ? (_msIntFromInput(document.getElementById('pallet-total-cartons'))) : 0;
-    const effectiveQty = (_pitchOn && _pitchQty > tierQty) ? _pitchQty : tierQty;
-    const _pitchDelta  = effectiveQty - tierQty;
+    // Hypothetical "Container Pitch" scaling was removed — pricing always uses
+    // the real RFQ / tier qty so there's a single source of truth for totals.
+    const _pitchOn    = false;
+    const _pitchQty   = 0;
+    const effectiveQty = tierQty;
+    const _pitchDelta  = 0;
 
     // Product Cost block represents COST, not SALE — it's the
     // workbook-internal view. Unit Price Per (RMB/USD) and Total
@@ -36363,28 +36283,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       _s('carton-outer-stack', data.cartonOuterStack);
       _s('carton-outer-wall',  data.cartonOuterWall || '2');
       _s('pallet-total-cartons', data.palletTotalCartons);
-      // Restore the Full / Half Container Pitch snapshot so the
-      // "applied" state survives reload. Validate the persisted shape
-      // before trusting it — defensive against old workbooks saved
-      // before this field existed (data.fullContainerPitchSnap is
-      // undefined → leave window snap null).
-      if (data.fullContainerPitchSnap
-          && typeof data.fullContainerPitchSnap === 'object'
-          && data.fullContainerPitchSnap.pitchKind
-          && data.fullContainerPitchSnap.appliedQty) {
-        window._fullContainerPitchSnap = {
-          totalUnits:   String(data.fullContainerPitchSnap.totalUnits   || ''),
-          looseTopOff:  String(data.fullContainerPitchSnap.looseTopOff  || ''),
-          lastRfqSync:  String(data.fullContainerPitchSnap.lastRfqSync  || ''),
-          overrideOn:   !!data.fullContainerPitchSnap.overrideOn,
-          overrideVal:  String(data.fullContainerPitchSnap.overrideVal  || ''),
-          appliedQty:   String(data.fullContainerPitchSnap.appliedQty   || '0'),
-          appliedLoose: String(data.fullContainerPitchSnap.appliedLoose || '0'),
-          pitchKind:    String(data.fullContainerPitchSnap.pitchKind)
-        };
-      } else {
-        window._fullContainerPitchSnap = null;
-      }
+      // Container Pitch hypotheticals were removed — never restore a persisted
+      // pitch snapshot. Any legacy data.fullContainerPitchSnap is ignored, so
+      // the Total Units stays the real RFQ qty and no "★ Pitch" option appears.
+      window._fullContainerPitchSnap = null;
       if (data.cartonUnitWeight) convertWeight('carton-unit-weight','carton-unit-weight-lbs','kg');
       if (data.cartonInnerWeight) convertWeight('carton-inner-weight','carton-inner-weight-lbs','kg');
       if (data.cartonOuterWeight) convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg');
