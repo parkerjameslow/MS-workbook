@@ -41615,18 +41615,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // hardcoded 7.2 against a real rate of ~6.78 (Jun 2026) drifted
     // every workbook by ~6.06% — exactly the gap the user surfaced.
     const _ms_FX = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
-    let productCost = parseFloat(d.pricingProductCostUsd) || 0;
-    if (productCost === 0) {
-      // Variant-aware fallback mirroring renderPricingTab's EXACT
-      // logic (line ~19562):
-      //   • If the workbook HAS VARIANTS and the qty-weighted RMB
-      //     across variants is > 0 → use weighted × effectiveQty.
-      //   • Otherwise → use selectedTier.price × effectiveQty.
-      // The hasVariants check is essential: a non-variant workbook
-      // whose RFQ row price differs from the selected tier's price
-      // (very common — RFQ holds the supplier's first-pass quote,
-      // tier holds the negotiated qty-bracket price) would otherwise
-      // pick up the wrong number.
+    // Product cost = combine-aware ORDER qty × per-unit RMB cost, recomputed
+    // from the CURRENT detail every time. We no longer trust the cached
+    // pricingProductCostUsd outright: it freezes at whatever qty was on the
+    // Pricing tab when the workbook was last saved, so a kit priced at 5,000
+    // units and later combined down to 1,000 kept showing the 5,000-unit cost
+    // (Parker: "our cost at 65,342, should be ~45,000"). perUnitRmb mirrors
+    // renderPricingTab — the qty-weighted variant RMB when the workbook has
+    // variants, else the selected tier's price (RFQ holds the supplier's
+    // first-pass quote; the tier holds the negotiated qty-bracket price). The
+    // qty is `units` (the combine-aware RFQ qty), matching the app's current
+    // "effectiveQty = RFQ qty" design, so a kit costs its 1,000-unit price,
+    // not a stale 5,000. Cache is a last resort only when no price is derivable.
+    let productCost = 0;
+    {
       const rfqItems = Array.isArray(d.rfqItems) ? d.rfqItems : [];
       const hasVariants = rfqItems.some(it => Array.isArray(it.variants) && it.variants.length > 0);
       let qXp = 0, totalQ = 0;
@@ -41639,8 +41641,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               if (vq > 0 && vp > 0) { qXp += vq * vp; totalQ += vq; }
             });
           } else {
-            // Mixed workbook: parents-without-variants still feed the
-            // weighted RMB pool — same as renderPricingTab line 14917.
             const iq = parseFloat(String(item.qty      || '').replace(/,/g, '')) || 0;
             const ip = parseFloat(String(item.priceRmb || '').replace(/,/g, '')) || 0;
             if (iq > 0 && ip > 0) { qXp += iq * ip; totalQ += iq; }
@@ -41649,16 +41649,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
       const weightedRmb = totalQ > 0 ? (qXp / totalQ) : 0;
       const tierPrice   = selTier ? (parseFloat(String(selTier.price || '').replace(/,/g, '')) || 0) : 0;
-      // Match renderPricingTab's hasVariants gate exactly.
       const perUnitRmb = (hasVariants && weightedRmb > 0) ? weightedRmb : tierPrice;
-      // CRITICAL: use TIER qty here, not the dashboard "units" value.
-      // renderPricingTab computes productTotalRmb = effectiveQty ×
-      // perUnitRmb where effectiveQty = tierQty (line 19573). Using
-      // palletTotalCartons here would double-count for workbooks
-      // where Total Units to Ship differs from the selected tier
-      // (e.g. operator placed 100k units against the 50k tier).
-      if (tierQty > 0 && perUnitRmb > 0) {
-        productCost = (tierQty * perUnitRmb) / _ms_FX;
+      if (units > 0 && perUnitRmb > 0) {
+        productCost = (units * perUnitRmb) / _ms_FX;
+      } else {
+        productCost = parseFloat(d.pricingProductCostUsd) || 0;  // last-resort cache
       }
     }
     // ── Shipping (USD) — derive from cachedTotal − product ──────────
@@ -41673,6 +41668,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // trust it (it was written from the same render that produced
     // the total, so they're consistent by construction).
     let shippingUsd = parseFloat(d.pricingShippingCostUsd) || 0;
+    // Same staleness rescale as weightKg / cbm above: the cached shipping
+    // cost was computed for whatever qty (palletTotalCartons) was on the
+    // Shipping tab at save time. Freight scales with qty (cartons ∝ qty), so
+    // re-proportion to today's combine-aware order qty when they differ —
+    // otherwise a kit priced/shipped at 4,000 keeps a 4× freight here even
+    // though weight & CBM already self-healed to the 1,000-unit figures.
+    if (shippingUsd > 0 && palletTot > 0 && units > 0 && palletTot !== units) {
+      shippingUsd = (shippingUsd / palletTot) * units;
+    }
     if (shippingUsd === 0) {
       const cachedTotal = parseFloat(d.pricingGrandTotalCost) || 0;
       if (cachedTotal > 0 && productCost > 0 && cachedTotal > productCost) {
@@ -41710,7 +41714,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     //     Profit, matching the Pricing tab's "markup only" behavior
     //     the operator already trusts.
     const feesAsIs = parseFloat(d.pricingAppliedFeesAsIs) || 0;
-    return { units, weightKg, cost, price, cbm, leadDays, shippingUsd, productCost, feesAsIs };
+    // Total (ours) is DERIVED from the two parts we just computed, so the
+    // card can never show Total < Cost + Shipping (which happened when all
+    // three were independent caches saved at different times). Fall back to
+    // the cached grand total only when we couldn't derive either part.
+    const costOut = (productCost > 0 || shippingUsd > 0) ? (productCost + shippingUsd) : cost;
+    return { units, weightKg, cost: costOut, price, cbm, leadDays, shippingUsd, productCost, feesAsIs };
   }
 
   function calcWorkbookShipStats(detail, qty) {
