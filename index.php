@@ -16647,7 +16647,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // it mirrored to the live RFQ qty.
     const input = document.getElementById('pallet-total-cartons');
     if (!input) return;
-    const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
+    const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && (_lastRfqPriceSummary.grandQtyKit || _lastRfqPriceSummary.grandQty)) || 0;
     const target   = grandQty > 0 ? String(grandQty) : '';
     const current  = String(input.value || '').replace(/,/g, '').trim();
     if (current !== target) {
@@ -16690,7 +16690,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   function _refreshPalletTotalHint() {
     const hint = document.getElementById('pallet-total-hint');
     if (!hint) return;
-    const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
+    const grandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && (_lastRfqPriceSummary.grandQtyKit || _lastRfqPriceSummary.grandQty)) || 0;
     hint.innerHTML = grandQty > 0
       ? `From <strong>RFQ Grand Total qty</strong> (${grandQty.toLocaleString()} units).`
       : `Will fill from <strong>RFQ Grand Total qty</strong> once the RFQ is entered.`;
@@ -18409,8 +18409,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const palletsNeeded = (totalCartons > 0 && totalPerPallet > 0)
       ? Math.ceil(totalCartons / totalPerPallet)
       : null;
-    // RFQ grand qty (kept for legacy callers / display logic)
-    const rfqGrandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
+    // RFQ grand qty (combine-aware — kits count as their primary qty).
+    const rfqGrandQty = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && (_lastRfqPriceSummary.grandQtyKit || _lastRfqPriceSummary.grandQty)) || 0;
 
     // Per-unit weight: in manual mode this is the product weight,
     // in case-only mode the case weight, otherwise the outer-carton
@@ -21984,9 +21984,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // higher when a component runs at a different qty. Tiered Pricing uses
     // this so the tier price matches the RFQ grand total + Client Quote.
     const grandRmbPerPrimary = (primaryQty > 0 && grandRmbQtyXPrice > 0) ? (grandRmbQtyXPrice / primaryQty) : grandRmb;
+    // Combine-aware order qty: a group counts only its PRIMARY line's qty (you
+    // ship 1,000 kits, not 4,000 component pieces); ungrouped lines add full
+    // qty. Drives the displayed RFQ qty + the pallet "Total Units to Ship".
+    // The variant weighted-average pricing still uses the raw grandQty.
+    let grandQtyKit = grandQty;
+    try {
+      const _cg = Array.isArray(_combineGroups) ? _combineGroups : [];
+      if (_cg.length) {
+        const _grp = new Set(), _prim = new Set();
+        _cg.forEach(g => { (g.itemIdxs || []).forEach(ix => _grp.add(ix)); if (g.primaryIdx != null) _prim.add(g.primaryIdx); });
+        const _parents = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
+        let _q = 0;
+        _parents.forEach((row, ix) => {
+          if (_grp.has(ix) && !_prim.has(ix)) return;   // folded component → skip
+          const rid = (row.id.match(/^rfq-(\d+)$/) || [])[1];
+          const vrows = rid ? document.querySelectorAll(`[data-rfq-parent="${rid}"]`) : [];
+          if (vrows.length) vrows.forEach(vr => { const vi = vr.querySelectorAll('input:not(.rfq-var-sku-input):not([type="checkbox"])'); _q += (_msIntFromInput(vi[1]) || 0); });
+          else { const ins = row.querySelectorAll('input:not([type="checkbox"])'); _q += (_msIntFromInput(ins[2]) || 0); }
+        });
+        grandQtyKit = _q;
+      }
+    } catch (e) {}
     _lastRfqPriceSummary = {
       hasVariants, rmbMin, rmbMax, usdMin, usdMax, isRange,
-      grandQty, grandRmb, grandRmbPerPrimary, primaryQty, primaryName, primaryId,
+      grandQty, grandQtyKit, grandRmb, grandRmbPerPrimary, primaryQty, primaryName, primaryId,
       grandRmbWeighted, grandUsdUnit, grandUsd,
       // # of priced parent lines. The variant paths (rmbMin / grandRmbWeighted)
       // are only right for a SINGLE-product variant workbook; a multi-line KIT
@@ -21994,7 +22016,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       pricedLineCount: pricedLines.length
     };
 
-    document.getElementById('rfq-total-qty').textContent = grandQty ? grandQty.toLocaleString('en-US') : '—';
+    document.getElementById('rfq-total-qty').textContent = grandQtyKit ? grandQtyKit.toLocaleString('en-US') : '—';
 
     // In manual mode, propagate the RFQ Grand Total qty into the
     // "Total Units to Ship" input on the Pallet section so the pallets
@@ -52168,6 +52190,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return parseFloat(String(it.qty || '').replace(/,/g,'')) || 0;
     };
     const qty = rfqItems.reduce((s, it) => s + itemEffQty(it), 0);
+    // Billable qty = units on lines that actually have a cost. A $0-cost line
+    // (bundled kit accessory) does NOT take the Sale Per, so the kit price is
+    // Sale Per × primary qty, not × the summed component qty.
+    const _lineRmb = it => {
+      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+      if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.priceRmb || '').replace(/,/g,'')) || parseFloat(it.priceRmb) || 0), 0);
+      return parseFloat(String(it.priceRmb || '').replace(/,/g,'')) || 0;
+    };
+    const billQty = rfqItems.reduce((s, it) => s + (_lineRmb(it) > 0 ? itemEffQty(it) : 0), 0);
     const fees = (typeof _appliedFeesFromDetail === 'function') ? _appliedFeesFromDetail(detail) : [];
     // allFees feeds the cost-basis side of the Profit calc (we pay
     // every fee regardless of billed/comp). Markup-only fees are
@@ -52180,10 +52211,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const salePerTyped = parseFloat(detail.pricingSalePer) || 0;
     const clientQuote  = parseFloat(detail.pricingClientQuoteTotal) || 0;
     const useQuote = (salePerTyped > 0 || clientQuote > 0) && qty > 0;
-    const saleUnit = salePerTyped > 0
-      ? salePerTyped
-      : (clientQuote > 0 && qty > 0 ? Math.max(0, clientQuote - feesAsIs) / qty : 0);
-    const items = (useQuote && saleUnit > 0) ? saleUnit * qty : 0;
+    // Items total = Sale Per × BILLABLE qty (kit → primary qty, not summed
+    // components); with no Sale Per, the cached clientQuote is already the
+    // correct total, so use its items portion directly.
+    let items = 0;
+    if (salePerTyped > 0 && billQty > 0) items = salePerTyped * billQty;
+    else if (clientQuote > 0) items = Math.max(0, clientQuote - feesAsIs);
     const billedFees = fees.reduce((s, f) => {
       const billed = (typeof _orderFeeIsBilled === 'function')
         ? _orderFeeIsBilled(order, workbookId, f.id) : true;
@@ -52484,6 +52517,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const _all = Array.isArray(detail.rfqItems) ? detail.rfqItems : [];
         wbDisplayQty = _all.reduce((s, it, ix) => s + ((!_grp.has(ix) || _grpPrim.has(ix)) ? itemEffQty(it) : 0), 0);
       }
+      // The combine-group PRIMARY line is already the workbook header row, so
+      // don't repeat it as a sub-row (that rendered the main item twice). The
+      // sub-rows then show just the bundled components.
+      const _oshSkipItems = new Set();
+      _oshCg.forEach(g => { const p = (detail.rfqItems || [])[g.primaryIdx]; if (p) _oshSkipItems.add(p); });
       // Header cost/unit uses the DISPLAYED qty so cost/unit × qty ties to the
       // total product cost (per-kit cost for a combined kit, not a blended
       // per-component-piece figure).
@@ -52664,6 +52702,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         // (which will read identically to the workbook header for
         // single-item workbooks — that's the correct collapsed state).
         rfqItems.forEach(item => {
+          if (_oshSkipItems.has(item)) return;   // primary = header row, don't repeat
           const vs = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
           if (vs.length > 0) {
             // Per-variant rows. Show each variant indented under the
