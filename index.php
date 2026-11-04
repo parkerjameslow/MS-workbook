@@ -10413,7 +10413,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th style="text-align:right;">QTY</th>
               <th style="text-align:right;">RMB</th>
               <th style="text-align:right;">USD</th>
-              <th style="text-align:right;">ACTION</th>
+              <th style="text-align:right; padding-right:18px;">ACTION</th>
             </tr>
           </thead>
           <tbody id="rfq-tbody">
@@ -37501,16 +37501,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (!item || !item.flow) continue;
       if (!item.flow.quoteSubmitted || item.flow.quoteClient) continue;
 
-      // Aggregate totals across RFQ line items (parents + variants)
-      const rfqItems = (detail.rfqItems || []).concat(
-        (detail.rfqItems || []).flatMap(r => r.variants || [])
-      );
+      // Aggregate totals: count a line's VARIANTS when it has them, otherwise
+      // the parent line itself — never both (summing parent + variants double-
+      // counted the qty, e.g. 180,000 showed as 360,000).
+      const _rfqNum = v => parseFloat(String(v == null ? '' : v).replace(/,/g, '')) || 0;
       let totalQty = 0, totalRmb = 0;
-      rfqItems.forEach(r => {
-        const q = parseFloat(r.qty) || 0;
-        const p = parseFloat(r.priceRmb) || 0;
-        totalQty += q;
-        totalRmb += q * p;
+      (detail.rfqItems || []).forEach(parent => {
+        const variants = Array.isArray(parent.variants)
+          ? parent.variants.filter(v => v && (v.variant || v.qty || v.priceRmb || v.sku))
+          : [];
+        const rows = variants.length ? variants : [parent];
+        rows.forEach(r => {
+          const q = _rfqNum(r.qty), p = _rfqNum(r.priceRmb);
+          totalQty += q;
+          totalRmb += q * p;
+        });
       });
       const totalUsd = totalRmb / USD_TO_RMB;
 
@@ -37632,14 +37637,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
           <td style="text-align:right; white-space:nowrap;">${rmb}</td>
           <td style="text-align:right; white-space:nowrap; color:var(--success);">${usd}</td>
-          <td style="text-align:right; white-space:nowrap;">
-            ${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + r.clientName + '|' + r.workbookId) : ''}
-            <button class="btn rfq-review-btn"
-              onclick="event.stopPropagation(); submitWorkbookForReview(${r.workbookId}, '${clientEsc}', '${productEsc}', this);"
-              title="Mark as ready for review — advances the workbook out of the queue and emails Jackson + Parker."
-              style="font-size:11px; padding:5px 11px; white-space:nowrap; background:var(--accent); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:600;">
-              Send for Review
-            </button>
+          <td style="text-align:right; white-space:nowrap; padding-right:18px;">
+            <span style="display:inline-flex; align-items:center; gap:12px; justify-content:flex-end;">
+              ${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + r.clientName + '|' + r.workbookId) : ''}
+              <button class="btn rfq-review-btn"
+                onclick="event.stopPropagation(); submitWorkbookForReview(${r.workbookId}, '${clientEsc}', '${productEsc}', this);"
+                title="Mark as ready for review — advances the workbook out of the queue and emails Jackson + Parker."
+                style="font-size:11px; padding:7px 14px; white-space:nowrap; background:var(--accent); color:#fff; border:none; border-radius:7px; cursor:pointer; font-weight:600;">
+                Send for Review
+              </button>
+            </span>
           </td>
         </tr>
       `;
@@ -38009,17 +38016,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // the flow further along the chain.
       if (item.flow.quoteClient || item.flow.clientApproved) continue;
 
-      // Aggregate RFQ totals — same as the RFQ Queue collector so the
-      // numbers tie out across both views for the same workbook.
-      const rfqItems = (detail.rfqItems || []).concat(
-        (detail.rfqItems || []).flatMap(r => r.variants || [])
-      );
+      // Aggregate RFQ totals — same as the RFQ Queue collector so the numbers
+      // tie out across both views: count a line's VARIANTS when present, else
+      // the parent, never both (avoids the qty double-count).
+      const _rfqNum = v => parseFloat(String(v == null ? '' : v).replace(/,/g, '')) || 0;
       let totalQty = 0, totalRmb = 0;
-      rfqItems.forEach(r => {
-        const q = parseFloat(r.qty) || 0;
-        const p = parseFloat(r.priceRmb) || 0;
-        totalQty += q;
-        totalRmb += q * p;
+      (detail.rfqItems || []).forEach(parent => {
+        const variants = Array.isArray(parent.variants)
+          ? parent.variants.filter(v => v && (v.variant || v.qty || v.priceRmb || v.sku))
+          : [];
+        const rows = variants.length ? variants : [parent];
+        rows.forEach(r => {
+          const q = _rfqNum(r.qty), p = _rfqNum(r.priceRmb);
+          totalQty += q;
+          totalRmb += q * p;
+        });
       });
       const totalUsd = totalRmb / USD_TO_RMB;
 
