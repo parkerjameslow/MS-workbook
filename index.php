@@ -20151,6 +20151,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (pluralEl) pluralEl.textContent = n === 1 ? '' : 's';
     _refreshRfqCombineMembership();
     _refreshUngroupedWarning();
+    // A group change alters the combine-aware grand qty (grandQtyKit) and
+    // EVERYTHING derived from it. Recompute immediately so the RFQ grand-qty
+    // cell, Tiered Pricing, pallet "Total Units to Ship", weight/CBM and the
+    // order qty all update live — instead of staying stale (e.g. showing
+    // 5,000 after combining to 1,000) until the workbook is reopened. Every
+    // group mutation (combine / uncombine / delete / duplicate / add-to-
+    // group / reconcile) flows through here, so this one call covers them
+    // all. Skipped during fill — the load path calls recalcRfqTotals itself
+    // at the right moment. The autosave that follows each mutation then
+    // persists the refreshed pricing/freight caches via doSaveWorkbook.
+    if (!_filling && typeof recalcRfqTotals === 'function') {
+      try { recalcRfqTotals(); } catch (_) {}
+    }
   }
 
   // Any priced line left OUTSIDE a group is quoted as its own full-price
