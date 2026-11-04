@@ -38964,6 +38964,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function doSaveWorkbook() {
     if (!currentClient || !currentWorkbookId) return;
     try {
+      // Refresh the pricing caches (pricingClientQuoteTotal / GrandTotalCost)
+      // before persisting so every surface that reads them — Order Sheet,
+      // client dashboard, Parker cockpit, fulfillment — sees the CURRENT
+      // numbers. They only auto-refresh on a Pricing-tab render otherwise, so
+      // an edit made elsewhere used to leave the order showing stale pricing.
+      try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
       const detail = collectWorkbookDetail();
       const key = `${currentClient}|${currentWorkbookId}`;
       workbookDetail[key] = detail;
