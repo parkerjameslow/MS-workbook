@@ -52401,6 +52401,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       };
       const wbClientQuote = parseFloat(detail.pricingClientQuoteTotal) || 0;
       const wbTotalQty    = rfqItems.reduce((s, it) => s + itemEffQty(it), 0);
+      // A line's own RMB cost (variant-aware). A line with no cost (e.g. a
+      // bundled kit accessory the operator priced at ¥0) must NOT inherit the
+      // Sale Per — otherwise its full price duplicates into the order total.
+      const _oshLineRmb = it => {
+        const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+        if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.priceRmb || '').replace(/,/g,'')) || parseFloat(it.priceRmb) || 0), 0);
+        return parseFloat(String(it.priceRmb || '').replace(/,/g,'')) || 0;
+      };
+      // Billable qty = units on lines that actually have a cost. Drives the
+      // items total + profit spread so $0-cost lines contribute nothing.
+      const wbBillQty = rfqItems.reduce((s, it) => s + (_oshLineRmb(it) > 0 ? itemEffQty(it) : 0), 0);
       // Per-unit sale price cascade — matches the PDF / CSV path so
       // every export surface shows the same number:
       //   1. pricingSalePer (operator-typed Sale Per — fees-free,
@@ -52464,7 +52475,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }, 0);
       // wbTotal now = (Sale Per × qty) + billed fees. Items + fees,
       // matching what the client is being charged.
-      const wbItemsTotal = perUnit > 0 ? perUnit * wbTotalQty : 0;
+      const wbItemsTotal = perUnit > 0 ? perUnit * wbBillQty : 0;
       const wbTotal  = wbItemsTotal + wbBilledFees;
       grandUsd += wbTotal;
       grandFeesUsd += wbBilledFees;
@@ -52509,7 +52520,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       //   • Comp fees → -as-is per fee (we eat the cost).
       const haveProfit = useQuote && wbTrueCostBasis > 0 && wbTotalQty > 0;
       const wbProfit   = haveProfit ? (wbTotal - wbTrueCostBasis) : 0;
-      const profitPerUnit = wbTotalQty > 0 ? wbProfit / wbTotalQty : 0;
+      // Spread profit over the BILLABLE units so $0-cost lines carry $0 and the
+      // priced lines' per-row profit sums back to the workbook profit.
+      const profitPerUnit = wbBillQty > 0 ? wbProfit / wbBillQty : 0;
       grandProfitUsd          += wbProfit;
 
       // Profit-cell helper — green for positive, red for negative,
@@ -52581,8 +52594,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             // empty placeholder variants (no qty AND no name).
             vs.forEach(v => {
               const vQty = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
-              const vTot = perUnit > 0 ? perUnit * vQty : 0;
-              const vProfit = haveProfit && vQty > 0 ? profitPerUnit * vQty : 0;
+              const vRmb = parseFloat(String(v.priceRmb || '').replace(/,/g,'')) || parseFloat(item.priceRmb) || 0;
+              const vSale = vRmb > 0 ? perUnit : 0;   // $0-cost line → $0, no inherited price
+              const vTot = vSale > 0 ? vSale * vQty : 0;
+              const vProfit = haveProfit && vRmb > 0 && vQty > 0 ? profitPerUnit * vQty : 0;
               const vLabel = (v.variant || '').trim() || 'Variant';
               // Prefix the variant with its parent item name when the
               // workbook has multiple parents — disambiguates which
@@ -52595,7 +52610,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                   ${prefix}<span style="color:var(--text); font-weight:500;">${esc(vLabel)}</span>
                 </td>
                 <td style="text-align:right;">${vQty > 0 ? vQty.toLocaleString('en-US') : '—'}</td>
-                <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
+                <td style="text-align:right; color:var(--text-muted);">${vSale > 0 ? '<div>$' + fmt3(vSale) + '</div>' + rmbLine(vSale, {decimals:3}) : '—'}</td>
                 <td style="text-align:right;">${vTot > 0 ? '<div style="font-weight:600;">$' + fmt2(vTot) + '</div>' + rmbLine(vTot) : '—'}</td>
                 <td style="text-align:right; color:var(--text-muted);">—</td>
                 ${profitCell(vProfit, haveProfit && vQty > 0)}
@@ -52606,12 +52621,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           } else {
             // No variants — show the item itself as the single line.
             const itemQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
-            const iTot = perUnit > 0 ? perUnit * itemQty : 0;
-            const iProfit = haveProfit && itemQty > 0 ? profitPerUnit * itemQty : 0;
+            const iRmb = parseFloat(String(item.priceRmb || '').replace(/,/g,'')) || 0;
+            const iSale = iRmb > 0 ? perUnit : 0;   // $0-cost line → $0, no inherited price
+            const iTot = iSale > 0 ? iSale * itemQty : 0;
+            const iProfit = haveProfit && iRmb > 0 && itemQty > 0 ? profitPerUnit * itemQty : 0;
             rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
               <td style="padding-left:36px;">${esc(item.item || '—')}</td>
               <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
-              <td style="text-align:right; color:var(--text-muted);">${perUnit > 0 ? '<div>$' + fmt3(perUnit) + '</div>' + rmbLine(perUnit, {decimals:3}) : '—'}</td>
+              <td style="text-align:right; color:var(--text-muted);">${iSale > 0 ? '<div>$' + fmt3(iSale) + '</div>' + rmbLine(iSale, {decimals:3}) : '—'}</td>
               <td style="text-align:right;">${iTot > 0 ? '<div style="font-weight:600;">$' + fmt2(iTot) + '</div>' + rmbLine(iTot) : '—'}</td>
               <td style="text-align:right; color:var(--text-muted);">—</td>
               ${profitCell(iProfit, haveProfit && itemQty > 0)}
