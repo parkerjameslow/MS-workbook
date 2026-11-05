@@ -2514,6 +2514,12 @@ function ms_workbook_client_quote_total_from_detail(?string $detailJson): float 
     return $v > 0 ? $v : 0;
 }
 
+// Global safety net: any uncaught exception/error inside an action used to
+// kill the request mid-output, so the client received an EMPTY body and
+// JSON.parse threw "Unexpected end of JSON input" (e.g. duplicate_workbook
+// hitting a DB limit). Catch everything and always emit a JSON error so the
+// client can show the real reason instead of a blank failure.
+try {
 switch ($action) {
 
     // ─── CLIENTS ───────────────────────────────────────
@@ -7848,4 +7854,9 @@ switch ($action) {
             'push_cell_value', 'pull_cell_values',
             'diagnose_workbook', 'diagnose_revisions', 'merge_recover_workbook',
         ]]);
+}
+} catch (\Throwable $e) {
+    if (!headers_sent()) { header('Content-Type: application/json'); }
+    http_response_code(200); // keep the client's fetch happy; error is in the body
+    echo json_encode(['success' => false, 'error' => 'Server error: ' . $e->getMessage()]);
 }
