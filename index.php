@@ -43070,27 +43070,159 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   // ── Duplicate an entire order ──────────────────────────────────────
-  // Re-run a past order: clone every workbook in it (full detail —
-  // RFQ, pricing, pallets, combine groups — via the duplicate_workbook
-  // API, which deep-copies detail_json and resets flow to 0) and mint a
-  // fresh order in the Orders queue pointing at the new copies. The
-  // original order and its workbooks are untouched, so tweaking the
-  // copy's qty/costs later never disturbs the history. All progress
-  // flags (production, shipment, review, client-approval, invoice) are
-  // intentionally dropped so the duplicate starts clean.
+  // Re-run a past order: clone every workbook in it (full detail — RFQ,
+  // pricing, pallets, combine groups — via the duplicate_workbook API,
+  // which deep-copies detail_json and resets flow to 0) and mint a fresh
+  // order in the Orders queue pointing at the new copies. The original
+  // order and its workbooks are untouched, so tweaking the copy's qty/costs
+  // later never disturbs the history. All progress flags (production,
+  // shipment, review, client-approval, invoice) are dropped so the copy
+  // starts clean. A review modal lets the operator rename the copy, drop
+  // workbooks, and choose what carries over before committing.
   let _dupOrderBusy = false;
-  async function duplicateOrder(id) {
+  let _dupOrderCtx  = null;   // { orderId, removed:Set<workbookId> }
+
+  // Smart default name: client + new month/year, e.g. "Nut Garden Nov 2026".
+  function _dupOrderSuggestName(o) {
+    const now = new Date();
+    const stamp = now.toLocaleString('en-US', { month: 'short' }) + ' ' + now.getFullYear();
+    return `${o.clientName} ${stamp}`;
+  }
+
+  function duplicateOrder(id) { openDuplicateOrderModal(id); }  // entry alias (detail toolbar)
+
+  function openDuplicateOrderModal(id) {
     const o = orderData[id];
     if (!o) return;
-    if (_dupOrderBusy) return;
     const entries = Array.isArray(o.entries) ? o.entries.filter(e => e && e.workbookId != null) : [];
     if (!entries.length) { showToast('This order has no workbooks to copy.', 'warn'); return; }
-    if (!confirm(`Duplicate "${o.name}"? This creates a fresh copy of the order plus ${entries.length} new workbook${entries.length === 1 ? '' : 's'} (full detail copied) in the Orders queue. The original is untouched.`)) return;
+    _dupOrderCtx = { orderId: id, removed: new Set() };
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    let modal = document.getElementById('dup-order-modal');
+    if (modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'dup-order-modal';
+    modal.className = 'modal-overlay';
+    modal.style.cssText = 'display:flex;';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:560px; width:100%;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:6px;">
+          <h3 style="margin:0; font-size:18px; font-weight:700;">Duplicate Order</h3>
+          <button onclick="closeDuplicateOrderModal()" style="background:none;border:none;font-size:22px;line-height:1;cursor:pointer;color:var(--text-muted);padding:0;margin:-2px -2px 0 0;">&times;</button>
+        </div>
+        <div style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;">
+          Re-run <strong style="color:var(--text);">${esc(o.name)}</strong> for <strong style="color:var(--text);">${esc(o.clientName)}</strong>. Full workbook detail is copied; the new order starts clean in the Orders queue. The original is never touched.
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+          <div id="dup-order-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:13px;"></div>
+          <div>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:5px;">New order name</label>
+            <input id="dup-order-name" type="text" class="form-input" style="width:100%;" value="${esc(_dupOrderSuggestName(o))}" autocomplete="off" />
+            <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">Suggested from the client + this month. Edit as you like.</div>
+          </div>
+          <div>
+            <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px;">
+              <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);">Workbooks to copy</label>
+              <span id="dup-order-wb-summary" style="font-size:11px; color:var(--text-muted);"></span>
+            </div>
+            <div id="dup-order-wb-list" style="display:flex; flex-direction:column; gap:7px; max-height:230px; overflow-y:auto;"></div>
+          </div>
+          <div style="border-top:1px solid var(--border); padding-top:14px; display:flex; flex-direction:column; gap:9px;">
+            <label style="display:flex; align-items:center; gap:9px; font-size:13px; color:var(--text); cursor:pointer;">
+              <input type="checkbox" id="dup-order-carry-po" checked style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0;">
+              Carry over PO number ${o.poNumber ? `<span style="color:var(--text-muted);">(${esc(o.poNumber)})</span>` : '<span style="color:var(--text-muted);">(none set)</span>'}
+            </label>
+            <label style="display:flex; align-items:center; gap:9px; font-size:13px; color:var(--text); cursor:pointer;">
+              <input type="checkbox" id="dup-order-carry-notes" checked style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0;">
+              Carry over order notes ${o.notes ? '' : '<span style="color:var(--text-muted);">(none set)</span>'}
+            </label>
+            <div style="font-size:11px; color:var(--text-muted); line-height:1.5; margin-top:2px;">
+              Deposit stays at <strong>${(typeof o.depositPct === 'number') ? o.depositPct : 50}%</strong>. Review sign-offs, production/shipment status, client approval and invoice # all reset.
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:2px;">
+            <button class="btn btn-ghost" onclick="closeDuplicateOrderModal()">Cancel</button>
+            <button class="btn btn-primary" id="dup-order-submit" onclick="confirmDuplicateOrderModal()">Create Duplicate</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    _renderDupOrderModalBody();
+    setTimeout(() => { const n = document.getElementById('dup-order-name'); if (n) { n.focus(); n.select(); } }, 50);
+  }
+
+  // (Re)render the workbook rows + the running summary (count / units / cost)
+  // so removing a workbook updates the totals live.
+  function _renderDupOrderModalBody() {
+    const ctx = _dupOrderCtx; if (!ctx) return;
+    const o = orderData[ctx.orderId]; if (!o) return;
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const list = document.getElementById('dup-order-wb-list');
+    const entries = (o.entries || []).filter(e => e && e.workbookId != null);
+    let keptCount = 0, totUnits = 0, totCost = 0;
+    if (list) {
+      list.innerHTML = entries.map(e => {
+        const key = `${e.clientName}|${e.workbookId}`;
+        const detail = workbookDetail[key] || {};
+        const item = (clientData[e.clientName] || []).find(i => String(i.id) === String(e.workbookId));
+        const name = item ? (item.product || 'Untitled') : 'Untitled';
+        const st = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(detail) || {}) : {};
+        const units = parseFloat(st.units) || 0;
+        const cost  = parseFloat(st.cost)  || 0;
+        const removed = ctx.removed.has(String(e.workbookId));
+        if (!removed) { keptCount++; totUnits += units; totCost += cost; }
+        return `<div style="display:flex; align-items:center; gap:10px; padding:9px 11px; border:1px solid var(--border); border-radius:9px; background:${removed ? 'var(--surface2)' : 'var(--surface)'}; ${removed ? 'opacity:0.55;' : ''}">
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; font-size:13px; color:var(--text); ${removed ? 'text-decoration:line-through;' : ''} white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(name)}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${units > 0 ? units.toLocaleString() + ' units' : '—'}${cost > 0 ? ' · $' + cost.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3}) + ' cost' : ''}</div>
+          </div>
+          <button onclick="_dupOrderToggleRemove('${String(e.workbookId).replace(/'/g,"\\'")}')" title="${removed ? 'Add back to the copy' : 'Leave this workbook out of the copy'}"
+            style="flex-shrink:0; background:none; border:1px solid var(--border); border-radius:7px; padding:5px 10px; font-size:11px; font-weight:700; cursor:pointer; color:${removed ? 'var(--accent)' : 'var(--text-muted)'}; font-family:inherit;">
+            ${removed ? 'Add back' : 'Remove'}
+          </button>
+        </div>`;
+      }).join('');
+    }
+    const sum = document.getElementById('dup-order-wb-summary');
+    if (sum) sum.textContent = `${keptCount} of ${entries.length} · ${totUnits.toLocaleString()} units · $${totCost.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    const submit = document.getElementById('dup-order-submit');
+    if (submit) { submit.disabled = keptCount === 0; submit.style.opacity = keptCount === 0 ? '0.5' : '1'; submit.style.cursor = keptCount === 0 ? 'not-allowed' : 'pointer'; }
+  }
+
+  function _dupOrderToggleRemove(workbookId) {
+    const ctx = _dupOrderCtx; if (!ctx) return;
+    const k = String(workbookId);
+    if (ctx.removed.has(k)) ctx.removed.delete(k); else ctx.removed.add(k);
+    _renderDupOrderModalBody();
+  }
+
+  function closeDuplicateOrderModal() {
+    const m = document.getElementById('dup-order-modal');
+    if (m) m.remove();
+    _dupOrderCtx = null;
+  }
+
+  async function confirmDuplicateOrderModal() {
+    const ctx = _dupOrderCtx; if (!ctx) return;
+    if (_dupOrderBusy) return;
+    const o = orderData[ctx.orderId]; if (!o) return;
+    const errEl = document.getElementById('dup-order-error');
+    const nameEl = document.getElementById('dup-order-name');
+    const newName = (nameEl && nameEl.value.trim()) || _dupOrderSuggestName(o);
+    const carryPo    = !!(document.getElementById('dup-order-carry-po') || {}).checked;
+    const carryNotes = !!(document.getElementById('dup-order-carry-notes') || {}).checked;
+    const entries = (o.entries || []).filter(e => e && e.workbookId != null && !ctx.removed.has(String(e.workbookId)));
+    if (!entries.length) {
+      if (errEl) { errEl.textContent = 'Keep at least one workbook in the copy.'; errEl.style.display = 'block'; }
+      return;
+    }
+    if (errEl) errEl.style.display = 'none';
     _dupOrderBusy = true;
-    showToast(`Duplicating ${o.name}…`, 'info');
+    const submit = document.getElementById('dup-order-submit');
+    if (submit) { submit.disabled = true; submit.textContent = 'Copying…'; }
     try {
-      // Clone each workbook server-side (deep-copies detail_json). Keep the
-      // SAME client + product name — it's a re-order of the same items.
+      // Clone each kept workbook server-side (deep-copies detail_json). Keep
+      // the SAME client + product name — it's a re-order of the same items.
       const newEntries = [];
       for (const e of entries) {
         const srcDbId = dbWorkbookMap[`${e.clientName}|${e.workbookId}`] || e.workbookId;
@@ -43104,32 +43236,30 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         if (!r || !r.success || !r.id) throw new Error((r && r.error) || 'Workbook copy failed');
         newEntries.push({ clientName: e.clientName, workbookId: r.id });
       }
-      // Pull the freshly-created workbooks into local state before the
-      // order references them.
       if (typeof loadFromDatabase === 'function') await loadFromDatabase();
 
-      // Mint the new order — clean slate (no production/shipment/review/
-      // invoice/approval carry-over). Keep client, PO, deposit % and notes.
-      const newId  = _nextOrderId++;
-      const num    = String(newId).padStart(3, '0');
+      const newId = _nextOrderId++;
       orderData[newId] = {
         id: newId,
-        name: `${o.name} (Copy)`,
+        name: newName,
         clientName: o.clientName,
         status: 'draft',
         dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
-        poNumber: o.poNumber || '',
+        poNumber: carryPo ? (o.poNumber || '') : '',
         depositPct: (typeof o.depositPct === 'number') ? o.depositPct : 50,
-        notes: o.notes || '',
+        notes: carryNotes ? (o.notes || '') : '',
         entries: newEntries,
       };
       saveOrders();
       if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav();
-      showToast(`Created "${orderData[newId].name}" with ${newEntries.length} workbook${newEntries.length === 1 ? '' : 's'}.`, 'success');
+      closeDuplicateOrderModal();
+      showToast(`Created "${newName}" with ${newEntries.length} workbook${newEntries.length === 1 ? '' : 's'}.`, 'success');
       location.hash = `#/order/${newId}`;
     } catch (err) {
       console.error('[MS duplicateOrder]', err);
-      showToast('Could not duplicate the order — ' + (err && err.message ? err.message : 'please try again.'), 'error');
+      if (errEl) { errEl.textContent = 'Could not duplicate — ' + (err && err.message ? err.message : 'please try again.'); errEl.style.display = 'block'; }
+      showToast('Could not duplicate the order.', 'error');
+      if (submit) { submit.disabled = false; submit.textContent = 'Create Duplicate'; }
     } finally {
       _dupOrderBusy = false;
     }
@@ -52020,6 +52150,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             ${leadBlock}
             ${deadlineBlock}
             ${changeBadge}
+            <button onclick="event.stopPropagation(); openDuplicateOrderModal('${id}')" title="Duplicate this order — copy its workbooks into a fresh order you can re-run and tweak"
+              style="margin-top:10px; align-self:flex-start; display:inline-flex; align-items:center; gap:5px; background:none; border:1px solid var(--border); border-radius:7px; padding:4px 10px; font-size:11px; font-weight:700; color:var(--text-muted); cursor:pointer; font-family:inherit;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Duplicate
+            </button>
           </div>
           <div class="oc-wb-list">
             <div class="oc-wb-count">${wbCount} workbook${wbCount !== 1 ? 's' : ''}</div>
