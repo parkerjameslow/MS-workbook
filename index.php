@@ -11989,6 +11989,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           Export PDF
         </button>
+        <button class="btn btn-ghost" onclick="duplicateOrder(_currentOrderId)" title="Clone this entire order — copies every workbook (full detail) and starts a fresh order in the Orders queue, so you can re-run it later and tweak qty/costs" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Duplicate Order
+        </button>
         <button class="btn-danger" id="order-delete-btn" onclick="deleteOrder(_currentOrderId)">Delete</button>
       </div>
       <!-- Lane controls — surfaces the same Orders ↔ Production ↔
@@ -43063,6 +43067,72 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     saveOrders();
     rebuildOrdersNav();
     location.hash = '#/orders';
+  }
+
+  // ── Duplicate an entire order ──────────────────────────────────────
+  // Re-run a past order: clone every workbook in it (full detail —
+  // RFQ, pricing, pallets, combine groups — via the duplicate_workbook
+  // API, which deep-copies detail_json and resets flow to 0) and mint a
+  // fresh order in the Orders queue pointing at the new copies. The
+  // original order and its workbooks are untouched, so tweaking the
+  // copy's qty/costs later never disturbs the history. All progress
+  // flags (production, shipment, review, client-approval, invoice) are
+  // intentionally dropped so the duplicate starts clean.
+  let _dupOrderBusy = false;
+  async function duplicateOrder(id) {
+    const o = orderData[id];
+    if (!o) return;
+    if (_dupOrderBusy) return;
+    const entries = Array.isArray(o.entries) ? o.entries.filter(e => e && e.workbookId != null) : [];
+    if (!entries.length) { showToast('This order has no workbooks to copy.', 'warn'); return; }
+    if (!confirm(`Duplicate "${o.name}"? This creates a fresh copy of the order plus ${entries.length} new workbook${entries.length === 1 ? '' : 's'} (full detail copied) in the Orders queue. The original is untouched.`)) return;
+    _dupOrderBusy = true;
+    showToast(`Duplicating ${o.name}…`, 'info');
+    try {
+      // Clone each workbook server-side (deep-copies detail_json). Keep the
+      // SAME client + product name — it's a re-order of the same items.
+      const newEntries = [];
+      for (const e of entries) {
+        const srcDbId = dbWorkbookMap[`${e.clientName}|${e.workbookId}`] || e.workbookId;
+        const srcItem = (clientData[e.clientName] || []).find(i => String(i.id) === String(e.workbookId));
+        const productName = srcItem ? (srcItem.product || '') : '';
+        const r = await apiCall('duplicate_workbook', {
+          id: srcDbId,
+          target_client: e.clientName,
+          product_name: productName,     // same name; blank → API appends " (Copy)"
+        });
+        if (!r || !r.success || !r.id) throw new Error((r && r.error) || 'Workbook copy failed');
+        newEntries.push({ clientName: e.clientName, workbookId: r.id });
+      }
+      // Pull the freshly-created workbooks into local state before the
+      // order references them.
+      if (typeof loadFromDatabase === 'function') await loadFromDatabase();
+
+      // Mint the new order — clean slate (no production/shipment/review/
+      // invoice/approval carry-over). Keep client, PO, deposit % and notes.
+      const newId  = _nextOrderId++;
+      const num    = String(newId).padStart(3, '0');
+      orderData[newId] = {
+        id: newId,
+        name: `${o.name} (Copy)`,
+        clientName: o.clientName,
+        status: 'draft',
+        dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
+        poNumber: o.poNumber || '',
+        depositPct: (typeof o.depositPct === 'number') ? o.depositPct : 50,
+        notes: o.notes || '',
+        entries: newEntries,
+      };
+      saveOrders();
+      if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav();
+      showToast(`Created "${orderData[newId].name}" with ${newEntries.length} workbook${newEntries.length === 1 ? '' : 's'}.`, 'success');
+      location.hash = `#/order/${newId}`;
+    } catch (err) {
+      console.error('[MS duplicateOrder]', err);
+      showToast('Could not duplicate the order — ' + (err && err.message ? err.message : 'please try again.'), 'error');
+    } finally {
+      _dupOrderBusy = false;
+    }
   }
 
   function removeOrderFromShipment(idx) {
