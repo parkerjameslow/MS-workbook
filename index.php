@@ -11593,10 +11593,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 24px 14px; border-bottom:1px solid var(--border); gap:12px;">
       <div class="modal-title" id="crm-card-modal-title" style="margin:0;">New Lead</div>
       <div style="display:flex; align-items:center; gap:8px;">
+        <span id="crm-card-saved-hint" style="font-size:11px; font-weight:700; color:#16a34a; opacity:0; transition:opacity 0.2s;">✓ Saved</span>
         <button type="button" id="crm-card-convert-btn" class="btn btn-ghost" style="color:#16a34a; border-color:rgba(22,163,74,0.35);" onclick="convertCrmCardModal()" title="Create an official client from this lead and archive the card (notes + comments move to the client)">Convert to Client</button>
         <button type="button" id="crm-card-delete-btn" class="btn btn-ghost" style="color:#dc2626; border-color:rgba(220,38,38,0.3);" onclick="deleteCrmCardModal()">Delete</button>
-        <button type="button" class="btn btn-ghost" onclick="closeCrmCardModal()">Cancel</button>
-        <button type="button" class="btn btn-primary" onclick="document.getElementById('crm-card-form').requestSubmit();">Save</button>
+        <button type="button" class="btn btn-primary" onclick="closeCrmCardModal()" title="Close — changes save automatically">Done</button>
       </div>
     </div>
     <div style="display:flex; flex:1 1 auto; min-height:0; overflow:hidden;">
@@ -11604,7 +11604,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            for the inputs to render comfortably even when the modal
            hits its max-width on smaller viewports. -->
       <div style="flex:1 1 720px; min-width:560px; overflow-y:auto; padding:14px 24px 0;">
-        <form id="crm-card-form" onsubmit="saveCrmCardModal(event)">
+        <form id="crm-card-form" onsubmit="event.preventDefault(); _crmCardAutoSave(false);" oninput="_crmCardAutoSaveDebounced()" onchange="_crmCardAutoSaveDebounced()">
           <div class="modal-field">
             <label>Company / Lead Name <span class="required">*</span></label>
             <input type="text" id="crm-card-company" required autocomplete="off" placeholder="e.g. Acme Co." />
@@ -11692,15 +11692,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <span id="crm-card-comments-count" style="font-size:11px; color:var(--text-muted); font-weight:700;"></span>
           </div>
         </div>
-        <div id="crm-card-comments-list" style="flex:1 1 auto; overflow-y:auto; padding:4px 16px; display:flex; flex-direction:column; gap:10px; min-height:80px;"></div>
-        <div style="border-top:1px solid var(--border); padding:10px 16px; flex-shrink:0; background:var(--surface);">
-          <textarea id="crm-card-comment-input" rows="2" placeholder="Write a comment…"
-            style="width:100%; resize:vertical; min-height:50px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); box-sizing:border-box;"></textarea>
-          <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+        <!-- Composer pinned at the TOP of the thread (Trello-style). The
+             Save/Cancel row stays hidden until the operator types, mirroring
+             the auto-save notes pattern — nothing to click until there's
+             something to post. -->
+        <div style="padding:4px 16px 12px; flex-shrink:0;">
+          <textarea id="crm-card-comment-input" rows="2" placeholder="Write a comment…" oninput="_crmCommentInputChanged()"
+            style="width:100%; resize:vertical; min-height:44px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface); color:var(--text); box-sizing:border-box;"></textarea>
+          <div id="crm-card-comment-actions" style="display:none; justify-content:flex-end; gap:8px; margin-top:6px;">
+            <button type="button" onclick="_crmCommentCancel()"
+                    style="padding:6px 12px; border-radius:6px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Cancel</button>
             <button type="button" id="crm-card-comment-add-btn" onclick="_addCrmComment()"
-                    style="padding:6px 14px; border-radius:6px; background:var(--accent); color:#fff; border:none; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Add comment</button>
+                    style="padding:6px 14px; border-radius:6px; background:var(--accent); color:#fff; border:none; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Save</button>
           </div>
         </div>
+        <div id="crm-card-comments-list" style="flex:1 1 auto; overflow-y:auto; padding:4px 16px 14px; display:flex; flex-direction:column; gap:10px; min-height:80px; border-top:1px solid var(--border);"></div>
       </div>
     </div>
   </div>
@@ -45107,6 +45113,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   var _crmSavePending = false;   // a local CRM save is queued/in flight
   var _crmEditingId  = null;
   var _lastCrmJson   = '';
+  // Auto-save plumbing for the CRM card modal — no explicit Save button;
+  // field edits persist on a short debounce and again on close.
+  var _crmAutoSaveTimer = null;
+  var _crmModalOriginalColumn = null;   // column at open time → column-move notify on close
+  var _crmModalNotifiedAssignees = false; // guard so the Slack ping fires once
   // Module-level Set of assignee names selected in the open edit
   // modal. Replaces the old <select> reference — the chip row UI
   // mutates this Set on every toggle, and saveCrmCardModal serializes
@@ -45673,6 +45684,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (_crmModalAssignees.has(name)) _crmModalAssignees.delete(name);
     else                              _crmModalAssignees.add(name);
     _renderCrmModalAssigneeChips();
+    if (typeof _crmCardAutoSaveDebounced === 'function') _crmCardAutoSaveDebounced();
   }
 
   // ── LABELS ───────────────────────────────────────────────────────
@@ -45695,6 +45707,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _removeCrmModalLabel(idx) {
     _crmModalLabels.splice(idx, 1);
     _renderCrmModalLabelChips();
+    if (typeof _crmCardAutoSaveDebounced === 'function') _crmCardAutoSaveDebounced();
   }
   // Inline color-picker menu next to the +Add button. Opens a small
   // floating panel with the palette + name input. Clicking a color
@@ -45753,6 +45766,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       fg: col.fg,
     });
     _renderCrmModalLabelChips();
+    if (typeof _crmCardAutoSaveDebounced === 'function') _crmCardAutoSaveDebounced();
     const menu = document.getElementById('crm-label-menu-popover');
     if (menu) menu.remove();
     document.removeEventListener('mousedown', _crmLabelMenuOutsideClickClose, true);
@@ -45767,7 +45781,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const comments = (card && Array.isArray(card.comments)) ? card.comments : [];
     if (countEl) countEl.textContent = comments.length > 0 ? `(${comments.length})` : '';
     if (comments.length === 0) {
-      host.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic; padding:8px 0;">No comments yet. Start the conversation below.</div>';
+      host.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style:italic; padding:8px 0;">No comments yet. Start the conversation above.</div>';
       return;
     }
     const me = (typeof window.MS_SESSION === 'object' && window.MS_SESSION) ? (window.MS_SESSION.name || window.MS_SESSION.username || '') : '';
@@ -45785,8 +45799,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }).join('');
   }
   function _addCrmComment() {
-    if (!_crmEditingId) {
-      if (typeof _msToast === 'function') _msToast('Save the lead first, then add comments.', 'warning');
+    // Auto-save first so a brand-new lead exists before we attach a comment
+    // (no "save the lead first" step). Needs a company name to persist.
+    if (!_crmEditingId || !crmData.cards[_crmEditingId]) {
+      if (typeof _crmCardAutoSave === 'function') _crmCardAutoSave();
+    }
+    if (!_crmEditingId || !crmData.cards[_crmEditingId]) {
+      if (typeof _msToast === 'function') _msToast('Add a company / lead name first, then comment.', 'warning');
       return;
     }
     const card  = crmData.cards[_crmEditingId];
@@ -45805,6 +45824,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     card.updatedAt = new Date().toISOString();
     saveCrm();
     if (input) input.value = '';
+    _crmCommentInputChanged();   // hide the Save/Cancel row again
     _renderCrmModalComments(card);
     renderCrmBoard();
   }
@@ -46031,11 +46051,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       _crmModalLabels = [];
     }
     _renderCrmModalLabelChips();
+    // Auto-save bookkeeping: remember the column we opened on (for the
+    // column-move notify at close) and reset the one-shot assignee-ping guard.
+    _crmModalOriginalColumn = card ? (card.column || null) : (defaultCol || 'referrals');
+    _crmModalNotifiedAssignees = false;
+    clearTimeout(_crmAutoSaveTimer);
+    const hint = document.getElementById('crm-card-saved-hint'); if (hint) hint.style.opacity = '0';
     // Comments thread: render whatever's saved + clear the composer
     // for a fresh write.
     _renderCrmModalComments(card);
     const composer = document.getElementById('crm-card-comment-input');
     if (composer) composer.value = '';
+    _crmCommentInputChanged();   // keep the Save/Cancel row hidden until typing
     // Delete + Convert only when editing an existing card (nothing to
     // convert/delete on a brand-new unsaved lead).
     const delBtn = document.getElementById('crm-card-delete-btn');
@@ -46045,9 +46072,100 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.getElementById('modal-crm-card').classList.add('open');
     setTimeout(() => { try { document.getElementById('crm-card-company').focus(); } catch {} }, 60);
   }
+  // Debounced auto-save — wired to the form's oninput/onchange so every
+  // edit persists without a Save button.
+  function _crmCardAutoSaveDebounced() {
+    clearTimeout(_crmAutoSaveTimer);
+    _crmAutoSaveTimer = setTimeout(() => _crmCardAutoSave(false), 450);
+  }
+  // Persist the card's field values WITHOUT closing or firing Slack/notify
+  // side-effects (those happen once, on close). Creates the card on first
+  // save when a company name is present. Returns the card (or null).
+  function _crmCardAutoSave() {
+    const modal = document.getElementById('modal-crm-card');
+    if (!modal || !modal.classList.contains('open')) return null;
+    const getVal = id => (document.getElementById(id) || {}).value || '';
+    const company = getVal('crm-card-company').trim();
+    if (!company) return null;   // need a name before anything can be saved
+    const nowIso = new Date().toISOString();
+    let card;
+    if (_crmEditingId && crmData.cards[_crmEditingId]) {
+      card = crmData.cards[_crmEditingId];
+    } else {
+      const id = `c${crmData.nextId++}`;
+      card = { id, createdAt: nowIso };
+      crmData.cards[id] = card;
+      _crmEditingId = id;   // subsequent saves + comments target this card
+      // It exists now → expose Delete / Convert and flip the title.
+      const delBtn = document.getElementById('crm-card-delete-btn'); if (delBtn) delBtn.style.display = '';
+      const convBtn = document.getElementById('crm-card-convert-btn'); if (convBtn) convBtn.style.display = '';
+      const t = document.getElementById('crm-card-modal-title'); if (t) t.textContent = 'Edit Lead';
+    }
+    card.company  = company;
+    card.contact  = getVal('crm-card-contact').trim();
+    card.title    = getVal('crm-card-title').trim();
+    card.email    = getVal('crm-card-email').trim();
+    card.phone    = getVal('crm-card-phone').trim();
+    card.source   = getVal('crm-card-source').trim();
+    card.followup = getVal('crm-card-followup');
+    card.notes    = getVal('crm-card-notes');
+    card.column   = getVal('crm-card-column') || 'referrals';
+    card.assignees = Array.from(_crmModalAssignees || []);
+    delete card.assignee;
+    card.labels   = Array.isArray(_crmModalLabels) ? _crmModalLabels.slice() : [];
+    card.updatedAt = nowIso;
+    saveCrm();
+    // Tiny "✓ Saved" flash so the operator trusts the auto-save.
+    const hint = document.getElementById('crm-card-saved-hint');
+    if (hint) { hint.style.opacity = '1'; clearTimeout(hint._t); hint._t = setTimeout(() => { hint.style.opacity = '0'; }, 1400); }
+    return card;
+  }
+
   function closeCrmCardModal() {
+    clearTimeout(_crmAutoSaveTimer);
+    // Flush a final save. If the card was just deleted/converted, _crmEditingId
+    // is cleared first by those handlers, so this won't resurrect it; a
+    // brand-new card with a name still gets created here on the way out.
+    const card = _crmCardAutoSave();
+    // Fire the deferred side-effects once, now that editing is done — only
+    // when the card still exists (not deleted/converted).
+    if (card && crmData.cards[card.id]) {
+      // Slack ping for assignees added during this edit session.
+      const newlyAdded = Array.from(_crmModalAssignees || []).filter(n => !_crmModalAssigneesOriginal.has(n));
+      if (newlyAdded.length > 0 && !_crmModalNotifiedAssignees) {
+        _crmModalNotifiedAssignees = true;
+        apiCall('crm_notify_assignment', {
+          assignees: newlyAdded, company: card.company || '', contact: card.contact || '',
+          email: card.email || '', column: card.column || '', source: card.source || '', notes: card.notes || '',
+        }).then(r => {
+          if (r && r.ok && typeof _msToast === 'function') _msToast(`Slack ping sent to ${newlyAdded.join(', ')}.`, 'success');
+          else if (r && r.error && typeof _msToast === 'function') _msToast(`Slack ping failed: ${r.error}`, 'warning');
+        }).catch(() => {});
+      }
+      // Column changed via the modal → notify like the drag-drop handler.
+      if (_crmModalOriginalColumn && card.column !== _crmModalOriginalColumn) {
+        try { _maybeNotifyCrmColumnMove(card, _crmModalOriginalColumn, card.column); } catch (_) {}
+      }
+    }
+    try { renderCrmBoard(); } catch (_) {}
     document.getElementById('modal-crm-card').classList.remove('open');
     _crmEditingId = null;
+    _crmModalOriginalColumn = null;
+    _crmModalNotifiedAssignees = false;
+  }
+
+  // Comment composer (top of thread): reveal Save/Cancel only once there's
+  // text to post, mirroring the auto-save notes pattern.
+  function _crmCommentInputChanged() {
+    const input = document.getElementById('crm-card-comment-input');
+    const actions = document.getElementById('crm-card-comment-actions');
+    if (!input || !actions) return;
+    actions.style.display = (input.value || '').trim() ? 'flex' : 'none';
+  }
+  function _crmCommentCancel() {
+    const input = document.getElementById('crm-card-comment-input');
+    if (input) input.value = '';
+    _crmCommentInputChanged();
   }
   function saveCrmCardModal(e) {
     e.preventDefault();
@@ -46126,6 +46244,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!proceed) return;
     _appStateDelSet('ms_crm').add(String(_crmEditingId)); // so a merge won't resurrect it
     delete crmData.cards[_crmEditingId];
+    _crmEditingId = null;   // clear BEFORE close so the auto-save flush can't recreate it
     saveCrm();
     closeCrmCardModal();
     renderCrmBoard();
@@ -46263,6 +46382,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       saveCrm();
       if (typeof rebuildSidebar === 'function') rebuildSidebar();
       if (typeof saveToLocalStorage === 'function') saveToLocalStorage();
+      _crmEditingId = null;   // clear BEFORE close so the auto-save flush doesn't re-touch the archived card
       closeCrmCardModal();
       renderCrmBoard();
       if (typeof _msToast === 'function') _msToast(`"${name}" converted to a client — card archived.`, 'success');
