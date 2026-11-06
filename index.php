@@ -2840,6 +2840,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* "% over cost" badge under each Sale cell (50% when auto). */
     .qq-sale-pct { font-size:9px; font-weight:700; color:var(--text-muted); text-align:right; margin-top:2px; white-space:nowrap; }
     .qq-table td.qq-sale-auto .qq-sale-pct { color:var(--accent); }
+    /* Margin check: exactly 50% over cost = green, anything else = red. Beats the auto-accent rule. */
+    .qq-sale-pct.qq-pct-on  { color:#16a34a !important; }
+    .qq-sale-pct.qq-pct-off { color:#dc2626 !important; }
     /* KG / LB unit toggle in the Shipping column header. */
     .qq-unit-btn { font:inherit; font-size:10px; font-weight:800; letter-spacing:0.03em; color:var(--accent); background:rgba(107,147,255,0.12); border:1px solid var(--accent); border-radius:6px; padding:1px 6px; margin-left:2px; cursor:pointer; vertical-align:middle; }
     .qq-unit-btn:hover { background:var(--accent); color:#fff; }
@@ -33083,8 +33086,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const manual = !(c.saleIsAuto);
         const disp = manual ? r.sale : (c.suggested > 0 ? (Math.round(c.suggested * 1000) / 1000) : '');
         const title = (!manual && c.suggested > 0) ? `Auto — suggested at ${Math.round(c.markupPct)}% markup. Type to override.` : '';
-        const pct = (c.sale > 0 && c.landedPer > 0) ? ((Math.round(c.salePct * 10) / 10) + '% over cost') : '';
-        return `<td class="qq-cell${!manual && c.suggested > 0 ? ' qq-sale-auto' : ''}"><input type="text" class="qq-sale-input" value="${_qqEsc(disp)}" title="${_qqEsc(title)}" oninput="qqInput(${i},'sale',this.value)"><div class="qq-sale-pct">${pct}</div></td>`;
+        const _hasPct = (c.sale > 0 && c.landedPer > 0);
+        const _pv = Math.round(c.salePct * 10) / 10;
+        const pct = _hasPct ? (_pv + '% over cost') : '';
+        const pctCls = _hasPct ? (Math.abs(_pv - 50) < 0.05 ? ' qq-pct-on' : ' qq-pct-off') : '';
+        return `<td class="qq-cell${!manual && c.suggested > 0 ? ' qq-sale-auto' : ''}"><input type="text" class="qq-sale-input" value="${_qqEsc(disp)}" title="${_qqEsc(title)}" oninput="qqInput(${i},'sale',this.value)"><div class="qq-sale-pct${pctCls}">${pct}</div></td>`;
       })()}
       <td class="qq-cell qq-calc qq-revenue" style="text-align:right; font-weight:700;">${c.total > 0 ? _qqUsd(c.total) : '—'}</td>
       <td style="text-align:center;"><button type="button" class="qq-view-btn" onclick="qqOpenResult(${i})">Results</button></td>
@@ -33167,7 +33173,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     // The "% over cost" badge updates even while the Sale field is focused.
     const pctEl = tr.querySelector('.qq-sale-pct');
-    if (pctEl) pctEl.textContent = (c.sale > 0 && c.landedPer > 0) ? ((Math.round(c.salePct * 10) / 10) + '% over cost') : '';
+    if (pctEl) {
+      const _hasPct = (c.sale > 0 && c.landedPer > 0);
+      const _pv = Math.round(c.salePct * 10) / 10;
+      pctEl.textContent = _hasPct ? (_pv + '% over cost') : '';
+      pctEl.classList.toggle('qq-pct-on', _hasPct && Math.abs(_pv - 50) < 0.05);
+      pctEl.classList.toggle('qq-pct-off', _hasPct && Math.abs(_pv - 50) >= 0.05);
+    }
   }
   // Sale edited INSIDE the modal → update deps in place (keep the sale input).
   function qqResultSale(i, val) {
