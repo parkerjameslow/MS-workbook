@@ -49055,28 +49055,40 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const rfqItems = (detail.rfqItems || []).filter(i => i.item || i.qty || i.priceRmb);
       const wbStats  = _wbStatsForPicker(detail);
       const wbQuote  = parseFloat(detail.pricingClientQuoteTotal) || 0;
-      const wbTotalQty = rfqItems.reduce((s, it) => {
-        const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
-        if (vs.length) return s + vs.reduce((ss, v) => ss + (parseFloat(String(v.qty||'').replace(/,/g,'')) || 0), 0);
-        return s + (parseFloat(String(it.qty||'').replace(/,/g,'')) || 0);
-      }, 0);
-      // Use the operator-typed Sale Per as the per-unit price for
-      // item lines. pricingClientQuoteTotal already includes applied
-      // fees, so dividing it by qty would amortize fees into per-unit
-      // and double-count when we then render the fees as separate
-      // rows below. Sale Per is the pure product per-unit. Falls back
-      // to (quote - fees) / qty if Sale Per isn't typed.
+      // Combine-aware: a kit bills ONCE at its primary qty (never per component
+      // line), so this client quote/PDF matches the Order Sheet + the Pricing-
+      // tab Client Quote. _qpIsKitComponent flags grouped non-primary lines,
+      // which render with qty only (no per-unit/total). billableQty is the one
+      // divisor so the per-unit is right ($63.79, not quote÷8,000).
+      const _qpGrp = new Set(), _qpGrpPrim = new Set();
+      (Array.isArray(detail.combineGroups) ? detail.combineGroups : []).forEach(g => {
+        (g.itemIdxs || []).forEach(ix => _qpGrp.add(ix));
+        const pIdx = (g.primaryIdx != null && g.primaryIdx !== '') ? parseInt(g.primaryIdx, 10) : ((g.itemIdxs||[]).length ? Math.min.apply(null, g.itemIdxs) : -1);
+        if (pIdx >= 0) _qpGrpPrim.add(pIdx);
+      });
+      const _qpIsKitComponent = ix => _qpGrp.has(ix) && !_qpGrpPrim.has(ix);
+      const billableQty = (typeof _billableQtyFromDetail === 'function')
+        ? _billableQtyFromDetail(detail)
+        : rfqItems.reduce((s, it) => { const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant||v.qty)) : []; return s + (vs.length ? vs.reduce((ss,v)=>ss+(parseFloat(String(v.qty||'').replace(/,/g,''))||0),0) : (parseFloat(String(it.qty||'').replace(/,/g,''))||0)); }, 0);
+      // Use the operator-typed Sale Per as the per-unit price for item lines.
+      // pricingClientQuoteTotal already includes applied fees, so dividing it
+      // by qty would amortize fees into per-unit and double-count when we then
+      // render the fees as separate rows below. Falls back to
+      // (quote - fees) / billableQty if Sale Per isn't typed.
       const wbSalePerTyped = parseFloat(detail.pricingSalePer) || 0;
       const wbFeesAsIs     = parseFloat(detail.pricingAppliedFeesAsIs) || 0;
-      const useQuote = (wbSalePerTyped > 0 || wbQuote > 0) && wbTotalQty > 0;
+      const useQuote = (wbSalePerTyped > 0 || wbQuote > 0) && billableQty > 0;
       const perUnit  = wbSalePerTyped > 0
         ? wbSalePerTyped
-        : (wbQuote > 0 && wbTotalQty > 0 ? (wbQuote - wbFeesAsIs) / wbTotalQty : 0);
+        : (wbQuote > 0 && billableQty > 0 ? (wbQuote - wbFeesAsIs) / billableQty : 0);
 
       // Item rows — variant-aware, mirrors the on-screen Order Sheet.
       const itemRowsHtml = rfqItems.length === 0
         ? `<tr><td colspan="4" class="muted italic">No line items</td></tr>`
-        : rfqItems.map(item => {
+        : rfqItems.map((item, _qpIdx) => {
+            // Kit component (grouped non-primary) → bundled into the kit's
+            // header price: show qty only, no per-unit/total, no tally.
+            const _qpComp = _qpIsKitComponent(_qpIdx);
             const vs = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
             if (vs.length) {
               // Variant group — render a parent ROLLUP row first
@@ -49086,7 +49098,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               // the PDF only showed individual variant lines and the
               // operator had to mental-math the total per item.
               const itemTotalQty = vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g,'')) || 0), 0);
-              const itemTotalAmt = perUnit > 0 ? perUnit * itemTotalQty : 0;
+              const itemTotalAmt = (perUnit > 0 && !_qpComp) ? perUnit * itemTotalQty : 0;
               // Tally to itemsTotal on the PARENT (not each variant)
               // so we don't double-count when variant rows render
               // below without their own tally.
@@ -49094,29 +49106,29 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               const parentRow = `<tr class="item-parent">
                 <td><strong>${esc(item.item || '—')}</strong></td>
                 <td class="num"><strong>${itemTotalQty > 0 ? fmtNum(itemTotalQty) : '—'}</strong></td>
-                <td class="num muted">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+                <td class="num muted">${(perUnit > 0 && !_qpComp) ? '$' + fmt3(perUnit) : '—'}</td>
                 <td class="num strong">${itemTotalAmt > 0 ? '$' + fmt2(itemTotalAmt) : '—'}</td>
               </tr>`;
               const variantRows = vs.map(v => {
                 const vQty = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
-                const vTot = perUnit > 0 ? perUnit * vQty : 0;
+                const vTot = (perUnit > 0 && !_qpComp) ? perUnit * vQty : 0;
                 // Variants are indented + muted; tally stays on parent.
                 return `<tr class="variant-row">
                   <td class="indent muted">${esc(v.variant || 'Variant')}</td>
                   <td class="num muted">${vQty > 0 ? fmtNum(vQty) : '—'}</td>
-                  <td class="num muted">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+                  <td class="num muted">${(perUnit > 0 && !_qpComp) ? '$' + fmt3(perUnit) : '—'}</td>
                   <td class="num muted">${vTot > 0 ? '$' + fmt2(vTot) : '—'}</td>
                 </tr>`;
               }).join('');
               return parentRow + variantRows;
             }
             const iQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
-            const iTot = perUnit > 0 ? perUnit * iQty : 0;
+            const iTot = (perUnit > 0 && !_qpComp) ? perUnit * iQty : 0;
             itemsTotal += iTot;
             return `<tr>
               <td>${esc(item.item || '—')}</td>
               <td class="num">${iQty > 0 ? fmtNum(iQty) : '—'}</td>
-              <td class="num muted">${perUnit > 0 ? '$' + fmt3(perUnit) : '—'}</td>
+              <td class="num muted">${(perUnit > 0 && !_qpComp) ? '$' + fmt3(perUnit) : '—'}</td>
               <td class="num strong">${iTot > 0 ? '$' + fmt2(iTot) : '—'}</td>
             </tr>`;
           }).join('');
@@ -53189,6 +53201,26 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       grandUsd += wbTotal;
       grandFeesUsd += wbBilledFees;
 
+      // ── SELF-CHECK (catch kit-math regressions early) ──────────────────
+      // The Order Sheet's items total MUST tie to the Pricing-tab's canonical
+      // combine-aware Client Quote (pricingClientQuoteTotal, which bills a kit
+      // once at its primary qty). If a future change reintroduces summed-
+      // component pricing, the numbers diverge — warn LOUDLY to the console
+      // (and flag the header row) instead of silently shipping a wrong total.
+      // Tolerance 1% + $1 absorbs rounding; skipped when there's no committed
+      // quote to compare against.
+      let _mathWarn = '';
+      try {
+        const _canonItems = wbClientQuote > 0 ? Math.max(0, wbClientQuote - wbFeesAsIs) : 0;
+        if (_canonItems > 0 && wbItemsTotal > 0) {
+          const _tol = Math.max(1, _canonItems * 0.01);
+          if (Math.abs(wbItemsTotal - _canonItems) > _tol) {
+            _mathWarn = `items $${wbItemsTotal.toFixed(2)} ≠ Client Quote $${_canonItems.toFixed(2)}`;
+            console.warn(`[MS order-math] ${product}: ${_mathWarn} (billQty=${wbBillQty}, salePer=${perUnit}). Combine-group pricing may be wrong — see _billableQtyFromDetail.`);
+          }
+        }
+      } catch (_) {}
+
       // Per-workbook profit — consistent with Fulfillment / dashboard:
       //   Revenue = (Sale Per × qty) + billed fees      (wbTotal)
       //   Cost    = pricingGrandTotalCost + ALL fees as-is
@@ -53280,6 +53312,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           ${(typeof _assigneeSpotHtml === 'function') ? '<span onclick="event.stopPropagation();" style="margin-left:8px; display:inline-flex; vertical-align:middle;">' + _assigneeSpotHtml('wb:' + key, true) + '</span>' : ''}
           ${_artPill}
           ${splitBadges}
+          ${_mathWarn ? `<span title="Order total doesn't tie to the Client Quote — ${esc(_mathWarn)}. Likely a combine-group pricing bug." style="margin-left:8px; display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:99px; background:rgba(220,38,38,0.12); color:#dc2626; border:1px solid rgba(220,38,38,0.35); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em;">⚠ Math</span>` : ''}
         </td>
         <td style="text-align:right;">${wbDisplayQty > 0 ? wbDisplayQty.toLocaleString('en-US') : '—'}</td>
         ${costCell(wbCostRmbPerUnit)}
