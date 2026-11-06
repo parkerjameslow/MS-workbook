@@ -6780,7 +6780,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .pl-comments-hint { margin-left: auto; font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: none; letter-spacing: 0; font-style: italic; }
     .pl-comments:empty::after {
-      content: 'No comments yet — add the first one below.';
+      content: 'No comments yet — add the first one above.';
       color: var(--text-muted); font-size: 12px; font-style: italic;
     }
     .pl-comment { display: flex; gap: 8px; }
@@ -12511,40 +12511,55 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
 <!-- ── Pipeline card detail modal ─────────────────────────────────────── -->
 <div class="modal-overlay" id="pl-card-modal" onclick="if(event.target===this)closePipelineCardModal()" style="z-index:1250;">
-  <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
-    <div style="flex-shrink:0;">
-      <div class="modal-title" id="pl-modal-title" style="margin-bottom:4px;">Card</div>
-      <div id="pl-modal-stage" style="font-size:12px; color:var(--text-muted); margin-bottom:14px;"></div>
-    </div>
-    <div style="overflow-y:auto; flex:1 1 auto;">
-      <div class="pl-facts" id="pl-modal-facts"></div>
-      <div id="pl-modal-contents"></div>
-      <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Assigned to</div>
-      <div id="pl-modal-assignees" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
-      <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Notes</div>
-      <textarea id="pl-modal-note" rows="3" placeholder="Decision notes, blockers, next step…"
-        style="width:100%; border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; resize:vertical;"></textarea>
-
-      <div class="pl-comments-head">
-        <span>&#128172; Comments</span>
-        <span class="pl-comments-count" id="pl-modal-comment-count">0</span>
-        <span class="pl-comments-hint" id="pl-modal-comment-hint"></span>
+  <div class="modal" style="max-width:1040px; width:96vw; display:flex; flex-direction:column; overflow:hidden; max-height:92vh; padding:0;">
+    <!-- Header bar — title + stage on the left, actions pinned top-right
+         (matches the CRM card modal). The card auto-saves, so there's no
+         Save button; Done just closes. -->
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 24px 14px; border-bottom:1px solid var(--border); flex-shrink:0;">
+      <div style="min-width:0;">
+        <div class="modal-title" id="pl-modal-title" style="margin-bottom:4px;">Card</div>
+        <div id="pl-modal-stage" style="font-size:12px; color:var(--text-muted);"></div>
       </div>
-      <div id="pl-modal-comments" class="pl-comments" onclick="_focusPlCommentInput()" title="Click to add a comment"></div>
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <span id="pl-modal-saved-hint" style="font-size:11px; font-weight:700; color:#16a34a; opacity:0; transition:opacity 0.2s;">✓ Saved</span>
+        <button type="button" class="btn btn-ghost" id="pl-modal-open-btn" style="border-color:var(--accent); color:var(--accent);">Open</button>
+        <button type="button" class="btn btn-primary" onclick="closePipelineCardModal()" title="Close — changes save automatically">Done</button>
+      </div>
     </div>
-    <!-- Comment composer lives OUTSIDE the scrollable body so it's always
-         visible and clickable — previously it sat at the bottom of the
-         scroll area and could be out of reach. -->
-    <div style="flex-shrink:0; display:flex; gap:8px; margin-top:10px;">
-      <input type="text" id="pl-comment-input" placeholder="Add a comment…" autocomplete="off"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();addPipelineComment();}"
-        style="flex:1 1 auto; min-width:0; width:auto; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; pointer-events:auto;" />
-      <button type="button" class="btn btn-ghost" style="flex:0 0 auto;" onclick="addPipelineComment()">Post</button>
-    </div>
-    <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px;">
-      <button type="button" class="btn btn-ghost" onclick="closePipelineCardModal()">Close</button>
-      <button type="button" class="btn btn-ghost" id="pl-modal-open-btn" style="border-color:var(--accent); color:var(--accent);">Open</button>
-      <button type="button" class="btn btn-primary" onclick="savePipelineCardModal()">Save</button>
+    <div style="display:flex; flex:1 1 auto; min-height:0; overflow:hidden;">
+      <!-- LEFT: card details (facts, contents, assignees, notes). -->
+      <div style="flex:1 1 620px; min-width:360px; overflow-y:auto; padding:16px 24px 20px;">
+        <div class="pl-facts" id="pl-modal-facts"></div>
+        <div id="pl-modal-contents"></div>
+        <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Assigned to</div>
+        <div id="pl-modal-assignees" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
+        <div style="margin-bottom:6px; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Notes</div>
+        <textarea id="pl-modal-note" rows="4" placeholder="Decision notes, blockers, next step…" oninput="_plCardAutoSaveDebounced()"
+          style="width:100%; border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; resize:vertical; min-height:90px;"></textarea>
+      </div>
+      <!-- RIGHT: comments thread, Trello-style — composer pinned at the top,
+           list scrolls below. Save/Cancel reveal only once you type. -->
+      <div style="flex:0 0 380px; border-left:1px solid var(--border); background:var(--surface2); display:flex; flex-direction:column; min-height:0;">
+        <div style="padding:14px 16px 8px; flex-shrink:0;">
+          <div class="pl-comments-head" style="margin:0; padding-top:0; border-top:none;">
+            <span>&#128172; Comments</span>
+            <span class="pl-comments-count" id="pl-modal-comment-count">0</span>
+            <span class="pl-comments-hint" id="pl-modal-comment-hint"></span>
+          </div>
+        </div>
+        <div style="padding:4px 16px 12px; flex-shrink:0;">
+          <input type="text" id="pl-comment-input" placeholder="Write a comment…" autocomplete="off"
+            oninput="_plCommentInputChanged()"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addPipelineComment();}"
+            style="width:100%; border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:13px; font-family:inherit; box-sizing:border-box; background:var(--surface);" />
+          <div id="pl-comment-actions" style="display:none; justify-content:flex-end; gap:8px; margin-top:6px;">
+            <button type="button" onclick="_plCommentCancel()" style="padding:6px 12px; border-radius:6px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Cancel</button>
+            <button type="button" onclick="addPipelineComment()" style="padding:6px 14px; border-radius:6px; background:var(--accent); color:#fff; border:none; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;">Save</button>
+          </div>
+        </div>
+        <div id="pl-modal-comments" class="pl-comments" onclick="_focusPlCommentInput()" title="Click to add a comment"
+          style="flex:1 1 auto; min-height:80px; max-height:none; border-top:1px solid var(--border); margin:0;"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -50492,6 +50507,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // assignment persists without touching workbook/order/shipment saves —
   // and can't be clobbered by a concurrent full-detail workbook save.
   let _plMeta = {}, _plMetaLoaded = false, _plLastCards = {}, _plModalId = null;
+  let _plAutoSaveTimer = null;   // debounce for the pipeline card modal auto-save
   const _plModalAssignees = new Set();
 
   function _plCardId(c) { return c.kind === 'wb' ? `wb:${c.key}` : `${c.kind}:${c.id}`; }
@@ -50716,6 +50732,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.getElementById('pl-modal-contents').innerHTML = contents;
     document.getElementById('pl-modal-note').value = meta.note || '';
     const cin = document.getElementById('pl-comment-input'); if (cin) cin.value = '';
+    clearTimeout(_plAutoSaveTimer);
+    if (typeof _plCommentInputChanged === 'function') _plCommentInputChanged();  // hide Save/Cancel until typing
+    const _plHint = document.getElementById('pl-modal-saved-hint'); if (_plHint) _plHint.style.opacity = '0';
     _renderPlModalAssignees();
     _renderPlComments();
 
@@ -50744,8 +50763,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (_plModalAssignees.has(name)) _plModalAssignees.delete(name);
     else _plModalAssignees.add(name);
     _renderPlModalAssignees();
+    _plCardAutoSaveDebounced();
+  }
+  // Debounced auto-save — wired to the Notes textarea + assignee toggles so
+  // the card persists without a Save button (matches the CRM card modal).
+  function _plCardAutoSaveDebounced() {
+    clearTimeout(_plAutoSaveTimer);
+    _plAutoSaveTimer = setTimeout(() => savePipelineCardModal(true), 450);
   }
   function closePipelineCardModal() {
+    clearTimeout(_plAutoSaveTimer);
+    if (_plModalId) { try { savePipelineCardModal(true); } catch (_) {} }  // flush on close
     const m = document.getElementById('pl-card-modal'); if (m) m.classList.remove('open');
     _plModalId = null;
   }
@@ -50759,8 +50787,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!assignees.length && !note && !comments.length) delete _plMeta[_plModalId];
     else _plMeta[_plModalId] = { assignees, note, comments };
     _persistPlMeta();
-    if (!silent) { closePipelineCardModal(); showToast('Saved', 'success'); }
+    if (silent) {
+      // Tiny "✓ Saved" flash so the operator trusts the auto-save.
+      const hint = document.getElementById('pl-modal-saved-hint');
+      if (hint) { hint.style.opacity = '1'; clearTimeout(hint._t); hint._t = setTimeout(() => { hint.style.opacity = '0'; }, 1400); }
+    } else {
+      closePipelineCardModal(); showToast('Saved', 'success');
+    }
     try { renderPipelineBoard(); } catch (_) {}
+  }
+  // Comment composer (top of thread): reveal Save/Cancel only once there's
+  // text to post, mirroring the auto-save notes pattern.
+  function _plCommentInputChanged() {
+    const input = document.getElementById('pl-comment-input');
+    const actions = document.getElementById('pl-comment-actions');
+    if (!input || !actions) return;
+    actions.style.display = (input.value || '').trim() ? 'flex' : 'none';
+  }
+  function _plCommentCancel() {
+    const input = document.getElementById('pl-comment-input');
+    if (input) input.value = '';
+    _plCommentInputChanged();
   }
 
   // ── Comments: append-only running thread (author + timestamp) ──────
@@ -50774,8 +50821,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _renderPlComments() {
     const host = document.getElementById('pl-modal-comments');
     if (!host) return;
+    // Newest first — the composer sits at the TOP of the thread now, so the
+    // most recent comment should be the one right under it.
     const list = ((_plMeta[_plModalId] || {}).comments || []).slice()
-      .sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+      .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
     const cnt = document.getElementById('pl-modal-comment-count');
     if (cnt) cnt.textContent = String(list.length);
     host.innerHTML = list.map(c => {
@@ -50792,9 +50841,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         </div>
       </div>`;
     }).join('');
-    // Keep the newest comment in view, and say so when there's history
-    // above the fold — otherwise it isn't obvious the list scrolls.
-    host.scrollTop = host.scrollHeight;
+    // Newest is at the top now, so start the thread scrolled to the top and
+    // flag when there's older history below the fold.
+    host.scrollTop = 0;
     const hint = document.getElementById('pl-modal-comment-hint');
     if (hint) {
       hint.textContent = (host.scrollHeight > host.clientHeight + 4)
@@ -50824,6 +50873,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // without hitting Save.
     _persistPlMeta();
     if (input) input.value = '';
+    _plCommentInputChanged();   // hide the Save/Cancel row again
     _renderPlComments();
     try { renderPipelineBoard(); } catch (_) {}
   }
