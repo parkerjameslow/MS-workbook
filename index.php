@@ -41465,6 +41465,40 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return sum;
   }
 
+  // BILLABLE qty for the Sale Per — like _combineAwareQtyFromDetail but it
+  // ALSO drops $0-cost ungrouped lines. A combine group bills as ONE kit at
+  // its primary qty (the kit is priced once at Sale Per, never per component
+  // line); ungrouped lines bill their own qty only when they carry a cost.
+  // This is the single guard against a multi-line kit multiplying Sale Per by
+  // the summed component qty (e.g. 8,000) instead of the kit qty (1,000).
+  function _billableQtyFromDetail(d) {
+    d = d || {};
+    const items = Array.isArray(d.rfqItems) ? d.rfqItems : [];
+    const eff = it => {
+      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+      if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.qty || '').replace(/,/g, '')) || 0), 0);
+      return parseFloat(String(it.qty || '').replace(/,/g, '')) || 0;
+    };
+    const lineRmb = it => {
+      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
+      if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.priceRmb || '').replace(/,/g, '')) || parseFloat(it.priceRmb) || 0), 0);
+      return parseFloat(String(it.priceRmb || '').replace(/,/g, '')) || 0;
+    };
+    const groups = Array.isArray(d.combineGroups) ? d.combineGroups : [];
+    const grp = new Set(), grpPrim = new Set();
+    groups.forEach(g => {
+      (g.itemIdxs || []).forEach(ix => grp.add(ix));
+      const pIdx = (g.primaryIdx != null && g.primaryIdx !== '') ? parseInt(g.primaryIdx, 10)
+                 : ((g.itemIdxs || []).length ? Math.min.apply(null, g.itemIdxs) : -1);
+      if (pIdx >= 0) grpPrim.add(pIdx);
+    });
+    return items.reduce((s, it, ix) => {
+      if (grp.has(ix) && !grpPrim.has(ix)) return s;            // kit component → billed via the primary
+      if (grpPrim.has(ix)) return s + eff(it);                 // kit primary → bills the kit's qty
+      return s + (lineRmb(it) > 0 ? eff(it) : 0);              // ungrouped → qty only if it has cost
+    }, 0);
+  }
+
   function _wbStatsForPicker(detail) {
     const d = detail || {};
     const tiers     = Array.isArray(d.tiers) ? d.tiers : [];
@@ -52723,12 +52757,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Billable qty = units on lines that actually have a cost. A $0-cost line
     // (bundled kit accessory) does NOT take the Sale Per, so the kit price is
     // Sale Per × primary qty, not × the summed component qty.
-    const _lineRmb = it => {
-      const vs = Array.isArray(it.variants) ? it.variants.filter(v => v && (v.variant || v.qty)) : [];
-      if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.priceRmb || '').replace(/,/g,'')) || parseFloat(it.priceRmb) || 0), 0);
-      return parseFloat(String(it.priceRmb || '').replace(/,/g,'')) || 0;
-    };
-    const billQty = rfqItems.reduce((s, it) => s + (_lineRmb(it) > 0 ? itemEffQty(it) : 0), 0);
+    // Combine-aware billable qty — a kit bills once at its primary qty, not
+    // the summed component lines (which inflated the order total e.g. 8×).
+    const billQty = (typeof _billableQtyFromDetail === 'function')
+      ? _billableQtyFromDetail(detail)
+      : rfqItems.reduce((s, it) => s + itemEffQty(it), 0);
     const fees = (typeof _appliedFeesFromDetail === 'function') ? _appliedFeesFromDetail(detail) : [];
     // allFees feeds the cost-basis side of the Profit calc (we pay
     // every fee regardless of billed/comp). Markup-only fees are
@@ -53040,9 +53073,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         if (vs.length) return vs.reduce((s, v) => s + (parseFloat(String(v.priceRmb || '').replace(/,/g,'')) || parseFloat(it.priceRmb) || 0), 0);
         return parseFloat(String(it.priceRmb || '').replace(/,/g,'')) || 0;
       };
-      // Billable qty = units on lines that actually have a cost. Drives the
-      // items total + profit spread so $0-cost lines contribute nothing.
-      const wbBillQty = rfqItems.reduce((s, it) => s + (_oshLineRmb(it) > 0 ? itemEffQty(it) : 0), 0);
+      // Combine-group membership (indices into detail.rfqItems): a grouped
+      // non-primary line is a kit COMPONENT (bundled, never priced on its own);
+      // the group primary represents the whole kit.
+      const _oshCg = Array.isArray(detail.combineGroups) ? detail.combineGroups : [];
+      const _oshGrp = new Set(), _oshGrpPrim = new Set();
+      _oshCg.forEach(g => {
+        (g.itemIdxs || []).forEach(ix => _oshGrp.add(ix));
+        const pIdx = (g.primaryIdx != null && g.primaryIdx !== '') ? parseInt(g.primaryIdx, 10)
+                   : ((g.itemIdxs || []).length ? Math.min.apply(null, g.itemIdxs) : -1);
+        if (pIdx >= 0) _oshGrpPrim.add(pIdx);
+      });
+      const _oshIsKitComponent = ix => _oshGrp.has(ix) && !_oshGrpPrim.has(ix);
+      // Billable qty = combine-aware (kit bills once at its primary qty) AND
+      // $0-cost-aware. Drives the header items total + profit spread so a
+      // multi-line kit prices at Sale Per × 1,000, not × the summed 8,000.
+      const wbBillQty = (typeof _billableQtyFromDetail === 'function')
+        ? _billableQtyFromDetail(detail)
+        : rfqItems.reduce((s, it) => s + (_oshLineRmb(it) > 0 ? itemEffQty(it) : 0), 0);
       // Blended product cost per unit (RMB) for the workbook header row.
       let _wbCostRmbSum = 0, _wbCostQty = 0;
       rfqItems.forEach(it => {
@@ -53060,15 +53108,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       });
       // Displayed qty respects the workbook's combine groups: a group counts
       // only its primary line's qty (you're ordering 1,000 kits, not 4,000
-      // component pieces); ungrouped lines add full qty.
-      const _oshCg = Array.isArray(detail.combineGroups) ? detail.combineGroups : [];
-      let wbDisplayQty = wbTotalQty;
-      if (_oshCg.length) {
-        const _grp = new Set(), _grpPrim = new Set();
-        _oshCg.forEach(g => { (g.itemIdxs || []).forEach(ix => _grp.add(ix)); if (g.primaryIdx != null) _grpPrim.add(g.primaryIdx); });
-        const _all = Array.isArray(detail.rfqItems) ? detail.rfqItems : [];
-        wbDisplayQty = _all.reduce((s, it, ix) => s + ((!_grp.has(ix) || _grpPrim.has(ix)) ? itemEffQty(it) : 0), 0);
-      }
+      // component pieces); ungrouped lines add full qty. Reuses the _oshGrp/
+      // _oshGrpPrim sets built above.
+      const wbDisplayQty = (Array.isArray(detail.rfqItems) ? detail.rfqItems : [])
+        .reduce((s, it, ix) => s + ((!_oshGrp.has(ix) || _oshGrpPrim.has(ix)) ? itemEffQty(it) : 0), 0) || wbTotalQty;
       // The combine-group PRIMARY line is already the workbook header row, so
       // don't repeat it as a sub-row (that rendered the main item twice). The
       // sub-rows then show just the bundled components.
@@ -53265,8 +53308,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         // If an item has no variants we just show the item itself
         // (which will read identically to the workbook header for
         // single-item workbooks — that's the correct collapsed state).
-        rfqItems.forEach(item => {
+        rfqItems.forEach((item, _oshItemIdx) => {
           if (_oshSkipItems.has(item)) return;   // primary = header row, don't repeat
+          // A kit COMPONENT (grouped, non-primary) is bundled into the kit's
+          // header price — it must NOT carry its own Sale/Total/Profit, or the
+          // kit price duplicates across every component line.
+          const _kitComp = _oshIsKitComponent(_oshItemIdx);
           const vs = Array.isArray(item.variants) ? item.variants.filter(v => v && (v.variant || v.qty)) : [];
           if (vs.length > 0) {
             // Per-variant rows. Show each variant indented under the
@@ -53275,9 +53322,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             vs.forEach(v => {
               const vQty = parseFloat(String(v.qty || '').replace(/,/g,'')) || 0;
               const vRmb = parseFloat(String(v.priceRmb || '').replace(/,/g,'')) || parseFloat(item.priceRmb) || 0;
-              const vSale = vRmb > 0 ? perUnit : 0;   // $0-cost line → $0, no inherited price
+              const vSale = (vRmb > 0 && !_kitComp) ? perUnit : 0;   // $0-cost OR kit component → no inherited price
               const vTot = vSale > 0 ? vSale * vQty : 0;
-              const vProfit = haveProfit && vRmb > 0 && vQty > 0 ? profitPerUnit * vQty : 0;
+              const vProfit = haveProfit && vRmb > 0 && vQty > 0 && !_kitComp ? profitPerUnit * vQty : 0;
               const vLabel = (v.variant || '').trim() || 'Variant';
               // Prefix the variant with its parent item name when the
               // workbook has multiple parents — disambiguates which
@@ -53294,7 +53341,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                 <td style="text-align:right; color:var(--text-muted);">${vSale > 0 ? '<div>$' + fmt3(vSale) + '</div>' : '—'}</td>
                 <td style="text-align:right;">${vTot > 0 ? '<div style="font-weight:600;">$' + fmt2(vTot) + '</div>' : '—'}</td>
                 <td style="text-align:right; color:var(--text-muted);">—</td>
-                ${profitCell(vProfit, haveProfit && vQty > 0)}
+                ${profitCell(vProfit, haveProfit && vQty > 0 && !_kitComp)}
                 <td></td>
                 <td></td>
               </tr>`;
@@ -53303,9 +53350,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             // No variants — show the item itself as the single line.
             const itemQty = parseFloat(String(item.qty || '').replace(/,/g,'')) || 0;
             const iRmb = parseFloat(String(item.priceRmb || '').replace(/,/g,'')) || 0;
-            const iSale = iRmb > 0 ? perUnit : 0;   // $0-cost line → $0, no inherited price
+            const iSale = (iRmb > 0 && !_kitComp) ? perUnit : 0;   // $0-cost OR kit component → no inherited price
             const iTot = iSale > 0 ? iSale * itemQty : 0;
-            const iProfit = haveProfit && iRmb > 0 && itemQty > 0 ? profitPerUnit * itemQty : 0;
+            const iProfit = haveProfit && iRmb > 0 && itemQty > 0 && !_kitComp ? profitPerUnit * itemQty : 0;
             rows += `<tr data-osh-wb="${esc(key)}" class="order-sheet-line-row" style="${detailStyle}">
               <td style="padding-left:36px;">${esc(item.item || '—')}</td>
               <td style="text-align:right;">${itemQty > 0 ? itemQty.toLocaleString('en-US') : '—'}</td>
@@ -53313,7 +53360,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               <td style="text-align:right; color:var(--text-muted);">${iSale > 0 ? '<div>$' + fmt3(iSale) + '</div>' : '—'}</td>
               <td style="text-align:right;">${iTot > 0 ? '<div style="font-weight:600;">$' + fmt2(iTot) + '</div>' : '—'}</td>
               <td style="text-align:right; color:var(--text-muted);">—</td>
-              ${profitCell(iProfit, haveProfit && itemQty > 0)}
+              ${profitCell(iProfit, haveProfit && itemQty > 0 && !_kitComp)}
               <td></td>
               <td></td>
             </tr>`;
