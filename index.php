@@ -36134,9 +36134,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       'carton-outer-l-in','carton-outer-l-cm','carton-outer-w-in','carton-outer-w-cm','carton-outer-h-in','carton-outer-h-cm',
       'carton-outer-weight','carton-outer-weight-lbs','carton-outer-weight-oz','carton-outer-count','carton-outer-row','carton-outer-side','carton-outer-stack','carton-outer-wall',
       'carton-unit-weight','carton-unit-weight-lbs','pallet-total-cartons',
-      // Shipping
-      'freight-mode','freight-hs-code',
+      // Shipping — method, HS code, lead times, the manual freight-cost
+      // override value, and the two rich-text shipping/pallet note fields
+      // ("Additional Notes — Container / Shipment" + "— Pallet"). Omitting
+      // the notes let a brand-new workbook show the PREVIOUS workbook's
+      // shipping details; omitting the override left a stale freight cost.
+      'freight-mode','freight-hs-code','freight-cost-override',
       'ship-lead-slow','ship-lead-fast','ship-lead-airupp','ship-lead-directair',
+      'pallet-notes','pallet-stack-notes',
       // Pricing
       'ps-margin-pct','ps-sale-per',
       // Quote for Client
@@ -36153,8 +36158,32 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       'fee-die-desc','fee-die-rmb','fee-die-usd',
       'fee-plate-desc','fee-plate-rmb','fee-plate-usd',
       'fee-design-desc','fee-design-usd',
+      // Product description (rich text) — bled the previous product's blurb.
+      'product-desc','product-subcategory-other','product-subcategory-other-2',
+      // Manual-pallet "Case Only" dimensions + "Weight Only" mode inputs —
+      // these are per-workbook SIZES/weights and were carrying over (the
+      // "cached dimensions / pallet sizes" bleed).
+      'case-only-l-in','case-only-l-cm','case-only-w-in','case-only-w-cm','case-only-h-in','case-only-h-cm',
+      'case-only-weight-kg','case-only-weight-lbs','case-only-products-per','case-only-cases-order',
+      'weight-only-kg','weight-only-lbs','weight-only-qty',
+      // Portal request fields.
+      'portal-message','portal-date-submitted','portal-date-expected','portal-tracking',
     ];
     _clearIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // Portal status is a select — reset to its default rather than blank.
+    { const _ps = document.getElementById('portal-status'); if (_ps) _ps.value = 'request'; }
+    // Per-method freight rates live in the freightMethodRates object (not a
+    // single input), so clearing the inputs above isn't enough — reset them
+    // to the defaults so a new workbook never inherits the previous one's
+    // shipping rates. The data branch re-applies saved rates below when present.
+    if (typeof _applyFreightRates === 'function') _applyFreightRates(null, true);
+    // Clear the two rich-text shipping/pallet notes in their editors too (the
+    // textarea value was cleared above; this blanks the visible contenteditable
+    // now, before initRichEditors re-syncs at the end of load).
+    ['pallet-notes','pallet-stack-notes','product-desc'].forEach(id => {
+      const ta = document.getElementById(id);
+      if (ta && ta._msRichEditor && typeof _msSyncFromTextarea === 'function') { try { _msSyncFromTextarea(ta); } catch (_) {} }
+    });
     // Additional Fees — custom rows. Reset the backing array + counter and
     // clear the rendered rows so they don't carry over either. The data
     // branch re-populates from data.extraFeeRows when present.
