@@ -9128,9 +9128,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
             <span>Outer Carton</span>
             <div style="display:flex; align-items:center; gap:8px;">
-              <button type="button" class="specs-clear-btn" id="outer-auto-btn" onclick="autoSizeOuterFromCount()" title="Auto-size the outer box L×W×H from how many inner cartons go in it (uses the inner-carton dimensions + wall).">AUTO</button>
+              <button type="button" id="outer-auto-btn" onclick="autoSizeOuterFromCount()" title="Fill the outer box Length / Width / Height from how many inner cartons go in it (uses the inner-carton dimensions + wall)."
+                style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:800; letter-spacing:0.03em; color:#fff; background:var(--accent); border:none; border-radius:7px; padding:5px 11px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.15);">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+                AUTO-FILL
+              </button>
               <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('outer')" title="Clear all Outer Carton fields">Clear</button>
             </div>
+          </div>
+          <!-- Instruction: these dims auto-fill from the inner-carton count via
+               the AUTO-FILL button; or type them manually. -->
+          <div style="display:flex; align-items:flex-start; gap:7px; margin:0 0 10px; padding:8px 10px; background:rgba(107,147,255,0.08); border:1px solid rgba(107,147,255,0.28); border-radius:8px; font-size:11px; line-height:1.4; color:var(--text-muted);">
+            <span style="font-size:13px; line-height:1;">💡</span>
+            <span>Set <strong>Qty (Inner Cartons)</strong> below, then press <strong style="color:var(--accent);">⚡ AUTO-FILL</strong> (top-right) to size this box automatically — or type the Length / Width / Height yourself.</span>
           </div>
           <div class="specs-dim-grid">
             <div></div>
@@ -9163,7 +9173,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 130px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="How many inner cartons go in one outer box — type it and the outer L×W×H auto-fills.">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons)</span></div>
-                <input type="number" min="0" placeholder="e.g. 2 — auto-sizes the box" id="carton-outer-count" onchange="autoSizeOuterFromCount()" title="Type how many inner cartons go in one outer box — the outer L×W×H fills in automatically." style="width:100%;" />
+                <input type="number" min="0" placeholder="e.g. 2 — then press AUTO-FILL" id="carton-outer-count" title="Type how many inner cartons go in one outer box, then press the AUTO-FILL button (top-right) to size the outer L×W×H." style="width:100%;" />
               </div>
               <div style="flex:1 1 130px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units in the Outer Carton — auto = units per inner × inner cartons">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units in Outer)</span></div>
