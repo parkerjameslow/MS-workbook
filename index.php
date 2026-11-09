@@ -21644,14 +21644,33 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       }
     }
 
-    // FAILSAFE 3 — combine groups. Adopt the remote's groups, but NEVER let
-    // an empty remote wipe groups we hold locally (that's the exact clobber
-    // an active co-editor who never combined would otherwise cause). Keep
-    // ours and re-save so the DB is corrected.
+    // FAILSAFE 3 — combine groups. Adopt the remote's group STRUCTURE, but:
+    //  • NEVER let an empty remote wipe groups we hold locally (that's the
+    //    clobber an active co-editor who never combined would cause). Keep
+    //    ours and re-save so the DB is corrected.
+    //  • `collapsed` (expand/collapse) is a PER-VIEWER preference, not shared
+    //    state — so a co-editor's collapsed value must NEVER re-collapse what
+    //    you expanded. We keep each viewer's own collapse choice per group id,
+    //    and only rebuild the group view when the structure (membership /
+    //    primary / label) truly changed — otherwise a poll would needlessly
+    //    re-render and snap the group shut while two people are on the screen.
     if (Array.isArray(detail.combineGroups)) {
       if (detail.combineGroups.length > 0) {
-        _combineGroups = detail.combineGroups.slice();
-        if (typeof updateRfqGroupsBar === 'function') updateRfqGroupsBar();
+        const _localCollapsed = {};
+        (Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => { if (g && g.id != null) _localCollapsed[g.id] = g.collapsed; });
+        const _adopted = detail.combineGroups.map(g => {
+          const gg = Object.assign({}, g);
+          if (g && g.id != null && Object.prototype.hasOwnProperty.call(_localCollapsed, g.id)) gg.collapsed = _localCollapsed[g.id];
+          return gg;
+        });
+        const _grpStructSig = gs => (Array.isArray(gs) ? gs : []).map(g =>
+          String(g && g.id) + ':' + String(g && g.primaryIdx) + ':' + ((g && g.itemIdxs || []).join(',')) + ':' + String(g && g.label || '')
+        ).join('|');
+        if (_grpStructSig(_adopted) !== _grpStructSig(_combineGroups)) {
+          _combineGroups = _adopted;   // structure changed → adopt + re-render
+          if (typeof updateRfqGroupsBar === 'function') updateRfqGroupsBar();
+        }
+        // else: only collapsed differed — leave the local view exactly as-is.
       } else if (Array.isArray(_combineGroups) && _combineGroups.length > 0) {
         restored = true;   // remote dropped our groups — hold + re-persist
       } else if (typeof updateRfqGroupsBar === 'function') {
