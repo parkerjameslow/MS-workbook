@@ -9128,7 +9128,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <div class="specs-col-title" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
             <span>Outer Carton</span>
             <div style="display:flex; align-items:center; gap:8px;">
-              <span id="outer-calc-badge" style="display:none; font-size:10px; font-weight:600; color:var(--accent); opacity:0.8;">auto</span>
+              <button type="button" class="specs-clear-btn" id="outer-auto-btn" onclick="autoSizeOuterFromCount()" title="Auto-size the outer box L×W×H from how many inner cartons go in it (uses the inner-carton dimensions + wall).">AUTO</button>
               <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('outer')" title="Clear all Outer Carton fields">Clear</button>
             </div>
           </div>
@@ -9155,15 +9155,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="carton-outer-weight-lbs" readonly oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
               <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="carton-outer-weight-oz" readonly oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">oz</span></div>
             </div>
-            <!-- Two qty fields — both READ-ONLY, auto-derived from the
-                 Depth × Width × Height (Inner) arrangement below:
-                 • Inner Cartons  = Depth × Width × Height.
-                 • Units in Outer = units-per-inner × Inner Cartons.
-                 Only the arrangement (and Box Wall) is editable. -->
+            <!-- Qty (Inner Cartons) is now EDITABLE: type how many inner
+                 cartons go in one outer box and the outer L×W×H auto-fills
+                 (autoSizeOuterFromCount, using the inner-carton dims + wall).
+                 Qty (Units in Outer) stays auto = units-per-inner × that. The
+                 Depth×Width×Height arrangement below still works too. -->
             <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 130px; min-width:0;">
-                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Inner Cartons per Outer Carton — auto from Depth × Width × Height below">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons)</span></div>
-                <input type="number" min="0" placeholder="auto" id="carton-outer-count" readonly tabindex="-1" style="width:100%;" />
+                <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="How many inner cartons go in one outer box — type it and the outer L×W×H auto-fills.">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons)</span></div>
+                <input type="number" min="0" placeholder="e.g. 2 — auto-sizes the box" id="carton-outer-count" onchange="autoSizeOuterFromCount()" title="Type how many inner cartons go in one outer box — the outer L×W×H fills in automatically." style="width:100%;" />
               </div>
               <div style="flex:1 1 130px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units in the Outer Carton — auto = units per inner × inner cartons">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units in Outer)</span></div>
@@ -15754,6 +15754,49 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     autoCalcCartons();
     updateOuterWeightHint();
+  }
+
+  // Auto-size the OUTER carton box from the number of inner cartons the
+  // operator wants in it. Type the "Qty (Inner Cartons)" (or click AUTO) and
+  // this computes the best arrangement + box L×W×H = inner-carton dims (each
+  // + 2× wall) × the per-axis count, then fills the outer dimensions and the
+  // Depth×Width×Height arrangement. Falls back to product dims when the inner
+  // carton isn't sized. (Parker, 2026-11-09 — "put in the amount of inners,
+  // do the math and populate L W H".)
+  let _autoSizingOuter = false;
+  function autoSizeOuterFromCount() {
+    if (_autoSizingOuter || _filling) return;
+    const g  = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const gi = id => parseInt(document.getElementById(id)?.value) || 0;
+    const N = gi('carton-outer-count');
+    if (N <= 0) { if (typeof _msToast === 'function') _msToast('Enter how many inner cartons go in the outer box first.', 'warn'); return; }
+    // Unit being packed = the inner carton; fall back to the product if the
+    // inner carton isn't dimensioned (ships without an inner box).
+    let iL = g('carton-inner-l-cm'), iW = g('carton-inner-w-cm'), iH = g('carton-inner-h-cm');
+    if (iL <= 0 || iW <= 0 || iH <= 0) { iL = g('dim-cm-l'); iW = g('dim-cm-w'); iH = g('dim-cm-h'); }
+    if (iL <= 0 || iW <= 0 || iH <= 0) {
+      if (typeof _msToast === 'function') _msToast('Enter the inner carton (or product) dimensions first — then the outer box auto-fills.', 'warn');
+      return;
+    }
+    const oWallSel = gi('carton-outer-wall') || 2;           // matches autoCalcCartons' wall model
+    const wall2 = (oWallSel === 2 ? 0.7 : 0.4) * 2;          // wall on both sides per axis
+    // bestCartonDims adds its padding once per axis, so bake the wall into the
+    // unit size (inner + 2× wall) and pass 0 padding → L = count × (inner+2wall).
+    const fit = bestCartonDims(iL + wall2, iW + wall2, iH + wall2, N, 0);
+    if (!fit) return;
+    _autoSizingOuter = true;
+    try {
+      setCartonDimFields('carton-outer', fit.L, fit.W, fit.H);   // sets cm + in, refreshes box viz
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+      set('carton-outer-row', fit.nx); set('carton-outer-side', fit.ny); set('carton-outer-stack', fit.nz);
+      const innerCnt = gi('carton-inner-count');
+      if (innerCnt > 0) set('carton-outer-units', innerCnt * N);
+    } finally { _autoSizingOuter = false; }
+    if (typeof updateOuterWeightHint === 'function') updateOuterWeightHint();
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (!_filling && typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
+    if (typeof _msToast === 'function') _msToast(`Outer box sized to ${fit.L.toFixed(1)} × ${fit.W.toFixed(1)} × ${fit.H.toFixed(1)} cm for ${N} inner carton${N === 1 ? '' : 's'} (${fit.nx}×${fit.ny}×${fit.nz}).`, 'success');
   }
 
   function autoCalcCartons() {
