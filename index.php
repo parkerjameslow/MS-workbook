@@ -54025,7 +54025,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // AI lands the order as a DRAFT under Client Quotes. Degrades to a
   // typed box when speech isn't available. See iOS notes inline.
   // ═══════════════════════════════════════════════════════════════════
-  let _voiceOrderState = { el:null, listening:false, speaking:false, busy:false, wantListen:false, ttsUnlocked:false, messages:[], links:[], recog:null, supported:false, finalBuf:'' };
+  let _voiceOrderState = { el:null, listening:false, speaking:false, busy:false, wantListen:false, sending:false, ttsUnlocked:false, messages:[], links:[], recog:null, supported:false, finalBuf:'', silenceTimer:null };
+  const _VO_SILENCE_MS = 1400; // pause that marks end-of-utterance (lets you think mid-sentence)
+  function _voClearSilence(){ const st=_voiceOrderState; if(st.silenceTimer){ clearTimeout(st.silenceTimer); st.silenceTimer=null; } }
   function _voSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
   function _voEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
   function _voStatus(txt){ const s=document.getElementById('vo-status'); if(s) s.textContent = txt||''; }
@@ -54060,29 +54062,38 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _voSpeak(text){
     const st=_voiceOrderState;
-    if (!window.speechSynthesis || !text) { if (st.wantListen) { try{ _voStartListening(); }catch(e){} } return; }
+    if (!window.speechSynthesis || !text) { if (st.wantListen && st.el) { try{ _voStartListening(); }catch(e){} } return; }
     try {
       window.speechSynthesis.cancel();
       // Never listen while speaking — TTS would echo back into the mic.
-      if (st.recog && st.listening) { st.listening=false; try{ st.recog.stop(); }catch(e){} }
+      _voClearSilence();
+      if (st.recog && st.listening) { st.sending=true; st.listening=false; try{ st.recog.stop(); }catch(e){} }
       const u = new SpeechSynthesisUtterance(text);
       u.rate = 1.02; u.lang = 'en-US';
       st.speaking=true; _voStatus('Speaking…');
+      // When the reply finishes, automatically re-open the mic so it's a
+      // flowing back-and-forth (no tapping between turns).
       u.onend = ()=>{ st.speaking=false; if(st.el) _voStatus(''); if (st.wantListen && st.el) { try{ _voStartListening(); }catch(e){} } };
-      u.onerror = ()=>{ st.speaking=false; if(st.el) _voStatus(''); };
+      u.onerror = ()=>{ st.speaking=false; if(st.el) _voStatus(''); if (st.wantListen && st.el) { try{ _voStartListening(); }catch(e){} } };
       window.speechSynthesis.speak(u);
     } catch(e){ st.speaking=false; }
   }
-  function _voStartListening(){
+  // Continuous listening: mic stays open, and a short pause (not the browser's
+  // own abrupt cutoff) marks the end of a sentence. Keeps the conversation
+  // going turn after turn until you tap Stop or close.
+  function _voStartListening(userInitiated){
     const st=_voiceOrderState;
     const SR=_voSR();
+    const ui=!!userInitiated;
     if (!SR || !st.el) return;
     if (st.speaking || st.busy) { st.wantListen=true; return; } // resume after speech / server reply
+    if (st.listening) return;
     try {
       const rec = new SR();
       st.recog = rec;
-      rec.lang='en-US'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=1;
-      st.finalBuf=''; st.listening=true; st.wantListen=true;
+      rec.lang='en-US'; rec.interimResults=true; rec.maxAlternatives=1;
+      try { rec.continuous=true; } catch(e){}
+      st.finalBuf=''; st.listening=true; st.wantListen=true; st.sending=false;
       _voSetTalk(true); _voStatus('Listening…');
       rec.onresult = (e)=>{
         let interim='';
@@ -54091,29 +54102,57 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           if (r.isFinal) st.finalBuf += r[0].transcript + ' '; else interim += r[0].transcript;
         }
         _voStatus(('Listening… ' + (st.finalBuf + interim)).trim());
+        // Reset the end-of-utterance timer on every bit of speech.
+        _voClearSilence();
+        if ((st.finalBuf + interim).trim()) st.silenceTimer=setTimeout(()=>_voEndUtterance(), _VO_SILENCE_MS);
       };
       rec.onerror = (e)=>{
         const err=(e && e.error)||'';
         if (err==='not-allowed' || err==='service-not-allowed') {
-          st.wantListen=false; st.listening=false; _voSetTalk(false);
-          _voStatus('Mic permission is off — allow it, or type your order below.');
-          const r=document.getElementById('vo-type-row'); if(r) r.style.display='flex';
-          if (typeof _msToast==='function') { try{ _msToast('Microphone permission is off — enable it or type your order.', 'warn'); }catch(_){} }
+          st.wantListen=false; st.listening=false; _voClearSilence(); _voSetTalk(false);
+          if (ui) {
+            // The operator tapped to talk and was blocked → real permission issue.
+            _voStatus('Mic permission is off — allow it, or type your order below.');
+            const r=document.getElementById('vo-type-row'); if(r) r.style.display='flex';
+            if (typeof _msToast==='function') { try{ _msToast('Microphone permission is off — enable it or type your order.', 'warn'); }catch(_){} }
+          } else {
+            // An auto-start (e.g. iOS needs a tap for the first listen) — just
+            // wait for a tap rather than claiming permission is off.
+            if (st.el) _voStatus('Tap the mic to talk.');
+          }
         }
         // 'no-speech' / 'audio-capture' / 'aborted' fall through to onend.
       };
       rec.onend = ()=>{
         st.listening=false;
-        const txt = st.finalBuf.trim();
-        if (txt) { _voSetTalk(false); _voSend(txt); }
-        else { _voSetTalk(false); if (st.el && st.wantListen) _voStatus('Tap the mic when you’re ready.'); }
+        if (st.sending) return;              // we stopped it on purpose to submit
+        if (st.finalBuf.trim()) { _voEndUtterance(); return; }
+        // Ended with nothing captured (e.g. iOS silence stop) — keep the
+        // conversation alive by gently reopening the mic.
+        if (st.wantListen && !st.speaking && !st.busy && st.el) {
+          setTimeout(()=>{ if(st.wantListen && !st.speaking && !st.busy && !st.listening && st.el){ try{ _voStartListening(); }catch(e){} } }, 350);
+        } else { _voSetTalk(false); }
       };
       rec.start();
     } catch(e){ st.listening=false; _voSetTalk(false); }
   }
+  // A pause (or a natural recognition end) finalizes the current utterance
+  // and sends it. Idempotent: clears finalBuf so the timer + onend can't
+  // double-submit.
+  function _voEndUtterance(){
+    const st=_voiceOrderState;
+    _voClearSilence();
+    const txt=st.finalBuf.trim();
+    st.finalBuf='';
+    if (!txt) return;
+    st.sending=true;                         // stop mic for the think+speak turn, no auto-restart
+    if (st.recog && st.listening) { try{ st.recog.stop(); }catch(e){} }
+    st.listening=false; _voSetTalk(false);
+    _voSend(txt);
+  }
   function _voStopListening(){
     const st=_voiceOrderState;
-    st.wantListen=false;
+    st.wantListen=false; _voClearSilence();
     if (st.recog && st.listening) { try{ st.recog.stop(); }catch(e){} }
     st.listening=false; _voSetTalk(false); _voStatus('');
   }
@@ -54135,18 +54174,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _voAddMsg('assistant', reply);
     if (res.created && res.created.success) _voOnCreated(res.created);
     _voStatus('');
-    _voSpeak(reply);
+    _voSpeak(reply); // speaking it re-opens the mic on end → flowing conversation
   }
   function _voOnCreated(c){
     const st=_voiceOrderState;
-    st.wantListen=false; // order's in — stop the hands-free loop
     const prod = c.product_name || 'Draft';
     const href = '#/client/' + encodeURIComponent(c.holding || 'Client Quotes') + '/workbook/' + c.workbook_id;
+    const verb = (c.action === 'updated') ? 'updated' : 'saved';
+    // Keep (don't duplicate) a single link per workbook.
+    st.links = (st.links||[]).filter(l => l.href !== href);
     st.links.push({ label: 'Open “'+prod+'” draft →', href: href });
     _voDrawThread();
-    if (typeof _msToast==='function') { try{ _msToast('Draft saved in Client Quotes: '+prod, 'success'); }catch(_){} }
-    // Refresh app data so the new draft shows up without a full reload.
+    if (typeof _msToast==='function') { try{ _msToast('Draft '+verb+' in Client Quotes: '+prod, 'success'); }catch(_){} }
+    // Refresh app data so the draft shows up/updates without a full reload.
     (async()=>{ try { if (typeof loadFromDatabase==='function') await loadFromDatabase(); } catch(e){} })();
+    // The conversation stays open so you can keep editing ("also add 500 blue").
   }
   function closeVoiceOrderPanel(){
     const st=_voiceOrderState;
@@ -54197,16 +54239,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const talk=document.getElementById('vo-talk');
     if (st.supported) {
       _voUnlockTts(); // must run inside this tap
-      if (talk) talk.onclick=()=>{ if (st.listening) _voStopListening(); else _voStartListening(); };
+      if (talk) talk.onclick=()=>{ if (st.listening) _voStopListening(); else _voStartListening(true); };
     } else {
       if (talk) talk.style.display='none';
       const r=document.getElementById('vo-type-row'); if(r) r.style.display='flex';
       if (typeToggle) typeToggle.style.display='none';
       _voStatus('Voice isn’t available on this browser — type your order below.');
     }
-    const greet = 'What order can I set up for you?';
+    const greet = 'Hey! Tell me a new order, or a change to a draft. What have you got?';
     _voAddMsg('assistant', greet);
-    if (st.supported) _voSpeak(greet);
+    // Arm the hands-free loop so the mic opens on its own right after the
+    // greeting (on iOS the first open may need one tap — the button's there).
+    if (st.supported) { st.wantListen=true; _voSpeak(greet); }
     _voSetTalk(false);
   }
 

@@ -1934,8 +1934,9 @@ function ms_voice_order_system_prompt(): string {
          . "- COLOR / SIZE VARIANTS and the quantity per variant. If the operator gives one lump total across several colors (e.g. '5000 bags in red, green, blue and brown'), ASK whether to split it evenly across the colors or set each color's quantity — never silently divide.\n"
          . "- The physical SIZE of one unit (the bag): length, width, height, and weight if known, so it can be packed.\n"
          . "- The packing BOX / CARTON size, how many units fit per box, and the box weight if known.\n\n"
-         . "Flow: gather what you need with brief spoken questions. Once you have the essentials, SAY BACK a one-line summary of the whole order and ASK the operator to confirm. ONLY after they clearly say yes, call the create_order_workbook tool. Never call the tool before an explicit yes. If the operator says to skip a detail, leave it out rather than inventing it.\n\n"
-         . "After the tool saves the draft, tell them in one sentence that it's saved as a draft in Client Quotes to review. Today's date: " . date('Y-m-d') . ".";
+         . "Flow for a NEW order: gather what you need with brief spoken questions. Once you have the essentials, SAY BACK a one-line summary of the whole order and ASK the operator to confirm. ONLY after they clearly say yes, call the create_order_workbook tool. Never call the tool before an explicit yes. If the operator says to skip a detail, leave it out rather than inventing it.\n\n"
+         . "EDITING an existing order: if the operator wants to change, add to, or fix a previous / existing order that hasn't been committed yet (e.g. 'add 1000 red bags to the Nut Garden order', 'change the bulk bags to 3000'), FIRST call list_draft_orders, match the one they mean by product and client (ask which one if it's ambiguous), then say back the change and get a yes, then call update_order_workbook with that workbook_id and the COMPLETE new set of lines (keep the lines that aren't changing). You can only edit drafts that are still in Client Quotes; if it's already committed to a client, tell them to edit it in the client's workbook.\n\n"
+         . "After the tool saves, tell them in one sentence what happened (saved / updated) and that it's a draft in Client Quotes to review. Today's date: " . date('Y-m-d') . ".";
 }
 
 // Tool schema — ONLY create_order_workbook. Executed by ms_voice_execute_tool.
@@ -1994,12 +1995,59 @@ function ms_voice_tool_defs(): array {
             ],
             'required' => ['client_name', 'product_name', 'lines'],
         ],
+    ],
+    [
+        'name' => 'list_draft_orders',
+        'description' => 'List the uncommitted DRAFT orders (not yet committed to a client). Call this when the operator wants to CHANGE or add to an existing / previous order, so you can find which draft they mean by its product name, client, and current lines.',
+        'input_schema' => ['type' => 'object', 'properties' => (object)[]],
+    ],
+    [
+        'name' => 'update_order_workbook',
+        'description' => 'Update an existing uncommitted DRAFT order in place (only works on drafts, not orders already committed to a client). First use list_draft_orders to get the right workbook_id. Send the COMPLETE desired set of lines — include unchanged lines too, not just the delta — because this replaces the line list. Pricing already entered on a line is preserved by matching item name. Call ONLY after the operator confirms the change.',
+        'input_schema' => [
+            'type' => 'object',
+            'properties' => [
+                'workbook_id'  => ['type' => 'integer', 'description' => 'The draft to update (from list_draft_orders).'],
+                'product_name' => ['type' => 'string', 'description' => 'New product title, if it is changing. Optional.'],
+                'lines' => [
+                    'type' => 'array',
+                    'description' => 'The COMPLETE desired set of line items after the change (include unchanged lines).',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'item' => ['type' => 'string'],
+                            'qty'  => ['type' => 'number'],
+                            'unit' => ['type' => 'string'],
+                            'variants' => [
+                                'type' => 'array',
+                                'items' => [
+                                    'type' => 'object',
+                                    'properties' => [
+                                        'variant' => ['type' => 'string'],
+                                        'qty'     => ['type' => 'number'],
+                                    ],
+                                    'required' => ['variant'],
+                                ],
+                            ],
+                        ],
+                        'required' => ['item'],
+                    ],
+                ],
+                'is_kit' => ['type' => 'boolean', 'description' => 'True if all lines ship together as one combined kit.'],
+                'bag' => ['type' => 'object', 'properties' => ['lCm' => ['type' => 'number'], 'wCm' => ['type' => 'number'], 'hCm' => ['type' => 'number'], 'weightKg' => ['type' => 'number']]],
+                'box' => ['type' => 'object', 'properties' => ['lCm' => ['type' => 'number'], 'wCm' => ['type' => 'number'], 'hCm' => ['type' => 'number'], 'unitsPerBox' => ['type' => 'number'], 'weightKg' => ['type' => 'number']]],
+                'notes' => ['type' => 'string'],
+            ],
+            'required' => ['workbook_id'],
+        ],
     ]];
 }
 
 function ms_voice_execute_tool(string $name, array $input) {
     switch ($name) {
         case 'create_order_workbook': return ms_voice_create_order_workbook($input);
+        case 'list_draft_orders':     return ms_voice_list_draft_orders($input);
+        case 'update_order_workbook': return ms_voice_update_order_workbook($input);
         default: return ['error' => 'Unknown tool: ' . $name];
     }
 }
@@ -2007,6 +2055,134 @@ function ms_voice_execute_tool(string $name, array $input) {
 // Build a DRAFT workbook under the hidden 'Client Quotes' holding client
 // from a structured spoken order. Mirrors the frontend rfqItems / combine
 // group / flat-carton-key shapes so the workbook opens cleanly in the UI.
+// Resolve (creating if needed) the hidden 'Client Quotes' holding client id.
+function ms_voice_quotes_client_id() {
+    global $pdo;
+    $cs = $pdo->prepare("SELECT id FROM clients WHERE name = 'Client Quotes' AND deleted_at IS NULL LIMIT 1");
+    $cs->execute();
+    $id = $cs->fetchColumn();
+    if (!$id) {
+        $ins = $pdo->prepare("INSERT INTO clients (name, account_manager, salesperson) VALUES ('Client Quotes', NULL, NULL)");
+        $ins->execute();
+        $id = $pdo->lastInsertId();
+    }
+    return $id;
+}
+
+// Build / merge the order-structure portion of a workbook detail from the
+// spoken order $in, layered on top of an existing $base detail (empty for a
+// new order). Shared by create + update so both produce identical shapes.
+// When $in['lines'] is given it REPLACES rfqItems (the model always sends the
+// complete desired set), but it PRESERVES any priceRmb/leadTime/specs/images
+// already on a line with the same item name so a voice edit never wipes
+// pricing the operator added at their desk.
+function ms_voice_assemble_order_detail(array $in, array $base = []): array {
+    $detail = is_array($base) ? $base : [];
+    $productName = trim((string)($in['product_name'] ?? ''));
+    $clientName  = trim((string)($in['client_name'] ?? ''));
+    if ($productName !== '') { $detail['product'] = $productName; if (empty($detail['desc'])) $detail['desc'] = $productName; }
+    if ($clientName  !== '') { $detail['client']  = $clientName; }
+
+    // qty stored as comma-stripped STRING (matches collectRfqItems).
+    $num = function ($v) {
+        if ($v === null || $v === '') return '';
+        $s = preg_replace('/[,\s]/', '', (string)$v);
+        return is_numeric($s) ? (string)(0 + $s) : '';
+    };
+    $lines = is_array($in['lines'] ?? null) ? $in['lines'] : [];
+    if (!empty($lines)) {
+        // Index existing lines/variants by name so we can preserve their pricing.
+        $prevByItem = [];
+        foreach ((is_array($base['rfqItems'] ?? null) ? $base['rfqItems'] : []) as $pl) {
+            if (is_array($pl) && isset($pl['item'])) $prevByItem[mb_strtolower(trim((string)$pl['item']))] = $pl;
+        }
+        $rfqItems = [];
+        foreach ($lines as $ln) {
+            if (!is_array($ln)) continue;
+            $item = trim((string)($ln['item'] ?? ''));
+            if ($item === '') continue;
+            $prev = $prevByItem[mb_strtolower($item)] ?? [];
+            $prevVar = [];
+            foreach ((is_array($prev['variants'] ?? null) ? $prev['variants'] : []) as $pv) {
+                if (is_array($pv) && isset($pv['variant'])) $prevVar[mb_strtolower(trim((string)$pv['variant']))] = $pv;
+            }
+            $variants = [];
+            foreach ((is_array($ln['variants'] ?? null) ? $ln['variants'] : []) as $v) {
+                if (!is_array($v)) continue;
+                $vname = trim((string)($v['variant'] ?? ''));
+                if ($vname === '') continue;
+                $pvp = $prevVar[mb_strtolower($vname)] ?? [];
+                $variants[] = [
+                    'sku' => (string)($pvp['sku'] ?? ''), 'variant' => $vname, 'qty' => $num($v['qty'] ?? ''),
+                    'priceRmb' => (string)($pvp['priceRmb'] ?? ''), 'leadTime' => (string)($pvp['leadTime'] ?? ''),
+                ];
+            }
+            $rfqItems[] = [
+                'sku' => (string)($prev['sku'] ?? ''), 'item' => $item, 'qty' => $num($ln['qty'] ?? ''),
+                'priceRmb' => (string)($prev['priceRmb'] ?? ''), 'leadTime' => (string)($prev['leadTime'] ?? ''),
+                'sample' => (bool)($prev['sample'] ?? false),
+                'variants' => $variants,
+                'images' => is_array($prev['images'] ?? null) ? $prev['images'] : [],
+                'specs' => is_array($prev['specs'] ?? null) ? $prev['specs'] : [],
+                'factory' => (string)($prev['factory'] ?? ''),
+                'fileSections' => (isset($prev['fileSections']) && is_array($prev['fileSections'])) ? (object)$prev['fileSections'] : (object)[],
+                'comparableOptions' => is_array($prev['comparableOptions'] ?? null) ? $prev['comparableOptions'] : [],
+                'selectedOptionIdx' => isset($prev['selectedOptionIdx']) ? $prev['selectedOptionIdx'] : 0,
+            ];
+        }
+        if (!empty($rfqItems)) {
+            $detail['rfqItems'] = $rfqItems;
+            // Combine group when it's one kit of 2+ lines; an explicit is_kit:false clears it.
+            if (!empty($in['is_kit']) && count($rfqItems) > 1) {
+                $lbl = $productName !== '' ? $productName : (string)($detail['product'] ?? 'Kit');
+                $detail['combineGroups'] = [[
+                    'id' => 'cg' . (int) round(microtime(true) * 1000), 'label' => $lbl,
+                    'primaryIdx' => 0, 'itemIdxs' => range(0, count($rfqItems) - 1), 'collapsed' => true,
+                ]];
+            } else if (array_key_exists('is_kit', $in) || !isset($detail['combineGroups'])) {
+                $detail['combineGroups'] = [];
+            }
+        }
+    }
+
+    // Dimensions. Box -> flat outer-carton keys; bag -> notes text.
+    $box = is_array($in['box'] ?? null) ? $in['box'] : [];
+    $bag = is_array($in['bag'] ?? null) ? $in['bag'] : [];
+    $sv = function ($v) { return ($v === null || $v === '') ? '' : (string)(0 + (float)$v); };
+    if (isset($box['lCm']))         $detail['cartonOuterLCm']   = $sv($box['lCm']);
+    if (isset($box['wCm']))         $detail['cartonOuterWCm']   = $sv($box['wCm']);
+    if (isset($box['hCm']))         $detail['cartonOuterHCm']   = $sv($box['hCm']);
+    if (isset($box['unitsPerBox'])) $detail['cartonInnerCount'] = $sv($box['unitsPerBox']);
+    if (isset($box['weightKg']))    $detail['dimWeightKg']      = $sv($box['weightKg']);
+    if (isset($bag['weightKg']))    $detail['cartonUnitWeight'] = $sv($bag['weightKg']);
+
+    $noteParts = [];
+    $bagDims = array_values(array_filter([
+        isset($bag['lCm']) ? $bag['lCm'] . 'L' : null,
+        isset($bag['wCm']) ? $bag['wCm'] . 'W' : null,
+        isset($bag['hCm']) ? $bag['hCm'] . 'H' : null,
+    ]));
+    if ($bagDims) { $noteParts[] = 'Bag size (cm): ' . implode(' x ', $bagDims) . '.'; $detail['dimPackaging'] = 'Bag ' . implode(' x ', $bagDims) . ' cm'; }
+    if (isset($bag['weightKg'])) $noteParts[] = 'Bag weight: ' . $bag['weightKg'] . ' kg.';
+    $extra = trim((string)($in['notes'] ?? ''));
+    if ($extra !== '') $noteParts[] = $extra;
+    if ($noteParts) {
+        $existing = trim((string)($detail['notes'] ?? ''));
+        $detail['notes'] = trim($existing . ($existing !== '' ? ' ' : '') . implode(' ', $noteParts));
+    }
+    return $detail;
+}
+
+// Short "3000 Bulk bag" style summary of a detail's lines, for tool results.
+function ms_voice_line_summary(array $detail): array {
+    $out = [];
+    foreach ((is_array($detail['rfqItems'] ?? null) ? $detail['rfqItems'] : []) as $it) {
+        if (!is_array($it)) continue;
+        $out[] = trim((($it['qty'] ?? '') !== '' ? $it['qty'] . ' ' : '') . (string)($it['item'] ?? ''));
+    }
+    return $out;
+}
+
 function ms_voice_create_order_workbook(array $in) {
     global $pdo;
     $clientName  = trim((string)($in['client_name'] ?? ''));
@@ -2015,101 +2191,12 @@ function ms_voice_create_order_workbook(array $in) {
     if ($productName === '' || empty($lines)) {
         return ['success' => false, 'error' => 'Need at least a product name and one line item.'];
     }
-    // Draft orders live under the hidden holding client 'Client Quotes'
-    // (same convention as the frontend _ensureQuotesClient).
-    $HOLDING = 'Client Quotes';
-    try {
-        $cs = $pdo->prepare("SELECT id FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
-        $cs->execute([$HOLDING]);
-        $holdingId = $cs->fetchColumn();
-        if (!$holdingId) {
-            $ins = $pdo->prepare("INSERT INTO clients (name, account_manager, salesperson) VALUES (?, NULL, NULL)");
-            $ins->execute([$HOLDING]);
-            $holdingId = $pdo->lastInsertId();
-        }
-    } catch (\Throwable $e) {
-        return ['success' => false, 'error' => 'Could not prepare the drafts area: ' . $e->getMessage()];
-    }
+    try { $holdingId = ms_voice_quotes_client_id(); }
+    catch (\Throwable $e) { return ['success' => false, 'error' => 'Could not prepare the drafts area: ' . $e->getMessage()]; }
 
-    // qty is stored as a comma-stripped STRING (matches collectRfqItems).
-    $num = function ($v) {
-        if ($v === null || $v === '') return '';
-        $s = preg_replace('/[,\s]/', '', (string)$v);
-        return is_numeric($s) ? (string)(0 + $s) : '';
-    };
-    $rfqItems = [];
-    foreach ($lines as $ln) {
-        if (!is_array($ln)) continue;
-        $item = trim((string)($ln['item'] ?? ''));
-        if ($item === '') continue;
-        $variants = [];
-        foreach ((is_array($ln['variants'] ?? null) ? $ln['variants'] : []) as $v) {
-            if (!is_array($v)) continue;
-            $vname = trim((string)($v['variant'] ?? ''));
-            if ($vname === '') continue;
-            $variants[] = ['sku' => '', 'variant' => $vname, 'qty' => $num($v['qty'] ?? ''), 'priceRmb' => '', 'leadTime' => ''];
-        }
-        $rfqItems[] = [
-            'sku' => '', 'item' => $item, 'qty' => $num($ln['qty'] ?? ''),
-            'priceRmb' => '', 'leadTime' => '', 'sample' => false,
-            'variants' => $variants, 'images' => [], 'specs' => [], 'factory' => '',
-            'fileSections' => (object)[], 'comparableOptions' => [], 'selectedOptionIdx' => 0,
-        ];
-    }
-    if (empty($rfqItems)) return ['success' => false, 'error' => 'No usable line items.'];
-
-    // Combine group only when it's one kit of 2+ lines (bills once at primary).
-    $combineGroups = [];
-    if (!empty($in['is_kit']) && count($rfqItems) > 1) {
-        $combineGroups[] = [
-            'id' => 'cg' . (int) round(microtime(true) * 1000),
-            'label' => $productName,
-            'primaryIdx' => 0,
-            'itemIdxs' => range(0, count($rfqItems) - 1),
-            'collapsed' => true,
-        ];
-    }
-
-    $box = is_array($in['box'] ?? null) ? $in['box'] : [];
-    $bag = is_array($in['bag'] ?? null) ? $in['bag'] : [];
-    $sv = function ($v) { return ($v === null || $v === '') ? '' : (string)(0 + (float)$v); };
-    $detail = [
-        'client'        => $clientName,
-        'product'       => $productName,
-        'desc'          => $productName,
-        'rfqItems'      => $rfqItems,
-        'combineGroups' => $combineGroups,
-    ];
-    // Box size -> flat OUTER carton keys the workbook already reads.
-    if (isset($box['lCm']))        $detail['cartonOuterLCm']  = $sv($box['lCm']);
-    if (isset($box['wCm']))        $detail['cartonOuterWCm']  = $sv($box['wCm']);
-    if (isset($box['hCm']))        $detail['cartonOuterHCm']  = $sv($box['hCm']);
-    if (isset($box['unitsPerBox'])) $detail['cartonInnerCount'] = $sv($box['unitsPerBox']);
-    if (isset($box['weightKg']))    $detail['dimWeightKg']      = $sv($box['weightKg']);
-    if (isset($bag['weightKg']))    $detail['cartonUnitWeight'] = $sv($bag['weightKg']);
-
-    // Human-readable notes: the real client + the bag's physical size
-    // (no numeric per-unit dimension slot exists, so it goes to text).
-    $noteParts = [];
-    if ($clientName !== '') $noteParts[] = 'Voice order for: ' . $clientName . '.';
-    $bagDims = array_values(array_filter([
-        isset($bag['lCm']) ? $bag['lCm'] . 'L' : null,
-        isset($bag['wCm']) ? $bag['wCm'] . 'W' : null,
-        isset($bag['hCm']) ? $bag['hCm'] . 'H' : null,
-    ]));
-    if ($bagDims) $noteParts[] = 'Bag size (cm): ' . implode(' x ', $bagDims) . '.';
-    if (isset($bag['weightKg'])) $noteParts[] = 'Bag weight: ' . $bag['weightKg'] . ' kg.';
-    $extraNotes = trim((string)($in['notes'] ?? ''));
-    if ($extraNotes !== '') $noteParts[] = $extraNotes;
-    if ($noteParts) {
-        $detail['notes'] = implode(' ', $noteParts);
-        if ($bagDims) $detail['dimPackaging'] = 'Bag ' . implode(' x ', $bagDims) . ' cm';
-    }
-    $detail['voiceOrder'] = [
-        'clientName' => $clientName,
-        'createdAt'  => date('c'),
-        'notes'      => $extraNotes,
-    ];
+    $detail = ms_voice_assemble_order_detail($in, []);
+    if (empty($detail['rfqItems'])) return ['success' => false, 'error' => 'No usable line items.'];
+    $detail['voiceOrder'] = ['clientName' => $clientName, 'createdAt' => date('c'), 'notes' => trim((string)($in['notes'] ?? ''))];
 
     // Keep product name unique within the holding client so a re-dictation
     // doesn't dedupe into a previous draft.
@@ -2127,19 +2214,78 @@ function ms_voice_create_order_workbook(array $in) {
     } catch (\Throwable $e) {
         return ['success' => false, 'error' => 'Could not save the draft: ' . $e->getMessage()];
     }
-
-    $lineSummary = [];
-    foreach ($rfqItems as $it) {
-        $lineSummary[] = trim(($it['qty'] !== '' ? $it['qty'] . ' ' : '') . $it['item']);
-    }
     return [
-        'success'      => true,
-        'workbook_id'  => $wbId,
-        'product_name' => $pn,
-        'client_name'  => $clientName,
-        'holding'      => $HOLDING,
-        'lines'        => $lineSummary,
-        'draft'        => true,
+        'success' => true, 'action' => 'created', 'workbook_id' => $wbId,
+        'product_name' => $pn, 'client_name' => $clientName, 'holding' => 'Client Quotes',
+        'lines' => ms_voice_line_summary($detail), 'draft' => true,
+    ];
+}
+
+// List the uncommitted draft orders (workbooks under 'Client Quotes') so the
+// model can find the one the operator means when they ask to change an order.
+function ms_voice_list_draft_orders(array $in = []) {
+    global $pdo;
+    try {
+        $holdingId = ms_voice_quotes_client_id();
+        $st = $pdo->prepare("SELECT id, product_name, detail_json FROM workbooks WHERE client_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 30");
+        $st->execute([$holdingId]);
+        $out = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $d = json_decode((string)$row['detail_json'], true);
+            if (!is_array($d)) $d = [];
+            $lines = [];
+            foreach ((is_array($d['rfqItems'] ?? null) ? $d['rfqItems'] : []) as $it) {
+                if (!is_array($it)) continue;
+                $vs = [];
+                foreach ((is_array($it['variants'] ?? null) ? $it['variants'] : []) as $v) {
+                    if (is_array($v) && ($v['variant'] ?? '') !== '') $vs[] = ['variant' => $v['variant'], 'qty' => $v['qty'] ?? ''];
+                }
+                $lines[] = ['item' => $it['item'] ?? '', 'qty' => $it['qty'] ?? '', 'variants' => $vs];
+            }
+            $out[] = [
+                'workbook_id' => (int)$row['id'],
+                'product_name' => (string)$row['product_name'],
+                'client_name' => (string)($d['voiceOrder']['clientName'] ?? ($d['client'] ?? '')),
+                'lines' => $lines,
+            ];
+        }
+        return ['success' => true, 'drafts' => $out, 'count' => count($out)];
+    } catch (\Throwable $e) {
+        return ['success' => false, 'error' => 'Could not list drafts: ' . $e->getMessage()];
+    }
+}
+
+// Update an existing uncommitted draft order (under 'Client Quotes') in place.
+// The model sends the COMPLETE desired line set; pricing on matching lines is
+// preserved by the assembler. Refuses anything already committed to a client.
+function ms_voice_update_order_workbook(array $in) {
+    global $pdo;
+    $wbId = (int)($in['workbook_id'] ?? 0);
+    if (!$wbId) return ['success' => false, 'error' => 'workbook_id is required.'];
+    try {
+        $st = $pdo->prepare("SELECT w.detail_json, w.product_name, c.name AS client_name FROM workbooks w JOIN clients c ON c.id = w.client_id WHERE w.id = ? AND w.deleted_at IS NULL LIMIT 1");
+        $st->execute([$wbId]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) { return ['success' => false, 'error' => 'Could not load the draft: ' . $e->getMessage()]; }
+    if (!$row) return ['success' => false, 'error' => 'No draft found with that id.'];
+    if (trim((string)$row['client_name']) !== 'Client Quotes') {
+        return ['success' => false, 'error' => 'That order has already been committed to a client, so it can\'t be voice-edited. Edit it in the client\'s workbook instead.'];
+    }
+    $base = json_decode((string)$row['detail_json'], true);
+    if (!is_array($base)) $base = [];
+    $detail = ms_voice_assemble_order_detail($in, $base);
+    $detail['voiceOrder'] = array_merge(
+        is_array($base['voiceOrder'] ?? null) ? $base['voiceOrder'] : [],
+        ['updatedAt' => date('c')]
+    );
+    try {
+        $up = $pdo->prepare("UPDATE workbooks SET detail_json = ? WHERE id = ?");
+        $up->execute([json_encode($detail), $wbId]);
+    } catch (\Throwable $e) { return ['success' => false, 'error' => 'Could not save the change: ' . $e->getMessage()]; }
+    return [
+        'success' => true, 'action' => 'updated', 'workbook_id' => $wbId,
+        'product_name' => (string)$row['product_name'], 'client_name' => (string)($detail['client'] ?? ''),
+        'holding' => 'Client Quotes', 'lines' => ms_voice_line_summary($detail), 'draft' => true,
     ];
 }
 
@@ -5166,7 +5312,7 @@ switch ($action) {
                 $tId    = $block['id'] ?? '';
                 $toolsUsed[] = $tName;
                 $tResult = ms_voice_execute_tool($tName, $tInput);
-                if ($tName === 'create_order_workbook' && is_array($tResult) && !empty($tResult['success'])) {
+                if (($tName === 'create_order_workbook' || $tName === 'update_order_workbook') && is_array($tResult) && !empty($tResult['success'])) {
                     $created = $tResult;
                 }
                 $toolResults[] = [
