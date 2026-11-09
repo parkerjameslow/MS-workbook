@@ -54008,6 +54008,198 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     saveOrders();
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // VOICE ORDER — hands-free spoken order capture (mic FAB → panel).
+  // Browser Web Speech API for speech-to-text, speechSynthesis to read
+  // questions back, talks to the `voice_order` backend action, and the
+  // AI lands the order as a DRAFT under Client Quotes. Degrades to a
+  // typed box when speech isn't available. See iOS notes inline.
+  // ═══════════════════════════════════════════════════════════════════
+  let _voiceOrderState = { el:null, listening:false, speaking:false, busy:false, wantListen:false, ttsUnlocked:false, messages:[], links:[], recog:null, supported:false, finalBuf:'' };
+  function _voSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+  function _voEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function _voStatus(txt){ const s=document.getElementById('vo-status'); if(s) s.textContent = txt||''; }
+  function _voSetTalk(listening){
+    const b=document.getElementById('vo-talk'); if(!b) return;
+    if (listening){ b.innerHTML='&#9632;&nbsp; Stop'; b.style.background='#dc2626'; }
+    else { b.innerHTML='&#127908;&nbsp; Tap to talk'; b.style.background='var(--accent,#6b93ff)'; }
+  }
+  function _voAddMsg(role, content){ _voiceOrderState.messages.push({ role:role, content:content }); _voDrawThread(); }
+  function _voDrawThread(){
+    const t=document.getElementById('vo-thread'); if(!t) return;
+    let html = _voiceOrderState.messages.map(m=>{
+      const mine = m.role==='user';
+      const bg = mine ? 'var(--accent,#6b93ff)' : 'var(--surface2,#f3f4f6)';
+      const col = mine ? '#fff' : 'var(--text,#111)';
+      const align = mine ? 'flex-end' : 'flex-start';
+      return '<div style="align-self:'+align+'; max-width:85%; background:'+bg+'; color:'+col+'; padding:8px 12px; border-radius:14px; font-size:14px; line-height:1.4; white-space:pre-wrap;">'+_voEsc(m.content)+'</div>';
+    }).join('');
+    (_voiceOrderState.links||[]).forEach(l=>{
+      html += '<button type="button" class="vo-link" data-href="'+_voEsc(l.href)+'" style="align-self:flex-start; max-width:92%; text-align:left; background:var(--surface2,#eef); color:var(--accent,#6b93ff); border:1px solid var(--accent,#6b93ff); padding:10px 12px; border-radius:12px; font-size:14px; font-weight:700; cursor:pointer;">'+_voEsc(l.label)+'</button>';
+    });
+    t.innerHTML = html;
+    t.querySelectorAll('.vo-link').forEach(b=>{ b.onclick=()=>{ const h=b.getAttribute('data-href'); closeVoiceOrderPanel(); if(h) location.hash=h; }; });
+    t.scrollTop = t.scrollHeight;
+  }
+  // iOS gesture rule: the FIRST speechSynthesis call must come from a user
+  // tap, so we fire a silent utterance inside the panel-open handler.
+  function _voUnlockTts(){
+    const st=_voiceOrderState;
+    if (st.ttsUnlocked || !window.speechSynthesis) return;
+    try { const u=new SpeechSynthesisUtterance(' '); u.volume=0; window.speechSynthesis.speak(u); st.ttsUnlocked=true; } catch(e){}
+  }
+  function _voSpeak(text){
+    const st=_voiceOrderState;
+    if (!window.speechSynthesis || !text) { if (st.wantListen) { try{ _voStartListening(); }catch(e){} } return; }
+    try {
+      window.speechSynthesis.cancel();
+      // Never listen while speaking — TTS would echo back into the mic.
+      if (st.recog && st.listening) { st.listening=false; try{ st.recog.stop(); }catch(e){} }
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1.02; u.lang = 'en-US';
+      st.speaking=true; _voStatus('Speaking…');
+      u.onend = ()=>{ st.speaking=false; if(st.el) _voStatus(''); if (st.wantListen && st.el) { try{ _voStartListening(); }catch(e){} } };
+      u.onerror = ()=>{ st.speaking=false; if(st.el) _voStatus(''); };
+      window.speechSynthesis.speak(u);
+    } catch(e){ st.speaking=false; }
+  }
+  function _voStartListening(){
+    const st=_voiceOrderState;
+    const SR=_voSR();
+    if (!SR || !st.el) return;
+    if (st.speaking || st.busy) { st.wantListen=true; return; } // resume after speech / server reply
+    try {
+      const rec = new SR();
+      st.recog = rec;
+      rec.lang='en-US'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=1;
+      st.finalBuf=''; st.listening=true; st.wantListen=true;
+      _voSetTalk(true); _voStatus('Listening…');
+      rec.onresult = (e)=>{
+        let interim='';
+        for (let i=e.resultIndex;i<e.results.length;i++){
+          const r=e.results[i];
+          if (r.isFinal) st.finalBuf += r[0].transcript + ' '; else interim += r[0].transcript;
+        }
+        _voStatus(('Listening… ' + (st.finalBuf + interim)).trim());
+      };
+      rec.onerror = (e)=>{
+        const err=(e && e.error)||'';
+        if (err==='not-allowed' || err==='service-not-allowed') {
+          st.wantListen=false; st.listening=false; _voSetTalk(false);
+          _voStatus('Mic permission is off — allow it, or type your order below.');
+          const r=document.getElementById('vo-type-row'); if(r) r.style.display='flex';
+          if (typeof _msToast==='function') { try{ _msToast('Microphone permission is off — enable it or type your order.', 'warn'); }catch(_){} }
+        }
+        // 'no-speech' / 'audio-capture' / 'aborted' fall through to onend.
+      };
+      rec.onend = ()=>{
+        st.listening=false;
+        const txt = st.finalBuf.trim();
+        if (txt) { _voSetTalk(false); _voSend(txt); }
+        else { _voSetTalk(false); if (st.el && st.wantListen) _voStatus('Tap the mic when you’re ready.'); }
+      };
+      rec.start();
+    } catch(e){ st.listening=false; _voSetTalk(false); }
+  }
+  function _voStopListening(){
+    const st=_voiceOrderState;
+    st.wantListen=false;
+    if (st.recog && st.listening) { try{ st.recog.stop(); }catch(e){} }
+    st.listening=false; _voSetTalk(false); _voStatus('');
+  }
+  async function _voSend(text){
+    const st=_voiceOrderState;
+    if (!text || st.busy) return;
+    _voAddMsg('user', text);
+    st.busy=true; _voStatus('Thinking…');
+    let res;
+    try { res = await apiCall('voice_order', { messages: st.messages.map(m=>({role:m.role, content:m.content})) }); }
+    catch(e){ res = { ok:false, error:'Network hiccup — try again.' }; }
+    st.busy=false;
+    if (!st.el) return; // panel closed mid-flight
+    if (!res || !res.ok) {
+      const emsg = (res && res.error) ? String(res.error) : 'Something went wrong.';
+      _voAddMsg('assistant', emsg); _voStatus(''); _voSpeak(emsg); return;
+    }
+    const reply = res.text || '';
+    _voAddMsg('assistant', reply);
+    if (res.created && res.created.success) _voOnCreated(res.created);
+    _voStatus('');
+    _voSpeak(reply);
+  }
+  function _voOnCreated(c){
+    const st=_voiceOrderState;
+    st.wantListen=false; // order's in — stop the hands-free loop
+    const prod = c.product_name || 'Draft';
+    const href = '#/client/' + encodeURIComponent(c.holding || 'Client Quotes') + '/workbook/' + c.workbook_id;
+    st.links.push({ label: 'Open “'+prod+'” draft →', href: href });
+    _voDrawThread();
+    if (typeof _msToast==='function') { try{ _msToast('Draft saved in Client Quotes: '+prod, 'success'); }catch(_){} }
+    // Refresh app data so the new draft shows up without a full reload.
+    (async()=>{ try { if (typeof loadFromDatabase==='function') await loadFromDatabase(); } catch(e){} })();
+  }
+  function closeVoiceOrderPanel(){
+    const st=_voiceOrderState;
+    st.wantListen=false; st.listening=false;
+    try { if (st.recog) st.recog.abort(); } catch(e){}
+    try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch(e){}
+    st.speaking=false;
+    if (st.el) { try{ st.el.remove(); }catch(e){} st.el=null; }
+  }
+  function openVoiceOrderPanel(){
+    const st=_voiceOrderState;
+    if (st.el) { try{ st.el.remove(); }catch(e){} st.el=null; }
+    // Fresh conversation each open.
+    st.messages=[]; st.links=[]; st.listening=false; st.speaking=false; st.busy=false; st.finalBuf=''; st.wantListen=false;
+    const SR=_voSR();
+    st.supported = !!SR && !!window.speechSynthesis;
+    const isMobile = window.innerWidth < (typeof MOBILE_BP!=='undefined'?MOBILE_BP:768);
+    const overlay = document.createElement('div');
+    overlay.id='vo-overlay';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:1200; background:rgba(0,0,0,0.55); display:flex; justify-content:center; align-items:'+(isMobile?'flex-end':'center')+';';
+    const cardStyle = isMobile ? 'width:100%; max-height:92vh; border-radius:18px 18px 0 0;' : 'width:460px; max-width:94vw; max-height:88vh; border-radius:16px;';
+    overlay.innerHTML =
+      '<div id="vo-card" style="'+cardStyle+' background:var(--surface,#fff); color:var(--text,#111); display:flex; flex-direction:column; overflow:hidden; box-shadow:0 10px 40px rgba(0,0,0,0.3);">'
+      + '<div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border,#e5e7eb);">'
+      +   '<div style="font-weight:800; font-size:16px;">&#127908; Voice Order</div>'
+      +   '<button type="button" id="vo-close" aria-label="Close" style="border:none; background:transparent; font-size:24px; line-height:1; cursor:pointer; color:var(--text-muted,#888);">&times;</button>'
+      + '</div>'
+      + '<div id="vo-thread" style="flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; min-height:150px;"></div>'
+      + '<div id="vo-status" style="padding:2px 16px; font-size:12px; color:var(--text-muted,#888); min-height:18px;"></div>'
+      + '<div style="padding:12px 16px 16px; border-top:1px solid var(--border,#e5e7eb); display:flex; flex-direction:column; gap:10px;">'
+      +   '<button type="button" id="vo-talk" style="width:100%; padding:16px; border:none; border-radius:14px; background:var(--accent,#6b93ff); color:#fff; font-size:17px; font-weight:800; cursor:pointer;">&#127908;&nbsp; Tap to talk</button>'
+      +   '<div style="display:flex; justify-content:center;"><button type="button" id="vo-type-toggle" style="border:none; background:transparent; color:var(--accent,#6b93ff); font-size:13px; font-weight:600; cursor:pointer;">Type instead</button></div>'
+      +   '<div id="vo-type-row" style="display:none; gap:8px;">'
+      +     '<input id="vo-text" type="text" placeholder="Type your order…" style="flex:1; padding:11px 12px; border:1px solid var(--border,#d1d5db); border-radius:10px; font-size:15px; background:var(--surface2,#fff); color:var(--text,#111);">'
+      +     '<button type="button" id="vo-send" style="padding:0 16px; border:none; border-radius:10px; background:var(--accent,#6b93ff); color:#fff; font-weight:700; cursor:pointer;">Send</button>'
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+    document.body.appendChild(overlay);
+    st.el = overlay;
+    overlay.addEventListener('click', (e)=>{ if (e.target===overlay) closeVoiceOrderPanel(); });
+    const closeBtn=document.getElementById('vo-close'); if(closeBtn) closeBtn.onclick=closeVoiceOrderPanel;
+    const typeToggle=document.getElementById('vo-type-toggle');
+    if (typeToggle) typeToggle.onclick=()=>{ const r=document.getElementById('vo-type-row'); if(r) r.style.display=(r.style.display==='none'?'flex':'none'); const i=document.getElementById('vo-text'); if(i && r && r.style.display!=='none') i.focus(); };
+    const sendTyped=()=>{ const i=document.getElementById('vo-text'); if(!i) return; const t=i.value.trim(); if(!t) return; i.value=''; _voSend(t); };
+    const sendBtn=document.getElementById('vo-send'); if(sendBtn) sendBtn.onclick=sendTyped;
+    const textIn=document.getElementById('vo-text'); if(textIn) textIn.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); sendTyped(); } });
+    const talk=document.getElementById('vo-talk');
+    if (st.supported) {
+      _voUnlockTts(); // must run inside this tap
+      if (talk) talk.onclick=()=>{ if (st.listening) _voStopListening(); else _voStartListening(); };
+    } else {
+      if (talk) talk.style.display='none';
+      const r=document.getElementById('vo-type-row'); if(r) r.style.display='flex';
+      if (typeToggle) typeToggle.style.display='none';
+      _voStatus('Voice isn’t available on this browser — type your order below.');
+    }
+    const greet = 'What order can I set up for you?';
+    _voAddMsg('assistant', greet);
+    if (st.supported) _voSpeak(greet);
+    _voSetTalk(false);
+  }
+
 </script>
 <!-- Build badge — bottom-right, shows the server file mtime so the
      operator can confirm a hard refresh actually picked up the latest
@@ -54017,5 +54209,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
      style="position:fixed; bottom:6px; right:8px; z-index:9999; font: 10px/1 -apple-system,BlinkMacSystemFont,sans-serif; color:#9ca3af; background:rgba(255,255,255,0.7); padding:3px 6px; border-radius:4px; pointer-events:none; user-select:none;">
   build <?= htmlspecialchars($_msBuildIso, ENT_QUOTES) ?>
 </div>
+<!-- Voice Order mic — floating, bottom-left (bottom-right is the build
+     badge + toasts). Tap to dictate an order hands-free on your phone. -->
+<button id="voiceOrderFab" type="button" onclick="openVoiceOrderPanel()" title="Voice order" aria-label="Voice order"
+        style="position:fixed; left:14px; bottom:14px; z-index:1190; width:56px; height:56px; border-radius:50%; border:none; background:var(--accent,#6b93ff); color:#fff; box-shadow:0 4px 14px rgba(0,0,0,0.3); cursor:pointer; font-size:26px; display:flex; align-items:center; justify-content:center; padding:0;">&#127908;</button>
 </body>
 </html>

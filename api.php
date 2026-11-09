@@ -1913,6 +1913,236 @@ function ms_assistant_execute_tool(string $name, array $input) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// VOICE ORDER — hands-free spoken order → draft workbook (api action
+// 'voice_order'). Reuses the Anthropic tool-use loop. The ONE write
+// tool (create_order_workbook) is scoped HERE and deliberately NOT
+// exposed to the read-only assistant_chat. Spoken orders land as
+// DRAFTS under the hidden 'Client Quotes' holding client, for desk
+// review + the existing "Commit to Client".
+// ═══════════════════════════════════════════════════════════════════
+
+function ms_voice_order_system_prompt(): string {
+    $op = (function_exists('getSessionUser') ? ((getSessionUser()['display_name'] ?: getSessionUser()['username']) ?: 'the operator') : 'the operator');
+    return "You are MarketSculpt's hands-free Voice Order taker. The operator ({$op}) is talking to you OUT LOUD, usually while driving, and your replies are READ BACK ALOUD by the phone. So:\n"
+         . "- Keep every reply to ONE or TWO short sentences. No lists, no markdown, no symbols, no emojis — everything you write gets spoken.\n"
+         . "- Ask only ONE question at a time, and only for details you still genuinely need.\n\n"
+         . "Your job: turn a spoken product order into a workbook. Capture:\n"
+         . "- The CLIENT (customer / company) the order is for.\n"
+         . "- A short PRODUCT title for the workbook.\n"
+         . "- Each LINE ITEM: what it is, the quantity, and the unit (e.g. bags).\n"
+         . "- COLOR / SIZE VARIANTS and the quantity per variant. If the operator gives one lump total across several colors (e.g. '5000 bags in red, green, blue and brown'), ASK whether to split it evenly across the colors or set each color's quantity — never silently divide.\n"
+         . "- The physical SIZE of one unit (the bag): length, width, height, and weight if known, so it can be packed.\n"
+         . "- The packing BOX / CARTON size, how many units fit per box, and the box weight if known.\n\n"
+         . "Flow: gather what you need with brief spoken questions. Once you have the essentials, SAY BACK a one-line summary of the whole order and ASK the operator to confirm. ONLY after they clearly say yes, call the create_order_workbook tool. Never call the tool before an explicit yes. If the operator says to skip a detail, leave it out rather than inventing it.\n\n"
+         . "After the tool saves the draft, tell them in one sentence that it's saved as a draft in Client Quotes to review. Today's date: " . date('Y-m-d') . ".";
+}
+
+// Tool schema — ONLY create_order_workbook. Executed by ms_voice_execute_tool.
+function ms_voice_tool_defs(): array {
+    return [[
+        'name' => 'create_order_workbook',
+        'description' => 'Create a draft workbook from a CONFIRMED spoken product order. Call this ONLY after you have said back a one-line summary and the operator clearly confirmed. Omit any dimension you were not given rather than guessing.',
+        'input_schema' => [
+            'type' => 'object',
+            'properties' => [
+                'client_name'  => ['type' => 'string', 'description' => 'The customer / company this order is for.'],
+                'product_name' => ['type' => 'string', 'description' => 'Short product / workbook title, e.g. "Nut Garden Bags".'],
+                'lines' => [
+                    'type' => 'array',
+                    'description' => 'One entry per distinct product line.',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'item' => ['type' => 'string', 'description' => 'What the line is, e.g. "Medium bag", "Bulk bag".'],
+                            'qty'  => ['type' => 'number', 'description' => 'Total quantity for this line (sum of its variants if split by color).'],
+                            'unit' => ['type' => 'string', 'description' => 'Unit, e.g. bags, pcs. Optional.'],
+                            'variants' => [
+                                'type' => 'array',
+                                'description' => 'Color / size breakdown, each with a quantity. Omit if the line has no variants.',
+                                'items' => [
+                                    'type' => 'object',
+                                    'properties' => [
+                                        'variant' => ['type' => 'string', 'description' => 'e.g. a color like "Red".'],
+                                        'qty'     => ['type' => 'number', 'description' => 'Quantity for this variant.'],
+                                    ],
+                                    'required' => ['variant'],
+                                ],
+                            ],
+                        ],
+                        'required' => ['item', 'qty'],
+                    ],
+                ],
+                'is_kit' => ['type' => 'boolean', 'description' => 'True if all lines ship together as ONE combined kit billed once (not separate SKUs).'],
+                'bag' => [
+                    'type' => 'object',
+                    'description' => 'Physical size / weight of one unit (the bag). Recorded as notes.',
+                    'properties' => [
+                        'lCm' => ['type' => 'number'], 'wCm' => ['type' => 'number'], 'hCm' => ['type' => 'number'],
+                        'weightKg' => ['type' => 'number'],
+                    ],
+                ],
+                'box' => [
+                    'type' => 'object',
+                    'description' => 'Packing carton: size, how many units per box, and box weight.',
+                    'properties' => [
+                        'lCm' => ['type' => 'number'], 'wCm' => ['type' => 'number'], 'hCm' => ['type' => 'number'],
+                        'unitsPerBox' => ['type' => 'number'], 'weightKg' => ['type' => 'number'],
+                    ],
+                ],
+                'notes' => ['type' => 'string', 'description' => 'Anything else worth recording on the workbook.'],
+            ],
+            'required' => ['client_name', 'product_name', 'lines'],
+        ],
+    ]];
+}
+
+function ms_voice_execute_tool(string $name, array $input) {
+    switch ($name) {
+        case 'create_order_workbook': return ms_voice_create_order_workbook($input);
+        default: return ['error' => 'Unknown tool: ' . $name];
+    }
+}
+
+// Build a DRAFT workbook under the hidden 'Client Quotes' holding client
+// from a structured spoken order. Mirrors the frontend rfqItems / combine
+// group / flat-carton-key shapes so the workbook opens cleanly in the UI.
+function ms_voice_create_order_workbook(array $in) {
+    global $pdo;
+    $clientName  = trim((string)($in['client_name'] ?? ''));
+    $productName = trim((string)($in['product_name'] ?? ''));
+    $lines       = is_array($in['lines'] ?? null) ? $in['lines'] : [];
+    if ($productName === '' || empty($lines)) {
+        return ['success' => false, 'error' => 'Need at least a product name and one line item.'];
+    }
+    // Draft orders live under the hidden holding client 'Client Quotes'
+    // (same convention as the frontend _ensureQuotesClient).
+    $HOLDING = 'Client Quotes';
+    try {
+        $cs = $pdo->prepare("SELECT id FROM clients WHERE name = ? AND deleted_at IS NULL LIMIT 1");
+        $cs->execute([$HOLDING]);
+        $holdingId = $cs->fetchColumn();
+        if (!$holdingId) {
+            $ins = $pdo->prepare("INSERT INTO clients (name, account_manager, salesperson) VALUES (?, NULL, NULL)");
+            $ins->execute([$HOLDING]);
+            $holdingId = $pdo->lastInsertId();
+        }
+    } catch (\Throwable $e) {
+        return ['success' => false, 'error' => 'Could not prepare the drafts area: ' . $e->getMessage()];
+    }
+
+    // qty is stored as a comma-stripped STRING (matches collectRfqItems).
+    $num = function ($v) {
+        if ($v === null || $v === '') return '';
+        $s = preg_replace('/[,\s]/', '', (string)$v);
+        return is_numeric($s) ? (string)(0 + $s) : '';
+    };
+    $rfqItems = [];
+    foreach ($lines as $ln) {
+        if (!is_array($ln)) continue;
+        $item = trim((string)($ln['item'] ?? ''));
+        if ($item === '') continue;
+        $variants = [];
+        foreach ((is_array($ln['variants'] ?? null) ? $ln['variants'] : []) as $v) {
+            if (!is_array($v)) continue;
+            $vname = trim((string)($v['variant'] ?? ''));
+            if ($vname === '') continue;
+            $variants[] = ['sku' => '', 'variant' => $vname, 'qty' => $num($v['qty'] ?? ''), 'priceRmb' => '', 'leadTime' => ''];
+        }
+        $rfqItems[] = [
+            'sku' => '', 'item' => $item, 'qty' => $num($ln['qty'] ?? ''),
+            'priceRmb' => '', 'leadTime' => '', 'sample' => false,
+            'variants' => $variants, 'images' => [], 'specs' => [], 'factory' => '',
+            'fileSections' => (object)[], 'comparableOptions' => [], 'selectedOptionIdx' => 0,
+        ];
+    }
+    if (empty($rfqItems)) return ['success' => false, 'error' => 'No usable line items.'];
+
+    // Combine group only when it's one kit of 2+ lines (bills once at primary).
+    $combineGroups = [];
+    if (!empty($in['is_kit']) && count($rfqItems) > 1) {
+        $combineGroups[] = [
+            'id' => 'cg' . (int) round(microtime(true) * 1000),
+            'label' => $productName,
+            'primaryIdx' => 0,
+            'itemIdxs' => range(0, count($rfqItems) - 1),
+            'collapsed' => true,
+        ];
+    }
+
+    $box = is_array($in['box'] ?? null) ? $in['box'] : [];
+    $bag = is_array($in['bag'] ?? null) ? $in['bag'] : [];
+    $sv = function ($v) { return ($v === null || $v === '') ? '' : (string)(0 + (float)$v); };
+    $detail = [
+        'client'        => $clientName,
+        'product'       => $productName,
+        'desc'          => $productName,
+        'rfqItems'      => $rfqItems,
+        'combineGroups' => $combineGroups,
+    ];
+    // Box size -> flat OUTER carton keys the workbook already reads.
+    if (isset($box['lCm']))        $detail['cartonOuterLCm']  = $sv($box['lCm']);
+    if (isset($box['wCm']))        $detail['cartonOuterWCm']  = $sv($box['wCm']);
+    if (isset($box['hCm']))        $detail['cartonOuterHCm']  = $sv($box['hCm']);
+    if (isset($box['unitsPerBox'])) $detail['cartonInnerCount'] = $sv($box['unitsPerBox']);
+    if (isset($box['weightKg']))    $detail['dimWeightKg']      = $sv($box['weightKg']);
+    if (isset($bag['weightKg']))    $detail['cartonUnitWeight'] = $sv($bag['weightKg']);
+
+    // Human-readable notes: the real client + the bag's physical size
+    // (no numeric per-unit dimension slot exists, so it goes to text).
+    $noteParts = [];
+    if ($clientName !== '') $noteParts[] = 'Voice order for: ' . $clientName . '.';
+    $bagDims = array_values(array_filter([
+        isset($bag['lCm']) ? $bag['lCm'] . 'L' : null,
+        isset($bag['wCm']) ? $bag['wCm'] . 'W' : null,
+        isset($bag['hCm']) ? $bag['hCm'] . 'H' : null,
+    ]));
+    if ($bagDims) $noteParts[] = 'Bag size (cm): ' . implode(' x ', $bagDims) . '.';
+    if (isset($bag['weightKg'])) $noteParts[] = 'Bag weight: ' . $bag['weightKg'] . ' kg.';
+    $extraNotes = trim((string)($in['notes'] ?? ''));
+    if ($extraNotes !== '') $noteParts[] = $extraNotes;
+    if ($noteParts) {
+        $detail['notes'] = implode(' ', $noteParts);
+        if ($bagDims) $detail['dimPackaging'] = 'Bag ' . implode(' x ', $bagDims) . ' cm';
+    }
+    $detail['voiceOrder'] = [
+        'clientName' => $clientName,
+        'createdAt'  => date('c'),
+        'notes'      => $extraNotes,
+    ];
+
+    // Keep product name unique within the holding client so a re-dictation
+    // doesn't dedupe into a previous draft.
+    $pn = $productName;
+    try {
+        $chk = $pdo->prepare("SELECT 1 FROM workbooks WHERE client_id = ? AND product_name = ? AND deleted_at IS NULL LIMIT 1");
+        $chk->execute([$holdingId, $pn]);
+        if ($chk->fetchColumn()) $pn = $productName . ' (' . date('M j, g:ia') . ')';
+    } catch (\Throwable $e) { /* best effort */ }
+
+    try {
+        $stmt = $pdo->prepare("INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json) VALUES (?, ?, ?, 0, ?)");
+        $stmt->execute([$holdingId, $pn, $productName, json_encode($detail)]);
+        $wbId = (int)$pdo->lastInsertId();
+    } catch (\Throwable $e) {
+        return ['success' => false, 'error' => 'Could not save the draft: ' . $e->getMessage()];
+    }
+
+    $lineSummary = [];
+    foreach ($rfqItems as $it) {
+        $lineSummary[] = trim(($it['qty'] !== '' ? $it['qty'] . ' ' : '') . $it['item']);
+    }
+    return [
+        'success'      => true,
+        'workbook_id'  => $wbId,
+        'product_name' => $pn,
+        'client_name'  => $clientName,
+        'holding'      => $HOLDING,
+        'lines'        => $lineSummary,
+        'draft'        => true,
+    ];
+}
+
 // Helper: read a JSON blob from the app_state table.
 function ms_asst_read_app_state(string $key) {
     global $pdo;
@@ -4890,6 +5120,69 @@ switch ($action) {
             'ok'         => true,
             'text'       => $finalText,
             'tools_used' => array_values(array_unique($toolsUsed)),
+        ]);
+        break;
+
+    case 'voice_order':
+        // Hands-free spoken-order assistant. Same tool-use loop as
+        // assistant_chat, but with the voice system prompt + the single
+        // WRITE tool create_order_workbook (scoped here, never exposed to
+        // the read-only assistant_chat). Returns {ok, text, tools_used, created}.
+        $msgs = $input['messages'] ?? [];
+        if (!is_array($msgs) || empty($msgs)) { echo json_encode(['ok' => false, 'error' => 'messages array required']); break; }
+        if (ANTHROPIC_API_KEY === '') { echo json_encode(['ok' => false, 'error' => 'AI is not configured. Add ANTHROPIC_API_KEY in api.local.php.']); break; }
+        $anthMessages = [];
+        foreach ($msgs as $m) {
+            $role = ($m['role'] ?? '') === 'assistant' ? 'assistant' : 'user';
+            $text = trim((string)($m['content'] ?? ''));
+            if ($text === '') continue;
+            $anthMessages[] = ['role' => $role, 'content' => $text];
+        }
+        // Anthropic requires the first message to be 'user' — drop any leading
+        // assistant turns (our spoken greeting / earlier prompt).
+        while (!empty($anthMessages) && $anthMessages[0]['role'] === 'assistant') { array_shift($anthMessages); }
+        if (empty($anthMessages)) { echo json_encode(['ok' => false, 'error' => 'no user message yet']); break; }
+        $system = ms_voice_order_system_prompt();
+        $tools  = ms_voice_tool_defs();
+        $toolsUsed = [];
+        $finalText = '';
+        $created   = null;
+        for ($round = 0; $round < 6; $round++) {
+            $r = ms_anthropic_call_with_tools($system, $anthMessages, $tools, 1024);
+            if (!$r['ok']) { echo json_encode(['ok' => false, 'error' => $r['error'] ?? 'AI call failed', 'detail' => $r['detail'] ?? null]); break 2; }
+            $resp = $r['response'];
+            $stopReason = $resp['stop_reason'] ?? '';
+            $assistantContent = $resp['content'] ?? [];
+            $anthMessages[] = ['role' => 'assistant', 'content' => $assistantContent];
+            if ($stopReason !== 'tool_use') {
+                foreach ($assistantContent as $block) { if (($block['type'] ?? '') === 'text') $finalText .= $block['text']; }
+                break;
+            }
+            $toolResults = [];
+            foreach ($assistantContent as $block) {
+                if (($block['type'] ?? '') !== 'tool_use') continue;
+                $tName  = $block['name'] ?? '';
+                $tInput = is_array($block['input'] ?? null) ? $block['input'] : [];
+                $tId    = $block['id'] ?? '';
+                $toolsUsed[] = $tName;
+                $tResult = ms_voice_execute_tool($tName, $tInput);
+                if ($tName === 'create_order_workbook' && is_array($tResult) && !empty($tResult['success'])) {
+                    $created = $tResult;
+                }
+                $toolResults[] = [
+                    'type' => 'tool_result',
+                    'tool_use_id' => $tId,
+                    'content' => is_string($tResult) ? $tResult : json_encode($tResult, JSON_UNESCAPED_SLASHES),
+                ];
+            }
+            if (!empty($toolResults)) { $anthMessages[] = ['role' => 'user', 'content' => $toolResults]; }
+        }
+        if ($finalText === '') { $finalText = $created ? 'Saved as a draft in Client Quotes.' : 'Sorry, I lost the thread — can you say that again?'; }
+        echo json_encode([
+            'ok'         => true,
+            'text'       => $finalText,
+            'tools_used' => array_values(array_unique($toolsUsed)),
+            'created'    => $created,
         ]);
         break;
 
