@@ -42058,7 +42058,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // three were independent caches saved at different times). Fall back to
     // the cached grand total only when we couldn't derive either part.
     const costOut = (productCost > 0 || shippingUsd > 0) ? (productCost + shippingUsd) : cost;
-    return { units, weightKg, cost: costOut, price, cbm, leadDays, shippingUsd, productCost, feesAsIs };
+    return { units, weightKg, cost: costOut, price, cbm, leadDays, prodLeadDays: prodLead, shipLeadDays: shipLead, shippingUsd, productCost, feesAsIs };
   }
 
   function calcWorkbookShipStats(detail, qty) {
@@ -51961,7 +51961,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const entries = o.entries || [];
     const wbCount = entries.length;
     let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0,
-        agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0,
+        agMaxLead = 0, agMaxProd = 0, agMaxShip = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0,
         agFeesBilled = 0;
     const wbStatsByEntry = new Map();
     entries.forEach(e => {
@@ -51987,8 +51987,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // what the customer actually pays).
       agFeesAsIs    += _live.allFees;
       agFeesBilled  += _live.billedFees;
-      if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
+      // Order lead = the HIGHEST production lead + the HIGHEST shipping lead
+      // across the order's workbooks (they produce in parallel but ship
+      // together, so the order isn't ready until the slowest of each).
+      if ((w.prodLeadDays || 0) > agMaxProd) agMaxProd = w.prodLeadDays || 0;
+      if ((w.shipLeadDays || 0) > agMaxShip) agMaxShip = w.shipLeadDays || 0;
     });
+    agMaxLead = agMaxProd + agMaxShip;
     const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
     const usdStr  = agPrice > 0 ? '$' + agPrice.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3}) : '—';
 
@@ -52424,7 +52429,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // selected freight mode's shipping lead); order lead = max
       // across the order's workbooks (a 30-day workbook sets the
       // floor for the whole shipment).
-      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0, agFeesBilled = 0;
+      let agUnits = 0, agWeightKg = 0, agCost = 0, agPrice = 0, agCbm = 0, agMaxLead = 0, agMaxProd = 0, agMaxShip = 0, agShipping = 0, agProductCost = 0, agFeesAsIs = 0, agFeesBilled = 0;
       const wbStatsByEntry = new Map();
       entries.forEach(e => {
         const key = `${e.clientName}|${e.workbookId}`;
@@ -52445,8 +52450,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         agProductCost += (w.productCost || 0);
         agFeesAsIs    += _live.allFees;
         agFeesBilled  += _live.billedFees;
-        if (w.leadDays > agMaxLead) agMaxLead = w.leadDays;
+        // Highest production lead + highest shipping lead across workbooks
+        // (parallel production, ship together) — see the pipeline card above.
+        if ((w.prodLeadDays || 0) > agMaxProd) agMaxProd = w.prodLeadDays || 0;
+        if ((w.shipLeadDays || 0) > agMaxShip) agMaxShip = w.shipLeadDays || 0;
       });
+      agMaxLead = agMaxProd + agMaxShip;
 
       const _fxRate = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
       const wbPills = wbCount === 0
