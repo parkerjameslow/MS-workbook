@@ -4452,11 +4452,6 @@ switch ($action) {
         if (!is_array($snapWrap)) $snapWrap = [];
         $snapShips = (isset($snapWrap['data']) && is_array($snapWrap['data'])) ? $snapWrap['data'] : [];
 
-        // DEMO switch (?demo=1): announce every successfully-fetched shipment
-        // this run, regardless of whether it changed — lets the operator see a
-        // real bot ping in #shipments on demand. Harmless (still idempotent).
-        $demoAnnounce = !empty($input['demo']) || !empty($_GET['demo']);
-
         $checked = 0; $fetched = []; $changes = [];
         $nowMs = (int) round(microtime(true) * 1000);
         foreach ($snapShips as $sid => $s) {
@@ -4487,7 +4482,7 @@ switch ($action) {
             // (so the initial sweep doesn't spam a Slack line for every old
             // label-created shipment).
             $meaningful = in_array($newBucket, ['in_transit', 'delivered', 'exception'], true);
-            if ($demoAnnounce || $bucketChanged || $statusChanged || $etaAppeared || ($firstEver && $meaningful)) {
+            if ($bucketChanged || $statusChanged || $etaAppeared || ($firstEver && $meaningful)) {
                 $changes[] = [
                     'sid'      => (string)$sid,
                     'name'     => (string)($s['name'] ?? ('Shipment #' . ($s['id'] ?? $sid))),
