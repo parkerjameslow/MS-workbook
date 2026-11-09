@@ -4468,6 +4468,12 @@ switch ($action) {
             $tn      = trim((string)($s['trackingNumber'] ?? ''));
             if ($carrier === '' || $tn === '') continue;
             if (strtolower((string)($s['status'] ?? '')) === 'received') continue; // audited/closed
+            // Already delivered? Stop tracking it. We announce a delivery once,
+            // on the run that first sees it land; after that a delivered box is
+            // DONE — don't re-hit the carrier or risk re-pinging #shipments.
+            // (Terminal: delivered stays delivered. Exceptions are NOT skipped.)
+            $priorTrk = (isset($s['tracking']) && is_array($s['tracking'])) ? $s['tracking'] : [];
+            if ($bucketOf((string)($priorTrk['status'] ?? ''), $s['status'] ?? '') === 'delivered') continue;
             $checked++;
             $res = ms_fetch_tracking_official($carrier, $tn, $pdo);
             if ($res['status'] !== 'ok') { $fetched[$sid] = null; continue; } // soft-fail → just stamp checkedAt later
