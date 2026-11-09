@@ -12238,44 +12238,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label>Tracking Number <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
         <input type="text" id="new-ship-tracking" placeholder="e.g. 1Z999AA10123456784" autocomplete="off" />
       </div>
-      <div style="border-top:1px solid var(--border); padding-top:14px; margin-bottom:14px;">
-        <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-size:13px; font-weight:600; color:var(--text); user-select:none;">
-          <input type="checkbox" id="new-ship-book-truck" onchange="_toggleNewShipBookTruckFields(this.checked)"
-                 style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); margin:0;" />
-          <span>Book a truck with Ivan</span>
-        </label>
-        <p style="margin:6px 0 0 26px; font-size:11px; color:var(--text-muted); line-height:1.4;">
-          Check to capture the BOL so Ivan can dispatch a truck for pickup.
-        </p>
-        <div id="new-ship-bol-fields" style="display:none; flex-direction:column; gap:12px; margin-top:14px; padding:14px; background:rgba(107,147,255,0.06); border:1px solid var(--border); border-radius:10px;">
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Ship From</label>
-            <textarea id="new-ship-bol-ship-from" rows="2" placeholder="Origin address — where Ivan picks up" style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Ship To</label>
-            <textarea id="new-ship-bol-ship-to" rows="2" placeholder="Destination address — final delivery" style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
-          </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-            <div>
-              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;"># of Stops</label>
-              <input id="new-ship-bol-stops" type="number" min="1" value="1" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);" />
-            </div>
-            <div>
-              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Pickup Date</label>
-              <input id="new-ship-bol-pickup-date" type="date" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);" />
-            </div>
-            <div>
-              <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Pickup Time</label>
-              <input id="new-ship-bol-pickup-time" type="time" style="width:100%; padding:8px 10px; font-size:13px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);" />
-            </div>
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Notes / Special Instructions</label>
-            <textarea id="new-ship-bol-notes" rows="2" placeholder="Pallet count, weight, dock hours, lift-gate, etc." style="width:100%; resize:vertical; min-height:54px; font-family:inherit; font-size:13px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text);"></textarea>
-          </div>
-        </div>
-      </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeNewShipmentModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">Create Shipment</button>
