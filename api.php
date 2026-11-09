@@ -53,6 +53,8 @@ $_publicActions = [
     'parker_get_config'     => true,
     'parker_save_brief'     => true,
     'parker_run_brief'      => true,
+    // Hourly carrier-tracking sweep — verifies PARKER_AGENT_TOKEN in-handler.
+    'cron_refresh_tracking' => true,
 ];
 $_requestedAction = $_GET['action'] ?? ($_POST['action'] ?? '');
 if (!isset($_publicActions[$_requestedAction])) {
@@ -420,6 +422,7 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS notifications (
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 $input = json_decode(file_get_contents('php://input'), true);
+if (!is_array($input)) $input = []; // GET / empty body → avoid null array-offset warnings
 
 // ── SMS helper (Twilio) ───────────────────────────────────────────────────
 // Set the three constants below to enable SMS for milestone watchers.
@@ -681,6 +684,187 @@ function _ups_fmt_date(string $d): string {
 }
 function _ups_fmt_time(string $t): string {
     return preg_match('/^(\d{2})(\d{2})(\d{2})$/', $t, $m) ? "{$m[1]}:{$m[2]}" : '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Carrier tracking via the OFFICIAL APIs (DHL / FedEx / UPS) — authoritative
+// JSON, no HTML scrape, no LLM. Shared by the `fetch_tracking_status` action
+// (operator click / on-view refresh) AND the hourly `cron_refresh_tracking`
+// job, so there is exactly ONE place that talks to each carrier.
+// Returns one of:
+//   ['status'=>'ok',          'data'=>[...]]   authoritative status pulled
+//   ['status'=>'error',       'error'=>'…']    definitive failure (401/404/429) — do NOT scrape
+//   ['status'=>'fallthrough', 'diag'=>'…']     no official API for this carrier, or a soft
+//                                              failure — the caller may try the HTML scraper
+// data shape: {status, location, eta, statusDate, events[], fetchedAt, carrier, trackingNumber, source}
+function ms_fetch_tracking_official(string $carrier, string $tn, PDO $pdo): array {
+    $carrier = strtolower(trim($carrier));
+    $tn      = trim($tn);
+    if ($carrier === '' || $tn === '') return ['status' => 'error', 'error' => 'carrier and tracking_number required'];
+    if (!function_exists('curl_init'))  return ['status' => 'fallthrough', 'diag' => 'curl missing'];
+
+    // ─── DHL Shipment Tracking – Unified API ───
+    if ($carrier === 'dhl' && DHL_API_KEY !== '') {
+        $ch = curl_init('https://api-eu.dhl.com/track/shipments?trackingNumber=' . urlencode($tn));
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_HTTPHEADER     => ['Accept: application/json', 'DHL-API-Key: ' . DHL_API_KEY],
+        ]);
+        $apiResp = curl_exec($ch);
+        $apiCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $apiCerr = curl_error($ch);
+        curl_close($ch);
+        $apiData = ($apiResp !== false) ? json_decode((string)$apiResp, true) : null;
+        if ($apiCode === 429) return ['status' => 'error', 'error' => 'DHL API rate limit reached — try again shortly.'];
+        if ($apiCode === 401 || $apiCode === 403) return ['status' => 'error', 'error' => 'DHL API key rejected (HTTP ' . $apiCode . '). Check DHL_API_KEY in api.local.php.'];
+        if (is_array($apiData) && !empty($apiData['shipments'][0])) {
+            $sh = $apiData['shipments'][0];
+            $rawStatusCode = strtolower((string)($sh['status']['statusCode'] ?? ''));
+            $rawStatusTxt  = (string)($sh['status']['status'] ?? ($sh['status']['description'] ?? ''));
+            $statusMap = [
+                'pre-transit' => 'Label Created', 'transit' => 'In Transit',
+                'delivered' => 'Delivered', 'failure' => 'Exception', 'unknown' => 'Unknown',
+            ];
+            $statusPhrase = $statusMap[$rawStatusCode] ?? ($rawStatusTxt !== '' ? $rawStatusTxt : 'Unknown');
+            $locParts = [];
+            $addr = $sh['status']['location']['address'] ?? [];
+            foreach (['addressLocality', 'countryCode'] as $k) { if (!empty($addr[$k])) $locParts[] = $addr[$k]; }
+            $location = implode(', ', $locParts);
+            // ETA lives in different places depending on the DHL service/stage:
+            // the single estimatedTimeOfDelivery, a delivery TIME FRAME, a
+            // details.* field, or (once delivered) the actual delivery stamp.
+            // Read them in priority order so Express shipments that only expose
+            // the time-frame still surface an ETA instead of a blank "—".
+            $eta = (string)($sh['estimatedTimeOfDelivery'] ?? '');
+            if ($eta === '' && !empty($sh['estimatedDeliveryTimeFrame']['estimatedThrough'])) $eta = (string)$sh['estimatedDeliveryTimeFrame']['estimatedThrough'];
+            if ($eta === '' && !empty($sh['estimatedDeliveryTimeFrame']['estimatedFrom']))    $eta = (string)$sh['estimatedDeliveryTimeFrame']['estimatedFrom'];
+            if ($eta === '' && isset($sh['details']) && is_array($sh['details'])) {
+                foreach (['estimatedDeliveryDate', 'estimatedTimeOfDelivery', 'estimatedTimeOfDeliveryRemark'] as $dk) {
+                    if (!empty($sh['details'][$dk]) && is_string($sh['details'][$dk])) { $eta = (string)$sh['details'][$dk]; break; }
+                }
+            }
+            if ($eta === '' && $rawStatusCode === 'delivered') $eta = (string)($sh['status']['timestamp'] ?? '');
+            $events = [];
+            if (!empty($sh['events']) && is_array($sh['events'])) {
+                foreach (array_slice($sh['events'], 0, 12) as $ev) {
+                    if (!is_array($ev)) continue;
+                    $evLoc = [];
+                    $evAddr = $ev['location']['address'] ?? [];
+                    foreach (['addressLocality', 'countryCode'] as $k) { if (!empty($evAddr[$k])) $evLoc[] = $evAddr[$k]; }
+                    $events[] = [
+                        'time'        => (string)($ev['timestamp'] ?? ''),
+                        'location'    => implode(', ', $evLoc),
+                        'description' => (string)($ev['description'] ?? ($ev['status'] ?? '')),
+                    ];
+                }
+            }
+            return ['status' => 'ok', 'data' => [
+                'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
+                'statusDate' => (string)($sh['status']['timestamp'] ?? ''),
+                'events' => $events, 'fetchedAt' => date('c'),
+                'carrier' => 'dhl', 'trackingNumber' => $tn, 'source' => 'dhl_api',
+            ]];
+        }
+        if ($apiCode === 404) return ['status' => 'error', 'error' => 'DHL has no record of tracking number ' . $tn . ' yet.'];
+        return ['status' => 'fallthrough', 'diag' => 'DHL API: HTTP ' . $apiCode . ($apiCerr ? " ({$apiCerr})" : '')];
+    }
+
+    // ─── FedEx Track API (OAuth2 client-credentials) ───
+    if ($carrier === 'fedex' && FEDEX_CLIENT_ID !== '') {
+        $tok = ms_fedex_token($pdo);
+        if (!$tok['ok']) return ['status' => 'error', 'error' => $tok['error'] . ' — check FEDEX_CLIENT_ID / FEDEX_CLIENT_SECRET in api.local.php.'];
+        $ch = curl_init(FEDEX_API_BASE . '/track/v1/trackingnumbers');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 25, CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_POSTFIELDS => json_encode(['includeDetailedScans' => true, 'trackingInfo' => [['trackingNumberInfo' => ['trackingNumber' => $tn]]]]),
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $tok['token'], 'Content-Type: application/json', 'X-locale: en_US'],
+        ]);
+        $fResp = curl_exec($ch);
+        $fCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $fData = ($fResp !== false) ? json_decode((string)$fResp, true) : null;
+        $tr = $fData['output']['completeTrackResults'][0]['trackResults'][0] ?? null;
+        if (is_array($tr) && empty($tr['error'])) {
+            $statusPhrase = (string)($tr['latestStatusDetail']['statusByLocale'] ?? ($tr['latestStatusDetail']['description'] ?? 'Unknown'));
+            $lp = [];
+            $sl = $tr['latestStatusDetail']['scanLocation'] ?? [];
+            foreach (['city', 'stateOrProvinceCode', 'countryCode'] as $k) { if (!empty($sl[$k])) $lp[] = $sl[$k]; }
+            $location = implode(', ', $lp);
+            $eta = '';
+            foreach (($tr['dateAndTimes'] ?? []) as $dt) {
+                $ty = $dt['type'] ?? '';
+                if ($ty === 'ACTUAL_DELIVERY') { $eta = (string)($dt['dateTime'] ?? ''); break; }
+                if ($ty === 'ESTIMATED_DELIVERY' && $eta === '') $eta = (string)($dt['dateTime'] ?? '');
+            }
+            $events = [];
+            foreach (array_slice($tr['scanEvents'] ?? [], 0, 12) as $ev) {
+                if (!is_array($ev)) continue;
+                $el = $ev['scanLocation'] ?? []; $evl = [];
+                foreach (['city', 'stateOrProvinceCode', 'countryCode'] as $k) { if (!empty($el[$k])) $evl[] = $el[$k]; }
+                $events[] = ['time' => (string)($ev['date'] ?? ''), 'location' => implode(', ', $evl), 'description' => (string)($ev['eventDescription'] ?? ($ev['derivedStatus'] ?? ''))];
+            }
+            return ['status' => 'ok', 'data' => [
+                'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
+                'statusDate' => (string)($events[0]['time'] ?? ''), 'events' => $events, 'fetchedAt' => date('c'),
+                'carrier' => 'fedex', 'trackingNumber' => $tn, 'source' => 'fedex_api',
+            ]];
+        }
+        if ($fCode === 404 || (is_array($tr) && !empty($tr['error']))) return ['status' => 'error', 'error' => 'FedEx has no record of ' . $tn . ' yet.'];
+        if ($fCode === 401 || $fCode === 403) return ['status' => 'error', 'error' => 'FedEx API rejected the request (HTTP ' . $fCode . '). Check credentials / app approval.'];
+        return ['status' => 'fallthrough', 'diag' => 'FedEx API: HTTP ' . $fCode];
+    }
+
+    // ─── UPS Track API (OAuth2 client-credentials) ───
+    if ($carrier === 'ups' && UPS_CLIENT_ID !== '') {
+        $tok = ms_ups_token($pdo);
+        if (!$tok['ok']) return ['status' => 'error', 'error' => $tok['error'] . ' — check UPS_CLIENT_ID / UPS_CLIENT_SECRET in api.local.php.'];
+        $ch = curl_init(UPS_API_BASE . '/api/track/v1/details/' . urlencode($tn) . '?locale=en_US');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25, CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $tok['token'], 'Content-Type: application/json', 'transId: ' . bin2hex(random_bytes(8)), 'transactionSrc: marketsculpt'],
+        ]);
+        $uResp = curl_exec($ch);
+        $uCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $uData = ($uResp !== false) ? json_decode((string)$uResp, true) : null;
+        $pkg = $uData['trackResponse']['shipment'][0]['package'][0] ?? null;
+        if (is_array($pkg)) {
+            $statusPhrase = (string)($pkg['currentStatus']['description'] ?? 'Unknown');
+            $acts = $pkg['activity'] ?? [];
+            $location = '';
+            if (!empty($acts[0]['location']['address'])) {
+                $a = $acts[0]['location']['address']; $lp = [];
+                foreach (['city', 'stateProvince', 'countryCode'] as $k) { if (!empty($a[$k])) $lp[] = $a[$k]; }
+                $location = implode(', ', $lp);
+            }
+            $eta = '';
+            foreach (($pkg['deliveryDate'] ?? []) as $dd) {
+                $date = _ups_fmt_date((string)($dd['date'] ?? ''));
+                if ($date === '') continue;
+                $eta = $date;
+                if (($dd['type'] ?? '') === 'DEL') break;
+            }
+            $events = [];
+            foreach (array_slice($acts, 0, 12) as $ev) {
+                if (!is_array($ev)) continue;
+                $a = $ev['location']['address'] ?? []; $evl = [];
+                foreach (['city', 'stateProvince', 'countryCode'] as $k) { if (!empty($a[$k])) $evl[] = $a[$k]; }
+                $events[] = ['time' => trim(_ups_fmt_date((string)($ev['date'] ?? '')) . ' ' . _ups_fmt_time((string)($ev['time'] ?? ''))), 'location' => implode(', ', $evl), 'description' => (string)($ev['status']['description'] ?? '')];
+            }
+            return ['status' => 'ok', 'data' => [
+                'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
+                'statusDate' => (string)($events[0]['time'] ?? ''), 'events' => $events, 'fetchedAt' => date('c'),
+                'carrier' => 'ups', 'trackingNumber' => $tn, 'source' => 'ups_api',
+            ]];
+        }
+        if ($uCode === 404) return ['status' => 'error', 'error' => 'UPS has no record of ' . $tn . ' yet.'];
+        if ($uCode === 401 || $uCode === 403) return ['status' => 'error', 'error' => 'UPS API rejected the request (HTTP ' . $uCode . '). Check credentials / app approval.'];
+        return ['status' => 'fallthrough', 'diag' => 'UPS API: HTTP ' . $uCode];
+    }
+
+    return ['status' => 'fallthrough', 'diag' => 'no official API for ' . $carrier];
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -4222,6 +4406,175 @@ switch ($action) {
         echo json_encode(['ok' => true, 'saved' => true, 'alerts' => $alerts]);
         break;
 
+    case 'cron_refresh_tracking':
+        // Hourly (or on-demand) server-side tracking sweep. Auth = the
+        // PARKER_AGENT_TOKEN shared secret (so a cron/cloud job with no
+        // operator login can run it) OR a logged-in operator. For every
+        // shipment that has a carrier + tracking number and isn't yet
+        // received, it pulls fresh status from the official carrier API
+        // (ms_fetch_tracking_official — same path the UI uses), writes it
+        // back to ms_shipments, and — when a shipment's status BUCKET moves,
+        // its status PHRASE changes, or an ETA first appears — posts a Slack
+        // heads-up so Parker knows it's on the way.
+        //
+        // Input (POST json or GET):  { token?: string }   (token also accepted
+        //   via the X-Parker-Token header or ?token= query param)
+        // Output: { ok, checked, updated, changed, slackPosted, changes[] }
+        $tok = $input['token'] ?? ($_SERVER['HTTP_X_PARKER_TOKEN'] ?? ($_GET['token'] ?? ''));
+        $tokenOk = (PARKER_AGENT_TOKEN !== '' && hash_equals(PARKER_AGENT_TOKEN, (string)$tok));
+        $sessOk  = isset($sessionUser['id']) && (int)$sessionUser['id'] > 0;
+        if (!$tokenOk && !$sessOk) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'forbidden']);
+            break;
+        }
+
+        // Map a carrier status phrase → coarse bucket, mirroring the frontend
+        // _trackBucket() so "did it move?" means the same thing server-side.
+        $bucketOf = function ($statusTxt, $shipStatus) {
+            $raw = strtolower((string)$statusTxt);
+            $shipDone = in_array(strtolower((string)$shipStatus), ['delivered', 'received'], true);
+            if ($shipDone || preg_match('/deliver|received/', $raw)) return 'delivered';
+            if (preg_match('/except|fail|return to sender|undeliverable|held|on hold|customs hold/', $raw)) return 'exception';
+            if (preg_match('/transit|out for delivery|on its way|departed|arriv|processed|picked up|collect|scan|in progress|forwarded|clearance/', $raw)) return 'in_transit';
+            return 'pending';
+        };
+
+        // ── Pass 1: snapshot which shipments need a check, then hit the
+        //    carriers ONCE (network is slow; keep it out of the CAS loop).
+        $snapRow = $pdo->query("SELECT value_json FROM app_state WHERE key_name = 'ms_shipments'")->fetch(PDO::FETCH_ASSOC);
+        $snapWrap = ($snapRow && $snapRow['value_json']) ? json_decode($snapRow['value_json'], true) : [];
+        if (!is_array($snapWrap)) $snapWrap = [];
+        $snapShips = (isset($snapWrap['data']) && is_array($snapWrap['data'])) ? $snapWrap['data'] : [];
+
+        $checked = 0; $fetched = []; $changes = [];
+        $nowMs = (int) round(microtime(true) * 1000);
+        foreach ($snapShips as $sid => $s) {
+            if (!is_array($s)) continue;
+            $carrier = strtolower(trim((string)($s['carrier'] ?? '')));
+            $tn      = trim((string)($s['trackingNumber'] ?? ''));
+            if ($carrier === '' || $tn === '') continue;
+            if (strtolower((string)($s['status'] ?? '')) === 'received') continue; // audited/closed
+            $checked++;
+            $res = ms_fetch_tracking_official($carrier, $tn, $pdo);
+            if ($res['status'] !== 'ok') { $fetched[$sid] = null; continue; } // soft-fail → just stamp checkedAt later
+            $new  = $res['data'];
+            $prev = (isset($s['tracking']) && is_array($s['tracking'])) ? $s['tracking'] : [];
+            $fetched[$sid] = $new;
+
+            $prevStatus = (string)($prev['status'] ?? '');
+            $prevEta    = (string)($prev['eta'] ?? '');
+            $newStatus  = (string)($new['status'] ?? '');
+            $newEta     = (string)($new['eta'] ?? '');
+            $prevBucket = $bucketOf($prevStatus, $s['status'] ?? '');
+            $newBucket  = $bucketOf($newStatus, $s['status'] ?? '');
+            $firstEver     = ($prevStatus === '');
+            $statusChanged = ($prevStatus !== '' && strcasecmp($prevStatus, $newStatus) !== 0);
+            $bucketChanged = ($prevBucket !== $newBucket);
+            $etaAppeared   = ($prevEta === '' && $newEta !== '');
+            // Announce when something a human cares about moved. On the very
+            // first sighting, only announce if it's already past "pending"
+            // (so the initial sweep doesn't spam a Slack line for every old
+            // label-created shipment).
+            $meaningful = in_array($newBucket, ['in_transit', 'delivered', 'exception'], true);
+            if ($bucketChanged || $statusChanged || $etaAppeared || ($firstEver && $meaningful)) {
+                $changes[] = [
+                    'sid'      => (string)$sid,
+                    'name'     => (string)($s['name'] ?? ('Shipment #' . ($s['id'] ?? $sid))),
+                    'carrier'  => strtoupper($carrier),
+                    'tracking' => $tn,
+                    'bucket'   => $newBucket,
+                    'status'   => $newStatus,
+                    'location' => (string)($new['location'] ?? ''),
+                    'eta'      => $newEta,
+                    'etaAppeared' => $etaAppeared,
+                    'firstEver'   => $firstEver,
+                ];
+            }
+        }
+
+        // ── Pass 2: write the fresh tracking back, protected by the app_state
+        //    `rev` so a concurrent operator save is never clobbered. Re-reads
+        //    on a rev miss and re-applies (tracking-only, so re-apply is safe).
+        $updated = 0;
+        if (!empty($fetched)) {
+            for ($attempt = 0; $attempt < 4; $attempt++) {
+                $row = $pdo->query("SELECT value_json, rev FROM app_state WHERE key_name = 'ms_shipments'")->fetch(PDO::FETCH_ASSOC);
+                if (!$row) break; // nothing to update
+                $baseRev = (int)$row['rev'];
+                $wrap = $row['value_json'] ? json_decode($row['value_json'], true) : [];
+                if (!is_array($wrap)) $wrap = [];
+                $ships = (isset($wrap['data']) && is_array($wrap['data'])) ? $wrap['data'] : [];
+                $updated = 0;
+                foreach ($fetched as $sid => $new) {
+                    if (!isset($ships[$sid]) || !is_array($ships[$sid])) continue;
+                    if ($new === null) {
+                        // Soft failure: stamp checkedAt so we don't hammer, keep old data.
+                        if (!isset($ships[$sid]['tracking']) || !is_array($ships[$sid]['tracking'])) $ships[$sid]['tracking'] = [];
+                        $ships[$sid]['tracking']['checkedAt'] = $nowMs;
+                    } else {
+                        $ships[$sid]['tracking'] = array_merge($new, ['checkedAt' => $nowMs]);
+                        $updated++;
+                    }
+                }
+                $wrap['data'] = $ships;
+                $upd = $pdo->prepare("UPDATE app_state SET value_json = ?, rev = rev + 1 WHERE key_name = 'ms_shipments' AND rev = ?");
+                $upd->execute([json_encode($wrap), $baseRev]);
+                if ($upd->rowCount() > 0) break; // landed cleanly
+                usleep(120000); // someone else bumped rev — brief backoff, re-read, re-apply
+            }
+        }
+
+        // ── Slack heads-up, one message per changed shipment.
+        $slackPosted = 0;
+        if (!empty($changes) && SLACK_WEBHOOK_URL !== '' && function_exists('curl_init')) {
+            $fmtEta = function ($v) {
+                if ($v === '') return '';
+                $ts = strtotime($v);
+                return $ts ? date('D, M j, Y', $ts) : $v;
+            };
+            foreach (array_slice($changes, 0, 20) as $c) {
+                $icon = $c['bucket'] === 'delivered' ? '✅'
+                      : ($c['bucket'] === 'exception' ? '⚠️'
+                      : ($c['bucket'] === 'in_transit' ? '🚚' : '📦'));
+                $head = $c['bucket'] === 'delivered' ? ($icon . ' Delivered — ' . $c['name'])
+                      : ($c['bucket'] === 'exception' ? ($icon . ' Shipment exception — ' . $c['name'])
+                      : ($icon . ' Shipment on the move — ' . $c['name']));
+                $lines = [];
+                $lines[] = '*' . $c['carrier'] . '* ' . $c['tracking'] . ' → *' . ($c['status'] !== '' ? $c['status'] : ucfirst(str_replace('_', ' ', $c['bucket']))) . '*';
+                if ($c['location'] !== '') $lines[] = '📍 ' . $c['location'];
+                $etaFmt = $fmtEta($c['eta']);
+                if ($etaFmt !== '') $lines[] = ($c['bucket'] === 'delivered' ? '🗓 Delivered ' : '🗓 ETA ') . $etaFmt;
+                $lines[] = '<https://wb.marketsculpt.com/#/shipment/' . rawurlencode((string)$c['sid']) . '|Open shipment →>';
+                $body = json_encode([
+                    'text'   => $head,
+                    'blocks' => [
+                        ['type' => 'header', 'text' => ['type' => 'plain_text', 'text' => mb_substr($head, 0, 150), 'emoji' => true]],
+                        ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $lines)]],
+                    ],
+                ]);
+                $ch = curl_init(SLACK_WEBHOOK_URL);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body,
+                    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                    CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
+                ]);
+                $sResp = curl_exec($ch);
+                $sCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                if ($sResp !== false && $sCode >= 200 && $sCode < 300) $slackPosted++;
+            }
+        }
+
+        echo json_encode([
+            'ok' => true, 'checked' => $checked, 'updated' => $updated,
+            'changed' => count($changes), 'slackPosted' => $slackPosted,
+            'slackConfigured' => (SLACK_WEBHOOK_URL !== ''),
+            'changes' => $changes,
+            'ranAt' => date('c'),
+        ]);
+        break;
+
     case 'fetch_tracking_status':
         // Pulls the carrier's public tracking page and asks Claude to
         // parse it into a structured status. Best-effort — carriers
@@ -4239,264 +4592,18 @@ switch ($action) {
             break;
         }
         $attemptDiag = []; // accumulates per-source diagnostics (API + scraper)
-        // ─── OFFICIAL DHL API (preferred when a key is configured) ──────
-        // DHL explicitly blocks scraping (their tracking page returns 403
-        // "Automated extraction ... is prohibited"). The only reliable
-        // source is the official DHL "Shipment Tracking – Unified" API.
-        // When DHL_API_KEY is set in api.local.php we use it and skip the
-        // scraper entirely — authoritative status, ETA, and scan events
-        // straight from DHL's JSON, no LLM parsing needed.
-        if ($carrier === 'dhl' && DHL_API_KEY !== '' && function_exists('curl_init')) {
-            $apiUrl = 'https://api-eu.dhl.com/track/shipments?trackingNumber=' . urlencode($tn);
-            $ch = curl_init($apiUrl);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 20,
-                CURLOPT_CONNECTTIMEOUT => 8,
-                CURLOPT_HTTPHEADER     => [
-                    'Accept: application/json',
-                    'DHL-API-Key: ' . DHL_API_KEY,
-                ],
-            ]);
-            $apiResp = curl_exec($ch);
-            $apiCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $apiCerr = curl_error($ch);
-            curl_close($ch);
-            $apiData = ($apiResp !== false) ? json_decode((string)$apiResp, true) : null;
-
-            if ($apiCode === 429) {
-                echo json_encode(['ok' => false, 'error' => 'DHL API rate limit reached — try again shortly.']);
-                break;
-            }
-            if ($apiCode === 401 || $apiCode === 403) {
-                echo json_encode(['ok' => false, 'error' => 'DHL API key rejected (HTTP ' . $apiCode . '). Check DHL_API_KEY in api.local.php.']);
-                break;
-            }
-            if (is_array($apiData) && !empty($apiData['shipments'][0])) {
-                $sh = $apiData['shipments'][0];
-                // DHL status codes: pre-transit | transit | delivered | failure | unknown.
-                $rawStatusCode = strtolower((string)($sh['status']['statusCode'] ?? ''));
-                $rawStatusTxt  = (string)($sh['status']['status'] ?? ($sh['status']['description'] ?? ''));
-                $statusMap = [
-                    'pre-transit' => 'Label Created',
-                    'transit'     => 'In Transit',
-                    'delivered'   => 'Delivered',
-                    'failure'     => 'Exception',
-                    'unknown'     => 'Unknown',
-                ];
-                $statusPhrase = $statusMap[$rawStatusCode] ?? ($rawStatusTxt !== '' ? $rawStatusTxt : 'Unknown');
-
-                // Most-recent location (statuses come newest-first in DHL's payload).
-                $locParts = [];
-                $addr = $sh['status']['location']['address'] ?? [];
-                foreach (['addressLocality', 'countryCode'] as $k) {
-                    if (!empty($addr[$k])) $locParts[] = $addr[$k];
-                }
-                $location = implode(', ', $locParts);
-
-                // ETA: estimatedTimeOfDelivery, else the delivery date if delivered.
-                $eta = (string)($sh['estimatedTimeOfDelivery'] ?? '');
-
-                // Scan events, newest-first (DHL returns them that way).
-                $events = [];
-                if (!empty($sh['events']) && is_array($sh['events'])) {
-                    foreach (array_slice($sh['events'], 0, 12) as $ev) {
-                        if (!is_array($ev)) continue;
-                        $evLoc = [];
-                        $evAddr = $ev['location']['address'] ?? [];
-                        foreach (['addressLocality', 'countryCode'] as $k) {
-                            if (!empty($evAddr[$k])) $evLoc[] = $evAddr[$k];
-                        }
-                        $events[] = [
-                            'time'        => (string)($ev['timestamp'] ?? ''),
-                            'location'    => implode(', ', $evLoc),
-                            'description' => (string)($ev['description'] ?? ($ev['status'] ?? '')),
-                        ];
-                    }
-                }
-                echo json_encode(['ok' => true, 'data' => [
-                    'status'         => $statusPhrase,
-                    'location'       => $location,
-                    'eta'            => $eta,
-                    // Timestamp of the current status — for Delivered this is
-                    // the actual delivery date/time.
-                    'statusDate'     => (string)($sh['status']['timestamp'] ?? ''),
-                    'events'         => $events,
-                    'fetchedAt'      => date('c'),
-                    'carrier'        => 'dhl',
-                    'trackingNumber' => $tn,
-                    'source'         => 'dhl_api',
-                ]]);
-                break;
-            }
-            if ($apiCode === 404) {
-                echo json_encode(['ok' => false, 'error' => 'DHL has no record of tracking number ' . $tn . ' yet.']);
-                break;
-            }
-            // Any other API failure: fall through to the scraper as a
-            // best-effort backup rather than hard-failing.
-            $attemptDiag[] = 'DHL API: HTTP ' . $apiCode . ($apiCerr ? " ({$apiCerr})" : '');
-        }
-
-        // ─── OFFICIAL FedEx API (preferred when configured) ─────────────
-        // FedEx blocks scraping too. The official FedEx Track API uses
-        // OAuth2 client-credentials: ms_fedex_token() fetches + caches a
-        // ~1h bearer token in app_state, then we POST the tracking number
-        // and parse the JSON directly (no LLM).
-        if ($carrier === 'fedex' && FEDEX_CLIENT_ID !== '' && function_exists('curl_init')) {
-            $tok = ms_fedex_token($pdo);
-            if (!$tok['ok']) {
-                echo json_encode(['ok' => false, 'error' => $tok['error'] . ' — check FEDEX_CLIENT_ID / FEDEX_CLIENT_SECRET in api.local.php.']);
-                break;
-            }
-            $ch = curl_init(FEDEX_API_BASE . '/track/v1/trackingnumbers');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST           => true,
-                CURLOPT_TIMEOUT        => 25,
-                CURLOPT_CONNECTTIMEOUT => 8,
-                CURLOPT_POSTFIELDS     => json_encode([
-                    'includeDetailedScans' => true,
-                    'trackingInfo'         => [['trackingNumberInfo' => ['trackingNumber' => $tn]]],
-                ]),
-                CURLOPT_HTTPHEADER => [
-                    'Authorization: Bearer ' . $tok['token'],
-                    'Content-Type: application/json',
-                    'X-locale: en_US',
-                ],
-            ]);
-            $fResp = curl_exec($ch);
-            $fCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            $fData = ($fResp !== false) ? json_decode((string)$fResp, true) : null;
-            $tr = $fData['output']['completeTrackResults'][0]['trackResults'][0] ?? null;
-            if (is_array($tr) && empty($tr['error'])) {
-                $statusPhrase = (string)($tr['latestStatusDetail']['statusByLocale']
-                    ?? ($tr['latestStatusDetail']['description'] ?? 'Unknown'));
-                $lp = [];
-                $sl = $tr['latestStatusDetail']['scanLocation'] ?? [];
-                foreach (['city', 'stateOrProvinceCode', 'countryCode'] as $k) {
-                    if (!empty($sl[$k])) $lp[] = $sl[$k];
-                }
-                $location = implode(', ', $lp);
-                // Prefer actual delivery, else estimated.
-                $eta = '';
-                foreach (($tr['dateAndTimes'] ?? []) as $dt) {
-                    $ty = $dt['type'] ?? '';
-                    if ($ty === 'ACTUAL_DELIVERY') { $eta = (string)($dt['dateTime'] ?? ''); break; }
-                    if ($ty === 'ESTIMATED_DELIVERY' && $eta === '') $eta = (string)($dt['dateTime'] ?? '');
-                }
-                $events = [];
-                foreach (array_slice($tr['scanEvents'] ?? [], 0, 12) as $ev) {
-                    if (!is_array($ev)) continue;
-                    $el = $ev['scanLocation'] ?? [];
-                    $evl = [];
-                    foreach (['city', 'stateOrProvinceCode', 'countryCode'] as $k) {
-                        if (!empty($el[$k])) $evl[] = $el[$k];
-                    }
-                    $events[] = [
-                        'time'        => (string)($ev['date'] ?? ''),
-                        'location'    => implode(', ', $evl),
-                        'description' => (string)($ev['eventDescription'] ?? ($ev['derivedStatus'] ?? '')),
-                    ];
-                }
-                echo json_encode(['ok' => true, 'data' => [
-                    'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
-                    'statusDate' => (string)($events[0]['time'] ?? ''), // latest scan = status time
-                    'events' => $events, 'fetchedAt' => date('c'),
-                    'carrier' => 'fedex', 'trackingNumber' => $tn, 'source' => 'fedex_api',
-                ]]);
-                break;
-            }
-            if ($fCode === 404 || (is_array($tr) && !empty($tr['error']))) {
-                echo json_encode(['ok' => false, 'error' => 'FedEx has no record of ' . $tn . ' yet.']);
-                break;
-            }
-            if ($fCode === 401 || $fCode === 403) {
-                echo json_encode(['ok' => false, 'error' => 'FedEx API rejected the request (HTTP ' . $fCode . '). Check credentials / app approval.']);
-                break;
-            }
-            $attemptDiag[] = 'FedEx API: HTTP ' . $fCode;
-        }
-
-        // ─── OFFICIAL UPS API (preferred when configured) ───────────────
-        // UPS Track API, OAuth2 client-credentials (ms_ups_token caches a
-        // ~4h bearer in app_state). GET the tracking detail + parse JSON.
-        if ($carrier === 'ups' && UPS_CLIENT_ID !== '' && function_exists('curl_init')) {
-            $tok = ms_ups_token($pdo);
-            if (!$tok['ok']) {
-                echo json_encode(['ok' => false, 'error' => $tok['error'] . ' — check UPS_CLIENT_ID / UPS_CLIENT_SECRET in api.local.php.']);
-                break;
-            }
-            $ch = curl_init(UPS_API_BASE . '/api/track/v1/details/' . urlencode($tn) . '?locale=en_US');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT        => 25,
-                CURLOPT_CONNECTTIMEOUT => 8,
-                CURLOPT_HTTPHEADER => [
-                    'Authorization: Bearer ' . $tok['token'],
-                    'Content-Type: application/json',
-                    'transId: ' . bin2hex(random_bytes(8)),
-                    'transactionSrc: marketsculpt',
-                ],
-            ]);
-            $uResp = curl_exec($ch);
-            $uCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-            $uData = ($uResp !== false) ? json_decode((string)$uResp, true) : null;
-            $pkg = $uData['trackResponse']['shipment'][0]['package'][0] ?? null;
-            if (is_array($pkg)) {
-                $statusPhrase = (string)($pkg['currentStatus']['description'] ?? 'Unknown');
-                $acts = $pkg['activity'] ?? [];
-                $location = '';
-                if (!empty($acts[0]['location']['address'])) {
-                    $a = $acts[0]['location']['address'];
-                    $lp = [];
-                    foreach (['city', 'stateProvince', 'countryCode'] as $k) {
-                        if (!empty($a[$k])) $lp[] = $a[$k];
-                    }
-                    $location = implode(', ', $lp);
-                }
-                // Delivery date: actual (DEL) wins over scheduled (RDD/etc).
-                $eta = '';
-                foreach (($pkg['deliveryDate'] ?? []) as $dd) {
-                    $date = _ups_fmt_date((string)($dd['date'] ?? ''));
-                    if ($date === '') continue;
-                    $eta = $date;
-                    if (($dd['type'] ?? '') === 'DEL') break;
-                }
-                $events = [];
-                foreach (array_slice($acts, 0, 12) as $ev) {
-                    if (!is_array($ev)) continue;
-                    $a = $ev['location']['address'] ?? [];
-                    $evl = [];
-                    foreach (['city', 'stateProvince', 'countryCode'] as $k) {
-                        if (!empty($a[$k])) $evl[] = $a[$k];
-                    }
-                    $events[] = [
-                        'time'        => trim(_ups_fmt_date((string)($ev['date'] ?? '')) . ' ' . _ups_fmt_time((string)($ev['time'] ?? ''))),
-                        'location'    => implode(', ', $evl),
-                        'description' => (string)($ev['status']['description'] ?? ''),
-                    ];
-                }
-                echo json_encode(['ok' => true, 'data' => [
-                    'status' => $statusPhrase, 'location' => $location, 'eta' => $eta,
-                    'statusDate' => (string)($events[0]['time'] ?? ''), // latest activity = status time
-                    'events' => $events, 'fetchedAt' => date('c'),
-                    'carrier' => 'ups', 'trackingNumber' => $tn, 'source' => 'ups_api',
-                ]]);
-                break;
-            }
-            if ($uCode === 404) {
-                echo json_encode(['ok' => false, 'error' => 'UPS has no record of ' . $tn . ' yet.']);
-                break;
-            }
-            if ($uCode === 401 || $uCode === 403) {
-                echo json_encode(['ok' => false, 'error' => 'UPS API rejected the request (HTTP ' . $uCode . '). Check credentials / app approval.']);
-                break;
-            }
-            $attemptDiag[] = 'UPS API: HTTP ' . $uCode;
-        }
+        // ─── OFFICIAL CARRIER APIs (DHL / FedEx / UPS) ──────────────────
+        // These carriers block scraping, so when a key / credentials are
+        // configured we pull authoritative JSON straight from their API
+        // (no LLM). That logic lives in ms_fetch_tracking_official() so the
+        // hourly cron_refresh_tracking job shares the EXACT same path —
+        // one source of truth per carrier. 'ok' → return it; 'error' → a
+        // definitive carrier failure; 'fallthrough' → no official API (or a
+        // soft failure), so fall through to the HTML scraper below.
+        $offl = ms_fetch_tracking_official($carrier, $tn, $pdo);
+        if ($offl['status'] === 'ok')    { echo json_encode(['ok' => true,  'data'  => $offl['data']]);  break; }
+        if ($offl['status'] === 'error') { echo json_encode(['ok' => false, 'error' => $offl['error']]); break; }
+        if (!empty($offl['diag']))       { $attemptDiag[] = $offl['diag']; }
 
         // Each carrier gets a primary + (optional) fallback URL. The
         // primary is the human tracking page; the fallback is usually
@@ -7845,7 +7952,7 @@ switch ($action) {
             'get_archived', 'restore_workbook', 'restore_client',
             'permanent_delete_workbook', 'permanent_delete_client',
             'upload_image', 'upload_art_file', 'upload_client_logo', 'delete_client_logo', 'delete_image', 'upload_video',
-            'fetch_tracking_status',
+            'fetch_tracking_status', 'cron_refresh_tracking',
             'get_users', 'add_user', 'update_user', 'delete_user', 'change_password',
             'duplicate_workbook',
             'get_inventory', 'promote_to_sku', 'remove_sku',
