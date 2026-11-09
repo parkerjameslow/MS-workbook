@@ -10950,8 +10950,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          / Fast Air), Karen's port dates (only meaningful for ocean
          freight), and one or more tracking numbers with their carrier. -->
     <div class="section-card" style="margin-top:16px; margin-bottom:0;">
-      <div class="section-header">
+      <div class="section-header" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
         <span class="section-title">Shipping &amp; Tracking</span>
+        <button type="button" onclick="openSplitShipmentModal()" title="Split this shipment — send part of it by a different method (e.g. some Fast Air, the rest Slow Air)"
+          style="padding:5px 12px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Split Shipment</button>
       </div>
       <div class="section-body" style="padding:14px 16px; display:flex; flex-direction:column; gap:14px;">
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -10996,6 +10998,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div id="ship-detail-trackings"></div>
         </div>
+        <!-- Split legs — portions of this shipment sent by a different method. -->
+        <div id="ship-detail-splits"></div>
       </div>
     </div>
 
@@ -11013,6 +11017,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           No orders added yet.
         </div>
         <div id="ship-order-list"></div>
+        <!-- Total freight cost across every order in this shipment. -->
+        <div id="ship-total-shipping" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
+          <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Total Shipping Cost</span>
+          <span id="ship-total-shipping-val" style="font-size:16px; font-weight:800; color:var(--text);">—</span>
+        </div>
       </div>
     </div>
 
@@ -12243,6 +12252,51 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button type="submit" class="btn btn-primary">Create Shipment</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ── Split Shipment Modal ──────────────────────────────────────────
+     Send PART of a shipment by a different method (e.g. rush 2,000 units
+     Fast Air, the rest Slow Air). Captures a method + an amount (+ optional
+     carrier/tracking) and adds a split leg to the shipment. -->
+<div class="modal-overlay" id="modal-split-shipment" onclick="if(event.target===this)closeSplitShipmentModal()" style="z-index:1000;">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-title" style="margin-bottom:4px;">Split Shipment</div>
+    <p style="font-size:12px; color:var(--text-muted); line-height:1.5; margin:0 0 16px;">Send part of this shipment by a different method. Enter the method and how many units go that way.</p>
+    <div class="modal-field">
+      <label>Shipping Method</label>
+      <div class="ship-select-wrap" style="width:100%;">
+        <select id="split-ship-method" style="width:100%; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:8px 28px 8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer;">
+          <option value="slow_boat">Slow Boat — Cosco</option>
+          <option value="fast_boat">Fast Boat — Matson</option>
+          <option value="slow_air">Slow Air — Shared Air/Ground</option>
+          <option value="fast_air">Fast Air — Direct</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label>Amount <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(units going this way)</span></label>
+      <input type="number" id="split-ship-amount" min="1" placeholder="e.g. 2000" autocomplete="off" />
+      <div id="split-ship-amount-hint" style="margin-top:4px; font-size:11px; color:var(--text-muted);"></div>
+    </div>
+    <div class="modal-field">
+      <label>Carrier + Tracking <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+      <div style="display:flex; gap:8px;">
+        <select id="split-ship-carrier" style="flex:0 0 120px; appearance:none; -webkit-appearance:none; -moz-appearance:none; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; cursor:pointer;">
+          <option value="">— Carrier —</option>
+          <option value="ups">UPS</option>
+          <option value="fedex">FedEx</option>
+          <option value="dhl">DHL</option>
+          <option value="cosco">Cosco</option>
+          <option value="matson">Matson</option>
+        </select>
+        <input type="text" id="split-ship-tracking" placeholder="Tracking number" autocomplete="off" style="flex:1;" />
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" onclick="closeSplitShipmentModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="confirmSplitShipment()">Add Split</button>
+    </div>
   </div>
 </div>
 
@@ -42038,7 +42092,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function orderShipStats(orderId) {
     const order = orderData[orderId];
     if (!order) return { qty: 0, totalCartons: 0, totalCbm: 0, totalWeightKg: 0, palletsNeeded: 0, totalRmb: 0, totalUsd: 0, wbCount: 0 };
-    let qty = 0, totalCartons = 0, totalCbm = 0, totalWeightKg = 0, palletsNeeded = 0, totalRmb = 0, totalUsd = 0;
+    let qty = 0, totalCartons = 0, totalCbm = 0, totalWeightKg = 0, palletsNeeded = 0, totalRmb = 0, totalUsd = 0, totalShippingUsd = 0;
     const exchange = 7.2;
     (order.entries || []).forEach(wbEntry => {
       const key    = `${wbEntry.clientName}|${wbEntry.workbookId}`;
@@ -42056,6 +42110,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       qty           += w.units;
       totalWeightKg += w.weightKg;
       totalCbm      += w.cbm;
+      // Our freight cost for this workbook (the shipping method's cost, e.g.
+      // Fast Air — Direct, computed on the workbook's pricing tab).
+      totalShippingUsd += (typeof w.shippingUsd === 'number' ? w.shippingUsd : (parseFloat(detail.pricingShippingCostUsd) || 0));
 
       // Cartons + pallets are derived from carton specs (no
       // dedicated cache). Use the helper's qty so the carton count
@@ -42086,6 +42143,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       palletsNeeded: Math.ceil(palletsNeeded),
       totalRmb:     Math.round(totalRmb * 100) / 100,
       totalUsd:     Math.round(totalUsd * 100) / 100,
+      totalShippingUsd: Math.round(totalShippingUsd * 100) / 100,
     };
   }
 
@@ -42873,6 +42931,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (plEl) plEl.value = s.portLocation  || '';
     _updateShipDetailReleaseHint();
     _renderShipmentDetailTrackings();
+    _renderShipmentSplits();
 
     // Container type buttons
     document.querySelectorAll('.container-type-btn').forEach(btn => {
@@ -42925,6 +42984,78 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!s) return;
     s.portLocation = (document.getElementById('ship-detail-port-location') || {}).value || '';
     saveShipments();
+  }
+
+  // ── Split shipment ────────────────────────────────────────────────────
+  // A shipment can be split so part of it travels by a different method
+  // (e.g. rush 2,000 units Fast Air, the rest Slow Air). Each split leg =
+  // { id, method, amount, carrier, trackingNumber, addedAt } on s.splits[].
+  function _splitMethodLabel(m) {
+    return ({ slow_boat:'Slow Boat — Cosco', fast_boat:'Fast Boat — Matson', slow_air:'Slow Air — Shared Air/Ground', fast_air:'Fast Air — Direct' })[m] || m || '—';
+  }
+  function openSplitShipmentModal() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    const cur = s.shippingMethod || '';
+    const sel = document.getElementById('split-ship-method');
+    if (sel) {
+      // Default the split to a sensible alternate to the main method.
+      const alt = cur === 'fast_air' ? 'slow_air' : (cur === 'slow_air' ? 'fast_air' : (cur === 'fast_boat' ? 'slow_boat' : (cur === 'slow_boat' ? 'fast_boat' : 'fast_air')));
+      sel.value = alt;
+    }
+    ['split-ship-amount','split-ship-tracking'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const c = document.getElementById('split-ship-carrier'); if (c) c.value = '';
+    const hint = document.getElementById('split-ship-amount-hint');
+    if (hint) hint.textContent = cur ? ('The rest of the shipment stays on ' + _splitMethodLabel(cur) + '.') : '';
+    const m = document.getElementById('modal-split-shipment'); if (m) m.classList.add('open');
+    setTimeout(() => { const el = document.getElementById('split-ship-amount'); if (el) el.focus(); }, 80);
+  }
+  function closeSplitShipmentModal() {
+    const m = document.getElementById('modal-split-shipment'); if (m) m.classList.remove('open');
+  }
+  function confirmSplitShipment() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    const method   = (document.getElementById('split-ship-method')   || {}).value || '';
+    const amount   = parseInt((document.getElementById('split-ship-amount') || {}).value) || 0;
+    const carrier  = (document.getElementById('split-ship-carrier')  || {}).value || '';
+    const tracking = ((document.getElementById('split-ship-tracking') || {}).value || '').trim();
+    if (!method) { if (typeof _msToast === 'function') _msToast('Pick a shipping method for the split.', 'warn'); return; }
+    if (amount <= 0) { if (typeof _msToast === 'function') _msToast('Enter how many units go by this method.', 'warn'); return; }
+    if (!Array.isArray(s.splits)) s.splits = [];
+    s.splits.push({ id: 'sp' + Date.now() + Math.floor(Math.random() * 1000), method, amount, carrier, trackingNumber: tracking, addedAt: new Date().toISOString() });
+    try { saveShipments(); } catch (e) {}
+    _renderShipmentSplits();
+    closeSplitShipmentModal();
+    if (typeof _msToast === 'function') _msToast('Split added: ' + amount.toLocaleString('en-US') + ' units via ' + _splitMethodLabel(method) + '.', 'success');
+  }
+  function removeShipmentSplit(id) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s || !Array.isArray(s.splits)) return;
+    s.splits = s.splits.filter(x => x && x.id !== id);
+    try { saveShipments(); } catch (e) {}
+    _renderShipmentSplits();
+  }
+  function _renderShipmentSplits() {
+    const host = document.getElementById('ship-detail-splits');
+    if (!host) return;
+    const s = shipmentData[_currentShipmentId];
+    if (!s || !Array.isArray(s.splits) || s.splits.length === 0) { host.innerHTML = ''; return; }
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const rows = s.splits.map(sp => {
+      const trk = sp.trackingNumber ? `<span style="color:var(--text-muted); font-size:11px;">${esc((sp.carrier || '').toUpperCase())} ${esc(sp.trackingNumber)}</span>` : '';
+      return `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:rgba(107,147,255,0.06); border:1px solid var(--border); border-radius:8px;">
+        <div style="min-width:0;">
+          <div style="font-size:13px; font-weight:700; color:var(--text);">${(sp.amount || 0).toLocaleString('en-US')} units · ${esc(_splitMethodLabel(sp.method))}</div>
+          ${trk ? `<div style="margin-top:2px;">${trk}</div>` : ''}
+        </div>
+        <button type="button" onclick="removeShipmentSplit('${esc(sp.id)}')" title="Remove split" style="border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:17px; line-height:1; padding:0 4px;">&times;</button>
+      </div>`;
+    }).join('');
+    host.innerHTML = `<div style="margin-top:4px;">
+      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:8px;">Split Legs</label>
+      <div style="display:flex; flex-direction:column; gap:8px;">${rows}</div>
+    </div>`;
   }
 
   // Trackings = array of { carrier, number, addedAt }. Migration:
@@ -43252,6 +43383,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const palletStr  = stats.palletsNeeded > 0 ? stats.palletsNeeded : '—';
       const cbmStr     = stats.totalCbm      > 0 ? stats.totalCbm + ' m³' : '—';
       const weightStr  = stats.totalWeightKg > 0 ? stats.totalWeightKg.toLocaleString('en-US') + ' kg' : '—';
+      const shipStr    = stats.totalShippingUsd > 0 ? `$${fmt2(stats.totalShippingUsd)}` : '—';
       const usdStr     = stats.totalUsd      > 0 ? `$${fmt2(stats.totalUsd)}` : '—';
       const rmbStr     = stats.totalRmb      > 0 ? `¥${fmt2(stats.totalRmb)}` : '';
 
@@ -43307,6 +43439,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <div class="soc-stat"><span class="soc-stat-val">${palletStr}</span><span class="soc-stat-lbl">Pallets</span></div>
             <div class="soc-stat"><span class="soc-stat-val">${cbmStr}</span><span class="soc-stat-lbl">CBM</span></div>
             <div class="soc-stat"><span class="soc-stat-val">${weightStr}</span><span class="soc-stat-lbl">Weight</span></div>
+            <div class="soc-stat"><span class="soc-stat-val">${shipStr}</span><span class="soc-stat-lbl">Shipping</span></div>
           </div>
         </div>
         ${crBanner}
@@ -43314,6 +43447,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }).join('');
 
     listEl.innerHTML = orderCardsHtml + sampleCardsHtml;
+    // Total freight cost across every order in this shipment.
+    let shipmentShippingUsd = 0;
+    orderEntries.forEach(e => { shipmentShippingUsd += (orderShipStats(e.orderId).totalShippingUsd || 0); });
+    const totShipWrap = document.getElementById('ship-total-shipping');
+    const totShipVal  = document.getElementById('ship-total-shipping-val');
+    if (totShipWrap && totShipVal) {
+      if (shipmentShippingUsd > 0) {
+        totShipWrap.style.display = 'flex';
+        totShipVal.textContent = '$' + fmt2(shipmentShippingUsd);
+      } else {
+        totShipWrap.style.display = 'none';
+      }
+    }
     // Keep the Container View in lockstep with the order list —
     // every add/remove/detail-load path funnels through here.
     if (typeof renderShipmentContainerViz === 'function') renderShipmentContainerViz();
