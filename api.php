@@ -4433,6 +4433,14 @@ switch ($action) {
             echo json_encode(['ok' => false, 'error' => 'forbidden']);
             break;
         }
+        // ?peek=1 → read-only: return WHEN the sweep last ran (the marker it
+        // writes each run) WITHOUT performing a sweep. Lets us confirm the
+        // hourly cron is actually firing on schedule without disturbing it.
+        if (!empty($_GET['peek']) || !empty($input['peek'])) {
+            $mk = $pdo->query("SELECT value_json FROM app_state WHERE key_name = 'ms_tracking_cron_last'")->fetchColumn();
+            echo json_encode(['ok' => true, 'peek' => true, 'last' => $mk ? json_decode($mk, true) : null, 'now' => date('c')]);
+            break;
+        }
 
         // Map a carrier status phrase → coarse bucket, mirroring the frontend
         // _trackBucket() so "did it move?" means the same thing server-side.
@@ -4582,6 +4590,13 @@ switch ($action) {
                 }
             }
         }
+
+        // Record WHEN this sweep ran (+ what it found) so a ?peek=1 call can
+        // confirm the hourly cron is alive without triggering a run.
+        try {
+            $pdo->prepare("INSERT INTO app_state (key_name, value_json) VALUES ('ms_tracking_cron_last', ?) ON DUPLICATE KEY UPDATE value_json = VALUES(value_json)")
+                ->execute([json_encode(['at' => date('c'), 'checked' => $checked, 'updated' => $updated, 'changed' => count($changes), 'slackPosted' => $slackPosted])]);
+        } catch (\Throwable $e) { /* marker is best-effort */ }
 
         echo json_encode([
             'ok' => true, 'checked' => $checked, 'updated' => $updated,
