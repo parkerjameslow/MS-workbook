@@ -8998,11 +8998,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Depth <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
-                <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+                <input type="number" min="0" placeholder="e.g. 10" id="carton-inner-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint(); _sizeOuterFromArrangement()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Width <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
-                <input type="number" min="0" placeholder="e.g. 1" id="carton-inner-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+                <input type="number" min="0" placeholder="e.g. 1" id="carton-inner-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint(); _sizeOuterFromArrangement()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Height <span style="font-weight:400; text-transform:none; font-size:11px;">(units)</span></div>
@@ -9196,15 +9196,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-full-row" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Depth <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
-                <input type="number" min="0" placeholder="e.g. 2" id="carton-outer-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+                <input type="number" min="0" placeholder="e.g. 2" id="carton-outer-row" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint(); _sizeOuterFromArrangement()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Width <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
-                <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+                <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-side" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint(); _sizeOuterFromArrangement()" />
               </div>
               <div style="flex:1 1 90px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px;">Height <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner)</span></div>
-                <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint()" />
+                <input type="number" min="0" placeholder="e.g. 1" id="carton-outer-stack" style="width:100%;" oninput="autoCalcCartons(); updateOuterWeightHint(); _sizeOuterFromArrangement()" />
               </div>
             </div>
             <div class="specs-full-row carton-stack-ctl" style="margin-top:8px;">
@@ -15844,6 +15844,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const lb = (N * unitKg * 2.20462);
       _msToast(`Box ${fit.L.toFixed(1)} × ${fit.W.toFixed(1)} × ${fit.H.toFixed(1)} cm · ${N} ${haveInner ? 'inner cartons' : 'units'} ≈ ${lb.toFixed(0)} lb (${fit.nx}×${fit.ny}×${fit.nz}).`, 'success');
     }
+    if (typeof renderOuterOrientTiles === 'function') { try { renderOuterOrientTiles(); } catch (_) {} }
+  }
+
+  // When the operator edits the Depth × Width × Height arrangement by hand,
+  // resize the OUTER box to exactly fit that arrangement (box axis = count ×
+  // (unit + 2× wall)) and re-sync the fit tiles + Qty — so the "N inners"
+  // suggestion tracks their arrangement (24 → 40) instead of going stale, and
+  // changing any axis actually moves the box. (Parker, 2026-11-09.)
+  function _sizeOuterFromArrangement() {
+    if (_autoSizingOuter || _filling) return;
+    const g  = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const gi = id => parseInt(document.getElementById(id)?.value) || 0;
+    const r = gi('carton-outer-row'), s = gi('carton-outer-side'), h = gi('carton-outer-stack');
+    if (r < 1 || s < 1 || h < 1) return;   // need all three axes
+    let uL = g('carton-inner-l-cm'), uW = g('carton-inner-w-cm'), uH = g('carton-inner-h-cm');
+    if (uL <= 0 || uW <= 0 || uH <= 0) { uL = g('dim-cm-l'); uW = g('dim-cm-w'); uH = g('dim-cm-h'); }
+    if (uL <= 0 || uW <= 0 || uH <= 0) return;
+    const oWallSel = gi('carton-outer-wall') || 2;
+    const wall2 = (oWallSel === 2 ? 0.7 : 0.4) * 2;
+    _autoSizingOuter = true;
+    try { setCartonDimFields('carton-outer', r * (uL + wall2), s * (uW + wall2), h * (uH + wall2)); }
+    finally { _autoSizingOuter = false; }
+    if (typeof renderOuterOrientTiles === 'function') { try { renderOuterOrientTiles(); } catch (_) {} }
+    if (typeof renderPalletViz === 'function') { try { renderPalletViz(); } catch (_) {} }
+    if (typeof calcFreight === 'function') { try { calcFreight(); } catch (_) {} }
+    if (!_filling && typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
   }
 
   function autoCalcCartons() {
