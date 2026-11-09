@@ -8178,6 +8178,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <a class="user-dropdown-item danger" href="logout.php">Log Out</a>
       </div>
     </div>
+    <!-- Voice Order — flat mic, right of the username. Tap to dictate an
+         order hands-free (opens the Voice Order panel). -->
+    <button id="voiceOrderBtn" type="button" onclick="openVoiceOrderPanel()" title="Voice order" aria-label="Voice order"
+      style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:50%; border:none; background:var(--accent); color:#fff; cursor:pointer; padding:0; flex:0 0 auto;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="9" y="3" width="6" height="11" rx="3"></rect>
+        <path d="M5 11a7 7 0 0 0 14 0"></path>
+        <line x1="12" y1="18" x2="12" y2="21"></line>
+      </svg>
+    </button>
   </div>
 </header>
 
@@ -54209,9 +54219,5 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
      style="position:fixed; bottom:6px; right:8px; z-index:9999; font: 10px/1 -apple-system,BlinkMacSystemFont,sans-serif; color:#9ca3af; background:rgba(255,255,255,0.7); padding:3px 6px; border-radius:4px; pointer-events:none; user-select:none;">
   build <?= htmlspecialchars($_msBuildIso, ENT_QUOTES) ?>
 </div>
-<!-- Voice Order mic — floating, bottom-left (bottom-right is the build
-     badge + toasts). Tap to dictate an order hands-free on your phone. -->
-<button id="voiceOrderFab" type="button" onclick="openVoiceOrderPanel()" title="Voice order" aria-label="Voice order"
-        style="position:fixed; left:14px; bottom:14px; z-index:1190; width:56px; height:56px; border-radius:50%; border:none; background:var(--accent,#6b93ff); color:#fff; box-shadow:0 4px 14px rgba(0,0,0,0.3); cursor:pointer; font-size:26px; display:flex; align-items:center; justify-content:center; padding:0;">&#127908;</button>
 </body>
 </html>
