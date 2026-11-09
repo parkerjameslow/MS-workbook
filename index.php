@@ -12247,6 +12247,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <label>Tracking Number <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
         <input type="text" id="new-ship-tracking" placeholder="e.g. 1Z999AA10123456784" autocomplete="off" />
       </div>
+      <!-- Split legs — send part of the shipment by a different method. -->
+      <div class="modal-field">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+          <label style="margin:0;">Split Shipment <span style="color:var(--text-muted); font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+          <button type="button" onclick="_addNewShipSplitRow()" style="padding:4px 10px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Add Split</button>
+        </div>
+        <p style="font-size:11px; color:var(--text-muted); margin:0 0 8px; line-height:1.4;">Send part of this shipment by a different method — add a method + how many units go that way.</p>
+        <div id="new-ship-splits-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+      </div>
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeNewShipmentModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">Create Shipment</button>
@@ -42280,6 +42289,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (bol) bol.style.display = 'none';
     const portDates = document.getElementById('new-ship-port-dates');
     if (portDates) portDates.style.display = 'none';
+    const splitsList = document.getElementById('new-ship-splits-list');
+    if (splitsList) splitsList.innerHTML = '';
     document.getElementById('modal-new-shipment').classList.add('open');
     setTimeout(() => document.getElementById('new-ship-name').focus(), 80);
   }
@@ -42442,6 +42453,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       carrier:        carrier,
       trackingNumber: tracking,
       trackings:      (carrier && tracking) ? [{ carrier, number: tracking, addedAt: new Date().toISOString() }] : [],
+      // Split legs added in the New Shipment modal (method + amount each).
+      splits:         (typeof _collectNewShipSplits === 'function') ? _collectNewShipSplits() : [],
     };
     if (bookTruck) {
       const getVal = id2 => { const el = document.getElementById(id2); return el ? el.value : ''; };
@@ -43012,6 +43025,34 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function closeSplitShipmentModal() {
     const m = document.getElementById('modal-split-shipment'); if (m) m.classList.remove('open');
+  }
+  // Inline split-leg rows in the New Shipment modal.
+  function _addNewShipSplitRow() {
+    const host = document.getElementById('new-ship-splits-list');
+    if (!host) return;
+    const row = document.createElement('div');
+    row.className = 'new-ship-split-row';
+    row.style.cssText = 'display:flex; gap:8px; align-items:center;';
+    row.innerHTML = `
+      <select class="nss-method" style="flex:1; min-width:0; padding:7px 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:12px;">
+        <option value="slow_boat">Slow Boat — Cosco</option>
+        <option value="fast_boat">Fast Boat — Matson</option>
+        <option value="slow_air">Slow Air — Shared Air/Ground</option>
+        <option value="fast_air">Fast Air — Direct</option>
+      </select>
+      <input type="number" class="nss-amount" min="1" placeholder="units" style="flex:0 0 90px; padding:7px 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:12px;" />
+      <button type="button" title="Remove split" onclick="this.closest('.new-ship-split-row').remove()" style="border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:17px; line-height:1; padding:0 4px;">&times;</button>`;
+    host.appendChild(row);
+    const amt = row.querySelector('.nss-amount'); if (amt) amt.focus();
+  }
+  function _collectNewShipSplits() {
+    const out = [];
+    document.querySelectorAll('#new-ship-splits-list .new-ship-split-row').forEach(row => {
+      const method = (row.querySelector('.nss-method') || {}).value || '';
+      const amount = parseInt((row.querySelector('.nss-amount') || {}).value) || 0;
+      if (method && amount > 0) out.push({ id: 'sp' + Date.now() + Math.floor(Math.random() * 1000), method, amount, carrier: '', trackingNumber: '', addedAt: new Date().toISOString() });
+    });
+    return out;
   }
   function confirmSplitShipment() {
     const s = shipmentData[_currentShipmentId];
