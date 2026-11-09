@@ -36042,6 +36042,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
     }
   }
+  // ── New-workbook state-bleed GUARD RAIL ───────────────────────────────
+  // Every field the load's data branch writes via _s() is recorded here, so
+  // the pre-clear sweep can blank ANY such field on a fresh workbook even if
+  // someone forgets to add it to the static _clearIds list. This makes the
+  // "new workbook inherited the last one's shipping/dims" bug structurally
+  // impossible to reintroduce — a new _s() field is auto-covered (and warned
+  // about) instead of silently bleeding. See [[feedback_new_workbook_no_bleed]].
+  let _wbSetterFieldIds = new Set();
+  const _wbNewClearWarned = new Set();
+  const _wbSeedKeepIds = new Set(['client-name', 'product-name']); // intentionally seeded on new
   function _fillWorkbookInner(clientName, workbookId) {
     // Fresh workbook → drop any per-section edit unlocks from the last one.
     try { _unlockedSections.clear(); } catch (_) {}
@@ -36170,6 +36180,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       'portal-message','portal-date-submitted','portal-date-expected','portal-tracking',
     ];
     _clearIds.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // GUARD RAIL: also blank any field the data branch is known to populate
+    // (recorded in _wbSetterFieldIds across loads) that isn't in the static
+    // list above — so a newly-added _s() field can never silently bleed into
+    // a fresh workbook. Warn once per field so it gets added to _clearIds too.
+    {
+      const _clearStatic = new Set(_clearIds);
+      _wbSetterFieldIds.forEach(id => {
+        if (_clearStatic.has(id) || _wbSeedKeepIds.has(id)) return;
+        const el = document.getElementById(id);
+        if (el && 'value' in el) el.value = '';
+        if (!_wbNewClearWarned.has(id)) {
+          _wbNewClearWarned.add(id);
+          try { console.warn('[MS new-workbook guard] auto-cleared un-listed field "' + id + '" — add it to _clearIds in _fillWorkbookInner.'); } catch (_) {}
+        }
+      });
+    }
     // Portal status is a select — reset to its default rather than blank.
     { const _ps = document.getElementById('portal-status'); if (_ps) _ps.value = 'request'; }
     // Per-method freight rates live in the freightMethodRates object (not a
@@ -36248,7 +36274,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _freightWeightBasis = 'chargeable';
     if (typeof _syncFreightBasisButtons === 'function') { try { _syncFreightBasisButtons(); } catch (_) {} }
 
-    function _s(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; }
+    function _s(id, val) { _wbSetterFieldIds.add(id); const el = document.getElementById(id); if (el) el.value = val || ''; }
 
     if (data && !Array.isArray(data) && (data.client || data.product || data.productImages || data.productImage)) {
       // Workbook tab
