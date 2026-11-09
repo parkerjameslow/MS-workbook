@@ -43416,10 +43416,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <div class="soc-name">${order.name} &nbsp;·&nbsp; ${stats.wbCount} workbook${stats.wbCount !== 1 ? 's' : ''}</div>
           </div>
           <div style="display:flex; align-items:center; gap:10px;">
-            <div class="soc-cost">
-              <span class="soc-cost-usd">${usdStr}</span>
-              ${rmbStr ? `<span class="soc-cost-rmb">${rmbStr}</span>` : ''}
-            </div>
             <button onclick="event.stopPropagation(); moveOrderBackToProduction(${entry.orderId})"
                     style="padding:6px 10px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit; white-space:nowrap;"
                     title="Move the entire order back to In Production (removes all of its entries from every shipment)">
