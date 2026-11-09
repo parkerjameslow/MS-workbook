@@ -9136,11 +9136,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <button type="button" class="specs-clear-btn" onclick="openClearSectionModal('outer')" title="Clear all Outer Carton fields">Clear</button>
             </div>
           </div>
-          <!-- Instruction: these dims auto-fill from the inner-carton count via
-               the AUTO-FILL button; or type them manually. -->
-          <div style="display:flex; align-items:flex-start; gap:7px; margin:0 0 10px; padding:8px 10px; background:rgba(107,147,255,0.08); border:1px solid rgba(107,147,255,0.28); border-radius:8px; font-size:11px; line-height:1.4; color:var(--text-muted);">
+          <!-- Instruction + target-weight guideline. AUTO-FILL builds a
+               compact (cube-ish) box sized to about this many pounds. -->
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin:0 0 10px; padding:8px 10px; background:rgba(107,147,255,0.08); border:1px solid rgba(107,147,255,0.28); border-radius:8px; font-size:11px; line-height:1.5; color:var(--text-muted);">
             <span style="font-size:13px; line-height:1;">💡</span>
-            <span>Set <strong>Qty (Inner Cartons)</strong> below, then press <strong style="color:var(--accent);">⚡ AUTO-FILL</strong> (top-right) to size this box automatically — or type the Length / Width / Height yourself.</span>
+            <span>Build a box around
+              <input type="number" min="1" step="1" value="40" id="outer-target-lb" title="Target weight per outer box — AUTO-FILL sizes the box to hold about this much."
+                style="width:54px; padding:2px 6px; margin:0 2px; border:1px solid var(--border); border-radius:6px; font-size:12px; font-weight:800; color:var(--text); text-align:center; background:var(--surface2);"> lb,
+              then press <strong style="color:var(--accent);">⚡ AUTO-FILL</strong> — it picks a sensible, compact box (not a thin tray) and fills the Qty + arrangement. Or type the L / W / H yourself.</span>
           </div>
           <div class="specs-dim-grid">
             <div></div>
@@ -15766,47 +15769,81 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     updateOuterWeightHint();
   }
 
-  // Auto-size the OUTER carton box from the number of inner cartons the
-  // operator wants in it. Type the "Qty (Inner Cartons)" (or click AUTO) and
-  // this computes the best arrangement + box L×W×H = inner-carton dims (each
-  // + 2× wall) × the per-axis count, then fills the outer dimensions and the
-  // Depth×Width×Height arrangement. Falls back to product dims when the inner
-  // carton isn't sized. (Parker, 2026-11-09 — "put in the amount of inners,
-  // do the math and populate L W H".)
+  // Pick the most CUBE-LIKE arrangement of `qty` units (each uL×uW×uH),
+  // minimizing the box's longest/shortest side ratio (then its largest side).
+  // This is what makes a box that "makes sense" — the old packer minimized
+  // height, which collapsed everything into a thin single-layer tray.
+  function _bestCubicCarton(uL, uW, uH, qty) {
+    qty = Math.max(1, Math.floor(qty));
+    let best = null, bestScore = Infinity;
+    for (let a = 1; a <= qty; a++) {
+      if (qty % a) continue;
+      for (let b = a; b <= qty / a; b++) {
+        if ((qty / a) % b) continue;
+        const c = qty / a / b;
+        [[a,b,c],[a,c,b],[b,a,c],[b,c,a],[c,a,b],[c,b,a]].forEach(([x,y,z]) => {
+          const L = x * uL, W = y * uW, H = z * uH;
+          const mx = Math.max(L, W, H), mn = Math.min(L, W, H) || 1e-6;
+          const score = (mx / mn) * 1e5 + mx;   // cube-ish first, then smaller overall
+          if (score < bestScore) { bestScore = score; best = { L, W, H, nx: x, ny: y, nz: z }; }
+        });
+      }
+    }
+    return best;
+  }
+  // Auto-size the OUTER carton box to a sensible, COMPACT box holding about a
+  // target weight (default 40 lb). Figures how many units ≈ that weight, packs
+  // them cube-ish (not a thin tray), and fills the outer L×W×H + arrangement +
+  // qty. Unit = the inner carton, or the product itself when the inner box is
+  // bypassed. (Parker, 2026-11-09 — "fit around 40 lb as a guideline for how
+  // big the box should be built" + "make a box that makes sense".)
   let _autoSizingOuter = false;
   function autoSizeOuterFromCount() {
     if (_autoSizingOuter || _filling) return;
     const g  = id => parseFloat(document.getElementById(id)?.value) || 0;
     const gi = id => parseInt(document.getElementById(id)?.value) || 0;
-    const N = gi('carton-outer-count');
-    if (N <= 0) { if (typeof _msToast === 'function') _msToast('Enter how many inner cartons go in the outer box first.', 'warn'); return; }
-    // Unit being packed = the inner carton; fall back to the product if the
-    // inner carton isn't dimensioned (ships without an inner box).
-    let iL = g('carton-inner-l-cm'), iW = g('carton-inner-w-cm'), iH = g('carton-inner-h-cm');
-    if (iL <= 0 || iW <= 0 || iH <= 0) { iL = g('dim-cm-l'); iW = g('dim-cm-w'); iH = g('dim-cm-h'); }
-    if (iL <= 0 || iW <= 0 || iH <= 0) {
-      if (typeof _msToast === 'function') _msToast('Enter the inner carton (or product) dimensions first — then the outer box auto-fills.', 'warn');
+    // Unit packed into the outer box: the inner carton if dimensioned, else
+    // the product itself (inner box bypassed).
+    let uL = g('carton-inner-l-cm'), uW = g('carton-inner-w-cm'), uH = g('carton-inner-h-cm');
+    const haveInner = (uL > 0 && uW > 0 && uH > 0);
+    const prodKg = g('dim-weight-kg');
+    const innerCnt = gi('carton-inner-count');
+    let unitKg;
+    if (haveInner) { unitKg = g('carton-inner-weight') || (prodKg * Math.max(1, innerCnt)); }
+    else { uL = g('dim-cm-l'); uW = g('dim-cm-w'); uH = g('dim-cm-h'); unitKg = prodKg; }
+    if (uL <= 0 || uW <= 0 || uH <= 0) {
+      if (typeof _msToast === 'function') _msToast('Enter the product (or inner carton) dimensions first.', 'warn');
+      return;
+    }
+    // How many units go in the box — from the ~target-weight guideline, else a
+    // typed carton count if there's no weight to work from.
+    const tgtLb = g('outer-target-lb') || 40;
+    const tgtKg = tgtLb / 2.20462;
+    let N = (unitKg > 0) ? Math.max(1, Math.round(tgtKg / unitKg)) : gi('carton-outer-count');
+    if (N <= 0) {
+      if (typeof _msToast === 'function') _msToast('Enter the product weight so I can size the box to about ' + tgtLb + ' lb (or type a carton count).', 'warn');
       return;
     }
     const oWallSel = gi('carton-outer-wall') || 2;           // matches autoCalcCartons' wall model
     const wall2 = (oWallSel === 2 ? 0.7 : 0.4) * 2;          // wall on both sides per axis
-    // bestCartonDims adds its padding once per axis, so bake the wall into the
-    // unit size (inner + 2× wall) and pass 0 padding → L = count × (inner+2wall).
-    const fit = bestCartonDims(iL + wall2, iW + wall2, iH + wall2, N, 0);
+    const fit = _bestCubicCarton(uL + wall2, uW + wall2, uH + wall2, N);
     if (!fit) return;
     _autoSizingOuter = true;
     try {
       setCartonDimFields('carton-outer', fit.L, fit.W, fit.H);   // sets cm + in, refreshes box viz
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
       set('carton-outer-row', fit.nx); set('carton-outer-side', fit.ny); set('carton-outer-stack', fit.nz);
-      const innerCnt = gi('carton-inner-count');
+      set('carton-outer-count', N);
       if (innerCnt > 0) set('carton-outer-units', innerCnt * N);
     } finally { _autoSizingOuter = false; }
     if (typeof updateOuterWeightHint === 'function') updateOuterWeightHint();
     if (typeof renderPalletViz === 'function') renderPalletViz();
     if (typeof calcFreight === 'function') calcFreight();
     if (!_filling && typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
-    if (typeof _msToast === 'function') _msToast(`Outer box sized to ${fit.L.toFixed(1)} × ${fit.W.toFixed(1)} × ${fit.H.toFixed(1)} cm for ${N} inner carton${N === 1 ? '' : 's'} (${fit.nx}×${fit.ny}×${fit.nz}).`, 'success');
+    if (typeof _msToast === 'function') {
+      const lb = (N * unitKg * 2.20462);
+      _msToast(`Box ${fit.L.toFixed(1)} × ${fit.W.toFixed(1)} × ${fit.H.toFixed(1)} cm · ${N} ${haveInner ? 'inner cartons' : 'units'} ≈ ${lb.toFixed(0)} lb (${fit.nx}×${fit.ny}×${fit.nz}).`, 'success');
+    }
   }
 
   function autoCalcCartons() {
