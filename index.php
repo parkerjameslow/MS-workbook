@@ -20177,10 +20177,53 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     else if (n === rows.length) { h.checked = true;  h.indeterminate = false; }
     else                       { h.checked = false; h.indeterminate = true;  }
   }
+  // FAILSAFE: repair combine-group data so a corrupt / stale group can never
+  // silently LOCK a line's combine checkbox or desync the UI (the "combine
+  // button not showing" bug). Drops groups with fewer than 2 valid members,
+  // strips out-of-range / duplicate / NaN indices, stops one line living in
+  // two groups, and fixes a bad primaryIdx or id. `rowCount === null` skips
+  // the range check — used before the table has rendered (mid-load) so we
+  // never wipe valid groups prematurely. Returns true if anything changed.
+  function _sanitizeCombineGroups(rowCount) {
+    if (!Array.isArray(_combineGroups)) { _combineGroups = []; return false; }
+    let changed = false;
+    const claimed = new Set();   // a line index may belong to only ONE group
+    const ids = new Set();
+    const cleaned = [];
+    for (const g of _combineGroups) {
+      if (!g || typeof g !== 'object') { changed = true; continue; }
+      const valid = [];
+      (Array.isArray(g.itemIdxs) ? g.itemIdxs : []).forEach(raw => {
+        const i = parseInt(raw, 10);
+        if (!Number.isInteger(i) || i < 0) { changed = true; return; }
+        if (rowCount != null && i >= rowCount) { changed = true; return; }
+        if (claimed.has(i) || valid.includes(i)) { changed = true; return; }
+        valid.push(i);
+      });
+      valid.sort((a, b) => a - b);
+      if (valid.length < 2) { changed = true; continue; }   // a <2-member group is pointless — it only locks a checkbox
+      valid.forEach(i => claimed.add(i));
+      let pid = parseInt(g.primaryIdx, 10);
+      if (!valid.includes(pid)) { pid = valid[0]; changed = true; }
+      if ((g.itemIdxs || []).length !== valid.length) changed = true;
+      let id = (g.id != null && g.id !== '') ? String(g.id) : '';
+      if (!id || ids.has(id)) { id = 'cg' + Date.now() + Math.floor(Math.random() * 1000); changed = true; }
+      ids.add(id);
+      cleaned.push({ id, label: (g.label != null ? g.label : 'Combined group'), primaryIdx: pid, itemIdxs: valid, collapsed: g.collapsed !== false });
+    }
+    if (changed) _combineGroups = cleaned;
+    return changed;
+  }
   // Visibility of the persistent "X combined groups · Manage" bar.
   function updateRfqGroupsBar() {
     const bar = document.getElementById('rfq-groups-bar');
     if (!bar) return;
+    // Repair invalid groups BEFORE rendering from them. Only enforce the
+    // row-range check once rows exist and we're not mid-load, so a valid
+    // group is never wiped before the table has drawn.
+    const _parentCount = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])').length;
+    const _sanChanged = _sanitizeCombineGroups((!_filling && _parentCount > 0) ? _parentCount : null);
+    if (_sanChanged && !_filling && typeof autoSaveWorkbook === 'function') { try { autoSaveWorkbook(); } catch (_) {} }
     const n = (_combineGroups || []).length;
     bar.style.display = n > 0 ? 'flex' : 'none';
     const countEl = document.getElementById('rfq-groups-count');
@@ -45858,11 +45901,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const me = (typeof window.MS_SESSION === 'object' && window.MS_SESSION) ? (window.MS_SESSION.name || window.MS_SESSION.username || '') : '';
     host.innerHTML = comments.slice().reverse().map(c => {
       const isMine = c.author && me && c.author.toLowerCase() === String(me).toLowerCase();
-      const when = c.createdAt ? _crmRelTime(c.createdAt) : '';
+      const when = c.createdAt ? new Date(c.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+      const whenRel = c.createdAt ? _crmRelTime(c.createdAt) : '';
       return `<div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px;">
         <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
           <span style="font-size:11px; font-weight:800; color:var(--text);">${esc(c.author || 'Unknown')}</span>
-          <span style="font-size:10px; color:var(--text-muted);">${esc(when)}</span>
+          <span style="font-size:10px; color:var(--text-muted);" title="${esc(whenRel)}">${esc(when || whenRel)}</span>
           ${isMine ? `<button type="button" onclick="_deleteCrmComment('${c.id}')" title="Delete this comment" style="margin-left:auto; background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; padding:0;">×</button>` : ''}
         </div>
         <div style="font-size:12px; color:var(--text); line-height:1.5; white-space:pre-wrap;">${esc(c.text || '')}</div>
@@ -50902,7 +50946,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return `<div class="pl-comment">
         <span class="pl-comment-avatar" style="background:${_plCommentColor(who)};">${_plEsc(String(who).charAt(0).toUpperCase())}</span>
         <div class="pl-comment-body">
-          <div class="pl-comment-meta"><span class="pl-comment-who">${_plEsc(who)}</span> · <span title="${_plEsc(abs)}">${_plEsc(rel || abs)}</span>
+          <div class="pl-comment-meta"><span class="pl-comment-who">${_plEsc(who)}</span> · <span title="${_plEsc(rel)}">${_plEsc(abs || rel)}</span>
             <button class="pl-comment-del" title="Delete comment" onclick="deletePipelineComment('${_plEsc(c.id)}')">&times;</button>
           </div>
           <div class="pl-comment-text">${_plEsc(c.text)}</div>
@@ -51072,12 +51116,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const noteItems = notes.length ? notes.map(c => {
       const who = c.author || 'Someone';
       const rel = (typeof _crmRelTime === 'function') ? _crmRelTime(c.at) : '';
-      const abs = c.at ? new Date(c.at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+      const abs = c.at ? new Date(c.at).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '';
       const color = (typeof _plCommentColor === 'function') ? _plCommentColor(who) : '#4b5563';
       return `<div class="sn-note">
         <span class="pl-comment-avatar" style="background:${color};">${_plEsc(String(who).charAt(0).toUpperCase())}</span>
         <div class="sn-note-body">
-          <div class="sn-note-meta"><span class="pl-comment-who">${_plEsc(who)}</span> · <span title="${_plEsc(abs)}">${_plEsc(rel || abs)}</span>
+          <div class="sn-note-meta"><span class="pl-comment-who">${_plEsc(who)}</span> · <span title="${_plEsc(rel)}">${_plEsc(abs || rel)}</span>
             <button class="sn-todo-del" title="Delete note" onclick="deleteSampleNote('${enc}','${_plEsc(c.id)}')">&times;</button>
           </div>
           <div class="sn-note-text">${_plEsc(c.text)}</div>
