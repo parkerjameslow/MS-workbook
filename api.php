@@ -603,6 +603,11 @@ if (!defined('SLACK_USER_TOKEN')) { $v = getenv('SLACK_USER_TOKEN'); define('SLA
 // #accounting channel id (C0BDW1GP0FP) so no name lookup / channels:read is
 // needed; override in api.local.php to point elsewhere.
 if (!defined('SLACK_ACCOUNTING_CHANNEL')) { $v = getenv('SLACK_ACCOUNTING_CHANNEL'); define('SLACK_ACCOUNTING_CHANNEL', is_string($v) && $v !== '' ? $v : 'C0BDW1GP0FP'); }
+// Channel the hourly tracking sweep posts shipment-status pings to. Defaults
+// to #shipments (C0CG5MT9XFU). The app bot (SLACK_BOT_TOKEN) must be a MEMBER
+// of this channel — invite it once with /invite in the channel. Override in
+// api.local.php to point elsewhere.
+if (!defined('SLACK_SHIPMENTS_CHANNEL')) { $v = getenv('SLACK_SHIPMENTS_CHANNEL'); define('SLACK_SHIPMENTS_CHANNEL', is_string($v) && $v !== '' ? $v : 'C0CG5MT9XFU'); }
 // Trello REST API key + token:
 if (!defined('TRELLO_KEY'))   { $v = getenv('TRELLO_KEY');   define('TRELLO_KEY',   is_string($v) ? $v : ''); }
 if (!defined('TRELLO_TOKEN')) { $v = getenv('TRELLO_TOKEN'); define('TRELLO_TOKEN', is_string($v) ? $v : ''); }
@@ -4525,9 +4530,13 @@ switch ($action) {
             }
         }
 
-        // ── Slack heads-up, one message per changed shipment.
-        $slackPosted = 0;
-        if (!empty($changes) && SLACK_WEBHOOK_URL !== '' && function_exists('curl_init')) {
+        // ── Slack heads-up, one message per changed shipment. Preferred path
+        //    is the app bot (chat.postMessage) → #shipments; if no bot token is
+        //    configured we fall back to the shared incoming webhook.
+        $slackPosted = 0; $slackErr = null;
+        $useBot = (SLACK_BOT_TOKEN !== '' && SLACK_SHIPMENTS_CHANNEL !== '' && function_exists('curl_init'));
+        $useHook = (!$useBot && SLACK_WEBHOOK_URL !== '' && function_exists('curl_init'));
+        if (!empty($changes) && ($useBot || $useHook)) {
             $fmtEta = function ($v) {
                 if ($v === '') return '';
                 $ts = strtotime($v);
@@ -4546,30 +4555,40 @@ switch ($action) {
                 $etaFmt = $fmtEta($c['eta']);
                 if ($etaFmt !== '') $lines[] = ($c['bucket'] === 'delivered' ? '🗓 Delivered ' : '🗓 ETA ') . $etaFmt;
                 $lines[] = '<https://wb.marketsculpt.com/#/shipment/' . rawurlencode((string)$c['sid']) . '|Open shipment →>';
-                $body = json_encode([
-                    'text'   => $head,
-                    'blocks' => [
-                        ['type' => 'header', 'text' => ['type' => 'plain_text', 'text' => mb_substr($head, 0, 150), 'emoji' => true]],
-                        ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $lines)]],
-                    ],
-                ]);
-                $ch = curl_init(SLACK_WEBHOOK_URL);
-                curl_setopt_array($ch, [
-                    CURLOPT_POST => true, CURLOPT_POSTFIELDS => $body,
-                    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-                    CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
-                ]);
-                $sResp = curl_exec($ch);
-                $sCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                curl_close($ch);
-                if ($sResp !== false && $sCode >= 200 && $sCode < 300) $slackPosted++;
+                $blocks = [
+                    ['type' => 'header', 'text' => ['type' => 'plain_text', 'text' => mb_substr($head, 0, 150), 'emoji' => true]],
+                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $lines)]],
+                ];
+                if ($useBot) {
+                    $r = parker_slack_api('chat.postMessage', [
+                        'channel' => SLACK_SHIPMENTS_CHANNEL,
+                        'text'    => $head,
+                        'blocks'  => json_encode($blocks),
+                    ]);
+                    if (is_array($r) && !empty($r['ok'])) $slackPosted++;
+                    else $slackErr = is_array($r) ? ($r['error'] ?? 'post failed') : 'no response';
+                } else {
+                    $ch = curl_init(SLACK_WEBHOOK_URL);
+                    curl_setopt_array($ch, [
+                        CURLOPT_POST => true,
+                        CURLOPT_POSTFIELDS => json_encode(['text' => $head, 'blocks' => $blocks]),
+                        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
+                    ]);
+                    $sResp = curl_exec($ch);
+                    $sCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+                    if ($sResp !== false && $sCode >= 200 && $sCode < 300) $slackPosted++;
+                }
             }
         }
 
         echo json_encode([
             'ok' => true, 'checked' => $checked, 'updated' => $updated,
             'changed' => count($changes), 'slackPosted' => $slackPosted,
-            'slackConfigured' => (SLACK_WEBHOOK_URL !== ''),
+            'slackVia' => $useBot ? 'bot' : ($useHook ? 'webhook' : 'none'),
+            'slackChannel' => $useBot ? SLACK_SHIPMENTS_CHANNEL : null,
+            'slackErr' => $slackErr,
             'changes' => $changes,
             'ranAt' => date('c'),
         ]);
