@@ -49398,7 +49398,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       status: 'draft',
       dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
       poNumber: '',
-      depositPct: 50,
+      depositPct: _clientDepositPctDefault(clientName),
       notes: '',
       entries,
     };
@@ -50925,7 +50925,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     orderData[id] = {
       id, name: `Order #${num}`, clientName, status: 'draft',
       dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
-      poNumber: '', depositPct: 50, notes: '',
+      poNumber: '', depositPct: _clientDepositPctDefault(clientName), notes: '',
       entries: [{ clientName, workbookId }],
       notifiedAt: stamp, movedToProductionAt: stamp,
     };
@@ -52529,7 +52529,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       orderData[id] = {
         id, name: `Order #${num}`, clientName, status: 'draft',
         dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
-        poNumber: '', depositPct: 50, notes: '',
+        poNumber: '', depositPct: _clientDepositPctDefault(clientName), notes: '',
         entries: byClient[clientName].map(s => ({ clientName, workbookId: s.workbookId })),
       };
       if (firstId == null) firstId = id;
@@ -54637,13 +54637,46 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (ht) ht.textContent = o.name;
   }
 
+  // The deposit % is a per-CUSTOMER term, not a per-order one. This returns
+  // the % to use for a client, read from that client's most-recently-created
+  // existing order (so e.g. once Salt is set to 35%, every new Salt order and
+  // any sibling order inherits 35). Falls back to 50. "Multiple Clients"
+  // orders have no single customer, so they always default to 50.
+  function _clientDepositPctDefault(clientName) {
+    if (!clientName || clientName === 'Multiple Clients') return 50;
+    let best = null, bestId = -1;
+    Object.values(orderData).forEach(o => {
+      if (o && o.clientName === clientName && typeof o.depositPct === 'number') {
+        const oid = parseInt(o.id) || 0;
+        if (oid >= bestId) { bestId = oid; best = o.depositPct; }
+      }
+    });
+    return best == null ? 50 : best;
+  }
+
   function onOrderDepositPctChange() {
     const o = orderData[_currentOrderId];
     if (!o) return;
-    const val = parseInt(document.getElementById('order-detail-deposit-pct').value) || 50;
-    o.depositPct = Math.min(100, Math.max(0, val));
+    const val = Math.min(100, Math.max(0, parseInt(document.getElementById('order-detail-deposit-pct').value) || 50));
+    o.depositPct = val;
+    // Per-customer term: push the new % onto every OTHER order for the same
+    // client so all of that customer's workbooks/orders stay in lockstep
+    // (Parker: changing Salt 50→35 must update each Salt order). Skip the
+    // multi-client bucket — it has no single customer to sync to.
+    const client = o.clientName;
+    let synced = 0;
+    if (client && client !== 'Multiple Clients') {
+      Object.values(orderData).forEach(other => {
+        if (other && other !== o && other.clientName === client && other.depositPct !== val) {
+          other.depositPct = val; synced++;
+        }
+      });
+    }
     saveOrders();
     renderOrderDepositTracking();
+    if (synced > 0 && typeof _msToast === 'function') {
+      _msToast(`Deposit set to ${val}% for ${client} — synced ${synced} other order${synced === 1 ? '' : 's'}.`, 'success');
+    }
   }
 
   function onOrderNotesChange() {
