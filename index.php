@@ -33911,11 +33911,59 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       stored = Math.min(num, 999.99).toFixed(2);
     }
     if (!clientDetails[clientName]) clientDetails[clientName] = {};
+    // Capture the OLD default first so we can tell which workbooks were riding
+    // the default (and should follow it) vs. a deliberate per-workbook override
+    // (which the modal promises to leave alone).
+    const _oldRaw = clientDetails[clientName].default_margin_pct;
+    const _oldDefault = (_oldRaw === '' || _oldRaw == null || isNaN(parseFloat(_oldRaw))) ? 50 : parseFloat(_oldRaw);
     clientDetails[clientName].default_margin_pct = stored;
     saveClientDetail(clientName);
+    _propagateClientMarginToWorkbooks(clientName, stored, _oldDefault);
     // Re-render the card so the avatar badge picks up the new value.
     if (typeof renderClientDetailCard === 'function') renderClientDetailCard(clientName);
     closeClientMarginModal();
+  }
+
+  // Push a changed client Default Profit Margin down onto that client's
+  // workbooks. The workbook margin input inherits the client default when
+  // blank, but once a workbook is opened that inherited value gets baked into
+  // detail.pricingMarginPct — so without this, changing the client default
+  // left already-touched workbooks stuck on the OLD number (Parker: "when the
+  // % for Salt changes 50→35 it needs to update on each of the workbooks").
+  // We update only workbooks that were riding the OLD default (blank or equal
+  // to it); a workbook with a different, deliberate margin is left untouched.
+  function _propagateClientMarginToWorkbooks(clientName, stored, oldDefault) {
+    const wbs = (typeof clientData !== 'undefined' && clientData[clientName]) || [];
+    let count = 0;
+    wbs.forEach(item => {
+      if (!item || item.id == null) return;
+      const key = `${clientName}|${item.id}`;
+      const det = workbookDetail[key];
+      if (!det) return; // not loaded in memory — it'll inherit the live default on next open
+      const curRaw   = det.pricingMarginPct;
+      const curBlank = (curRaw === '' || curRaw == null || isNaN(parseFloat(curRaw)));
+      const ridesDefault = curBlank || Math.abs(parseFloat(curRaw) - oldDefault) < 0.005;
+      if (!ridesDefault) return; // deliberate per-workbook override — leave it
+      const newVal = stored; // '' → inherit live, or e.g. "35.00"
+      if (String(curRaw == null ? '' : curRaw) === String(newVal)) return; // already there
+      const before = Object.assign({}, det);
+      const after  = Object.assign({}, det, { pricingMarginPct: newVal });
+      workbookDetail[key] = after;
+      const dbId = (typeof dbWorkbookMap !== 'undefined' && dbWorkbookMap[key]) || item.id;
+      // base = pre-change detail → the server 3-way merge writes ONLY the
+      // margin field, so a concurrent editor's other changes aren't clobbered.
+      try { apiCall('save_workbook_detail', { id: dbId, detail: after, base: before, changed_by: getCurrentUser() }); } catch (_) {}
+      count++;
+    });
+    // Reflect immediately on the open workbook if it belongs to this client.
+    if (typeof currentClient === 'string' && currentClient === clientName) {
+      const mInput = document.getElementById('ps-margin-pct');
+      if (mInput && mInput !== document.activeElement) mInput.value = (stored === '') ? '' : stored;
+      try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
+    }
+    if (count > 0 && typeof _msToast === 'function') {
+      _msToast(`Margin updated on ${count} ${clientName} workbook${count === 1 ? '' : 's'}.`, 'success');
+    }
   }
 
   function onClientDetailChange(el, encodedName, key) {
@@ -49543,7 +49591,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       status: 'draft',
       dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
       poNumber: '',
-      depositPct: _clientDepositPctDefault(clientName),
+      depositPct: 50,
       notes: '',
       entries,
     };
@@ -51070,7 +51118,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     orderData[id] = {
       id, name: `Order #${num}`, clientName, status: 'draft',
       dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
-      poNumber: '', depositPct: _clientDepositPctDefault(clientName), notes: '',
+      poNumber: '', depositPct: 50, notes: '',
       entries: [{ clientName, workbookId }],
       notifiedAt: stamp, movedToProductionAt: stamp,
     };
@@ -52674,7 +52722,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       orderData[id] = {
         id, name: `Order #${num}`, clientName, status: 'draft',
         dateCreated: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }),
-        poNumber: '', depositPct: _clientDepositPctDefault(clientName), notes: '',
+        poNumber: '', depositPct: 50, notes: '',
         entries: byClient[clientName].map(s => ({ clientName, workbookId: s.workbookId })),
       };
       if (firstId == null) firstId = id;
@@ -54782,46 +54830,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (ht) ht.textContent = o.name;
   }
 
-  // The deposit % is a per-CUSTOMER term, not a per-order one. This returns
-  // the % to use for a client, read from that client's most-recently-created
-  // existing order (so e.g. once Salt is set to 35%, every new Salt order and
-  // any sibling order inherits 35). Falls back to 50. "Multiple Clients"
-  // orders have no single customer, so they always default to 50.
-  function _clientDepositPctDefault(clientName) {
-    if (!clientName || clientName === 'Multiple Clients') return 50;
-    let best = null, bestId = -1;
-    Object.values(orderData).forEach(o => {
-      if (o && o.clientName === clientName && typeof o.depositPct === 'number') {
-        const oid = parseInt(o.id) || 0;
-        if (oid >= bestId) { bestId = oid; best = o.depositPct; }
-      }
-    });
-    return best == null ? 50 : best;
-  }
-
   function onOrderDepositPctChange() {
     const o = orderData[_currentOrderId];
     if (!o) return;
-    const val = Math.min(100, Math.max(0, parseInt(document.getElementById('order-detail-deposit-pct').value) || 50));
-    o.depositPct = val;
-    // Per-customer term: push the new % onto every OTHER order for the same
-    // client so all of that customer's workbooks/orders stay in lockstep
-    // (Parker: changing Salt 50→35 must update each Salt order). Skip the
-    // multi-client bucket — it has no single customer to sync to.
-    const client = o.clientName;
-    let synced = 0;
-    if (client && client !== 'Multiple Clients') {
-      Object.values(orderData).forEach(other => {
-        if (other && other !== o && other.clientName === client && other.depositPct !== val) {
-          other.depositPct = val; synced++;
-        }
-      });
-    }
+    const val = parseInt(document.getElementById('order-detail-deposit-pct').value) || 50;
+    o.depositPct = Math.min(100, Math.max(0, val));
     saveOrders();
     renderOrderDepositTracking();
-    if (synced > 0 && typeof _msToast === 'function') {
-      _msToast(`Deposit set to ${val}% for ${client} — synced ${synced} other order${synced === 1 ? '' : 's'}.`, 'success');
-    }
   }
 
   function onOrderNotesChange() {
