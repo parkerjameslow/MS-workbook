@@ -28959,6 +28959,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof updateFreightRate === 'function') updateFreightRate();
     if (typeof calcFreight       === 'function') calcFreight();
     if (typeof renderPricingTab  === 'function') renderPricingTab();
+    // Any split leg using this method must recompute its cost on the fly when
+    // the per-kg rate changes (e.g. Slow Boat ¥12 → ¥14), without a refresh.
+    if (typeof renderShipmentSplits === 'function') { try { renderShipmentSplits(); } catch (_) {} }
     if (typeof autoSaveWorkbook  === 'function' && !_filling) autoSaveWorkbook();
   }
   const freightMethodDivisors = { slow: 6000, fast: 6000, airupp: 5000, directair: 5000 };
@@ -43070,7 +43073,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     closeSplitShipmentModal();
     if (typeof _msToast === 'function') _msToast('Split added: ' + amount.toLocaleString('en-US') + ' units via ' + _splitMethodLabel(method) + '.', 'success');
   }
-  function removeShipmentSplit(id) {
+  // NOTE: named *DetailSplit* to avoid colliding with the workbook Shipping-tab
+  // split feature's removeShipmentSplit() — the duplicate name previously
+  // overrode it and broke that feature's delete.
+  function removeShipmentDetailSplit(id) {
     const s = shipmentData[_currentShipmentId];
     if (!s || !Array.isArray(s.splits)) return;
     s.splits = s.splits.filter(x => x && x.id !== id);
@@ -43090,7 +43096,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <div style="font-size:13px; font-weight:700; color:var(--text);">${(sp.amount || 0).toLocaleString('en-US')} units · ${esc(_splitMethodLabel(sp.method))}</div>
           ${trk ? `<div style="margin-top:2px;">${trk}</div>` : ''}
         </div>
-        <button type="button" onclick="removeShipmentSplit('${esc(sp.id)}')" title="Remove split" style="border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:17px; line-height:1; padding:0 4px;">&times;</button>
+        <button type="button" onclick="removeShipmentDetailSplit('${esc(sp.id)}')" title="Remove split" style="border:none; background:transparent; color:var(--text-muted); cursor:pointer; font-size:17px; line-height:1; padding:0 4px;">&times;</button>
       </div>`;
     }).join('');
     host.innerHTML = `<div style="margin-top:4px;">
