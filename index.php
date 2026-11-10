@@ -20912,6 +20912,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div class="rfq-item-links">
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
           <button type="button" class="rfq-add-variant-link" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button>
+          <button type="button" class="rfq-add-variant-link rfq-variant-toggle" id="rfq-vartoggle-${id}" onclick="toggleRfqVariantsCollapsed(${id})" style="display:none; font-weight:700;" title="Show or hide this item's variants"></button>
         </div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
@@ -22564,6 +22565,37 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!_filling) autoSaveWorkbook();
   }
 
+  // ── Collapse / expand a line item's variant rows ──────────────────────
+  // A line with many size/color variants gets long; collapse hides the
+  // variant rows and shows "▸ Show N variants · total units" on the parent,
+  // so the operator sees the roll-up qty without the full list. Default-
+  // collapsed on load. State is per-session, keyed by parent row id.
+  let _rfqVariantsCollapsed = new Set();
+  function toggleRfqVariantsCollapsed(id) {
+    if (_rfqVariantsCollapsed.has(id)) _rfqVariantsCollapsed.delete(id);
+    else _rfqVariantsCollapsed.add(id);
+    _applyRfqVariantCollapse(id);
+  }
+  function _applyRfqVariantCollapse(id) {
+    const toggle = document.getElementById(`rfq-vartoggle-${id}`);
+    if (!toggle) return;
+    const rows = document.querySelectorAll(`#rfq-body [data-rfq-parent="${id}"]`);
+    if (rows.length === 0) { toggle.style.display = 'none'; return; }
+    toggle.style.display = '';
+    const collapsed = _rfqVariantsCollapsed.has(id);
+    let totalQty = 0;
+    rows.forEach(r => {
+      // Don't override a row the combine-group collapse is hiding.
+      if (!r.hasAttribute('data-rfq-grp-hidden')) r.style.display = collapsed ? 'none' : '';
+      const ins = r.querySelectorAll('input:not([type="checkbox"])');
+      const q = ins[2] ? (parseFloat(String(ins[2].value || '').replace(/,/g, '')) || 0) : 0;
+      totalQty += q;
+    });
+    const n = rows.length;
+    toggle.innerHTML = collapsed
+      ? `&#9656; Show ${n} variant${n === 1 ? '' : 's'}${totalQty > 0 ? ' &middot; ' + totalQty.toLocaleString('en-US') + ' units' : ''}`
+      : `&#9662; Hide ${n} variant${n === 1 ? '' : 's'}`;
+  }
   function addRfqVariantRow(parentId, variant = '', qty = '', priceRmb = '', leadTime = '', sku = '') {
     _rfqVarCount++;
     const vid = _rfqVarCount;
@@ -22645,6 +22677,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // to derive from. Manual-mode rows skip cleanly inside the helper.
     _autoSuggestVariantSku(vid);
     if (!_filling) autoSaveWorkbook();
+    // Variant collapse: default-collapsed on load; a manual "+ Add Variant"
+    // expands the line so the operator sees the new row. Refresh the toggle.
+    if (_filling) _rfqVariantsCollapsed.add(parentId);
+    else _rfqVariantsCollapsed.delete(parentId);
+    _applyRfqVariantCollapse(parentId);
   }
 
   // The big full-width "+ Add Variant" row was eating space for the
@@ -22693,6 +22730,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (parentId) {
       _updateVarAddRow(parentId);   // reposition or remove the trailing add-row
       syncParentQtyFromVariants(parentId);
+      _applyRfqVariantCollapse(parentId);   // refresh/hide the collapse toggle
     }
     recalcRfqTotals();
     if (!_filling) autoSaveWorkbook();
