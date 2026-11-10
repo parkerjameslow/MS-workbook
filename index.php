@@ -19201,15 +19201,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   function applyNewRate(rate, source) {
     USD_TO_RMB = rate;
-    // Recalc all open RFQ rows
+    // Every RMB→USD figure on screen divides by USD_TO_RMB, so when the rate
+    // changes they must ALL recompute from the new rate — otherwise the RFQ
+    // row and the Tier/Pricing tab disagree on the same RMB (one shows a
+    // stale rate). Refresh: each RFQ parent row, each variant row, the RFQ
+    // grand totals, and the whole Pricing tab (tiers, landed cost, etc.).
     document.querySelectorAll('#rfq-body tr[id^="rfq-"]').forEach(tr => {
-      const rowId = parseInt(tr.id.replace('rfq-', ''));
+      const rowId = parseInt(tr.id.replace('rfq-', ''));   // skips rfq-var-* (NaN)
       if (!isNaN(rowId)) recalcRfqRow(rowId);
     });
-    document.querySelectorAll('[id^="rfq-variant-"]').forEach(tr => {
-      const rowId = parseInt(tr.id.replace('rfq-variant-', ''));
-      if (!isNaN(rowId)) recalcRfqVariantRow(rowId);
+    document.querySelectorAll('#rfq-body tr[id^="rfq-var-"]').forEach(tr => {
+      const vid = parseInt(tr.id.replace('rfq-var-', ''));
+      if (!isNaN(vid)) recalcRfqVariantRow(vid);
     });
+    try { if (typeof recalcRfqTotals === 'function') recalcRfqTotals(); } catch (_) {}
+    try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
     // Update rate indicator in header  (shows: 1 ¥ = $X.XXXX)
     const el = document.getElementById('fx-rate-display');
     if (el) {
