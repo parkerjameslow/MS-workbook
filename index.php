@@ -39574,6 +39574,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   let _lastOrdersJson    = '';   // raw DB string from last successful poll
   let _lastShipmentsJson = '';   // same for shipments
   let _pollActive        = false; // guard against overlapping polls
+  let _ordersSavePending = false; // a local ms_orders save is queued / in flight
+  let _shipmentsSavePending = false; // a local ms_shipments save is queued / in flight
   let _wbPickerSelected = new Set();
   let _shipFilter = 'all';
   const CONTAINER_SPECS = {
@@ -41792,6 +41794,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { localStorage.setItem('ms_nextShipmentId', String(_nextShipmentId)); } catch(e) {}
     if (Object.keys(shipmentData).length > 0 || _nextShipmentId > 1) {
       _lastShipmentsJson = JSON.stringify({ data: shipmentData, nextId: _nextShipmentId });
+      _shipmentsSavePending = true;
       _saveAppStateCAS('ms_shipments',
         () => ({ data: shipmentData, nextId: _nextShipmentId }),
         (s, l, d) => _mergeIdMap(s, l, 'data', d),
@@ -41800,7 +41803,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           if (merged.nextId && merged.nextId > _nextShipmentId) _nextShipmentId = merged.nextId;
           try { if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav(); } catch(_) {}
         }
-      ).then(json => { if (json) _lastShipmentsJson = json; }).catch(() => {});
+      ).then(json => { if (json) _lastShipmentsJson = json; }).catch(() => {}).finally(() => { _shipmentsSavePending = false; });
     }
   }
 
@@ -45659,6 +45662,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { localStorage.setItem('ms_nextOrderId', String(_nextOrderId)); } catch(e) {}
     if (Object.keys(orderData).length > 0 || _nextOrderId > 1) {
       _lastOrdersJson = JSON.stringify({ data: orderData, nextId: _nextOrderId }); // pre-set so our own save doesn't trigger a poll re-render
+      _ordersSavePending = true; // block the poll from adopting a server value that predates this save
       _saveAppStateCAS('ms_orders',
         () => ({ data: orderData, nextId: _nextOrderId }),
         (s, l, d) => _mergeIdMap(s, l, 'data', d),
@@ -45669,7 +45673,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           if (merged.nextId && merged.nextId > _nextOrderId) _nextOrderId = merged.nextId;
           try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch(_) {}
         }
-      ).then(json => { if (json) _lastOrdersJson = json; }).catch(() => {});
+      ).then(json => { if (json) _lastOrdersJson = json; }).catch(() => {}).finally(() => { _ordersSavePending = false; });
     }
   }
 
@@ -47635,29 +47639,51 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
       let ordChanged = false, shipChanged = false;
 
-      if (ordRes.success && ordRes.value && ordRes.value !== _lastOrdersJson) {
-        _lastOrdersJson = ordRes.value;
+      // Don't adopt a remote orders value while our OWN save is in flight —
+      // the server may still be echoing a value that predates the save we
+      // just sent, and adopting it would revert the field we just edited
+      // (deposit %, notes, …). The save's .finally clears this and the next
+      // poll reconciles cleanly.
+      if (!_ordersSavePending && ordRes.success && ordRes.value && ordRes.value !== _lastOrdersJson) {
         const s = JSON.parse(ordRes.value);
         if (s?.data) {
+          // If the operator is actively editing the open order on the detail
+          // view (a field inside #view-order-detail is focused), keep our
+          // in-flight copy of THAT order and suppress the re-render so their
+          // cursor / half-typed value isn't yanked. Everyone else's orders
+          // still adopt normally.
+          const odView = document.getElementById('view-order-detail');
+          const editingOpenOrder = onOrdersView && _currentOrderId != null
+            && odView && document.activeElement && odView.contains(document.activeElement);
+          if (editingOpenOrder && orderData[String(_currentOrderId)]) {
+            s.data[String(_currentOrderId)] = orderData[String(_currentOrderId)];
+          }
+          _lastOrdersJson = ordRes.value;
           orderData    = s.data;
           _nextOrderId = s.nextId || _nextOrderId;
           try { localStorage.setItem('ms_orderData',   JSON.stringify(orderData)); } catch(e) {}
           try { localStorage.setItem('ms_nextOrderId', String(_nextOrderId));       } catch(e) {}
           rebuildOrdersNav();
-          ordChanged = true;
+          ordChanged = !editingOpenOrder; // never re-render the order being typed in
         }
       }
 
-      if (shipRes.success && shipRes.value && shipRes.value !== _lastShipmentsJson) {
-        _lastShipmentsJson = shipRes.value;
+      if (!_shipmentsSavePending && shipRes.success && shipRes.value && shipRes.value !== _lastShipmentsJson) {
         const s = JSON.parse(shipRes.value);
         if (s?.data) {
+          const sdView = document.getElementById('view-shipment-detail');
+          const editingOpenShipment = onShipmentsView && typeof _currentShipmentId !== 'undefined' && _currentShipmentId != null
+            && sdView && document.activeElement && sdView.contains(document.activeElement);
+          if (editingOpenShipment && shipmentData[String(_currentShipmentId)]) {
+            s.data[String(_currentShipmentId)] = shipmentData[String(_currentShipmentId)];
+          }
+          _lastShipmentsJson = shipRes.value;
           shipmentData    = s.data;
           _nextShipmentId = s.nextId || _nextShipmentId;
           try { localStorage.setItem('ms_shipmentData',   JSON.stringify(shipmentData)); } catch(e) {}
           try { localStorage.setItem('ms_nextShipmentId', String(_nextShipmentId));       } catch(e) {}
           rebuildShipmentsNav();
-          shipChanged = true;
+          shipChanged = !editingOpenShipment;
         }
       }
 
