@@ -8522,17 +8522,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <input type="hidden" id="color-notes" />
       </div>
 
-      <!-- Design File — prominent per-workbook design / spec upload. -->
-      <div class="design-file-block">
-        <div class="design-file-head">
-          <span class="design-file-title"><i style="font-style:normal;">🎨</i> Design File</span>
-          <span class="design-file-sub">Upload the artwork / spec file for this product (AI, PDF, PSD, EPS, image…)</span>
-        </div>
-        <div id="design-file-slot" class="design-file-slot"><!-- rendered by renderDesignFile() --></div>
-      </div>
-
       <!-- Product Images -->
-      <div style="margin-top:18px;">
+      <div>
         <label style="display:block; margin-bottom:8px;">Product Images</label>
         <div class="image-gallery" id="imageGallery">
           <!-- images inserted dynamically -->
@@ -8544,6 +8535,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div style="font-size:11px; color:var(--text-muted); margin-top:6px; opacity:0.7;">Drag &amp; drop images, videos, PDFs or other files here, click the tile to browse, or paste from clipboard (Ctrl/⌘ + V). Files added here also show on the Art tab.</div>
         <input type="file" id="imgInput" multiple onchange="_routeWorkbookFiles(event.target.files); event.target.value='';" style="display:none;"
           accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.tiff,.tif,.heic,.heif,.avif,.ai,.psd,.eps,.indd,.sketch,.xd,.fig,.pdf,.doc,.docx,.txt,.rtf,.csv,.xlsx,.xls,.ppt,.pptx,.dwg,.dxf,.step,.stp,.iges,.igs,.stl,.obj,.3mf,.sat,.ipt,.iam,.prt,.sldprt,.sldasm,.dgn,.x_t,.x_b,.mp4,.mov,.webm,.avi,.mkv,.m4v,.qt,.mpg,.mpeg,.wmv,.flv,.3gp,.zip,.rar,.7z,.tar,.gz" />
+      </div>
+
+      <!-- Design File — prominent per-workbook design / spec upload. Sits
+           below Product Images per operator preference. -->
+      <div class="design-file-block" style="margin-top:18px;">
+        <div class="design-file-head">
+          <span class="design-file-title"><i style="font-style:normal;">🎨</i> Design File</span>
+          <span class="design-file-sub">Upload the artwork / spec file for this product (AI, PDF, PSD, EPS, image…)</span>
+        </div>
+        <div id="design-file-slot" class="design-file-slot"><!-- rendered by renderDesignFile() --></div>
       </div>
 
       <!-- Product Videos -->
@@ -41514,6 +41515,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof _updatePipelineNavBadge === 'function') _updatePipelineNavBadge();
     if (typeof rebuildPipelineNav === 'function') rebuildPipelineNav();
     restoreNavSectionStates();
+    // Default landing after login = the workbook Pipeline board (not the
+    // All-Workbooks list). Only when arriving with no explicit route — a
+    // deep link / refresh on another view is left untouched.
+    if (!location.hash || location.hash === '#' || location.hash === '#/') {
+      try { location.hash = '#/pipeline'; } catch (_) {}
+    }
     // Wrap in try/catch so a crash inside fillWorkbook never prevents loadFromDatabase() from running
     try { router(); } catch(e) { console.error('[MS Router] init render error:', e); }
 
