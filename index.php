@@ -21578,6 +21578,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // "Choose File" button; whatever you pick is pinned to THAT section. Nested
   // above the Specs modal.
   let _rfqGalleryTargetSection = 'product';
+  // Cache of the gallery's current file pool so tiles can be tapped by INDEX
+  // instead of interpolating the file URL into an inline onclick — a URL with
+  // a quote, space, &, etc. used to break the attach tap for some files.
+  let _rfqGalleryPoolCache = [];
+  function toggleRfqGalleryPickIdx(i) {
+    const s = _rfqGalleryPoolCache[i];
+    if (s && s.url) toggleRfqGalleryPick(s.url);
+  }
   const _RFQ_SECTION_LABEL = { product: 'Product Images', design: 'Design File', art: 'Art for this line' };
   function openRfqGalleryModal(section) {
     if (_rfqPickerTargetId == null) return;
@@ -21609,16 +21617,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const assigned = new Set(getRfqRowImages(_rfqPickerTargetId));
     const pins = getRfqRowFileSections(_rfqPickerTargetId);
     const pool = _rfqGalleryPool();
+    _rfqGalleryPoolCache = pool;   // tap by index, not by URL interpolation
     // First tile: upload a brand-new file straight into the launching section.
     const uploadTile = `<div class="rfq-imgpick-item rfq-imgpick-upload" onclick="uploadRfqPickerFile()" title="Upload a new file into this section"><div style="font-size:26px; line-height:1;">⬆</div><div class="rfq-imgpick-ext">Upload</div></div>`;
-    const tilesHtml = pool.map(s => {
-      const esc = s.url.replace(/'/g, "\\'");
+    const tilesHtml = pool.map((s, i) => {
       const here = assigned.has(s.url) && (pins[s.url] || _rfqDefaultSection(s.url)) === _rfqGalleryTargetSection;
       const elsewhere = assigned.has(s.url) && !here;
       const sel = here ? ' selected' : '';
       const title = here ? 'In this section — tap to remove' : (elsewhere ? 'Used in another section — tap to move it here' : 'Tap to add to this section');
       const dim = elsewhere ? ' rfq-imgpick-elsewhere' : '';
-      return `<div class="rfq-imgpick-item${sel}${dim}" onclick="toggleRfqGalleryPick('${esc}')" title="${title}">${_rfqPickerThumbInner(s)}</div>`;
+      return `<div class="rfq-imgpick-item${sel}${dim}" onclick="toggleRfqGalleryPickIdx(${i})" title="${title.replace(/"/g,'&quot;')}">${_rfqPickerThumbInner(s)}</div>`;
     }).join('');
     grid.innerHTML = uploadTile + tilesHtml;
     try { if (typeof _hydrateAiThumbs === 'function') _hydrateAiThumbs(grid); } catch (_) {}
