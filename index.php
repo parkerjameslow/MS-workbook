@@ -9963,6 +9963,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="cq-summary-bar cq-summary-bar--header" style="width:100%; margin:0;">
         <div class="cq-summary-title-wrap">
           <span class="cq-summary-title">Client Quote</span>
+          <span class="cq-quote-img-slot" id="cq-quote-img-header" onclick="event.stopPropagation();"></span>
+          <input type="file" id="cqImageInput" accept="image/*" style="display:none;" onchange="handleClientQuoteImage(event)" onclick="event.stopPropagation();" />
           <span class="cq-preflight pf-ok" id="cq-preflight-header" onclick="event.stopPropagation(); openQuotePreflightModal()" title="Pre-send checks — click for details">✓ Ready to send</span>
           <div class="cq-action-btns">
             <button type="button" class="cq-send-btn" onclick="event.stopPropagation(); openNotifyModal('quote_ready')" title="Email this quote to the client">
@@ -10003,6 +10005,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="cq-summary-bar cq-summary-bar--footer">
         <div class="cq-summary-title-wrap">
           <span class="cq-summary-title">Client Quote</span>
+          <span class="cq-quote-img-slot" id="cq-quote-img-footer" onclick="event.stopPropagation();"></span>
           <span class="cq-preflight pf-ok" id="cq-preflight-footer" onclick="openQuotePreflightModal()" title="Pre-send checks — click for details">✓ Ready to send</span>
           <div class="cq-action-btns">
             <button type="button" class="cq-send-btn" onclick="openNotifyModal('quote_ready')" title="Email this quote to the client">
@@ -13822,6 +13825,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Image Upload ──────────────────────────────────────────────────────── */
   let _productImages = []; // array of { url: 'uploads/28/abc.jpg' }
+  let _clientQuoteImage = ''; // optional product photo shown next to the Client Quote title + baked into its PDF/CSV
 
   // Unified entry for files added on the WORKBOOK tab (file picker or drop).
   // Images become product images (upload_image → _productImages); videos go
@@ -29090,6 +29094,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { _renderPricingTabInner(); }
     catch (e) { try { console.error('[MS renderPricingTab]', e); } catch (_) {} }
     try { _renderQbInvoiceButton(); } catch (_) {}
+    try { renderClientQuoteImage(); } catch (_) {}
   }
   function _renderPricingTabInner() {
     // RFQ input handlers + workbook-load already keep _lastRfqPriceSummary
@@ -30627,6 +30632,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       quoteDate:   (document.getElementById('quote-date')?.value || '').trim() || dateStr,
       quoteValid:  (document.getElementById('quote-valid-until')?.value || '').trim(),
       generated:   today.toLocaleString('en-US'),
+      clientQuoteImage: (workbookDetail[`${currentClient}|${currentWorkbookId}`] || {}).clientQuoteImage || _clientQuoteImage || '',
     };
 
     // Estimated delivery = today (the day the quote is pulled) + total
@@ -30652,6 +30658,77 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return '"' + s.replace(/"/g, '""') + '"';
   }
 
+  // ── Client Quote product image ───────────────────────────────────────
+  // A single optional product photo the operator attaches next to the
+  // Client Quote title on the Pricing tab. Persists on the workbook
+  // (detail.clientQuoteImage) and is baked into the quote PDF + noted in
+  // the CSV so the client sees the product. Reuses the upload_image store.
+  function _cqImageAbsUrl(u) {
+    if (!u) return '';
+    if (/^(https?:|data:)/i.test(u)) return u;
+    return window.location.origin + '/' + String(u).replace(/^\/+/, '');
+  }
+  function triggerClientQuoteImageUpload() {
+    const inp = document.getElementById('cqImageInput');
+    if (inp) inp.click();
+  }
+  async function handleClientQuoteImage(e) {
+    const file = e && e.target && e.target.files && e.target.files[0];
+    if (e && e.target) e.target.value = '';
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) { if (typeof _msToast === 'function') _msToast('That file isn\'t an image.', 'error'); return; }
+    if (!currentWorkbookId) { if (typeof _msToast === 'function') _msToast('Open a workbook first.', 'error'); return; }
+    const dbId = dbWorkbookMap[`${currentClient}|${currentWorkbookId}`] || currentWorkbookId;
+    if (typeof _msToast === 'function') _msToast('Uploading image…', 'info');
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      fd.append('workbook_id', dbId);
+      const res  = await fetch('api.php?action=upload_image', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.success && data.url) {
+        _clientQuoteImage = data.url;
+        const key = `${currentClient}|${currentWorkbookId}`;
+        if (workbookDetail[key]) workbookDetail[key].clientQuoteImage = _clientQuoteImage;
+        renderClientQuoteImage();
+        try { autoSaveWorkbook(); } catch (_) {}
+        if (typeof _msToast === 'function') _msToast('Quote image added.', 'success');
+      } else {
+        if (typeof _msToast === 'function') _msToast('Upload failed: ' + ((data && data.error) || ('HTTP ' + res.status)), 'error');
+      }
+    } catch (err) {
+      if (typeof _msToast === 'function') _msToast('Upload error: ' + (err.message || 'network'), 'error');
+    }
+  }
+  async function removeClientQuoteImage(e) {
+    if (e) e.stopPropagation();
+    if (!_clientQuoteImage) return;
+    if (!confirm('Remove the product image from this quote?')) return;
+    const prev = _clientQuoteImage;
+    _clientQuoteImage = '';
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (workbookDetail[key]) workbookDetail[key].clientQuoteImage = '';
+    renderClientQuoteImage();
+    try { autoSaveWorkbook(); } catch (_) {}
+    try { await apiCall('delete_image', { url: prev }); } catch (_) {}
+  }
+  function renderClientQuoteImage() {
+    const abs = _cqImageAbsUrl(_clientQuoteImage);
+    const inner = _clientQuoteImage
+      ? `<span style="position:relative; display:inline-flex; align-items:center;" title="Product image on this quote — click to view" onclick="event.stopPropagation(); window.open('${abs}','_blank');">
+           <img src="${abs}" alt="Quote image" style="width:30px; height:30px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" />
+           <button type="button" title="Remove image" onclick="removeClientQuoteImage(event)" style="position:absolute; top:-6px; right:-6px; width:16px; height:16px; line-height:14px; text-align:center; border-radius:50%; border:none; background:#ef4444; color:#fff; font-size:11px; cursor:pointer; padding:0; font-family:inherit;">×</button>
+         </span>`
+      : `<button type="button" title="Add a product photo to this quote — it shows on the PDF sent to the client" onclick="event.stopPropagation(); triggerClientQuoteImageUpload();" style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:6px; border:1px dashed var(--border); background:transparent; color:var(--text-muted); cursor:pointer; font-family:inherit;">
+           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+           Add image
+         </button>`;
+    ['cq-quote-img-header', 'cq-quote-img-footer'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = inner;
+    });
+  }
+
   function exportClientQuoteCSV() {
     const data = _collectClientQuoteForExport();
     if (!data || data.lineItems.length === 0) {
@@ -30664,6 +30741,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     lines.push(_csvEscape('Market Sculpt Client Quote'));
     lines.push([_csvEscape('Client'),       _csvEscape(data.meta.clientName)].join(','));
     lines.push([_csvEscape('Product'),      _csvEscape(data.meta.productName)].join(','));
+    if (data.meta.clientQuoteImage) lines.push([_csvEscape('Product Image'), _csvEscape(_cqImageAbsUrl(data.meta.clientQuoteImage))].join(','));
     if (data.meta.productDesc) lines.push([_csvEscape('Description'), _csvEscape(data.meta.productDesc)].join(','));
     lines.push([_csvEscape('Quote Date'),   _csvEscape(data.meta.quoteDate)].join(','));
     if (data.meta.quoteValid)  lines.push([_csvEscape('Valid Until'), _csvEscape(data.meta.quoteValid)].join(','));
@@ -30829,6 +30907,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   <h1>${escHtml(data.meta.productName || 'Quote')}</h1>
   <div class="for-client">Prepared for <strong>${escHtml(data.meta.clientName)}</strong></div>
+  ${data.meta.clientQuoteImage ? `<div style="margin:4px 0 18px;"><img src="${escHtml(_cqImageAbsUrl(data.meta.clientQuoteImage))}" alt="${escHtml(data.meta.productName || 'Product')}" style="max-width:280px; max-height:220px; width:auto; height:auto; border-radius:10px; border:1px solid #e5e7eb; display:block;" /></div>` : ''}
 
   <div class="summary-grid">
     <div class="stat"><div class="stat-label">Sale Price (USD)</div><div class="stat-value">${escHtml(data.summary.salePrice || '—')}</div></div>
@@ -36463,6 +36542,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _productImages = [];
     _productVideos = [];
     _artImages     = [];
+    _clientQuoteImage = ''; // clear so the previous workbook's quote photo can't bleed over
     // Pitch snap is a per-workbook computed value; clear it before
     // the branch decides whether to restore one.
     window._fullContainerPitchSnap = null;
@@ -36780,7 +36860,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       } else {
         _productImages = [];
       }
+      _clientQuoteImage = (typeof data.clientQuoteImage === 'string') ? data.clientQuoteImage : '';
       renderImageGallery();
+      try { renderClientQuoteImage(); } catch (_) {}
       // If this workbook lost its per-line images / combine groups to an
       // earlier co-editor clobber, quietly restore them from revision
       // history once the load settles (non-blocking, at most once ever).
@@ -39209,6 +39291,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Images: use in-memory arrays if populated, otherwise preserve existing DB data
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
       productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
+      // Optional client-quote product photo (persists into the quote PDF/CSV).
+      clientQuoteImage: _clientQuoteImage || (existing.clientQuoteImage || ''),
       productVideos: _productVideos.length > 0 ? _productVideos.slice() : (existing.productVideos || []),
       // Pricing tab
       tiers: collectTiers(),
@@ -52365,11 +52449,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
-        <div class="oc-stat" title="Sale revenue minus all cost (product + shipping + fees). Operator-internal only — never sent to the client. Label reads 'Additional' so the column doesn't surface as profit if the screen is shared."><span class="oc-stat-label">Additional</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
-        <div class="oc-stat" title="Product cost only — Total (ours) minus Shipping. Sum of each workbook's Pricing-tab Product Cost (no fees, no margin)."><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span>${fmtRmbT(agCostProduct)}</div>
+        <div class="oc-stat" title="Sale revenue minus all cost (product + shipping + fees). Operator-internal only — never sent to the client. Label reads 'Additional' so the column doesn't surface as profit if the screen is shared."><span class="oc-stat-label">EXT</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
+        <div class="oc-stat" title="Product cost only — Total (ours) minus Shipping. Sum of each workbook's Pricing-tab Product Cost (no fees, no margin)."><span class="oc-stat-label">Cost</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span>${fmtRmbT(agCostProduct)}</div>
         <div class="oc-stat" title="Total shipping cost (USD) across all workbooks in this order — sum of each workbook's Pricing-tab Shipping Cost (USD)."><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span>${fmtRmbT(agShipping)}</div>
-        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span>${fmtRmbT(agTotalOurs)}</div>
-        <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span>${fmtRmbT(agPrice)}</div>
+        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span>${fmtRmbT(agTotalOurs)}</div>
+        <div class="oc-stat"><span class="oc-stat-label">Price</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span>${fmtRmbT(agPrice)}</div>
         <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span>${fmtRmbT(agFeesBilled)}</div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
@@ -52993,11 +53077,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const statStrip = `<div class="oc-stat-strip">
         <div class="oc-stat"><span class="oc-stat-label">Units</span><span class="oc-stat-val">${fmtNumT(agUnits)}</span></div>
         <div class="oc-stat"><span class="oc-stat-label">Weight</span><span class="oc-stat-val">${fmtKgT(agWeightKg)}</span></div>
-        <div class="oc-stat" title="Sale revenue minus all cost (product + shipping + fees). Operator-internal only — never sent to the client. Label reads 'Additional' so the column doesn't surface as profit if the screen is shared."><span class="oc-stat-label">Additional</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
-        <div class="oc-stat" title="${_costTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Cost (ours)</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span>${fmtRmbT(agCostProduct)}</div>
+        <div class="oc-stat" title="Sale revenue minus all cost (product + shipping + fees). Operator-internal only — never sent to the client. Label reads 'Additional' so the column doesn't surface as profit if the screen is shared."><span class="oc-stat-label">EXT</span><span class="oc-stat-val">${profitHtml}</span>${fmtRmbT(profitT)}</div>
+        <div class="oc-stat" title="${_costTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Cost</span><span class="oc-stat-val">${fmtUsdT(agCostProduct)}</span>${fmtRmbT(agCostProduct)}</div>
         <div class="oc-stat" title="${_shipTooltip.replace(/"/g, '&quot;')}"><span class="oc-stat-label">Shipping</span><span class="oc-stat-val">${fmtUsdT(agShipping)}</span>${fmtRmbT(agShipping)}</div>
-        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total (ours)</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span>${fmtRmbT(agTotalOurs)}</div>
-        <div class="oc-stat"><span class="oc-stat-label">Price (cust)</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span>${fmtRmbT(agPrice)}</div>
+        <div class="oc-stat" title="Total (ours) = Cost (ours) + Shipping. Operational cost only — applied fees are tracked separately and only their MARKUP (override − as-is) lands in Profit."><span class="oc-stat-label">Total</span><span class="oc-stat-val">${fmtUsdT(agTotalOurs)}</span>${fmtRmbT(agTotalOurs)}</div>
+        <div class="oc-stat"><span class="oc-stat-label">Price</span><span class="oc-stat-val">${fmtUsdT(agPrice)}</span>${fmtRmbT(agPrice)}</div>
         <div class="oc-stat" title="Total billed Additional Fees on this order (Sample, Tooling, Die, Plate, Design + any custom rows the operator added). Complimentary fees are excluded. Matches the Order Sheet's Fees column."><span class="oc-stat-label">Fees</span><span class="oc-stat-val" style="color:#E8751A;">${fmtUsdT(agFeesBilled)}</span>${fmtRmbT(agFeesBilled)}</div>
         <div class="oc-stat oc-stat--cbm">
           <span class="oc-stat-label">CBM</span>
