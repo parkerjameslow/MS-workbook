@@ -20928,7 +20928,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
       </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="text-align:center; padding:12px 4px 0;"><button type="button" class="rfq-specs-btn" id="rfq-specsbtn-${id}" onclick="openRfqImagePicker(${id})" title="Attach Product Images, Design File & Art Files to this line"></button></td>
+      <td style="padding:12px 6px 0; vertical-align:top;"><div style="display:flex; flex-direction:column; gap:6px; align-items:stretch;"><button type="button" class="rfq-specs-btn" id="rfq-specsbtn-${id}" onclick="openRfqImagePicker(${id})" style="justify-content:center;" title="Attach Product Images, Design File & Art Files to this line"></button><button type="button" class="rfq-specs-btn" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" style="justify-content:center;" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button></div></td>
       <td>
         <input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" />
         <div class="rfq-item-links">
@@ -20936,10 +20936,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </td>
       <td>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals(); _toggleRfqOptBtn(${id})" style="${inputStyle} flex:1; min-width:0;" />
-          <button type="button" class="rfq-add-variant-link" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote" style="flex-shrink:0; white-space:nowrap; margin:0;${(defaultItem && String(defaultItem).trim()) ? '' : ' display:none;'}">&#8646; Options</button>
-        </div>
+        <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <div class="rfq-item-links">
           <button type="button" class="rfq-variant-toggle" id="rfq-vartoggle-${id}" data-rfq-vartoggle="${id}" style="display:none;" title="Show or hide this item's variants"></button>
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
@@ -22905,22 +22902,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // at a glance, with a radio-dot to pick the one used on the client quote.
   // No <input> elements (clickable divs) so the row's positional input reads
   // for cost/qty/price/lead are never shifted.
-  // The per-line "⇆ Options" button now sits to the RIGHT of the item-name
-  // input (not in the sub-links row). Keep an empty new line clean by hiding
-  // it until the line has a name; a line that already carries comparable
-  // options always shows it (via _renderRfqOptPanel below).
-  function _toggleRfqOptBtn(id) {
-    const tr = document.getElementById('rfq-' + id);
-    const btn = document.getElementById('rfq-optbtn-' + id);
-    if (!tr || !btn) return;
-    let hasOpts = false;
-    try { hasOpts = (JSON.parse(tr.dataset.compOptions || '[]') || []).length > 0; } catch (_) {}
-    if (hasOpts) { btn.style.display = ''; return; }
-    const nameInput = tr.querySelectorAll('input:not([type="checkbox"])')[1];
-    const hasName = !!(nameInput && nameInput.value.trim());
-    btn.style.display = hasName ? '' : 'none';
-  }
-
   function _renderRfqOptPanel(id) {
     const tr = document.getElementById('rfq-' + id);
     const btn = document.getElementById('rfq-optbtn-' + id);
@@ -22933,7 +22914,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // options → a Comparables (N) / Compare N toggle for the band below.
     const _setBtn = (html, cls, fn) => { if (!btn) return; btn.className = cls; btn.innerHTML = html; btn.onclick = fn; btn.style.display = ''; };
     if (!Array.isArray(opts) || opts.length === 0) {
-      _setBtn('&#8646; Options', 'rfq-add-variant-link', (e) => { e.stopPropagation(); openRfqOptions(id); });
+      // Styled like the Specs button (it sits stacked under it); keep the
+      // centered inline style the markup set.
+      _setBtn('&#8646; Options', 'rfq-specs-btn', (e) => { e.stopPropagation(); openRfqOptions(id); });
+      if (btn) btn.style.justifyContent = 'center';
       return;
     }
     let sel = parseInt(tr.dataset.compSelected || '0');
@@ -38681,6 +38665,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Submitted (i.e. quoteClient is true) OR if anything stomped
       // the flow further along the chain.
       if (item.flow.quoteClient || item.flow.clientApproved) continue;
+
+      // Stage exclusivity — a workbook lives in exactly ONE stage. If it has
+      // progressed to Orders / In Production / Shipments, it no longer belongs
+      // in Ready for Review, even though sentForReview is still set (that flag
+      // isn't auto-cleared when an order is created). Defer to the canonical
+      // pipeline stage so the two lists can't double-show the same workbook
+      // (Parker: "how are these in ready for review AND In Production?").
+      if (typeof _pipelineStageFor === 'function'
+          && _pipelineStageFor(clientName, workbookId, detail) !== 'review') continue;
 
       // Aggregate RFQ totals — same as the RFQ Queue collector so the numbers
       // tie out across both views: count a line's VARIANTS when present, else
