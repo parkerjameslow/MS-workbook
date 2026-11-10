@@ -2975,7 +2975,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       transition: border-color 0.12s, transform 0.12s;
     }
     .rfq-imgpick-item:hover { transform: translateY(-1px); }
-    .rfq-imgpick-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    /* pointer-events:none so a click on the photo always reaches the tile's
+       onclick (and a trackpad micro-drag can't turn the tap into an image
+       drag that swallows the click) — this is why photo tiles wouldn't select. */
+    .rfq-imgpick-item img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; -webkit-user-drag: none; user-select: none; }
+    .rfq-imgpick-item video { pointer-events: none; }
     /* Non-image source (art file: PDF/CAD/etc.) — icon tile instead of a photo */
     .rfq-imgpick-file { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; background:var(--surface2); padding:4px; box-sizing:border-box; }
     .rfq-imgpick-ext { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -21482,7 +21486,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const urlAttr = String(url).replace(/'/g, "\\'");
     const ext = (String(url).split('.').pop() || '').toLowerCase();
     if (s.kind === 'image') {
-      return `<img src="${url}" alt="" />`;
+      return `<img src="${url}" alt="" draggable="false" />`;
     }
     if (s.kind === 'pdf' || (s.kind === 'design' && ext === 'ai')) {
       const badge = s.kind === 'pdf' ? 'PDF' : 'AI';
