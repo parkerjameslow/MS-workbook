@@ -2565,6 +2565,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       background: rgba(232,117,26,0.08);
     }
     .rfq-add-variant-link:disabled { opacity: 0.4; cursor: not-allowed; }
+    /* Variant collapse/expand — a prominent pill so it reads as a button
+       and calls out how many variants are tucked away. */
+    .rfq-variant-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 8px 0 0 4px;
+      padding: 4px 11px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      color: var(--accent);
+      background: rgba(232,117,26,0.10);
+      border: 1px solid rgba(232,117,26,0.45);
+      border-radius: 999px;
+    }
+    .rfq-variant-toggle:hover { background: rgba(232,117,26,0.18); border-color: var(--accent); }
+    .rfq-variant-toggle .rfq-variant-toggle-sub { font-weight: 600; opacity: 0.8; text-transform: none; letter-spacing: 0; }
 
     /* ── RFQ comparable options ────────────────────────────────────────
        A parent line can carry several supplier/price alternatives; the
@@ -20910,9 +20928,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <div class="rfq-item-links">
+          <button type="button" class="rfq-variant-toggle" id="rfq-vartoggle-${id}" onclick="toggleRfqVariantsCollapsed(${id})" style="display:none;" title="Show or hide this item's variants"></button>
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
           <button type="button" class="rfq-add-variant-link" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button>
-          <button type="button" class="rfq-add-variant-link rfq-variant-toggle" id="rfq-vartoggle-${id}" onclick="toggleRfqVariantsCollapsed(${id})" style="display:none; font-weight:700;" title="Show or hide this item's variants"></button>
         </div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
@@ -22592,9 +22610,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       totalQty += q;
     });
     const n = rows.length;
-    toggle.innerHTML = collapsed
-      ? `&#9656; Show ${n} variant${n === 1 ? '' : 's'}${totalQty > 0 ? ' &middot; ' + totalQty.toLocaleString('en-US') + ' units' : ''}`
-      : `&#9662; Hide ${n} variant${n === 1 ? '' : 's'}`;
+    const chev = collapsed ? '&#9656;' : '&#9662;';   // ▸ / ▾
+    const sub  = totalQty > 0 ? `<span class="rfq-variant-toggle-sub">&middot; ${totalQty.toLocaleString('en-US')} units</span>` : '';
+    toggle.innerHTML = `${chev} ${n} variant${n === 1 ? '' : 's'} ${sub}`;
+    toggle.title = collapsed ? `Show this item's ${n} variants` : `Hide this item's ${n} variants`;
   }
   function addRfqVariantRow(parentId, variant = '', qty = '', priceRmb = '', leadTime = '', sku = '') {
     _rfqVarCount++;
