@@ -20934,7 +20934,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
         <div class="rfq-item-links">
-          <button type="button" class="rfq-variant-toggle" id="rfq-vartoggle-${id}" onclick="toggleRfqVariantsCollapsed(${id})" style="display:none;" title="Show or hide this item's variants"></button>
+          <button type="button" class="rfq-variant-toggle" id="rfq-vartoggle-${id}" data-rfq-vartoggle="${id}" style="display:none;" title="Show or hide this item's variants"></button>
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
           <button type="button" class="rfq-add-variant-link" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button>
         </div>
@@ -22595,12 +22595,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // so the operator sees the roll-up qty without the full list. Default-
   // collapsed on load. State is per-session, keyed by parent row id.
   let _rfqVariantsCollapsed = new Set();
+  // Delegated so the toggle can't be defeated by an inline-onclick scope issue.
+  document.addEventListener('click', function (e) {
+    const pill = e.target && e.target.closest ? e.target.closest('.rfq-variant-toggle') : null;
+    if (!pill) return;
+    e.preventDefault();
+    const id = pill.getAttribute('data-rfq-vartoggle');
+    if (id != null && id !== '') toggleRfqVariantsCollapsed(id);
+  });
   function toggleRfqVariantsCollapsed(id) {
+    id = Number(id);                       // coerce so Set has/adds match (no string/number miss)
     if (_rfqVariantsCollapsed.has(id)) _rfqVariantsCollapsed.delete(id);
     else _rfqVariantsCollapsed.add(id);
     _applyRfqVariantCollapse(id);
   }
   function _applyRfqVariantCollapse(id) {
+    id = Number(id);
     const toggle = document.getElementById(`rfq-vartoggle-${id}`);
     if (!toggle) return;
     const rows = document.querySelectorAll(`#rfq-body [data-rfq-parent="${id}"]`);
@@ -22609,8 +22619,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const collapsed = _rfqVariantsCollapsed.has(id);
     let totalQty = 0;
     rows.forEach(r => {
-      // Don't override a row the combine-group collapse is hiding.
-      if (!r.hasAttribute('data-rfq-grp-hidden')) r.style.display = collapsed ? 'none' : '';
+      // A visible parent means its variants should follow the variant-collapse
+      // state (a combine-COLLAPSED line's pill isn't shown, so there's nothing
+      // to clash with). Set display directly so expand always wins.
+      r.style.display = collapsed ? 'none' : '';
       const ins = r.querySelectorAll('input:not([type="checkbox"])');
       const q = ins[2] ? (parseFloat(String(ins[2].value || '').replace(/,/g, '')) || 0) : 0;
       totalQty += q;
