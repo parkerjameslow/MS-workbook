@@ -9963,7 +9963,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="cq-summary-bar cq-summary-bar--header" style="width:100%; margin:0;">
         <div class="cq-summary-title-wrap">
           <span class="cq-summary-title">Client Quote</span>
-          <span class="cq-quote-img-slot" id="cq-quote-img-header" onclick="event.stopPropagation();"></span>
           <input type="file" id="cqImageInput" accept="image/*" style="display:none;" onchange="handleClientQuoteImage(event)" onclick="event.stopPropagation();" />
           <span class="cq-preflight pf-ok" id="cq-preflight-header" onclick="event.stopPropagation(); openQuotePreflightModal()" title="Pre-send checks — click for details">✓ Ready to send</span>
           <div class="cq-action-btns">
@@ -9979,6 +9978,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
               PDF
             </button>
+            <span class="cq-quote-img-slot" onclick="event.stopPropagation();"></span>
           </div>
         </div>
         <div class="cq-summary-stats">
@@ -10005,7 +10005,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div class="cq-summary-bar cq-summary-bar--footer">
         <div class="cq-summary-title-wrap">
           <span class="cq-summary-title">Client Quote</span>
-          <span class="cq-quote-img-slot" id="cq-quote-img-footer" onclick="event.stopPropagation();"></span>
           <span class="cq-preflight pf-ok" id="cq-preflight-footer" onclick="openQuotePreflightModal()" title="Pre-send checks — click for details">✓ Ready to send</span>
           <div class="cq-action-btns">
             <button type="button" class="cq-send-btn" onclick="openNotifyModal('quote_ready')" title="Email this quote to the client">
@@ -10020,6 +10019,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
               PDF
             </button>
+            <span class="cq-quote-img-slot" onclick="event.stopPropagation();"></span>
           </div>
         </div>
         <div class="cq-summary-stats">
@@ -30715,18 +30715,79 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function renderClientQuoteImage() {
     const abs = _cqImageAbsUrl(_clientQuoteImage);
     const inner = _clientQuoteImage
-      ? `<span style="position:relative; display:inline-flex; align-items:center;" title="Product image on this quote — click to view" onclick="event.stopPropagation(); window.open('${abs}','_blank');">
-           <img src="${abs}" alt="Quote image" style="width:30px; height:30px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" />
+      ? `<span style="position:relative; display:inline-flex; align-items:center;" title="Quote image — click to change" onclick="event.stopPropagation(); openClientQuoteImagePicker();">
+           <img src="${abs}" alt="Quote image" style="width:28px; height:28px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" />
            <button type="button" title="Remove image" onclick="removeClientQuoteImage(event)" style="position:absolute; top:-6px; right:-6px; width:16px; height:16px; line-height:14px; text-align:center; border-radius:50%; border:none; background:#ef4444; color:#fff; font-size:11px; cursor:pointer; padding:0; font-family:inherit;">×</button>
          </span>`
-      : `<button type="button" title="Add a product photo to this quote — it shows on the PDF sent to the client" onclick="event.stopPropagation(); triggerClientQuoteImageUpload();" style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:4px 9px; border-radius:6px; border:1px dashed var(--border); background:transparent; color:var(--text-muted); cursor:pointer; font-family:inherit;">
-           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-           Add image
+      : `<button type="button" class="cq-export-btn" title="Add a product photo to this quote — pick one already in this workbook or upload a new one; it shows on the PDF sent to the client" onclick="event.stopPropagation(); openClientQuoteImagePicker();">
+           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+           Image
          </button>`;
-    ['cq-quote-img-header', 'cq-quote-img-footer'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.innerHTML = inner;
+    document.querySelectorAll('.cq-quote-img-slot').forEach(el => { el.innerHTML = inner; });
+  }
+
+  // Picker: choose the quote photo from images ALREADY in this workbook
+  // (Product gallery + Art-tab images + Design file if it's an image + any
+  // RFQ line image), or upload a new one. Mirrors the "pick what I already
+  // added" flow Parker asked for instead of a raw file dialog.
+  function openClientQuoteImagePicker() {
+    const kindOf = (u) => (typeof _artFileKind === 'function' ? _artFileKind(u) : 'image');
+    const seen = new Set(); const urls = [];
+    const add = (u) => { if (u && !seen.has(u) && kindOf(u) === 'image') { seen.add(u); urls.push(u); } };
+    (Array.isArray(_productImages) ? _productImages : []).forEach(i => add(i && i.url));
+    (Array.isArray(_artImages) ? _artImages : []).forEach(i => add(i && i.url));
+    if (_designFile) add(_designFile);
+    document.querySelectorAll('#rfq-body tr').forEach(tr => {
+      try { (JSON.parse(tr.dataset.images || '[]') || []).forEach(add); } catch (_) {}
     });
+
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const tiles = urls.map(u => {
+      const isCur = (u === _clientQuoteImage);
+      const uEsc = u.replace(/'/g, "\\'");
+      return `<div onclick="_cqPickChoose('${uEsc}')" title="Use this image on the quote" style="position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; cursor:pointer; border:2px solid ${isCur ? 'var(--accent)' : 'var(--border)'};">
+        <img src="${esc(_cqImageAbsUrl(u))}" alt="" draggable="false" style="width:100%; height:100%; object-fit:cover; display:block;" />
+        ${isCur ? '<span style="position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:50%; background:var(--accent); color:#fff; font-size:12px; line-height:18px; text-align:center; font-weight:800;">✓</span>' : ''}
+      </div>`;
+    }).join('');
+    const emptyMsg = urls.length ? '' : `<div style="grid-column:1/-1; color:var(--text-muted); font-size:13px; padding:24px; text-align:center;">No images in this workbook yet. Upload one below, or add images on the Workbook / Art tabs first.</div>`;
+
+    const old = document.getElementById('cq-image-picker-modal');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'cq-image-picker-modal';
+    ov.className = 'modal-overlay open';
+    ov.style.zIndex = '1200';
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `
+      <div class="modal-content" style="max-width:640px; width:92%;">
+        <div class="modal-header" style="display:flex; align-items:center; justify-content:space-between;">
+          <div class="modal-title" style="margin:0;">Quote Image</div>
+          <button type="button" class="modal-close" onclick="document.getElementById('cq-image-picker-modal').remove()" title="Close">&times;</button>
+        </div>
+        <div style="padding:2px 2px 12px; color:var(--text-muted); font-size:12.5px;">Pick a photo already in this workbook, or upload a new one. It shows on the Client Quote PDF sent to the client.</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px; max-height:52vh; overflow:auto; padding:2px;">
+          ${tiles}${emptyMsg}
+        </div>
+        <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost" onclick="triggerClientQuoteImageUpload()" title="Upload a new image from your computer">⬆ Upload new image</button>
+          <span style="display:flex; gap:8px;">
+            ${_clientQuoteImage ? `<button type="button" class="btn btn-ghost" style="color:#ef4444; border-color:#ef4444;" onclick="removeClientQuoteImage(); var m=document.getElementById('cq-image-picker-modal'); if(m) m.remove();">Remove from quote</button>` : ''}
+            <button type="button" class="btn btn-ghost" onclick="document.getElementById('cq-image-picker-modal').remove()">Close</button>
+          </span>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    try { if (typeof _hydrateAiThumbs === 'function') _hydrateAiThumbs(ov); } catch (_) {}
+  }
+  function _cqPickChoose(url) {
+    _clientQuoteImage = url;
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (workbookDetail[key]) workbookDetail[key].clientQuoteImage = url;
+    renderClientQuoteImage();
+    try { autoSaveWorkbook(); } catch (_) {}
+    const m = document.getElementById('cq-image-picker-modal'); if (m) m.remove();
+    if (typeof _msToast === 'function') _msToast('Quote image set.', 'success');
   }
 
   function exportClientQuoteCSV() {
