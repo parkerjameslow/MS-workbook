@@ -13825,7 +13825,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
   /* ── Image Upload ──────────────────────────────────────────────────────── */
   let _productImages = []; // array of { url: 'uploads/28/abc.jpg' }
-  let _clientQuoteImage = ''; // optional product photo shown next to the Client Quote title + baked into its PDF/CSV
+  let _clientQuoteImages = []; // optional product photos (urls) shown on the Client Quote + baked into its PDF/CSV
 
   // Unified entry for files added on the WORKBOOK tab (file picker or drop).
   // Images become product images (upload_image → _productImages); videos go
@@ -20928,7 +20928,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
       </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
-      <td style="padding:12px 6px 0; vertical-align:top;"><div style="display:flex; flex-direction:column; gap:6px; align-items:stretch;"><button type="button" class="rfq-specs-btn" id="rfq-specsbtn-${id}" onclick="openRfqImagePicker(${id})" style="justify-content:center;" title="Attach Product Images, Design File & Art Files to this line"></button><button type="button" class="rfq-specs-btn" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" style="justify-content:center;" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button></div></td>
+      <td style="padding:12px 6px 0; vertical-align:top;"><div style="display:flex; flex-direction:column; gap:6px; align-items:stretch;"><button type="button" class="rfq-specs-btn" id="rfq-specsbtn-${id}" onclick="openRfqImagePicker(${id})" style="justify-content:center;" title="Attach Product Images, Design File & Art Files to this line"></button><button type="button" class="rfq-specs-btn" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" style="justify-content:center;" title="Add comparable supplier/factory options and pick which one is used on the client quote">Factory</button></div></td>
       <td>
         <input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" />
         <div class="rfq-item-links">
@@ -22916,7 +22916,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!Array.isArray(opts) || opts.length === 0) {
       // Styled like the Specs button (it sits stacked under it); keep the
       // centered inline style the markup set.
-      _setBtn('&#8646; Options', 'rfq-specs-btn', (e) => { e.stopPropagation(); openRfqOptions(id); });
+      _setBtn('Factory', 'rfq-specs-btn', (e) => { e.stopPropagation(); openRfqOptions(id); });
       if (btn) btn.style.justifyContent = 'center';
       return;
     }
@@ -30634,7 +30634,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       quoteDate:   (document.getElementById('quote-date')?.value || '').trim() || dateStr,
       quoteValid:  (document.getElementById('quote-valid-until')?.value || '').trim(),
       generated:   today.toLocaleString('en-US'),
-      clientQuoteImage: (workbookDetail[`${currentClient}|${currentWorkbookId}`] || {}).clientQuoteImage || _clientQuoteImage || '',
+      clientQuoteImages: _clientQuoteImages.slice(),
     };
 
     // Estimated delivery = today (the day the quote is pulled) + total
@@ -30661,14 +30661,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   // ── Client Quote product image ───────────────────────────────────────
-  // A single optional product photo the operator attaches next to the
-  // Client Quote title on the Pricing tab. Persists on the workbook
-  // (detail.clientQuoteImage) and is baked into the quote PDF + noted in
-  // the CSV so the client sees the product. Reuses the upload_image store.
+  // Optional product photos on the Client Quote. Stored on the workbook as
+  // detail.clientQuoteImages[] (plural — multi-select) and baked into the
+  // quote PDF; URLs are noted in the CSV. Reuses the upload_image store.
   function _cqImageAbsUrl(u) {
     if (!u) return '';
     if (/^(https?:|data:)/i.test(u)) return u;
     return window.location.origin + '/' + String(u).replace(/^\/+/, '');
+  }
+  function _cqPersistImages() {
+    const key = `${currentClient}|${currentWorkbookId}`;
+    if (workbookDetail[key]) {
+      workbookDetail[key].clientQuoteImages = _clientQuoteImages.slice();
+      workbookDetail[key].clientQuoteImage  = _clientQuoteImages[0] || ''; // back-compat single
+    }
+    try { autoSaveWorkbook(); } catch (_) {}
   }
   function triggerClientQuoteImageUpload() {
     const inp = document.getElementById('cqImageInput');
@@ -30689,12 +30696,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const res  = await fetch('api.php?action=upload_image', { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (data && data.success && data.url) {
-        _clientQuoteImage = data.url;
-        const key = `${currentClient}|${currentWorkbookId}`;
-        if (workbookDetail[key]) workbookDetail[key].clientQuoteImage = _clientQuoteImage;
+        if (_clientQuoteImages.indexOf(data.url) < 0) _clientQuoteImages.push(data.url);
+        _cqPersistImages();
         renderClientQuoteImage();
-        try { autoSaveWorkbook(); } catch (_) {}
-        if (typeof _msToast === 'function') _msToast('Quote image added.', 'success');
+        if (document.getElementById('cq-image-picker-modal')) openClientQuoteImagePicker(); // refresh grid
+        if (typeof _msToast === 'function') _msToast('Image added to quote.', 'success');
       } else {
         if (typeof _msToast === 'function') _msToast('Upload failed: ' + ((data && data.error) || ('HTTP ' + res.status)), 'error');
       }
@@ -30702,40 +30708,40 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (typeof _msToast === 'function') _msToast('Upload error: ' + (err.message || 'network'), 'error');
     }
   }
-  async function removeClientQuoteImage(e) {
+  // Slot ×: clear ALL quote images. Per-image removal happens by toggling a
+  // tile off in the picker.
+  function removeClientQuoteImage(e) {
     if (e) e.stopPropagation();
-    if (!_clientQuoteImage) return;
-    if (!confirm('Remove the product image from this quote?')) return;
-    const prev = _clientQuoteImage;
-    _clientQuoteImage = '';
-    const key = `${currentClient}|${currentWorkbookId}`;
-    if (workbookDetail[key]) workbookDetail[key].clientQuoteImage = '';
+    if (!_clientQuoteImages.length) return;
+    if (!confirm('Remove all product images from this quote?')) return;
+    _clientQuoteImages = [];
+    _cqPersistImages();
     renderClientQuoteImage();
-    try { autoSaveWorkbook(); } catch (_) {}
-    try { await apiCall('delete_image', { url: prev }); } catch (_) {}
   }
   function renderClientQuoteImage() {
-    const abs = _cqImageAbsUrl(_clientQuoteImage);
-    const inner = _clientQuoteImage
-      ? `<span style="position:relative; display:inline-flex; align-items:center;" title="Quote image — click to change" onclick="event.stopPropagation(); openClientQuoteImagePicker();">
-           <img src="${abs}" alt="Quote image" style="width:28px; height:28px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" />
-           <button type="button" title="Remove image" onclick="removeClientQuoteImage(event)" style="position:absolute; top:-6px; right:-6px; width:16px; height:16px; line-height:14px; text-align:center; border-radius:50%; border:none; background:#ef4444; color:#fff; font-size:11px; cursor:pointer; padding:0; font-family:inherit;">×</button>
+    const n = _clientQuoteImages.length;
+    const inner = n
+      ? `<span style="position:relative; display:inline-flex; align-items:center;" title="${n} quote image${n === 1 ? '' : 's'} — click to manage" onclick="event.stopPropagation(); openClientQuoteImagePicker();">
+           <img src="${_cqImageAbsUrl(_clientQuoteImages[0])}" alt="Quote image" style="width:28px; height:28px; object-fit:cover; border-radius:6px; border:1px solid var(--border); cursor:pointer;" />
+           ${n > 1 ? `<span style="position:absolute; bottom:-5px; right:-7px; background:var(--accent); color:#fff; font-size:9px; font-weight:800; border-radius:9px; padding:1px 5px; line-height:1.3;">${n}</span>` : ''}
+           <button type="button" title="Remove all images" onclick="removeClientQuoteImage(event)" style="position:absolute; top:-6px; right:-6px; width:16px; height:16px; line-height:14px; text-align:center; border-radius:50%; border:none; background:#ef4444; color:#fff; font-size:11px; cursor:pointer; padding:0; font-family:inherit;">×</button>
          </span>`
-      : `<button type="button" class="cq-export-btn" title="Add a product photo to this quote — pick one already in this workbook or upload a new one; it shows on the PDF sent to the client" onclick="event.stopPropagation(); openClientQuoteImagePicker();">
+      : `<button type="button" class="cq-export-btn" title="Add product photos to this quote — pick images already in this workbook or upload new ones; they show on the PDF sent to the client" onclick="event.stopPropagation(); openClientQuoteImagePicker();">
            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-           Image
+           Images
          </button>`;
     document.querySelectorAll('.cq-quote-img-slot').forEach(el => { el.innerHTML = inner; });
   }
 
-  // Picker: choose the quote photo from images ALREADY in this workbook
-  // (Product gallery + Art-tab images + Design file if it's an image + any
-  // RFQ line image), or upload a new one. Mirrors the "pick what I already
-  // added" flow Parker asked for instead of a raw file dialog.
+  // Multi-select picker modal. Lists every image already in this workbook
+  // (Product gallery + Art-tab images + Design file if an image + RFQ line
+  // images) plus any uploaded ones; tap a tile to add/remove it from the
+  // quote. Selected tiles are checked; the grid re-renders on each toggle.
   function openClientQuoteImagePicker() {
     const kindOf = (u) => (typeof _artFileKind === 'function' ? _artFileKind(u) : 'image');
     const seen = new Set(); const urls = [];
     const add = (u) => { if (u && !seen.has(u) && kindOf(u) === 'image') { seen.add(u); urls.push(u); } };
+    _clientQuoteImages.forEach(add); // already-picked (incl. uploads) first
     (Array.isArray(_productImages) ? _productImages : []).forEach(i => add(i && i.url));
     (Array.isArray(_artImages) ? _artImages : []).forEach(i => add(i && i.url));
     if (_designFile) add(_designFile);
@@ -30745,14 +30751,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
     const tiles = urls.map(u => {
-      const isCur = (u === _clientQuoteImage);
+      const sel = _clientQuoteImages.indexOf(u) >= 0;
       const uEsc = u.replace(/'/g, "\\'");
-      return `<div onclick="_cqPickChoose('${uEsc}')" title="Use this image on the quote" style="position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; cursor:pointer; border:2px solid ${isCur ? 'var(--accent)' : 'var(--border)'};">
+      return `<div onclick="_cqPickToggle('${uEsc}')" title="${sel ? 'On the quote — tap to remove' : 'Tap to add to the quote'}" style="position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; cursor:pointer; border:2px solid ${sel ? 'var(--accent)' : 'var(--border)'};">
         <img src="${esc(_cqImageAbsUrl(u))}" alt="" draggable="false" style="width:100%; height:100%; object-fit:cover; display:block;" />
-        ${isCur ? '<span style="position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:50%; background:var(--accent); color:#fff; font-size:12px; line-height:18px; text-align:center; font-weight:800;">✓</span>' : ''}
+        ${sel ? '<span style="position:absolute; top:4px; right:4px; width:18px; height:18px; border-radius:50%; background:var(--accent); color:#fff; font-size:12px; line-height:18px; text-align:center; font-weight:800;">✓</span>' : ''}
       </div>`;
     }).join('');
     const emptyMsg = urls.length ? '' : `<div style="grid-column:1/-1; color:var(--text-muted); font-size:13px; padding:24px; text-align:center;">No images in this workbook yet. Upload one below, or add images on the Workbook / Art tabs first.</div>`;
+    const n = _clientQuoteImages.length;
 
     const old = document.getElementById('cq-image-picker-modal');
     if (old) old.remove();
@@ -30762,34 +30769,30 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     ov.style.zIndex = '1200';
     ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
     ov.innerHTML = `
-      <div class="modal-content" style="max-width:640px; width:92%;">
-        <div class="modal-header" style="display:flex; align-items:center; justify-content:space-between;">
-          <div class="modal-title" style="margin:0;">Quote Image</div>
-          <button type="button" class="modal-close" onclick="document.getElementById('cq-image-picker-modal').remove()" title="Close">&times;</button>
+      <div class="modal" style="max-width:640px; width:92%; display:flex; flex-direction:column; max-height:calc(100vh - 40px);">
+        <div class="modal-title" style="display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+          <span>Quote Images${n ? ` · ${n} selected` : ''}</span>
+          <button type="button" class="btn btn-ghost" style="padding:2px 10px; font-size:18px; line-height:1;" onclick="document.getElementById('cq-image-picker-modal').remove()" title="Close">&times;</button>
         </div>
-        <div style="padding:2px 2px 12px; color:var(--text-muted); font-size:12.5px;">Pick a photo already in this workbook, or upload a new one. It shows on the Client Quote PDF sent to the client.</div>
-        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px; max-height:52vh; overflow:auto; padding:2px;">
+        <div style="margin:-6px 0 12px; color:var(--text-muted); font-size:12.5px; flex-shrink:0;">Tap images to add or remove them. Everything selected shows on the Client Quote PDF sent to the client.</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px; overflow:auto; padding:2px; flex:1 1 auto; min-height:80px;">
           ${tiles}${emptyMsg}
         </div>
-        <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; margin-top:16px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-ghost" onclick="triggerClientQuoteImageUpload()" title="Upload a new image from your computer">⬆ Upload new image</button>
-          <span style="display:flex; gap:8px;">
-            ${_clientQuoteImage ? `<button type="button" class="btn btn-ghost" style="color:#ef4444; border-color:#ef4444;" onclick="removeClientQuoteImage(); var m=document.getElementById('cq-image-picker-modal'); if(m) m.remove();">Remove from quote</button>` : ''}
-            <button type="button" class="btn btn-ghost" onclick="document.getElementById('cq-image-picker-modal').remove()">Close</button>
-          </span>
+        <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px; justify-content:space-between;">
+          <button type="button" class="btn btn-ghost" onclick="triggerClientQuoteImageUpload()" title="Upload a new image from your computer">⬆ Upload new</button>
+          <button type="button" class="btn btn-primary" onclick="document.getElementById('cq-image-picker-modal').remove()">Done</button>
         </div>
       </div>`;
     document.body.appendChild(ov);
     try { if (typeof _hydrateAiThumbs === 'function') _hydrateAiThumbs(ov); } catch (_) {}
   }
-  function _cqPickChoose(url) {
-    _clientQuoteImage = url;
-    const key = `${currentClient}|${currentWorkbookId}`;
-    if (workbookDetail[key]) workbookDetail[key].clientQuoteImage = url;
+  function _cqPickToggle(url) {
+    const i = _clientQuoteImages.indexOf(url);
+    if (i >= 0) _clientQuoteImages.splice(i, 1);
+    else _clientQuoteImages.push(url);
+    _cqPersistImages();
     renderClientQuoteImage();
-    try { autoSaveWorkbook(); } catch (_) {}
-    const m = document.getElementById('cq-image-picker-modal'); if (m) m.remove();
-    if (typeof _msToast === 'function') _msToast('Quote image set.', 'success');
+    openClientQuoteImagePicker(); // re-render grid with updated checks + count
   }
 
   function exportClientQuoteCSV() {
@@ -30804,7 +30807,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     lines.push(_csvEscape('Market Sculpt Client Quote'));
     lines.push([_csvEscape('Client'),       _csvEscape(data.meta.clientName)].join(','));
     lines.push([_csvEscape('Product'),      _csvEscape(data.meta.productName)].join(','));
-    if (data.meta.clientQuoteImage) lines.push([_csvEscape('Product Image'), _csvEscape(_cqImageAbsUrl(data.meta.clientQuoteImage))].join(','));
+    (data.meta.clientQuoteImages || []).forEach((u, i) => lines.push([_csvEscape('Product Image' + ((data.meta.clientQuoteImages.length > 1) ? ' ' + (i + 1) : '')), _csvEscape(_cqImageAbsUrl(u))].join(',')));
     if (data.meta.productDesc) lines.push([_csvEscape('Description'), _csvEscape(data.meta.productDesc)].join(','));
     lines.push([_csvEscape('Quote Date'),   _csvEscape(data.meta.quoteDate)].join(','));
     if (data.meta.quoteValid)  lines.push([_csvEscape('Valid Until'), _csvEscape(data.meta.quoteValid)].join(','));
@@ -30973,7 +30976,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <h1 style="margin-bottom:4px;">${escHtml(data.meta.productName || 'Quote')}</h1>
       <div class="for-client" style="margin-bottom:0;">Prepared for <strong>${escHtml(data.meta.clientName)}</strong></div>
     </div>
-    ${data.meta.clientQuoteImage ? `<div style="flex-shrink:0;"><img src="${escHtml(_cqImageAbsUrl(data.meta.clientQuoteImage))}" alt="${escHtml(data.meta.productName || 'Product')}" style="max-width:300px; max-height:210px; width:auto; height:auto; border-radius:10px; border:1px solid #e5e7eb; display:block;" /></div>` : ''}
+    ${(data.meta.clientQuoteImages && data.meta.clientQuoteImages.length) ? `<div style="flex-shrink:0; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; max-width:340px;">${data.meta.clientQuoteImages.map(u => `<img src="${escHtml(_cqImageAbsUrl(u))}" alt="${escHtml(data.meta.productName || 'Product')}" style="${data.meta.clientQuoteImages.length === 1 ? 'max-width:300px; max-height:210px; width:auto; height:auto;' : 'width:150px; height:120px; object-fit:cover;'} border-radius:10px; border:1px solid #e5e7eb; display:block;" />`).join('')}</div>` : ''}
   </div>
 
   <div class="summary-grid">
@@ -36657,7 +36660,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _productImages = [];
     _productVideos = [];
     _artImages     = [];
-    _clientQuoteImage = ''; // clear so the previous workbook's quote photo can't bleed over
+    _clientQuoteImages = []; // clear so the previous workbook's quote photos can't bleed over
     // Pitch snap is a per-workbook computed value; clear it before
     // the branch decides whether to restore one.
     window._fullContainerPitchSnap = null;
@@ -36975,7 +36978,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       } else {
         _productImages = [];
       }
-      _clientQuoteImage = (typeof data.clientQuoteImage === 'string') ? data.clientQuoteImage : '';
+      _clientQuoteImages = Array.isArray(data.clientQuoteImages) ? data.clientQuoteImages.filter(Boolean)
+                          : ((typeof data.clientQuoteImage === 'string' && data.clientQuoteImage) ? [data.clientQuoteImage] : []);
       renderImageGallery();
       try { renderClientQuoteImage(); } catch (_) {}
       // If this workbook lost its per-line images / combine groups to an
@@ -39416,7 +39420,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       productImage: _productImages.length > 0 ? _productImages[0].url : (existing.productImage || ''),
       productImages: _productImages.length > 0 ? _productImages.map(i => i.url) : (existing.productImages || []),
       // Optional client-quote product photo (persists into the quote PDF/CSV).
-      clientQuoteImage: _clientQuoteImage || (existing.clientQuoteImage || ''),
+      clientQuoteImages: _clientQuoteImages.slice(),
+      clientQuoteImage: _clientQuoteImages[0] || (existing.clientQuoteImage || ''),
       productVideos: _productVideos.length > 0 ? _productVideos.slice() : (existing.productVideos || []),
       // Pricing tab
       tiers: collectTiers(),
