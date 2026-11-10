@@ -20936,11 +20936,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
       </td>
       <td>
-        <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals(); _toggleRfqOptBtn(${id})" style="${inputStyle} flex:1; min-width:0;" />
+          <button type="button" class="rfq-add-variant-link" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote" style="flex-shrink:0; white-space:nowrap; margin:0;${(defaultItem && String(defaultItem).trim()) ? '' : ' display:none;'}">&#8646; Options</button>
+        </div>
         <div class="rfq-item-links">
           <button type="button" class="rfq-variant-toggle" id="rfq-vartoggle-${id}" data-rfq-vartoggle="${id}" style="display:none;" title="Show or hide this item's variants"></button>
           <button type="button" class="rfq-add-variant-link" onclick="addRfqVariantRow(${id})" title="Add a variant (size, color, etc.) under this item">+ Add Variant</button>
-          <button type="button" class="rfq-add-variant-link" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" title="Add comparable supplier options and pick which one is used on the client quote">&#8646; Options</button>
         </div>
       </td>
       <td><input type="text" inputmode="numeric" placeholder="0" value="${qty}" data-num-int="1"
@@ -22903,6 +22905,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // at a glance, with a radio-dot to pick the one used on the client quote.
   // No <input> elements (clickable divs) so the row's positional input reads
   // for cost/qty/price/lead are never shifted.
+  // The per-line "⇆ Options" button now sits to the RIGHT of the item-name
+  // input (not in the sub-links row). Keep an empty new line clean by hiding
+  // it until the line has a name; a line that already carries comparable
+  // options always shows it (via _renderRfqOptPanel below).
+  function _toggleRfqOptBtn(id) {
+    const tr = document.getElementById('rfq-' + id);
+    const btn = document.getElementById('rfq-optbtn-' + id);
+    if (!tr || !btn) return;
+    let hasOpts = false;
+    try { hasOpts = (JSON.parse(tr.dataset.compOptions || '[]') || []).length > 0; } catch (_) {}
+    if (hasOpts) { btn.style.display = ''; return; }
+    const nameInput = tr.querySelectorAll('input:not([type="checkbox"])')[1];
+    const hasName = !!(nameInput && nameInput.value.trim());
+    btn.style.display = hasName ? '' : 'none';
+  }
+
   function _renderRfqOptPanel(id) {
     const tr = document.getElementById('rfq-' + id);
     const btn = document.getElementById('rfq-optbtn-' + id);
