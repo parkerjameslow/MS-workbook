@@ -45886,6 +45886,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // every downstream load (workbooks, badges, etc.). var is
   // hoisted as undefined → loadCrm initializes it cleanly.
   var crmData = { cards: {}, nextId: 1 };
+  // Parse a CRM follow-up date string. A date-only "YYYY-MM-DD" (what the
+  // <input type="date"> stores) must be read as LOCAL midnight — new Date(str)
+  // would treat it as UTC midnight and, in a negative-offset zone like MST,
+  // render as the DAY BEFORE (Parker: "I set the 13th and it shows the 12th").
+  function _crmFollowupDate(s) {
+    if (!s) return new Date(NaN);
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s).trim());
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]); // local midnight, no TZ shift
+    return new Date(s); // already carries a time / zone — leave as-is
+  }
   var _crmDragCardId = null;
   var _crmSavePending = false;   // a local CRM save is queued/in flight
   var _crmEditingId  = null;
@@ -46314,7 +46324,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const _t = Date.now();
     const _dueRank = c => {
       if (!c.followup) return 2;
-      const ms = new Date(c.followup).getTime();
+      const ms = _crmFollowupDate(c.followup).getTime();
       if (isNaN(ms)) return 2;
       if (ms <= _t)  return 0; // overdue
       if (ms - _t <= 7*86400000) return 1; // due within a week
@@ -46664,7 +46674,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       : '';
     const meta = [];
     if (c.followup) {
-      const d = new Date(c.followup);
+      const d = _crmFollowupDate(c.followup);
       if (!isNaN(d.getTime())) {
         const lbl = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         const ms  = d.getTime();
