@@ -3559,6 +3559,69 @@ switch ($action) {
     }
 
     /**
+     * notify_order_ready_for_karen — fired by the "Ready for Karen" button on
+     * an order's deposit tracker once the deposit is fully paid. Emails Karen
+     * (cc Parker) that the deposit is in and the order is ready to move into
+     * production, with a link straight to the order. Operator-only (not in
+     * $_publicActions → requireAuth already enforced above). The numbers are
+     * passed from the client (which already computed them for the invoice) so
+     * the email matches exactly what the operator sees; the order link is
+     * rebuilt server-side from the request host (never trusts a client URL).
+     */
+    case 'notify_order_ready_for_karen': {
+        $orderId = trim((string)($input['order_id'] ?? ''));
+        if ($orderId === '') { echo json_encode(['success' => false, 'error' => 'order_id required']); break; }
+        $clientName = trim((string)($input['client_name'] ?? ''));
+        $invoiceNo  = trim((string)($input['invoice_no'] ?? ''));
+        $poNumber   = trim((string)($input['po_number'] ?? ''));
+        $depositPct = (float)($input['deposit_pct'] ?? 0);
+        $depositUsd = (float)($input['deposit_usd'] ?? 0);
+        $grandTotal = (float)($input['grand_total'] ?? 0);
+        $sender     = trim((string)($_SESSION['username'] ?? ($_SESSION['email'] ?? 'Someone')));
+
+        $to = ['karen@marketsculpt.com'];
+        $cc = ['parker@marketsculpt.com'];
+
+        $hostBase = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com');
+        $orderUrl = $hostBase . '/#/order/' . rawurlencode($orderId);
+        $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
+        $usd = function ($v) { return '$' . number_format((float)$v, 2); };
+        $pctLabel = rtrim(rtrim(number_format($depositPct, 1), '0'), '.');
+
+        $invLabel = $invoiceNo !== '' ? ('INV: ' . $invoiceNo) : ('Order #' . $orderId);
+        $subject  = 'Ready for production: ' . $invLabel . ($clientName !== '' ? ' — ' . $clientName : '');
+
+        $body = '<p style="margin:0 0 6px;font-size:16px;font-weight:700;color:#065f46;">Deposit received — ready for production</p>'
+              . '<p style="margin:0 0 16px;font-size:14px;color:#4b5563;line-height:1.6;">' . $esc($sender) . ' marked this order ready. The ' . $esc($pctLabel) . '% deposit is in — please move it into production.</p>'
+              . '<table style="border-collapse:collapse; margin:0 0 18px; font-size:13px;">'
+              . '<tr><td style="padding:4px 14px 4px 0; color:#666;">Client</td><td style="padding:4px 0; font-weight:600;">' . $esc($clientName !== '' ? $clientName : '—') . '</td></tr>'
+              . '<tr><td style="padding:4px 14px 4px 0; color:#666;">Invoice</td><td style="padding:4px 0; font-weight:600;">' . $esc($invLabel) . '</td></tr>'
+              . ($poNumber !== '' ? '<tr><td style="padding:4px 14px 4px 0; color:#666;">PO&nbsp;#</td><td style="padding:4px 0; font-weight:600;">' . $esc($poNumber) . '</td></tr>' : '')
+              . '<tr><td style="padding:4px 14px 4px 0; color:#666;">Deposit&nbsp;paid</td><td style="padding:4px 0; font-weight:700; color:#16a34a;">' . $usd($depositUsd) . '</td></tr>'
+              . '<tr><td style="padding:4px 14px 4px 0; color:#666;">Order&nbsp;total</td><td style="padding:4px 0; font-weight:600;">' . $usd($grandTotal) . '</td></tr>'
+              . '</table>'
+              . '<p style="margin:0 0 6px;"><a href="' . $esc($orderUrl) . '" style="display:inline-block; background:#16a34a; color:#fff; padding:11px 22px; border-radius:8px; text-decoration:none; font-weight:700;">Open order &rarr; Move to Production</a></p>'
+              . '<p style="color:#666; font-size:12px; margin-top:18px;">Open the order, confirm the review sign-offs, then hit Move to Production.</p>';
+
+        $html = ms_email_wrap('Ready for Production', 'An order\'s deposit is in and it\'s ready for production', $body);
+
+        if (!empty($input['preview'])) {
+            echo json_encode(['success' => true, 'preview' => true, 'subject' => $subject, 'html' => $html, 'to' => $to, 'cc' => $cc]);
+            break;
+        }
+
+        $mail = ms_smtp_send($to, $subject, $html, $cc);
+        echo json_encode([
+            'success'    => !empty($mail['ok']),
+            'email_sent' => !empty($mail['ok']),
+            'error'      => empty($mail['ok']) ? ($mail['error'] ?? 'Email failed') : null,
+            'to'         => $to,
+            'cc'         => $cc,
+        ]);
+        break;
+    }
+
+    /**
      * bulk_workbook_action — move N workbooks at once from the client
      * Workbooks view. action='rfq' flags each sentToRfq + nudges flow_step
      * to at least Quote Submitted so it lands in the RFQ Queue. action=

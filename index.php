@@ -49575,8 +49575,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // a "Complimentary" tag). Footer: subtotals + grand total.
   // Designed to read as a real invoice — clean spacing, neutral
   // grays, accent only on the totals + complimentary tags.
-  function exportOrderPdf(orderId) {
-    const o = orderData[orderId != null ? orderId : _currentOrderId];
+  function exportOrderPdf(orderId, opts) {
+    opts = opts || {};
+    const _pdfOrderId = (orderId != null ? orderId : _currentOrderId);
+    const o = orderData[_pdfOrderId];
     if (!o) return;
     const rate    = (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.24;
     // Truncate to hundredths (don't round up). Per user spec — they
@@ -49848,6 +49850,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
       footer { text-align:center; color:#9ca3af; font-size:10px; letter-spacing:0.06em; text-transform:uppercase; padding:18px 0 4px; font-weight:700; }
 
+      /* ── Ready-for-Karen banner (preview only, never printed) ──────── */
+      .karen-banner { display:flex; align-items:center; justify-content:space-between; gap:16px; background:linear-gradient(135deg,#ecfdf5,#d1fae5); border:1px solid #6ee7b7; border-radius:14px; padding:14px 18px; margin:0 0 14px; box-shadow:0 1px 2px rgba(15,23,42,0.04); }
+      .karen-banner .kb-left { display:flex; align-items:center; gap:12px; }
+      .karen-banner .kb-check { width:32px; height:32px; border-radius:50%; background:#16a34a; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px; flex-shrink:0; }
+      .karen-banner .kb-title { font-size:13px; font-weight:800; color:#065f46; }
+      .karen-banner .kb-sub { font-size:11px; color:#047857; margin-top:2px; }
+      .karen-banner .kb-btn { background:#16a34a; color:#fff; text-decoration:none; font-size:12px; font-weight:800; padding:11px 18px; border-radius:9px; white-space:nowrap; }
+      .karen-banner .kb-btn:hover { background:#15803d; }
+
       .no-print { margin:18px auto 0; max-width:760px; padding:16px 20px; background:#fff; border-radius:14px; text-align:center; box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
       .no-print button { padding:11px 26px; background:#E8751A; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; letter-spacing:0.01em; }
       .no-print button:hover { background:#d96414; }
@@ -49878,10 +49889,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return n;
     })();
 
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Invoice INV: ${esc(invoiceNo)} — ${esc(clientName)}</title>
+    // Link straight to this order in the app so Karen can open it and
+    // move it into production. Uses the current origin + path so it works
+    // on wb.marketsculpt.com and any staging host alike.
+    const orderUrl = `${window.location.origin}${window.location.pathname}#/order/${_pdfOrderId}`;
+    const karenBanner = opts.karen ? `
+    <div class="karen-banner no-print">
+      <div class="kb-left">
+        <div class="kb-check">✓</div>
+        <div>
+          <div class="kb-title">Deposit received — ready for production</div>
+          <div class="kb-sub">Karen: review this invoice, then open the order to move it into production.</div>
+        </div>
+      </div>
+      <a class="kb-btn" href="${orderUrl}">Open order → Move to Production</a>
+    </div>` : '';
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${opts.karen ? 'Ready for Production' : 'Invoice'} INV: ${esc(invoiceNo)} — ${esc(clientName)}</title>
 <style>${css}</style>
 </head><body>
   <div class="page">
+    ${karenBanner}
     <!-- Header card -->
     <div class="card">
       <div class="hdr">
@@ -49956,9 +49984,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   </div>
   <div class="no-print">
     <button onclick="window.print()">Save as PDF</button>
+    ${opts.karen ? `<a href="${orderUrl}" style="display:inline-block; margin-left:12px; padding:11px 22px; background:#16a34a; color:#fff; border-radius:10px; font-size:14px; font-weight:700; text-decoration:none;">Open order → Move to Production</a>` : ''}
     <span style="margin-left:14px; color:#6b7280; font-size:12px;">Tip: in the print dialog, set the destination to "Save as PDF".</span>
   </div>
-  <script>setTimeout(function(){window.print();}, 350);<\/script>
+  ${opts.previewOnly ? '' : `<script>setTimeout(function(){window.print();}, 350);<\/script>`}
 </body></html>`;
 
     const w = window.open('', '_blank');
@@ -49969,6 +49998,55 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     w.document.open();
     w.document.write(html);
     w.document.close();
+  }
+
+  // "Ready for Karen" — fired from the deposit section once the deposit is
+  // fully paid. Opens the invoice preview (with the move-to-production link)
+  // AND emails Karen@marketsculpt.com a notification + that same link so she
+  // can act without waiting for Parker to forward anything.
+  async function openReadyForKaren(orderId) {
+    const oid = (orderId != null ? orderId : _currentOrderId);
+    const o = orderData[oid];
+    if (!o) return;
+
+    // 1) Show Parker the invoice preview with the Karen banner + link.
+    try { exportOrderPdf(oid, { previewOnly: true, karen: true }); } catch (e) { console.warn('[ready-for-karen preview]', e); }
+
+    // 2) Compute the client-facing numbers the same way the deposit tracker
+    //    does (sum of each workbook's Client Quote Total; fall back to tier×qty).
+    let baseUsd = 0;
+    (o.entries || []).forEach(e => {
+      const w = _wbStatsForPicker(workbookDetail[`${e.clientName}|${e.workbookId}`]);
+      baseUsd += (w && w.price) || 0;
+    });
+    if (baseUsd <= 0) { try { baseUsd = orderTotals(o).totalUsd || 0; } catch (_) {} }
+    const pct        = (o.depositPct != null ? o.depositPct : 50);
+    const depositUsd = Math.round(baseUsd * (pct / 100) * 100) / 100;
+    const invoiceNo  = (o.invoiceNumber && String(o.invoiceNumber).trim()) || '';
+    const orderUrl   = `${window.location.origin}${window.location.pathname}#/order/${oid}`;
+
+    // 3) Email Karen. Operator-gated backend action composes the email.
+    try { if (typeof _msToast === 'function') _msToast('Emailing Karen…', 'info'); } catch (_) {}
+    try {
+      const res = await apiCall('notify_order_ready_for_karen', {
+        order_id:     String(oid),
+        client_name:  o.clientName || '',
+        invoice_no:   invoiceNo,
+        po_number:    o.poNumber || '',
+        deposit_pct:  pct,
+        deposit_usd:  depositUsd,
+        grand_total:  baseUsd,
+        order_url:    orderUrl,
+        changed_by:   (typeof getCurrentUser === 'function' ? getCurrentUser() : ''),
+      });
+      if (res && res.success) {
+        if (typeof _msToast === 'function') _msToast('Emailed Karen — order is ready for production.', 'success');
+      } else {
+        if (typeof _msToast === 'function') _msToast('Preview opened, but the email to Karen failed: ' + ((res && res.error) || 'unknown error'), 'warning');
+      }
+    } catch (e) {
+      if (typeof _msToast === 'function') _msToast('Preview opened, but the email to Karen could not be sent.', 'warning');
+    }
   }
 
   function exportAllOrdersCsv() {
@@ -54209,14 +54287,29 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             style="font-size:11px; padding:4px 10px; border:1px dashed var(--border); background:transparent; color:var(--text-muted); border-radius:4px; cursor:pointer; font-family:inherit;">+ Add payment</button>
         </div>`;
 
+      // "Ready for Karen" — only on the DEPOSIT section. Enables once the
+      // deposit is fully paid: that's the signal the order can move into
+      // production. Clicking opens an invoice preview with a link that takes
+      // Karen straight to this order to move it. Shown disabled before the
+      // deposit lands so the operator can see it's coming.
+      const karenBtn = (type === 'deposit') ? (fullyPaid
+        ? `<button type="button" onclick="openReadyForKaren(${_currentOrderId})"
+             title="Preview the invoice and hand Karen the link to move this order into production"
+             style="margin-left:8px; font-size:11px; font-weight:700; padding:5px 12px; border-radius:6px; border:1px solid #16a34a; background:#16a34a; color:#fff; cursor:pointer; font-family:inherit; white-space:nowrap;">Ready for Karen →</button>`
+        : `<button type="button" disabled
+             title="Record the deposit payment first — this enables once the deposit is fully paid"
+             style="margin-left:8px; font-size:11px; font-weight:700; padding:5px 12px; border-radius:6px; border:1px solid var(--border); background:var(--surface2); color:var(--text-muted); cursor:not-allowed; font-family:inherit; white-space:nowrap; opacity:0.65;">Ready for Karen</button>`
+      ) : '';
+
       return `
         <div style="padding:10px 0; border-bottom:1px solid var(--border);">
-          <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <span style="font-weight:700; color:${headerColor}; font-size:13px;">${label}</span>
             <span style="color:var(--text-muted); font-size:12px;">target ${fmtUsd(target)}</span>
             ${fullyPaid
               ? `<span style="margin-left:auto; font-size:12px; font-weight:700; color:var(--success, #16a34a);">✓ Fully paid</span>`
               : `<span style="margin-left:auto; font-size:12px; color:var(--text-muted);"><strong style="color:var(--success, #16a34a);">${fmtUsd(paidSum)}</strong> of ${fmtUsd(target)} paid · <strong style="color:var(--text);">${fmtUsd(remaining)}</strong> remaining</span>`}
+            ${karenBtn}
           </div>
           <div style="margin-top:6px; height:5px; background:var(--surface2); border-radius:99px; overflow:hidden;">
             <div style="height:100%; width:${pctPaid}%; background:var(--success, #16a34a); border-radius:99px; transition:width 0.2s;"></div>
