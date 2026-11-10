@@ -8288,7 +8288,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               <th class="col-date-created sortable" onclick="sortClientTable('date')">Date Created <span class="sort-arrow"></span></th>
               <th class="col-date-submitted sortable" onclick="sortClientTable('dateSubmitted')">Date Submitted <span class="sort-arrow"></span></th>
               <th class="col-order">Order</th>
-              <th class="col-flow">Pipeline Stage</th>
+              <th class="col-flow sortable" onclick="sortClientTable('stage')">Pipeline Stage <span class="sort-arrow"></span></th>
               <th class="col-portal">Customer Portal</th>
               <th class="col-mobile-status sortable" onclick="sortClientTable('status')">Status <span class="sort-arrow"></span></th>
               <th></th>
@@ -36274,13 +36274,33 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Creation order = the workbook id (auto-increments), the reliable
     // "newest created" key (the dateCreated string can tie or mis-parse).
     const createdKey = it => parseInt(it.id) || 0;
+    // Pipeline-stage rank — higher = further along. Parker's order (top →
+    // bottom with the default 'desc'): Receiving → Shipments → Production →
+    // Orders → Samples → Ready for Review → RFQ → Unstaged. Uses the same
+    // canonical _pipelineStageFor the board/nav use, so the grouping matches
+    // the stage pill shown on each row.
+    const _stageRankMap = { unstaged: 0, rfq: 1, review: 2, samples: 3, orders: 4, production: 5, shipments: 6, receiving: 7 };
+    const stageRank = it => {
+      const d = workbookDetail[`${clientName}|${it.id}`] || {};
+      const st = (typeof _pipelineStageFor === 'function') ? _pipelineStageFor(clientName, it.id, d) : null;
+      return (st == null) ? -1 : (st in _stageRankMap ? _stageRankMap[st] : 0);
+    };
     items.sort((a, b) => {
       if (_clientSortField === 'product') return dir * a.product.localeCompare(b.product);
       if (_clientSortField === 'date') return dir * (createdKey(a) - createdKey(b));
       if (_clientSortField === 'dateSubmitted') return dir * (parseDate(a.dateSubmitted) - parseDate(b.dateSubmitted));
       if (_clientSortField === 'status') return dir * (getCurrentStepName(a.flow) || '').localeCompare(getCurrentStepName(b.flow) || '');
       if (_clientSortField === 'landed')  return dir * (_landedFor(a) - _landedFor(b));
-      // Default (and any unknown field): last created on top.
+      if (_clientSortField === 'stage') {
+        // Group by pipeline stage; within a stage, newest created first
+        // (unaffected by the stage asc/desc toggle).
+        const ra = stageRank(a), rb = stageRank(b);
+        if (ra !== rb) return dir * (ra - rb);
+        return createdKey(b) - createdKey(a);
+      }
+      // Default (and any unknown field): group by stage, newest within.
+      const ra = stageRank(a), rb = stageRank(b);
+      if (ra !== rb) return rb - ra;
       return createdKey(b) - createdKey(a);
     });
 
@@ -39102,7 +39122,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   let _currentStatusFilter = 'all';
   let _homeSortField = 'date';
   let _homeSortDir = 'desc';
-  let _clientSortField = 'date';
+  let _clientSortField = 'stage';
   let _clientSortDir = 'desc';
 
   function updateSortArrows(tableSelector, field, dir) {
