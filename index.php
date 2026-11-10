@@ -30984,9 +30984,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     </div>
   </div>
 
-  <h1>${escHtml(data.meta.productName || 'Quote')}</h1>
-  <div class="for-client">Prepared for <strong>${escHtml(data.meta.clientName)}</strong></div>
-  ${data.meta.clientQuoteImage ? `<div style="margin:4px 0 18px;"><img src="${escHtml(_cqImageAbsUrl(data.meta.clientQuoteImage))}" alt="${escHtml(data.meta.productName || 'Product')}" style="max-width:280px; max-height:220px; width:auto; height:auto; border-radius:10px; border:1px solid #e5e7eb; display:block;" /></div>` : ''}
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:28px; margin-bottom:18px;">
+    <div style="flex:1; min-width:0;">
+      <h1 style="margin-bottom:4px;">${escHtml(data.meta.productName || 'Quote')}</h1>
+      <div class="for-client" style="margin-bottom:0;">Prepared for <strong>${escHtml(data.meta.clientName)}</strong></div>
+    </div>
+    ${data.meta.clientQuoteImage ? `<div style="flex-shrink:0;"><img src="${escHtml(_cqImageAbsUrl(data.meta.clientQuoteImage))}" alt="${escHtml(data.meta.productName || 'Product')}" style="max-width:300px; max-height:210px; width:auto; height:auto; border-radius:10px; border:1px solid #e5e7eb; display:block;" /></div>` : ''}
+  </div>
 
   <div class="summary-grid">
     <div class="stat"><div class="stat-label">Sale Price (USD)</div><div class="stat-value">${escHtml(data.summary.salePrice || '—')}</div></div>
