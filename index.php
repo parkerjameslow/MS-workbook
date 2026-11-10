@@ -21895,30 +21895,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (!currentClient || !currentWorkbookId) return;
       const key = `${currentClient}|${currentWorkbookId}`;
       const dbId = dbWorkbookMap[key] || currentWorkbookId;
-      if (_rfqRecoveryChecked.has(dbId)) return;
-      _rfqRecoveryChecked.add(dbId);
-      try { if (localStorage.getItem('msRfqRecovered_' + dbId)) return; } catch (_) {}
 
       const cur = collectRfqItems();
-      const hasRealItems  = cur.some(i => i.item || i.sku);
-      const hasImagesNow  = cur.some(i => (i.images || []).length);
+      const hasRealItems = cur.some(i => i.item || i.sku);
+      if (!hasRealItems) return;
+
+      // ── What still needs healing from revision history? ──────────────
+      const hasImagesNow   = cur.some(i => (i.images || []).length);
       const hasGalleryImgs = Array.isArray(_productImages) && _productImages.length > 0;
-      // Only a candidate if there are gallery images that could have been
-      // assigned but none currently are. (Combine groups are recovered
-      // alongside when this fires.)
-      if (!hasRealItems || !hasGalleryImgs || hasImagesNow) return;
+      let imgDone = false, leadDone = false;
+      try { imgDone  = !!localStorage.getItem('msRfqRecovered_' + dbId); } catch (_) {}
+      try { leadDone = !!localStorage.getItem('msRfqLeadRecovered_' + dbId); } catch (_) {}
+      const needImages = !imgDone && hasGalleryImgs && !hasImagesNow;
+      // A line with a name/SKU but a BLANK lead time is a heal candidate — a
+      // concurrent save/reconcile can drop line lead times (production lead is
+      // just the max of these), and entered data must never silently vanish.
+      // We only ever FILL a blank lead, never touch one that has a value.
+      const needLeads  = !leadDone && cur.some(i => (i.item || i.sku) && !String(i.leadTime || '').trim());
+      if (!needImages && !needLeads) return;
 
       const res = await fetch('api.php?action=get_revisions&workbook_id=' + encodeURIComponent(dbId))
         .then(r => r.json()).catch(() => null);
       const revs = (res && res.success && Array.isArray(res.data)) ? res.data : null;
-      if (!revs || !revs.length) { try { localStorage.setItem('msRfqRecovered_' + dbId, '1'); } catch (_) {} return; }
+      if (!revs || !revs.length) {
+        try { if (needImages) localStorage.setItem('msRfqRecovered_' + dbId, '1'); } catch (_) {}
+        try { if (needLeads)  localStorage.setItem('msRfqLeadRecovered_' + dbId, '1'); } catch (_) {}
+        return;
+      }
 
       const hasGroupsNow = Array.isArray(_combineGroups) && _combineGroups.length > 0;
-      let imgByKey = null, groups = null, histForGroups = null;
+      let imgByKey = null, leadByKey = null, groups = null, histForGroups = null;
       for (const rev of revs) {   // newest-first
         let d; try { d = JSON.parse(rev.detail_json || '{}'); } catch { continue; }
         const items = Array.isArray(d.rfqItems) ? d.rfqItems : [];
-        if (!imgByKey) {
+        if (needImages && !imgByKey) {
           const m = new Map();
           items.forEach(it => {
             const k = _histKeyOf(it);
@@ -21927,39 +21937,54 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           });
           if (m.size) imgByKey = m;
         }
-        if (!groups && !hasGroupsNow && Array.isArray(d.combineGroups) && d.combineGroups.length) {
+        if (needLeads && !leadByKey) {
+          const m = new Map();
+          items.forEach(it => {
+            const k = _histKeyOf(it);
+            const lt = String(it.leadTime == null ? '' : it.leadTime).trim();
+            if (k && lt && !m.has(k)) m.set(k, lt);
+          });
+          if (m.size) leadByKey = m;
+        }
+        if (needImages && !groups && !hasGroupsNow && Array.isArray(d.combineGroups) && d.combineGroups.length) {
           groups = d.combineGroups; histForGroups = items;
         }
-        if (imgByKey && (groups || hasGroupsNow)) break;
+        const imgSatisfied  = !needImages || (imgByKey && (groups || hasGroupsNow));
+        const leadSatisfied = !needLeads  || leadByKey;
+        if (imgSatisfied && leadSatisfied) break;
       }
 
       let changed = 0;
-      if (imgByKey) {
-        document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])').forEach(row => {
-          const id = parseInt(row.id.replace('rfq-', ''));
-          if (getRfqRowImages(id).length) return;
-          const inputs = row.querySelectorAll('input:not([type="checkbox"])');
-          const kSku  = String(inputs[0]?.value || '').trim().toLowerCase();
-          const kItem = String(inputs[1]?.value || '').trim().toLowerCase();
-          const imgs  = (kSku && imgByKey.get(kSku)) || (kItem && imgByKey.get(kItem));
-          if (imgs && imgs.length) {
-            row.dataset.images = JSON.stringify(imgs.slice());
-            renderRfqLineImages(id);
-            changed++;
-          }
-        });
-      }
-      if (groups && histForGroups) {
+      document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])').forEach(row => {
+        const id = parseInt(row.id.replace('rfq-', ''));
+        const inputs = row.querySelectorAll('input:not([type="checkbox"])');
+        const kSku  = String(inputs[0]?.value || '').trim().toLowerCase();
+        const kItem = String(inputs[1]?.value || '').trim().toLowerCase();
+        if (imgByKey && !getRfqRowImages(id).length) {
+          const imgs = (kSku && imgByKey.get(kSku)) || (kItem && imgByKey.get(kItem));
+          if (imgs && imgs.length) { row.dataset.images = JSON.stringify(imgs.slice()); renderRfqLineImages(id); changed++; }
+        }
+        // Lead time — only fill when the line's lead is currently BLANK.
+        if (leadByKey && inputs[4] && !String(inputs[4].value || '').trim()) {
+          const lt = (kSku && leadByKey.get(kSku)) || (kItem && leadByKey.get(kItem));
+          if (lt) { inputs[4].value = lt; changed++; }
+        }
+      });
+      if (needImages && groups && histForGroups) {
         const curItems = collectRfqItems();
         const restoredGroups = groups.map(g => _remapGroupFromHistory(g, histForGroups, curItems)).filter(Boolean);
         if (restoredGroups.length) { _combineGroups = restoredGroups; updateRfqGroupsBar(); changed += restoredGroups.length; }
       }
 
-      try { localStorage.setItem('msRfqRecovered_' + dbId, '1'); } catch (_) {}
+      try { if (needImages) localStorage.setItem('msRfqRecovered_' + dbId, '1'); } catch (_) {}
+      try { if (needLeads)  localStorage.setItem('msRfqLeadRecovered_' + dbId, '1'); } catch (_) {}
       if (changed) {
         recalcRfqTotals();
+        try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
         autoSaveWorkbook();   // persist the recovery back to the DB
-        if (typeof showToast === 'function') showToast(`Recovered ${changed} image/group assignment${changed === 1 ? '' : 's'} from history`, 'success');
+        const msg = `Recovered ${changed} item field${changed === 1 ? '' : 's'} from history`;
+        if (typeof showToast === 'function') showToast(msg, 'success');
+        else if (typeof _msToast === 'function') _msToast(msg, 'success');
       }
     } catch (e) {
       console.debug('[rfq-recovery]', e);
