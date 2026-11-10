@@ -33920,59 +33920,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       stored = Math.min(num, 999.99).toFixed(2);
     }
     if (!clientDetails[clientName]) clientDetails[clientName] = {};
-    // Capture the OLD default first so we can tell which workbooks were riding
-    // the default (and should follow it) vs. a deliberate per-workbook override
-    // (which the modal promises to leave alone).
-    const _oldRaw = clientDetails[clientName].default_margin_pct;
-    const _oldDefault = (_oldRaw === '' || _oldRaw == null || isNaN(parseFloat(_oldRaw))) ? 50 : parseFloat(_oldRaw);
     clientDetails[clientName].default_margin_pct = stored;
     saveClientDetail(clientName);
-    _propagateClientMarginToWorkbooks(clientName, stored, _oldDefault);
+    // Note: existing workbooks keep whatever margin they already have (a
+    // manual value, or the default baked in when they were created). Only
+    // workbooks whose margin is still BLANK follow this default live — and
+    // every NEW workbook starts blank, so it picks up the current default.
+    // That matches Parker's rule: new workbooks get the new %, existing/
+    // manually-set ones stay put unless changed by hand.
+    if (typeof currentClient === 'string' && currentClient === clientName) {
+      try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
+    }
     // Re-render the card so the avatar badge picks up the new value.
     if (typeof renderClientDetailCard === 'function') renderClientDetailCard(clientName);
     closeClientMarginModal();
-  }
-
-  // Push a changed client Default Profit Margin down onto that client's
-  // workbooks. The workbook margin input inherits the client default when
-  // blank, but once a workbook is opened that inherited value gets baked into
-  // detail.pricingMarginPct — so without this, changing the client default
-  // left already-touched workbooks stuck on the OLD number (Parker: "when the
-  // % for Salt changes 50→35 it needs to update on each of the workbooks").
-  // We update only workbooks that were riding the OLD default (blank or equal
-  // to it); a workbook with a different, deliberate margin is left untouched.
-  function _propagateClientMarginToWorkbooks(clientName, stored, oldDefault) {
-    const wbs = (typeof clientData !== 'undefined' && clientData[clientName]) || [];
-    let count = 0;
-    wbs.forEach(item => {
-      if (!item || item.id == null) return;
-      const key = `${clientName}|${item.id}`;
-      const det = workbookDetail[key];
-      if (!det) return; // not loaded in memory — it'll inherit the live default on next open
-      const curRaw   = det.pricingMarginPct;
-      const curBlank = (curRaw === '' || curRaw == null || isNaN(parseFloat(curRaw)));
-      const ridesDefault = curBlank || Math.abs(parseFloat(curRaw) - oldDefault) < 0.005;
-      if (!ridesDefault) return; // deliberate per-workbook override — leave it
-      const newVal = stored; // '' → inherit live, or e.g. "35.00"
-      if (String(curRaw == null ? '' : curRaw) === String(newVal)) return; // already there
-      const before = Object.assign({}, det);
-      const after  = Object.assign({}, det, { pricingMarginPct: newVal });
-      workbookDetail[key] = after;
-      const dbId = (typeof dbWorkbookMap !== 'undefined' && dbWorkbookMap[key]) || item.id;
-      // base = pre-change detail → the server 3-way merge writes ONLY the
-      // margin field, so a concurrent editor's other changes aren't clobbered.
-      try { apiCall('save_workbook_detail', { id: dbId, detail: after, base: before, changed_by: getCurrentUser() }); } catch (_) {}
-      count++;
-    });
-    // Reflect immediately on the open workbook if it belongs to this client.
-    if (typeof currentClient === 'string' && currentClient === clientName) {
-      const mInput = document.getElementById('ps-margin-pct');
-      if (mInput && mInput !== document.activeElement) mInput.value = (stored === '') ? '' : stored;
-      try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
-    }
-    if (count > 0 && typeof _msToast === 'function') {
-      _msToast(`Margin updated on ${count} ${clientName} workbook${count === 1 ? '' : 's'}.`, 'success');
-    }
   }
 
   function onClientDetailChange(el, encodedName, key) {
