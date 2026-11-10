@@ -21890,6 +21890,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const primaryIdx = (pk && curKeyToIdx.has(pk)) ? curKeyToIdx.get(pk) : newIdxs[0];
     return { id: histGroup.id, label: histGroup.label, primaryIdx, itemIdxs: newIdxs };
   }
+  // ── Save-time "no silent blanking" guard ───────────────────────────────
+  // Entered data must never vanish on its own. When a save is collected we
+  // compare its rfqItems against the loaded baseline (_wbBaseDetail); if a line
+  // field went from a value → blank but the operator never touched that input
+  // (not focused, not data-local-dirty — i.e. a reconcile/clobber blanked it,
+  // NOT the user), we restore the baseline value into the detail being saved
+  // AND the on-screen input. A field the user actually cleared (its input is
+  // focused or dirty) is left blank. Lines are matched by sku||item so an
+  // added/removed line can't misalign it. Covers parent lines + variants.
+  function _guardRfqSilentBlanking(detail, base) {
+    try {
+      if (!base || !Array.isArray(base.rfqItems) || !Array.isArray(detail.rfqItems)) return 0;
+      const nz = v => String(v == null ? '' : v).trim() !== '';
+      const touched = inp => !!inp && (inp === document.activeElement || (inp.dataset && inp.dataset.localDirty === '1'));
+      const vKey = o => String((o && (o.sku || o.variant)) || '').trim().toLowerCase();
+      const baseByKey = new Map();
+      base.rfqItems.forEach(b => { const k = _histKeyOf(b); if (k && !baseByKey.has(k)) baseByKey.set(k, b); });
+      const rows = document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])');
+      let restored = 0;
+      detail.rfqItems.forEach((it, idx) => {
+        const b = baseByKey.get(_histKeyOf(it));
+        if (!b) return;
+        const row = rows[idx];
+        const inputs = row ? row.querySelectorAll('input:not([type="checkbox"])') : [];
+        [['sku', 0], ['item', 1], ['qty', 2], ['priceRmb', 3], ['leadTime', 4]].forEach(([f, ci]) => {
+          if (nz(b[f]) && !nz(it[f]) && !touched(inputs[ci])) {
+            it[f] = b[f];
+            if (inputs[ci]) inputs[ci].value = b[f];
+            restored++;
+          }
+        });
+        if (row && Array.isArray(b.variants) && b.variants.length && Array.isArray(it.variants)) {
+          const rid = parseInt(row.id.replace('rfq-', ''));
+          const vRows = document.querySelectorAll(`[data-rfq-parent="${rid}"]`);
+          const bVarByKey = new Map();
+          b.variants.forEach(bv => { const vk = vKey(bv); if (vk && !bVarByKey.has(vk)) bVarByKey.set(vk, bv); });
+          it.variants.forEach((v, vi2) => {
+            const bv = bVarByKey.get(vKey(v));
+            if (!bv) return;
+            const vr = vRows[vi2];
+            const vInputs = vr ? vr.querySelectorAll('input:not(.rfq-var-sku-input)') : [];
+            const vSku = vr ? vr.querySelector('.rfq-var-sku-input') : null;
+            [['variant', 0], ['qty', 1], ['priceRmb', 2], ['leadTime', 3]].forEach(([f, ci]) => {
+              if (nz(bv[f]) && !nz(v[f]) && !touched(vInputs[ci])) { v[f] = bv[f]; if (vInputs[ci]) vInputs[ci].value = bv[f]; restored++; }
+            });
+            if (nz(bv.sku) && !nz(v.sku) && !touched(vSku)) { v.sku = bv.sku; if (vSku) vSku.value = bv.sku; restored++; }
+          });
+        }
+      });
+      if (restored) {
+        try { recalcRfqTotals(); } catch (_) {}
+        try { console.warn('[MS blank-guard] restored ' + restored + ' RFQ field(s) that were about to be saved blank'); } catch (_) {}
+      }
+      return restored;
+    } catch (e) { try { console.debug('[blank-guard]', e); } catch (_) {} return 0; }
+  }
+
   async function _recoverRfqAssetsFromHistory() {
     try {
       if (!currentClient || !currentWorkbookId) return;
@@ -37436,6 +37493,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     clearTimeout(saveTimer);
     const detail = collectWorkbookDetail();
     const key = `${currentClient}|${currentWorkbookId}`;
+    _guardRfqSilentBlanking(detail, _wbBaseDetail[key]);
     workbookDetail[key] = detail;
     syncClientDataName(currentClient, currentWorkbookId, detail);
     const dbId = dbWorkbookMap[key] || currentWorkbookId;
@@ -39667,6 +39725,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try {
       const key = `${currentClient}|${currentWorkbookId}`;
       const detail = collectWorkbookDetail();
+      _guardRfqSilentBlanking(detail, _wbBaseDetail[key]);
       workbookDetail[key] = detail;
       saveToLocalStorage();
     } catch (e) { /* best-effort — don't block input flow */ }
@@ -39698,6 +39757,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
       const detail = collectWorkbookDetail();
       const key = `${currentClient}|${currentWorkbookId}`;
+      _guardRfqSilentBlanking(detail, _wbBaseDetail[key]);
       workbookDetail[key] = detail;
 
       // Snapshot EXACTLY which dirty fields (and their values) this save
@@ -39794,6 +39854,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     clearTimeout(saveTimer);
     const detail = collectWorkbookDetail();
     const key = `${currentClient}|${currentWorkbookId}`;
+    _guardRfqSilentBlanking(detail, _wbBaseDetail[key]);
     workbookDetail[key] = detail;
     saveToLocalStorage();
     // Use sendBeacon so the request survives page unload
