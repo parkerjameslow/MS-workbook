@@ -39438,6 +39438,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const key = `${currentClient}|${currentWorkbookId}`;
       workbookDetail[key] = detail;
 
+      // Snapshot EXACTLY which dirty fields (and their values) this save
+      // is persisting. collectWorkbookDetail() above read the DOM synchronously,
+      // so these values are precisely what we're POSTing. On success we only
+      // clear the dirty flag for fields still holding this same value — any
+      // field the operator kept typing into during the round-trip has a
+      // newer value the server doesn't have yet, so it MUST stay dirty (the
+      // already-queued next autosave will persist it, and meanwhile the 2s
+      // reconcile poll keeps skipping it). Without this, the old blanket
+      // clear wiped the dirty flag off mid-typed fields and the next poll
+      // reverted them — the "data shifts back while Jackson is in it" bug.
+      const _dirtyAtSave = [];
+      try {
+        document.querySelectorAll('#view-workbook [data-local-dirty="1"]').forEach(el => {
+          const v = (el.type === 'checkbox') ? !!el.checked
+                                             : String(el.value == null ? '' : el.value);
+          _dirtyAtSave.push([el, v]);
+        });
+      } catch(_) {}
+
       // Save to DB — autosave does NOT create a revision (only nav saves do)
       const dbId = dbWorkbookMap[key] || currentWorkbookId;
       showSaveStatus('saving');
@@ -39448,12 +39467,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           if (r && r.success) {
             // Our changes are now the baseline for the next merge.
             try { _wbBaseDetail[key] = detail; } catch (e) {}
-            // Clear the live-broadcast local-dirty flag on every input
-            // we just persisted — the server now has our values, so
-            // it's safe for an incoming broadcast to update them later.
+            // Clear the live-broadcast local-dirty flag — but ONLY on the
+            // fields whose value still matches what we just persisted. A
+            // field the operator kept typing into during the round-trip
+            // now holds a value the server does NOT have, so we leave it
+            // dirty: the queued next autosave will persist it, and until
+            // then the reconcile poll must keep skipping it (otherwise a
+            // remote broadcast reverts the half-typed field). This is the
+            // fix for data "shifting back" during concurrent editing.
             try {
-              document.querySelectorAll('#view-workbook [data-local-dirty="1"]')
-                .forEach(el => { delete el.dataset.localDirty; });
+              _dirtyAtSave.forEach(([el, savedVal]) => {
+                if (!el || !el.isConnected) return;
+                const cur = (el.type === 'checkbox') ? !!el.checked
+                                                     : String(el.value == null ? '' : el.value);
+                if (cur === savedVal) { try { delete el.dataset.localDirty; } catch(_) {} }
+                // else: changed since this save was captured — stay dirty.
+              });
             } catch(_) {}
             // Bump our own cursor so the next dirty-check poll doesn't
             // echo this save back at us as a 'remote' change. We
@@ -47919,6 +47948,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         if (!input) return;
         // Don't overwrite the cell the user is currently typing in
         if (document.activeElement === input) return;
+        // Don't overwrite a cell the operator edited but hasn't had
+        // persisted yet — it's dirty-but-unfocused (they tabbed away
+        // mid-autosave). Clearing happens only after our save confirms
+        // the value, so an in-flight local edit can't be reverted by a
+        // concurrent user's older broadcast. (Matches _applyRemoteWorkbookDetail.)
+        if (input.dataset && input.dataset.localDirty === '1') return;
         // Don't overwrite if value is already in sync (avoid cursor jumps)
         if (input.value === u.value) return;
         input.value = u.value;
