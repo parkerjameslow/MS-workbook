@@ -30669,6 +30669,35 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (/^(https?:|data:)/i.test(u)) return u;
     return window.location.origin + '/' + String(u).replace(/^\/+/, '');
   }
+  // Downscale + JPEG-re-encode an image to a compact data URL so the saved
+  // Client Quote PDF stays email-sized (a few MB, not tens/hundreds). Returns
+  // the compressed data URL; rejects if the image can't be loaded/decoded so
+  // the caller can fall back to the original URL.
+  function _cqCompressImageForPdf(src, maxDim, quality) {
+    maxDim = maxDim || 1500; quality = quality || 0.75;
+    return new Promise((resolve, reject) => {
+      if (!src) return reject(new Error('no src'));
+      if (/^data:/i.test(src)) return resolve(src); // already inline
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          if (!w || !h) return reject(new Error('empty'));
+          const scale = Math.min(1, maxDim / Math.max(w, h));
+          const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch); // flatten alpha for JPEG
+          ctx.drawImage(img, 0, 0, cw, ch);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } catch (e) { reject(e); }
+      };
+      img.onerror = () => reject(new Error('load failed'));
+      img.src = src;
+    });
+  }
   function _cqPersistImages() {
     const key = `${currentClient}|${currentWorkbookId}`;
     if (workbookDetail[key]) {
@@ -30862,12 +30891,31 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _msToast('Quote CSV downloaded.', 'success');
   }
 
-  function exportClientQuotePDF() {
+  async function exportClientQuotePDF() {
     const data = _collectClientQuoteForExport();
     if (!data || data.lineItems.length === 0) {
       _msToast('No quote items to export. Add items on the Workbook tab first.', 'error');
       return;
     }
+
+    // Open the print window NOW (synchronously, inside the click) so the
+    // pop-up blocker doesn't eat it, then fill it once the images are ready.
+    const win = window.open('', '_blank');
+    if (!win) {
+      _msToast('Pop-up blocked. Allow pop-ups for this site to use PDF export.', 'error');
+      return;
+    }
+    try { win.document.write('<!doctype html><title>Preparing quote…</title><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#6b7280;padding:48px;font-size:15px;">Preparing your quote… compressing images for email.</body>'); } catch (_) {}
+
+    // Compress the quote images for email: downscale + JPEG re-encode so the
+    // saved PDF is a few MB, not tens/hundreds. Each falls back to its original
+    // URL if it can't be processed (so the image still shows, just uncompressed).
+    let cqImages = [];
+    try {
+      cqImages = await Promise.all((data.meta.clientQuoteImages || []).map(u =>
+        _cqCompressImageForPdf(_cqImageAbsUrl(u)).catch(() => _cqImageAbsUrl(u))
+      ));
+    } catch (_) { cqImages = (data.meta.clientQuoteImages || []).map(u => _cqImageAbsUrl(u)); }
 
     // Build line-item rows with light visual grouping that matches the
     // on-screen layout: parent rows bold, variant rows indented and
@@ -30976,7 +31024,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <h1 style="margin-bottom:4px;">${escHtml(data.meta.productName || 'Quote')}</h1>
       <div class="for-client" style="margin-bottom:0;">Prepared for <strong>${escHtml(data.meta.clientName)}</strong></div>
     </div>
-    ${(data.meta.clientQuoteImages && data.meta.clientQuoteImages.length) ? `<div style="flex-shrink:0; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; max-width:340px;">${data.meta.clientQuoteImages.map(u => `<img src="${escHtml(_cqImageAbsUrl(u))}" alt="${escHtml(data.meta.productName || 'Product')}" style="${data.meta.clientQuoteImages.length === 1 ? 'max-width:300px; max-height:210px; width:auto; height:auto;' : 'width:150px; height:120px; object-fit:cover;'} border-radius:10px; border:1px solid #e5e7eb; display:block;" />`).join('')}</div>` : ''}
+    ${(cqImages && cqImages.length) ? `<div style="flex-shrink:0; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; max-width:340px;">${cqImages.map(src => `<img src="${src}" alt="${escHtml(data.meta.productName || 'Product')}" style="${cqImages.length === 1 ? 'max-width:300px; max-height:210px; width:auto; height:auto;' : 'width:150px; height:120px; object-fit:cover;'} border-radius:10px; border:1px solid #e5e7eb; display:block;" />`).join('')}</div>` : ''}
   </div>
 
   <div class="summary-grid">
@@ -31019,11 +31067,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   <\/script>
 </body></html>`;
 
-    const win = window.open('', '_blank');
-    if (!win) {
-      _msToast('Pop-up blocked. Allow pop-ups for this site to use PDF export.', 'error');
-      return;
-    }
     win.document.open();
     win.document.write(html);
     win.document.close();
