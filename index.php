@@ -21526,7 +21526,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const chooseBtn = (section) => `<button type="button" class="rfq-imgpick-choose" onclick="openRfqGalleryModal('${section}')">Choose File</button>`;
     const emptyNote = (txt) => `<div class="rfq-imgpick-empty">${txt}</div>`;
     let html = '';
-    html += sec('Product Images', tiles(g.productAssigned) || emptyNote('Nothing yet — tap “Choose File”.'), chooseBtn('product'));
+    // Product Images section removed per operator — Line Item Specs now holds
+    // just the Design File + Art for this line.
     html += sec('Design File', tiles(g.design) || emptyNote('Nothing yet — tap “Choose File”.'), chooseBtn('design'));
     html += sec('Art for this line', tiles(g.lineArt) || emptyNote('Nothing yet — tap “Choose File”.'), chooseBtn('art'));
     grid.innerHTML = html;
