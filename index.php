@@ -1961,17 +1961,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        the expanded section reads as a self-contained card). Mirrors the
        #samples-table column layout. */
     .samples-grid { table-layout: fixed; width: 100%; border-collapse: collapse; }
+    /* 7 columns: select/button · Item · Client · Qty · Direction · Status · Assignee */
     .samples-grid th:nth-child(1), .samples-grid td:nth-child(1) { width: 48px; padding-left: 18px; padding-right: 4px; }
-    .samples-grid th:nth-child(2), .samples-grid td:nth-child(2) { width: 16%; }
-    .samples-grid th:nth-child(3), .samples-grid td:nth-child(3) { width: 13%; }
-    .samples-grid th:nth-child(4), .samples-grid td:nth-child(4) { width: 16%; }
-    .samples-grid th:nth-child(5), .samples-grid td:nth-child(5) { width: 7%; }
-    .samples-grid th:nth-child(6), .samples-grid td:nth-child(6) { width: 7%; }
-    .samples-grid th:nth-child(7), .samples-grid td:nth-child(7) { width: 7%; }
-    .samples-grid th:nth-child(8), .samples-grid td:nth-child(8) { width: 5%; }
-    .samples-grid th:nth-child(9), .samples-grid td:nth-child(9) { width: 11%; }
-    .samples-grid th:nth-child(10), .samples-grid td:nth-child(10) { width: 8%; }
-    .samples-grid th:nth-child(11), .samples-grid td:nth-child(11) { width: 136px; overflow: visible; text-align: center; padding-right: 14px; }
+    .samples-grid th:nth-child(2), .samples-grid td:nth-child(2) { width: 26%; }
+    .samples-grid th:nth-child(3), .samples-grid td:nth-child(3) { width: 20%; }
+    .samples-grid th:nth-child(4), .samples-grid td:nth-child(4) { width: 10%; }
+    .samples-grid th:nth-child(5), .samples-grid td:nth-child(5) { width: 15%; }
+    .samples-grid th:nth-child(6), .samples-grid td:nth-child(6) { width: 12%; }
+    .samples-grid th:nth-child(7), .samples-grid td:nth-child(7) { width: 136px; overflow: visible; text-align: center; padding-right: 14px; }
     .samples-grid th, .samples-grid td { padding: 10px 12px; vertical-align: middle; font-size: 13px; }
     .samples-grid thead th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); text-align: left; border-bottom: 1px solid var(--border); background: transparent; }
     .samples-grid tbody td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -38191,9 +38188,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Column-header row — lives INSIDE each expanded card, not floating above.
     const colHead = `<thead><tr>
       <th style="text-align:center;"><input type="checkbox" onchange="toggleAllSamplesSelection(this.checked)" title="Select all visible samples" /></th>
-      <th>Item</th><th>Client</th><th>Workbook</th>
-      <th style="text-align:right;">Qty</th><th style="text-align:right;">RMB</th><th style="text-align:right;">USD</th>
-      <th>Lead</th><th style="text-align:center;">Direction</th><th style="text-align:center;">Status</th><th style="text-align:center;">Assignee</th>
+      <th>Item</th><th>Client</th>
+      <th style="text-align:right;">Qty</th>
+      <th style="text-align:center;">Direction</th><th style="text-align:center;">Status</th><th style="text-align:center;">Assignee</th>
     </tr></thead>`;
 
     // Each section is a self-contained card: header bar → divider → grid.
@@ -38230,7 +38227,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (open) {
         const inner = rows.length
           ? rows.map(s => _sampleRowHtml(s, _compOf(s), esc, '')).join('')
-          : `<tr><td colspan="11" style="padding:18px; text-align:center; color:var(--text-muted); font-size:13px;">No ${which === 'from' ? 'inbound' : 'outbound'} samples${_samplesFilter !== 'all' ? ' in this status' : ''}.</td></tr>`;
+          : `<tr><td colspan="7" style="padding:18px; text-align:center; color:var(--text-muted); font-size:13px;">No ${which === 'from' ? 'inbound' : 'outbound'} samples${_samplesFilter !== 'all' ? ' in this status' : ''}.</td></tr>`;
         body = `<div style="border-top:1px solid var(--border);"><div class="table-scroll-wrapper"><table class="samples-grid${which === 'to' ? ' samples-grid--ship' : ''}">${colHead}<tbody>${inner}</tbody></table></div></div>`;
       }
       return `<div class="samples-sec-card" style="border-left:4px solid ${a.line};">${head}${body}</div>`;
@@ -38270,11 +38267,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <td style="text-align:center; ${railCss}">${firstCell}</td>
           <td class="samples-pill-cell" title="${esc(s.item)}">${itemPill}</td>
           <td class="samples-pill-cell">${clientCell}</td>
-          <td class="samples-pill-cell">${refChip}</td>
           <td style="text-align:right; font-weight:600;">${s.qty ? parseFloat(String(s.qty).replace(/,/g,'')).toLocaleString('en-US') : '—'}</td>
-          <td style="text-align:right; color:var(--text-muted);">—</td>
-          <td style="text-align:right; color:var(--text-muted);">—</td>
-          <td style="color:var(--text-muted);">—</td>
           <td style="text-align:center;">${dirPill}</td>
           <td style="text-align:center;"><select class="sample-status-sel" onchange="updateStandaloneSampleStatus('${esc(String(s.id))}', this.value)" style="background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">${_statusOpts}</select></td>
           <td style="text-align:center; white-space:nowrap;"><span class="remove-tier" onclick="deleteStandaloneSample('${esc(String(s.id))}')" title="Delete this To-China sample" style="font-size:18px; color:var(--text-muted);">&times;</span></td>
@@ -38291,11 +38284,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <td style="text-align:center;"><input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" /></td>
         <td style="font-weight:600; color:var(--text);" title="${esc(s.item)}">${esc(s.item)}</td>
         <td class="samples-pill-cell">${clientCell}</td>
-        <td class="samples-pill-cell">${wbPill}</td>
         <td style="text-align:right; font-weight:600;">${s.qty !== '—' ? parseFloat(s.qty).toLocaleString('en-US') : '—'}</td>
-        <td style="text-align:right;">${rmb}</td>
-        <td style="text-align:right; color:var(--success);">${usd}</td>
-        <td style="color:var(--text-muted);">${lead}</td>
         <td style="text-align:center;">
           <select class="sample-dir-sel" onchange="updateSampleDirection('${s.key}', ${s.rowIndex}, this.value)" title="Direction — From China (factory ships the sample back to us) or To China (we ship a reference for the factory to match)" style="background:${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).bg}; border:1px solid ${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).border}; color:${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">
             <option value="from" ${s.direction === 'from' ? 'selected' : ''}>← From China</option>
@@ -38309,7 +38298,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         </td>
       </tr>
       <tr class="sn-inline-row">
-        <td colspan="11" class="sn-inline-cell"><div class="sn-inline-host" data-snpanel="${encodeURIComponent(compKey)}">${_sampleNotesPanelInner(compKey)}</div></td>
+        <td colspan="7" class="sn-inline-cell"><div class="sn-inline-host" data-snpanel="${encodeURIComponent(compKey)}">${_sampleNotesPanelInner(compKey)}</div></td>
       </tr>`;
   }
 
