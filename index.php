@@ -10979,7 +10979,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div><label class="tc-lbl">State / Province</label><input id="ntc-from-state" class="form-input" style="width:100%;" autocomplete="off" /></div>
         <div><label class="tc-lbl">Postal Code</label><input id="ntc-from-postal" class="form-input" style="width:100%;" autocomplete="off" /></div>
         <div><label class="tc-lbl">Country</label><input id="ntc-from-country" class="form-input" style="width:100%;" placeholder="US" autocomplete="off" /></div>
-        <div style="grid-column:1 / -1;"><label class="tc-lbl">Phone</label><input id="ntc-from-phone" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Phone</label><input id="ntc-from-phone" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Email</label><input id="ntc-from-email" class="form-input" style="width:100%;" autocomplete="off" /></div>
       </div>
 
       <!-- Package -->
@@ -38303,9 +38304,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     renderSamplesDashboard();
   }
   let _tcEditingId = null; // which standalone To-China sample the modal is editing (null = new)
+  // Market Sculpt's China Ship-From — prefilled on every new To-China sample so
+  // only the variable fields (item/qty/client/carrier/weight/dims) are entered.
+  const MS_DEFAULT_SHIP_FROM = {
+    name: 'Karen Xie', company: 'Market Sculpt',
+    street1: 'Room 303, Fulin Center Bldg, 10# Zhongxin Rd',
+    street2: 'Shaqi Community, Xinqiao St, Bao’an District',
+    city: 'Shenzhen', state: 'Guangdong', postal: '518125', country: 'CN',
+    phone: '+86 139 2522 8664', email: 'karen@marketsculpt.com',
+  };
   const _tcFieldIds = ['ntc-item','ntc-qty','ntc-client','ntc-notes','ntc-status',
     'ntc-to-name','ntc-to-company','ntc-to-street1','ntc-to-street2','ntc-to-city','ntc-to-state','ntc-to-postal','ntc-to-country','ntc-to-phone',
-    'ntc-from-name','ntc-from-company','ntc-from-street1','ntc-from-street2','ntc-from-city','ntc-from-state','ntc-from-postal','ntc-from-country','ntc-from-phone',
+    'ntc-from-name','ntc-from-company','ntc-from-street1','ntc-from-street2','ntc-from-city','ntc-from-state','ntc-from-postal','ntc-from-country','ntc-from-phone','ntc-from-email',
     'ntc-weight','ntc-weight-unit','ntc-dim-l','ntc-dim-w','ntc-dim-h','ntc-dim-unit',
     'ntc-carrier','ntc-service','ntc-cust-desc','ntc-cust-value','ntc-cust-qty','ntc-cust-hs','ntc-cust-origin'];
   const _tcV = id => { const el = document.getElementById(id); return el ? el.value : ''; };
@@ -38315,7 +38325,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const m = document.getElementById('new-to-china-modal'); if (!m) return;
     _tcEditingId = id || null;
     const rec = _tcEditingId ? (_toChinaStandalone || []).find(x => String(x.id) === String(_tcEditingId)) : null;
-    const sh = (rec && rec.ship) || {}; const to = sh.to || {}; const from = sh.from || {}; const wt = sh.weight || {}; const dm = sh.dims || {}; const cu = sh.customs || {};
+    const sh = (rec && rec.ship) || {}; const to = sh.to || {}; const wt = sh.weight || {}; const dm = sh.dims || {}; const cu = sh.customs || {};
+    // Ship From defaults to Market Sculpt's China address whenever it's empty
+    // (new sample, or an older one saved without a from) so it's always prefilled.
+    const from = (sh.from && Object.values(sh.from).some(v => v && String(v).trim())) ? sh.from : MS_DEFAULT_SHIP_FROM;
     // Reset all, then populate.
     _tcFieldIds.forEach(f => _tcSet(f, ''));
     _tcSet('ntc-item', rec ? rec.item : ''); _tcSet('ntc-qty', rec ? rec.qty : ''); _tcSet('ntc-client', rec ? rec.client : '');
@@ -38323,7 +38336,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _tcSet('ntc-to-name', to.name); _tcSet('ntc-to-company', to.company); _tcSet('ntc-to-street1', to.street1); _tcSet('ntc-to-street2', to.street2);
     _tcSet('ntc-to-city', to.city); _tcSet('ntc-to-state', to.state); _tcSet('ntc-to-postal', to.postal); _tcSet('ntc-to-country', to.country || 'CN'); _tcSet('ntc-to-phone', to.phone);
     _tcSet('ntc-from-name', from.name); _tcSet('ntc-from-company', from.company); _tcSet('ntc-from-street1', from.street1); _tcSet('ntc-from-street2', from.street2);
-    _tcSet('ntc-from-city', from.city); _tcSet('ntc-from-state', from.state); _tcSet('ntc-from-postal', from.postal); _tcSet('ntc-from-country', from.country || 'US'); _tcSet('ntc-from-phone', from.phone);
+    _tcSet('ntc-from-city', from.city); _tcSet('ntc-from-state', from.state); _tcSet('ntc-from-postal', from.postal); _tcSet('ntc-from-country', from.country || 'CN'); _tcSet('ntc-from-phone', from.phone); _tcSet('ntc-from-email', from.email);
     _tcSet('ntc-weight', wt.value); _tcSet('ntc-weight-unit', wt.unit || 'ounces'); _tcSet('ntc-dim-l', dm.l); _tcSet('ntc-dim-w', dm.w); _tcSet('ntc-dim-h', dm.h); _tcSet('ntc-dim-unit', dm.unit || 'inches');
     _tcSet('ntc-carrier', sh.carrier); _tcSet('ntc-service', sh.service);
     _tcSet('ntc-cust-desc', cu.desc); _tcSet('ntc-cust-value', cu.value); _tcSet('ntc-cust-qty', cu.qty || ''); _tcSet('ntc-cust-hs', cu.hs); _tcSet('ntc-cust-origin', cu.origin || 'US');
@@ -38343,7 +38356,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _tcCollectShip() {
     return {
       to:   { name:_tcV('ntc-to-name').trim(), company:_tcV('ntc-to-company').trim(), street1:_tcV('ntc-to-street1').trim(), street2:_tcV('ntc-to-street2').trim(), city:_tcV('ntc-to-city').trim(), state:_tcV('ntc-to-state').trim(), postal:_tcV('ntc-to-postal').trim(), country:_tcV('ntc-to-country').trim(), phone:_tcV('ntc-to-phone').trim() },
-      from: { name:_tcV('ntc-from-name').trim(), company:_tcV('ntc-from-company').trim(), street1:_tcV('ntc-from-street1').trim(), street2:_tcV('ntc-from-street2').trim(), city:_tcV('ntc-from-city').trim(), state:_tcV('ntc-from-state').trim(), postal:_tcV('ntc-from-postal').trim(), country:_tcV('ntc-from-country').trim(), phone:_tcV('ntc-from-phone').trim() },
+      from: { name:_tcV('ntc-from-name').trim(), company:_tcV('ntc-from-company').trim(), street1:_tcV('ntc-from-street1').trim(), street2:_tcV('ntc-from-street2').trim(), city:_tcV('ntc-from-city').trim(), state:_tcV('ntc-from-state').trim(), postal:_tcV('ntc-from-postal').trim(), country:_tcV('ntc-from-country').trim(), phone:_tcV('ntc-from-phone').trim(), email:_tcV('ntc-from-email').trim() },
       weight: { value:_tcV('ntc-weight').trim(), unit:_tcV('ntc-weight-unit') },
       dims:   { l:_tcV('ntc-dim-l').trim(), w:_tcV('ntc-dim-w').trim(), h:_tcV('ntc-dim-h').trim(), unit:_tcV('ntc-dim-unit') },
       customs:{ desc:_tcV('ntc-cust-desc').trim(), value:_tcV('ntc-cust-value').trim(), qty:_tcV('ntc-cust-qty').trim(), hs:_tcV('ntc-cust-hs').trim(), origin:_tcV('ntc-cust-origin').trim() },
