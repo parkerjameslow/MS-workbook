@@ -39782,6 +39782,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { hash = decodeURIComponent(location.hash || '#/'); }
     catch(e) { hash = location.hash || '#/'; }
 
+    // Track entering/leaving the Orders view so Ready-to-Order "New order"
+    // badges snapshot "seen" ONCE on entry and persist for the whole visit —
+    // not re-stamped on every background re-render (poll router() call). Seen
+    // is marked when you LEAVE, so mid-visit arrivals stay flagged too.
+    const _ordersPrevH = _ordersNavPrevHash;
+    _ordersNavPrevHash = hash;
+    if (_ordersPrevH === '#/orders' && hash !== '#/orders') { try { _markOrdersStagingSeen(); } catch (_) {} }
+
     // Match: #/client/{name}/workbook/{id}[/{tab}] — optional trailing
     // tab segment deep-links straight into that tab on load (used by
     // the Order Sheet's Art pill → /art). Allowed tab values mirror
@@ -39852,12 +39860,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     // Match: #/orders
     if (hash === '#/orders') {
-      // Snapshot "last seen" BEFORE rendering so the Ready-to-Order NEW badges
-      // reflect what was moved in since the previous visit; then stamp now so
-      // the next visit clears them (background polls keep the snapshot).
-      _ordersStagingSeenSnapshot = _ordersStagingSeenTs();
+      // Only (re)snapshot "seen" when genuinely ENTERING the view from another
+      // hash — not when a background poll re-dispatches #/orders while we're
+      // already here (that would wipe the New-order badges). Seen is stamped on
+      // leave (handled above), so a workbook moved in mid-visit stays flagged.
+      if (_ordersPrevH !== '#/orders') _ordersStagingSeenSnapshot = _ordersStagingSeenTs();
       renderOrdersList();
-      _markOrdersStagingSeen();
       return;
     }
 
@@ -53579,6 +53587,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // background polls), so a freshly-approved workbook shows a NEW badge for
   // the whole visit and only clears the next time you come back.
   let _ordersStagingSeenSnapshot = null;
+  let _ordersNavPrevHash = null; // tracks entering/leaving #/orders across router() calls
   function _ordersStagingSeenTs() { try { return parseInt(localStorage.getItem('ms_orders_staging_seen') || '0', 10) || 0; } catch (_) { return 0; } }
   function _markOrdersStagingSeen() { try { localStorage.setItem('ms_orders_staging_seen', String(Date.now())); } catch (_) {} }
 
@@ -53639,7 +53648,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const wbHref = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
       // Whole row opens the workbook; the checkbox + "Not ready" button
       // stopPropagation so they don't also navigate.
-      const newBadge = isNew ? `<span style="flex-shrink:0; background:#16a34a; color:#fff; font-size:9px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; padding:2px 7px; border-radius:99px; white-space:nowrap;">New</span>` : '';
+      const newBadge = isNew ? `<span style="flex-shrink:0; background:#16a34a; color:#fff; font-size:9px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; padding:2px 7px; border-radius:99px; white-space:nowrap;">★ New Order</span>` : '';
       const movedLine = movedAgo ? `<span style="color:var(--text-muted);">· moved ${esc(movedAgo)}</span>` : '';
       return `<div class="staged-row" onclick="location.hash='${wbHref}'" title="Open workbook" style="display:flex; align-items:center; gap:14px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer; ${isNew ? 'background:rgba(22,163,74,0.07); box-shadow:inset 3px 0 0 #16a34a;' : ''}">
         <span onclick="event.stopPropagation();" style="display:inline-flex; flex-shrink:0;">
