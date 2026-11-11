@@ -7999,6 +7999,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span>Design | Production</span>
       </div>
       <div class="nav-section-body">
+        <!-- Unstaged — workbooks not yet pushed into any pipeline stage.
+             Sits above RFQ so you can triage new workbooks and move the
+             ones you want forward. Grouped by client, most recent first. -->
+        <a id="nav-unstaged-link" href="#/unstaged" onclick="event.preventDefault(); location.hash='#/unstaged'" class="nav-flat-link">
+          <span>Unstaged</span>
+          <span class="nav-badge" id="badge-unstaged"></span>
+        </a>
+
         <a id="nav-rfq-link" href="#/rfq" onclick="event.preventDefault(); location.hash='#/rfq'" class="nav-flat-link">
           <span>RFQ</span>
           <span class="nav-badge" id="badge-rfq"></span>
@@ -10512,6 +10520,31 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
     </div>
     <div id="waiting-client-content"></div>
+  </main>
+</div>
+
+<div id="view-unstaged" class="view">
+  <main class="container">
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
+      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg,#9ca3af,#6b7280); flex-shrink:0;"></div>
+      <div>
+        <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">Unstaged</h1>
+        <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Workbooks not yet pushed into a pipeline stage. Select the ones you need and move them to RFQ, Samples, or Orders.</p>
+      </div>
+      <div style="margin-left:auto;">
+        <span id="unstaged-count" style="background:rgba(107,114,128,0.12); border:1px solid rgba(107,114,128,0.40); color:var(--text-muted); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 unstaged</span>
+      </div>
+    </div>
+    <div id="unstaged-bulk-bar" style="display:none; align-items:center; gap:12px; padding:10px 16px; background:rgba(232,117,26,0.10); border:1px solid rgba(232,117,26,0.30); border-radius:10px; margin-bottom:12px; position:sticky; top:8px; z-index:10;">
+      <strong style="font-size:13px; color:var(--accent);"><span id="unstaged-bulk-count">0 workbooks</span> selected</strong>
+      <button class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllUnstaged()">Deselect all</button>
+      <span style="margin-left:auto; display:flex; gap:8px;">
+        <button class="btn btn-ghost" style="font-size:12px; border-color:var(--accent); color:var(--accent);" onclick="_doUnstagedBulkMove('rfq')">→ Move to RFQ</button>
+        <button class="btn btn-ghost" style="font-size:12px; border-color:var(--accent); color:var(--accent);" onclick="_doUnstagedBulkMove('samples')">→ Move to Samples</button>
+        <button class="btn btn-primary" style="font-size:12px;" onclick="_doUnstagedBulkMove('orders')">→ Move to Orders</button>
+      </span>
+    </div>
+    <div id="unstaged-content"></div>
   </main>
 </div>
 
@@ -38008,27 +38041,70 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (emptyEl) emptyEl.style.display = 'none';
     if (tableEl) tableEl.style.display = '';
 
-    const sectionHeader = (which, label, count, color) => {
+    // Per-section at-a-glance summary — status breakdown + total units + the
+    // longest-waiting age, so the collapsed bar is useful without expanding.
+    const _summarize = (rows) => {
+      const c = { pending: 0, requested: 0, received: 0, approved: 0 };
+      let qty = 0, oldest = null;
+      rows.forEach(r => {
+        const st = r.status || 'pending'; if (c[st] !== undefined) c[st]++;
+        const q = parseFloat(String(r.qty == null ? '' : r.qty).replace(/,/g, '')); if (!isNaN(q)) qty += q;
+        // Age the row by its workbook's waiting timestamp when available.
+        const d = workbookDetail[r.key];
+        const ts = (d && (d.waitingForClientAt || d.approvalSentAt)) || (r.createdAt) || null;
+        if (ts) { const t = new Date(ts).getTime(); if (!isNaN(t) && (oldest === null || t < oldest)) oldest = t; }
+      });
+      return { c, qty, oldest };
+    };
+    // Orange = inbound (From China), Blue = outbound (To China). Distinct
+    // tinted bars + a 4px accent rail make the two sections read differently.
+    const ACCENT = {
+      from: { line: '#E8751A', bar: 'rgba(232,117,26,0.09)', pill: 'rgba(232,117,26,0.16)' },
+      to:   { line: '#6b93ff', bar: 'rgba(107,147,255,0.10)', pill: 'rgba(107,147,255,0.16)' },
+    };
+
+    const sectionHeader = (which, label, rows) => {
       const open = !_samplesSectionCollapsed[which];
-      return `<tr class="sn-group-header" onclick="toggleSamplesSection('${which}')" style="cursor:pointer; background:var(--surface2);">
-        <td colspan="11" style="padding:11px 16px; font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text); border-top:1px solid var(--border);">
-          <span style="display:inline-block; width:14px; color:var(--text-muted);">${open ? '▾' : '▸'}</span>
-          <span style="color:${color};">${label}</span>
-          <span style="color:var(--text-muted); font-weight:600; margin-left:4px;">(${count})</span>
+      const a = ACCENT[which];
+      const { c, qty, oldest } = _summarize(rows);
+      const statusChips = SAMPLE_STATUSES.map(st => {
+        if (!c[st]) return '';
+        const col = SAMPLE_STATUS_COLORS[st] || SAMPLE_STATUS_COLORS.pending;
+        return `<span style="display:inline-flex; align-items:center; font-size:11px; font-weight:600; padding:2px 9px; border-radius:12px; background:${col.bg}; border:1px solid ${col.border}; color:${col.text}; white-space:nowrap;">${c[st]} ${SAMPLE_STATUS_LABELS[st]}</span>`;
+      }).join('');
+      const qtyChip = qty > 0
+        ? `<span style="font-size:11px; font-weight:700; color:var(--text); white-space:nowrap;">${qty.toLocaleString('en-US')} <span style="color:var(--text-muted); font-weight:600;">units</span></span>` : '';
+      let ageChip = '';
+      if (oldest !== null) {
+        const days = Math.floor((Date.now() - oldest) / 86400000);
+        const ageTxt = days <= 0 ? 'today' : (days === 1 ? '1 day' : `${days} days`);
+        ageChip = `<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">⏱ oldest ${ageTxt}</span>`;
+      }
+      const sep = (statusChips && (qtyChip || ageChip)) ? `<span style="width:1px; height:16px; background:var(--border); flex:0 0 auto;"></span>` : '';
+      return `<tr class="sn-group-header" onclick="toggleSamplesSection('${which}')" style="cursor:pointer;">
+        <td colspan="11" style="padding:0; text-align:left; border-top:1px solid var(--border);">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 18px; background:${a.bar}; border-left:4px solid ${a.line};">
+            <span style="color:${a.line}; font-size:11px; flex:0 0 auto; width:10px;">${open ? '▾' : '▸'}</span>
+            <span style="font-weight:800; font-size:12.5px; letter-spacing:0.06em; text-transform:uppercase; color:${a.line}; flex:0 0 auto;">${label}</span>
+            <span style="font-size:11px; font-weight:800; color:${a.line}; background:${a.pill}; border-radius:12px; padding:1px 10px; flex:0 0 auto;">${rows.length}</span>
+            ${(statusChips || qtyChip || ageChip)
+              ? `<span style="display:inline-flex; gap:7px; align-items:center; flex-wrap:wrap;">${statusChips}${sep}${qtyChip}${qtyChip && ageChip ? '<span style="color:var(--text-muted);">·</span>' : ''}${ageChip}</span>`
+              : `<span style="font-size:11px; color:var(--text-muted);">none yet</span>`}
+          </div>
         </td>
       </tr>`;
     };
     const rowsHtml = (rows, which) => {
       if (_samplesSectionCollapsed[which]) return '';
       if (!rows.length) {
-        return `<tr><td colspan="11" style="padding:16px; text-align:center; color:var(--text-muted); font-size:13px;">No ${which === 'from' ? 'inbound' : 'outbound'} samples${_samplesFilter !== 'all' ? ' in this status' : ''}.</td></tr>`;
+        return `<tr><td colspan="11" style="padding:16px; text-align:left; padding-left:26px; color:var(--text-muted); font-size:13px; border-left:4px solid ${ACCENT[which].line};">No ${which === 'from' ? 'inbound' : 'outbound'} samples${_samplesFilter !== 'all' ? ' in this status' : ''}.</td></tr>`;
       }
-      return rows.map(s => _sampleRowHtml(s, _compOf(s), esc)).join('');
+      return rows.map(s => _sampleRowHtml(s, _compOf(s), esc, ACCENT[which].line)).join('');
     };
 
     tbody.innerHTML =
-      sectionHeader('from', '← From China', fromRows.length, SAMPLE_DIR_STYLES.from.text) + rowsHtml(fromRows, 'from') +
-      sectionHeader('to',   '→ To China',   toRows.length,   SAMPLE_DIR_STYLES.to.text)   + rowsHtml(toRows, 'to');
+      sectionHeader('from', '← From China', fromRows) + rowsHtml(fromRows, 'from') +
+      sectionHeader('to',   '→ To China',   toRows)   + rowsHtml(toRows, 'to');
 
     updateSamplesBulkActionBar();
     _syncSamplesHeaderCheckbox();
@@ -38037,9 +38113,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // One sample row (+ an inline notes row for workbook samples). Shared by
   // both From/To China sections. `s.standalone` rows are dashboard-created
   // To-China references with no workbook/price.
-  function _sampleRowHtml(s, compKey, esc) {
+  function _sampleRowHtml(s, compKey, esc, rowAccent) {
     const sc = SAMPLE_STATUS_COLORS[s.status] || SAMPLE_STATUS_COLORS.pending;
     const checked = _samplesSelected.has(compKey) ? 'checked' : '';
+    // A thin accent rail on the first cell ties each row to its section's color.
+    const railCss = rowAccent ? `box-shadow: inset 3px 0 0 ${rowAccent};` : '';
     const clientHref = `#/client/${encodeURIComponent(s.clientName)}`;
     const clientCell = s.clientName
       ? `<span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}" onclick="event.stopPropagation(); location.hash='${clientHref.substring(1)}'" title="${esc(s.clientName)}">${esc(s.clientName)}</span>`
@@ -38051,7 +38129,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const dirPill = `<span style="display:inline-block; background:${SAMPLE_DIR_STYLES.to.bg}; border:1px solid ${SAMPLE_DIR_STYLES.to.border}; color:${SAMPLE_DIR_STYLES.to.text}; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:600;">→ To China</span>`;
       return `
         <tr class="sn-data-row">
-          <td style="text-align:center;"><input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" /></td>
+          <td style="text-align:center; ${railCss}"><input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" /></td>
           <td style="font-weight:600; color:var(--text);" title="${esc(s.item)}">${esc(s.item)}</td>
           <td class="samples-pill-cell">${clientCell}</td>
           <td class="samples-pill-cell">${refChip}</td>
@@ -38576,6 +38654,111 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const all = collectAllRfqs();
     // No "actionable vs remaining" distinction here — every RFQ is actionable for Karen
     _applyNavBadge(document.getElementById('badge-rfq'), 0, all.length);
+    try { rebuildUnstagedNav(); } catch (_) {}   // adjacent stage — refresh together
+  }
+
+  // ── Unstaged ───────────────────────────────────────────────────────────
+  // Workbooks that haven't been pushed into any pipeline stage yet. Sits
+  // above RFQ so you can triage and move the ones you want forward. Grouped
+  // by client (clients ordered by most-recent workbook), rows most-recent first.
+  const _unstagedSelected = new Set();
+  function collectAllUnstaged() {
+    const out = [];
+    for (const [key, detail] of Object.entries(workbookDetail)) {
+      if (!detail) continue;
+      const [clientName, workbookId] = key.split('|');
+      if (typeof _isQuotesClient === 'function' && _isQuotesClient(clientName)) continue; // drafts live in #/quotes
+      if (typeof _pipelineStageFor === 'function' && _pipelineStageFor(clientName, workbookId, detail) !== 'unstaged') continue;
+      if (typeof _wbIsCompleted === 'function' && _wbIsCompleted(clientName, workbookId)) continue;
+      const item = (clientData[clientName] || []).find(i => String(i.id) === String(workbookId));
+      const ts = (item && (item.updatedAt || item.createdAt)) || '';
+      out.push({ clientName, workbookId, key, detail, item, product: detail.product || (item && item.product) || 'Untitled', ts });
+    }
+    return out;
+  }
+  function rebuildUnstagedNav() {
+    try { _applyNavBadge(document.getElementById('badge-unstaged'), 0, collectAllUnstaged().length); } catch (_) {}
+  }
+  function _unstagedSelectedList() { return collectAllUnstaged().filter(w => _unstagedSelected.has(w.key)); }
+  function toggleUnstagedSelection(key, checked) {
+    if (checked) _unstagedSelected.add(key); else _unstagedSelected.delete(key);
+    _updateUnstagedBulkBar();
+  }
+  function _updateUnstagedBulkBar() {
+    const bar = document.getElementById('unstaged-bulk-bar'); if (!bar) return;
+    const n = _unstagedSelected.size;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    const c = document.getElementById('unstaged-bulk-count'); if (c) c.textContent = n === 1 ? '1 workbook' : `${n} workbooks`;
+  }
+  function deselectAllUnstaged() { _unstagedSelected.clear(); try { renderUnstagedDashboard(); } catch (_) {} }
+  async function _doUnstagedBulkMove(action) {
+    const list = _unstagedSelectedList();
+    if (!list.length) return;
+    const ids = list.map(w => dbWorkbookMap[w.key] || w.workbookId);
+    let res;
+    try { res = await apiCall('bulk_workbook_action', { ids, action }); }
+    catch (e) { showToast('Move failed (network error)', 'error'); return; }
+    _unstagedSelected.clear();
+    try { await loadFromDatabase(); } catch (_) {}
+    try { renderUnstagedDashboard(); } catch (_) {}
+    try { if (typeof rebuildSidebar === 'function') rebuildSidebar(); } catch (_) {}
+    const n = (res && res.updated) || 0;
+    const dest = action === 'rfq' ? 'RFQ' : (action === 'samples' ? 'Samples' : 'Orders');
+    showToast(`Moved ${n} workbook${n === 1 ? '' : 's'} to ${dest}`, (res && res.success) ? 'success' : 'warn');
+  }
+  function renderUnstagedDashboard() {
+    document.getElementById('header-title').textContent = 'Unstaged';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const nav = document.getElementById('nav-unstaged-link'); if (nav) nav.classList.add('active');
+    showView('view-unstaged');
+    if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
+    const all = collectAllUnstaged();
+    const vis = new Set(all.map(w => w.key));
+    Array.from(_unstagedSelected).forEach(k => { if (!vis.has(k)) _unstagedSelected.delete(k); });
+    const cb = document.getElementById('unstaged-count'); if (cb) cb.textContent = `${all.length} unstaged`;
+    rebuildUnstagedNav();
+    _updateUnstagedBulkBar();
+    const host = document.getElementById('unstaged-content');
+    if (!host) return;
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    if (all.length === 0) {
+      host.innerHTML = `<div class="order-list-empty"><div class="order-list-empty-icon">🗂️</div><div class="order-list-empty-title">Nothing unstaged</div><div class="order-list-empty-sub">New workbooks that haven't been pushed into a stage show here. Select the ones you want and move them to RFQ, Samples, or Orders.</div></div>`;
+      return;
+    }
+    const _rfqNum = v => parseFloat(String(v == null ? '' : v).replace(/,/g, '')) || 0;
+    const groups = {};
+    all.forEach(w => { (groups[w.clientName] = groups[w.clientName] || []).push(w); });
+    const clientMostRecent = cn => groups[cn].reduce((m, w) => Math.max(m, w.ts ? new Date(w.ts).getTime() : 0), 0);
+    const th = 'padding:9px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);text-align:left;';
+    host.innerHTML = Object.keys(groups).sort((a, b) => clientMostRecent(b) - clientMostRecent(a)).map(cn => {
+      const jsName = String(cn).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const enc = encodeURIComponent(cn).replace(/'/g, '%27');
+      const rows = groups[cn].slice().sort((a, b) => (b.ts ? new Date(b.ts).getTime() : 0) - (a.ts ? new Date(a.ts).getTime() : 0)).map(w => {
+        const d = w.detail;
+        let qty = 0; (d.rfqItems || []).forEach(p => { const vs = Array.isArray(p.variants) ? p.variants.filter(v => v && (v.variant || v.qty)) : []; (vs.length ? vs : [p]).forEach(r => { qty += _rfqNum(r.qty); }); });
+        const total = parseFloat(d.pricingClientQuoteTotal) || 0;
+        const totalStr = total > 0 ? '$' + total.toLocaleString('en-US', { minimumFractionDigits:3, maximumFractionDigits:3 }) : '—';
+        const checked = _unstagedSelected.has(w.key) ? 'checked' : '';
+        const assignee = (typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + w.key) : '';
+        return `<tr class="review-row" style="cursor:pointer; border-top:1px solid var(--border);" onclick="location.hash='#/client/${enc}/workbook/${w.workbookId}'">
+          <td style="padding:10px; text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" ${checked} onchange="toggleUnstagedSelection('${jsName}|${w.workbookId}', this.checked)" /></td>
+          <td style="padding:10px;"><span class="wb-launch-btn" style="display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2);font-weight:700;color:var(--text);cursor:pointer;transition:border-color .12s,background .12s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)';" title="Open this workbook">${esc(w.product)} <span style="color:var(--accent);font-weight:800;">→ open</span></span></td>
+          <td style="padding:10px;color:var(--text-muted);font-size:12px;white-space:nowrap;" title="${esc(w.ts||'')}">${esc((typeof _rfqTimeAgo === 'function') ? _rfqTimeAgo(w.ts) : '')}</td>
+          <td style="padding:10px;text-align:right;font-weight:600;">${qty > 0 ? qty.toLocaleString('en-US') : '—'}</td>
+          <td style="padding:10px;text-align:right;white-space:nowrap;color:var(--success);font-weight:600;">${totalStr}</td>
+          <td style="padding:10px;text-align:center;white-space:nowrap;" onclick="event.stopPropagation();">${assignee}</td>
+          <td style="padding:10px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation();"><button class="btn btn-ghost" style="font-size:11px;padding:5px 10px;" onclick="openStageMoveModal('${jsName}','${w.workbookId}','unstaged')">Move…</button></td>
+        </tr>`;
+      }).join('');
+      return `<div style="margin-bottom:22px;">
+        <div style="display:flex; align-items:center; gap:8px; padding:4px 2px 8px;"><span style="font-weight:800; font-size:15px;">${esc(cn)}</span><span style="font-size:12px; color:var(--text-muted); font-weight:600;">${groups[cn].length}</span></div>
+        <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; overflow-x:auto;"><table style="width:100%; min-width:720px; border-collapse:collapse; font-size:13px;">
+          <thead><tr style="background:var(--surface2);"><th style="${th}width:36px;"></th><th style="${th}">Product</th><th style="${th}">Updated</th><th style="${th}text-align:right;">Qty</th><th style="${th}text-align:right;">Quote Total</th><th style="${th}text-align:center;">Assignee</th><th style="${th}text-align:right;">Action</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>`;
+    }).join('');
   }
 
   function _rfqTimeAgo(iso) {
@@ -39568,6 +39751,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Match: #/samples
     if (hash === '#/samples') {
       renderSamplesDashboard();
+      return;
+    }
+
+    // Match: #/unstaged — workbooks not yet in any pipeline stage.
+    if (hash === '#/unstaged') {
+      renderUnstagedDashboard();
       return;
     }
 
