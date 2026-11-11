@@ -3742,8 +3742,8 @@ switch ($action) {
     case 'set_pipeline_stage': {
         $wbId  = (int)($input['workbook_id'] ?? 0);
         $stage = $input['stage'] ?? '';
-        if ($wbId <= 0 || !in_array($stage, ['unstaged', 'samples', 'rfq', 'review', 'orders'], true)) {
-            echo json_encode(['success' => false, 'error' => 'workbook_id and a valid stage (unstaged|samples|rfq|review|orders) required']);
+        if ($wbId <= 0 || !in_array($stage, ['unstaged', 'samples', 'rfq', 'review', 'waitingClient', 'orders'], true)) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id and a valid stage (unstaged|samples|rfq|review|waitingClient|orders) required']);
             break;
         }
         $sel = $pdo->prepare("SELECT detail_json, flow_step FROM workbooks WHERE id = ? AND deleted_at IS NULL");
@@ -3756,6 +3756,7 @@ switch ($action) {
         // Reset every flag-based divider so the workbook lands in exactly one.
         $detail['sentToRfq']       = false; $detail['sentToRfqAt']     = null;
         $detail['sentForReview']   = false; $detail['sentForReviewAt'] = null;
+        $detail['waitingForClient'] = false; $detail['waitingForClientAt'] = null;
         $detail['movedToOrders']   = false; $detail['movedToOrdersAt'] = null;
         // Flow-step must match the target stage or the flow-gated collectors
         // (RFQ/Review require quoteSubmitted AND NOT quoteClient; Samples
@@ -3786,6 +3787,9 @@ switch ($action) {
             $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now;
             $detail['sentForReview'] = true; $detail['sentForReviewAt'] = $now;
             $flowSql = 'flow_step = 2'; // quoteSubmitted, NOT quoteClient
+        } elseif ($stage === 'waitingClient') {
+            $detail['waitingForClient'] = true; $detail['waitingForClientAt'] = $now;
+            $flowSql = 'flow_step = 3'; // quoteClient (sent to client), not yet approved
         } elseif ($stage === 'orders') {
             $detail['movedToOrders'] = true; $detail['movedToOrdersAt'] = $now;
             // orders is claimed by movedToOrders regardless of flow — leave flow_step.

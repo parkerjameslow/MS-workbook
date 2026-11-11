@@ -27366,7 +27366,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if(typeof openReceivedModal==='function') openReceivedModal(shipId, 'cockpit');
   }
   const _PK_STAGE_SLA = { unstaged:7, rfq:7, review:5, samples:21, orders:10, production:45 };
-  const _PK_STAGE_LBL = { unstaged:'Unstaged', rfq:'RFQ', review:'Ready for Review', samples:'Samples', orders:'Orders', production:'In Production', shipments:'Shipments', receiving:'Receiving' };
+  const _PK_STAGE_LBL = { unstaged:'Unstaged', rfq:'RFQ', review:'Ready for Review', samples:'Samples', waitingClient:'Waiting for Client', orders:'Orders', production:'In Production', shipments:'Shipments', receiving:'Receiving' };
   // Resolve a shipment's primary client (any entry shape), for account filtering.
   function _pkShipClient(s){
     for(const e of (s.entries||[])){
@@ -27941,6 +27941,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     { id: 'rfq',        label: 'RFQ',              bg: '#dbeafe', fg: '#1e40af' },
     { id: 'review',     label: 'Ready For Review', bg: '#e0e7ff', fg: '#3730a3' },
     { id: 'samples',    label: 'Samples',          bg: '#dcfce7', fg: '#15803d' },
+    { id: 'waitingClient', label: 'Waiting for Client', bg: '#fae8ff', fg: '#a21caf' },
     { id: 'orders',     label: 'Orders',           bg: '#fef3c7', fg: '#a16207' },
     { id: 'production', label: 'In Production',     bg: '#ffedd5', fg: '#c2410c' },
     { id: 'shipments',  label: 'Shipments',        bg: '#cffafe', fg: '#0e7490' },
@@ -36445,7 +36446,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Orders → Samples → Ready for Review → RFQ → Unstaged. Uses the same
     // canonical _pipelineStageFor the board/nav use, so the grouping matches
     // the stage pill shown on each row.
-    const _stageRankMap = { unstaged: 0, rfq: 1, review: 2, samples: 3, orders: 4, production: 5, shipments: 6, receiving: 7 };
+    const _stageRankMap = { unstaged: 0, rfq: 1, review: 2, samples: 3, waitingClient: 4, orders: 5, production: 6, shipments: 7, receiving: 8 };
     const stageRank = it => {
       const d = workbookDetail[`${clientName}|${it.id}`] || {};
       const st = (typeof _pipelineStageFor === 'function') ? _pipelineStageFor(clientName, it.id, d) : null;
@@ -39722,6 +39723,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // outlined ready state).
       sentForReview:   !!existing.sentForReview,
       sentForReviewAt: existing.sentForReviewAt || null,
+      // "Waiting for Client" stage flag (quote sent, awaiting the client's
+      // one-click approval). Preserve like the other stage flags; cleared +
+      // moved to Orders when the client approves. approvalToken is the secret
+      // in the approve link.
+      waitingForClient:   !!existing.waitingForClient,
+      waitingForClientAt: existing.waitingForClientAt || null,
+      approvalToken:      existing.approvalToken || null,
+      approvedByClientAt: existing.approvedByClientAt || null,
       // "Moved to Orders" staging flag (managed via the Samples → Orders
       // bulk action, not DOM-driven). Preserve it or opening a staged
       // workbook + navigating away would save a detail without it and
@@ -50543,7 +50552,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // managed from their own views (Orders / Shipments / Receiving).
   // Stages you can freely drag a card to/from (pure flag flips). Unstaged
   // clears every stage flag; the others set exactly one.
-  const PIPELINE_FLAG_STAGES = new Set(['unstaged', 'rfq', 'review', 'samples', 'orders']);
+  const PIPELINE_FLAG_STAGES = new Set(['unstaged', 'rfq', 'review', 'samples', 'waitingClient', 'orders']);
   let _pipelineDragKey = null;
 
   function _wbOrdersFor(clientName, workbookId) {
@@ -50566,6 +50575,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return 'orders'; // in-queue or otherwise placed in an order
     }
     if (detail && detail.movedToOrders) return 'orders';
+    if (detail && detail.waitingForClient) return 'waitingClient';
     if (detail && detail.sentForReview) return 'review';
     if (detail && detail.sentToRfq)      return 'rfq';
     if (detail && Array.isArray(detail.rfqItems) && detail.rfqItems.some(i => i && i.sample)) return 'samples';
@@ -51505,6 +51515,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const _prevFlags = {
       sentToRfq: detail.sentToRfq, sentToRfqAt: detail.sentToRfqAt,
       sentForReview: detail.sentForReview, sentForReviewAt: detail.sentForReviewAt,
+      waitingForClient: detail.waitingForClient, waitingForClientAt: detail.waitingForClientAt,
       movedToOrders: detail.movedToOrders, movedToOrdersAt: detail.movedToOrdersAt,
       samples: Array.isArray(detail.rfqItems) ? detail.rfqItems.map(it => it ? !!it.sample : false) : null,
     };
@@ -51513,6 +51524,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // server set_pipeline_stage so the board updates without a reload.
     detail.sentToRfq = false; detail.sentToRfqAt = null;
     detail.sentForReview = false; detail.sentForReviewAt = null;
+    detail.waitingForClient = false; detail.waitingForClientAt = null;
     detail.movedToOrders = false; detail.movedToOrdersAt = null;
     if (targetStage === 'unstaged') {
       // Clear every stage flag AND un-flag samples so it truly has no stage.
@@ -51527,6 +51539,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     } else if (targetStage === 'review') {
       detail.sentToRfq = true; detail.sentToRfqAt = now;
       detail.sentForReview = true; detail.sentForReviewAt = now;
+    } else if (targetStage === 'waitingClient') {
+      detail.waitingForClient = true; detail.waitingForClientAt = now;
     } else if (targetStage === 'orders') {
       detail.movedToOrders = true; detail.movedToOrdersAt = now;
     }
@@ -51538,7 +51552,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // the card "wouldn't move" even though the divider flipped. Clearing
     // the advanced flow flags on any early-stage move fixes that. (Orders
     // is claimed by movedToOrders regardless of flow, so leave it alone.)
-    if (targetStage !== 'orders') {
+    if (targetStage === 'waitingClient') {
+      // Quote has gone to the client — reflect it in the flow, but NOT approved.
+      const items = clientData[clientName] || [];
+      const item = items.find(i => String(i.id) === String(workbookId));
+      if (item && item.flow) { item.flow.quoteChina = true; item.flow.quoteSubmitted = true; item.flow.quoteClient = true; item.flow.clientApproved = false; }
+    } else if (targetStage !== 'orders') {
       const items = clientData[clientName] || [];
       const item = items.find(i => String(i.id) === String(workbookId));
       if (item && item.flow) {
@@ -51564,6 +51583,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // server actually holds — no more "it said it saved but didn't".
       detail.sentToRfq = _prevFlags.sentToRfq; detail.sentToRfqAt = _prevFlags.sentToRfqAt;
       detail.sentForReview = _prevFlags.sentForReview; detail.sentForReviewAt = _prevFlags.sentForReviewAt;
+      detail.waitingForClient = _prevFlags.waitingForClient; detail.waitingForClientAt = _prevFlags.waitingForClientAt;
       detail.movedToOrders = _prevFlags.movedToOrders; detail.movedToOrdersAt = _prevFlags.movedToOrdersAt;
       if (_prevFlags.samples && Array.isArray(detail.rfqItems)) {
         detail.rfqItems.forEach((it, i) => { if (it) it.sample = !!_prevFlags.samples[i]; });
