@@ -9191,10 +9191,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-unit-header">kg</div>
             <div class="specs-unit-header">lb · oz</div>
             <div class="specs-row-label">Weight</div>
-            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" readonly oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg'); renderPalletViz()" /><span class="specs-unit-tag">kg</span></div>
+            <div class="specs-input-wrap"><input type="number" step="0.001" min="0" placeholder="—" id="carton-outer-weight" oninput="convertWeight('carton-outer-weight','carton-outer-weight-lbs','kg'); renderPalletViz(); calcFreight && calcFreight()" /><span class="specs-unit-tag">kg</span></div>
             <div class="specs-lboz">
-              <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="carton-outer-weight-lbs" readonly oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">lb</span></div>
-              <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="carton-outer-weight-oz" readonly oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz()" /><span class="specs-unit-tag">oz</span></div>
+              <div class="specs-input-wrap"><input type="number" step="1" min="0" placeholder="—" id="carton-outer-weight-lbs" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz(); calcFreight && calcFreight()" /><span class="specs-unit-tag">lb</span></div>
+              <div class="specs-input-wrap"><input type="number" step="0.1" min="0" max="16" placeholder="—" id="carton-outer-weight-oz" oninput="convertWeight('carton-outer-weight-lbs','carton-outer-weight','lbs'); renderPalletViz(); calcFreight && calcFreight()" /><span class="specs-unit-tag">oz</span></div>
             </div>
             <!-- Qty (Inner Cartons) is now EDITABLE: type how many inner
                  cartons go in one outer box and the outer L×W×H auto-fills
@@ -9208,7 +9208,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
               </div>
               <div style="flex:1 1 130px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units in the Outer Carton — auto = units per inner × inner cartons">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units in Outer)</span></div>
-                <input type="number" min="0" placeholder="auto" id="carton-outer-units" readonly tabindex="-1" style="width:100%;" />
+                <input type="number" min="0" placeholder="auto (or type)" id="carton-outer-units" style="width:100%;" />
               </div>
             </div>
             <!-- Inner-orientation fit: how the inner carton packs into the
@@ -16037,9 +16037,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const qtyEl = document.getElementById('carton-outer-count');
       if (qtyEl) qtyEl.value = resolvedOuterCount;   // read-only — always mirror the arrangement
       setHint('outer-arrange-hint', r, s, h, resolvedOuterCount === 1 ? 'inner' : 'inners');
-      if (!isNaN(productWeightKg) && productWeightKg > 0) {
+      const _owEl = document.getElementById('carton-outer-weight');
+      if (!isNaN(productWeightKg) && productWeightKg > 0 && _owEl && (_owEl.value || '').trim() === '') {
+        // Only seed the weight when it's blank — the field is now MANUAL, so a
+        // value the operator typed (or a saved one) is never overwritten.
         const productsPerOuter = innerQty >= 1 ? innerQty * resolvedOuterCount : resolvedOuterCount;
-        document.getElementById('carton-outer-weight').value = (productWeightKg * productsPerOuter).toFixed(2);
+        _owEl.value = (productWeightKg * productsPerOuter).toFixed(2);
         convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
       }
       const badge = document.getElementById('outer-calc-badge');
@@ -16055,9 +16058,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         setHint('outer-arrange-hint', outerDims.nx, outerDims.ny, outerDims.nz, outerQty === 1 ? 'unit' : 'units');
       }
       // Outer dims are the user's fixed box — don't overwrite them here.
-      if (!isNaN(productWeightKg) && productWeightKg > 0) {
+      const _owEl2 = document.getElementById('carton-outer-weight');
+      if (!isNaN(productWeightKg) && productWeightKg > 0 && _owEl2 && (_owEl2.value || '').trim() === '') {
         const productsPerOuter = innerDims && innerQty >= 1 ? innerQty * outerQty : outerQty;
-        document.getElementById('carton-outer-weight').value = (productWeightKg * productsPerOuter).toFixed(2);
+        _owEl2.value = (productWeightKg * productsPerOuter).toFixed(2);
         convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
       }
       const badge = document.getElementById('outer-calc-badge');
@@ -16071,9 +16075,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // per outer. Skipped when the user is actively typing in this field
     // (onOuterUnitsInput handles the back-solve direction in that case).
     const unitsPerOuterEl = document.getElementById('carton-outer-units');
-    if (unitsPerOuterEl) {   // read-only — always = inner units × inner cartons
+    if (unitsPerOuterEl && (unitsPerOuterEl.value || '').trim() === '') {   // MANUAL now — only seed when blank
       const u = (innerQty >= 1 && resolvedOuterCount >= 1) ? innerQty * resolvedOuterCount : 0;
-      unitsPerOuterEl.value = u > 0 ? u : '';
+      if (u > 0) unitsPerOuterEl.value = u;
     }
 
     renderPalletViz();
@@ -16095,7 +16099,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!innerKg || !outerQty) return;
     const totalKg  = innerKg * outerQty;
     const outerWtEl = document.getElementById('carton-outer-weight');
-    if (outerWtEl) {
+    if (outerWtEl && (outerWtEl.value || '').trim() === '') {   // MANUAL now — only seed when blank
       outerWtEl.value = totalKg.toFixed(2);
       convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg');
       calcFreight();
