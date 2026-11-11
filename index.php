@@ -38041,54 +38041,62 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (emptyEl) emptyEl.style.display = 'none';
     if (tableEl) tableEl.style.display = '';
 
-    // Per-section at-a-glance summary — status breakdown + total units + the
-    // longest-waiting age, so the collapsed bar is useful without expanding.
+    // Per-section at-a-glance summary — status breakdown + the date the
+    // oldest item entered the list + (From China) the soonest expected-back
+    // date from lead times. No "total units" (not relevant per Parker).
+    const _rowListDate = (r) => {
+      if (r.standalone) return r.createdAt || null;
+      const it = (clientData[r.clientName] || []).find(i => String(i.id) === String(r.workbookId));
+      return (it && (it.createdAt || it.updatedAt)) || null;
+    };
     const _summarize = (rows) => {
       const c = { pending: 0, requested: 0, received: 0, approved: 0 };
-      let qty = 0, oldest = null;
+      let oldest = null, soonestEta = null;
       rows.forEach(r => {
         const st = r.status || 'pending'; if (c[st] !== undefined) c[st]++;
-        const q = parseFloat(String(r.qty == null ? '' : r.qty).replace(/,/g, '')); if (!isNaN(q)) qty += q;
-        // Age the row by its workbook's waiting timestamp when available.
-        const d = workbookDetail[r.key];
-        const ts = (d && (d.waitingForClientAt || d.approvalSentAt)) || (r.createdAt) || null;
+        const ts = _rowListDate(r);
         if (ts) { const t = new Date(ts).getTime(); if (!isNaN(t) && (oldest === null || t < oldest)) oldest = t; }
+        // Expected-back ETA = when it entered the list + its lead time (days).
+        const lead = parseFloat(String(r.leadTime == null ? '' : r.leadTime).replace(/[^0-9.]/g, ''));
+        if (ts && !isNaN(lead) && lead > 0) {
+          const eta = new Date(ts).getTime() + lead * 86400000;
+          if (soonestEta === null || eta < soonestEta) soonestEta = eta;
+        }
       });
-      return { c, qty, oldest };
+      return { c, oldest, soonestEta };
     };
-    // Orange = inbound (From China), Blue = outbound (To China). Distinct
-    // tinted bars + a 4px accent rail make the two sections read differently.
+    const _fmtDate = (ms) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    // Orange = inbound (From China), Blue = outbound (To China). Rounded accent
+    // cards (not flat bars) so the two sections read as distinct cards.
     const ACCENT = {
-      from: { line: '#E8751A', bar: 'rgba(232,117,26,0.09)', pill: 'rgba(232,117,26,0.16)' },
-      to:   { line: '#6b93ff', bar: 'rgba(107,147,255,0.10)', pill: 'rgba(107,147,255,0.16)' },
+      from: { line: '#E8751A', bar: 'rgba(232,117,26,0.08)', pill: 'rgba(232,117,26,0.16)' },
+      to:   { line: '#6b93ff', bar: 'rgba(107,147,255,0.09)', pill: 'rgba(107,147,255,0.16)' },
     };
 
     const sectionHeader = (which, label, rows) => {
       const open = !_samplesSectionCollapsed[which];
       const a = ACCENT[which];
-      const { c, qty, oldest } = _summarize(rows);
+      const { c, oldest, soonestEta } = _summarize(rows);
       const statusChips = SAMPLE_STATUSES.map(st => {
         if (!c[st]) return '';
         const col = SAMPLE_STATUS_COLORS[st] || SAMPLE_STATUS_COLORS.pending;
         return `<span style="display:inline-flex; align-items:center; font-size:11px; font-weight:600; padding:2px 9px; border-radius:12px; background:${col.bg}; border:1px solid ${col.border}; color:${col.text}; white-space:nowrap;">${c[st]} ${SAMPLE_STATUS_LABELS[st]}</span>`;
       }).join('');
-      const qtyChip = qty > 0
-        ? `<span style="font-size:11px; font-weight:700; color:var(--text); white-space:nowrap;">${qty.toLocaleString('en-US')} <span style="color:var(--text-muted); font-weight:600;">units</span></span>` : '';
-      let ageChip = '';
-      if (oldest !== null) {
-        const days = Math.floor((Date.now() - oldest) / 86400000);
-        const ageTxt = days <= 0 ? 'today' : (days === 1 ? '1 day' : `${days} days`);
-        ageChip = `<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">⏱ oldest ${ageTxt}</span>`;
-      }
-      const sep = (statusChips && (qtyChip || ageChip)) ? `<span style="width:1px; height:16px; background:var(--border); flex:0 0 auto;"></span>` : '';
+      const dateChips = [];
+      if (oldest !== null) dateChips.push(`<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">🗓 in list since ${_fmtDate(oldest)}</span>`);
+      // Expected back only makes sense for inbound samples.
+      if (which === 'from' && soonestEta !== null) dateChips.push(`<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">⏳ next expected ${_fmtDate(soonestEta)}</span>`);
+      const dateStr = dateChips.join('<span style="color:var(--text-muted);">·</span>');
+      const hasMeta = statusChips || dateStr;
+      const sep = (statusChips && dateStr) ? `<span style="width:1px; height:14px; background:var(--border); flex:0 0 auto;"></span>` : '';
       return `<tr class="sn-group-header" onclick="toggleSamplesSection('${which}')" style="cursor:pointer;">
-        <td colspan="11" style="padding:0; text-align:left; border-top:1px solid var(--border);">
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 18px; background:${a.bar}; border-left:4px solid ${a.line};">
-            <span style="color:${a.line}; font-size:11px; flex:0 0 auto; width:10px;">${open ? '▾' : '▸'}</span>
-            <span style="font-weight:800; font-size:12.5px; letter-spacing:0.06em; text-transform:uppercase; color:${a.line}; flex:0 0 auto;">${label}</span>
-            <span style="font-size:11px; font-weight:800; color:${a.line}; background:${a.pill}; border-radius:12px; padding:1px 10px; flex:0 0 auto;">${rows.length}</span>
-            ${(statusChips || qtyChip || ageChip)
-              ? `<span style="display:inline-flex; gap:7px; align-items:center; flex-wrap:wrap;">${statusChips}${sep}${qtyChip}${qtyChip && ageChip ? '<span style="color:var(--text-muted);">·</span>' : ''}${ageChip}</span>`
+        <td colspan="11" style="padding:0; text-align:left;">
+          <div style="display:flex; align-items:center; gap:11px; flex-wrap:wrap; margin:12px; padding:14px 16px; background:${a.bar}; border:1px solid var(--border); border-left:4px solid ${a.line}; border-radius:12px;">
+            <span style="color:${a.line}; font-size:12px; flex:0 0 auto; width:10px;">${open ? '▾' : '▸'}</span>
+            <span style="font-weight:800; font-size:13px; letter-spacing:0.05em; text-transform:uppercase; color:${a.line}; flex:0 0 auto;">${label}</span>
+            <span style="font-size:11px; font-weight:800; color:${a.line}; background:${a.pill}; border-radius:12px; padding:2px 11px; flex:0 0 auto;">${rows.length}</span>
+            ${hasMeta
+              ? `<span style="display:inline-flex; gap:9px; align-items:center; flex-wrap:wrap;">${statusChips}${sep}${dateStr}</span>`
               : `<span style="font-size:11px; color:var(--text-muted);">none yet</span>`}
           </div>
         </td>
@@ -39801,7 +39809,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     // Match: #/orders
     if (hash === '#/orders') {
+      // Snapshot "last seen" BEFORE rendering so the Ready-to-Order NEW badges
+      // reflect what was moved in since the previous visit; then stamp now so
+      // the next visit clears them (background polls keep the snapshot).
+      _ordersStagingSeenSnapshot = _ordersStagingSeenTs();
       renderOrdersList();
+      _markOrdersStagingSeen();
       return;
     }
 
@@ -53512,6 +53525,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // adds them to an existing one. Once in an order they leave this list.
   const _stagedOrderSelected = new Set();
 
+  // "New since your last visit" tracking for the Ready-to-Order staging list.
+  // We snapshot the last-seen time when you NAVIGATE into #/orders (not on
+  // background polls), so a freshly-approved workbook shows a NEW badge for
+  // the whole visit and only clears the next time you come back.
+  let _ordersStagingSeenSnapshot = null;
+  function _ordersStagingSeenTs() { try { return parseInt(localStorage.getItem('ms_orders_staging_seen') || '0', 10) || 0; } catch (_) { return 0; } }
+  function _markOrdersStagingSeen() { try { localStorage.setItem('ms_orders_staging_seen', String(Date.now())); } catch (_) {} }
+
   function collectStagedForOrders() {
     const out = [];
     for (const [key, detail] of Object.entries(workbookDetail)) {
@@ -53540,9 +53561,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const int   = n => (Number(n) || 0).toLocaleString('en-US');
     const n = _stagedOrderSelected.size;
+    // Rows moved into Ready-to-Order since the last visit get a NEW badge +
+    // a subtle highlight. Snapshot is taken on navigation into #/orders.
+    const seenTs = (_ordersStagingSeenSnapshot != null) ? _ordersStagingSeenSnapshot : _ordersStagingSeenTs();
+    const _movedMs = s => (s.movedAt ? new Date(s.movedAt).getTime() : 0);
+    const newCount = staged.filter(s => _movedMs(s) > seenTs).length;
     const rows = staged.map(s => {
       const checked = _stagedOrderSelected.has(s.key) ? 'checked' : '';
       const keyAttr = esc(s.key).replace(/'/g, "\\'");
+      const isNew = _movedMs(s) > seenTs;
+      const movedAgo = (s.movedAt && typeof _rfqTimeAgo === 'function') ? _rfqTimeAgo(s.movedAt) : '';
       const detail = workbookDetail[s.key] || {};
       const st = (typeof _wbStatsForPicker === 'function') ? _wbStatsForPicker(detail) : {};
       const lineCount = Array.isArray(detail.rfqItems) ? detail.rfqItems.filter(i => i && (i.item || i.qty || i.priceRmb)).length : 0;
@@ -53562,13 +53590,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const wbHref = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
       // Whole row opens the workbook; the checkbox + "Not ready" button
       // stopPropagation so they don't also navigate.
-      return `<div class="staged-row" onclick="location.hash='${wbHref}'" title="Open workbook" style="display:flex; align-items:center; gap:14px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer;">
+      const newBadge = isNew ? `<span style="flex-shrink:0; background:#16a34a; color:#fff; font-size:9px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; padding:2px 7px; border-radius:99px; white-space:nowrap;">New</span>` : '';
+      const movedLine = movedAgo ? `<span style="color:var(--text-muted);">· moved ${esc(movedAgo)}</span>` : '';
+      return `<div class="staged-row" onclick="location.hash='${wbHref}'" title="Open workbook" style="display:flex; align-items:center; gap:14px; padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer; ${isNew ? 'background:rgba(22,163,74,0.07); box-shadow:inset 3px 0 0 #16a34a;' : ''}">
         <span onclick="event.stopPropagation();" style="display:inline-flex; flex-shrink:0;">
           <input type="checkbox" class="staged-cb" data-key="${esc(s.key)}" ${checked} onclick="event.stopPropagation();" onchange="toggleStagedSelection('${keyAttr}', this.checked)" style="width:16px; height:16px; accent-color:var(--accent); cursor:pointer;" />
         </span>
         <div style="flex:1; min-width:0;">
-          <div style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(s.product)}</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${meta || 'no pricing yet'}</div>
+          <div style="display:flex; align-items:center; gap:8px; min-width:0;"><span style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(s.product)}</span>${newBadge}</div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${meta || 'no pricing yet'} ${movedLine}</div>
         </div>
         <div style="text-align:right; flex-shrink:0; min-width:96px;">
           <div style="font-weight:700; color:var(--text); font-size:13px;">${valTop}</div>
@@ -53582,7 +53612,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     host.innerHTML = `
       <div class="section-card" style="margin-bottom:20px;">
         <div class="section-header" style="display:flex; align-items:center; gap:10px;">
-          <span class="section-title" style="margin-right:auto;">Ready to Order <span style="color:var(--text-muted); font-weight:500;">· ${staged.length}</span></span>
+          <span class="section-title" style="margin-right:auto;">Ready to Order <span style="color:var(--text-muted); font-weight:500;">· ${staged.length}</span>${newCount > 0 ? ` <span style="background:#16a34a; color:#fff; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; padding:2px 8px; border-radius:99px; vertical-align:middle;">${newCount} new</span>` : ''}</span>
         </div>
         <div id="staged-bulk-bar" style="display:${n > 0 ? 'flex' : 'none'}; align-items:center; gap:12px; padding:10px 16px; background:rgba(232,117,26,0.10); border-bottom:1px solid var(--border);">
           <strong style="font-size:13px; color:var(--accent);"><span id="staged-bulk-count">${n}</span> selected</strong>
