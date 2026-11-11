@@ -44737,15 +44737,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const isSample = !!s && Array.isArray(s.sampleEntries) && s.sampleEntries.length > 0
       && !(Array.isArray(s.entries) && s.entries.length > 0);
     // Keep Shipping Method, Trackings and Split; drop the capacity cards, the
-    // port location/dates, and the freight-only "+ Add Order".
-    const hide = ['ship-util-grid', 'ship-detail-port-dates-wrap', 'ship-detail-port-location-wrap', 'ship-add-order-btn'];
+    // port location/dates, the freight-only "+ Add Order", the Container View
+    // and the Total Shipping Cost (all freight-container concepts — the stale
+    // "Order #010 / 63.6 m³" was that viz bleeding in from other shipments).
+    const hide = ['ship-util-grid', 'ship-detail-port-dates-wrap', 'ship-detail-port-location-wrap',
+                  'ship-add-order-btn', 'ship-container-viz-card', 'ship-total-shipping'];
     hide.forEach(id => { const el = document.getElementById(id); if (!el) return;
       if (isSample) { el.dataset._prevDisplay = el.style.display; el.style.display = 'none'; }
       else if (el.dataset._prevDisplay !== undefined) { el.style.display = el.dataset._prevDisplay; }
     });
     const title = document.getElementById('ship-orders-title');
     if (title) title.textContent = isSample ? 'Sample Contents' : 'Orders in this Shipment';
-    if (isSample) _renderSampleShipmentContents(s);
+    if (isSample) {
+      // The sample records may not be loaded on this page — ensure them, then
+      // render so dims/weight/value populate from the editor's fields.
+      if (typeof _ensureToChinaLoaded === 'function') {
+        _ensureToChinaLoaded().then(() => { try { _renderSampleShipmentContents(s); } catch (_) {} });
+      }
+      _renderSampleShipmentContents(s);
+    }
   }
   function _renderSampleShipmentContents(s) {
     const listEl  = document.getElementById('ship-order-list');
@@ -44761,22 +44771,30 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Prefer the snapshot stored on the entry; fall back to the live record.
       const rec = (_toChinaStandalone || []).find(x => String(x.id) === String(e.standaloneId));
       const sh = (e.ship && Object.keys(e.ship).length) ? e.ship : ((rec && rec.ship) || {});
-      const dm = sh.dims || {}, wt = sh.weight || {}, cu = sh.customs || {};
-      const dims = (dm.l || dm.w || dm.h) ? `${dm.l || '?'}×${dm.w || '?'}×${dm.h || '?'} ${dm.unit || 'in'}` : '—';
+      const dm = sh.dims || {}, wt = sh.weight || {}, cu = sh.customs || {}, to = sh.to || {};
+      const dims = (dm.l || dm.w || dm.h) ? `${dm.l || '?'} × ${dm.w || '?'} × ${dm.h || '?'} ${dm.unit || 'in'}` : '—';
       const weight = wt.value ? `${wt.value} ${wt.unit || ''}`.trim() : '—';
       const val = cu.value ? '$' + cu.value : '—';
       const client = (rec && rec.client) || e.clientName || '';
-      const meta = [`Qty ${esc(e.qty || (rec && rec.qty) || '1')}`, `Dims ${esc(dims)}`, `Weight ${esc(weight)}`, `Value ${esc(val)}`].join(' · ');
-      return `<div class="ship-order-card">
-        <div class="ship-order-card-header">
-          <div>
-            ${client ? `<div class="soc-client">${esc(client)}</div>` : ''}
-            <div class="soc-name">${esc(e.item || (rec && rec.item) || 'Sample')}</div>
-          </div>
-          <span style="font-size:11px; font-weight:700; color:#6b93ff; background:rgba(107,147,255,0.12); border-radius:12px; padding:2px 10px; white-space:nowrap;">→ To China sample</span>
+      const shipTo = [to.company || to.name, to.city, to.country].filter(Boolean).join(', ');
+      const notes = e.notes || (rec && rec.notes) || '';
+      const field = (label, value) => `<div><div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:2px;">${label}</div><div style="font-size:13px; font-weight:600; color:var(--text);">${esc(value || '—')}</div></div>`;
+      return `<div style="border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:10px; background:var(--surface);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+          <div style="font-weight:800; font-size:15px; color:var(--text);">${esc(e.item || (rec && rec.item) || 'Sample')}</div>
+          <span style="font-size:11px; font-weight:700; color:#6b93ff; background:rgba(107,147,255,0.12); border-radius:12px; padding:3px 11px; white-space:nowrap;">→ To China sample</span>
         </div>
-        <div style="font-size:12px; color:var(--text-muted); padding:4px 2px 2px;">${meta}</div>
-        ${e.notes ? `<div style="font-size:12px; color:var(--text-muted); padding:2px 2px 0; font-style:italic;">${esc(e.notes)}</div>` : ''}
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:14px 18px;">
+          ${field('Qty', esc(e.qty || (rec && rec.qty) || '1'))}
+          ${field('Dimensions', dims)}
+          ${field('Weight', weight)}
+          ${field('Declared value', val)}
+          ${field('HS code', cu.hs)}
+          ${field('Material', cu.desc)}
+          ${client ? field('Client', client) : ''}
+          ${shipTo ? field('Ship to', shipTo) : ''}
+        </div>
+        ${notes ? `<div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border); font-size:12px; color:var(--text-muted);"><strong style="color:var(--text);">Notes:</strong> ${esc(notes)}</div>` : ''}
       </div>`;
     }).join('');
   }
