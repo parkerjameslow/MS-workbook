@@ -61,6 +61,40 @@ $_publicActions = [
     'cron_refresh_tracking' => true,
 ];
 $_requestedAction = $_GET['action'] ?? ($_POST['action'] ?? '');
+
+// ── TEMP diagnostic: remember-me health (no secrets, booleans only) ──────
+// Lets us see exactly where trusted-device login breaks. Remove after fixing.
+if ($_requestedAction === 'auth_debug') {
+    $cookie = $_COOKIE[MS_REMEMBER_COOKIE] ?? '';
+    $hasColon = strpos($cookie, ':') !== false;
+    $sel = ''; $validator = '';
+    if ($hasColon) { list($sel, $validator) = explode(':', $cookie, 2); }
+    $tableExists = false; $tokenFound = false; $tokenNotExpired = false; $tokenValidates = false;
+    try {
+        $tableExists = (bool)$pdo->query("SHOW TABLES LIKE 'auth_tokens'")->fetch();
+        if ($tableExists && $sel !== '') {
+            $st = $pdo->prepare("SELECT validator_hash, (expires_at > NOW()) AS fut FROM auth_tokens WHERE selector = ? LIMIT 1");
+            $st->execute([$sel]);
+            $r = $st->fetch();
+            if ($r) { $tokenFound = true; $tokenNotExpired = (bool)$r['fut']; $tokenValidates = hash_equals((string)$r['validator_hash'], hash('sha256', (string)$validator)); }
+        }
+    } catch (Exception $e) {}
+    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    echo json_encode([
+        'php_version'              => PHP_VERSION,
+        'https_detected'           => $secure,
+        'has_remember_cookie'      => $cookie !== '',
+        'cookie_has_colon'         => $hasColon,
+        'cookie_names_present'      => array_keys($_COOKIE),
+        'auth_tokens_table_exists' => $tableExists,
+        'token_found_by_selector'  => $tokenFound,
+        'token_not_expired'        => $tokenNotExpired,
+        'token_validates'          => $tokenValidates,
+        'session_user_id'          => (int)($_SESSION['user_id'] ?? 0),
+    ]);
+    exit;
+}
+
 if (!isset($_publicActions[$_requestedAction])) {
     requireAuth();
 }
