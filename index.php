@@ -8353,8 +8353,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              workbook actions (⋮) menu on the far right. -->
         <div style="justify-self:end; display:flex; align-items:center; gap:10px;">
           <div id="wb-presence-banner" class="wb-presence-banner wb-presence-inline"></div>
-          <button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Workbook actions" style="font-size:20px; line-height:1;">⋮</button>
-          <div class="action-menu"><a onclick="event.stopPropagation(); if(currentClient&&currentWorkbookId) duplicateWorkbook(currentClient, currentWorkbookId)">Duplicate Workbook</a></div>
+          <button class="action-icon-btn" onclick="event.stopPropagation(); _wbOpenActionMenu(this)" title="Workbook actions" style="font-size:20px; line-height:1;">⋮</button>
+          <div class="action-menu"></div>
         </div>
       </div>
     </div>
@@ -26595,7 +26595,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td class="rc-wb"><span class="rc-wb-pill">${esc(it.product || 'Untitled')}<svg class="rc-wb-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></td>
           <td class="rc-status"><span class="rc-pill" style="background:${st.bg};color:${st.fg};"><span class="rc-dot" style="${dot}"></span>${esc(st.label)}</span></td>
           <td class="rc-updated">${esc(_recentWbDateLabel(it))}</td>
-          <td class="rc-actions" onclick="event.stopPropagation();" style="text-align:right; white-space:nowrap;"><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); duplicateWorkbook('${jsName}', ${it.id})">Duplicate</a><a onclick="event.stopPropagation(); location.hash='#/client/${encName}/workbook/${it.id}'">Open</a></div></td>
+          <td class="rc-actions" onclick="event.stopPropagation();" style="text-align:right; white-space:nowrap;"><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu">${_wbActionMenuItems(g.name, it.id)}</div></td>
         </tr>`;
       }).join('');
     }).join('');
@@ -33885,6 +33885,36 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   /* ── Action Menu ──────────────────────────────────────────────────────────── */
+  // Shared action-menu items for a workbook — the SAME set as the client
+  // workbook-list row (Open, Move…, Clear Pending Review?, Move to Completed/
+  // Active, Duplicate, Delete) so every ⋮ menu offers the same actions.
+  function _wbActionMenuItems(cn, id) {
+    id = String(id);
+    const jsName  = String(cn).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const enc     = encodeURIComponent(cn).replace(/'/g, '%27');
+    const detail  = workbookDetail[`${cn}|${id}`] || {};
+    const product = String(detail.product || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const isCompleted = (typeof _wbIsCompleted === 'function') ? _wbIsCompleted(cn, id) : false;
+    const pending = !!detail.submittedByClient;
+    return (
+      `<a onclick="event.stopPropagation(); location.hash='#/client/${enc}/workbook/${id}'">Open</a>` +
+      `<a onclick="event.stopPropagation(); openStageMoveModal('${jsName}','${id}','list')">Move…</a>` +
+      (pending ? `<a onclick="event.stopPropagation(); clearPendingReview('${jsName}','${id}')">Clear Pending Review</a>` : '') +
+      (isCompleted
+        ? `<a onclick="event.stopPropagation(); unmarkWbCompleted('${jsName}','${id}')">Move to Active</a>`
+        : `<a onclick="event.stopPropagation(); markWbCompleted('${jsName}','${id}')">Move to Completed</a>`) +
+      `<a onclick="event.stopPropagation(); duplicateWorkbook('${jsName}','${id}')">Duplicate</a>` +
+      `<a onclick="event.stopPropagation(); openDeleteModal('${jsName}','${id}','${product}')">Delete</a>`
+    );
+  }
+  // Populate + open the workbook-detail ⋮ menu for the current workbook.
+  function _wbOpenActionMenu(btn) {
+    if (!currentClient || !currentWorkbookId) return;
+    const menu = btn.nextElementSibling;
+    if (menu) menu.innerHTML = _wbActionMenuItems(currentClient, currentWorkbookId);
+    toggleActionMenu(btn);
+  }
+
   function toggleActionMenu(btn) {
     const menu = btn.nextElementSibling;
     const wasOpen = menu.classList.contains('open');
