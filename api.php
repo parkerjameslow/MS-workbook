@@ -6657,6 +6657,27 @@ switch ($action) {
         if (!empty($input['unit_price'])) $detail['quoteClUnitPrice']  = $input['unit_price'];
         if (!empty($input['cost']))       $detail['quoteClShipping']   = $input['cost'];
 
+        // A duplicate must NEVER carry the source's pipeline stage/status — it
+        // starts as a clean, unstaged draft (Parker: "never dup the status or
+        // stage the wb is in"). flow_step=0 alone isn't enough because the
+        // stage is derived from these detail flags, not flow_step. Strip every
+        // forward-stage / approval / sample-status marker (mirrors the fields
+        // collectWorkbookDetail preserves), and clear per-line sample flags so
+        // the copy doesn't inherit the Samples stage either.
+        foreach ([
+            'sentToRfq', 'sentToRfqAt',
+            'sentForReview', 'sentForReviewAt',
+            'waitingForClient', 'waitingForClientAt',
+            'approvalToken', 'approvedByClientAt', 'approvalSentAt',
+            'movedToOrders', 'movedToOrdersAt',
+            'sampleStatuses', 'sampleDirections',
+            'clientQuoteExport',
+        ] as $k) { unset($detail[$k]); }
+        if (!empty($detail['rfqItems']) && is_array($detail['rfqItems'])) {
+            foreach ($detail['rfqItems'] as &$_ri) { if (is_array($_ri)) unset($_ri['sample']); }
+            unset($_ri);
+        }
+
         $newName = !empty($input['product_name']) ? trim($input['product_name']) : $src['product_name'] . ' (Copy)';
         $detail['product'] = $newName;
         $stmt = $pdo->prepare("INSERT INTO workbooks (client_id, product_name, description, flow_step, detail_json) VALUES (?, ?, ?, 0, ?)");
