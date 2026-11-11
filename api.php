@@ -1182,8 +1182,11 @@ function ms_shipstation_order_payload(array $s): array {
             'countryOfOrigin'      => $cu['origin'] ?: 'US',
         ], function ($v) { return $v !== '' && $v !== null; })],
     ];
+    // carrierCode must be a valid registered ShipStation carrier (the form's
+    // Carrier dropdown supplies one). serviceCode is NOT sent — it varies by
+    // carrier and an invalid value fails the order; the service/rate is chosen
+    // in ShipStation when buying the label.
     if (($ship['carrier'] ?? '') !== '')  $payload['carrierCode'] = $ship['carrier'];
-    if (($ship['service'] ?? '') !== '')  $payload['serviceCode'] = $ship['service'];
     // Assign to the chosen ShipStation store (e.g. Market Sculpt 3PL).
     $storeId = $s['storeId'] ?? ($existing['storeId'] ?? '');
     if ($storeId !== '' && $storeId !== null) $payload['advancedOptions'] = ['storeId' => (int) $storeId];
@@ -3945,6 +3948,19 @@ switch ($action) {
             $stores[] = ['storeId' => $st['storeId'] ?? null, 'storeName' => $st['storeName'] ?? ('Store ' . ($st['storeId'] ?? ''))];
         }
         echo json_encode(['success' => true, 'stores' => $stores]);
+        break;
+    }
+    // List the account's registered ShipStation carriers (valid carrierCodes).
+    case 'shipstation_carriers': {
+        if (!ms_shipstation_configured()) { echo json_encode(['success' => false, 'error' => 'ShipStation not configured']); break; }
+        $r = ms_shipstation_request('GET', '/carriers');
+        if (!$r['ok'] || !is_array($r['data'])) { echo json_encode(['success' => false, 'error' => $r['error'] ?: 'carriers list failed']); break; }
+        $carriers = [];
+        foreach ($r['data'] as $c) {
+            if (!is_array($c)) continue;
+            $carriers[] = ['code' => $c['code'] ?? null, 'name' => $c['name'] ?? ($c['code'] ?? '')];
+        }
+        echo json_encode(['success' => true, 'carriers' => $carriers]);
         break;
     }
     // Push a To-China sample to ShipStation as an order. Returns the stored

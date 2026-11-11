@@ -1980,6 +1980,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .samples-grid .inv-client-chip { cursor: pointer; transition: filter 0.12s, transform 0.12s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .samples-grid .inv-client-chip:hover { filter: brightness(0.96); transform: translateY(-1px); }
     .samples-sec-card { border: 1px solid var(--border); border-radius: 12px; margin: 12px 0; overflow: hidden; background: var(--surface); }
+    /* To China grid: wider first column so the "Create Shipment" button fits. */
+    .samples-grid--ship th:nth-child(1), .samples-grid--ship td:nth-child(1) { width: 132px; padding-left: 12px; }
     /* To-China sample editor (field labels + section dividers) */
     .tc-lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px; }
     .tc-sec { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:6px; margin-top:4px; }
@@ -10994,8 +10996,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div style="display:grid; grid-template-columns:150px 1fr 1fr; gap:10px;">
         <div><label class="tc-lbl">Dim Unit</label><select id="ntc-dim-unit" class="form-input" style="width:100%;"><option value="inches">inches</option><option value="centimeters">cm</option></select></div>
-        <div><label class="tc-lbl">Carrier <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label><input id="ntc-carrier" class="form-input" style="width:100%;" placeholder="e.g. fedex" autocomplete="off" /></div>
-        <div><label class="tc-lbl">Service <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label><input id="ntc-service" class="form-input" style="width:100%;" placeholder="e.g. fedex_international_priority" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Carrier <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label><select id="ntc-carrier" class="form-input" style="width:100%;"><option value="">— pick in ShipStation —</option></select></div>
+        <div><label class="tc-lbl">Service <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional — set in ShipStation)</span></label><input id="ntc-service" class="form-input" style="width:100%;" placeholder="chosen when you buy the label" autocomplete="off" /></div>
       </div>
 
       <!-- Customs / item value (international) -->
@@ -37938,6 +37940,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       standalone: true,
       id: s.id,
       notes: s.notes || '',
+      shipstation: s.shipstation || null,
+      shipmentId: s.shipmentId || null,
+      source: s.source || '',
     };
   }
 
@@ -38215,7 +38220,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const inner = rows.length
           ? rows.map(s => _sampleRowHtml(s, _compOf(s), esc, '')).join('')
           : `<tr><td colspan="11" style="padding:18px; text-align:center; color:var(--text-muted); font-size:13px;">No ${which === 'from' ? 'inbound' : 'outbound'} samples${_samplesFilter !== 'all' ? ' in this status' : ''}.</td></tr>`;
-        body = `<div style="border-top:1px solid var(--border);"><div class="table-scroll-wrapper"><table class="samples-grid">${colHead}<tbody>${inner}</tbody></table></div></div>`;
+        body = `<div style="border-top:1px solid var(--border);"><div class="table-scroll-wrapper"><table class="samples-grid${which === 'to' ? ' samples-grid--ship' : ''}">${colHead}<tbody>${inner}</tbody></table></div></div>`;
       }
       return `<div class="samples-sec-card" style="border-left:4px solid ${a.line};">${head}${body}</div>`;
     };
@@ -38242,9 +38247,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (s.standalone) {
       const refChip = `<span style="display:inline-flex; align-items:center; gap:4px; background:rgba(107,147,255,0.10); border:1px solid rgba(107,147,255,0.30); color:#6b93ff; border-radius:20px; padding:2px 10px; font-size:11px; font-weight:600;">Reference</span>`;
       const dirPill = `<span style="display:inline-block; background:${SAMPLE_DIR_STYLES.to.bg}; border:1px solid ${SAMPLE_DIR_STYLES.to.border}; color:${SAMPLE_DIR_STYLES.to.text}; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:600;">→ To China</span>`;
+      // Far-left cell: a sample linked to ShipStation (pushed or imported) gets
+      // a Create Shipment button (its own trackable shipment) in place of the
+      // bulk checkbox; once it has one, a link into that shipment.
+      const _ssLinked = !!(s.shipstation && s.shipstation.orderId) || s.source === 'shipstation';
+      let firstCell;
+      if (s.shipmentId) {
+        firstCell = `<button onclick="event.stopPropagation(); viewToChinaSampleShipment('${esc(String(s.id))}')" title="Open this sample's shipment" style="font-size:10px; font-weight:700; color:var(--success); background:rgba(16,185,129,0.10); border:1px solid rgba(16,185,129,0.4); border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap;">On shipment &rarr;</button>`;
+      } else if (_ssLinked) {
+        firstCell = `<button onclick="event.stopPropagation(); createShipmentForToChinaSample('${esc(String(s.id))}')" title="Create a trackable shipment for this sample" style="font-size:10px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap;">+ Create Shipment</button>`;
+      } else {
+        firstCell = `<input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" />`;
+      }
       return `
         <tr class="sn-data-row">
-          <td style="text-align:center; ${railCss}"><input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" /></td>
+          <td style="text-align:center; ${railCss}">${firstCell}</td>
           <td style="font-weight:600; color:var(--accent); cursor:pointer;" title="Edit shipment details" onclick="event.stopPropagation(); openNewToChinaSampleModal('${esc(String(s.id))}')">${esc(s.item)}</td>
           <td class="samples-pill-cell">${clientCell}</td>
           <td class="samples-pill-cell">${refChip}</td>
@@ -38307,6 +38324,66 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _saveToChinaStandalone();
     renderSamplesDashboard();
   }
+  // Map a ShipStation/free-text carrier to our tracking-lookup carrier key.
+  function _normCarrier(c) {
+    c = String(c || '').toLowerCase();
+    if (c.includes('fedex')) return 'fedex';
+    if (c.includes('ups')) return 'ups';
+    if (c.includes('dhl')) return 'dhl';
+    if (c.includes('usps') || c.includes('stamps')) return 'usps';
+    return c.replace(/[^a-z0-9]/g, '');
+  }
+  function viewToChinaSampleShipment(id) {
+    const rec = (_toChinaStandalone || []).find(x => String(x.id) === String(id));
+    if (rec && rec.shipmentId) location.hash = '#/shipment/' + rec.shipmentId;
+  }
+  // Create a standalone, trackable shipment for one To-China sample so Parker
+  // can see exactly when it ships / arrives. Pulls carrier + tracking from the
+  // linked ShipStation order (syncing first if needed); prompts for a tracking
+  // number if ShipStation hasn't produced one yet.
+  async function createShipmentForToChinaSample(id) {
+    await _ensureToChinaLoaded();
+    const rec = (_toChinaStandalone || []).find(x => String(x.id) === String(id));
+    if (!rec) return;
+    if (rec.shipmentId && shipmentData[rec.shipmentId]) { location.hash = '#/shipment/' + rec.shipmentId; return; }
+    let ss = rec.shipstation || {};
+    // If linked but no tracking yet, sync once to try to pick it up.
+    if (ss.orderId && !ss.trackingNumber) {
+      try { const r = await apiCall('shipstation_sync_order', { order_id: ss.orderId }); if (r && r.success && r.shipstation) { ss = Object.assign({}, ss, r.shipstation); rec.shipstation = ss; _saveToChinaStandalone(); } } catch (_) {}
+    }
+    let tracking = (ss.trackingNumber || '').trim();
+    const carKey = _normCarrier(ss.carrier || (rec.ship && rec.ship.carrier) || '');
+    if (!tracking) {
+      const t = prompt('ShipStation has no tracking number for this sample yet. Enter one to track it now, or leave blank to create the shipment and add tracking later:', '');
+      if (t === null) return;
+      tracking = t.trim();
+    }
+    const newId = String(_nextShipmentId++);
+    shipmentData[newId] = {
+      id: newId,
+      name: (rec.item || 'Sample') + ' — To China',
+      status: 'in_transit',
+      carrier: carKey,
+      trackingNumber: tracking,
+      entries: [],
+      sampleEntries: [{ clientName: rec.client || '', workbookId: '', rowIndex: -1, item: rec.item, qty: rec.qty || '', product: rec.item, standaloneId: rec.id, direction: 'to' }],
+      containerType: '40hc',
+      etd: '', eta: '', deliveredOn: '',
+      createdAt: new Date().toISOString(),
+      tracking: null,
+      sampleDirection: 'to',
+    };
+    rec.shipmentId = newId;
+    rec.status = 'requested';
+    _saveToChinaStandalone();
+    saveShipments();
+    if (tracking && carKey) {
+      try { const r = await apiCall('fetch_tracking_status', { carrier: carKey, tracking_number: tracking }); if (r && r.ok && r.data) { shipmentData[newId].tracking = r.data; saveShipments(); } } catch (_) {}
+    }
+    try { rebuildShipmentsNav(); } catch (_) {}
+    if (typeof showToast === 'function') showToast('Shipment created — tracking it now', 'success');
+    location.hash = '#/shipment/' + newId;
+  }
   let _tcEditingId = null; // which standalone To-China sample the modal is editing (null = new)
   // Fixed Market Sculpt route for To-China samples: US (Jackson) → China (Karen).
   // Both ends prefill on every new sample so only the variable fields
@@ -38341,6 +38418,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       sel.innerHTML = '<option value="">— default store —</option>' + r.stores.map(s => `<option value="${esc(String(s.storeId))}" ${String(s.storeId) === String(chosen) ? 'selected' : ''}>${esc(s.storeName)}</option>`).join('');
     } catch (_) {}
   }
+  // Populate the Carrier dropdown from ShipStation's registered carriers so the
+  // value is always a valid carrierCode (free text caused "Invalid carrierCode").
+  async function _loadToChinaCarriers(selectedCode) {
+    const sel = document.getElementById('ntc-carrier'); if (!sel) return;
+    try {
+      const r = await apiCall('shipstation_carriers', {});
+      if (!r || !r.success || !Array.isArray(r.carriers)) return;
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      const want = selectedCode || '';
+      sel.innerHTML = '<option value="">— pick in ShipStation —</option>' + r.carriers.map(c => `<option value="${esc(String(c.code))}" ${String(c.code) === String(want) ? 'selected' : ''}>${esc(c.name || c.code)}</option>`).join('');
+    } catch (_) {}
+  }
   const _tcFieldIds = ['ntc-item','ntc-qty','ntc-client','ntc-notes','ntc-status',
     'ntc-to-name','ntc-to-company','ntc-to-street1','ntc-to-street2','ntc-to-city','ntc-to-state','ntc-to-postal','ntc-to-country','ntc-to-phone','ntc-to-email',
     'ntc-from-name','ntc-from-company','ntc-from-street1','ntc-from-street2','ntc-from-city','ntc-from-state','ntc-from-postal','ntc-from-country','ntc-from-phone','ntc-from-email',
@@ -38368,7 +38457,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _tcSet('ntc-from-name', from.name); _tcSet('ntc-from-company', from.company); _tcSet('ntc-from-street1', from.street1); _tcSet('ntc-from-street2', from.street2);
     _tcSet('ntc-from-city', from.city); _tcSet('ntc-from-state', from.state); _tcSet('ntc-from-postal', from.postal); _tcSet('ntc-from-country', from.country || 'CN'); _tcSet('ntc-from-phone', from.phone); _tcSet('ntc-from-email', from.email);
     _tcSet('ntc-weight', wt.value); _tcSet('ntc-weight-unit', wt.unit || 'ounces'); _tcSet('ntc-dim-l', dm.l); _tcSet('ntc-dim-w', dm.w); _tcSet('ntc-dim-h', dm.h); _tcSet('ntc-dim-unit', dm.unit || 'inches');
-    _tcSet('ntc-carrier', sh.carrier); _tcSet('ntc-service', sh.service);
+    _tcSet('ntc-service', sh.service); _loadToChinaCarriers(sh.carrier);
     _tcSet('ntc-cust-desc', cu.desc); _tcSet('ntc-cust-value', cu.value); _tcSet('ntc-cust-qty', cu.qty || ''); _tcSet('ntc-cust-hs', cu.hs); _tcSet('ntc-cust-origin', cu.origin || 'US');
     _tcSet('ntc-order-number', rec ? (rec.orderNumber || '') : '');
     _loadToChinaStores(rec ? rec.storeId : '');
