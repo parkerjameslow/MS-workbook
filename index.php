@@ -11051,7 +11051,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button onclick="closeShipStationImport()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:12px; overflow-y:auto;">
-      <p style="margin:0; font-size:13px; color:var(--text-muted);">Recent ShipStation orders. Tick the ones that are To-China samples and import them — they'll appear under <strong>→ To China</strong> with status and tracking. Already-imported orders are marked.</p>
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Recent orders from your <strong>Market Sculpt 3PL</strong> store. Tick the ones that are To-China samples and import them — they'll appear under <strong>→ To China</strong> with status and tracking. Already-imported orders are marked.</p>
       <div id="ssi-body" style="min-height:120px;">Loading…</div>
     </div>
     <div style="display:flex; gap:10px; justify-content:flex-end; align-items:center; padding:14px 20px; border-top:1px solid var(--border);">
@@ -38633,6 +38633,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _ssiAlreadyImported(orderId) {
     return (_toChinaStandalone || []).some(s => s.shipstation && String(s.shipstation.orderId) === String(orderId));
   }
+  // Resolve the Market Sculpt 3PL store id (remembered default, else by name).
+  async function _msDefaultStoreId() {
+    try { const s = localStorage.getItem('ms_ss_default_store'); if (s) return s; } catch (_) {}
+    try {
+      const r = await apiCall('shipstation_stores', {});
+      if (r && r.success && Array.isArray(r.stores)) {
+        const def = r.stores.find(s => String(s.storeName || '').toLowerCase().includes(MS_DEFAULT_SS_STORE_NAME.toLowerCase()));
+        if (def) return String(def.storeId);
+      }
+    } catch (_) {}
+    return '';
+  }
   async function openShipStationImport() {
     const m = document.getElementById('shipstation-import-modal'); if (!m) return;
     _ssiOrders = []; _ssiSelected.clear();
@@ -38641,7 +38653,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     m.style.display = 'flex';
     await _ensureToChinaLoaded();
     try {
-      const r = await apiCall('shipstation_import_orders', {});
+      const storeId = await _msDefaultStoreId();
+      const r = await apiCall('shipstation_import_orders', storeId ? { store_id: storeId } : {});
       if (!r || !r.success) {
         if (body) body.innerHTML = `<div style="padding:16px; color:var(--text-muted);">${(r && r.error) ? String(r.error).replace(/</g,'&lt;') : 'Could not reach ShipStation.'}</div>`;
         return;

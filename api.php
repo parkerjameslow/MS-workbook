@@ -3993,6 +3993,9 @@ switch ($action) {
     case 'shipstation_import_orders': {
         if (!ms_shipstation_configured()) { echo json_encode(['success' => false, 'error' => 'ShipStation not configured']); break; }
         $q = '/orders?pageSize=100&sortBy=OrderDate&sortDir=DESC';
+        // Scope to a single store (e.g. Market Sculpt 3PL) so the importer shows
+        // only that store's orders, not every order in the account.
+        if (!empty($input['store_id'])) $q .= '&storeId=' . (int) $input['store_id'];
         if (!empty($input['tag'])) $q .= '&orderStatus=awaiting_shipment';
         $r = ms_shipstation_request('GET', $q);
         if (!$r['ok'] || !is_array($r['data'])) { echo json_encode(['success' => false, 'error' => $r['error'] ?: 'list failed']); break; }
