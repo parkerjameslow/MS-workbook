@@ -28978,6 +28978,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   function lockWorkbookTab(locked) {
+    // Parker: never lock fields at any status/stage — everything stays editable.
+    // Forcing false here neutralizes every caller (and removes the lock banner +
+    // per-section Edit buttons) without touching the call sites.
+    locked = false;
     _wbLocked = locked;
     const tab = document.getElementById('wb-tab-workbook');
     if (!tab) return;
