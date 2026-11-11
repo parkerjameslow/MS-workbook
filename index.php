@@ -44754,7 +44754,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-    // Active (Delivered → awaiting audit) section
+    // Active (Delivered → awaiting audit) section — grouped by CLIENT, then
+    // each client's shipments sorted by date (soonest first). Every shipment
+    // is a collapsible line item (default collapsed): key info on the row,
+    // tracking-event detail on expand.
     let html = '';
     if (activeIds.length === 0) {
       html += `<div class="order-list-empty">
@@ -44763,7 +44766,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <div class="order-list-empty-sub">Once a shipment is marked <strong>Delivered</strong> in Shipments, it lands here with live AI tracking status for receipt + audit.</div>
       </div>`;
     } else {
-      html += activeIds.map(_buildReceivingCard).join('');
+      const groups = {};
+      activeIds.forEach(id => {
+        const cn = ((typeof _pkShipClient === 'function' ? _pkShipClient(shipmentData[id]) : '') || '').trim() || 'Unassigned';
+        (groups[cn] = groups[cn] || []).push(id);
+      });
+      html += Object.keys(groups).sort((a, b) => a.localeCompare(b)).map(cn => {
+        const ids = groups[cn].sort((a, b) => _recDateKey(a).localeCompare(_recDateKey(b)));
+        return `<div style="margin-bottom:20px;">
+          <div style="display:flex; align-items:center; gap:8px; padding:4px 2px 8px; border-bottom:2px solid var(--border); margin-bottom:10px;">
+            <span style="font-weight:800; font-size:15px; color:var(--text);">${esc(cn)}</span>
+            <span style="font-size:11px; color:var(--text-muted); font-weight:600;">${ids.length} awaiting arrival</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px;">${ids.map(_buildReceivingCard).join('')}</div>
+        </div>`;
+      }).join('');
     }
 
     // Archived (Received) drawer — collapsible, default closed.
@@ -44868,6 +44885,32 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+  // Collapsible-item state + date helpers for the Receiving list.
+  let _receivingItemOpen = new Set();
+  function _recDateKey(id) {
+    const s = shipmentData[id] || {}; const tk = s.tracking || {};
+    return String(tk.eta || s.deliveredOn || (Array.isArray(tk.events) && tk.events[0] && tk.events[0].time) || s.receivedAt || s.createdAt || '');
+  }
+  function _recDateLabel(id) {
+    const raw = _recDateKey(id);
+    if (!raw) return 'No date';
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return String(raw).slice(0, 10);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  function toggleReceivingItem(id) {
+    id = String(id);
+    const open = _receivingItemOpen.has(id);
+    if (open) _receivingItemOpen.delete(id); else _receivingItemOpen.add(id);
+    const d = document.getElementById('rec-details-' + id);
+    const c = document.getElementById('rec-chev-' + id);
+    if (d) d.style.display = open ? 'none' : 'block';
+    if (c) c.style.transform = open ? '' : 'rotate(90deg)';
+  }
+
+  // One Receiving shipment, as a collapsible line item: key info on the row
+  // (name · carrier · status · date · tracking# · Mark Received), full tracking
+  // detail revealed on expand. Default collapsed.
   function _buildReceivingCard(id) {
     const s = shipmentData[id];
     if (!s) return '';
@@ -44884,7 +44927,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                       : /transit|moving/i.test(statusText) ? '#3b82f6'
                       : 'var(--text-muted)';
     const eventsHtml = (Array.isArray(tk.events) && tk.events.length > 0)
-      ? tk.events.slice(0, 6).map(ev => `
+      ? tk.events.slice(0, 8).map(ev => `
           <div style="display:flex; gap:10px; padding:6px 0; border-top:1px dashed var(--border); font-size:12px;">
             <div style="flex:0 0 110px; color:var(--text-muted); font-variant-numeric:tabular-nums;">${_esc(ev.time)}</div>
             <div style="flex:1; min-width:0;">
@@ -44893,9 +44936,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             </div>
           </div>`).join('')
       : `<div style="padding:8px 0; font-size:12px; color:var(--text-muted); font-style:italic;">No tracking events yet — click <strong>Refresh tracking</strong> to fetch the latest from ${_esc(carrierLabel || 'the carrier')}.</div>`;
-    // Carrier tracking URL — opens the carrier's own page in a new
-    // tab so the operator can click through for the full timeline /
-    // proof of delivery.
     const carrierUrls = {
       ups: `https://www.ups.com/track?tracknum=${encodeURIComponent(s.trackingNumber)}`,
       fedex: `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(s.trackingNumber)}`,
@@ -44903,25 +44943,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     };
     const carrierUrl = carrierUrls[s.carrier] || '#';
     const shipName = s.name || `Shipment #${id}`;
-    return `<div class="order-card" style="margin-bottom:12px;">
-      <div style="display:flex; flex-direction:column; gap:10px; padding:14px 16px;">
-        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-          <div style="font-size:16px; font-weight:800;">${_esc(shipName)}</div>
-          <span style="padding:3px 10px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:11px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase;">${_esc(carrierLabel)}</span>
-          <a href="${carrierUrl}" target="_blank" rel="noopener"
-             style="font-family:'SF Mono','Consolas',monospace; font-size:12px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);"
-             title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
-          <span style="margin-left:auto; display:flex; gap:8px;">
-            <button class="btn btn-ghost" style="font-size:12px;" onclick="refreshTrackingForReceivingCard('${id}', this)">↻ Refresh tracking</button>
-            <button class="btn btn-ghost" style="font-size:12px;" onclick="openReceivedModal('${id}','receiving')"
-                    title="Open the per-workbook audit. The blue check only appears once you actually confirm receipt inside the audit modal.">Mark Received</button>
-          </span>
-        </div>
-        <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap; padding:8px 0; border-top:1px solid var(--border);">
-          <div>
-            <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Status</div>
-            <div style="font-size:14px; font-weight:700; color:${statusColor}; margin-top:2px;">${_esc(statusText)}</div>
-          </div>
+    const open = _receivingItemOpen.has(String(id));
+    return `<div class="order-card" style="padding:0; overflow:hidden;">
+      <div onclick="toggleReceivingItem('${id}')" style="display:flex; align-items:center; gap:12px; padding:12px 14px; cursor:pointer; flex-wrap:wrap;" title="Click to ${open ? 'collapse' : 'expand'} tracking detail">
+        <span id="rec-chev-${id}" style="font-size:12px; color:var(--text-muted); transition:transform .15s ease; ${open ? 'transform:rotate(90deg);' : ''}">▶</span>
+        <span style="font-weight:700; font-size:14px;">${_esc(shipName)}</span>
+        <span style="padding:2px 9px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:10px; font-weight:800; letter-spacing:0.03em; text-transform:uppercase;">${_esc(carrierLabel)}</span>
+        <span style="font-size:12px; font-weight:700; color:${statusColor};">${_esc(statusText)}</span>
+        <span style="font-size:12px; color:var(--text-muted);" title="ETA / delivery date">${_esc(_recDateLabel(id))}</span>
+        <span style="margin-left:auto; display:flex; gap:8px; align-items:center;" onclick="event.stopPropagation();">
+          <a href="${carrierUrl}" target="_blank" rel="noopener" style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);" title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); openReceivedModal('${id}','receiving')" title="Open the per-workbook audit to confirm receipt.">Mark Received</button>
+        </span>
+      </div>
+      <div id="rec-details-${id}" style="display:${open ? 'block' : 'none'}; padding:0 14px 14px;">
+        <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap; padding:10px 0; border-top:1px solid var(--border);">
           <div>
             <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">Last known location</div>
             <div style="font-size:13px; margin-top:2px;">${_esc(tk.location || '—')}</div>
@@ -44930,8 +44966,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <div style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted);">ETA</div>
             <div style="font-size:13px; font-weight:600; margin-top:2px;">${_esc(tk.eta || '—')}</div>
           </div>
-          <div style="margin-left:auto; font-size:11px; color:var(--text-muted);">
-            Last checked: ${_esc(lastCheckedStr)}
+          <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:11px; color:var(--text-muted);">Last checked: ${_esc(lastCheckedStr)}</span>
+            <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); refreshTrackingForReceivingCard('${id}', this)">↻ Refresh tracking</button>
           </div>
         </div>
         <div style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:4px 12px;">
