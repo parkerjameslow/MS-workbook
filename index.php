@@ -38247,22 +38247,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (s.standalone) {
       const refChip = `<span style="display:inline-flex; align-items:center; gap:4px; background:rgba(107,147,255,0.10); border:1px solid rgba(107,147,255,0.30); color:#6b93ff; border-radius:20px; padding:2px 10px; font-size:11px; font-weight:600;">Reference</span>`;
       const dirPill = `<span style="display:inline-block; background:${SAMPLE_DIR_STYLES.to.bg}; border:1px solid ${SAMPLE_DIR_STYLES.to.border}; color:${SAMPLE_DIR_STYLES.to.text}; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:600;">→ To China</span>`;
-      // Far-left cell: a sample linked to ShipStation (pushed or imported) gets
-      // a Create Shipment button (its own trackable shipment) in place of the
-      // bulk checkbox; once it has one, a link into that shipment.
-      const _ssLinked = !!(s.shipstation && s.shipstation.orderId) || s.source === 'shipstation';
-      let firstCell;
-      if (s.shipmentId) {
-        firstCell = `<button onclick="event.stopPropagation(); viewToChinaSampleShipment('${esc(String(s.id))}')" title="Open this sample's shipment" style="font-size:10px; font-weight:700; color:var(--success); background:rgba(16,185,129,0.10); border:1px solid rgba(16,185,129,0.4); border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap;">On shipment &rarr;</button>`;
-      } else if (_ssLinked) {
-        firstCell = `<button onclick="event.stopPropagation(); createShipmentForToChinaSample('${esc(String(s.id))}')" title="Create a trackable shipment for this sample" style="font-size:10px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap;">+ Create Shipment</button>`;
-      } else {
-        firstCell = `<input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" />`;
-      }
+      // Far-left cell: a "Create Shipment" button (its own trackable shipment)
+      // replaces the bulk checkbox; once it has one, a link into that shipment.
+      const firstCell = s.shipmentId
+        ? `<button onclick="event.stopPropagation(); viewToChinaSampleShipment('${esc(String(s.id))}')" title="Open this sample's shipment" style="font-size:10px; font-weight:700; color:var(--success); background:rgba(16,185,129,0.10); border:1px solid rgba(16,185,129,0.4); border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap;">On shipment &rarr;</button>`
+        : `<button onclick="event.stopPropagation(); createShipmentForToChinaSample('${esc(String(s.id))}')" title="Create a trackable shipment for this sample" style="font-size:10px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap;">+ Create Shipment</button>`;
+      // Item as a clickable pill so it's clearly tappable (opens the editor).
+      const itemPill = `<span onclick="event.stopPropagation(); openNewToChinaSampleModal('${esc(String(s.id))}')" title="Edit shipment details" style="display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:5px 11px; border:1px solid var(--border); border-radius:8px; background:var(--surface2); color:var(--accent); font-weight:700; cursor:pointer;" onmouseover="this.style.borderColor='var(--accent)';" onmouseout="this.style.borderColor='var(--border)';"><span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(s.item)}</span><span style="flex:0 0 auto;">&rarr;</span></span>`;
       return `
         <tr class="sn-data-row">
           <td style="text-align:center; ${railCss}">${firstCell}</td>
-          <td style="font-weight:600; color:var(--accent); cursor:pointer;" title="Edit shipment details" onclick="event.stopPropagation(); openNewToChinaSampleModal('${esc(String(s.id))}')">${esc(s.item)}</td>
+          <td class="samples-pill-cell" title="${esc(s.item)}">${itemPill}</td>
           <td class="samples-pill-cell">${clientCell}</td>
           <td class="samples-pill-cell">${refChip}</td>
           <td style="text-align:right; font-weight:600;">${s.qty ? parseFloat(String(s.qty).replace(/,/g,'')).toLocaleString('en-US') : '—'}</td>
