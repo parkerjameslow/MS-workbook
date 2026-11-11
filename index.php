@@ -38929,36 +38929,90 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     const groups = {};
     all.forEach(w => { (groups[w.clientName] = groups[w.clientName] || []).push(w); });
+    const _rfqNum = v => parseFloat(String(v == null ? '' : v).replace(/,/g, '')) || 0;
+    const th = 'padding:9px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);text-align:left;';
     host.innerHTML = Object.keys(groups).sort((a, b) => a.localeCompare(b)).map(cn => {
       const jsName = String(cn).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       const enc = encodeURIComponent(cn).replace(/'/g, '%27');
       const rows = groups[cn].sort((a, b) => String(b.detail.waitingForClientAt||'').localeCompare(String(a.detail.waitingForClientAt||''))).map(w => {
         const d = w.detail;
         const approved = !!d.approvedByClientAt;
-        const sentAt = d.waitingForClientAt ? new Date(d.waitingForClientAt) : null;
-        const sentStr = sentAt && !isNaN(sentAt.getTime()) ? sentAt.toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
+        const sentFlag = !!d.approvalSentAt;
         const total = parseFloat(d.pricingClientQuoteTotal) || 0;
         const totalStr = total > 0 ? '$' + total.toLocaleString('en-US', { minimumFractionDigits:3, maximumFractionDigits:3 }) : '—';
-        const sentFlag = !!d.approvalSentAt;
-        return `<div class="order-card" style="padding:14px 16px; margin-bottom:10px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; ${approved ? 'border:1px solid #16a34a;' : ''}">
-          <div style="min-width:0;">
-            <div style="font-weight:800; font-size:15px;">${esc(w.product)}</div>
-            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Quote total ${esc(totalStr)} · waiting since ${esc(sentStr)}${sentFlag && !approved ? ' · approval email sent' : ''}</div>
-          </div>
-          ${approved
-            ? `<span style="padding:4px 11px; border-radius:99px; background:rgba(22,163,74,0.12); color:#16a34a; font-size:11px; font-weight:800; text-transform:uppercase;">✓ Client approved</span>`
-            : `<span style="padding:4px 11px; border-radius:99px; background:rgba(162,28,175,0.12); color:#a21caf; font-size:11px; font-weight:800; text-transform:uppercase;">Awaiting approval</span>`}
-          <span style="margin-left:auto; display:flex; gap:8px; align-items:center;">
-            <button class="btn btn-ghost" style="font-size:12px;" onclick="location.hash='#/client/${enc}/workbook/${w.workbookId}'">Open</button>
-            ${approved
-              ? `<button class="btn btn-primary" style="font-size:12px; background:#16a34a; border-color:#16a34a;" onclick="_doPipelineMove('${jsName}','${w.workbookId}','orders',{rerender:renderWaitingClientDashboard})" title="Move the approved workbook into the Orders queue">Move to Orders</button>`
-              : `<button class="btn btn-primary" style="font-size:12px;" onclick="sendQuoteForApproval('${jsName}','${w.workbookId}', this)" title="Email the client a quote preview with a one-click Approve button">${sentFlag ? 'Resend for Approval' : 'Send Preview for Approval'}</button>`}
-          </span>
-        </div>`;
+        let qty = 0;
+        (d.rfqItems || []).forEach(p => { const vs = Array.isArray(p.variants) ? p.variants.filter(v => v && (v.variant || v.qty)) : []; (vs.length ? vs : [p]).forEach(r => { qty += _rfqNum(r.qty); }); });
+        const statusPill = approved
+          ? `<span style="padding:2px 9px;border-radius:99px;background:rgba(22,163,74,0.12);color:#16a34a;font-size:10px;font-weight:800;text-transform:uppercase;white-space:nowrap;">✓ Approved</span>`
+          : (sentFlag
+            ? `<span style="padding:2px 9px;border-radius:99px;background:rgba(37,99,235,0.12);color:#2563eb;font-size:10px;font-weight:800;text-transform:uppercase;white-space:nowrap;">Sent</span>`
+            : `<span style="padding:2px 9px;border-radius:99px;background:rgba(162,28,175,0.12);color:#a21caf;font-size:10px;font-weight:800;text-transform:uppercase;white-space:nowrap;">Awaiting</span>`);
+        const actionBtn = approved
+          ? `<button class="btn btn-primary" style="font-size:11px;padding:5px 11px;background:#16a34a;border-color:#16a34a;white-space:nowrap;" onclick="event.stopPropagation(); _doPipelineMove('${jsName}','${w.workbookId}','orders',{rerender:renderWaitingClientDashboard})">Move to Orders</button>`
+          : `<button class="btn btn-primary" style="font-size:11px;padding:5px 11px;white-space:nowrap;" onclick="event.stopPropagation(); previewApprovalEmail('${jsName}','${w.workbookId}')" title="Preview the email, then send it for one-click approval">${sentFlag ? 'Preview / Resend' : 'Preview & Send'}</button>`;
+        const assignee = (typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + cn + '|' + w.workbookId) : '';
+        return `<tr class="review-row" style="cursor:pointer; border-top:1px solid var(--border);" onclick="location.hash='#/client/${enc}/workbook/${w.workbookId}'">
+          <td style="padding:10px;font-weight:700;color:var(--text);">${esc(w.product)}<span style="font-size:11px;color:var(--text-muted);margin-left:8px;font-weight:500;">→ open</span></td>
+          <td style="padding:10px;color:var(--text-muted);font-size:12px;white-space:nowrap;" title="${esc(d.waitingForClientAt||'')}">${esc((typeof _rfqTimeAgo === 'function') ? _rfqTimeAgo(d.waitingForClientAt) : '')}</td>
+          <td style="padding:10px;text-align:right;font-weight:600;">${qty > 0 ? qty.toLocaleString('en-US') : '—'}</td>
+          <td style="padding:10px;text-align:right;white-space:nowrap;color:var(--success);font-weight:600;">${totalStr}</td>
+          <td style="padding:10px;text-align:center;">${statusPill}</td>
+          <td style="padding:10px;text-align:center;white-space:nowrap;" onclick="event.stopPropagation();">${assignee}</td>
+          <td style="padding:10px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation();">${actionBtn}</td>
+        </tr>`;
       }).join('');
-      return `<div style="margin-bottom:20px;"><div style="display:flex; align-items:center; gap:8px; padding:4px 2px 8px; border-bottom:2px solid var(--border); margin-bottom:10px;"><span style="font-weight:800; font-size:15px;">${esc(cn)}</span><span style="font-size:11px; color:var(--text-muted); font-weight:600;">${groups[cn].length}</span></div>${rows}</div>`;
+      return `<div style="margin-bottom:22px;">
+        <div style="display:flex; align-items:center; gap:8px; padding:4px 2px 8px;"><span style="font-weight:800; font-size:15px;">${esc(cn)}</span><span style="font-size:12px; color:var(--text-muted); font-weight:600;">${groups[cn].length}</span></div>
+        <div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; overflow-x:auto;"><table style="width:100%; min-width:720px; border-collapse:collapse; font-size:13px;">
+          <thead><tr style="background:var(--surface2);"><th style="${th}">Product</th><th style="${th}">Waiting</th><th style="${th}text-align:right;">Qty</th><th style="${th}text-align:right;">Quote Total</th><th style="${th}text-align:center;">Status</th><th style="${th}text-align:center;">Assignee</th><th style="${th}text-align:right;">Action</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>`;
     }).join('');
   }
+
+  // Preview the approval email exactly as the client will see it, then send.
+  function previewApprovalEmail(clientName, workbookId) {
+    const key = `${clientName}|${workbookId}`;
+    const clientEmail = (clientDetails[clientName] || {}).email || '';
+    let data = null;
+    try {
+      data = (currentClient === clientName && String(currentWorkbookId) === String(workbookId) && typeof _collectClientQuoteForExport === 'function')
+        ? _collectClientQuoteForExport()
+        : ((workbookDetail[key] || {}).clientQuoteExport || null);
+    } catch (_) {}
+    const quoteHtml = data ? _clientQuoteEmailHtml(data) : '<div style="padding:24px;color:#6b7280;font-size:13px;">No rendered quote found yet — open this workbook\'s Pricing tab once so the quote is captured, then preview again. (The email will still send with a product + total summary.)</div>';
+    const approveBtn = `<div style="text-align:center;margin:0 0 20px;"><span style="display:inline-block;background:#16a34a;color:#fff;padding:14px 34px;border-radius:9px;font-weight:800;font-size:16px;">&#10003; Approve this quote</span><div style="font-size:11px;color:#9ba3c0;margin-top:8px;">One click confirms you'd like to proceed — we'll begin preparing your order.</div></div>`;
+    const emailBody = `<div style="max-width:620px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+      <p style="font-size:15px;color:#4b5563;line-height:1.6;">Hi ${clientName ? String(clientName).replace(/</g,'&lt;') : 'there'}, your quote is ready. Review it below and press <strong>Approve</strong> to proceed.</p>
+      ${approveBtn}
+      <div style="border:1px solid #e5e7eb;border-radius:14px;padding:22px 20px;background:#fff;">${quoteHtml}</div>
+      ${approveBtn}
+      <p style="color:#6b7280;font-size:12px;">Questions? Just reply to this email.</p>
+    </div>`;
+    const old = document.getElementById('approval-preview-modal'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'approval-preview-modal';
+    ov.className = 'modal-overlay open';
+    ov.style.zIndex = '1200';
+    ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+    const sendDisabled = clientEmail ? '' : 'disabled title="No email on file for this client"';
+    ov.innerHTML = `
+      <div class="modal" style="max-width:720px; width:94%; display:flex; flex-direction:column; max-height:calc(100vh - 40px);">
+        <div class="modal-title" style="display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+          <span>Approval email preview</span>
+          <button type="button" class="btn btn-ghost" style="padding:2px 10px; font-size:18px; line-height:1;" onclick="document.getElementById('approval-preview-modal').remove()">&times;</button>
+        </div>
+        <div style="margin:-6px 0 12px; color:var(--text-muted); font-size:12.5px; flex-shrink:0;">This is exactly what ${clientEmail ? ('<strong>' + String(clientEmail).replace(/</g,'&lt;') + '</strong>') : 'the client'} will receive. The green Approve button is live in the real email.</div>
+        <div style="flex:1 1 auto; overflow:auto; background:#f4f5fa; border:1px solid var(--border); border-radius:10px; padding:24px;">${emailBody}</div>
+        <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px; justify-content:flex-end;">
+          <button type="button" class="btn btn-ghost" onclick="document.getElementById('approval-preview-modal').remove()">Cancel</button>
+          <button type="button" class="btn btn-primary" ${sendDisabled} onclick="document.getElementById('approval-preview-modal').remove(); sendQuoteForApproval('${jsEscNote(clientName)}','${workbookId}', null)">Send to ${clientEmail ? String(clientEmail).replace(/</g,'&lt;').replace(/'/g,'&#39;') : 'client'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+  function jsEscNote(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
   // Render the Client Quote as an email-safe (inline-styled) HTML fragment that
   // mirrors the Client Quote PDF — same header, stat tiles, itemized table with
   // variant/fee rows, and Order Total. Driven by the same `data` shape as
@@ -39001,7 +39055,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const dbId = dbWorkbookMap[key] || workbookId;
     const clientEmail = (clientDetails[clientName] || {}).email || '';
     if (!clientEmail) { if (typeof _msToast === 'function') _msToast(`No email on file for ${clientName} — add one on the client page first.`, 'warning'); return; }
-    if (!confirm(`Email a quote preview with a one-click Approve button to ${clientEmail}?\n\nWhen they approve, this workbook moves to the Orders queue.`)) return;
+    if (typeof _msToast === 'function') _msToast(`Sending to ${clientEmail}…`, 'info');
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     try {
       // Build the full itemized quote (same look as the Client Quote PDF). Use
