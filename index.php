@@ -11011,12 +11011,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <!-- Customs / item value (international) -->
       <div class="tc-sec">Customs <span style="font-weight:400; text-transform:none; color:var(--text-muted);">— for the international label</span></div>
       <div style="display:grid; grid-template-columns:1fr 120px 90px; gap:10px;">
-        <div><label class="tc-lbl">Description</label><input id="ntc-cust-desc" class="form-input" style="width:100%;" placeholder="e.g. Plastic sample, no commercial value" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Description</label><input id="ntc-cust-desc" class="form-input" style="width:100%;" placeholder="e.g. Plastic sample, no commercial value" autocomplete="off" oninput="_tcAutoHs()" /></div>
         <div><label class="tc-lbl">Value (USD)</label><input id="ntc-cust-value" class="form-input" style="width:100%;" placeholder="0" autocomplete="off" /></div>
         <div><label class="tc-lbl">Qty</label><input id="ntc-cust-qty" class="form-input" style="width:100%;" placeholder="1" autocomplete="off" /></div>
       </div>
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-        <div><label class="tc-lbl">HS / Tariff code <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label><input id="ntc-cust-hs" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">HS / Tariff code <span style="text-transform:none; font-weight:400; opacity:0.7;">(auto from material)</span></label><input id="ntc-cust-hs" class="form-input" style="width:100%;" autocomplete="off" /></div>
         <div><label class="tc-lbl">Country of origin</label><input id="ntc-cust-origin" class="form-input" style="width:100%;" placeholder="US" autocomplete="off" /></div>
       </div>
 
@@ -38318,6 +38318,29 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _samplesSelected.delete(_saCompKey(id));
     _saveToChinaStandalone();
     renderSamplesDashboard();
+  }
+  // Auto-fill the HS/harmonized tariff code from the material named in the
+  // customs description (6-digit HS, "other articles of …"). Only fills when
+  // the field is empty or still holds an auto value, so a manual code sticks.
+  const MS_HS_CODES = {
+    plastic: '3926.90', acrylic: '3926.90', silicone: '3926.90', pvc: '3926.90',
+    steel: '7326.90', metal: '7326.90', iron: '7326.90', aluminum: '7616.99', aluminium: '7616.99',
+    paper: '4823.90', cardboard: '4823.90',
+    glass: '7020.00', rubber: '4016.99',
+    cotton: '6307.90', fabric: '6307.90', textile: '6307.90', nylon: '6307.90', polyester: '6307.90',
+    wood: '4421.99', bamboo: '4421.99', ceramic: '6914.90', porcelain: '6914.90', leather: '4205.00',
+  };
+  function _tcAutoHs() {
+    const descEl = document.getElementById('ntc-cust-desc');
+    const hsEl = document.getElementById('ntc-cust-hs');
+    if (!descEl || !hsEl) return;
+    const desc = (descEl.value || '').toLowerCase();
+    let code = '';
+    for (const k in MS_HS_CODES) { if (desc.indexOf(k) !== -1) { code = MS_HS_CODES[k]; break; } }
+    if (!code) return;
+    const cur = (hsEl.value || '').trim();
+    const known = Object.values(MS_HS_CODES);
+    if (cur === '' || known.indexOf(cur) !== -1) hsEl.value = code;
   }
   // Map a ShipStation/free-text carrier to our tracking-lookup carrier key.
   function _normCarrier(c) {
