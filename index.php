@@ -38323,12 +38323,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // customs description (6-digit HS, "other articles of …"). Only fills when
   // the field is empty or still holds an auto value, so a manual code sticks.
   const MS_HS_CODES = {
-    plastic: '3926.90', acrylic: '3926.90', silicone: '3926.90', pvc: '3926.90',
-    steel: '7326.90', metal: '7326.90', iron: '7326.90', aluminum: '7616.99', aluminium: '7616.99',
-    paper: '4823.90', cardboard: '4823.90',
-    glass: '7020.00', rubber: '4016.99',
-    cotton: '6307.90', fabric: '6307.90', textile: '6307.90', nylon: '6307.90', polyester: '6307.90',
-    wood: '4421.99', bamboo: '4421.99', ceramic: '6914.90', porcelain: '6914.90', leather: '4205.00',
+    plastic: '392690', acrylic: '392690', silicone: '392690', pvc: '392690',
+    steel: '732690', metal: '732690', iron: '732690', aluminum: '761699', aluminium: '761699',
+    paper: '482390', cardboard: '482390',
+    glass: '702000', rubber: '401699',
+    cotton: '630790', fabric: '630790', textile: '630790', nylon: '630790', polyester: '630790',
+    wood: '442199', bamboo: '442199', ceramic: '691490', porcelain: '691490', leather: '420500',
   };
   function _tcAutoHs() {
     const descEl = document.getElementById('ntc-cust-desc');
