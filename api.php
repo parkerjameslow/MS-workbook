@@ -25,6 +25,10 @@ try {
     exit;
 }
 
+// Share this handle with the auth layer so requireAuth() can restore a session
+// from a trusted-device remember token (no duplicate credentials in auth.php).
+$GLOBALS['ms_auth_pdo'] = $pdo;
+
 // Mobile clients (iOS Expo Go) can't reliably send a session cookie, so they
 // pass their session id as ?msid=. Adopt it before auth.php starts the
 // session. No-op when absent — the website never sends it, so its behaviour

@@ -1,7 +1,5 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/auth.php'; // session_start + trusted-device helpers
 
 // Redirect if already logged in
 if (!empty($_SESSION['user_id'])) {
@@ -20,6 +18,20 @@ try {
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 } catch (PDOException $e) {
     die('Database connection failed.');
+}
+
+// Share this handle with the auth layer (so it never needs its own creds).
+$GLOBALS['ms_auth_pdo'] = $pdo;
+
+// Trusted-device auto-login: if this device carries a valid remember token,
+// restore the session and skip the form entirely (Trello-style).
+if (empty($_SESSION['user_id']) && function_exists('ms_try_remember_login')) {
+    ms_try_remember_login();
+    if (!empty($_SESSION['user_id'])) {
+        $hash = $_GET['hash'] ?? '';
+        header('Location: index.php' . ($hash ? '?hash=' . urlencode($hash) : ''));
+        exit;
+    }
 }
 
 // Auto-create users table
@@ -60,6 +72,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Update last login
             $pdo->prepare("UPDATE users SET last_login = NOW() WHERE id = ?")->execute([$userRow['id']]);
+
+            // Trust this device — mint a long-lived remember token so this
+            // phone/computer stays signed in without re-logging in.
+            if (function_exists('ms_issue_remember_token')) {
+                ms_issue_remember_token($pdo, $userRow['id'], substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 250));
+            }
 
             $hash = $_GET['hash'] ?? '';
             header('Location: index.php?new_login=1' . ($hash ? '&hash=' . urlencode($hash) : ''));
