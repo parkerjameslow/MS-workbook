@@ -1005,13 +1005,21 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     select {
       height: 42px;
       cursor: pointer;
-      /* Roomier than inputs so the value never looks crammed against the
-         dropdown arrow. Extra right padding keeps text clear of the native
-         chevron; .select-wrap selects override padding-right for their own. */
-      padding: 10px 32px 10px 14px;
+      /* Custom inset chevron (native arrow can't be moved off the edge).
+         40px right padding + arrow at 16px keeps both clear of the edge so it
+         never looks crammed. Wrapper/pill selects opt out below. */
+      -webkit-appearance: none; -moz-appearance: none; appearance: none;
+      padding: 10px 40px 10px 14px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ba3c0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+      background-size: 12px;
     }
-    /* Compact pill-style selects (sample row direction/status etc.) must stay
-       small — opt them out of the roomy select height above. */
+    /* Selects that bring their own arrow (wrapper ::after) or are compact
+       pills must NOT also get the global chevron — prevents a double arrow. */
+    .select-wrap select, .select-wrapper select, .ship-select-wrap select,
+    .sample-status-sel, .sample-dir-sel { background-image: none; }
+    /* Compact pill-style selects (sample row direction/status etc.) stay small. */
     .sample-status-sel, .sample-dir-sel { height: auto; padding: 3px 8px; }
 
     .select-wrap, .select-wrapper {
@@ -6259,7 +6267,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       /* Touch targets */
       input, textarea, select { padding: 11px 12px; font-size: 16px !important; max-width: 100%; box-sizing: border-box; }
-      select { height: 44px; }
+      select { height: 44px; padding-right: 40px; }
       input[type="number"] { }
       .btn { padding: 10px 16px; font-size: 14px; min-height: 44px; }
       .btn-danger-ghost { padding: 8px 12px; min-height: 44px; }
