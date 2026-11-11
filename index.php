@@ -11011,6 +11011,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- Import from ShipStation — pull recent ShipStation orders and pick which to
+     bring into the To China samples list (dedup by ShipStation order id). -->
+<div class="modal-overlay" id="shipstation-import-modal" style="display:none;">
+  <div class="modal" style="max-width:720px; width:100%; max-height:88vh; display:flex; flex-direction:column;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Import from ShipStation</h3>
+      <button onclick="closeShipStationImport()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px; overflow-y:auto;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Recent ShipStation orders. Tick the ones that are To-China samples and import them — they'll appear under <strong>→ To China</strong> with status and tracking. Already-imported orders are marked.</p>
+      <div id="ssi-body" style="min-height:120px;">Loading…</div>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; align-items:center; padding:14px 20px; border-top:1px solid var(--border);">
+      <button class="btn btn-ghost" onclick="closeShipStationImport()">Cancel</button>
+      <button class="btn btn-primary" id="ssi-import-btn" onclick="confirmShipStationImport()" disabled>Import selected</button>
+    </div>
+  </div>
+</div>
+
 <!-- Mark Received modal — per-workbook audit grid + general notes.
      Opens from the Receiving card's Mark Received button. The grid
      shows Expected QTY, Master Pack, and Total Cartons computed
@@ -38160,7 +38179,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // reachable whether the section is collapsed or expanded. stopPropagation
       // so tapping it doesn't also toggle the section.
       const newBtn = which === 'to'
-        ? `<button onclick="event.stopPropagation(); openNewToChinaSampleModal();" style="margin-left:auto; flex:0 0 auto; font-size:11px; font-weight:700; color:#fff; background:${a.line}; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">+ New To-China Sample</button>`
+        ? `<span style="margin-left:auto; flex:0 0 auto; display:inline-flex; gap:8px;">
+             <button onclick="event.stopPropagation(); openShipStationImport();" style="font-size:11px; font-weight:700; color:${a.line}; background:var(--surface); border:1px solid ${a.line}; border-radius:8px; padding:6px 12px; cursor:pointer;">⇩ Import from ShipStation</button>
+             <button onclick="event.stopPropagation(); openNewToChinaSampleModal();" style="font-size:11px; font-weight:700; color:#fff; background:${a.line}; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">+ New To-China Sample</button>
+           </span>`
         : '';
       return `<tr class="sn-group-header" onclick="toggleSamplesSection('${which}')" style="cursor:pointer;">
         <td colspan="11" style="padding:0; text-align:left;">
@@ -38413,6 +38435,77 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       _toChinaStandalone.push(rec); _tcEditingId = rec.id;
     }
     _saveToChinaStandalone();
+  }
+
+  // ── Import from ShipStation (orders built in ShipStation → To China) ──────
+  let _ssiOrders = [];
+  const _ssiSelected = new Set();
+  function _ssiAlreadyImported(orderId) {
+    return (_toChinaStandalone || []).some(s => s.shipstation && String(s.shipstation.orderId) === String(orderId));
+  }
+  async function openShipStationImport() {
+    const m = document.getElementById('shipstation-import-modal'); if (!m) return;
+    _ssiOrders = []; _ssiSelected.clear();
+    const body = document.getElementById('ssi-body'); if (body) body.innerHTML = 'Loading…';
+    const btn = document.getElementById('ssi-import-btn'); if (btn) btn.disabled = true;
+    m.style.display = 'flex';
+    await _ensureToChinaLoaded();
+    try {
+      const r = await apiCall('shipstation_import_orders', {});
+      if (!r || !r.success) {
+        if (body) body.innerHTML = `<div style="padding:16px; color:var(--text-muted);">${(r && r.error) ? String(r.error).replace(/</g,'&lt;') : 'Could not reach ShipStation.'}</div>`;
+        return;
+      }
+      _ssiOrders = Array.isArray(r.orders) ? r.orders : [];
+      renderShipStationImportList();
+    } catch (e) {
+      if (body) body.innerHTML = `<div style="padding:16px; color:var(--text-muted);">Could not reach ShipStation (network).</div>`;
+    }
+  }
+  function closeShipStationImport() { const m = document.getElementById('shipstation-import-modal'); if (m) m.style.display = 'none'; }
+  function _ssiToggle(oid, on) { if (on) _ssiSelected.add(String(oid)); else _ssiSelected.delete(String(oid)); const b = document.getElementById('ssi-import-btn'); if (b) b.disabled = _ssiSelected.size === 0; }
+  function renderShipStationImportList() {
+    const body = document.getElementById('ssi-body'); if (!body) return;
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    if (!_ssiOrders.length) { body.innerHTML = `<div style="padding:16px; color:var(--text-muted);">No recent orders in ShipStation.</div>`; return; }
+    body.innerHTML = _ssiOrders.map(o => {
+      const ss = o.shipstation || {}; const to = o.shipTo || {}; const oid = ss.orderId;
+      const imported = _ssiAlreadyImported(oid);
+      const checked = _ssiSelected.has(String(oid)) ? 'checked' : '';
+      const where = [to.city, to.country].filter(Boolean).join(', ');
+      return `<label style="display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; ${imported ? 'opacity:0.55;' : 'cursor:pointer;'}">
+        <input type="checkbox" ${checked} ${imported ? 'disabled' : ''} onchange="_ssiToggle('${esc(String(oid))}', this.checked)" style="width:16px;height:16px;flex:0 0 auto;" />
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:700; color:var(--text);">${esc(o.item || ss.orderNumber || 'Order')}${imported ? ' <span style="font-size:10px; color:var(--text-muted); font-weight:600;">· already imported</span>' : ''}</div>
+          <div style="font-size:11px; color:var(--text-muted);">#${esc(ss.orderNumber || oid)}${where ? ' · ' + esc(where) : ''}${ss.status ? ' · ' + esc(ss.status) : ''}${o.qty ? ' · qty ' + esc(o.qty) : ''}</div>
+        </div>
+      </label>`;
+    }).join('');
+  }
+  async function confirmShipStationImport() {
+    await _ensureToChinaLoaded();
+    let n = 0;
+    _ssiOrders.forEach(o => {
+      const ss = o.shipstation || {}; const oid = ss.orderId;
+      if (!_ssiSelected.has(String(oid)) || _ssiAlreadyImported(oid)) return;
+      const to = o.shipTo || {};
+      _toChinaStandalone.push({
+        id: 'tcss-' + (oid || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6))),
+        item: o.item || ('ShipStation ' + (ss.orderNumber || oid)),
+        qty: o.qty ? String(o.qty) : '',
+        client: '', notes: '', status: 'requested',
+        createdAt: new Date().toISOString(),
+        createdBy: (typeof getCurrentUser === 'function' ? getCurrentUser() : ''),
+        shipmentId: null, source: 'shipstation',
+        ship: { to: { name: to.name || '', company: to.company || '', street1: to.street1 || '', street2: to.street2 || '', city: to.city || '', state: to.state || '', postal: to.postalCode || '', country: to.country || '', phone: to.phone || '' }, from: {}, weight: {}, dims: {}, customs: {} },
+        shipstation: ss,
+      });
+      n++;
+    });
+    if (n > 0) { _saveToChinaStandalone(); _samplesSectionCollapsed.to = false; }
+    closeShipStationImport();
+    renderSamplesDashboard();
+    if (typeof showToast === 'function') showToast(n > 0 ? `Imported ${n} from ShipStation` : 'Nothing new to import', n > 0 ? 'success' : 'warn');
   }
 
   function updateSampleStatus(key, rowIndex, newStatus) {
