@@ -655,10 +655,10 @@ if (!defined('SLACK_ACCOUNTING_CHANNEL')) { $v = getenv('SLACK_ACCOUNTING_CHANNE
 // of this channel — invite it once with /invite in the channel. Override in
 // api.local.php to point elsewhere.
 if (!defined('SLACK_SHIPMENTS_CHANNEL')) { $v = getenv('SLACK_SHIPMENTS_CHANNEL'); define('SLACK_SHIPMENTS_CHANNEL', is_string($v) && $v !== '' ? $v : 'C0CG5MT9XFU'); }
-// Channel for client quote-approval pings. Defaults to #shipments so it works
-// immediately; create a dedicated #client-approved channel, invite the bot, and
-// set SLACK_APPROVALS_CHANNEL (env or api.local.php) to its id to move it there.
-if (!defined('SLACK_APPROVALS_CHANNEL')) { $v = getenv('SLACK_APPROVALS_CHANNEL'); define('SLACK_APPROVALS_CHANNEL', is_string($v) && $v !== '' ? $v : (defined('SLACK_SHIPMENTS_CHANNEL') ? SLACK_SHIPMENTS_CHANNEL : '')); }
+// Channel for client quote-approval pings. Defaults to MarketSculpt's
+// #client-approved channel (C0CGW657J9G) — the "MarketSculpt Brief" bot must
+// be a member (invite it once with /invite). Override via env or api.local.php.
+if (!defined('SLACK_APPROVALS_CHANNEL')) { $v = getenv('SLACK_APPROVALS_CHANNEL'); define('SLACK_APPROVALS_CHANNEL', is_string($v) && $v !== '' ? $v : 'C0CGW657J9G'); }
 
 // ─── approve_quote PUBLIC PAGE (client one-click quote approval) ─────────
 // Runs before the main action switch; token-gated, no auth. Placed here so
