@@ -1957,6 +1957,29 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       white-space: nowrap;
     }
     #samples-table .inv-client-chip:hover { filter: brightness(0.96); transform: translateY(-1px); }
+    /* Per-section sample grid (From/To China cards render their own table so
+       the expanded section reads as a self-contained card). Mirrors the
+       #samples-table column layout. */
+    .samples-grid { table-layout: fixed; width: 100%; border-collapse: collapse; }
+    .samples-grid th:nth-child(1), .samples-grid td:nth-child(1) { width: 48px; padding-left: 18px; padding-right: 4px; }
+    .samples-grid th:nth-child(2), .samples-grid td:nth-child(2) { width: 16%; }
+    .samples-grid th:nth-child(3), .samples-grid td:nth-child(3) { width: 13%; }
+    .samples-grid th:nth-child(4), .samples-grid td:nth-child(4) { width: 16%; }
+    .samples-grid th:nth-child(5), .samples-grid td:nth-child(5) { width: 7%; }
+    .samples-grid th:nth-child(6), .samples-grid td:nth-child(6) { width: 7%; }
+    .samples-grid th:nth-child(7), .samples-grid td:nth-child(7) { width: 7%; }
+    .samples-grid th:nth-child(8), .samples-grid td:nth-child(8) { width: 5%; }
+    .samples-grid th:nth-child(9), .samples-grid td:nth-child(9) { width: 11%; }
+    .samples-grid th:nth-child(10), .samples-grid td:nth-child(10) { width: 8%; }
+    .samples-grid th:nth-child(11), .samples-grid td:nth-child(11) { width: 136px; overflow: visible; text-align: center; padding-right: 14px; }
+    .samples-grid th, .samples-grid td { padding: 10px 12px; vertical-align: middle; font-size: 13px; }
+    .samples-grid thead th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); text-align: left; border-bottom: 1px solid var(--border); background: transparent; }
+    .samples-grid tbody td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .samples-grid th:first-child, .samples-grid td:first-child { overflow: visible; text-overflow: clip; }
+    .samples-grid .samples-pill-cell { overflow: visible; }
+    .samples-grid .inv-client-chip { cursor: pointer; transition: filter 0.12s, transform 0.12s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .samples-grid .inv-client-chip:hover { filter: brightness(0.96); transform: translateY(-1px); }
+    .samples-sec-card { border: 1px solid var(--border); border-radius: 12px; margin: 12px 0; overflow: hidden; background: var(--surface); }
     /* To-China sample editor (field labels + section dividers) */
     .tc-lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px; }
     .tc-sec { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:6px; margin-top:4px; }
@@ -10415,33 +10438,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
                were removed to avoid two competing controls. -->
         </div>
       </div>
-      <div class="section-body" style="padding:0;">
-        <div class="table-scroll-wrapper">
-        <table class="dash-table" id="samples-table">
-          <thead>
-            <tr>
-              <th style="width:36px; text-align:center;">
-                <input type="checkbox" id="samples-header-checkbox"
-                       onchange="toggleAllSamplesSelection(this.checked)"
-                       title="Select all visible samples" />
-              </th>
-              <th>ITEM</th>
-              <th>CLIENT</th>
-              <th>WORKBOOK</th>
-              <th style="text-align:right;">QTY</th>
-              <th style="text-align:right;">RMB</th>
-              <th style="text-align:right;">USD</th>
-              <th>LEAD</th>
-              <th style="text-align:center;">DIRECTION</th>
-              <th style="text-align:center;">STATUS</th>
-              <th style="width:136px; text-align:center;">ASSIGNEE</th>
-            </tr>
-          </thead>
-          <tbody id="samples-tbody">
-            <!-- populated by JS -->
-          </tbody>
-        </table>
-        </div>
+      <div class="section-body" style="padding:2px 4px 6px;">
+        <!-- From China / To China render as self-contained cards (header →
+             divider → grid) via renderSamplesTable. Column headers live inside
+             each expanded card, not floating above collapsed ones. -->
+        <div id="samples-sections"></div>
         <div id="samples-empty" style="display:none; padding:60px 20px; text-align:center;">
           <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:8px;">No sample requests yet</div>
           <div style="font-size:13px; color:var(--text-muted); max-width:320px; margin:0 auto;">Check the <strong>Sample</strong> checkbox on RFQ line items in any workbook to track them here.</div>
@@ -38117,10 +38118,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   function renderSamplesTable(allSamples) {
-    const tbody = document.getElementById('samples-tbody');
+    const host = document.getElementById('samples-sections');
     const emptyEl = document.getElementById('samples-empty');
-    const tableEl = document.getElementById('samples-table');
-    if (!tbody) return;
+    if (!host) return;
 
     // Status filter applies to BOTH sections. Then split into two groups:
     // From China (inbound factory samples) and To China (outbound reference
@@ -38142,18 +38142,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     Array.from(_samplesSelected).forEach(k => { if (!visibleKeys.has(k)) _samplesSelected.delete(k); });
 
     if (fromRows.length === 0 && toRows.length === 0) {
-      tbody.innerHTML = '';
+      host.innerHTML = '';
       if (emptyEl) emptyEl.style.display = '';
-      if (tableEl) tableEl.style.display = 'none';
       updateSamplesBulkActionBar();
       return;
     }
     if (emptyEl) emptyEl.style.display = 'none';
-    if (tableEl) tableEl.style.display = '';
 
-    // Per-section at-a-glance summary — status breakdown + the date the
-    // status breakdown + a "with notes" indicator (any row in the section that
-    // has a comment/note attached). No dates (not wanted).
+    // "with notes" indicator — any row in the section with a comment/note.
     const _rowHasNote = (r) => {
       if (r.standalone) return !!(r.notes && String(r.notes).trim());
       const mk = `${r.key}|${r.rowIndex}`;
@@ -38163,20 +38159,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const _summarize = (rows) => {
       const c = { pending: 0, requested: 0, received: 0, approved: 0 };
       let withNotes = 0;
-      rows.forEach(r => {
-        const st = r.status || 'pending'; if (c[st] !== undefined) c[st]++;
-        if (_rowHasNote(r)) withNotes++;
-      });
+      rows.forEach(r => { const st = r.status || 'pending'; if (c[st] !== undefined) c[st]++; if (_rowHasNote(r)) withNotes++; });
       return { c, withNotes };
     };
-    // Orange = inbound (From China), Blue = outbound (To China). Rounded accent
-    // cards (not flat bars) so the two sections read as distinct cards.
+    // Orange = inbound (From China), Blue = outbound (To China).
     const ACCENT = {
       from: { line: '#E8751A', bar: 'rgba(232,117,26,0.08)', pill: 'rgba(232,117,26,0.16)' },
       to:   { line: '#6b93ff', bar: 'rgba(107,147,255,0.09)', pill: 'rgba(107,147,255,0.16)' },
     };
+    // Column-header row — lives INSIDE each expanded card, not floating above.
+    const colHead = `<thead><tr>
+      <th style="text-align:center;"><input type="checkbox" onchange="toggleAllSamplesSelection(this.checked)" title="Select all visible samples" /></th>
+      <th>Item</th><th>Client</th><th>Workbook</th>
+      <th style="text-align:right;">Qty</th><th style="text-align:right;">RMB</th><th style="text-align:right;">USD</th>
+      <th>Lead</th><th style="text-align:center;">Direction</th><th style="text-align:center;">Status</th><th style="text-align:center;">Assignee</th>
+    </tr></thead>`;
 
-    const sectionHeader = (which, label, rows) => {
+    // Each section is a self-contained card: header bar → divider → grid.
+    const sectionCard = (which, label, rows) => {
       const open = !_samplesSectionCollapsed[which];
       const a = ACCENT[which];
       const { c, withNotes } = _summarize(rows);
@@ -38190,41 +38190,32 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         : '';
       const metaBits = [statusChips, notesChip].filter(Boolean);
       const hasMeta = metaBits.length > 0;
-      // The "+ New" create button lives on the To China bar itself, so it's
-      // reachable whether the section is collapsed or expanded. stopPropagation
-      // so tapping it doesn't also toggle the section.
       const newBtn = which === 'to'
         ? `<span style="margin-left:auto; flex:0 0 auto; display:inline-flex; gap:8px;">
              <button onclick="event.stopPropagation(); openShipStationImport();" style="font-size:11px; font-weight:700; color:${a.line}; background:var(--surface); border:1px solid ${a.line}; border-radius:8px; padding:6px 12px; cursor:pointer;">⇩ Import from ShipStation</button>
              <button onclick="event.stopPropagation(); openNewToChinaSampleModal();" style="font-size:11px; font-weight:700; color:#fff; background:${a.line}; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">+ New To-China Sample</button>
            </span>`
         : '';
-      return `<tr class="sn-group-header" onclick="toggleSamplesSection('${which}')" style="cursor:pointer;">
-        <td colspan="11" style="padding:0; text-align:left;">
-          <div style="display:flex; align-items:center; gap:11px; flex-wrap:wrap; margin:12px; padding:14px 16px; background:${a.bar}; border:1px solid var(--border); border-left:4px solid ${a.line}; border-radius:12px;">
-            <span style="color:${a.line}; font-size:12px; flex:0 0 auto; width:10px;">${open ? '▾' : '▸'}</span>
-            <span style="font-weight:800; font-size:13px; letter-spacing:0.05em; text-transform:uppercase; color:${a.line}; flex:0 0 auto;">${label}</span>
-            <span style="font-size:11px; font-weight:800; color:${a.line}; background:${a.pill}; border-radius:12px; padding:2px 11px; flex:0 0 auto;">${rows.length}</span>
-            ${hasMeta
-              ? `<span style="display:inline-flex; gap:9px; align-items:center; flex-wrap:wrap;">${metaBits.join('')}</span>`
-              : `<span style="font-size:11px; color:var(--text-muted);">none yet</span>`}
-            ${newBtn}
-          </div>
-        </td>
-      </tr>`;
-    };
-    const rowsHtml = (rows, which) => {
-      if (_samplesSectionCollapsed[which]) return '';
-      if (!rows.length) {
-        return `<tr><td colspan="11" style="padding:16px; text-align:left; padding-left:26px; color:var(--text-muted); font-size:13px; border-left:4px solid ${ACCENT[which].line};">No ${which === 'from' ? 'inbound' : 'outbound'} samples${_samplesFilter !== 'all' ? ' in this status' : ''}.</td></tr>`;
+      const head = `<div onclick="toggleSamplesSection('${which}')" style="cursor:pointer; display:flex; align-items:center; gap:11px; flex-wrap:wrap; padding:14px 16px; background:${a.bar};">
+        <span style="color:${a.line}; font-size:12px; flex:0 0 auto; width:10px;">${open ? '▾' : '▸'}</span>
+        <span style="font-weight:800; font-size:13px; letter-spacing:0.05em; text-transform:uppercase; color:${a.line}; flex:0 0 auto;">${label}</span>
+        <span style="font-size:11px; font-weight:800; color:${a.line}; background:${a.pill}; border-radius:12px; padding:2px 11px; flex:0 0 auto;">${rows.length}</span>
+        ${hasMeta
+          ? `<span style="display:inline-flex; gap:9px; align-items:center; flex-wrap:wrap;">${metaBits.join('')}</span>`
+          : `<span style="font-size:11px; color:var(--text-muted);">none yet</span>`}
+        ${newBtn}
+      </div>`;
+      let body = '';
+      if (open) {
+        const inner = rows.length
+          ? rows.map(s => _sampleRowHtml(s, _compOf(s), esc, '')).join('')
+          : `<tr><td colspan="11" style="padding:18px; text-align:center; color:var(--text-muted); font-size:13px;">No ${which === 'from' ? 'inbound' : 'outbound'} samples${_samplesFilter !== 'all' ? ' in this status' : ''}.</td></tr>`;
+        body = `<div style="border-top:1px solid var(--border);"><div class="table-scroll-wrapper"><table class="samples-grid">${colHead}<tbody>${inner}</tbody></table></div></div>`;
       }
-      return rows.map(s => _sampleRowHtml(s, _compOf(s), esc, ACCENT[which].line)).join('');
+      return `<div class="samples-sec-card" style="border-left:4px solid ${a.line};">${head}${body}</div>`;
     };
 
-    tbody.innerHTML =
-      sectionHeader('from', '← From China', fromRows) + rowsHtml(fromRows, 'from') +
-      sectionHeader('to',   '→ To China',   toRows)   + rowsHtml(toRows, 'to');
-
+    host.innerHTML = sectionCard('from', '← From China', fromRows) + sectionCard('to', '→ To China', toRows);
     updateSamplesBulkActionBar();
     _syncSamplesHeaderCheckbox();
   }
@@ -40149,11 +40140,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     // Match: #/orders
     if (hash === '#/orders') {
-      // Only (re)snapshot "seen" when genuinely ENTERING the view from another
-      // hash — not when a background poll re-dispatches #/orders while we're
-      // already here (that would wipe the New-order badges). Seen is stamped on
-      // leave (handled above), so a workbook moved in mid-visit stays flagged.
-      if (_ordersPrevH !== '#/orders') _ordersStagingSeenSnapshot = _ordersStagingSeenTs();
+      // Snapshot the seen-keys set only when genuinely ENTERING the view (not
+      // on a background poll re-dispatch, which would wipe the New-order
+      // badges). Seen is stamped on leave, so a workbook moved in mid-visit
+      // stays flagged until you come back.
+      if (_ordersPrevH !== '#/orders') {
+        // First ever visit: treat everything already present as seen so we
+        // don't flag a backlog as "new".
+        if (_ordersSeenKeysLoad() === null) { try { _markOrdersStagingSeen(); } catch (_) {} }
+        _ordersStagingSeenSnapshot = _ordersSeenKeysLoad() || new Set();
+      }
       renderOrdersList();
       return;
     }
@@ -53871,14 +53867,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // adds them to an existing one. Once in an order they leave this list.
   const _stagedOrderSelected = new Set();
 
-  // "New since your last visit" tracking for the Ready-to-Order staging list.
-  // We snapshot the last-seen time when you NAVIGATE into #/orders (not on
-  // background polls), so a freshly-approved workbook shows a NEW badge for
-  // the whole visit and only clears the next time you come back.
-  let _ordersStagingSeenSnapshot = null;
-  let _ordersNavPrevHash = null; // tracks entering/leaving #/orders across router() calls
-  function _ordersStagingSeenTs() { try { return parseInt(localStorage.getItem('ms_orders_staging_seen') || '0', 10) || 0; } catch (_) { return 0; } }
-  function _markOrdersStagingSeen() { try { localStorage.setItem('ms_orders_staging_seen', String(Date.now())); } catch (_) {} }
+  // "New since your last visit" for the Ready-to-Order staging list. Tracked by
+  // workbook KEY (not timestamp) so it's immune to movedToOrdersAt being
+  // re-stamped (e.g. an approved workbook that keeps getting re-promoted would
+  // otherwise read "moved just now" forever and never clear). A key is NEW
+  // until it's been seen; seen is marked when you LEAVE #/orders. The snapshot
+  // is captured on entry so the badge is stable across background re-renders.
+  let _ordersStagingSeenSnapshot = null;   // Set of keys seen as of this visit's entry
+  let _ordersNavPrevHash = null;           // tracks entering/leaving #/orders across router() calls
+  function _ordersSeenKeysLoad() {
+    try { const v = JSON.parse(localStorage.getItem('ms_orders_staging_seen_keys') || 'null'); return Array.isArray(v) ? new Set(v) : null; }
+    catch (_) { return null; }
+  }
+  function _ordersSeenKeysSave(set) { try { localStorage.setItem('ms_orders_staging_seen_keys', JSON.stringify(Array.from(set))); } catch (_) {} }
+  // Mark everything currently in Ready-to-Order as seen (called on leaving #/orders).
+  function _markOrdersStagingSeen() {
+    try {
+      const seen = _ordersSeenKeysLoad() || new Set();
+      (typeof collectStagedForOrders === 'function' ? (collectStagedForOrders() || []) : []).forEach(s => seen.add(s.key));
+      _ordersSeenKeysSave(seen);
+    } catch (_) {}
+  }
 
   function collectStagedForOrders() {
     const out = [];
@@ -53908,15 +53917,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const money = n => '$' + (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     const int   = n => (Number(n) || 0).toLocaleString('en-US');
     const n = _stagedOrderSelected.size;
-    // Rows moved into Ready-to-Order since the last visit get a NEW badge +
-    // a subtle highlight. Snapshot is taken on navigation into #/orders.
-    const seenTs = (_ordersStagingSeenSnapshot != null) ? _ordersStagingSeenSnapshot : _ordersStagingSeenTs();
-    const _movedMs = s => (s.movedAt ? new Date(s.movedAt).getTime() : 0);
-    const newCount = staged.filter(s => _movedMs(s) > seenTs).length;
+    // A workbook is "new" until its KEY has been seen (marked on leaving
+    // #/orders). The snapshot of seen keys is captured on entry so the badge
+    // stays stable across background re-renders. Immune to movedAt churn.
+    const seen = (_ordersStagingSeenSnapshot instanceof Set) ? _ordersStagingSeenSnapshot : (_ordersSeenKeysLoad() || new Set());
+    const _isNew = s => !seen.has(s.key);
+    const newCount = staged.filter(_isNew).length;
     const rows = staged.map(s => {
       const checked = _stagedOrderSelected.has(s.key) ? 'checked' : '';
       const keyAttr = esc(s.key).replace(/'/g, "\\'");
-      const isNew = _movedMs(s) > seenTs;
+      const isNew = _isNew(s);
       const movedAgo = (s.movedAt && typeof _rfqTimeAgo === 'function') ? _rfqTimeAgo(s.movedAt) : '';
       const detail = workbookDetail[s.key] || {};
       const st = (typeof _wbStatsForPicker === 'function') ? _wbStatsForPicker(detail) : {};
