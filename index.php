@@ -51930,7 +51930,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (orders.some(o => _orderIsInFulfillment(o))) return 'production';
       return 'orders'; // in-queue or otherwise placed in an order
     }
-    if (detail && detail.movedToOrders) return 'orders';
+    // SAFETY RAIL — a client-approved quote is ALWAYS in Orders, never Waiting.
+    // Deriving "orders" straight from approvedByClientAt (not the fragile
+    // movedToOrders flag) makes the stage deterministic, so a stale save that
+    // flips waitingForClient back on can no longer bounce it between Orders and
+    // Waiting-for-Client. (This is why "This is a Test" oscillated on refresh.)
+    if (detail && (detail.movedToOrders || detail.approvedByClientAt)) return 'orders';
     if (detail && detail.waitingForClient) return 'waitingClient';
     if (detail && detail.sentForReview) return 'review';
     if (detail && detail.sentToRfq)      return 'rfq';
@@ -54214,10 +54219,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function collectStagedForOrders() {
     const out = [];
     for (const [key, detail] of Object.entries(workbookDetail)) {
-      if (!detail || !detail.movedToOrders) continue;
+      // "Ready to Order" = staged to orders (movedToOrders) OR client-approved
+      // (approvedByClientAt) — mirrors _pipelineStageFor so an approved quote
+      // can't sit in Orders-stage yet be absent from this list.
+      if (!detail || !(detail.movedToOrders || detail.approvedByClientAt)) continue;
       const [clientName, workbookId] = key.split('|');
       if (_wbInAnyOrder(clientName, workbookId)) continue;   // already placed
-      out.push({ key, clientName, workbookId, product: detail.product || 'Untitled', movedAt: detail.movedToOrdersAt || null });
+      out.push({ key, clientName, workbookId, product: detail.product || 'Untitled', movedAt: detail.movedToOrdersAt || detail.approvedByClientAt || null });
     }
     out.sort((a, b) => (a.movedAt ? new Date(a.movedAt).getTime() : 0) - (b.movedAt ? new Date(b.movedAt).getTime() : 0));
     return out;
