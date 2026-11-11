@@ -44441,6 +44441,26 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return days >= 30;
   }
 
+  // Color-coded tracking-stage badge for a shipment card. Reflects the live
+  // carrier status (In Transit / Out for Delivery / Delivered / Exception /
+  // Label Created), falling back to the manual shipment status.
+  function _shipStatusBadge(s) {
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const raw = String((s && s.tracking && s.tracking.status) || '').toLowerCase();
+    const manual = String((s && s.status) || '').toLowerCase();
+    let label = '', bg = '', fg = '';
+    const pick = (l, b, f) => { label = l; bg = b; fg = f; };
+    if (/deliver/.test(raw) || manual === 'delivered')        pick('Delivered', 'rgba(16,185,129,0.15)', '#15803d');
+    else if (/out for delivery/.test(raw))                    pick('Out for Delivery', 'rgba(37,99,235,0.14)', '#2563eb');
+    else if (/transit/.test(raw))                             pick('In Transit', 'rgba(99,102,241,0.14)', '#4f46e5');
+    else if (/(exception|failure|held|return|delay|problem)/.test(raw)) pick((s.tracking && s.tracking.status) || 'Exception', 'rgba(239,68,68,0.14)', '#dc2626');
+    else if (/(label|pre-?transit|created|manifest|pickup|info received)/.test(raw)) pick('Label Created', 'rgba(107,114,128,0.14)', '#4b5563');
+    else {
+      const m = { planning:'Planning', booked:'Booked', waiting_arrival:'Waiting Arrival', in_transit:'In Transit', received:'Received' };
+      if (manual && m[manual]) pick(m[manual], 'rgba(107,114,128,0.14)', '#4b5563'); else return '';
+    }
+    return `<span class="sc-status-badge" style="display:inline-flex; align-items:center; gap:6px; width:fit-content; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; padding:3px 11px; border-radius:999px; background:${bg}; color:${fg}; margin:5px 0 3px;"><span style="width:7px; height:7px; border-radius:50%; background:${fg}; flex:0 0 auto;"></span>${esc(label)}</span>`;
+  }
   function renderShipmentsContent() {
     const el = document.getElementById('shipment-list-content');
     if (!el) return;
@@ -44594,6 +44614,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return `<div class="shipment-card${shipHasChangeRequest ? ' has-change-request' : ''}" onclick="location.hash='#/shipment/${id}'">
         <div class="sc-left">
           <span class="sc-title">${s.name}</span>
+          ${_shipStatusBadge(s)}
           ${_etaHtml}
           ${_shippingInfoBlock}
           ${_trackingStrip}
