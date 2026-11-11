@@ -1182,11 +1182,11 @@ function ms_shipstation_order_payload(array $s): array {
             'countryOfOrigin'      => $cu['origin'] ?: 'US',
         ], function ($v) { return $v !== '' && $v !== null; })],
     ];
-    // carrierCode must be a valid registered ShipStation carrier (the form's
-    // Carrier dropdown supplies one). serviceCode is NOT sent — it varies by
-    // carrier and an invalid value fails the order; the service/rate is chosen
-    // in ShipStation when buying the label.
-    if (($ship['carrier'] ?? '') !== '')  $payload['carrierCode'] = $ship['carrier'];
+    // NOTE: neither carrierCode nor serviceCode is sent to createorder. Once a
+    // carrierCode is present ShipStation also demands a valid serviceCode for
+    // it ("Invalid serviceCode"), which varies per carrier. The order is created
+    // awaiting_shipment and the carrier + rate are chosen in ShipStation at
+    // label time. The carrier is still stored on our sample for tracking.
     // Assign to the chosen ShipStation store (e.g. Market Sculpt 3PL).
     $storeId = $s['storeId'] ?? ($existing['storeId'] ?? '');
     if ($storeId !== '' && $storeId !== null) $payload['advancedOptions'] = ['storeId' => (int) $storeId];
@@ -4004,6 +4004,7 @@ switch ($action) {
                 'item'        => $o['items'][0]['name'] ?? ($o['orderNumber'] ?? 'ShipStation order'),
                 'qty'         => $o['items'][0]['quantity'] ?? 1,
                 'shipTo'      => $to,
+                'orderDate'   => $o['orderDate'] ?? ($o['createDate'] ?? null),
             ];
         }
         echo json_encode(['success' => true, 'orders' => $orders]);

@@ -1985,6 +1985,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* To-China sample editor (field labels + section dividers) */
     .tc-lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px; }
     .tc-sec { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:6px; margin-top:4px; }
+    .tc-collapse-head { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+    .tc-caret { display:inline-block; transition: transform .12s; color:var(--text-muted); font-size:11px; }
+    .tc-caret.open { transform: rotate(90deg); }
+    .tc-done-check { margin-left:auto; font-size:11px; font-weight:700; color:#16a34a; background:rgba(22,163,74,0.12); border:1px solid rgba(22,163,74,0.35); border-radius:12px; padding:1px 9px; text-transform:none; letter-spacing:0; }
+    .tc-done-check.hidden { display:none; }
     /* Client chip — distinct color, not clickable */
     .inv-client-chip {
       display: inline-flex; align-items: center;
@@ -10955,9 +10960,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <textarea id="ntc-notes" class="form-input" style="width:100%; min-height:52px; resize:vertical;" placeholder="What should the factory match / why you're sending it"></textarea>
       </div>
 
-      <!-- Ship To (factory in China) -->
-      <div class="tc-sec">Ship To <span style="font-weight:400; text-transform:none; color:var(--text-muted);">— the factory</span></div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <!-- Ship To (factory in China) — collapsed by default (prefilled) -->
+      <div class="tc-sec tc-collapse-head" onclick="_tcToggleSection('to')">
+        <span id="ntc-to-caret" class="tc-caret">&#9656;</span> Ship To <span style="font-weight:400; text-transform:none; color:var(--text-muted);">— the factory</span>
+        <span id="ntc-to-check" class="tc-done-check">&#10003; Set</span>
+      </div>
+      <div id="ntc-to-fields" style="display:none; grid-template-columns:1fr 1fr; gap:10px;">
         <div><label class="tc-lbl">Name</label><input id="ntc-to-name" class="form-input" style="width:100%;" autocomplete="off" /></div>
         <div><label class="tc-lbl">Company</label><input id="ntc-to-company" class="form-input" style="width:100%;" autocomplete="off" /></div>
         <div style="grid-column:1 / -1;"><label class="tc-lbl">Street 1</label><input id="ntc-to-street1" class="form-input" style="width:100%;" autocomplete="off" /></div>
@@ -10970,9 +10978,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <div><label class="tc-lbl">Email</label><input id="ntc-to-email" class="form-input" style="width:100%;" autocomplete="off" /></div>
       </div>
 
-      <!-- Ship From -->
-      <div class="tc-sec">Ship From <span style="font-weight:400; text-transform:none; color:var(--text-muted);">— where it ships from</span></div>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+      <!-- Ship From — collapsed by default (prefilled) -->
+      <div class="tc-sec tc-collapse-head" onclick="_tcToggleSection('from')">
+        <span id="ntc-from-caret" class="tc-caret">&#9656;</span> Ship From <span style="font-weight:400; text-transform:none; color:var(--text-muted);">— where it ships from</span>
+        <span id="ntc-from-check" class="tc-done-check">&#10003; Set</span>
+      </div>
+      <div id="ntc-from-fields" style="display:none; grid-template-columns:1fr 1fr; gap:10px;">
         <div><label class="tc-lbl">Name</label><input id="ntc-from-name" class="form-input" style="width:100%;" autocomplete="off" /></div>
         <div><label class="tc-lbl">Company</label><input id="ntc-from-company" class="form-input" style="width:100%;" autocomplete="off" /></div>
         <div style="grid-column:1 / -1;"><label class="tc-lbl">Street 1</label><input id="ntc-from-street1" class="form-input" style="width:100%;" autocomplete="off" /></div>
@@ -38463,11 +38474,34 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const dl = document.getElementById('ntc-client-list');
       if (dl) dl.innerHTML = Object.keys(clientData || {}).sort().map(n => `<option value="${String(n).replace(/"/g,'&quot;')}"></option>`).join('');
     } catch (_) {}
+    // Ship To/From collapsed on open (they're prefilled); show a "Set" check.
+    ['to','from'].forEach(w => { const b = document.getElementById('ntc-' + w + '-fields'); if (b) b.style.display = 'none'; const c = document.getElementById('ntc-' + w + '-caret'); if (c) c.classList.remove('open'); });
+    _tcUpdateSectionChecks();
     _renderToChinaShipStationPanel(rec);
     m.style.display = 'flex';
     setTimeout(() => { try { document.getElementById('ntc-item').focus(); } catch {} }, 50);
   }
   function closeNewToChinaSampleModal() { const m = document.getElementById('new-to-china-modal'); if (m) m.style.display = 'none'; _tcEditingId = null; }
+  // Collapse/expand the Ship To / Ship From sections in the editor.
+  function _tcToggleSection(which) {
+    const body = document.getElementById('ntc-' + which + '-fields');
+    const caret = document.getElementById('ntc-' + which + '-caret');
+    if (!body) return;
+    const willOpen = body.style.display === 'none';
+    body.style.display = willOpen ? 'grid' : 'none';
+    if (caret) caret.classList.toggle('open', willOpen);
+  }
+  // Show a green "Set" check on a section when its core address fields are filled.
+  function _tcUpdateSectionChecks() {
+    ['to', 'from'].forEach(which => {
+      const chk = document.getElementById('ntc-' + which + '-check');
+      if (!chk) return;
+      const have = (_tcV('ntc-' + which + '-name') || '').trim() !== '' &&
+                   (_tcV('ntc-' + which + '-street1') || '').trim() !== '' &&
+                   (_tcV('ntc-' + which + '-city') || '').trim() !== '';
+      chk.classList.toggle('hidden', !have);
+    });
+  }
   // Gather the editor's shipment fields into the record shape.
   function _tcCollectShip() {
     return {
@@ -38612,16 +38646,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const body = document.getElementById('ssi-body'); if (!body) return;
     const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     if (!_ssiOrders.length) { body.innerHTML = `<div style="padding:16px; color:var(--text-muted);">No recent orders in ShipStation.</div>`; return; }
-    body.innerHTML = _ssiOrders.map(o => {
+    const _od = o => o && o.orderDate ? new Date(o.orderDate).getTime() : 0;
+    const _fmt = ts => { if (!ts) return ''; const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); };
+    const sorted = _ssiOrders.slice().sort((a, b) => _od(b) - _od(a)); // most recent first
+    body.innerHTML = sorted.map(o => {
       const ss = o.shipstation || {}; const to = o.shipTo || {}; const oid = ss.orderId;
       const imported = _ssiAlreadyImported(oid);
       const checked = _ssiSelected.has(String(oid)) ? 'checked' : '';
       const where = [to.city, to.country].filter(Boolean).join(', ');
+      const dateStr = _fmt(_od(o));
       return `<label style="display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; ${imported ? 'opacity:0.55;' : 'cursor:pointer;'}">
         <input type="checkbox" ${checked} ${imported ? 'disabled' : ''} onchange="_ssiToggle('${esc(String(oid))}', this.checked)" style="width:16px;height:16px;flex:0 0 auto;" />
         <div style="flex:1; min-width:0;">
           <div style="font-weight:700; color:var(--text);">${esc(o.item || ss.orderNumber || 'Order')}${imported ? ' <span style="font-size:10px; color:var(--text-muted); font-weight:600;">· already imported</span>' : ''}</div>
-          <div style="font-size:11px; color:var(--text-muted);">#${esc(ss.orderNumber || oid)}${where ? ' · ' + esc(where) : ''}${ss.status ? ' · ' + esc(ss.status) : ''}${o.qty ? ' · qty ' + esc(o.qty) : ''}</div>
+          <div style="font-size:11px; color:var(--text-muted);">#${esc(ss.orderNumber || oid)}${dateStr ? ' · ' + esc(dateStr) : ''}${where ? ' · ' + esc(where) : ''}${ss.status ? ' · ' + esc(ss.status) : ''}${o.qty ? ' · qty ' + esc(o.qty) : ''}</div>
         </div>
       </label>`;
     }).join('');
