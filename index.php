@@ -11012,6 +11012,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       <!-- ShipStation -->
       <div class="tc-sec">ShipStation</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label class="tc-lbl">Order Number</label><input id="ntc-order-number" class="form-input" style="width:100%;" placeholder="auto" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Store</label><select id="ntc-store" class="form-input" style="width:100%;"><option value="">— default store —</option></select></div>
+      </div>
       <div id="ntc-ss-panel" style="border:1px solid var(--border); border-radius:10px; padding:12px 14px; background:var(--surface2); font-size:13px; color:var(--text-muted);">
         Not connected yet — add your ShipStation API keys to enable push &amp; sync.
       </div>
@@ -38320,11 +38324,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     city: 'Shenzhen', state: 'Guangdong', postal: '518125', country: 'CN',
     phone: '+86 139 2522 8664', email: 'karen@marketsculpt.com',
   };
+  // Default ShipStation store these sample orders are created in.
+  const MS_DEFAULT_SS_STORE_NAME = 'Market Sculpt 3PL';
+  // Populate the Store dropdown from ShipStation; preselect rec's store, else
+  // the remembered default, else the first store matching "Market Sculpt 3PL".
+  async function _loadToChinaStores(selectedId) {
+    const sel = document.getElementById('ntc-store'); if (!sel) return;
+    let want = selectedId || '';
+    try { if (!want) want = localStorage.getItem('ms_ss_default_store') || ''; } catch (_) {}
+    try {
+      const r = await apiCall('shipstation_stores', {});
+      if (!r || !r.success || !Array.isArray(r.stores)) return;
+      const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      let chosen = want;
+      if (!chosen) { const def = r.stores.find(s => String(s.storeName || '').toLowerCase().includes(MS_DEFAULT_SS_STORE_NAME.toLowerCase())); if (def) chosen = String(def.storeId); }
+      sel.innerHTML = '<option value="">— default store —</option>' + r.stores.map(s => `<option value="${esc(String(s.storeId))}" ${String(s.storeId) === String(chosen) ? 'selected' : ''}>${esc(s.storeName)}</option>`).join('');
+    } catch (_) {}
+  }
   const _tcFieldIds = ['ntc-item','ntc-qty','ntc-client','ntc-notes','ntc-status',
     'ntc-to-name','ntc-to-company','ntc-to-street1','ntc-to-street2','ntc-to-city','ntc-to-state','ntc-to-postal','ntc-to-country','ntc-to-phone','ntc-to-email',
     'ntc-from-name','ntc-from-company','ntc-from-street1','ntc-from-street2','ntc-from-city','ntc-from-state','ntc-from-postal','ntc-from-country','ntc-from-phone','ntc-from-email',
     'ntc-weight','ntc-weight-unit','ntc-dim-l','ntc-dim-w','ntc-dim-h','ntc-dim-unit',
-    'ntc-carrier','ntc-service','ntc-cust-desc','ntc-cust-value','ntc-cust-qty','ntc-cust-hs','ntc-cust-origin'];
+    'ntc-carrier','ntc-service','ntc-cust-desc','ntc-cust-value','ntc-cust-qty','ntc-cust-hs','ntc-cust-origin','ntc-order-number'];
   const _tcV = id => { const el = document.getElementById(id); return el ? el.value : ''; };
   const _tcSet = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
 
@@ -38349,6 +38370,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _tcSet('ntc-weight', wt.value); _tcSet('ntc-weight-unit', wt.unit || 'ounces'); _tcSet('ntc-dim-l', dm.l); _tcSet('ntc-dim-w', dm.w); _tcSet('ntc-dim-h', dm.h); _tcSet('ntc-dim-unit', dm.unit || 'inches');
     _tcSet('ntc-carrier', sh.carrier); _tcSet('ntc-service', sh.service);
     _tcSet('ntc-cust-desc', cu.desc); _tcSet('ntc-cust-value', cu.value); _tcSet('ntc-cust-qty', cu.qty || ''); _tcSet('ntc-cust-hs', cu.hs); _tcSet('ntc-cust-origin', cu.origin || 'US');
+    _tcSet('ntc-order-number', rec ? (rec.orderNumber || '') : '');
+    _loadToChinaStores(rec ? rec.storeId : '');
     const err = document.getElementById('ntc-error'); if (err) err.style.display = 'none';
     const title = document.getElementById('ntc-modal-title'); if (title) title.textContent = rec ? 'Edit To-China Sample' : 'New To-China Sample';
     const saveBtn = document.getElementById('ntc-save-btn'); if (saveBtn) saveBtn.textContent = rec ? 'Save' : '+ Add Sample';
@@ -38372,12 +38395,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       carrier:_tcV('ntc-carrier').trim(), service:_tcV('ntc-service').trim(),
     };
   }
+  // Order number + ShipStation store (remembers the chosen store as default).
+  function _tcCollectMeta() {
+    const orderNumber = _tcV('ntc-order-number').trim();
+    const sel = document.getElementById('ntc-store');
+    const storeId = sel ? sel.value : '';
+    const storeName = (sel && sel.selectedOptions && sel.selectedOptions[0]) ? sel.selectedOptions[0].textContent : '';
+    if (storeId) { try { localStorage.setItem('ms_ss_default_store', storeId); } catch (_) {} }
+    return { orderNumber, storeId, storeName };
+  }
   async function confirmNewToChinaSample() {
     const item = _tcV('ntc-item').trim();
     const err = document.getElementById('ntc-error');
     if (!item) { if (err) { err.textContent = 'Give the sample a name.'; err.style.display = 'block'; } return; }
     await _ensureToChinaLoaded();
-    const base = { item, qty:_tcV('ntc-qty').trim(), client:_tcV('ntc-client').trim(), notes:_tcV('ntc-notes').trim(), status:_tcV('ntc-status') || 'pending', ship:_tcCollectShip() };
+    const base = Object.assign({ item, qty:_tcV('ntc-qty').trim(), client:_tcV('ntc-client').trim(), notes:_tcV('ntc-notes').trim(), status:_tcV('ntc-status') || 'pending', ship:_tcCollectShip() }, _tcCollectMeta());
     let rec = _tcEditingId ? _toChinaStandalone.find(x => String(x.id) === String(_tcEditingId)) : null;
     if (rec) { Object.assign(rec, base); }
     else {
@@ -38455,7 +38487,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   async function confirmNewToChinaSampleKeepOpen() {
     await _ensureToChinaLoaded();
     const item = _tcV('ntc-item').trim(); if (!item) return;
-    const base = { item, qty:_tcV('ntc-qty').trim(), client:_tcV('ntc-client').trim(), notes:_tcV('ntc-notes').trim(), status:_tcV('ntc-status') || 'pending', ship:_tcCollectShip() };
+    const base = Object.assign({ item, qty:_tcV('ntc-qty').trim(), client:_tcV('ntc-client').trim(), notes:_tcV('ntc-notes').trim(), status:_tcV('ntc-status') || 'pending', ship:_tcCollectShip() }, _tcCollectMeta());
     let rec = _tcEditingId ? _toChinaStandalone.find(x => String(x.id) === String(_tcEditingId)) : null;
     if (rec) { Object.assign(rec, base); }
     else {

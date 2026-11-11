@@ -1111,7 +1111,23 @@ function ms_shipstation_request(string $method, string $path, $body = null): arr
     curl_close($ch);
     $data = json_decode($raw, true);
     $ok = $status >= 200 && $status < 300;
-    return ['ok' => $ok, 'status' => $status, 'data' => $data, 'error' => $ok ? '' : (is_array($data) && isset($data['Message']) ? $data['Message'] : ('HTTP ' . $status))];
+    $err = '';
+    if (!$ok) {
+        $parts = [];
+        if (is_array($data)) {
+            if (!empty($data['Message']))          $parts[] = $data['Message'];
+            if (!empty($data['ExceptionMessage']))  $parts[] = $data['ExceptionMessage'];
+            // ModelState holds per-field validation messages.
+            if (!empty($data['ModelState']) && is_array($data['ModelState'])) {
+                foreach ($data['ModelState'] as $field => $msgs) {
+                    $parts[] = (is_array($msgs) ? implode('; ', $msgs) : (string)$msgs);
+                }
+            }
+        }
+        if (!$parts) $parts[] = 'HTTP ' . $status . ' — ' . substr(trim((string)$raw), 0, 300);
+        $err = 'HTTP ' . $status . ': ' . implode(' | ', $parts);
+    }
+    return ['ok' => $ok, 'status' => $status, 'data' => $data, 'error' => $err];
 }
 // Map a To-China sample record to a ShipStation createorder payload.
 function ms_shipstation_order_payload(array $s): array {
@@ -1120,31 +1136,38 @@ function ms_shipstation_order_payload(array $s): array {
     $wt = is_array($ship['weight'] ?? null) ? $ship['weight'] : [];
     $dm = is_array($ship['dims'] ?? null) ? $ship['dims'] : [];
     $cu = is_array($ship['customs'] ?? null) ? $ship['customs'] : [];
+    $from = is_array($ship['from'] ?? null) ? $ship['from'] : [];
     $existing = is_array($s['shipstation'] ?? null) ? $s['shipstation'] : [];
-    $orderNumber = $existing['orderNumber'] ?? ('TC-' . strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', (string)($s['id'] ?? '')), 0, 12)));
+    $orderNumber = trim((string)($s['orderNumber'] ?? '')) ?: ($existing['orderNumber'] ?? ('TC-' . strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', (string)($s['id'] ?? '')), 0, 12))));
     $qty = (int) max(1, (float)($cu['qty'] ?? $s['qty'] ?? 1));
     $num = function ($v) { $f = (float) preg_replace('/[^0-9.\-]/', '', (string)$v); return $f; };
+    $addr = function (array $a, string $fallbackName) use (&$addr) {
+        return array_filter([
+            'name'       => ($a['name'] ?? '') ?: (($a['company'] ?? '') ?: $fallbackName),
+            'company'    => $a['company'] ?? '',
+            'street1'    => $a['street1'] ?? '',
+            'street2'    => $a['street2'] ?? '',
+            'city'       => $a['city'] ?? '',
+            'state'      => $a['state'] ?? '',
+            'postalCode' => $a['postal'] ?? '',
+            'country'    => $a['country'] ?? '',
+            'phone'      => $a['phone'] ?? '',
+        ], function ($v) { return $v !== '' && $v !== null; });
+    };
+    // ShipStation createorder REQUIRES both billTo and shipTo (each needs a name).
     $payload = [
         'orderNumber'  => $orderNumber,
         'orderDate'    => gmdate('Y-m-d\TH:i:s.0000000'),
         'orderStatus'  => 'awaiting_shipment',
-        'shipTo'       => array_filter([
-            'name'       => $to['name'] ?: ($to['company'] ?: 'Factory'),
-            'company'    => $to['company'] ?? '',
-            'street1'    => $to['street1'] ?? '',
-            'street2'    => $to['street2'] ?? '',
-            'city'       => $to['city'] ?? '',
-            'state'      => $to['state'] ?? '',
-            'postalCode' => $to['postal'] ?? '',
-            'country'    => $to['country'] ?: 'CN',
-            'phone'      => $to['phone'] ?? '',
-        ], function ($v) { return $v !== '' && $v !== null; }),
+        'billTo'       => $addr($from, 'Market Sculpt') ?: ['name' => 'Market Sculpt'],
+        'shipTo'       => ($addr($to, 'Factory') + ['country' => ($to['country'] ?: 'CN')]),
         'items'        => [[
             'name'      => ($cu['desc'] ?: ($s['item'] ?? 'Sample')),
             'quantity'  => $qty,
             'unitPrice' => $num($cu['value'] ?? 0),
         ]],
     ];
+    if (trim((string)($to['email'] ?? '')) !== '') $payload['customerEmail'] = $to['email'];
     if (($wt['value'] ?? '') !== '') $payload['weight'] = ['value' => $num($wt['value']), 'units' => ($wt['unit'] ?: 'ounces')];
     if (($dm['l'] ?? '') !== '' || ($dm['w'] ?? '') !== '' || ($dm['h'] ?? '') !== '') {
         $payload['dimensions'] = ['length' => $num($dm['l'] ?? 0), 'width' => $num($dm['w'] ?? 0), 'height' => $num($dm['h'] ?? 0), 'units' => ($dm['unit'] ?: 'inches')];
@@ -1161,6 +1184,9 @@ function ms_shipstation_order_payload(array $s): array {
     ];
     if (($ship['carrier'] ?? '') !== '')  $payload['carrierCode'] = $ship['carrier'];
     if (($ship['service'] ?? '') !== '')  $payload['serviceCode'] = $ship['service'];
+    // Assign to the chosen ShipStation store (e.g. Market Sculpt 3PL).
+    $storeId = $s['storeId'] ?? ($existing['storeId'] ?? '');
+    if ($storeId !== '' && $storeId !== null) $payload['advancedOptions'] = ['storeId' => (int) $storeId];
     return $payload;
 }
 // Pull the useful status/tracking fields out of a ShipStation order + its shipments.
@@ -3906,6 +3932,19 @@ switch ($action) {
     // ── ShipStation (To-China sample shipments) ──────────────────────────
     case 'shipstation_status': {
         echo json_encode(['success' => true, 'configured' => ms_shipstation_configured()]);
+        break;
+    }
+    // List the account's ShipStation stores (for the Store picker).
+    case 'shipstation_stores': {
+        if (!ms_shipstation_configured()) { echo json_encode(['success' => false, 'error' => 'ShipStation not configured']); break; }
+        $r = ms_shipstation_request('GET', '/stores?showInactive=false');
+        if (!$r['ok'] || !is_array($r['data'])) { echo json_encode(['success' => false, 'error' => $r['error'] ?: 'stores list failed']); break; }
+        $stores = [];
+        foreach ($r['data'] as $st) {
+            if (!is_array($st)) continue;
+            $stores[] = ['storeId' => $st['storeId'] ?? null, 'storeName' => $st['storeName'] ?? ('Store ' . ($st['storeId'] ?? ''))];
+        }
+        echo json_encode(['success' => true, 'stores' => $stores]);
         break;
     }
     // Push a To-China sample to ShipStation as an order. Returns the stored
