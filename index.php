@@ -8020,6 +8020,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <span class="nav-badge" id="badge-samples"></span>
         </a>
 
+        <!-- Waiting for Client — quote sent, awaiting the client's one-click
+             approval; on approval the workbook moves to the Orders queue. -->
+        <a id="nav-waiting-client-link" href="#/waiting-client" onclick="event.preventDefault(); location.hash='#/waiting-client'" class="nav-flat-link">
+          <span>Waiting for Client</span>
+          <span class="nav-badge" id="badge-waiting-client"></span>
+        </a>
+
         <a id="nav-orders-link" href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" class="nav-flat-link">
           <span>Orders</span>
           <span class="nav-badge" id="badge-orders"></span>
@@ -10494,6 +10501,23 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
      row-click. The row drops out automatically once the reviewer
      advances the workbook past Client Approved on the status bar.
 ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ═══ VIEW: WAITING FOR CLIENT — quotes sent, awaiting client approval ═══ -->
+<div id="view-waiting-client" class="view">
+  <main class="container">
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:24px; padding:24px 0 8px;">
+      <div style="width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg,#a21caf,#d946ef); flex-shrink:0;"></div>
+      <div>
+        <h1 style="font-size:22px; font-weight:700; color:var(--text); margin:0; line-height:1.2;">Waiting for Client</h1>
+        <p style="color:var(--text-muted); font-size:13px; margin:2px 0 0;">Quotes sent to the client — awaiting their one-click approval. On approval a workbook moves to the Orders queue.</p>
+      </div>
+      <div style="margin-left:auto;">
+        <span id="waiting-client-count" style="background:rgba(162,28,175,0.10); border:1px solid rgba(162,28,175,0.40); color:#a21caf; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 waiting</span>
+      </div>
+    </div>
+    <div id="waiting-client-content"></div>
+  </main>
+</div>
+
 <div id="view-review" class="view">
   <main class="container">
 
@@ -38870,6 +38894,92 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function rebuildReviewNav() {
     const all = collectAllReadyForReview();
     _applyNavBadge(document.getElementById('badge-review'), 0, all.length);
+    try { rebuildWaitingClientNav(); } catch (_) {}   // same triggers refresh both badges
+  }
+
+  // ── Waiting for Client ─────────────────────────────────────────────────
+  function collectAllWaitingClient() {
+    const out = [];
+    for (const [key, detail] of Object.entries(workbookDetail)) {
+      if (!detail) continue;
+      const [clientName, workbookId] = key.split('|');
+      if (typeof _pipelineStageFor === 'function' && _pipelineStageFor(clientName, workbookId, detail) !== 'waitingClient') continue;
+      out.push({ clientName, workbookId, key, detail, product: detail.product || 'Untitled' });
+    }
+    return out;
+  }
+  function rebuildWaitingClientNav() {
+    try { _applyNavBadge(document.getElementById('badge-waiting-client'), 0, collectAllWaitingClient().length); } catch (_) {}
+  }
+  function renderWaitingClientDashboard() {
+    document.getElementById('header-title').textContent = 'Waiting for Client';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const nav = document.getElementById('nav-waiting-client-link'); if (nav) nav.classList.add('active');
+    showView('view-waiting-client');
+    const all = collectAllWaitingClient();
+    const cb = document.getElementById('waiting-client-count'); if (cb) cb.textContent = `${all.length} waiting`;
+    rebuildWaitingClientNav();
+    const host = document.getElementById('waiting-client-content');
+    if (!host) return;
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    if (all.length === 0) {
+      host.innerHTML = `<div class="order-list-empty"><div class="order-list-empty-icon">📨</div><div class="order-list-empty-title">Nothing waiting on a client</div><div class="order-list-empty-sub">Move a workbook to <strong>Waiting for Client</strong> (from the board or a ⋮ Move menu) and send it for approval — it sits here until the client approves, then moves to Orders.</div></div>`;
+      return;
+    }
+    const groups = {};
+    all.forEach(w => { (groups[w.clientName] = groups[w.clientName] || []).push(w); });
+    host.innerHTML = Object.keys(groups).sort((a, b) => a.localeCompare(b)).map(cn => {
+      const jsName = String(cn).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const enc = encodeURIComponent(cn).replace(/'/g, '%27');
+      const rows = groups[cn].sort((a, b) => String(b.detail.waitingForClientAt||'').localeCompare(String(a.detail.waitingForClientAt||''))).map(w => {
+        const d = w.detail;
+        const approved = !!d.approvedByClientAt;
+        const sentAt = d.waitingForClientAt ? new Date(d.waitingForClientAt) : null;
+        const sentStr = sentAt && !isNaN(sentAt.getTime()) ? sentAt.toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—';
+        const total = parseFloat(d.pricingClientQuoteTotal) || 0;
+        const totalStr = total > 0 ? '$' + total.toLocaleString('en-US', { minimumFractionDigits:3, maximumFractionDigits:3 }) : '—';
+        const sentFlag = !!d.approvalSentAt;
+        return `<div class="order-card" style="padding:14px 16px; margin-bottom:10px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; ${approved ? 'border:1px solid #16a34a;' : ''}">
+          <div style="min-width:0;">
+            <div style="font-weight:800; font-size:15px;">${esc(w.product)}</div>
+            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Quote total ${esc(totalStr)} · waiting since ${esc(sentStr)}${sentFlag && !approved ? ' · approval email sent' : ''}</div>
+          </div>
+          ${approved
+            ? `<span style="padding:4px 11px; border-radius:99px; background:rgba(22,163,74,0.12); color:#16a34a; font-size:11px; font-weight:800; text-transform:uppercase;">✓ Client approved</span>`
+            : `<span style="padding:4px 11px; border-radius:99px; background:rgba(162,28,175,0.12); color:#a21caf; font-size:11px; font-weight:800; text-transform:uppercase;">Awaiting approval</span>`}
+          <span style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+            <button class="btn btn-ghost" style="font-size:12px;" onclick="location.hash='#/client/${enc}/workbook/${w.workbookId}'">Open</button>
+            ${approved
+              ? `<button class="btn btn-primary" style="font-size:12px; background:#16a34a; border-color:#16a34a;" onclick="_doPipelineMove('${jsName}','${w.workbookId}','orders',{rerender:renderWaitingClientDashboard})" title="Move the approved workbook into the Orders queue">Move to Orders</button>`
+              : `<button class="btn btn-primary" style="font-size:12px;" onclick="sendQuoteForApproval('${jsName}','${w.workbookId}', this)" title="Email the client a quote preview with a one-click Approve button">${sentFlag ? 'Resend for Approval' : 'Send Preview for Approval'}</button>`}
+          </span>
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:20px;"><div style="display:flex; align-items:center; gap:8px; padding:4px 2px 8px; border-bottom:2px solid var(--border); margin-bottom:10px;"><span style="font-weight:800; font-size:15px;">${esc(cn)}</span><span style="font-size:11px; color:var(--text-muted); font-weight:600;">${groups[cn].length}</span></div>${rows}</div>`;
+    }).join('');
+  }
+  async function sendQuoteForApproval(clientName, workbookId, btn) {
+    const key = `${clientName}|${workbookId}`;
+    const dbId = dbWorkbookMap[key] || workbookId;
+    const clientEmail = (clientDetails[clientName] || {}).email || '';
+    if (!clientEmail) { if (typeof _msToast === 'function') _msToast(`No email on file for ${clientName} — add one on the client page first.`, 'warning'); return; }
+    if (!confirm(`Email a quote preview with a one-click Approve button to ${clientEmail}?\n\nWhen they approve, this workbook moves to the Orders queue.`)) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+    try {
+      const res = await apiCall('send_quote_approval', { workbook_id: dbId, client_name: clientName, client_email: clientEmail });
+      if (res && res.success) {
+        const d = workbookDetail[key]; if (d) { d.approvalSentAt = new Date().toISOString(); }
+        if (typeof _msToast === 'function') _msToast(`Approval request sent to ${clientEmail}.`, 'success');
+        renderWaitingClientDashboard();
+      } else {
+        if (typeof _msToast === 'function') _msToast('Could not send: ' + ((res && res.error) || 'unknown error'), 'error');
+        if (btn) { btn.disabled = false; btn.textContent = 'Send Preview for Approval'; }
+      }
+    } catch (e) {
+      if (typeof _msToast === 'function') _msToast('Send failed — see console.', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Send Preview for Approval'; }
+    }
   }
 
   function renderReviewDashboard() {
@@ -39093,6 +39203,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // pushed back for Jackson + Parker to review).
     if (hash === '#/review') {
       renderReviewDashboard();
+      return;
+    }
+
+    if (hash === '#/waiting-client') {
+      renderWaitingClientDashboard();
       return;
     }
 
