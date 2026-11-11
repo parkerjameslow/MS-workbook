@@ -8349,8 +8349,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <input type="hidden" id="portal-tracking">
         </div>
         <!-- "X is editing" indicator — populated inline by _renderPresence
-             so it sits on the same row as the back button + tabs. -->
-        <div id="wb-presence-banner" class="wb-presence-banner wb-presence-inline" style="justify-self:end;"></div>
+             so it sits on the same row as the back button + tabs — plus the
+             workbook actions (⋮) menu on the far right. -->
+        <div style="justify-self:end; display:flex; align-items:center; gap:10px;">
+          <div id="wb-presence-banner" class="wb-presence-banner wb-presence-inline"></div>
+          <button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Workbook actions" style="font-size:20px; line-height:1;">⋮</button>
+          <div class="action-menu"><a onclick="event.stopPropagation(); if(currentClient&&currentWorkbookId) duplicateWorkbook(currentClient, currentWorkbookId)">Duplicate Workbook</a></div>
+        </div>
       </div>
     </div>
 
@@ -26578,6 +26583,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     const bodyRows = shown.map(g => {
       const encName = encodeURIComponent(g.name).replace(/'/g, '%27');
+      const jsName = String(g.name).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
       return g.items.map((x, i) => {
         const it = x.it, st = x.st, first = i === 0;
         const clientCell = first
@@ -26589,12 +26595,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <td class="rc-wb"><span class="rc-wb-pill">${esc(it.product || 'Untitled')}<svg class="rc-wb-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span></td>
           <td class="rc-status"><span class="rc-pill" style="background:${st.bg};color:${st.fg};"><span class="rc-dot" style="${dot}"></span>${esc(st.label)}</span></td>
           <td class="rc-updated">${esc(_recentWbDateLabel(it))}</td>
+          <td class="rc-actions" onclick="event.stopPropagation();" style="text-align:right; white-space:nowrap;"><button class="action-icon-btn" onclick="event.stopPropagation(); toggleActionMenu(this)" title="Actions">⋮</button><div class="action-menu"><a onclick="event.stopPropagation(); duplicateWorkbook('${jsName}', ${it.id})">Duplicate</a><a onclick="event.stopPropagation(); location.hash='#/client/${encName}/workbook/${it.id}'">Open</a></div></td>
         </tr>`;
       }).join('');
     }).join('');
 
     host.innerHTML = `<div class="recent-table-wrap"><table class="recent-table">
-      <thead><tr><th class="rc-client">Client</th><th class="rc-wb">Workbook</th><th class="rc-status">Status</th><th class="rc-updated">Updated</th></tr></thead>
+      <thead><tr><th class="rc-client">Client</th><th class="rc-wb">Workbook</th><th class="rc-status">Status</th><th class="rc-updated">Updated</th><th class="rc-actions"></th></tr></thead>
       <tbody>${bodyRows}</tbody>
     </table></div>`;
   }
