@@ -44407,6 +44407,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (shipNav) shipNav.classList.add('active');
     showView('view-shipments');
     renderShipmentsContent();
+    // On-view tracking refresh (cached 3h) so ETAs/status fill in from the
+    // tracking numbers without a manual refresh. Re-renders on change.
+    try { _refreshPipelineTracking(); } catch (e) {}
     // Keep nav badges current — rebuildShipmentsNav also refreshes
     // the Receiving badge since the two are computed together.
     if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
@@ -44722,6 +44725,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // sample's own contents.
     _applySampleShipmentLayout(s);
     showView('view-shipment-detail');
+    // Pull fresh tracking (cached 3h) so the ETA/status populate from the
+    // tracking number on open.
+    try { _refreshPipelineTracking(); } catch (e) {}
     if (typeof startTrackingAutoRefresh === 'function') startTrackingAutoRefresh();
   }
 
@@ -44730,7 +44736,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _applySampleShipmentLayout(s) {
     const isSample = !!s && Array.isArray(s.sampleEntries) && s.sampleEntries.length > 0
       && !(Array.isArray(s.entries) && s.entries.length > 0);
-    const hide = ['ship-util-grid', 'ship-detail-method-row', 'ship-detail-port-dates-wrap', 'ship-detail-port-location-wrap', 'ship-split-btn', 'ship-add-order-btn'];
+    // Keep Shipping Method, Trackings and Split; drop the capacity cards, the
+    // port location/dates, and the freight-only "+ Add Order".
+    const hide = ['ship-util-grid', 'ship-detail-port-dates-wrap', 'ship-detail-port-location-wrap', 'ship-add-order-btn'];
     hide.forEach(id => { const el = document.getElementById(id); if (!el) return;
       if (isSample) { el.dataset._prevDisplay = el.style.display; el.style.display = 'none'; }
       else if (el.dataset._prevDisplay !== undefined) { el.style.display = el.dataset._prevDisplay; }
@@ -52404,7 +52412,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
     } finally {
       _plTrackRefreshing = false;
-      if (changed) { try { saveShipments(); } catch (e) {} if (location.hash === '#/pipeline') renderPipelineBoard(); }
+      if (changed) {
+        try { saveShipments(); } catch (e) {}
+        // Re-render whichever tracked view is open so a freshly-fetched ETA/
+        // status appears without a manual refresh.
+        const h = location.hash;
+        try {
+          if (h === '#/pipeline') renderPipelineBoard();
+          else if (h === '#/shipments') renderShipmentsList();
+          else if (h.indexOf('#/shipment/') === 0 && typeof renderShipmentDetail === 'function') renderShipmentDetail(_currentShipmentId);
+          else if (h === '#/receiving' && typeof renderReceivingList === 'function') renderReceivingList();
+        } catch (e) {}
+      }
     }
   }
   // Force-refresh EVERY tracked shipment now (ignores the 3h cache), with
