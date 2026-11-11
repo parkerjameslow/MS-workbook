@@ -11201,11 +11201,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-card" style="margin-top:16px; margin-bottom:0;">
       <div class="section-header" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
         <span class="section-title">Shipping &amp; Tracking</span>
-        <button type="button" onclick="openSplitShipmentModal()" title="Split this shipment — send part of it by a different method (e.g. some Fast Air, the rest Slow Air)"
+        <button type="button" id="ship-split-btn" onclick="openSplitShipmentModal()" title="Split this shipment — send part of it by a different method (e.g. some Fast Air, the rest Slow Air)"
           style="padding:5px 12px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Split Shipment</button>
       </div>
       <div class="section-body" style="padding:14px 16px; display:flex; flex-direction:column; gap:14px;">
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div id="ship-detail-method-row" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div>
             <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:6px;">Shipping Method</label>
             <div class="ship-select-wrap" style="width:100%;">
@@ -38099,6 +38099,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
     // Load standalone To-China samples (re-renders when the blob lands).
     if (typeof _ensureToChinaLoaded === 'function') _ensureToChinaLoaded();
+    try { _sweepStandaloneShipmentLinks(); } catch (_) {}
 
     const allSamples = collectAllSamples();
     const standalone = _toChinaStandalone || [];
@@ -38257,7 +38258,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const dirPill = `<span style="display:inline-block; background:${SAMPLE_DIR_STYLES.to.bg}; border:1px solid ${SAMPLE_DIR_STYLES.to.border}; color:${SAMPLE_DIR_STYLES.to.text}; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:600;">→ To China</span>`;
       // Far-left cell: a "Create Shipment" button (its own trackable shipment)
       // replaces the bulk checkbox; once it has one, a link into that shipment.
-      const firstCell = s.shipmentId
+      const firstCell = ((typeof _standaloneOnShipment === 'function') ? _standaloneOnShipment(s.id) : s.shipmentId)
         ? `<button onclick="event.stopPropagation(); viewToChinaSampleShipment('${esc(String(s.id))}')" title="Open this sample's shipment" style="font-size:10px; font-weight:700; color:var(--success); background:rgba(16,185,129,0.10); border:1px solid rgba(16,185,129,0.4); border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap;">On shipment &rarr;</button>`
         : `<button onclick="event.stopPropagation(); createShipmentForToChinaSample('${esc(String(s.id))}')" title="Create a trackable shipment for this sample" style="font-size:10px; font-weight:700; color:#fff; background:var(--accent); border:none; border-radius:7px; padding:5px 8px; cursor:pointer; white-space:nowrap;">+ Create Shipment</button>`;
       // Item as a clickable pill so it's clearly tappable (opens the editor).
@@ -38354,6 +38355,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function viewToChinaSampleShipment(id) {
     const rec = (_toChinaStandalone || []).find(x => String(x.id) === String(id));
     if (rec && rec.shipmentId) location.hash = '#/shipment/' + rec.shipmentId;
+  }
+  // A standalone sample is "on a shipment" only if that shipment still exists
+  // AND still contains it — so removing it from a shipment (or deleting the
+  // shipment) reverts the row to "+ Create Shipment" in real time.
+  function _standaloneOnShipment(recOrId) {
+    const rec = (typeof recOrId === 'object') ? recOrId : (_toChinaStandalone || []).find(x => String(x.id) === String(recOrId));
+    if (!rec || !rec.shipmentId) return false;
+    const sh = (typeof shipmentData === 'object') ? shipmentData[rec.shipmentId] : null;
+    if (!sh) return false;
+    return (sh.sampleEntries || []).some(e => String(e.standaloneId) === String(rec.id));
+  }
+  // Clear any sample whose shipment link is stale (shipment gone or no longer
+  // contains it). Keeps the dashboard honest; runs on each samples render.
+  function _sweepStandaloneShipmentLinks() {
+    let changed = false;
+    (_toChinaStandalone || []).forEach(rec => {
+      if (rec.shipmentId && !_standaloneOnShipment(rec)) { rec.shipmentId = null; changed = true; }
+    });
+    if (changed) _saveToChinaStandalone();
   }
   // Create a standalone, trackable shipment for one To-China sample so Parker
   // can see exactly when it ships / arrives. Pulls carrier + tracking from the
@@ -45254,6 +45274,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!confirm(`Delete "${s.name}"? This cannot be undone.`)) return;
     delete shipmentData[id];
     _appStateDelSet('ms_shipments').add(String(id)); // so a merge won't resurrect it
+    // Unlink any standalone To-China samples that pointed at this shipment so
+    // they revert to "+ Create Shipment" immediately.
+    try {
+      let touched = false;
+      (_toChinaStandalone || []).forEach(rec => { if (String(rec.shipmentId) === String(id)) { rec.shipmentId = null; touched = true; } });
+      if (touched && typeof _saveToChinaStandalone === 'function') _saveToChinaStandalone();
+    } catch (_) {}
     saveShipments();
     rebuildShipmentsNav();
     location.hash = '#/shipments';

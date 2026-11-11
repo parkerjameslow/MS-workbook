@@ -687,9 +687,9 @@ if ($_requestedAction === 'approve_quote') {
                     $already = true; $ok = true;
                 } elseif ($stored !== '' && hash_equals($stored, $token)) {
                     // Approve → move to Orders queue.
-                    $detail['approvedByClientAt'] = gmdate('c');
+                    if (empty($detail['approvedByClientAt'])) $detail['approvedByClientAt'] = gmdate('c');
                     $detail['waitingForClient']   = false; $detail['waitingForClientAt'] = null;
-                    $detail['movedToOrders']      = true;  $detail['movedToOrdersAt']    = gmdate('c');
+                    $detail['movedToOrders']      = true;  if (empty($detail['movedToOrdersAt'])) $detail['movedToOrdersAt'] = gmdate('c');
                     $detail['approvalToken']      = null;  // one-time use
                     $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 4), updated_at = NOW(), updated_by = 'client-approval' WHERE id = ?")
                         ->execute([json_encode($detail), $wbId]);
@@ -4045,7 +4045,10 @@ switch ($action) {
                 // Samples stage and appears in the Orders "Ready to Order"
                 // list, where the operator adds it to a new or existing order.
                 $detail['movedToOrders']   = true;
-                $detail['movedToOrdersAt'] = $now;
+                // Keep the ORIGINAL moved-in time if it already has one, so the
+                // "moved … ago" clock keeps progressing instead of resetting to
+                // "just now" every time this runs (re-promotion / re-save).
+                if (empty($detail['movedToOrdersAt'])) $detail['movedToOrdersAt'] = $now;
                 $upd = $pdo->prepare("UPDATE workbooks SET detail_json = ?, updated_at = NOW() WHERE id = ?");
                 $upd->execute([json_encode($detail), $id]);
             } elseif ($action === 'rfq') {
@@ -4108,6 +4111,13 @@ switch ($action) {
         $detail = json_decode($row['detail_json'] ?: '{}', true);
         if (!is_array($detail)) $detail = [];
         $now = gmdate('c');
+        // Preserve the original stage-entry timestamps so the "… ago" clocks
+        // keep progressing when a workbook is re-set to the same stage (e.g.
+        // repeated auto-promotion) instead of resetting to "just now".
+        $prevMovedAt   = $detail['movedToOrdersAt']   ?? null;
+        $prevWaitingAt = $detail['waitingForClientAt'] ?? null;
+        $prevRfqAt     = $detail['sentToRfqAt']        ?? null;
+        $prevReviewAt  = $detail['sentForReviewAt']    ?? null;
         // Reset every flag-based divider so the workbook lands in exactly one.
         $detail['sentToRfq']       = false; $detail['sentToRfqAt']     = null;
         $detail['sentForReview']   = false; $detail['sentForReviewAt'] = null;
@@ -4136,17 +4146,17 @@ switch ($action) {
             // so the workbook sits in the Samples stage.
             $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'rfq') {
-            $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now;
+            $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $prevRfqAt ?: $now;
             $flowSql = 'flow_step = 2'; // quoteSubmitted, NOT quoteClient
         } elseif ($stage === 'review') {
-            $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $now;
-            $detail['sentForReview'] = true; $detail['sentForReviewAt'] = $now;
+            $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $prevRfqAt ?: $now;
+            $detail['sentForReview'] = true; $detail['sentForReviewAt'] = $prevReviewAt ?: $now;
             $flowSql = 'flow_step = 2'; // quoteSubmitted, NOT quoteClient
         } elseif ($stage === 'waitingClient') {
-            $detail['waitingForClient'] = true; $detail['waitingForClientAt'] = $now;
+            $detail['waitingForClient'] = true; $detail['waitingForClientAt'] = $prevWaitingAt ?: $now;
             $flowSql = 'flow_step = 3'; // quoteClient (sent to client), not yet approved
         } elseif ($stage === 'orders') {
-            $detail['movedToOrders'] = true; $detail['movedToOrdersAt'] = $now;
+            $detail['movedToOrders'] = true; $detail['movedToOrdersAt'] = $prevMovedAt ?: $now;
             // orders is claimed by movedToOrders regardless of flow — leave flow_step.
         }
         $stageBy = $input['changed_by'] ?? ($_SESSION['username'] ?? '');
