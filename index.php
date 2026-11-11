@@ -10361,7 +10361,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
         <span id="samples-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 samples</span>
-        <button class="btn btn-primary" style="font-size:12px; white-space:nowrap;" onclick="openNewToChinaSampleModal()" title="Create a reference sample you're shipping TO a factory in China">+ New To-China Sample</button>
       </div>
     </div>
 
@@ -37822,6 +37821,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       key: '__sa__',
       standalone: true,
       id: s.id,
+      notes: s.notes || '',
     };
   }
 
@@ -38042,30 +38042,23 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (tableEl) tableEl.style.display = '';
 
     // Per-section at-a-glance summary — status breakdown + the date the
-    // oldest item entered the list + (From China) the soonest expected-back
-    // date from lead times. No "total units" (not relevant per Parker).
-    const _rowListDate = (r) => {
-      if (r.standalone) return r.createdAt || null;
-      const it = (clientData[r.clientName] || []).find(i => String(i.id) === String(r.workbookId));
-      return (it && (it.createdAt || it.updatedAt)) || null;
+    // status breakdown + a "with notes" indicator (any row in the section that
+    // has a comment/note attached). No dates (not wanted).
+    const _rowHasNote = (r) => {
+      if (r.standalone) return !!(r.notes && String(r.notes).trim());
+      const mk = `${r.key}|${r.rowIndex}`;
+      const m = (typeof _sampleMeta === 'object' && _sampleMeta) ? _sampleMeta[mk] : null;
+      return !!(m && ((Array.isArray(m.comments) && m.comments.length) || (Array.isArray(m.todos) && m.todos.length)));
     };
     const _summarize = (rows) => {
       const c = { pending: 0, requested: 0, received: 0, approved: 0 };
-      let oldest = null, soonestEta = null;
+      let withNotes = 0;
       rows.forEach(r => {
         const st = r.status || 'pending'; if (c[st] !== undefined) c[st]++;
-        const ts = _rowListDate(r);
-        if (ts) { const t = new Date(ts).getTime(); if (!isNaN(t) && (oldest === null || t < oldest)) oldest = t; }
-        // Expected-back ETA = when it entered the list + its lead time (days).
-        const lead = parseFloat(String(r.leadTime == null ? '' : r.leadTime).replace(/[^0-9.]/g, ''));
-        if (ts && !isNaN(lead) && lead > 0) {
-          const eta = new Date(ts).getTime() + lead * 86400000;
-          if (soonestEta === null || eta < soonestEta) soonestEta = eta;
-        }
+        if (_rowHasNote(r)) withNotes++;
       });
-      return { c, oldest, soonestEta };
+      return { c, withNotes };
     };
-    const _fmtDate = (ms) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     // Orange = inbound (From China), Blue = outbound (To China). Rounded accent
     // cards (not flat bars) so the two sections read as distinct cards.
     const ACCENT = {
@@ -38076,19 +38069,23 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const sectionHeader = (which, label, rows) => {
       const open = !_samplesSectionCollapsed[which];
       const a = ACCENT[which];
-      const { c, oldest, soonestEta } = _summarize(rows);
+      const { c, withNotes } = _summarize(rows);
       const statusChips = SAMPLE_STATUSES.map(st => {
         if (!c[st]) return '';
         const col = SAMPLE_STATUS_COLORS[st] || SAMPLE_STATUS_COLORS.pending;
         return `<span style="display:inline-flex; align-items:center; font-size:11px; font-weight:600; padding:2px 9px; border-radius:12px; background:${col.bg}; border:1px solid ${col.border}; color:${col.text}; white-space:nowrap;">${c[st]} ${SAMPLE_STATUS_LABELS[st]}</span>`;
       }).join('');
-      const dateChips = [];
-      if (oldest !== null) dateChips.push(`<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">In list since ${_fmtDate(oldest)}</span>`);
-      // Expected back only makes sense for inbound samples.
-      if (which === 'from' && soonestEta !== null) dateChips.push(`<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">Next expected ${_fmtDate(soonestEta)}</span>`);
-      const dateStr = dateChips.join('<span style="color:var(--text-muted);">·</span>');
-      const hasMeta = statusChips || dateStr;
-      const sep = (statusChips && dateStr) ? `<span style="width:1px; height:14px; background:var(--border); flex:0 0 auto;"></span>` : '';
+      const notesChip = withNotes > 0
+        ? `<span title="${withNotes} item${withNotes === 1 ? '' : 's'} with a note or comment" style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:2px 9px; border-radius:12px; background:var(--surface); border:1px solid var(--border); color:var(--text);"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:0 0 auto;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${withNotes} with notes</span>`
+        : '';
+      const metaBits = [statusChips, notesChip].filter(Boolean);
+      const hasMeta = metaBits.length > 0;
+      // The "+ New" create button lives on the To China bar itself, so it's
+      // reachable whether the section is collapsed or expanded. stopPropagation
+      // so tapping it doesn't also toggle the section.
+      const newBtn = which === 'to'
+        ? `<button onclick="event.stopPropagation(); openNewToChinaSampleModal();" style="margin-left:auto; flex:0 0 auto; font-size:11px; font-weight:700; color:#fff; background:${a.line}; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">+ New To-China Sample</button>`
+        : '';
       return `<tr class="sn-group-header" onclick="toggleSamplesSection('${which}')" style="cursor:pointer;">
         <td colspan="11" style="padding:0; text-align:left;">
           <div style="display:flex; align-items:center; gap:11px; flex-wrap:wrap; margin:12px; padding:14px 16px; background:${a.bar}; border:1px solid var(--border); border-left:4px solid ${a.line}; border-radius:12px;">
@@ -38096,8 +38093,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <span style="font-weight:800; font-size:13px; letter-spacing:0.05em; text-transform:uppercase; color:${a.line}; flex:0 0 auto;">${label}</span>
             <span style="font-size:11px; font-weight:800; color:${a.line}; background:${a.pill}; border-radius:12px; padding:2px 11px; flex:0 0 auto;">${rows.length}</span>
             ${hasMeta
-              ? `<span style="display:inline-flex; gap:9px; align-items:center; flex-wrap:wrap;">${statusChips}${sep}${dateStr}</span>`
+              ? `<span style="display:inline-flex; gap:9px; align-items:center; flex-wrap:wrap;">${metaBits.join('')}</span>`
               : `<span style="font-size:11px; color:var(--text-muted);">none yet</span>`}
+            ${newBtn}
           </div>
         </td>
       </tr>`;
