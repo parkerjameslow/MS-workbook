@@ -1003,9 +1003,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
 
     select {
-      height: 38px;
+      height: 42px;
       cursor: pointer;
+      /* Roomier than inputs so the value never looks crammed against the
+         dropdown arrow. Extra right padding keeps text clear of the native
+         chevron; .select-wrap selects override padding-right for their own. */
+      padding: 10px 32px 10px 14px;
     }
+    /* Compact pill-style selects (sample row direction/status etc.) must stay
+       small — opt them out of the roomy select height above. */
+    .sample-status-sel, .sample-dir-sel { height: auto; padding: 3px 8px; }
 
     .select-wrap, .select-wrapper {
       position: relative;
