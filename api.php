@@ -125,6 +125,28 @@ if ($_requestedAction === 'approve_quote') {
                     $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 4), updated_at = NOW(), updated_by = 'client-approval' WHERE id = ?")
                         ->execute([json_encode($detail), $wbId]);
                     $ok = true;
+                    // Ping Slack so Parker knows the moment a client approves.
+                    try {
+                        $prodName = trim((string)($detail['product'] ?? $row['product_name'] ?? 'A workbook'));
+                        $cn = trim((string)($detail['client'] ?? ''));
+                        $hb = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com');
+                        $wbUrl = $hb . '/#/client/' . rawurlencode($cn) . '/workbook/' . $wbId;
+                        $txt = ":white_check_mark: *Client approved a quote* — *{$prodName}*" . ($cn !== '' ? " · {$cn}" : '') . " is approved and now in the Orders queue, ready to turn into an order.";
+                        if (function_exists('parker_slack_api') && defined('SLACK_APPROVALS_CHANNEL') && SLACK_APPROVALS_CHANNEL !== '' && defined('SLACK_BOT_TOKEN') && SLACK_BOT_TOKEN !== '') {
+                            parker_slack_api('chat.postMessage', [
+                                'channel' => SLACK_APPROVALS_CHANNEL,
+                                'text'    => $txt,
+                                'blocks'  => json_encode([
+                                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $txt]],
+                                    ['type' => 'actions', 'elements' => [['type' => 'button', 'text' => ['type' => 'plain_text', 'text' => 'Open workbook'], 'url' => $wbUrl]]],
+                                ]),
+                            ]);
+                        } elseif (defined('SLACK_WEBHOOK_URL') && SLACK_WEBHOOK_URL !== '') {
+                            $ch = curl_init(SLACK_WEBHOOK_URL);
+                            curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 6, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode(['text' => $txt])]);
+                            curl_exec($ch); curl_close($ch);
+                        }
+                    } catch (Exception $e) { /* never block the approval on a Slack hiccup */ }
                 }
             }
         } catch (Exception $e) { /* fall through to the generic failure page */ }
@@ -696,6 +718,10 @@ if (!defined('SLACK_ACCOUNTING_CHANNEL')) { $v = getenv('SLACK_ACCOUNTING_CHANNE
 // of this channel — invite it once with /invite in the channel. Override in
 // api.local.php to point elsewhere.
 if (!defined('SLACK_SHIPMENTS_CHANNEL')) { $v = getenv('SLACK_SHIPMENTS_CHANNEL'); define('SLACK_SHIPMENTS_CHANNEL', is_string($v) && $v !== '' ? $v : 'C0CG5MT9XFU'); }
+// Channel for client quote-approval pings. Defaults to #shipments so it works
+// immediately; create a dedicated #client-approved channel, invite the bot, and
+// set SLACK_APPROVALS_CHANNEL (env or api.local.php) to its id to move it there.
+if (!defined('SLACK_APPROVALS_CHANNEL')) { $v = getenv('SLACK_APPROVALS_CHANNEL'); define('SLACK_APPROVALS_CHANNEL', is_string($v) && $v !== '' ? $v : (defined('SLACK_SHIPMENTS_CHANNEL') ? SLACK_SHIPMENTS_CHANNEL : '')); }
 // Trello REST API key + token:
 if (!defined('TRELLO_KEY'))   { $v = getenv('TRELLO_KEY');   define('TRELLO_KEY',   is_string($v) ? $v : ''); }
 if (!defined('TRELLO_TOKEN')) { $v = getenv('TRELLO_TOKEN'); define('TRELLO_TOKEN', is_string($v) ? $v : ''); }
@@ -3744,10 +3770,24 @@ switch ($action) {
         $total = (float)($detail['pricingClientQuoteTotal'] ?? 0);
         $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
         $usd = function ($v) { return '$' . number_format((float)$v, 2); };
-        $body = '<p style="margin:0 0 14px;font-size:15px;color:#4b5563;line-height:1.6;">Hi' . ($clientName !== '' ? ' ' . $esc($clientName) : '') . ', your quote for <strong>' . $esc($product) . '</strong> is ready for your approval.</p>'
-              . ($total > 0 ? '<p style="margin:0 0 16px;font-size:14px;color:#1a1d2e;">Total: <strong>' . $usd($total) . '</strong></p>' : '')
-              . '<p style="margin:0 0 20px;"><a href="' . $esc($approveUrl) . '" style="display:inline-block;background:#16a34a;color:#fff;padding:13px 28px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px;">&#10003; Approve this quote</a></p>'
-              . '<p style="color:#6b7280;font-size:12px;margin-top:18px;">Clicking Approve confirms you\'d like to proceed and we\'ll begin preparing your order. Questions? Just reply to this email.</p>';
+        // The frontend passes the FULL itemized quote (same layout as the Client
+        // Quote PDF) as inline-styled HTML. If present, show it; otherwise fall
+        // back to a product + total summary. The Approve button is always on top.
+        $quoteHtml = (string)($input['quote_html'] ?? '');
+        $approveBtn = '<div style="text-align:center;margin:0 0 22px;"><a href="' . $esc($approveUrl) . '" style="display:inline-block;background:#16a34a;color:#fff;padding:14px 34px;border-radius:9px;text-decoration:none;font-weight:800;font-size:16px;">&#10003; Approve this quote</a>'
+                    . '<div style="font-size:11px;color:#9ba3c0;margin-top:8px;">One click confirms you\'d like to proceed — we\'ll begin preparing your order.</div></div>';
+        if ($quoteHtml !== '') {
+            $body = '<p style="margin:0 0 18px;font-size:15px;color:#4b5563;line-height:1.6;">Hi' . ($clientName !== '' ? ' ' . $esc($clientName) : '') . ', your quote is ready. Review it below and press <strong>Approve</strong> to proceed.</p>'
+                  . $approveBtn
+                  . '<div style="border:1px solid #e5e7eb;border-radius:14px;padding:22px 20px;background:#fff;">' . $quoteHtml . '</div>'
+                  . $approveBtn
+                  . '<p style="color:#6b7280;font-size:12px;margin-top:18px;">Questions? Just reply to this email.</p>';
+        } else {
+            $body = '<p style="margin:0 0 14px;font-size:15px;color:#4b5563;line-height:1.6;">Hi' . ($clientName !== '' ? ' ' . $esc($clientName) : '') . ', your quote for <strong>' . $esc($product) . '</strong> is ready for your approval.</p>'
+                  . ($total > 0 ? '<p style="margin:0 0 16px;font-size:14px;color:#1a1d2e;">Total: <strong>' . $usd($total) . '</strong></p>' : '')
+                  . $approveBtn
+                  . '<p style="color:#6b7280;font-size:12px;margin-top:18px;">Questions? Just reply to this email.</p>';
+        }
         $html = ms_email_wrap('Quote Approval', 'Your quote is ready — approve to proceed', $body);
         $mail = ms_smtp_send([$to], 'Your quote is ready to approve — ' . $product, $html);
         echo json_encode(['success' => !empty($mail['ok']), 'error' => empty($mail['ok']) ? ($mail['error'] ?? 'Email failed') : null, 'to' => $to]);

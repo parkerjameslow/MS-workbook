@@ -38959,6 +38959,43 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return `<div style="margin-bottom:20px;"><div style="display:flex; align-items:center; gap:8px; padding:4px 2px 8px; border-bottom:2px solid var(--border); margin-bottom:10px;"><span style="font-weight:800; font-size:15px;">${esc(cn)}</span><span style="font-size:11px; color:var(--text-muted); font-weight:600;">${groups[cn].length}</span></div>${rows}</div>`;
     }).join('');
   }
+  // Render the Client Quote as an email-safe (inline-styled) HTML fragment that
+  // mirrors the Client Quote PDF — same header, stat tiles, itemized table with
+  // variant/fee rows, and Order Total. Driven by the same `data` shape as
+  // exportClientQuotePDF (_collectClientQuoteForExport), so it stays in step.
+  function _clientQuoteEmailHtml(data) {
+    if (!data) return '';
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const m = data.meta || {}, sm = data.summary || {};
+    const imgs = (Array.isArray(m.clientQuoteImages) && m.clientQuoteImages.length)
+      ? `<div style="margin:0 0 16px;">${m.clientQuoteImages.map(u => `<img src="${esc(_cqImageAbsUrl(u))}" alt="" style="max-width:260px; max-height:180px; border-radius:10px; border:1px solid #e5e7eb; display:inline-block; margin:0 8px 8px 0;" />`).join('')}</div>`
+      : '';
+    const rows = (data.lineItems || []).map(it => {
+      const indent = (it.kind === 'variant' || it.kind === 'combineMember');
+      const isParent = it.kind === 'parent';
+      const isFee = (it.kind === 'fee' || it.kind === 'feeZero');
+      const lblStyle = `padding:9px 12px${indent ? ' 9px 28px' : ''};border-bottom:1px solid #f0f2f5;color:${indent ? '#4b5563' : '#1a1d2e'};font-weight:${isParent ? '700' : '400'};font-size:${indent ? '12px' : '13px'};`;
+      const numStyle = 'padding:9px 12px;text-align:right;border-bottom:1px solid #f0f2f5;color:#6b7280;font-size:12.5px;';
+      const totStyle = `padding:9px 12px;text-align:right;border-bottom:1px solid #f0f2f5;font-weight:${isParent ? '700' : '400'};color:${isFee ? '#E8751A' : '#1a1d2e'};font-size:12.5px;`;
+      return `<tr style="${isFee ? 'background:#fff7ed;' : ''}"><td style="${lblStyle}">${isFee ? '+ ' : ''}${esc(it.label)}</td><td style="${numStyle}">${esc(it.qty)}</td><td style="${numStyle}">${esc(it.sale)}</td><td style="${totStyle}">${esc(it.total)}</td></tr>`;
+    }).join('');
+    const th = 'padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;background:#f8f9fb;border-bottom:1px solid #e5e7eb;';
+    const stat = (lbl, val, accent) => `<td style="padding:10px 12px;border:1px solid ${accent ? 'rgba(232,117,26,0.4)' : 'rgba(107,147,255,0.25)'};border-radius:8px;background:${accent ? 'rgba(232,117,26,0.08)' : 'rgba(107,147,255,0.06)'};"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:${accent ? '#E8751A' : '#6b93ff'};margin-bottom:4px;">${esc(lbl)}</div><div style="font-size:14px;font-weight:700;color:#1a1d2e;">${esc(val || '—')}</div></td>`;
+    return `
+    <div style="font-size:22px;font-weight:800;color:#E8751A;">Market Sculpt</div>
+    <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;margin-bottom:12px;">Client Quote</div>
+    <h1 style="font-size:20px;font-weight:800;margin:6px 0 4px;color:#1a1d2e;">${esc(m.productName || 'Quote')}</h1>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:14px;">Prepared for <strong>${esc(m.clientName)}</strong>${m.quoteDate ? ` &nbsp;·&nbsp; ${esc(m.quoteDate)}` : ''}</div>
+    ${imgs}
+    <table width="100%" cellpadding="0" cellspacing="6" style="border-collapse:separate;margin:8px 0 14px;"><tr>${stat('Sale Price (USD)', sm.salePrice)}${stat('Total Order', sm.totalOrder, true)}${stat('Production Lead', sm.productionLead)}${stat('Shipping Lead', sm.shippingLead)}${stat('Total Lead', sm.totalLead)}</tr></table>
+    ${sm.estDelivery ? `<div style="padding:10px 14px;background:rgba(232,117,26,0.07);border:1px solid rgba(232,117,26,0.3);border-radius:8px;margin:0 0 16px;font-size:12px;"><strong style="color:#E8751A;text-transform:uppercase;font-size:10px;letter-spacing:0.05em;">Estimated Delivery</strong> &nbsp; <span style="font-size:15px;font-weight:800;color:#1a1d2e;">${esc(sm.estDelivery)}</span> <span style="color:#9ba3c0;">≈ ${esc(String(sm.estDeliveryDays || ''))} days</span></div>` : ''}
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;margin-bottom:6px;">
+      <thead><tr><th style="${th}text-align:left;">Item</th><th style="${th}text-align:right;">Qty</th><th style="${th}text-align:right;">Sale Price</th><th style="${th}text-align:right;">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td colspan="3" style="padding:12px;text-align:right;font-weight:700;border-top:2px solid #E8751A;color:#1a1d2e;">Order Total</td><td style="padding:12px;text-align:right;font-weight:800;color:#E8751A;border-top:2px solid #E8751A;">${esc(sm.totalOrder || '—')}</td></tr></tfoot>
+    </table>`;
+  }
+
   async function sendQuoteForApproval(clientName, workbookId, btn) {
     const key = `${clientName}|${workbookId}`;
     const dbId = dbWorkbookMap[key] || workbookId;
@@ -38967,7 +39004,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (!confirm(`Email a quote preview with a one-click Approve button to ${clientEmail}?\n\nWhen they approve, this workbook moves to the Orders queue.`)) return;
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     try {
-      const res = await apiCall('send_quote_approval', { workbook_id: dbId, client_name: clientName, client_email: clientEmail });
+      // Build the full itemized quote (same look as the Client Quote PDF). Use
+      // the live pricing tab if THIS workbook is open, else the snapshot saved
+      // on the workbook. Falls back to the simple email if neither is available.
+      let quoteHtml = '';
+      try {
+        const data = (currentClient === clientName && String(currentWorkbookId) === String(workbookId) && typeof _collectClientQuoteForExport === 'function')
+          ? _collectClientQuoteForExport()
+          : ((workbookDetail[key] || {}).clientQuoteExport || null);
+        if (data) quoteHtml = _clientQuoteEmailHtml(data);
+      } catch (_) {}
+      const res = await apiCall('send_quote_approval', { workbook_id: dbId, client_name: clientName, client_email: clientEmail, quote_html: quoteHtml });
       if (res && res.success) {
         const d = workbookDetail[key]; if (d) { d.approvalSentAt = new Date().toISOString(); }
         if (typeof _msToast === 'function') _msToast(`Approval request sent to ${clientEmail}.`, 'success');
@@ -39846,6 +39893,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       waitingForClientAt: existing.waitingForClientAt || null,
       approvalToken:      existing.approvalToken || null,
       approvedByClientAt: existing.approvedByClientAt || null,
+      approvalSentAt:     existing.approvalSentAt || null,
+      // Rendered Client Quote snapshot (for the approval email); refreshed by
+      // doSaveWorkbook, preserved here so other save paths keep it.
+      clientQuoteExport:  existing.clientQuoteExport || null,
       // "Moved to Orders" staging flag (managed via the Samples → Orders
       // bulk action, not DOM-driven). Preserve it or opening a staged
       // workbook + navigating away would save a detail without it and
@@ -39923,6 +39974,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const detail = collectWorkbookDetail();
       const key = `${currentClient}|${currentWorkbookId}`;
       _guardRfqSilentBlanking(detail, _wbBaseDetail[key]);
+      // Snapshot the rendered Client Quote (same data the PDF uses) so the
+      // Waiting-for-Client approval email can show the full itemized quote even
+      // when this workbook isn't the one currently open on the dashboard.
+      try { const _cqd = _collectClientQuoteForExport(); if (_cqd && Array.isArray(_cqd.lineItems) && _cqd.lineItems.length) detail.clientQuoteExport = _cqd; } catch (_) {}
       workbookDetail[key] = detail;
 
       // Snapshot EXACTLY which dirty fields (and their values) this save
