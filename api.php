@@ -4027,6 +4027,47 @@ switch ($action) {
         break;
     }
 
+    // Post a receiving summary to #Accounting: exactly what was received per
+    // item (received vs expected) with discrepancies called out so they can
+    // email the supplier.
+    case 'notify_received': {
+        $name       = trim((string)($input['name'] ?? 'Shipment'));
+        $sid        = (string)($input['sid'] ?? '');
+        $notes      = trim((string)($input['notes'] ?? ''));
+        $receivedBy = trim((string)($input['receivedBy'] ?? ''));
+        $audit      = is_array($input['audit'] ?? null) ? $input['audit'] : [];
+        if (SLACK_BOT_TOKEN === '' || SLACK_ACCOUNTING_CHANNEL === '' || !function_exists('curl_init')) {
+            echo json_encode(['success' => false, 'error' => 'Slack not configured']); break;
+        }
+        $int = function ($v) { return number_format((float)$v); };
+        $hasDisc = false;
+        foreach ($audit as $a) { if (!empty($a['discrepancy'])) { $hasDisc = true; break; } }
+        $head = ($hasDisc ? '⚠️ Received with discrepancies — ' : '📥 Received — ') . $name;
+        $lines = [];
+        foreach ($audit as $a) {
+            $exp = (float)($a['expected'] ?? 0); $rec = (float)($a['received'] ?? 0);
+            $mark = !empty($a['discrepancy']) ? '⚠️' : '✅';
+            $prod = trim((string)($a['product'] ?? 'Item'));
+            $client = trim((string)($a['client'] ?? ''));
+            $line = $mark . ' *' . $prod . '*' . ($client !== '' ? ' (' . $client . ')' : '')
+                  . ' — received *' . $int($rec) . '* / expected ' . $int($exp);
+            if ($rec != $exp) { $d = $rec - $exp; $line .= '  (' . ($d > 0 ? '+' : '') . $int($d) . ')'; }
+            if (!empty($a['note'])) $line .= ' — _' . trim((string)$a['note']) . '_';
+            $lines[] = $line;
+        }
+        if ($notes !== '')      $lines[] = '📝 ' . $notes;
+        if ($receivedBy !== '') $lines[] = 'Received by ' . $receivedBy;
+        if ($hasDisc)           $lines[] = '➡️ *Discrepancies above — follow up with the supplier (send them an email).*';
+        if ($sid !== '')        $lines[] = '<https://wb.marketsculpt.com/#/shipment/' . rawurlencode($sid) . '|Open shipment →>';
+        $blocks = [
+            ['type' => 'header',  'text' => ['type' => 'plain_text', 'text' => mb_substr($head, 0, 150), 'emoji' => true]],
+            ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $lines) ?: $head]],
+        ];
+        $r = parker_slack_api('chat.postMessage', ['channel' => SLACK_ACCOUNTING_CHANNEL, 'text' => $head, 'blocks' => json_encode($blocks)]);
+        echo json_encode(['success' => is_array($r) && !empty($r['ok']), 'error' => (is_array($r) ? ($r['error'] ?? null) : 'no response')]);
+        break;
+    }
+
     // Pull recent ShipStation orders (optionally by tag) so ones built in
     // ShipStation can be imported into the To-China Samples list.
     case 'shipstation_import_orders': {
@@ -8592,18 +8633,31 @@ switch ($action) {
     case 'notify_stage_slack':
         // Fire a team Slack channel message when a workbook/shipment hits a
         // key stage (Sent for Review, Delivered → needs audit). Fire-and-
-        // forget from the frontend on an operator-initiated move. No-ops
-        // cleanly when SLACK_WEBHOOK_URL isn't configured, and never
-        // blocks the move it's reporting.
-        if (SLACK_WEBHOOK_URL === '' || !function_exists('curl_init')) {
-            echo json_encode(['success' => true, 'skipped' => 'no_webhook']);
-            break;
-        }
+        // forget from the frontend on an operator-initiated move.
         $stTitle = trim((string)($input['title'] ?? 'Stage update'));
         $stEmoji = trim((string)($input['emoji'] ?? ':package:'));
         $stLines = $input['lines'] ?? [];
         if (!is_array($stLines)) $stLines = [];
         $stBody = implode("\n", array_map(fn($l) => (string)$l, $stLines));
+        // channel:'shipments' → post via the bot to #shipments (not the CRM
+        // webhook's fixed channel). Falls through to the webhook otherwise.
+        if (trim((string)($input['channel'] ?? '')) === 'shipments'
+            && SLACK_BOT_TOKEN !== '' && SLACK_SHIPMENTS_CHANNEL !== '' && function_exists('curl_init')) {
+            $r = parker_slack_api('chat.postMessage', [
+                'channel' => SLACK_SHIPMENTS_CHANNEL,
+                'text'    => $stTitle,
+                'blocks'  => json_encode([
+                    ['type' => 'header',  'text' => ['type' => 'plain_text', 'text' => mb_substr(trim($stEmoji . ' ' . $stTitle), 0, 150), 'emoji' => true]],
+                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $stBody !== '' ? $stBody : $stTitle]],
+                ]),
+            ]);
+            echo json_encode(['success' => is_array($r) && !empty($r['ok']), 'error' => (is_array($r) ? ($r['error'] ?? null) : 'no response')]);
+            break;
+        }
+        if (SLACK_WEBHOOK_URL === '' || !function_exists('curl_init')) {
+            echo json_encode(['success' => true, 'skipped' => 'no_webhook']);
+            break;
+        }
         $stPayload = json_encode([
             'text'   => $stTitle,
             'blocks' => [

@@ -39503,10 +39503,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // Fire-and-forget team Slack alert on a key stage move. Posts to the
   // shared channel via notify_stage_slack, which no-ops server-side when
   // SLACK_WEBHOOK_URL isn't configured. Never blocks the move it reports.
-  function _notifyStageSlack(title, emoji, lines) {
+  function _notifyStageSlack(title, emoji, lines, channel) {
     try {
       const p = apiCall('notify_stage_slack', {
         title, emoji, lines: Array.isArray(lines) ? lines : [lines],
+        channel: channel || '',
       });
       if (p && typeof p.catch === 'function') p.catch(e => console.warn('[MS stage slack]', e));
     } catch (e) { console.warn('[MS stage slack]', e); }
@@ -39520,8 +39521,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const lines = [`*${s.name || 'Shipment'}* is delivered and needs a receiving audit.`];
     const carr = [(s.carrier || '').toUpperCase(), s.trackingNumber || ''].filter(Boolean).join(' ');
     if (carr) lines.push(`Carrier: ${carr}`);
+    const summ = (typeof _shipmentContentsSummary === 'function') ? _shipmentContentsSummary(s) : '';
+    if (summ) lines.push(`📦 ${summ}`);
     lines.push('Open the Receiving lane to check received qty and mark it received.');
-    _notifyStageSlack('Shipment delivered — needs audit', ':inbox_tray:', lines);
+    // → #shipments (via the bot), not the CRM webhook's channel.
+    _notifyStageSlack('Shipment delivered — needs audit', ':inbox_tray:', lines, 'shipments');
   }
 
   // submit_for_review sets sentForReview in the DB but does NOT come back
@@ -46818,6 +46822,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const receivedQty = qtyInp ? (parseFloat(qtyInp.value) || 0) : 0;
       const note = noteInp ? (noteInp.value || '').trim() : '';
       audit.push({
+        product: r.product,
+        orderName: r.orderName,
         clientName: r.clientName,
         workbookId: r.workbookId,
         expectedQty: r.qty,
@@ -46835,6 +46841,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     s.receivedNotes = document.getElementById('received-modal-notes').value.trim();
     s.receivedAudit = audit;
     saveShipments();
+    // Ping #Accounting with exactly what was received + any discrepancies to
+    // chase (so they can email the supplier). Fire-and-forget.
+    try {
+      apiCall('notify_received', {
+        name: s.name || ('Shipment #' + ctx.shipmentId),
+        sid: String(ctx.shipmentId),
+        receivedBy: (typeof getCurrentUser === 'function' ? getCurrentUser() : ''),
+        notes: s.receivedNotes || '',
+        audit: audit.map(a => ({ product: a.product, client: a.clientName, order: a.orderName, expected: a.expectedQty, received: a.receivedQty, discrepancy: a.discrepancy, note: a.notes })),
+      }).catch(() => {});
+    } catch (_) {}
     closeReceivedModal();
     if (ctx.returnTo === 'detail') {
       const dd = document.getElementById('ship-detail-status');
@@ -52506,15 +52523,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     if (data.eta && !s.eta && bucket !== 'delivered') { const y = toYmd(data.eta); if (y) s.eta = y; }
     s.contentsSummary = _shipmentContentsSummary(s);
-    if (newStatus && newStatus.toLowerCase() !== prevNotified.toLowerCase()
-        && ['in_transit', 'out_for_delivery', 'delivered', 'exception'].includes(bucket)) {
+    if (newStatus && newStatus.toLowerCase() !== prevNotified.toLowerCase()) {
       try {
-        await apiCall('notify_shipment_change', {
-          sid: s.id, name: s.name || ('Shipment #' + s.id), carrier: s.carrier || '',
-          tracking: s.trackingNumber || '', status: newStatus, bucket,
-          location: data.location || '', eta: data.eta || '', summary: s.contentsSummary || '',
-        });
-        s.tracking.notifiedStatus = newStatus;
+        if (bucket === 'delivered') {
+          // Delivered gets the richer "needs audit" message (→ #shipments).
+          _notifyShipmentDelivered(s);
+          s.tracking.notifiedStatus = newStatus;
+        } else if (['in_transit', 'out_for_delivery', 'exception'].includes(bucket)) {
+          await apiCall('notify_shipment_change', {
+            sid: s.id, name: s.name || ('Shipment #' + s.id), carrier: s.carrier || '',
+            tracking: s.trackingNumber || '', status: newStatus, bucket,
+            location: data.location || '', eta: data.eta || '', summary: s.contentsSummary || '',
+          });
+          s.tracking.notifiedStatus = newStatus;
+        }
       } catch (_) {}
     }
   }
