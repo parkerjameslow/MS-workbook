@@ -10353,6 +10353,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
         <span id="samples-count-badge" style="background:var(--accent-glow); border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); color:var(--accent); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; white-space:nowrap;">0 samples</span>
+        <button class="btn btn-primary" style="font-size:12px; white-space:nowrap;" onclick="openNewToChinaSampleModal()" title="Create a reference sample you're shipping TO a factory in China">+ New To-China Sample</button>
       </div>
     </div>
 
@@ -10384,13 +10385,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <button class="status-filter-btn" id="samples-filter-requested" onclick="filterSamples('requested', this)">Requested</button>
           <button class="status-filter-btn" id="samples-filter-received" onclick="filterSamples('received', this)">Received</button>
           <button class="status-filter-btn" id="samples-filter-approved" onclick="filterSamples('approved', this)">Approved</button>
-          <!-- Direction filter — orthogonal to the status filters above.
-               Its own active state (dir-filter-btn class) so it doesn't
-               fight the status toggle. Counts update per render. -->
-          <span style="width:1px; height:20px; background:var(--border); margin:0 4px;"></span>
-          <button class="status-filter-btn dir-filter-btn active" id="samples-dir-all" onclick="filterSamplesDir('all', this)">All Directions</button>
-          <button class="status-filter-btn dir-filter-btn" id="samples-dir-from" onclick="filterSamplesDir('from', this)">← From China <span id="samples-dir-from-count" style="opacity:0.7;"></span></button>
-          <button class="status-filter-btn dir-filter-btn" id="samples-dir-to" onclick="filterSamplesDir('to', this)">→ To China <span id="samples-dir-to-count" style="opacity:0.7;"></span></button>
+          <!-- Direction is now shown as two collapsible sections (From China /
+               To China) in the table body, so the old direction filter chips
+               were removed to avoid two competing controls. -->
         </div>
       </div>
       <div class="section-body" style="padding:0;">
@@ -10862,6 +10859,45 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
         <button class="btn btn-ghost" onclick="closeSampleShipmentModal()">Cancel</button>
         <button class="btn btn-primary" onclick="confirmSampleShipmentModal()">+ Create &amp; Move to Receiving</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New To-China Sample modal — creates a standalone reference sample that
+     Parker ships TO a factory. Lives on the Samples dashboard (To China
+     section), not tied to any workbook; client tag is optional. -->
+<div class="modal-overlay" id="new-to-china-modal" style="display:none;">
+  <div class="modal" style="max-width:460px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">New To-China Sample</h3>
+      <button onclick="closeNewToChinaSampleModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">A reference product you're shipping <strong style="color:var(--text);">to a factory</strong> to match. It appears under <strong>→ To China</strong> and can be added to a shipment.</p>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Sample / Item <span style="color:#fb7185;">*</span></label>
+        <input id="ntc-item" type="text" class="form-input" style="width:100%;" placeholder="e.g. Competitor bottle — match neck finish" autocomplete="off" />
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div style="flex:0 0 120px;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Qty</label>
+          <input id="ntc-qty" type="text" class="form-input" style="width:100%;" placeholder="1" autocomplete="off" />
+        </div>
+        <div style="flex:1 1 auto;">
+          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Client <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label>
+          <input id="ntc-client" type="text" class="form-input" style="width:100%;" list="ntc-client-list" placeholder="— none —" autocomplete="off" />
+          <datalist id="ntc-client-list"></datalist>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Notes <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label>
+        <textarea id="ntc-notes" class="form-input" style="width:100%; min-height:60px; resize:vertical;" placeholder="What should the factory match / why you're sending it"></textarea>
+      </div>
+      <div id="ntc-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closeNewToChinaSampleModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmNewToChinaSample()">+ Add Sample</button>
       </div>
     </div>
   </div>
@@ -37702,6 +37738,60 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // doesn't lose their selection mid-flow.
   const _samplesSelected = new Set();
 
+  // Collapsible From/To China sections on the Samples dashboard — BOTH
+  // collapsed on entry (Parker's ask). 'from' = inbound factory samples we
+  // wait on; 'to' = outbound reference samples we ship TO China.
+  let _samplesSectionCollapsed = { from: true, to: true };
+  function toggleSamplesSection(which) {
+    _samplesSectionCollapsed[which] = !_samplesSectionCollapsed[which];
+    renderSamplesTable(collectAllSamples());
+  }
+
+  // Standalone "To China" samples — created straight from the Samples
+  // dashboard, NOT tied to any workbook (Parker ships reference products to
+  // factories to match). Persisted in app_state ms_to_china_samples. Each:
+  // { id, item, qty, client, notes, status, createdAt, createdBy, shipmentId }.
+  let _toChinaStandalone = [];
+  let _toChinaLoaded = false;
+  async function _ensureToChinaLoaded() {
+    if (_toChinaLoaded) return;
+    try {
+      const r = await apiCall('get_app_state', { key: 'ms_to_china_samples' });
+      let v = []; if (r && r.success && r.value) { try { v = JSON.parse(r.value); } catch (_) {} }
+      _toChinaStandalone = Array.isArray(v) ? v : [];
+    } catch (e) { _toChinaStandalone = []; }
+    _toChinaLoaded = true;
+    try {
+      if (document.getElementById('view-samples') && String(location.hash).indexOf('#/samples') === 0
+          && typeof renderSamplesDashboard === 'function') renderSamplesDashboard();
+    } catch (_) {}
+  }
+  function _saveToChinaStandalone() {
+    try {
+      apiCall('save_app_state', { key: 'ms_to_china_samples', value: JSON.stringify(_toChinaStandalone),
+        changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }).catch(() => {});
+    } catch (e) {}
+  }
+  // Composite select-key for a standalone row (workbook rows use key|rowIndex).
+  function _saCompKey(id) { return '__sa__:' + id; }
+  // Map a standalone record onto the same row shape the table renderer uses.
+  function _standaloneAsSampleRow(s) {
+    return {
+      clientName: s.client || '',
+      workbookId: '',
+      product: s.item || 'Reference sample',
+      item: s.item || '—',
+      qty: (s.qty != null && s.qty !== '') ? String(s.qty) : '',
+      priceRmb: '', priceUsd: '', leadTime: '',
+      status: s.status || 'pending',
+      direction: 'to',
+      rowIndex: -1,
+      key: '__sa__',
+      standalone: true,
+      id: s.id,
+    };
+  }
+
   // ── Workbook stage / fulfillment predicates ───────────────────────
   // A workbook flows Samples → RFQ → Review → Order → Shipment →
   // Receiving. It should live in exactly ONE nav location (its furthest
@@ -37845,23 +37935,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof _ensureSampleMetaLoaded === 'function') _ensureSampleMetaLoaded();
     // Also load pipeline meta so the per-workbook assignee avatars show.
     if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
+    // Load standalone To-China samples (re-renders when the blob lands).
+    if (typeof _ensureToChinaLoaded === 'function') _ensureToChinaLoaded();
 
     const allSamples = collectAllSamples();
+    const standalone = _toChinaStandalone || [];
+    const totalCount = allSamples.length + standalone.length;
 
     // Update count badge
     const countBadge = document.getElementById('samples-count-badge');
-    if (countBadge) countBadge.textContent = allSamples.length === 1 ? '1 sample' : `${allSamples.length} samples`;
+    if (countBadge) countBadge.textContent = totalCount === 1 ? '1 sample' : `${totalCount} samples`;
 
     // Update samples badge in nav (delegate to canonical function for consistent logic)
     rebuildSamplesNav();
 
-    // Stats row
+    // Stats row — counts span workbook samples + standalone To-China refs.
     const statsRow = document.getElementById('samples-stats-row');
     if (statsRow) {
       const counts = { pending: 0, requested: 0, received: 0, approved: 0 };
       allSamples.forEach(s => { if (counts[s.status] !== undefined) counts[s.status]++; });
+      standalone.forEach(s => { const st = s.status || 'pending'; if (counts[st] !== undefined) counts[st]++; });
       const statCards = [
-        { label: 'Total Samples', value: allSamples.length, icon: '◆', color: 'var(--accent)' },
+        { label: 'Total Samples', value: totalCount, icon: '◆', color: 'var(--accent)' },
         { label: 'Pending', value: counts.pending, icon: '⏳', color: '#6b93ff' },
         { label: 'Requested', value: counts.requested, icon: '📦', color: '#f59e0b' },
         { label: 'Received', value: counts.received, icon: '✅', color: '#4ade80' },
@@ -37882,27 +37977,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const tbody = document.getElementById('samples-tbody');
     const emptyEl = document.getElementById('samples-empty');
     const tableEl = document.getElementById('samples-table');
+    if (!tbody) return;
 
-    // Status filter first, then compute direction counts within that
-    // set (so "3 From China" reflects the current status view), then
-    // apply the direction filter.
+    // Status filter applies to BOTH sections. Then split into two groups:
+    // From China (inbound factory samples) and To China (outbound reference
+    // samples — workbook rows flagged 'to' PLUS dashboard standalone refs).
     const statusFiltered = _samplesFilter === 'all' ? allSamples : allSamples.filter(s => s.status === _samplesFilter);
-    const _dirCounts = { from: 0, to: 0 };
-    statusFiltered.forEach(s => { if (_dirCounts[s.direction] !== undefined) _dirCounts[s.direction]++; });
-    const _fc = document.getElementById('samples-dir-from-count');
-    const _tc = document.getElementById('samples-dir-to-count');
-    if (_fc) _fc.textContent = `(${_dirCounts.from})`;
-    if (_tc) _tc.textContent = `(${_dirCounts.to})`;
-    const filtered = _samplesDirFilter === 'all' ? statusFiltered : statusFiltered.filter(s => s.direction === _samplesDirFilter);
+    const fromRows = statusFiltered.filter(s => s.direction !== 'to');
+    const toRows   = statusFiltered.filter(s => s.direction === 'to');
+    (_toChinaStandalone || []).forEach(sa => {
+      const row = _standaloneAsSampleRow(sa);
+      if (_samplesFilter !== 'all' && row.status !== _samplesFilter) return;
+      toRows.push(row);
+    });
 
-    // Drop selections that are no longer visible (e.g. operator
-    // changed the filter to one that excludes a previously-selected
-    // sample, or the sample was removed). Keeps the bulk action's
-    // count honest without surprising the operator.
-    const visibleKeys = new Set(filtered.map(s => `${s.key}|${s.rowIndex}`));
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const _compOf = s => s.standalone ? _saCompKey(s.id) : `${s.key}|${s.rowIndex}`;
+
+    // Drop selections no longer visible so the bulk count stays honest.
+    const visibleKeys = new Set([...fromRows, ...toRows].map(_compOf));
     Array.from(_samplesSelected).forEach(k => { if (!visibleKeys.has(k)) _samplesSelected.delete(k); });
 
-    if (filtered.length === 0) {
+    if (fromRows.length === 0 && toRows.length === 0) {
       tbody.innerHTML = '';
       if (emptyEl) emptyEl.style.display = '';
       if (tableEl) tableEl.style.display = 'none';
@@ -37912,69 +38008,146 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (emptyEl) emptyEl.style.display = 'none';
     if (tableEl) tableEl.style.display = '';
 
-    // String-escape HTML inputs so client/product names containing < & " etc.
-    // can't break the markup or open injection holes via the title= attr.
-    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const sectionHeader = (which, label, count, color) => {
+      const open = !_samplesSectionCollapsed[which];
+      return `<tr class="sn-group-header" onclick="toggleSamplesSection('${which}')" style="cursor:pointer; background:var(--surface2);">
+        <td colspan="11" style="padding:11px 16px; font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text); border-top:1px solid var(--border);">
+          <span style="display:inline-block; width:14px; color:var(--text-muted);">${open ? '▾' : '▸'}</span>
+          <span style="color:${color};">${label}</span>
+          <span style="color:var(--text-muted); font-weight:600; margin-left:4px;">(${count})</span>
+        </td>
+      </tr>`;
+    };
+    const rowsHtml = (rows, which) => {
+      if (_samplesSectionCollapsed[which]) return '';
+      if (!rows.length) {
+        return `<tr><td colspan="11" style="padding:16px; text-align:center; color:var(--text-muted); font-size:13px;">No ${which === 'from' ? 'inbound' : 'outbound'} samples${_samplesFilter !== 'all' ? ' in this status' : ''}.</td></tr>`;
+      }
+      return rows.map(s => _sampleRowHtml(s, _compOf(s), esc)).join('');
+    };
 
-    tbody.innerHTML = filtered.map((s, i) => {
-      const sc = SAMPLE_STATUS_COLORS[s.status] || SAMPLE_STATUS_COLORS.pending;
-      const wbHref     = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
-      const clientHref = `#/client/${encodeURIComponent(s.clientName)}`;
-      const rmb = s.priceRmb ? `¥${parseFloat(s.priceRmb).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—';
-      const usd = s.priceUsd ? `$${parseFloat(s.priceUsd).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—';
-      const lead = s.leadTime ? `${s.leadTime}d` : '—';
-      // Client → deterministic per-name color via _clientChipStyle (same hue
-      // every render). Now clickable so users can drill into the client.
-      const clientPill = `<span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}"
-          onclick="event.stopPropagation(); location.hash='${clientHref.substring(1)}'"
-          title="${esc(s.clientName)}">${esc(s.clientName)}</span>`;
-      // Workbook → existing accent-blue pill with arrow, drills into the workbook.
-      const wbPill = `<span class="inv-wb-pill" onclick="event.stopPropagation(); location.hash='${wbHref.substring(1)}'"
-          title="${esc(s.product)}" style="max-width:100%; min-width:0;"
-          ><span class="inv-wb-pill-text">${esc(s.product)}</span><span class="inv-wb-pill-arrow">→</span></span>`;
-      const compKey = `${s.key}|${s.rowIndex}`;
-      const checked = _samplesSelected.has(compKey) ? 'checked' : '';
-      return `
-        <tr class="sn-data-row">
-          <td style="text-align:center;">
-            <input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked}
-                   onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" />
-          </td>
-          <td style="font-weight:600; color:var(--text);" title="${esc(s.item)}">${esc(s.item)}</td>
-          <td class="samples-pill-cell">${clientPill}</td>
-          <td class="samples-pill-cell">${wbPill}</td>
-          <td style="text-align:right; font-weight:600;">${s.qty !== '—' ? parseFloat(s.qty).toLocaleString('en-US') : '—'}</td>
-          <td style="text-align:right;">${rmb}</td>
-          <td style="text-align:right; color:var(--success);">${usd}</td>
-          <td style="color:var(--text-muted);">${lead}</td>
-          <td style="text-align:center;">
-            <select class="sample-dir-sel" onchange="updateSampleDirection('${s.key}', ${s.rowIndex}, this.value)"
-              title="Direction — From China (factory ships the sample back to us) or To China (we ship a reference for the factory to match)"
-              style="background:${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).bg}; border:1px solid ${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).border}; color:${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">
-              <option value="from" ${s.direction === 'from' ? 'selected' : ''}>← From China</option>
-              <option value="to" ${s.direction === 'to' ? 'selected' : ''}>→ To China</option>
-            </select>
-          </td>
-          <td style="text-align:center;">
-            <select class="sample-status-sel" onchange="updateSampleStatus('${s.key}', ${s.rowIndex}, this.value)"
-              style="background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">
-              ${SAMPLE_STATUSES.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${SAMPLE_STATUS_LABELS[st]}</option>`).join('')}
-            </select>
-          </td>
-          <td style="text-align:center; white-space:nowrap;">
-            ${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + s.key) : ''}
-            <span class="remove-tier" onclick="removeSampleRequest('${s.key}', ${s.rowIndex})" title="Unmark as sample (keeps the RFQ line item, just removes it from this list)" style="font-size:18px; color:var(--text-muted);">&times;</span>
-          </td>
-        </tr>
-        <tr class="sn-inline-row">
-          <td colspan="11" class="sn-inline-cell"><div class="sn-inline-host" data-snpanel="${encodeURIComponent(compKey)}">${_sampleNotesPanelInner(compKey)}</div></td>
-        </tr>
-      `;
-    }).join('');
-    // Reflect current selection state in the action bar + header
-    // checkbox now that the row checkboxes are in the DOM.
+    tbody.innerHTML =
+      sectionHeader('from', '← From China', fromRows.length, SAMPLE_DIR_STYLES.from.text) + rowsHtml(fromRows, 'from') +
+      sectionHeader('to',   '→ To China',   toRows.length,   SAMPLE_DIR_STYLES.to.text)   + rowsHtml(toRows, 'to');
+
     updateSamplesBulkActionBar();
     _syncSamplesHeaderCheckbox();
+  }
+
+  // One sample row (+ an inline notes row for workbook samples). Shared by
+  // both From/To China sections. `s.standalone` rows are dashboard-created
+  // To-China references with no workbook/price.
+  function _sampleRowHtml(s, compKey, esc) {
+    const sc = SAMPLE_STATUS_COLORS[s.status] || SAMPLE_STATUS_COLORS.pending;
+    const checked = _samplesSelected.has(compKey) ? 'checked' : '';
+    const clientHref = `#/client/${encodeURIComponent(s.clientName)}`;
+    const clientCell = s.clientName
+      ? `<span class="inv-client-chip" style="${_clientChipStyle(s.clientName)}" onclick="event.stopPropagation(); location.hash='${clientHref.substring(1)}'" title="${esc(s.clientName)}">${esc(s.clientName)}</span>`
+      : `<span style="color:var(--text-muted);">—</span>`;
+    const _statusOpts = SAMPLE_STATUSES.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${SAMPLE_STATUS_LABELS[st]}</option>`).join('');
+
+    if (s.standalone) {
+      const refChip = `<span style="display:inline-flex; align-items:center; gap:4px; background:rgba(107,147,255,0.10); border:1px solid rgba(107,147,255,0.30); color:#6b93ff; border-radius:20px; padding:2px 10px; font-size:11px; font-weight:600;">Reference</span>`;
+      const dirPill = `<span style="display:inline-block; background:${SAMPLE_DIR_STYLES.to.bg}; border:1px solid ${SAMPLE_DIR_STYLES.to.border}; color:${SAMPLE_DIR_STYLES.to.text}; border-radius:20px; padding:3px 10px; font-size:11px; font-weight:600;">→ To China</span>`;
+      return `
+        <tr class="sn-data-row">
+          <td style="text-align:center;"><input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" /></td>
+          <td style="font-weight:600; color:var(--text);" title="${esc(s.item)}">${esc(s.item)}</td>
+          <td class="samples-pill-cell">${clientCell}</td>
+          <td class="samples-pill-cell">${refChip}</td>
+          <td style="text-align:right; font-weight:600;">${s.qty ? parseFloat(String(s.qty).replace(/,/g,'')).toLocaleString('en-US') : '—'}</td>
+          <td style="text-align:right; color:var(--text-muted);">—</td>
+          <td style="text-align:right; color:var(--text-muted);">—</td>
+          <td style="color:var(--text-muted);">—</td>
+          <td style="text-align:center;">${dirPill}</td>
+          <td style="text-align:center;"><select class="sample-status-sel" onchange="updateStandaloneSampleStatus('${esc(String(s.id))}', this.value)" style="background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">${_statusOpts}</select></td>
+          <td style="text-align:center; white-space:nowrap;"><span class="remove-tier" onclick="deleteStandaloneSample('${esc(String(s.id))}')" title="Delete this To-China sample" style="font-size:18px; color:var(--text-muted);">&times;</span></td>
+        </tr>`;
+    }
+
+    const wbHref = `#/client/${encodeURIComponent(s.clientName)}/workbook/${s.workbookId}`;
+    const rmb = s.priceRmb ? `¥${parseFloat(s.priceRmb).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—';
+    const usd = s.priceUsd ? `$${parseFloat(s.priceUsd).toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}` : '—';
+    const lead = s.leadTime ? `${s.leadTime}d` : '—';
+    const wbPill = `<span class="inv-wb-pill" onclick="event.stopPropagation(); location.hash='${wbHref.substring(1)}'" title="${esc(s.product)}" style="max-width:100%; min-width:0;"><span class="inv-wb-pill-text">${esc(s.product)}</span><span class="inv-wb-pill-arrow">→</span></span>`;
+    return `
+      <tr class="sn-data-row">
+        <td style="text-align:center;"><input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" /></td>
+        <td style="font-weight:600; color:var(--text);" title="${esc(s.item)}">${esc(s.item)}</td>
+        <td class="samples-pill-cell">${clientCell}</td>
+        <td class="samples-pill-cell">${wbPill}</td>
+        <td style="text-align:right; font-weight:600;">${s.qty !== '—' ? parseFloat(s.qty).toLocaleString('en-US') : '—'}</td>
+        <td style="text-align:right;">${rmb}</td>
+        <td style="text-align:right; color:var(--success);">${usd}</td>
+        <td style="color:var(--text-muted);">${lead}</td>
+        <td style="text-align:center;">
+          <select class="sample-dir-sel" onchange="updateSampleDirection('${s.key}', ${s.rowIndex}, this.value)" title="Direction — From China (factory ships the sample back to us) or To China (we ship a reference for the factory to match)" style="background:${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).bg}; border:1px solid ${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).border}; color:${(SAMPLE_DIR_STYLES[s.direction]||SAMPLE_DIR_STYLES.from).text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">
+            <option value="from" ${s.direction === 'from' ? 'selected' : ''}>← From China</option>
+            <option value="to" ${s.direction === 'to' ? 'selected' : ''}>→ To China</option>
+          </select>
+        </td>
+        <td style="text-align:center;"><select class="sample-status-sel" onchange="updateSampleStatus('${s.key}', ${s.rowIndex}, this.value)" style="background:${sc.bg}; border:1px solid ${sc.border}; color:${sc.text}; border-radius:20px; padding:3px 8px; font-size:11px; font-weight:600; cursor:pointer; outline:none; -webkit-appearance:none; text-align:center; max-width:100%;">${_statusOpts}</select></td>
+        <td style="text-align:center; white-space:nowrap;">
+          ${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + s.key) : ''}
+          <span class="remove-tier" onclick="removeSampleRequest('${s.key}', ${s.rowIndex})" title="Unmark as sample (keeps the RFQ line item, just removes it from this list)" style="font-size:18px; color:var(--text-muted);">&times;</span>
+        </td>
+      </tr>
+      <tr class="sn-inline-row">
+        <td colspan="11" class="sn-inline-cell"><div class="sn-inline-host" data-snpanel="${encodeURIComponent(compKey)}">${_sampleNotesPanelInner(compKey)}</div></td>
+      </tr>`;
+  }
+
+  // ── Standalone To-China samples: status / delete / create ──────────
+  function updateStandaloneSampleStatus(id, newStatus) {
+    const s = (_toChinaStandalone || []).find(x => String(x.id) === String(id));
+    if (!s) return;
+    s.status = newStatus;
+    _saveToChinaStandalone();
+    renderSamplesDashboard();
+  }
+  function deleteStandaloneSample(id) {
+    const s = (_toChinaStandalone || []).find(x => String(x.id) === String(id));
+    const name = s && s.item ? s.item : 'this sample';
+    if (!confirm(`Delete “${name}”? This removes the To-China sample entirely.`)) return;
+    _toChinaStandalone = (_toChinaStandalone || []).filter(x => String(x.id) !== String(id));
+    _samplesSelected.delete(_saCompKey(id));
+    _saveToChinaStandalone();
+    renderSamplesDashboard();
+  }
+  function openNewToChinaSampleModal() {
+    const m = document.getElementById('new-to-china-modal'); if (!m) return;
+    ['ntc-item','ntc-qty','ntc-client','ntc-notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const err = document.getElementById('ntc-error'); if (err) err.style.display = 'none';
+    // Datalist of known clients so the optional client tag autocompletes.
+    try {
+      const dl = document.getElementById('ntc-client-list');
+      if (dl) dl.innerHTML = Object.keys(clientData || {}).sort().map(n => `<option value="${String(n).replace(/"/g,'&quot;')}"></option>`).join('');
+    } catch (_) {}
+    m.style.display = 'flex';
+    setTimeout(() => { try { document.getElementById('ntc-item').focus(); } catch {} }, 50);
+  }
+  function closeNewToChinaSampleModal() { const m = document.getElementById('new-to-china-modal'); if (m) m.style.display = 'none'; }
+  async function confirmNewToChinaSample() {
+    const item   = (document.getElementById('ntc-item').value || '').trim();
+    const qty    = (document.getElementById('ntc-qty').value || '').trim();
+    const client = (document.getElementById('ntc-client').value || '').trim();
+    const notes  = (document.getElementById('ntc-notes').value || '').trim();
+    const err = document.getElementById('ntc-error');
+    if (!item) { if (err) { err.textContent = 'Give the sample a name.'; err.style.display = 'block'; } return; }
+    await _ensureToChinaLoaded();
+    _toChinaStandalone.push({
+      id: 'tc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      item, qty, client, notes,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      createdBy: (typeof getCurrentUser === 'function' ? getCurrentUser() : ''),
+      shipmentId: null,
+    });
+    _saveToChinaStandalone();
+    _samplesSectionCollapsed.to = false; // reveal the To China section so they see it land
+    closeNewToChinaSampleModal();
+    renderSamplesDashboard();
+    if (typeof showToast === 'function') showToast('To-China sample added', 'success');
   }
 
   function updateSampleStatus(key, rowIndex, newStatus) {
@@ -38271,6 +38444,23 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         product: s.product,
       });
     });
+    // Fold in any selected standalone To-China references (no workbook).
+    (_toChinaStandalone || []).forEach(sa => {
+      if (!_samplesSelected.has(_saCompKey(sa.id))) return;
+      sampleEntries.push({
+        clientName: sa.client || '',
+        workbookId: '',
+        rowIndex: -1,
+        item: sa.item,
+        qty: sa.qty || '',
+        product: sa.item,
+        standaloneId: sa.id,
+        direction: 'to',
+      });
+      // Mark it shipped so it reads "Requested" and remembers its shipment.
+      sa.status = 'requested';
+      sa.shipmentId = null; // set below once the id is minted
+    });
     // Mint the new shipment. Container type defaults to whatever new
     // shipments default to (currently '40hc' on createShipment) — for
     // sample shipments it's not meaningful but the cards expect a
@@ -38298,6 +38488,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Shipments lane until the operator marks them Delivered, which
     // is now the trigger that moves them to Receiving.
     saveShipments();
+    // Persist shipment linkage for any standalone To-China samples that
+    // just rode along (status was already bumped to 'requested' above).
+    let _saTouched = false;
+    (_toChinaStandalone || []).forEach(sa => {
+      if (_samplesSelected.has(_saCompKey(sa.id))) { sa.shipmentId = newId; _saTouched = true; }
+    });
+    if (_saTouched) _saveToChinaStandalone();
     _samplesSelected.clear();
     closeSampleShipmentModal();
     // Fire the AI tracking lookup in the background so the operator
