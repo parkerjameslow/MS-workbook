@@ -38102,7 +38102,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { _sweepStandaloneShipmentLinks(); } catch (_) {}
 
     const allSamples = collectAllSamples();
-    const standalone = _toChinaStandalone || [];
+    // Exclude samples already on their own shipment — they're not in the list.
+    const standalone = (_toChinaStandalone || []).filter(sa => !(typeof _standaloneOnShipment === 'function' && _standaloneOnShipment(sa)));
     const totalCount = allSamples.length + standalone.length;
 
     // Update count badge
@@ -38148,6 +38149,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const fromRows = statusFiltered.filter(s => s.direction !== 'to');
     const toRows   = statusFiltered.filter(s => s.direction === 'to');
     (_toChinaStandalone || []).forEach(sa => {
+      // Once a sample is on its own shipment it lives there, not here — don't
+      // show it in two places at once. (If it's removed from the shipment, the
+      // sweep clears the link and it reappears.)
+      if (typeof _standaloneOnShipment === 'function' && _standaloneOnShipment(sa)) return;
       const row = _standaloneAsSampleRow(sa);
       if (_samplesFilter !== 'all' && row.status !== _samplesFilter) return;
       toRows.push(row);
