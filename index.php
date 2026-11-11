@@ -12213,6 +12213,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <!-- Header: client name (big) → ship-to → order name → controls -->
     <div class="order-detail-header">
       <div class="order-detail-client-name" id="order-detail-client-name"></div>
+      <!-- Editable order name (smart default from the workbooks) + pencil. -->
+      <div style="display:flex; align-items:center; gap:7px; margin:1px 0 6px;">
+        <span id="order-detail-order-name" style="font-size:15px; font-weight:700; color:var(--text);"></span>
+        <span id="order-detail-order-name-pencil"></span>
+      </div>
 
       <!-- Fulfillment Address: dropdown to pick where the order ships
            to (Pyvot / MarketSculpt warehouse / the customer's own
@@ -12570,7 +12575,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div class="modal-overlay" id="modal-move-order" onclick="if(event.target===this)closeMoveOrderModal()" style="z-index:1000;">
   <div class="modal" style="max-width:420px;">
     <div class="modal-title" id="move-order-modal-title" style="margin-bottom:8px;">Move Order</div>
-    <p id="move-order-modal-body" style="font-size:13px; color:var(--text-muted); line-height:1.5; margin:0 0 18px;"></p>
+    <p id="move-order-modal-body" style="font-size:13px; color:var(--text-muted); line-height:1.5; margin:0 0 14px;"></p>
+    <div id="move-order-modal-name-wrap" style="display:none; margin:0 0 18px;">
+      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:5px;">Order name</label>
+      <input type="text" id="move-order-modal-name" class="form-input" style="width:100%;" autocomplete="off" />
+    </div>
     <div class="modal-actions">
       <button type="button" class="btn btn-ghost" onclick="closeMoveOrderModal()">Cancel</button>
       <button type="button" id="move-order-modal-confirm" class="btn btn-primary" onclick="_confirmMoveOrderModal()">Move</button>
@@ -52157,7 +52166,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     // ── Early workbook stages (exclude entity-claimed + fully-received) ──
     const wbStage = {}, meta = {};
-    const RANK = { unstaged: 0, samples: 1, rfq: 2, review: 3, orders: 4 };
+    const RANK = { unstaged: 0, samples: 1, rfq: 2, review: 3, waitingClient: 4, orders: 5 };
     const consider = (cn, wid, stage) => {
       if (cn == null || wid == null) return;
       if (_isQuotesClient(cn)) return;   // draft quotes never show on the Pipeline board
@@ -52177,11 +52186,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { (collectAllSamples() || []).forEach(s => consider(s.clientName, s.workbookId, 'samples')); } catch (_) {}
     try { (collectAllRfqs() || []).forEach(r => consider(r.clientName, r.workbookId, 'rfq')); } catch (_) {}
     try { (collectAllReadyForReview() || []).forEach(r => consider(r.clientName, r.workbookId, 'review')); } catch (_) {}
+    try { (collectAllWaitingClient() || []).forEach(w => consider(w.clientName, w.workbookId, 'waitingClient')); } catch (_) {}
     try { (collectStagedForOrders() || []).forEach(s => consider(s.clientName, s.workbookId, 'orders')); } catch (_) {}
     Object.keys(wbStage).forEach(key => {
       const m = meta[key], stg = wbStage[key], d = m.detail;
       let since = stg === 'rfq' ? d.sentToRfqAt
                 : stg === 'review' ? d.sentForReviewAt
+                : stg === 'waitingClient' ? d.waitingForClientAt
                 : stg === 'orders' ? d.movedToOrdersAt : null;
       // samples / unstaged have no stage timestamp — fall back to the
       // workbook's creation date so the badge still shows an age.
@@ -53809,11 +53820,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // the modal handles wiring + close. No locking — moves are freely
   // reversible by the operator.
   let _moveOrderModalCtx = null;
-  function openMoveOrderModal({ title, body, confirmLabel, onConfirm }) {
+  function openMoveOrderModal({ title, body, confirmLabel, onConfirm, nameDefault }) {
     _moveOrderModalCtx = { onConfirm };
     document.getElementById('move-order-modal-title').textContent   = title || 'Move Order';
     document.getElementById('move-order-modal-body').textContent    = body  || '';
     document.getElementById('move-order-modal-confirm').textContent = confirmLabel || 'Move';
+    // Optional editable order-name field (used by Move to Production).
+    const nameWrap = document.getElementById('move-order-modal-name-wrap');
+    const nameInp  = document.getElementById('move-order-modal-name');
+    if (nameWrap && nameInp) {
+      if (nameDefault !== undefined && nameDefault !== null) {
+        nameWrap.style.display = ''; nameInp.value = String(nameDefault);
+      } else { nameWrap.style.display = 'none'; nameInp.value = ''; }
+    }
     const el = document.getElementById('modal-move-order');
     el.classList.add('open');
     // Belt-and-suspenders: some surfaces toggle .open while others
@@ -53829,8 +53848,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _confirmMoveOrderModal() {
     const ctx = _moveOrderModalCtx;
+    const nameInp = document.getElementById('move-order-modal-name');
+    const name = nameInp ? (nameInp.value || '').trim() : '';
     closeMoveOrderModal();
-    if (ctx && typeof ctx.onConfirm === 'function') ctx.onConfirm();
+    if (ctx && typeof ctx.onConfirm === 'function') ctx.onConfirm(name);
   }
 
   // Operator-triggered move from the Orders lane → In Production.
@@ -53864,9 +53885,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const wbCount = Array.isArray(o.entries) ? o.entries.length : 0;
     openMoveOrderModal({
       title:        'Move to In Production',
-      body:         `Move “${o.name || 'this order'}” into the In Production lane? ${wbCount} workbook${wbCount === 1 ? '' : 's'} will travel with it. You can move it back to Orders any time.`,
+      body:         `Name this order and move it into the In Production lane. ${wbCount} workbook${wbCount === 1 ? '' : 's'} will travel with it. You can move it back to Orders any time.`,
       confirmLabel: 'Move to Production',
-      onConfirm: () => {
+      nameDefault:  _orderDisplayName(o),   // smart default = the workbook name(s)
+      onConfirm: (name) => {
+        if (name && name.trim()) o.title = name.trim();
         const stamp = new Date().toISOString();
         o.notifiedAt = stamp;
         o.movedToProductionAt = stamp;
@@ -53874,7 +53897,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         if (typeof renderOrdersList      === 'function') renderOrdersList();
         if (typeof renderFulfillmentList === 'function') renderFulfillmentList();
         if (typeof _renderOrderDetailLaneControls === 'function') _renderOrderDetailLaneControls();
-        if (typeof _msToast === 'function') _msToast(`Moved “${o.name || 'order'}” to In Production.`, 'success');
+        if (typeof _msToast === 'function') _msToast(`Moved “${_orderDisplayName(o)}” to In Production.`, 'success');
       },
     });
   }
@@ -55002,7 +55025,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <div class="oc-card-main">
           <div class="oc-left">
             <span class="oc-client">${o.clientName}</span>
-            <span class="oc-title">${o.name}</span>
+            <span class="oc-title" style="display:inline-flex; align-items:center; gap:6px;">${_orderDisplayName(o)} ${_orderRenamePencil(id)}</span>
             ${_orderCardShipToBadge(o)}
             ${leadBlock}
             ${deadlineBlock}
@@ -55079,6 +55102,53 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   // ── Detail view ──────────────────────────────────────────────────────
+  // Smart default order name: the single workbook's product, or an abbreviated
+  // list of ALL the workbooks when there are several.
+  function _orderAutoName(o) {
+    if (!o) return '';
+    const names = (o.entries || []).map(e => {
+      const it = (clientData[e.clientName] || []).find(i => String(i.id) === String(e.workbookId));
+      if (it && it.product) return it.product;
+      const d = workbookDetail[`${e.clientName}|${e.workbookId}`];
+      return (d && d.product) ? d.product : '';
+    }).filter(Boolean);
+    if (!names.length) return '';
+    if (names.length === 1) return names[0];
+    const abbr = names.map(n => {
+      const words = String(n).trim().split(/\s+/);
+      if (n.length <= 12) return n;
+      return words.length > 1 ? words.map(w => w[0]).join('').toUpperCase() : n.slice(0, 10);
+    });
+    const shown = abbr.slice(0, 4).join(' · ');
+    return abbr.length > 4 ? `${shown} +${abbr.length - 4}` : shown;
+  }
+  // The order's display name: an explicit custom title wins, else the smart
+  // workbook-based auto name, else the legacy INV/number.
+  function _orderDisplayName(o) {
+    if (!o) return '';
+    if (o.title && String(o.title).trim()) return String(o.title).trim();
+    const auto = _orderAutoName(o);
+    if (auto) return auto;
+    return o.name || ('Order #' + (o.id != null ? String(o.id).padStart(3, '0') : '?'));
+  }
+  // Small inline "flat" pencil that signals an editable order name.
+  function _orderRenamePencil(id) {
+    return `<button onclick="event.stopPropagation(); renameOrder('${id}')" title="Rename this order" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:2px; display:inline-flex; align-items:center; line-height:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>`;
+  }
+  function renameOrder(id) {
+    const o = orderData[id]; if (!o) return;
+    const cur = _orderDisplayName(o);
+    const v = prompt('Rename order:', cur);
+    if (v === null) return;
+    o.title = v.trim(); // blank clears → falls back to the auto name
+    try { saveOrders(); } catch (_) {}
+    try {
+      if (location.hash === '#/order/' + id) renderOrderDetail(id);
+      else { if (typeof renderOrdersContent === 'function') renderOrdersContent(); if (typeof renderOrdersStaging === 'function') renderOrdersStaging(); }
+    } catch (_) {}
+    try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
+    try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
+  }
   function renderOrderDetail(id) {
     _currentOrderId = parseInt(id);
     if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
@@ -55149,6 +55219,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
 
     document.getElementById('order-detail-client-name').textContent = o.clientName;
+    try {
+      const onEl = document.getElementById('order-detail-order-name');
+      if (onEl) onEl.textContent = _orderDisplayName(o);
+      const pEl = document.getElementById('order-detail-order-name-pencil');
+      if (pEl) pEl.innerHTML = _orderRenamePencil(String(o.id));
+    } catch (_) {}
     document.getElementById('order-detail-po').value = o.poNumber || '';
     // Seed the invoice input. Backfill from o.name when it already
     // matches the "INV: ###" pattern (so legacy orders that encoded
