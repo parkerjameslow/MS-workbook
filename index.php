@@ -7919,7 +7919,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
 <!-- ── Sidebar ───────────────────────────────────────────────────────── -->
 <aside class="sidebar">
-  <a class="sidebar-logo" href="#/" style="text-decoration:none;">
+  <a class="sidebar-logo" href="#/recent" onclick="event.preventDefault(); location.hash='#/recent';" style="text-decoration:none;" title="Recent Workbooks">
     <img src="assets/logo.png" alt="Market Sculpt" />
   </a>
 
@@ -38083,9 +38083,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         return `<span style="display:inline-flex; align-items:center; font-size:11px; font-weight:600; padding:2px 9px; border-radius:12px; background:${col.bg}; border:1px solid ${col.border}; color:${col.text}; white-space:nowrap;">${c[st]} ${SAMPLE_STATUS_LABELS[st]}</span>`;
       }).join('');
       const dateChips = [];
-      if (oldest !== null) dateChips.push(`<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">🗓 in list since ${_fmtDate(oldest)}</span>`);
+      if (oldest !== null) dateChips.push(`<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">In list since ${_fmtDate(oldest)}</span>`);
       // Expected back only makes sense for inbound samples.
-      if (which === 'from' && soonestEta !== null) dateChips.push(`<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">⏳ next expected ${_fmtDate(soonestEta)}</span>`);
+      if (which === 'from' && soonestEta !== null) dateChips.push(`<span style="font-size:11px; font-weight:600; color:var(--text-muted); white-space:nowrap;">Next expected ${_fmtDate(soonestEta)}</span>`);
       const dateStr = dateChips.join('<span style="color:var(--text-muted);">·</span>');
       const hasMeta = statusChips || dateStr;
       const sep = (statusChips && dateStr) ? `<span style="width:1px; height:14px; background:var(--border); flex:0 0 auto;"></span>` : '';
@@ -39307,12 +39307,57 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function rebuildWaitingClientNav() {
     try { _applyNavBadge(document.getElementById('badge-waiting-client'), 0, collectAllWaitingClient().length); } catch (_) {}
   }
+
+  // Self-healing promotion: any quote the client has APPROVED
+  // (approvedByClientAt set) must not linger in the Waiting-for-Client queue —
+  // it belongs in Orders. The email approve_quote endpoint already moves it,
+  // but legacy / duplicated / partially-synced workbooks can end up approved
+  // yet still flagged waitingForClient. This moves them to Orders server-side
+  // (authoritative set_pipeline_stage) so approvals never stall. Runs on the
+  // dashboard render AND the 60s remote-changes poll, so it's on a cadence.
+  let _autoPromoteBusy = false;
+  async function _autoPromoteApprovedWaiting() {
+    if (_autoPromoteBusy) return 0;
+    const toMove = [];
+    for (const [key, detail] of Object.entries(workbookDetail)) {
+      if (!detail || !detail.approvedByClientAt) continue;
+      const [clientName, workbookId] = key.split('|');
+      if (typeof _pipelineStageFor !== 'function') break;
+      if (_pipelineStageFor(clientName, workbookId, detail) !== 'waitingClient') continue;
+      toMove.push({ key, clientName, workbookId, detail });
+    }
+    if (!toMove.length) return 0;
+    _autoPromoteBusy = true;
+    try {
+      for (const m of toMove) {
+        // Optimistic local update so the queue clears immediately.
+        m.detail.movedToOrders = true;
+        m.detail.movedToOrdersAt = m.detail.movedToOrdersAt || new Date().toISOString();
+        m.detail.waitingForClient = false;
+        m.detail.waitingForClientAt = null;
+        const dbId = dbWorkbookMap[m.key] || m.workbookId;
+        try { await apiCall('set_pipeline_stage', { id: dbId, stage: 'orders', changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }); } catch (_) {}
+      }
+      try { saveToLocalStorage(); } catch (_) {}
+    } finally { _autoPromoteBusy = false; }
+    return toMove.length;
+  }
+
   function renderWaitingClientDashboard() {
     document.getElementById('header-title').textContent = 'Waiting for Client';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const nav = document.getElementById('nav-waiting-client-link'); if (nav) nav.classList.add('active');
     showView('view-waiting-client');
+    // Self-heal: sweep any already-approved quotes out to Orders, then
+    // re-render + refresh the Orders queue once they've moved.
+    _autoPromoteApprovedWaiting().then(n => {
+      if (n > 0) {
+        try { renderWaitingClientDashboard(); } catch (_) {}
+        try { if (typeof renderOrdersList === 'function' && location.hash.indexOf('#/orders') === 0) renderOrdersList(); } catch (_) {}
+        try { rebuildOrdersNav && rebuildOrdersNav(); } catch (_) {}
+      }
+    });
     const all = collectAllWaitingClient();
     const cb = document.getElementById('waiting-client-count'); if (cb) cb.textContent = `${all.length} waiting`;
     rebuildWaitingClientNav();
@@ -42710,11 +42755,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof _updatePipelineNavBadge === 'function') _updatePipelineNavBadge();
     if (typeof rebuildPipelineNav === 'function') rebuildPipelineNav();
     restoreNavSectionStates();
-    // Default landing after login = the workbook Pipeline board (not the
-    // All-Workbooks list). Only when arriving with no explicit route — a
-    // deep link / refresh on another view is left untouched.
+    // Default landing after login = the Recent Workbooks dashboard (Parker's
+    // choice — same place the Market Sculpt logo goes). Only when arriving with
+    // no explicit route — a deep link / refresh on another view is untouched.
     if (!location.hash || location.hash === '#' || location.hash === '#/') {
-      try { location.hash = '#/pipeline'; } catch (_) {}
+      try { location.hash = '#/recent'; } catch (_) {}
     }
     // Wrap in try/catch so a crash inside fillWorkbook never prevents loadFromDatabase() from running
     try { router(); } catch(e) { console.error('[MS Router] init render error:', e); }
@@ -48828,6 +48873,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           if (!onWorkbookEditor) {
             router();
           }
+          // Self-heal: on this 60s cadence, sweep any client-approved quotes
+          // out of Waiting-for-Client into Orders so approvals never stall.
+          try {
+            const moved = await _autoPromoteApprovedWaiting();
+            if (moved > 0) { rebuildSidebar(); if (!onWorkbookEditor) router(); }
+          } catch (_) {}
         }
       }
     } catch(e) { /* silent — network blip shouldn't surface as an error */ }
