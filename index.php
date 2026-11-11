@@ -11256,10 +11256,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-card" style="margin-top:16px; margin-bottom:0;">
       <div class="section-header">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span class="section-title">Orders in this Shipment</span>
+          <span class="section-title" id="ship-orders-title">Orders in this Shipment</span>
           <span id="ship-order-count" style="font-size:12px; color:var(--text-muted);"></span>
         </div>
-        <button class="btn btn-primary" style="font-size:12px; padding:5px 12px;" onclick="openAddOrderToShipmentModal()">+ Add Order</button>
+        <button id="ship-add-order-btn" class="btn btn-primary" style="font-size:12px; padding:5px 12px;" onclick="openAddOrderToShipmentModal()">+ Add Order</button>
       </div>
       <div class="section-body" style="padding:12px 16px;">
         <div id="ship-order-empty" style="padding:30px 0; text-align:center; color:var(--text-muted); font-size:13px;">
@@ -38404,7 +38404,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       carrier: carKey,
       trackingNumber: tracking,
       entries: [],
-      sampleEntries: [{ clientName: rec.client || '', workbookId: '', rowIndex: -1, item: rec.item, qty: rec.qty || '', product: rec.item, standaloneId: rec.id, direction: 'to' }],
+      sampleEntries: [{ clientName: rec.client || '', workbookId: '', rowIndex: -1, item: rec.item, qty: rec.qty || '', product: rec.item, standaloneId: rec.id, direction: 'to', ship: rec.ship || {}, notes: rec.notes || '' }],
       containerType: '40hc',
       etd: '', eta: '', deliveredOn: '',
       createdAt: new Date().toISOString(),
@@ -44717,8 +44717,60 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     renderShipmentOrders();
     renderShipmentUtilization();
     _renderShipmentTrackingSection();
+    // A To-China sample shipment (parcel, not freight) gets a stripped-down
+    // layout: no capacity/method/port/split — just carrier + tracking + the
+    // sample's own contents.
+    _applySampleShipmentLayout(s);
     showView('view-shipment-detail');
     if (typeof startTrackingAutoRefresh === 'function') startTrackingAutoRefresh();
+  }
+
+  // Simplify the shipment detail for a sample (parcel) shipment: hide freight-
+  // only controls and render the sample contents (item/qty/dims/weight/value).
+  function _applySampleShipmentLayout(s) {
+    const isSample = !!s && Array.isArray(s.sampleEntries) && s.sampleEntries.length > 0
+      && !(Array.isArray(s.entries) && s.entries.length > 0);
+    const hide = ['ship-util-grid', 'ship-detail-method-row', 'ship-detail-port-dates-wrap', 'ship-detail-port-location-wrap', 'ship-split-btn', 'ship-add-order-btn'];
+    hide.forEach(id => { const el = document.getElementById(id); if (!el) return;
+      if (isSample) { el.dataset._prevDisplay = el.style.display; el.style.display = 'none'; }
+      else if (el.dataset._prevDisplay !== undefined) { el.style.display = el.dataset._prevDisplay; }
+    });
+    const title = document.getElementById('ship-orders-title');
+    if (title) title.textContent = isSample ? 'Sample Contents' : 'Orders in this Shipment';
+    if (isSample) _renderSampleShipmentContents(s);
+  }
+  function _renderSampleShipmentContents(s) {
+    const listEl  = document.getElementById('ship-order-list');
+    const emptyEl = document.getElementById('ship-order-empty');
+    const countEl = document.getElementById('ship-order-count');
+    if (!listEl) return;
+    const entries = s.sampleEntries || [];
+    if (countEl) countEl.textContent = `${entries.length} sample${entries.length !== 1 ? 's' : ''}`;
+    if (!entries.length) { if (emptyEl) emptyEl.style.display = ''; listEl.innerHTML = ''; return; }
+    if (emptyEl) emptyEl.style.display = 'none';
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    listEl.innerHTML = entries.map(e => {
+      // Prefer the snapshot stored on the entry; fall back to the live record.
+      const rec = (_toChinaStandalone || []).find(x => String(x.id) === String(e.standaloneId));
+      const sh = (e.ship && Object.keys(e.ship).length) ? e.ship : ((rec && rec.ship) || {});
+      const dm = sh.dims || {}, wt = sh.weight || {}, cu = sh.customs || {};
+      const dims = (dm.l || dm.w || dm.h) ? `${dm.l || '?'}×${dm.w || '?'}×${dm.h || '?'} ${dm.unit || 'in'}` : '—';
+      const weight = wt.value ? `${wt.value} ${wt.unit || ''}`.trim() : '—';
+      const val = cu.value ? '$' + cu.value : '—';
+      const client = (rec && rec.client) || e.clientName || '';
+      const meta = [`Qty ${esc(e.qty || (rec && rec.qty) || '1')}`, `Dims ${esc(dims)}`, `Weight ${esc(weight)}`, `Value ${esc(val)}`].join(' · ');
+      return `<div class="ship-order-card">
+        <div class="ship-order-card-header">
+          <div>
+            ${client ? `<div class="soc-client">${esc(client)}</div>` : ''}
+            <div class="soc-name">${esc(e.item || (rec && rec.item) || 'Sample')}</div>
+          </div>
+          <span style="font-size:11px; font-weight:700; color:#6b93ff; background:rgba(107,147,255,0.12); border-radius:12px; padding:2px 10px; white-space:nowrap;">→ To China sample</span>
+        </div>
+        <div style="font-size:12px; color:var(--text-muted); padding:4px 2px 2px;">${meta}</div>
+        ${e.notes ? `<div style="font-size:12px; color:var(--text-muted); padding:2px 2px 0; font-style:italic;">${esc(e.notes)}</div>` : ''}
+      </div>`;
+    }).join('');
   }
 
   // ── Shipment detail: shipping method + port dates + trackings ────────
