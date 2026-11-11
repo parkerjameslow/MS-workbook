@@ -659,6 +659,11 @@ if (!defined('SLACK_SHIPMENTS_CHANNEL')) { $v = getenv('SLACK_SHIPMENTS_CHANNEL'
 // #client-approved channel (C0CGW657J9G) — the "MarketSculpt Brief" bot must
 // be a member (invite it once with /invite). Override via env or api.local.php.
 if (!defined('SLACK_APPROVALS_CHANNEL')) { $v = getenv('SLACK_APPROVALS_CHANNEL'); define('SLACK_APPROVALS_CHANNEL', is_string($v) && $v !== '' ? $v : 'C0CGW657J9G'); }
+// ShipStation legacy API (ssapi.shipstation.com) — HTTP Basic auth with an API
+// key + secret from ShipStation → Settings → Account → API Settings. Add both
+// to api.local.php (or env) to enable To-China sample push/sync.
+if (!defined('SHIPSTATION_API_KEY'))    { $v = getenv('SHIPSTATION_API_KEY');    define('SHIPSTATION_API_KEY',    is_string($v) ? $v : ''); }
+if (!defined('SHIPSTATION_API_SECRET')) { $v = getenv('SHIPSTATION_API_SECRET'); define('SHIPSTATION_API_SECRET', is_string($v) ? $v : ''); }
 
 // ─── approve_quote PUBLIC PAGE (client one-click quote approval) ─────────
 // Runs before the main action switch; token-gated, no auth. Placed here so
@@ -1077,6 +1082,104 @@ function parker_read_email(array $accounts): array {
     }
     @imap_close($imap);
     return $out;
+}
+
+// ─── ShipStation legacy API (ssapi.shipstation.com) ──────────────────────
+function ms_shipstation_configured(): bool {
+    return defined('SHIPSTATION_API_KEY') && SHIPSTATION_API_KEY !== ''
+        && defined('SHIPSTATION_API_SECRET') && SHIPSTATION_API_SECRET !== '';
+}
+// Perform a ShipStation API request. Returns ['ok'=>bool,'status'=>int,'data'=>array,'error'=>string].
+function ms_shipstation_request(string $method, string $path, $body = null): array {
+    if (!ms_shipstation_configured()) return ['ok' => false, 'status' => 0, 'data' => null, 'error' => 'ShipStation not configured'];
+    if (!function_exists('curl_init')) return ['ok' => false, 'status' => 0, 'data' => null, 'error' => 'curl unavailable'];
+    $url = 'https://ssapi.shipstation.com' . $path;
+    $auth = base64_encode(SHIPSTATION_API_KEY . ':' . SHIPSTATION_API_SECRET);
+    $headers = ['Authorization: Basic ' . $auth, 'Content-Type: application/json', 'Accept: application/json'];
+    $ch = curl_init($url);
+    $opts = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CUSTOMREQUEST  => strtoupper($method),
+        CURLOPT_HTTPHEADER     => $headers,
+    ];
+    if ($body !== null) $opts[CURLOPT_POSTFIELDS] = json_encode($body);
+    curl_setopt_array($ch, $opts);
+    $raw = curl_exec($ch);
+    if ($raw === false) { $e = curl_error($ch); curl_close($ch); return ['ok' => false, 'status' => 0, 'data' => null, 'error' => $e ?: 'request failed']; }
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $data = json_decode($raw, true);
+    $ok = $status >= 200 && $status < 300;
+    return ['ok' => $ok, 'status' => $status, 'data' => $data, 'error' => $ok ? '' : (is_array($data) && isset($data['Message']) ? $data['Message'] : ('HTTP ' . $status))];
+}
+// Map a To-China sample record to a ShipStation createorder payload.
+function ms_shipstation_order_payload(array $s): array {
+    $ship = is_array($s['ship'] ?? null) ? $s['ship'] : [];
+    $to = is_array($ship['to'] ?? null) ? $ship['to'] : [];
+    $wt = is_array($ship['weight'] ?? null) ? $ship['weight'] : [];
+    $dm = is_array($ship['dims'] ?? null) ? $ship['dims'] : [];
+    $cu = is_array($ship['customs'] ?? null) ? $ship['customs'] : [];
+    $existing = is_array($s['shipstation'] ?? null) ? $s['shipstation'] : [];
+    $orderNumber = $existing['orderNumber'] ?? ('TC-' . strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', (string)($s['id'] ?? '')), 0, 12)));
+    $qty = (int) max(1, (float)($cu['qty'] ?? $s['qty'] ?? 1));
+    $num = function ($v) { $f = (float) preg_replace('/[^0-9.\-]/', '', (string)$v); return $f; };
+    $payload = [
+        'orderNumber'  => $orderNumber,
+        'orderDate'    => gmdate('Y-m-d\TH:i:s.0000000'),
+        'orderStatus'  => 'awaiting_shipment',
+        'shipTo'       => array_filter([
+            'name'       => $to['name'] ?: ($to['company'] ?: 'Factory'),
+            'company'    => $to['company'] ?? '',
+            'street1'    => $to['street1'] ?? '',
+            'street2'    => $to['street2'] ?? '',
+            'city'       => $to['city'] ?? '',
+            'state'      => $to['state'] ?? '',
+            'postalCode' => $to['postal'] ?? '',
+            'country'    => $to['country'] ?: 'CN',
+            'phone'      => $to['phone'] ?? '',
+        ], function ($v) { return $v !== '' && $v !== null; }),
+        'items'        => [[
+            'name'      => ($cu['desc'] ?: ($s['item'] ?? 'Sample')),
+            'quantity'  => $qty,
+            'unitPrice' => $num($cu['value'] ?? 0),
+        ]],
+    ];
+    if (($wt['value'] ?? '') !== '') $payload['weight'] = ['value' => $num($wt['value']), 'units' => ($wt['unit'] ?: 'ounces')];
+    if (($dm['l'] ?? '') !== '' || ($dm['w'] ?? '') !== '' || ($dm['h'] ?? '') !== '') {
+        $payload['dimensions'] = ['length' => $num($dm['l'] ?? 0), 'width' => $num($dm['w'] ?? 0), 'height' => $num($dm['h'] ?? 0), 'units' => ($dm['unit'] ?: 'inches')];
+    }
+    $payload['internationalOptions'] = [
+        'contents'     => 'sample',
+        'customsItems' => [array_filter([
+            'description'          => ($cu['desc'] ?: ($s['item'] ?? 'Sample')),
+            'quantity'             => $qty,
+            'value'                => $num($cu['value'] ?? 0),
+            'harmonizedTariffCode' => $cu['hs'] ?? '',
+            'countryOfOrigin'      => $cu['origin'] ?: 'US',
+        ], function ($v) { return $v !== '' && $v !== null; })],
+    ];
+    if (($ship['carrier'] ?? '') !== '')  $payload['carrierCode'] = $ship['carrier'];
+    if (($ship['service'] ?? '') !== '')  $payload['serviceCode'] = $ship['service'];
+    return $payload;
+}
+// Pull the useful status/tracking fields out of a ShipStation order + its shipments.
+function ms_shipstation_status_from(array $order, ?array $shipment = null): array {
+    $out = [
+        'orderId'     => $order['orderId'] ?? null,
+        'orderKey'    => $order['orderKey'] ?? null,
+        'orderNumber' => $order['orderNumber'] ?? null,
+        'status'      => $order['orderStatus'] ?? null,
+        'lastSyncAt'  => gmdate('c'),
+    ];
+    if ($shipment) {
+        $out['carrier']        = $shipment['carrierCode'] ?? null;
+        $out['service']        = $shipment['serviceCode'] ?? null;
+        $out['trackingNumber'] = $shipment['trackingNumber'] ?? null;
+        $out['shipDate']       = $shipment['shipDate'] ?? null;
+        $out['estDelivery']    = $shipment['estimatedDeliveryDate'] ?? ($shipment['deliveryDate'] ?? null);
+    }
+    return array_filter($out, function ($v) { return $v !== null; });
 }
 
 // Small Slack Web API GET helper. Defaults to the bot token; pass a token
@@ -3797,6 +3900,58 @@ switch ($action) {
         }
         $mail = ms_smtp_send([$to], 'Your quote is ready to approve — ' . $product, $html);
         echo json_encode(['success' => !empty($mail['ok']), 'error' => empty($mail['ok']) ? ($mail['error'] ?? 'Email failed') : null, 'to' => $to]);
+        break;
+    }
+
+    // ── ShipStation (To-China sample shipments) ──────────────────────────
+    case 'shipstation_status': {
+        echo json_encode(['success' => true, 'configured' => ms_shipstation_configured()]);
+        break;
+    }
+    // Push a To-China sample to ShipStation as an order. Returns the stored
+    // shipstation sync object to save back on the sample.
+    case 'shipstation_push_order': {
+        if (!ms_shipstation_configured()) { echo json_encode(['success' => false, 'error' => 'ShipStation not configured — add API keys in api.local.php']); break; }
+        $sample = $input['sample'] ?? null;
+        if (!is_array($sample) || trim((string)($sample['item'] ?? '')) === '') { echo json_encode(['success' => false, 'error' => 'sample with an item is required']); break; }
+        $payload = ms_shipstation_order_payload($sample);
+        $r = ms_shipstation_request('POST', '/orders/createorder', $payload);
+        if (!$r['ok'] || !is_array($r['data'])) { echo json_encode(['success' => false, 'error' => $r['error'] ?: 'ShipStation create failed']); break; }
+        echo json_encode(['success' => true, 'shipstation' => ms_shipstation_status_from($r['data'])]);
+        break;
+    }
+    // Refresh one pushed order's status + tracking/ETA from ShipStation.
+    case 'shipstation_sync_order': {
+        if (!ms_shipstation_configured()) { echo json_encode(['success' => false, 'error' => 'ShipStation not configured']); break; }
+        $orderId = (string)($input['order_id'] ?? '');
+        if ($orderId === '') { echo json_encode(['success' => false, 'error' => 'order_id required']); break; }
+        $o = ms_shipstation_request('GET', '/orders/' . rawurlencode($orderId));
+        if (!$o['ok'] || !is_array($o['data'])) { echo json_encode(['success' => false, 'error' => $o['error'] ?: 'order not found']); break; }
+        $shipment = null;
+        $sh = ms_shipstation_request('GET', '/shipments?orderId=' . rawurlencode($orderId));
+        if ($sh['ok'] && is_array($sh['data']) && !empty($sh['data']['shipments'][0])) $shipment = $sh['data']['shipments'][0];
+        echo json_encode(['success' => true, 'shipstation' => ms_shipstation_status_from($o['data'], $shipment)]);
+        break;
+    }
+    // Pull recent ShipStation orders (optionally by tag) so ones built in
+    // ShipStation can be imported into the To-China Samples list.
+    case 'shipstation_import_orders': {
+        if (!ms_shipstation_configured()) { echo json_encode(['success' => false, 'error' => 'ShipStation not configured']); break; }
+        $q = '/orders?pageSize=100&sortBy=OrderDate&sortDir=DESC';
+        if (!empty($input['tag'])) $q .= '&orderStatus=awaiting_shipment';
+        $r = ms_shipstation_request('GET', $q);
+        if (!$r['ok'] || !is_array($r['data'])) { echo json_encode(['success' => false, 'error' => $r['error'] ?: 'list failed']); break; }
+        $orders = [];
+        foreach (($r['data']['orders'] ?? []) as $o) {
+            $to = $o['shipTo'] ?? [];
+            $orders[] = [
+                'shipstation' => ms_shipstation_status_from($o),
+                'item'        => $o['items'][0]['name'] ?? ($o['orderNumber'] ?? 'ShipStation order'),
+                'qty'         => $o['items'][0]['quantity'] ?? 1,
+                'shipTo'      => $to,
+            ];
+        }
+        echo json_encode(['success' => true, 'orders' => $orders]);
         break;
     }
 

@@ -1942,6 +1942,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       white-space: nowrap;
     }
     #samples-table .inv-client-chip:hover { filter: brightness(0.96); transform: translateY(-1px); }
+    /* To-China sample editor (field labels + section dividers) */
+    .tc-lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); display:block; margin-bottom:4px; }
+    .tc-sec { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text); border-bottom:1px solid var(--border); padding-bottom:6px; margin-top:4px; }
     /* Client chip — distinct color, not clickable */
     .inv-client-chip {
       display: inline-flex; align-items: center;
@@ -10896,40 +10899,113 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
-<!-- New To-China Sample modal — creates a standalone reference sample that
-     Parker ships TO a factory. Lives on the Samples dashboard (To China
-     section), not tied to any workbook; client tag is optional. -->
+<!-- To-China Sample editor — create/edit a standalone reference sample Parker
+     ships TO a factory, with all the shipment fields ShipStation needs so it
+     can be pushed as an order (and synced back for tracking/ETA). -->
 <div class="modal-overlay" id="new-to-china-modal" style="display:none;">
-  <div class="modal" style="max-width:460px; width:100%;">
+  <div class="modal" style="max-width:720px; width:100%; max-height:90vh; display:flex; flex-direction:column;">
     <div class="modal-header">
-      <h3 style="margin:0; font-size:16px;">New To-China Sample</h3>
+      <h3 style="margin:0; font-size:16px;" id="ntc-modal-title">New To-China Sample</h3>
       <button onclick="closeNewToChinaSampleModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
-      <p style="margin:0; font-size:13px; color:var(--text-muted);">A reference product you're shipping <strong style="color:var(--text);">to a factory</strong> to match. It appears under <strong>→ To China</strong> and can be added to a shipment.</p>
-      <div>
-        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Sample / Item <span style="color:#fb7185;">*</span></label>
-        <input id="ntc-item" type="text" class="form-input" style="width:100%;" placeholder="e.g. Competitor bottle — match neck finish" autocomplete="off" />
-      </div>
-      <div style="display:flex; gap:12px;">
-        <div style="flex:0 0 120px;">
-          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Qty</label>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:16px; overflow-y:auto;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">A reference product you're shipping <strong style="color:var(--text);">to a factory</strong>. Fill in the shipment details so it can be pushed to ShipStation for a label, and synced back for tracking/ETA.</p>
+
+      <!-- Basics -->
+      <div style="display:grid; grid-template-columns:1fr 110px; gap:12px;">
+        <div>
+          <label class="tc-lbl">Sample / Item <span style="color:#fb7185;">*</span></label>
+          <input id="ntc-item" type="text" class="form-input" style="width:100%;" placeholder="e.g. Competitor bottle — match neck finish" autocomplete="off" />
+        </div>
+        <div>
+          <label class="tc-lbl">Qty</label>
           <input id="ntc-qty" type="text" class="form-input" style="width:100%;" placeholder="1" autocomplete="off" />
         </div>
-        <div style="flex:1 1 auto;">
-          <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Client <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 150px; gap:12px;">
+        <div>
+          <label class="tc-lbl">Client <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label>
           <input id="ntc-client" type="text" class="form-input" style="width:100%;" list="ntc-client-list" placeholder="— none —" autocomplete="off" />
           <datalist id="ntc-client-list"></datalist>
         </div>
+        <div>
+          <label class="tc-lbl">Status</label>
+          <select id="ntc-status" class="form-input" style="width:100%;"><option value="pending">Pending</option><option value="requested">Requested</option><option value="received">Received</option><option value="approved">Approved</option></select>
+        </div>
       </div>
       <div>
-        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Notes <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label>
-        <textarea id="ntc-notes" class="form-input" style="width:100%; min-height:60px; resize:vertical;" placeholder="What should the factory match / why you're sending it"></textarea>
+        <label class="tc-lbl">Notes <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label>
+        <textarea id="ntc-notes" class="form-input" style="width:100%; min-height:52px; resize:vertical;" placeholder="What should the factory match / why you're sending it"></textarea>
       </div>
+
+      <!-- Ship To (factory in China) -->
+      <div class="tc-sec">Ship To <span style="font-weight:400; text-transform:none; color:var(--text-muted);">— the factory</span></div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label class="tc-lbl">Name</label><input id="ntc-to-name" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Company</label><input id="ntc-to-company" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div style="grid-column:1 / -1;"><label class="tc-lbl">Street 1</label><input id="ntc-to-street1" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div style="grid-column:1 / -1;"><label class="tc-lbl">Street 2</label><input id="ntc-to-street2" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">City</label><input id="ntc-to-city" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">State / Province</label><input id="ntc-to-state" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Postal Code</label><input id="ntc-to-postal" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Country</label><input id="ntc-to-country" class="form-input" style="width:100%;" placeholder="CN" autocomplete="off" /></div>
+        <div style="grid-column:1 / -1;"><label class="tc-lbl">Phone</label><input id="ntc-to-phone" class="form-input" style="width:100%;" autocomplete="off" /></div>
+      </div>
+
+      <!-- Ship From -->
+      <div class="tc-sec">Ship From <span style="font-weight:400; text-transform:none; color:var(--text-muted);">— where it ships from</span></div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label class="tc-lbl">Name</label><input id="ntc-from-name" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Company</label><input id="ntc-from-company" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div style="grid-column:1 / -1;"><label class="tc-lbl">Street 1</label><input id="ntc-from-street1" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div style="grid-column:1 / -1;"><label class="tc-lbl">Street 2</label><input id="ntc-from-street2" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">City</label><input id="ntc-from-city" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">State / Province</label><input id="ntc-from-state" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Postal Code</label><input id="ntc-from-postal" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Country</label><input id="ntc-from-country" class="form-input" style="width:100%;" placeholder="US" autocomplete="off" /></div>
+        <div style="grid-column:1 / -1;"><label class="tc-lbl">Phone</label><input id="ntc-from-phone" class="form-input" style="width:100%;" autocomplete="off" /></div>
+      </div>
+
+      <!-- Package -->
+      <div class="tc-sec">Package</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr 1fr; gap:10px;">
+        <div><label class="tc-lbl">Weight</label><input id="ntc-weight" class="form-input" style="width:100%;" placeholder="0" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Unit</label><select id="ntc-weight-unit" class="form-input" style="width:100%;"><option value="ounces">oz</option><option value="pounds">lb</option><option value="grams">g</option><option value="kilograms">kg</option></select></div>
+        <div><label class="tc-lbl">Length</label><input id="ntc-dim-l" class="form-input" style="width:100%;" placeholder="0" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Width</label><input id="ntc-dim-w" class="form-input" style="width:100%;" placeholder="0" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Height</label><input id="ntc-dim-h" class="form-input" style="width:100%;" placeholder="0" autocomplete="off" /></div>
+      </div>
+      <div style="display:grid; grid-template-columns:150px 1fr 1fr; gap:10px;">
+        <div><label class="tc-lbl">Dim Unit</label><select id="ntc-dim-unit" class="form-input" style="width:100%;"><option value="inches">inches</option><option value="centimeters">cm</option></select></div>
+        <div><label class="tc-lbl">Carrier <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label><input id="ntc-carrier" class="form-input" style="width:100%;" placeholder="e.g. fedex" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Service <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label><input id="ntc-service" class="form-input" style="width:100%;" placeholder="e.g. fedex_international_priority" autocomplete="off" /></div>
+      </div>
+
+      <!-- Customs / item value (international) -->
+      <div class="tc-sec">Customs <span style="font-weight:400; text-transform:none; color:var(--text-muted);">— for the international label</span></div>
+      <div style="display:grid; grid-template-columns:1fr 120px 90px; gap:10px;">
+        <div><label class="tc-lbl">Description</label><input id="ntc-cust-desc" class="form-input" style="width:100%;" placeholder="e.g. Plastic sample, no commercial value" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Value (USD)</label><input id="ntc-cust-value" class="form-input" style="width:100%;" placeholder="0" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Qty</label><input id="ntc-cust-qty" class="form-input" style="width:100%;" placeholder="1" autocomplete="off" /></div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <div><label class="tc-lbl">HS / Tariff code <span style="text-transform:none; font-weight:400; opacity:0.7;">(optional)</span></label><input id="ntc-cust-hs" class="form-input" style="width:100%;" autocomplete="off" /></div>
+        <div><label class="tc-lbl">Country of origin</label><input id="ntc-cust-origin" class="form-input" style="width:100%;" placeholder="US" autocomplete="off" /></div>
+      </div>
+
+      <!-- ShipStation -->
+      <div class="tc-sec">ShipStation</div>
+      <div id="ntc-ss-panel" style="border:1px solid var(--border); border-radius:10px; padding:12px 14px; background:var(--surface2); font-size:13px; color:var(--text-muted);">
+        Not connected yet — add your ShipStation API keys to enable push &amp; sync.
+      </div>
+
       <div id="ntc-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
-      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+    </div>
+    <div style="display:flex; gap:10px; justify-content:space-between; align-items:center; padding:14px 20px; border-top:1px solid var(--border);">
+      <button id="ntc-push-btn" class="btn btn-ghost" style="font-size:13px;" onclick="pushToChinaSampleToShipStation()" title="Send this sample to ShipStation as an order">⇪ Push to ShipStation</button>
+      <div style="display:flex; gap:10px;">
         <button class="btn btn-ghost" onclick="closeNewToChinaSampleModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="confirmNewToChinaSample()">+ Add Sample</button>
+        <button class="btn btn-primary" id="ntc-save-btn" onclick="confirmNewToChinaSample()">+ Add Sample</button>
       </div>
     </div>
   </div>
@@ -38136,7 +38212,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return `
         <tr class="sn-data-row">
           <td style="text-align:center; ${railCss}"><input type="checkbox" class="samples-row-checkbox" data-sample-key="${esc(compKey)}" ${checked} onchange="toggleSampleSelection('${esc(compKey)}', this.checked)" /></td>
-          <td style="font-weight:600; color:var(--text);" title="${esc(s.item)}">${esc(s.item)}</td>
+          <td style="font-weight:600; color:var(--accent); cursor:pointer;" title="Edit shipment details" onclick="event.stopPropagation(); openNewToChinaSampleModal('${esc(String(s.id))}')">${esc(s.item)}</td>
           <td class="samples-pill-cell">${clientCell}</td>
           <td class="samples-pill-cell">${refChip}</td>
           <td style="text-align:right; font-weight:600;">${s.qty ? parseFloat(String(s.qty).replace(/,/g,'')).toLocaleString('en-US') : '—'}</td>
@@ -38198,40 +38274,145 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _saveToChinaStandalone();
     renderSamplesDashboard();
   }
-  function openNewToChinaSampleModal() {
+  let _tcEditingId = null; // which standalone To-China sample the modal is editing (null = new)
+  const _tcFieldIds = ['ntc-item','ntc-qty','ntc-client','ntc-notes','ntc-status',
+    'ntc-to-name','ntc-to-company','ntc-to-street1','ntc-to-street2','ntc-to-city','ntc-to-state','ntc-to-postal','ntc-to-country','ntc-to-phone',
+    'ntc-from-name','ntc-from-company','ntc-from-street1','ntc-from-street2','ntc-from-city','ntc-from-state','ntc-from-postal','ntc-from-country','ntc-from-phone',
+    'ntc-weight','ntc-weight-unit','ntc-dim-l','ntc-dim-w','ntc-dim-h','ntc-dim-unit',
+    'ntc-carrier','ntc-service','ntc-cust-desc','ntc-cust-value','ntc-cust-qty','ntc-cust-hs','ntc-cust-origin'];
+  const _tcV = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const _tcSet = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v == null ? '' : v); };
+
+  function openNewToChinaSampleModal(id) {
     const m = document.getElementById('new-to-china-modal'); if (!m) return;
-    ['ntc-item','ntc-qty','ntc-client','ntc-notes'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    _tcEditingId = id || null;
+    const rec = _tcEditingId ? (_toChinaStandalone || []).find(x => String(x.id) === String(_tcEditingId)) : null;
+    const sh = (rec && rec.ship) || {}; const to = sh.to || {}; const from = sh.from || {}; const wt = sh.weight || {}; const dm = sh.dims || {}; const cu = sh.customs || {};
+    // Reset all, then populate.
+    _tcFieldIds.forEach(f => _tcSet(f, ''));
+    _tcSet('ntc-item', rec ? rec.item : ''); _tcSet('ntc-qty', rec ? rec.qty : ''); _tcSet('ntc-client', rec ? rec.client : '');
+    _tcSet('ntc-notes', rec ? rec.notes : ''); _tcSet('ntc-status', (rec && rec.status) || 'pending');
+    _tcSet('ntc-to-name', to.name); _tcSet('ntc-to-company', to.company); _tcSet('ntc-to-street1', to.street1); _tcSet('ntc-to-street2', to.street2);
+    _tcSet('ntc-to-city', to.city); _tcSet('ntc-to-state', to.state); _tcSet('ntc-to-postal', to.postal); _tcSet('ntc-to-country', to.country || 'CN'); _tcSet('ntc-to-phone', to.phone);
+    _tcSet('ntc-from-name', from.name); _tcSet('ntc-from-company', from.company); _tcSet('ntc-from-street1', from.street1); _tcSet('ntc-from-street2', from.street2);
+    _tcSet('ntc-from-city', from.city); _tcSet('ntc-from-state', from.state); _tcSet('ntc-from-postal', from.postal); _tcSet('ntc-from-country', from.country || 'US'); _tcSet('ntc-from-phone', from.phone);
+    _tcSet('ntc-weight', wt.value); _tcSet('ntc-weight-unit', wt.unit || 'ounces'); _tcSet('ntc-dim-l', dm.l); _tcSet('ntc-dim-w', dm.w); _tcSet('ntc-dim-h', dm.h); _tcSet('ntc-dim-unit', dm.unit || 'inches');
+    _tcSet('ntc-carrier', sh.carrier); _tcSet('ntc-service', sh.service);
+    _tcSet('ntc-cust-desc', cu.desc); _tcSet('ntc-cust-value', cu.value); _tcSet('ntc-cust-qty', cu.qty || ''); _tcSet('ntc-cust-hs', cu.hs); _tcSet('ntc-cust-origin', cu.origin || 'US');
     const err = document.getElementById('ntc-error'); if (err) err.style.display = 'none';
-    // Datalist of known clients so the optional client tag autocompletes.
+    const title = document.getElementById('ntc-modal-title'); if (title) title.textContent = rec ? 'Edit To-China Sample' : 'New To-China Sample';
+    const saveBtn = document.getElementById('ntc-save-btn'); if (saveBtn) saveBtn.textContent = rec ? 'Save' : '+ Add Sample';
     try {
       const dl = document.getElementById('ntc-client-list');
       if (dl) dl.innerHTML = Object.keys(clientData || {}).sort().map(n => `<option value="${String(n).replace(/"/g,'&quot;')}"></option>`).join('');
     } catch (_) {}
+    _renderToChinaShipStationPanel(rec);
     m.style.display = 'flex';
     setTimeout(() => { try { document.getElementById('ntc-item').focus(); } catch {} }, 50);
   }
-  function closeNewToChinaSampleModal() { const m = document.getElementById('new-to-china-modal'); if (m) m.style.display = 'none'; }
+  function closeNewToChinaSampleModal() { const m = document.getElementById('new-to-china-modal'); if (m) m.style.display = 'none'; _tcEditingId = null; }
+  // Gather the editor's shipment fields into the record shape.
+  function _tcCollectShip() {
+    return {
+      to:   { name:_tcV('ntc-to-name').trim(), company:_tcV('ntc-to-company').trim(), street1:_tcV('ntc-to-street1').trim(), street2:_tcV('ntc-to-street2').trim(), city:_tcV('ntc-to-city').trim(), state:_tcV('ntc-to-state').trim(), postal:_tcV('ntc-to-postal').trim(), country:_tcV('ntc-to-country').trim(), phone:_tcV('ntc-to-phone').trim() },
+      from: { name:_tcV('ntc-from-name').trim(), company:_tcV('ntc-from-company').trim(), street1:_tcV('ntc-from-street1').trim(), street2:_tcV('ntc-from-street2').trim(), city:_tcV('ntc-from-city').trim(), state:_tcV('ntc-from-state').trim(), postal:_tcV('ntc-from-postal').trim(), country:_tcV('ntc-from-country').trim(), phone:_tcV('ntc-from-phone').trim() },
+      weight: { value:_tcV('ntc-weight').trim(), unit:_tcV('ntc-weight-unit') },
+      dims:   { l:_tcV('ntc-dim-l').trim(), w:_tcV('ntc-dim-w').trim(), h:_tcV('ntc-dim-h').trim(), unit:_tcV('ntc-dim-unit') },
+      customs:{ desc:_tcV('ntc-cust-desc').trim(), value:_tcV('ntc-cust-value').trim(), qty:_tcV('ntc-cust-qty').trim(), hs:_tcV('ntc-cust-hs').trim(), origin:_tcV('ntc-cust-origin').trim() },
+      carrier:_tcV('ntc-carrier').trim(), service:_tcV('ntc-service').trim(),
+    };
+  }
   async function confirmNewToChinaSample() {
-    const item   = (document.getElementById('ntc-item').value || '').trim();
-    const qty    = (document.getElementById('ntc-qty').value || '').trim();
-    const client = (document.getElementById('ntc-client').value || '').trim();
-    const notes  = (document.getElementById('ntc-notes').value || '').trim();
+    const item = _tcV('ntc-item').trim();
     const err = document.getElementById('ntc-error');
     if (!item) { if (err) { err.textContent = 'Give the sample a name.'; err.style.display = 'block'; } return; }
     await _ensureToChinaLoaded();
-    _toChinaStandalone.push({
-      id: 'tc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      item, qty, client, notes,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      createdBy: (typeof getCurrentUser === 'function' ? getCurrentUser() : ''),
-      shipmentId: null,
-    });
+    const base = { item, qty:_tcV('ntc-qty').trim(), client:_tcV('ntc-client').trim(), notes:_tcV('ntc-notes').trim(), status:_tcV('ntc-status') || 'pending', ship:_tcCollectShip() };
+    let rec = _tcEditingId ? _toChinaStandalone.find(x => String(x.id) === String(_tcEditingId)) : null;
+    if (rec) { Object.assign(rec, base); }
+    else {
+      rec = Object.assign({
+        id: 'tc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        createdAt: new Date().toISOString(),
+        createdBy: (typeof getCurrentUser === 'function' ? getCurrentUser() : ''),
+        shipmentId: null, shipstation: null,
+      }, base);
+      _toChinaStandalone.push(rec);
+    }
     _saveToChinaStandalone();
-    _samplesSectionCollapsed.to = false; // reveal the To China section so they see it land
+    _samplesSectionCollapsed.to = false;
     closeNewToChinaSampleModal();
     renderSamplesDashboard();
-    if (typeof showToast === 'function') showToast('To-China sample added', 'success');
+    if (typeof showToast === 'function') showToast(_tcEditingId ? 'Sample saved' : 'To-China sample added', 'success');
+  }
+  // ShipStation panel inside the editor — reflects connection + push status.
+  async function _renderToChinaShipStationPanel(rec) {
+    const host = document.getElementById('ntc-ss-panel');
+    const pushBtn = document.getElementById('ntc-push-btn');
+    if (!host) return;
+    const ss = rec && rec.shipstation;
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    let configured = false;
+    try { const r = await apiCall('shipstation_status', {}); configured = !!(r && r.configured); } catch (_) {}
+    if (pushBtn) pushBtn.style.display = configured ? '' : 'none';
+    if (!configured) {
+      host.innerHTML = `Not connected yet — add your ShipStation API keys to enable push &amp; sync.<br><span style="font-size:12px;">In ShipStation: <strong style="color:var(--text);">Settings → Account → API Settings → Generate API Keys</strong>, then send Parker's dev the key + secret to add to <code>api.local.php</code>.</span>`;
+      return;
+    }
+    if (ss && ss.orderId) {
+      const bits = [
+        `<span style="color:var(--text);">Pushed as order <strong>${esc(ss.orderNumber || ss.orderId)}</strong></span>`,
+        ss.status ? `status <strong style="color:var(--text);">${esc(ss.status)}</strong>` : '',
+        ss.carrier ? `${esc(ss.carrier)}${ss.service ? ' · ' + esc(ss.service) : ''}` : '',
+        ss.trackingNumber ? `tracking <strong style="color:var(--text);">${esc(ss.trackingNumber)}</strong>` : '',
+        ss.estDelivery ? `ETA <strong style="color:var(--text);">${esc(ss.estDelivery)}</strong>` : '',
+      ].filter(Boolean).join(' · ');
+      host.innerHTML = `<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;"><span>${bits}</span><button class="btn btn-ghost" style="font-size:12px; margin-left:auto;" onclick="syncToChinaSampleFromShipStation()">↻ Sync status</button></div>`;
+    } else {
+      host.innerHTML = `Connected. Save the sample, then <strong style="color:var(--text);">Push to ShipStation</strong> to create the order and buy a label there.`;
+    }
+  }
+  async function pushToChinaSampleToShipStation() {
+    // Save first so the push carries the latest fields.
+    const item = _tcV('ntc-item').trim();
+    if (!item) { const err = document.getElementById('ntc-error'); if (err) { err.textContent = 'Give the sample a name first.'; err.style.display = 'block'; } return; }
+    await confirmNewToChinaSampleKeepOpen();
+    const rec = _toChinaStandalone.find(x => String(x.id) === String(_tcEditingId));
+    if (!rec) return;
+    const btn = document.getElementById('ntc-push-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Pushing…'; }
+    try {
+      const r = await apiCall('shipstation_push_order', { sample: rec });
+      if (r && r.success && r.shipstation) {
+        rec.shipstation = r.shipstation; _saveToChinaStandalone();
+        _renderToChinaShipStationPanel(rec);
+        if (typeof showToast === 'function') showToast('Pushed to ShipStation', 'success');
+      } else {
+        if (typeof showToast === 'function') showToast('Push failed: ' + ((r && r.error) || 'unknown'), 'error');
+      }
+    } catch (e) { if (typeof showToast === 'function') showToast('Push failed (network).', 'error'); }
+    if (btn) { btn.disabled = false; btn.textContent = '⇪ Push to ShipStation'; }
+  }
+  async function syncToChinaSampleFromShipStation() {
+    const rec = _toChinaStandalone.find(x => String(x.id) === String(_tcEditingId));
+    if (!rec || !rec.shipstation || !rec.shipstation.orderId) return;
+    try {
+      const r = await apiCall('shipstation_sync_order', { order_id: rec.shipstation.orderId });
+      if (r && r.success && r.shipstation) { rec.shipstation = Object.assign({}, rec.shipstation, r.shipstation); _saveToChinaStandalone(); _renderToChinaShipStationPanel(rec); renderSamplesDashboard && 0; }
+      else if (typeof showToast === 'function') showToast('Sync failed: ' + ((r && r.error) || 'unknown'), 'error');
+    } catch (e) { if (typeof showToast === 'function') showToast('Sync failed (network).', 'error'); }
+  }
+  // Save without closing (used before a push).
+  async function confirmNewToChinaSampleKeepOpen() {
+    await _ensureToChinaLoaded();
+    const item = _tcV('ntc-item').trim(); if (!item) return;
+    const base = { item, qty:_tcV('ntc-qty').trim(), client:_tcV('ntc-client').trim(), notes:_tcV('ntc-notes').trim(), status:_tcV('ntc-status') || 'pending', ship:_tcCollectShip() };
+    let rec = _tcEditingId ? _toChinaStandalone.find(x => String(x.id) === String(_tcEditingId)) : null;
+    if (rec) { Object.assign(rec, base); }
+    else {
+      rec = Object.assign({ id:'tc' + Date.now().toString(36) + Math.random().toString(36).slice(2,6), createdAt:new Date().toISOString(), createdBy:(typeof getCurrentUser === 'function' ? getCurrentUser() : ''), shipmentId:null, shipstation:null }, base);
+      _toChinaStandalone.push(rec); _tcEditingId = rec.id;
+    }
+    _saveToChinaStandalone();
   }
 
   function updateSampleStatus(key, rowIndex, newStatus) {
@@ -38749,7 +38930,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const assignee = (typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + w.key) : '';
         return `<tr class="review-row" style="cursor:pointer; border-top:1px solid var(--border);" onclick="location.hash='#/client/${enc}/workbook/${w.workbookId}'">
           <td style="padding:10px; text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" ${checked} onchange="toggleUnstagedSelection('${jsName}|${w.workbookId}', this.checked)" /></td>
-          <td style="padding:10px;"><span class="wb-launch-btn" style="display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2);font-weight:700;color:var(--text);cursor:pointer;transition:border-color .12s,background .12s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)';" title="Open this workbook">${esc(w.product)} <span style="color:var(--accent);font-weight:800;">→ open</span></span></td>
+          <td style="padding:10px;"><span class="wb-launch-btn" style="display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2);font-weight:700;color:var(--text);cursor:pointer;transition:border-color .12s,background .12s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)';" title="Open this workbook">${esc(w.product)}</span></td>
           <td style="padding:10px;color:var(--text-muted);font-size:12px;white-space:nowrap;" title="${esc(w.ts||'')}">${esc((typeof _rfqTimeAgo === 'function') ? _rfqTimeAgo(w.ts) : '')}</td>
           <td style="padding:10px;text-align:right;font-weight:600;">${qty > 0 ? qty.toLocaleString('en-US') : '—'}</td>
           <td style="padding:10px;text-align:right;white-space:nowrap;color:var(--success);font-weight:600;">${totalStr}</td>
@@ -38852,7 +39033,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <tr class="rfq-row" style="cursor:pointer;" onclick="location.hash='${wbHref.substring(1)}'">
           <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="rfq-queue-cb" data-wb-id="${r.workbookId}" ${_checked} onclick="event.stopPropagation();" onchange="toggleRfqQueueSelection(${r.workbookId}, this.checked)" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></td>
           <td><span class="rfq-client-name" title="${clientEsc}">${r.clientName}</span></td>
-          <td style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.product}<span style="font-size:11px; color:var(--text-muted); margin-left:8px; font-weight:500;">→ open</span></td>
+          <td style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.product}</td>
           <td style="color:var(--text-muted); font-size:12px;" title="${r.sentToRfqAt || ''}">${_rfqTimeAgo(r.sentToRfqAt)}</td>
           <td style="text-align:right;">${r.lineItems}</td>
           <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
@@ -39391,7 +39572,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           : `<button class="btn btn-primary" style="font-size:11px;padding:5px 11px;white-space:nowrap;" onclick="event.stopPropagation(); previewApprovalEmail('${jsName}','${w.workbookId}')" title="Preview the email, then send it for one-click approval">${sentFlag ? 'Preview / Resend' : 'Preview & Send'}</button>`;
         const assignee = (typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + cn + '|' + w.workbookId) : '';
         return `<tr class="review-row" style="cursor:pointer; border-top:1px solid var(--border);" onclick="location.hash='#/client/${enc}/workbook/${w.workbookId}'">
-          <td style="padding:10px;"><span class="wb-launch-btn" style="display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2);font-weight:700;color:var(--text);cursor:pointer;transition:border-color .12s,background .12s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)';" title="Open this workbook">${esc(w.product)} <span style="color:var(--accent);font-weight:800;">→ open</span></span></td>
+          <td style="padding:10px;"><span class="wb-launch-btn" style="display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2);font-weight:700;color:var(--text);cursor:pointer;transition:border-color .12s,background .12s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)';" title="Open this workbook">${esc(w.product)}</span></td>
           <td style="padding:10px;color:var(--text-muted);font-size:12px;white-space:nowrap;" title="${esc(d.waitingForClientAt||'')}">${esc((typeof _rfqTimeAgo === 'function') ? _rfqTimeAgo(d.waitingForClientAt) : '')}</td>
           <td style="padding:10px;text-align:right;font-weight:600;">${qty > 0 ? qty.toLocaleString('en-US') : '—'}</td>
           <td style="padding:10px;text-align:right;white-space:nowrap;color:var(--success);font-weight:600;">${totalStr}</td>
@@ -39670,7 +39851,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <tr class="review-row" onclick="location.hash='${wbHref.substring(1)}'">
           <td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="review-row-cb" data-wb-id="${r.workbookId}" ${checked} onclick="event.stopPropagation();" onchange="toggleReviewSelection(${r.workbookId}, this.checked)" style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent);" /></td>
           <td><span class="review-client-name" title="${clientEsc}">${r.clientName}</span></td>
-          <td style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.product}<span style="font-size:11px; color:var(--text-muted); margin-left:8px; font-weight:500;">→ open</span></td>
+          <td style="font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${r.product}</td>
           <td style="color:var(--text-muted); font-size:12px;" title="${r.sentForReviewAt || ''}">${_rfqTimeAgo(r.sentForReviewAt)}</td>
           <td style="text-align:right;">${r.lineItems}</td>
           <td style="text-align:right; font-weight:600;">${r.totalQty.toLocaleString('en-US')}</td>
