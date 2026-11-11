@@ -23,16 +23,11 @@ try {
 // Share this handle with the auth layer (so it never needs its own creds).
 $GLOBALS['ms_auth_pdo'] = $pdo;
 
-// Trusted-device auto-login: if this device carries a valid remember token,
-// restore the session and skip the form entirely (Trello-style).
-if (empty($_SESSION['user_id']) && function_exists('ms_try_remember_login')) {
-    ms_try_remember_login();
-    if (!empty($_SESSION['user_id'])) {
-        $hash = $_GET['hash'] ?? '';
-        header('Location: index.php' . ($hash ? '?hash=' . urlencode($hash) : ''));
-        exit;
-    }
-}
+// NOTE: login.php deliberately does NOT auto-restore + redirect to index.php.
+// Doing so could ping-pong with an API 401 (api.php → frontend → login.php →
+// index.php → API 401 → …) into a refresh loop. Trusted-device restore now
+// happens only inside requireAuth() (api.php has the DB handle), which can't
+// loop — it either restores the session in place or falls through to the form.
 
 // Auto-create users table
 $pdo->exec("CREATE TABLE IF NOT EXISTS users (
