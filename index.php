@@ -29126,6 +29126,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     btn.classList.add('active');
     if (tabName === 'shipping') { syncShippingDims(); syncShippingPalletStats(); calcFreight(); }
     if (tabName === 'pricing')  { renderPricingTab(); }
+    // Always land at the top of the newly-shown tab — switching used to leave
+    // the page scrolled halfway down wherever the previous tab was.
+    try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch (_) { window.scrollTo(0, 0); }
+    try { const c = document.querySelector('#view-workbook .container'); if (c && c.scrollTop) c.scrollTop = 0; } catch (_) {}
   }
 
   /* ── Shipping Calculator ─────────────────────────────────────────────────── */
@@ -38956,7 +38960,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           : `<button class="btn btn-primary" style="font-size:11px;padding:5px 11px;white-space:nowrap;" onclick="event.stopPropagation(); previewApprovalEmail('${jsName}','${w.workbookId}')" title="Preview the email, then send it for one-click approval">${sentFlag ? 'Preview / Resend' : 'Preview & Send'}</button>`;
         const assignee = (typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + cn + '|' + w.workbookId) : '';
         return `<tr class="review-row" style="cursor:pointer; border-top:1px solid var(--border);" onclick="location.hash='#/client/${enc}/workbook/${w.workbookId}'">
-          <td style="padding:10px;font-weight:700;color:var(--text);">${esc(w.product)}<span style="font-size:11px;color:var(--text-muted);margin-left:8px;font-weight:500;">→ open</span></td>
+          <td style="padding:10px;"><span class="wb-launch-btn" style="display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface2);font-weight:700;color:var(--text);cursor:pointer;transition:border-color .12s,background .12s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='var(--surface)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='var(--surface2)';" title="Open this workbook">${esc(w.product)} <span style="color:var(--accent);font-weight:800;">→ open</span></span></td>
           <td style="padding:10px;color:var(--text-muted);font-size:12px;white-space:nowrap;" title="${esc(d.waitingForClientAt||'')}">${esc((typeof _rfqTimeAgo === 'function') ? _rfqTimeAgo(d.waitingForClientAt) : '')}</td>
           <td style="padding:10px;text-align:right;font-weight:600;">${qty > 0 ? qty.toLocaleString('en-US') : '—'}</td>
           <td style="padding:10px;text-align:right;white-space:nowrap;color:var(--success);font-weight:600;">${totalStr}</td>
@@ -38975,7 +38979,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }).join('');
   }
 
-  // Preview the approval email exactly as the client will see it, then send.
+  // Preview the approval email exactly as the client will see it (the same
+  // Client Quote document, rendered in an iframe so the layout matches the PDF
+  // 1:1), then send.
   function previewApprovalEmail(clientName, workbookId) {
     const key = `${clientName}|${workbookId}`;
     const clientEmail = (clientDetails[clientName] || {}).email || '';
@@ -38985,15 +38991,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         ? _collectClientQuoteForExport()
         : ((workbookDetail[key] || {}).clientQuoteExport || null);
     } catch (_) {}
-    const quoteHtml = data ? _clientQuoteEmailHtml(data) : '<div style="padding:24px;color:#6b7280;font-size:13px;">No rendered quote found yet — open this workbook\'s Pricing tab once so the quote is captured, then preview again. (The email will still send with a product + total summary.)</div>';
-    const approveBtn = `<div style="text-align:center;margin:0 0 20px;"><span style="display:inline-block;background:#16a34a;color:#fff;padding:14px 34px;border-radius:9px;font-weight:800;font-size:16px;">&#10003; Approve this quote</span><div style="font-size:11px;color:#9ba3c0;margin-top:8px;">One click confirms you'd like to proceed — we'll begin preparing your order.</div></div>`;
-    const emailBody = `<div style="max-width:620px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-      <p style="font-size:15px;color:#4b5563;line-height:1.6;">Hi ${clientName ? String(clientName).replace(/</g,'&lt;') : 'there'}, your quote is ready. Review it below and press <strong>Approve</strong> to proceed.</p>
-      ${approveBtn}
-      <div style="border:1px solid #e5e7eb;border-radius:14px;padding:22px 20px;background:#fff;">${quoteHtml}</div>
-      ${approveBtn}
-      <p style="color:#6b7280;font-size:12px;">Questions? Just reply to this email.</p>
-    </div>`;
+    let docHtml;
+    if (data) {
+      const imgs = (data.meta.clientQuoteImages || []).map(u => _cqImageAbsUrl(u));
+      // 'javascript:void(0)' = a live-looking but inert Approve button in the preview.
+      docHtml = _clientQuoteDoc(data, imgs, { approveUrl: 'javascript:void(0)' });
+    } else {
+      docHtml = '<!doctype html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#6b7280;padding:40px;font-size:14px;">No rendered quote captured yet — open this workbook\'s Pricing tab once, then preview again.</body>';
+    }
     const old = document.getElementById('approval-preview-modal'); if (old) old.remove();
     const ov = document.createElement('div');
     ov.id = 'approval-preview-modal';
@@ -39002,56 +39007,123 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
     const sendDisabled = clientEmail ? '' : 'disabled title="No email on file for this client"';
     ov.innerHTML = `
-      <div class="modal" style="max-width:720px; width:94%; display:flex; flex-direction:column; max-height:calc(100vh - 40px);">
+      <div class="modal" style="max-width:860px; width:96%; display:flex; flex-direction:column; max-height:calc(100vh - 40px);">
         <div class="modal-title" style="display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
           <span>Approval email preview</span>
           <button type="button" class="btn btn-ghost" style="padding:2px 10px; font-size:18px; line-height:1;" onclick="document.getElementById('approval-preview-modal').remove()">&times;</button>
         </div>
-        <div style="margin:-6px 0 12px; color:var(--text-muted); font-size:12.5px; flex-shrink:0;">This is exactly what ${clientEmail ? ('<strong>' + String(clientEmail).replace(/</g,'&lt;') + '</strong>') : 'the client'} will receive. The green Approve button is live in the real email.</div>
-        <div style="flex:1 1 auto; overflow:auto; background:#f4f5fa; border:1px solid var(--border); border-radius:10px; padding:24px;">${emailBody}</div>
+        <div style="margin:-6px 0 12px; color:var(--text-muted); font-size:12.5px; flex-shrink:0;">This is exactly what ${clientEmail ? ('<strong>' + String(clientEmail).replace(/</g,'&lt;') + '</strong>') : 'the client'} will receive. The green Approve button is live in the sent email.</div>
+        <iframe id="approval-preview-frame" style="flex:1 1 auto; width:100%; min-height:420px; border:1px solid var(--border); border-radius:10px; background:#fff;"></iframe>
         <div class="modal-actions" style="margin-top:16px; flex-shrink:0; gap:10px; justify-content:flex-end;">
           <button type="button" class="btn btn-ghost" onclick="document.getElementById('approval-preview-modal').remove()">Cancel</button>
           <button type="button" class="btn btn-primary" ${sendDisabled} onclick="document.getElementById('approval-preview-modal').remove(); sendQuoteForApproval('${jsEscNote(clientName)}','${workbookId}', null)">Send to ${clientEmail ? String(clientEmail).replace(/</g,'&lt;').replace(/'/g,'&#39;') : 'client'}</button>
         </div>
       </div>`;
     document.body.appendChild(ov);
+    try { const f = document.getElementById('approval-preview-frame'); if (f) f.srcdoc = docHtml; } catch (_) {}
   }
   function jsEscNote(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-  // Render the Client Quote as an email-safe (inline-styled) HTML fragment that
-  // mirrors the Client Quote PDF — same header, stat tiles, itemized table with
-  // variant/fee rows, and Order Total. Driven by the same `data` shape as
-  // exportClientQuotePDF (_collectClientQuoteForExport), so it stays in step.
-  function _clientQuoteEmailHtml(data) {
-    if (!data) return '';
-    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const m = data.meta || {}, sm = data.summary || {};
-    const imgs = (Array.isArray(m.clientQuoteImages) && m.clientQuoteImages.length)
-      ? `<div style="margin:0 0 16px;">${m.clientQuoteImages.map(u => `<img src="${esc(_cqImageAbsUrl(u))}" alt="" style="max-width:260px; max-height:180px; border-radius:10px; border:1px solid #e5e7eb; display:inline-block; margin:0 8px 8px 0;" />`).join('')}</div>`
-      : '';
-    const rows = (data.lineItems || []).map(it => {
-      const indent = (it.kind === 'variant' || it.kind === 'combineMember');
-      const isParent = it.kind === 'parent';
-      const isFee = (it.kind === 'fee' || it.kind === 'feeZero');
-      const lblStyle = `padding:9px 12px${indent ? ' 9px 28px' : ''};border-bottom:1px solid #f0f2f5;color:${indent ? '#4b5563' : '#1a1d2e'};font-weight:${isParent ? '700' : '400'};font-size:${indent ? '12px' : '13px'};`;
-      const numStyle = 'padding:9px 12px;text-align:right;border-bottom:1px solid #f0f2f5;color:#6b7280;font-size:12.5px;';
-      const totStyle = `padding:9px 12px;text-align:right;border-bottom:1px solid #f0f2f5;font-weight:${isParent ? '700' : '400'};color:${isFee ? '#E8751A' : '#1a1d2e'};font-size:12.5px;`;
-      return `<tr style="${isFee ? 'background:#fff7ed;' : ''}"><td style="${lblStyle}">${isFee ? '+ ' : ''}${esc(it.label)}</td><td style="${numStyle}">${esc(it.qty)}</td><td style="${numStyle}">${esc(it.sale)}</td><td style="${totStyle}">${esc(it.total)}</td></tr>`;
+  // The Client Quote as a full standalone HTML document — the SAME layout the
+  // PDF export uses, so the PDF, the approval-email preview, and the sent email
+  // all look identical. opts.approveUrl adds a green Approve banner (top +
+  // bottom); opts.print adds the Print/Close controls + auto-print (PDF only).
+  // cqImages = array of <img src> values (hosted URLs, or compressed data URLs
+  // for the PDF).
+  function _clientQuoteDoc(data, cqImages, opts) {
+    opts = opts || {}; cqImages = cqImages || [];
+    const escHtml = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const itemRows = (data.lineItems || []).map(it => {
+      const labelEsc = escHtml(it.label);
+      if (it.kind === 'combineMember') return `<tr class="row-variant"><td></td><td class="lbl indent"><span style="color:#c0c5d4;">&#8627;</span> ${labelEsc}</td><td class="r">${escHtml(it.qty)}</td><td class="r"></td><td class="r"></td></tr>`;
+      if (it.kind === 'variant') { const inner = labelEsc.replace(/^└\s*/, ''); return `<tr class="row-variant"><td></td><td class="lbl indent">${inner}</td><td class="r">${escHtml(it.qty)}</td><td class="r">${escHtml(it.sale)}</td><td class="r">${escHtml(it.total)}</td></tr>`; }
+      if (it.kind === 'fee' || it.kind === 'feeZero') { const sign = it.kind === 'fee' ? '+' : ''; return `<tr class="row-fee"><td class="r" style="color:#E8751A;font-weight:700;">${sign}</td><td class="lbl">${labelEsc}</td><td class="r">${escHtml(it.qty)}</td><td class="r">${escHtml(it.sale)}</td><td class="r accent">${escHtml(it.total)}</td></tr>`; }
+      return `<tr class="row-parent"><td></td><td class="lbl"><strong>${labelEsc}</strong></td><td class="r">${escHtml(it.qty)}</td><td class="r">${escHtml(it.sale)}</td><td class="r accent"><strong>${escHtml(it.total)}</strong></td></tr>`;
     }).join('');
-    const th = 'padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#9ba3c0;background:#f8f9fb;border-bottom:1px solid #e5e7eb;';
-    const stat = (lbl, val, accent) => `<td style="padding:10px 12px;border:1px solid ${accent ? 'rgba(232,117,26,0.4)' : 'rgba(107,147,255,0.25)'};border-radius:8px;background:${accent ? 'rgba(232,117,26,0.08)' : 'rgba(107,147,255,0.06)'};"><div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:${accent ? '#E8751A' : '#6b93ff'};margin-bottom:4px;">${esc(lbl)}</div><div style="font-size:14px;font-weight:700;color:#1a1d2e;">${esc(val || '—')}</div></td>`;
-    return `
-    <div style="font-size:22px;font-weight:800;color:#E8751A;">Market Sculpt</div>
-    <div style="font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:0.05em;font-weight:700;margin-bottom:12px;">Client Quote</div>
-    <h1 style="font-size:20px;font-weight:800;margin:6px 0 4px;color:#1a1d2e;">${esc(m.productName || 'Quote')}</h1>
-    <div style="font-size:13px;color:#6b7280;margin-bottom:14px;">Prepared for <strong>${esc(m.clientName)}</strong>${m.quoteDate ? ` &nbsp;·&nbsp; ${esc(m.quoteDate)}` : ''}</div>
-    ${imgs}
-    <table width="100%" cellpadding="0" cellspacing="6" style="border-collapse:separate;margin:8px 0 14px;"><tr>${stat('Sale Price (USD)', sm.salePrice)}${stat('Total Order', sm.totalOrder, true)}${stat('Production Lead', sm.productionLead)}${stat('Shipping Lead', sm.shippingLead)}${stat('Total Lead', sm.totalLead)}</tr></table>
-    ${sm.estDelivery ? `<div style="padding:10px 14px;background:rgba(232,117,26,0.07);border:1px solid rgba(232,117,26,0.3);border-radius:8px;margin:0 0 16px;font-size:12px;"><strong style="color:#E8751A;text-transform:uppercase;font-size:10px;letter-spacing:0.05em;">Estimated Delivery</strong> &nbsp; <span style="font-size:15px;font-weight:800;color:#1a1d2e;">${esc(sm.estDelivery)}</span> <span style="color:#9ba3c0;">≈ ${esc(String(sm.estDeliveryDays || ''))} days</span></div>` : ''}
-    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;margin-bottom:6px;">
-      <thead><tr><th style="${th}text-align:left;">Item</th><th style="${th}text-align:right;">Qty</th><th style="${th}text-align:right;">Sale Price</th><th style="${th}text-align:right;">Total</th></tr></thead>
-      <tbody>${rows}</tbody>
-      <tfoot><tr><td colspan="3" style="padding:12px;text-align:right;font-weight:700;border-top:2px solid #E8751A;color:#1a1d2e;">Order Total</td><td style="padding:12px;text-align:right;font-weight:800;color:#E8751A;border-top:2px solid #E8751A;">${esc(sm.totalOrder || '—')}</td></tr></tfoot>
-    </table>`;
+    const validRow = data.meta.quoteValid ? `<div class="meta-row"><span class="meta-label">Valid Until</span><span class="meta-value">${escHtml(data.meta.quoteValid)}</span></div>` : '';
+    const approveBanner = opts.approveUrl ? `<div class="approve-cta"><a href="${opts.approveUrl}">&#10003; Approve this quote</a><div class="approve-sub">One click confirms you'd like to proceed — we'll begin preparing your order.</div></div>` : '';
+    const printControls = opts.print ? `<div class="print-controls"><button onclick="window.print()">Print / Save as PDF</button><button class="secondary" onclick="window.close()">Close</button></div>` : '';
+    const printScript = opts.print ? `<scr${''}ipt>window.addEventListener('load', () => setTimeout(() => window.print(), 350));</scr${''}ipt>` : '';
+    return `<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<title>Client Quote — ${escHtml(data.meta.productName || data.meta.clientName)}</title>
+<style>
+  *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1a1d2e; background: #fff; padding: 32px; font-size: 13px; line-height: 1.5; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #E8751A; padding-bottom: 16px; margin-bottom: 22px; }
+  .brand { font-size: 22px; font-weight: 800; color: #E8751A; border-left: 3px solid #E8751A; padding-left: 12px; letter-spacing: -0.3px; }
+  .brand-sub { font-size: 11px; font-weight: 500; color: #6b7280; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 4px; }
+  .meta-block { text-align: right; }
+  .meta-row { font-size: 12px; color: #374151; margin-bottom: 4px; }
+  .meta-label { font-weight: 700; color: #9ba3c0; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; margin-right: 6px; }
+  .meta-value { color: #1a1d2e; }
+  h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; color: #1a1d2e; }
+  .for-client { font-size: 13px; color: #6b7280; margin-bottom: 14px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 22px 0 12px; }
+  .est-delivery { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 26px; padding: 12px 16px; background: rgba(232,117,26,0.07); border: 1px solid rgba(232,117,26,0.3); border-radius: 8px; }
+  .est-delivery-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #E8751A; }
+  .est-delivery-date { font-size: 16px; font-weight: 800; color: #1a1d2e; }
+  .est-delivery-note { font-size: 11px; color: #9ba3c0; }
+  .stat { background: linear-gradient(135deg, rgba(107,147,255,0.10) 0%, rgba(107,147,255,0.04) 100%); border: 1px solid rgba(107,147,255,0.25); border-radius: 8px; padding: 10px 12px; }
+  .stat-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6b93ff; margin-bottom: 4px; }
+  .stat-value { font-size: 14px; font-weight: 700; color: #1a1d2e; }
+  .stat-total { background: linear-gradient(135deg, rgba(232,117,26,0.14) 0%, rgba(232,117,26,0.05) 100%); border-color: rgba(232,117,26,0.4); }
+  .stat-total .stat-label { color: #E8751A; }
+  table.items { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.items thead th { padding: 10px 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #9ba3c0; background: #f8f9fb; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  table.items thead th.r { text-align: right; }
+  table.items tbody td { padding: 9px 12px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+  table.items tbody td.r { text-align: right; }
+  table.items tbody td.accent { color: #E8751A; }
+  table.items tbody tr.row-variant td { color: #6b7280; font-size: 12px; }
+  table.items tbody td.lbl.indent { padding-left: 28px; }
+  table.items tbody tr.row-fee td { background: rgba(232,117,26,0.04); }
+  .total-row { background: #f8f9fb; }
+  .total-row td { padding: 12px; font-weight: 700; font-size: 14px; border-top: 2px solid #E8751A !important; }
+  .total-row td.accent { color: #E8751A; }
+  .footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 11px; color: #9ba3c0; line-height: 1.7; }
+  .footer a { color: #E8751A; text-decoration: none; }
+  .approve-cta { text-align:center; margin: 4px 0 24px; }
+  .approve-cta a { display:inline-block; background:#16a34a; color:#fff; padding:14px 34px; border-radius:9px; text-decoration:none; font-weight:800; font-size:16px; }
+  .approve-sub { font-size:11px; color:#9ba3c0; margin-top:8px; }
+  .print-controls { position: fixed; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 100; }
+  .print-controls button { background: #E8751A; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+  .print-controls button.secondary { background: #fff; color: #6b7280; border: 1px solid #d1d5db; }
+  @media print { body { padding: 0; } .print-controls { display: none !important; } .summary-grid { page-break-inside: avoid; } table.items { page-break-inside: auto; } table.items tr { page-break-inside: avoid; page-break-after: auto; } }
+</style>
+</head><body>
+  ${printControls}
+  <div class="header">
+    <div><div class="brand">Market Sculpt</div><div class="brand-sub">Client Quote</div></div>
+    <div class="meta-block">
+      <div class="meta-row"><span class="meta-label">Quote Date</span><span class="meta-value">${escHtml(data.meta.quoteDate)}</span></div>
+      ${validRow}
+      <div class="meta-row"><span class="meta-label">Generated</span><span class="meta-value">${escHtml(data.meta.generated)}</span></div>
+    </div>
+  </div>
+  ${approveBanner}
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:28px; margin-bottom:18px;">
+    <div style="flex:1; min-width:0;">
+      <h1 style="margin-bottom:4px;">${escHtml(data.meta.productName || 'Quote')}</h1>
+      <div class="for-client" style="margin-bottom:0;">Prepared for <strong>${escHtml(data.meta.clientName)}</strong></div>
+    </div>
+    ${(cqImages && cqImages.length) ? `<div style="flex-shrink:0; display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; max-width:340px;">${cqImages.map(src => `<img src="${src}" alt="${escHtml(data.meta.productName || 'Product')}" style="${cqImages.length === 1 ? 'max-width:300px; max-height:210px; width:auto; height:auto;' : 'width:150px; height:120px; object-fit:cover;'} border-radius:10px; border:1px solid #e5e7eb; display:block;" />`).join('')}</div>` : ''}
+  </div>
+  <div class="summary-grid">
+    <div class="stat"><div class="stat-label">Sale Price (USD)</div><div class="stat-value">${escHtml(data.summary.salePrice || '—')}</div></div>
+    <div class="stat stat-total"><div class="stat-label">Total Order</div><div class="stat-value">${escHtml(data.summary.totalOrder || '—')}</div></div>
+    <div class="stat"><div class="stat-label">Production Lead</div><div class="stat-value">${escHtml(data.summary.productionLead || '—')}</div></div>
+    <div class="stat"><div class="stat-label">Shipping Lead</div><div class="stat-value">${escHtml(data.summary.shippingLead || '—')}</div></div>
+    <div class="stat"><div class="stat-label">Total Lead</div><div class="stat-value">${escHtml(data.summary.totalLead || '—')}</div></div>
+  </div>
+  ${data.summary.estDelivery ? `<div class="est-delivery"><span class="est-delivery-label">Estimated Delivery</span><span class="est-delivery-date">${escHtml(data.summary.estDelivery)}</span><span class="est-delivery-note">≈ ${escHtml(String(data.summary.estDeliveryDays))} days from today (${escHtml(data.meta.quoteDate)})</span></div>` : ''}
+  <table class="items">
+    <thead><tr><th style="width:24px;"></th><th>Item</th><th class="r" style="width:90px;">Qty</th><th class="r" style="width:140px;">Sale Price (USD)</th><th class="r" style="width:130px;">Total (USD)</th></tr></thead>
+    <tbody>${itemRows}</tbody>
+    <tfoot><tr class="total-row"><td colspan="4" class="r">Order Total</td><td class="r accent">${escHtml(data.summary.totalOrder || '—')}</td></tr></tfoot>
+  </table>
+  <div class="footer">Market Sculpt LLC &nbsp;·&nbsp; <a href="https://marketsculpt.com">marketsculpt.com</a><br>Questions? <a href="mailto:parker@marketsculpt.com">parker@marketsculpt.com</a></div>
+  ${printScript}
+</body></html>`;
   }
 
   async function sendQuoteForApproval(clientName, workbookId, btn) {
@@ -39070,7 +39142,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         const data = (currentClient === clientName && String(currentWorkbookId) === String(workbookId) && typeof _collectClientQuoteForExport === 'function')
           ? _collectClientQuoteForExport()
           : ((workbookDetail[key] || {}).clientQuoteExport || null);
-        if (data) quoteHtml = _clientQuoteEmailHtml(data);
+        if (data) {
+          const imgs = (data.meta.clientQuoteImages || []).map(u => _cqImageAbsUrl(u));
+          // {{APPROVE_URL}} is swapped for the real tokenized link server-side.
+          quoteHtml = _clientQuoteDoc(data, imgs, { approveUrl: '{{APPROVE_URL}}' });
+        }
       } catch (_) {}
       const res = await apiCall('send_quote_approval', { workbook_id: dbId, client_name: clientName, client_email: clientEmail, quote_html: quoteHtml });
       if (res && res.success) {
@@ -50806,7 +50882,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (detail && detail.waitingForClient) return 'waitingClient';
     if (detail && detail.sentForReview) return 'review';
     if (detail && detail.sentToRfq)      return 'rfq';
-    if (detail && Array.isArray(detail.rfqItems) && detail.rfqItems.some(i => i && i.sample)) return 'samples';
+    // Only a CONTENT-bearing sample line claims the Samples stage — this must
+    // match collectAllSamples()' nav filter (which skips blank sample rows),
+    // otherwise the status bubble says "Samples" for a workbook that never
+    // appears in the Samples list ("it says this is in samples but I can't find it").
+    if (detail && Array.isArray(detail.rfqItems) && detail.rfqItems.some(i => i && i.sample && (i.item || i.qty || i.priceRmb))) return 'samples';
     // Nothing started → Unstaged (still on the board). Note: the fully-
     // received case above returns null (done, exited) — NOT unstaged.
     return 'unstaged';

@@ -100,72 +100,9 @@ if ($_requestedAction === 'auth_debug') {
 // ── Client one-click quote approval (public, token-verified) ─────────────
 // The Approve button in the approval email hits this. On a token match it
 // moves the workbook to the Orders queue and shows a friendly HTML page.
-if ($_requestedAction === 'approve_quote') {
-    header_remove('Content-Type');
-    header('Content-Type: text/html; charset=UTF-8');
-    $wbId  = (int)($_GET['wb'] ?? 0);
-    $token = (string)($_GET['t'] ?? '');
-    $pageTitle = 'Quote Approval'; $heading = ''; $msg = ''; $ok = false; $already = false;
-    if ($wbId > 0 && $token !== '') {
-        try {
-            $sel = $pdo->prepare("SELECT detail_json, product_name FROM workbooks WHERE id = ? AND deleted_at IS NULL");
-            $sel->execute([$wbId]);
-            $row = $sel->fetch();
-            if ($row) {
-                $detail = json_decode($row['detail_json'] ?: '{}', true); if (!is_array($detail)) $detail = [];
-                $stored = (string)($detail['approvalToken'] ?? '');
-                if (!empty($detail['approvedByClientAt']) && ($stored === '' )) {
-                    $already = true; $ok = true;
-                } elseif ($stored !== '' && hash_equals($stored, $token)) {
-                    // Approve → move to Orders queue.
-                    $detail['approvedByClientAt'] = gmdate('c');
-                    $detail['waitingForClient']   = false; $detail['waitingForClientAt'] = null;
-                    $detail['movedToOrders']      = true;  $detail['movedToOrdersAt']    = gmdate('c');
-                    $detail['approvalToken']      = null;  // one-time use
-                    $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 4), updated_at = NOW(), updated_by = 'client-approval' WHERE id = ?")
-                        ->execute([json_encode($detail), $wbId]);
-                    $ok = true;
-                    // Ping Slack so Parker knows the moment a client approves.
-                    try {
-                        $prodName = trim((string)($detail['product'] ?? $row['product_name'] ?? 'A workbook'));
-                        $cn = trim((string)($detail['client'] ?? ''));
-                        $hb = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com');
-                        $wbUrl = $hb . '/#/client/' . rawurlencode($cn) . '/workbook/' . $wbId;
-                        $txt = ":white_check_mark: *Client approved a quote* — *{$prodName}*" . ($cn !== '' ? " · {$cn}" : '') . " is approved and now in the Orders queue, ready to turn into an order.";
-                        if (function_exists('parker_slack_api') && defined('SLACK_APPROVALS_CHANNEL') && SLACK_APPROVALS_CHANNEL !== '' && defined('SLACK_BOT_TOKEN') && SLACK_BOT_TOKEN !== '') {
-                            parker_slack_api('chat.postMessage', [
-                                'channel' => SLACK_APPROVALS_CHANNEL,
-                                'text'    => $txt,
-                                'blocks'  => json_encode([
-                                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $txt]],
-                                    ['type' => 'actions', 'elements' => [['type' => 'button', 'text' => ['type' => 'plain_text', 'text' => 'Open workbook'], 'url' => $wbUrl]]],
-                                ]),
-                            ]);
-                        } elseif (defined('SLACK_WEBHOOK_URL') && SLACK_WEBHOOK_URL !== '') {
-                            $ch = curl_init(SLACK_WEBHOOK_URL);
-                            curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 6, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode(['text' => $txt])]);
-                            curl_exec($ch); curl_close($ch);
-                        }
-                    } catch (Exception $e) { /* never block the approval on a Slack hiccup */ }
-                }
-            }
-        } catch (Exception $e) { /* fall through to the generic failure page */ }
-    }
-    $prod = isset($row['product_name']) ? htmlspecialchars((string)$row['product_name'], ENT_QUOTES, 'UTF-8') : 'your quote';
-    if ($ok && $already) { $heading = 'Already approved'; $msg = 'Thanks! This quote was already approved — we\'re on it.'; }
-    elseif ($ok)        { $heading = 'Approved — thank you!'; $msg = 'Your approval is in. We\'ll begin preparing your order right away.'; }
-    else                { $heading = 'Link expired'; $msg = 'This approval link is no longer valid. Please reply to your quote email and we\'ll send a fresh one.'; }
-    $accent = $ok ? '#16a34a' : '#b45309';
-    echo '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' . $heading . ' — Market Sculpt</title></head>'
-       . '<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#f4f5fa;color:#1a1d2e;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">'
-       . '<div style="background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(15,23,42,0.12);padding:40px 36px;max-width:440px;text-align:center;">'
-       . '<div style="width:64px;height:64px;border-radius:50%;background:' . $accent . ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 20px;">' . ($ok ? '&#10003;' : '!') . '</div>'
-       . '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#E8751A;margin-bottom:8px;">Market Sculpt</div>'
-       . '<h1 style="font-size:22px;font-weight:800;margin:0 0 10px;">' . $heading . '</h1>'
-       . '<p style="font-size:14px;color:#4b5563;line-height:1.6;margin:0;">' . $msg . '</p>'
-       . '</div></body></html>';
-    exit;
-}
+// The public `approve_quote` page handler is defined LATER, right after the
+// Slack/email constants + api.local.php load, so the client-approved Slack
+// ping fires. It is token-gated and in $_publicActions, so it needs no auth.
 
 if (!isset($_publicActions[$_requestedAction])) {
     requireAuth();
@@ -722,6 +659,78 @@ if (!defined('SLACK_SHIPMENTS_CHANNEL')) { $v = getenv('SLACK_SHIPMENTS_CHANNEL'
 // immediately; create a dedicated #client-approved channel, invite the bot, and
 // set SLACK_APPROVALS_CHANNEL (env or api.local.php) to its id to move it there.
 if (!defined('SLACK_APPROVALS_CHANNEL')) { $v = getenv('SLACK_APPROVALS_CHANNEL'); define('SLACK_APPROVALS_CHANNEL', is_string($v) && $v !== '' ? $v : (defined('SLACK_SHIPMENTS_CHANNEL') ? SLACK_SHIPMENTS_CHANNEL : '')); }
+
+// ─── approve_quote PUBLIC PAGE (client one-click quote approval) ─────────
+// Runs before the main action switch; token-gated, no auth. Placed here so
+// SLACK_* constants + api.local.php overrides are loaded → the approval
+// Slack ping actually posts.
+if ($_requestedAction === 'approve_quote') {
+    header_remove('Content-Type');
+    header('Content-Type: text/html; charset=UTF-8');
+    $wbId  = (int)($_GET['wb'] ?? 0);
+    $token = (string)($_GET['t'] ?? '');
+    $pageTitle = 'Quote Approval'; $heading = ''; $msg = ''; $ok = false; $already = false;
+    if ($wbId > 0 && $token !== '') {
+        try {
+            $sel = $pdo->prepare("SELECT detail_json, product_name FROM workbooks WHERE id = ? AND deleted_at IS NULL");
+            $sel->execute([$wbId]);
+            $row = $sel->fetch();
+            if ($row) {
+                $detail = json_decode($row['detail_json'] ?: '{}', true); if (!is_array($detail)) $detail = [];
+                $stored = (string)($detail['approvalToken'] ?? '');
+                if (!empty($detail['approvedByClientAt']) && ($stored === '' )) {
+                    $already = true; $ok = true;
+                } elseif ($stored !== '' && hash_equals($stored, $token)) {
+                    // Approve → move to Orders queue.
+                    $detail['approvedByClientAt'] = gmdate('c');
+                    $detail['waitingForClient']   = false; $detail['waitingForClientAt'] = null;
+                    $detail['movedToOrders']      = true;  $detail['movedToOrdersAt']    = gmdate('c');
+                    $detail['approvalToken']      = null;  // one-time use
+                    $pdo->prepare("UPDATE workbooks SET detail_json = ?, flow_step = GREATEST(COALESCE(flow_step,0), 4), updated_at = NOW(), updated_by = 'client-approval' WHERE id = ?")
+                        ->execute([json_encode($detail), $wbId]);
+                    $ok = true;
+                    // Ping Slack so Parker knows the moment a client approves.
+                    try {
+                        $prodName = trim((string)($detail['product'] ?? $row['product_name'] ?? 'A workbook'));
+                        $cn = trim((string)($detail['client'] ?? ''));
+                        $hb = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://') . ($_SERVER['HTTP_HOST'] ?? 'wb.marketsculpt.com');
+                        $wbUrl = $hb . '/#/client/' . rawurlencode($cn) . '/workbook/' . $wbId;
+                        $txt = ":white_check_mark: *Client approved a quote* — *{$prodName}*" . ($cn !== '' ? " · {$cn}" : '') . " is approved and now in the Orders queue, ready to turn into an order.";
+                        if (function_exists('parker_slack_api') && defined('SLACK_APPROVALS_CHANNEL') && SLACK_APPROVALS_CHANNEL !== '' && defined('SLACK_BOT_TOKEN') && SLACK_BOT_TOKEN !== '') {
+                            parker_slack_api('chat.postMessage', [
+                                'channel' => SLACK_APPROVALS_CHANNEL,
+                                'text'    => $txt,
+                                'blocks'  => json_encode([
+                                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => $txt]],
+                                    ['type' => 'actions', 'elements' => [['type' => 'button', 'text' => ['type' => 'plain_text', 'text' => 'Open workbook'], 'url' => $wbUrl]]],
+                                ]),
+                            ]);
+                        } elseif (defined('SLACK_WEBHOOK_URL') && SLACK_WEBHOOK_URL !== '') {
+                            $ch = curl_init(SLACK_WEBHOOK_URL);
+                            curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 6, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode(['text' => $txt])]);
+                            curl_exec($ch); curl_close($ch);
+                        }
+                    } catch (Exception $e) { /* never block the approval on a Slack hiccup */ }
+                }
+            }
+        } catch (Exception $e) { /* fall through to the generic failure page */ }
+    }
+    $prod = isset($row['product_name']) ? htmlspecialchars((string)$row['product_name'], ENT_QUOTES, 'UTF-8') : 'your quote';
+    if ($ok && $already) { $heading = 'Already approved'; $msg = 'Thanks! This quote was already approved — we\'re on it.'; }
+    elseif ($ok)        { $heading = 'Approved — thank you!'; $msg = 'Your approval is in. We\'ll begin preparing your order right away.'; }
+    else                { $heading = 'Link expired'; $msg = 'This approval link is no longer valid. Please reply to your quote email and we\'ll send a fresh one.'; }
+    $accent = $ok ? '#16a34a' : '#b45309';
+    echo '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' . $heading . ' — Market Sculpt</title></head>'
+       . '<body style="margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#f4f5fa;color:#1a1d2e;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;">'
+       . '<div style="background:#fff;border-radius:16px;box-shadow:0 8px 40px rgba(15,23,42,0.12);padding:40px 36px;max-width:440px;text-align:center;">'
+       . '<div style="width:64px;height:64px;border-radius:50%;background:' . $accent . ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 20px;">' . ($ok ? '&#10003;' : '!') . '</div>'
+       . '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#E8751A;margin-bottom:8px;">Market Sculpt</div>'
+       . '<h1 style="font-size:22px;font-weight:800;margin:0 0 10px;">' . $heading . '</h1>'
+       . '<p style="font-size:14px;color:#4b5563;line-height:1.6;margin:0;">' . $msg . '</p>'
+       . '</div></body></html>';
+    exit;
+}
+
 // Trello REST API key + token:
 if (!defined('TRELLO_KEY'))   { $v = getenv('TRELLO_KEY');   define('TRELLO_KEY',   is_string($v) ? $v : ''); }
 if (!defined('TRELLO_TOKEN')) { $v = getenv('TRELLO_TOKEN'); define('TRELLO_TOKEN', is_string($v) ? $v : ''); }
@@ -3770,25 +3779,22 @@ switch ($action) {
         $total = (float)($detail['pricingClientQuoteTotal'] ?? 0);
         $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
         $usd = function ($v) { return '$' . number_format((float)$v, 2); };
-        // The frontend passes the FULL itemized quote (same layout as the Client
-        // Quote PDF) as inline-styled HTML. If present, show it; otherwise fall
-        // back to a product + total summary. The Approve button is always on top.
+        // The frontend passes the FULL Client-Quote document (identical layout
+        // to the PDF) with an Approve banner and a {{APPROVE_URL}} placeholder.
+        // Drop in the real tokenized approve link and send the doc as-is. If
+        // there's no doc, fall back to a product + total summary email.
         $quoteHtml = (string)($input['quote_html'] ?? '');
-        $approveBtn = '<div style="text-align:center;margin:0 0 22px;"><a href="' . $esc($approveUrl) . '" style="display:inline-block;background:#16a34a;color:#fff;padding:14px 34px;border-radius:9px;text-decoration:none;font-weight:800;font-size:16px;">&#10003; Approve this quote</a>'
-                    . '<div style="font-size:11px;color:#9ba3c0;margin-top:8px;">One click confirms you\'d like to proceed — we\'ll begin preparing your order.</div></div>';
-        if ($quoteHtml !== '') {
-            $body = '<p style="margin:0 0 18px;font-size:15px;color:#4b5563;line-height:1.6;">Hi' . ($clientName !== '' ? ' ' . $esc($clientName) : '') . ', your quote is ready. Review it below and press <strong>Approve</strong> to proceed.</p>'
-                  . $approveBtn
-                  . '<div style="border:1px solid #e5e7eb;border-radius:14px;padding:22px 20px;background:#fff;">' . $quoteHtml . '</div>'
-                  . $approveBtn
-                  . '<p style="color:#6b7280;font-size:12px;margin-top:18px;">Questions? Just reply to this email.</p>';
+        if ($quoteHtml !== '' && strpos($quoteHtml, '{{APPROVE_URL}}') !== false) {
+            $html = str_replace('{{APPROVE_URL}}', $esc($approveUrl), $quoteHtml);
         } else {
+            $approveBtn = '<div style="text-align:center;margin:0 0 22px;"><a href="' . $esc($approveUrl) . '" style="display:inline-block;background:#16a34a;color:#fff;padding:14px 34px;border-radius:9px;text-decoration:none;font-weight:800;font-size:16px;">&#10003; Approve this quote</a>'
+                        . '<div style="font-size:11px;color:#9ba3c0;margin-top:8px;">One click confirms you\'d like to proceed — we\'ll begin preparing your order.</div></div>';
             $body = '<p style="margin:0 0 14px;font-size:15px;color:#4b5563;line-height:1.6;">Hi' . ($clientName !== '' ? ' ' . $esc($clientName) : '') . ', your quote for <strong>' . $esc($product) . '</strong> is ready for your approval.</p>'
                   . ($total > 0 ? '<p style="margin:0 0 16px;font-size:14px;color:#1a1d2e;">Total: <strong>' . $usd($total) . '</strong></p>' : '')
                   . $approveBtn
                   . '<p style="color:#6b7280;font-size:12px;margin-top:18px;">Questions? Just reply to this email.</p>';
+            $html = ms_email_wrap('Quote Approval', 'Your quote is ready — approve to proceed', $body);
         }
-        $html = ms_email_wrap('Quote Approval', 'Your quote is ready — approve to proceed', $body);
         $mail = ms_smtp_send([$to], 'Your quote is ready to approve — ' . $product, $html);
         echo json_encode(['success' => !empty($mail['ok']), 'error' => empty($mail['ok']) ? ($mail['error'] ?? 'Email failed') : null, 'to' => $to]);
         break;
