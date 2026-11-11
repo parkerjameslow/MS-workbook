@@ -44450,8 +44450,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const manual = String((s && s.status) || '').toLowerCase();
     let label = '', bg = '', fg = '';
     const pick = (l, b, f) => { label = l; bg = b; fg = f; };
-    if (/deliver/.test(raw) || manual === 'delivered')        pick('Delivered', 'rgba(16,185,129,0.15)', '#15803d');
-    else if (/out for delivery/.test(raw))                    pick('Out for Delivery', 'rgba(37,99,235,0.14)', '#2563eb');
+    if (/out for delivery|with delivery courier|on vehicle for delivery|delivery attempt/.test(raw)) pick('Out for Delivery', 'rgba(37,99,235,0.14)', '#2563eb');
+    else if (/\bdelivered\b/.test(raw) || manual === 'delivered') pick('Delivered', 'rgba(16,185,129,0.15)', '#15803d');
     else if (/transit/.test(raw))                             pick('In Transit', 'rgba(99,102,241,0.14)', '#4f46e5');
     else if (/(exception|failure|held|return|delay|problem)/.test(raw)) pick((s.tracking && s.tracking.status) || 'Exception', 'rgba(239,68,68,0.14)', '#dc2626');
     else if (/(label|pre-?transit|created|manifest|pickup|info received)/.test(raw)) pick('Label Created', 'rgba(107,114,128,0.14)', '#4b5563');
@@ -46413,7 +46413,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try {
       const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
       if (r && r.ok && r.data) {
-        s.tracking = r.data;
+        await _applyTrackingToShipment(s, r.data);
         saveShipments();
         return true;
       }
@@ -52374,8 +52374,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const raw = String((t && t.status) || '').toLowerCase();
     const shipDone = s && (s.status === 'delivered' || s.status === 'received');
     let key;
-    if (/deliver|received/.test(raw) || shipDone) key = 'delivered';
-    else if (/transit|out for delivery|on its way|departed|arriv|processed|picked up|collect|scan|in progress/.test(raw)) key = 'in_transit';
+    // "out for delivery" contains "deliver" — classify it as in-transit so it
+    // isn't mistaken for delivered.
+    if (/out for delivery|with delivery courier|on vehicle for delivery|delivery attempt/.test(raw)) key = 'in_transit';
+    else if (/\bdelivered\b|received/.test(raw) || shipDone) key = 'delivered';
+    else if (/transit|on its way|departed|arriv|processed|picked up|collect|scan|in progress/.test(raw)) key = 'in_transit';
     else key = 'pending';
     const eta = (t && t.eta) ? t.eta : (s ? (s.eta || '') : '');
     // Prefer the carrier's OWN delivered date (statusDate when delivered),
@@ -52455,6 +52458,67 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return `<div class="pl-track-pill pl-track-${key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[key]};"></span>${carrierPrefix}${_plEsc(lbl)}</div>`;
   }
 
+  // Carrier status phrase → coarse bucket (mirrors the server bucketOf).
+  function _trackBucketFromStatus(statusTxt) {
+    const raw = String(statusTxt || '').toLowerCase();
+    if (/out for delivery|with delivery courier|on vehicle for delivery|delivery attempt/.test(raw)) return 'out_for_delivery';
+    if (/\bdelivered\b|received/.test(raw)) return 'delivered';
+    if (/except|fail|return to sender|undeliverable|held|on hold|customs hold/.test(raw)) return 'exception';
+    if (/transit|on its way|departed|arriv|processed|picked up|collect|scan|in progress|forwarded|clearance/.test(raw)) return 'in_transit';
+    return 'pending';
+  }
+  // Human "what's in it" summary for Slack / the card — weight (kg + lb),
+  // pallets, CBM for order shipments; the sample's own weight/dims for a sample.
+  function _shipmentContentsSummary(s) {
+    if (Array.isArray(s.sampleEntries) && s.sampleEntries.length && !((s.entries || []).some(e => e.orderId))) {
+      return s.sampleEntries.map(e => {
+        const sh = e.ship || {}, wt = sh.weight || {}, dm = sh.dims || {};
+        const bits = [e.item || 'Sample'];
+        if (wt.value) bits.push(`${wt.value} ${wt.unit || ''}`.trim());
+        if (dm.l || dm.w || dm.h) bits.push(`${dm.l || '?'}×${dm.w || '?'}×${dm.h || '?'} ${dm.unit || 'in'}`);
+        return bits.join(' · ');
+      }).join('; ');
+    }
+    let t = { kg: 0, pallets: 0, cbm: 0 };
+    try { if (typeof shipmentTotals === 'function') t = shipmentTotals(s); } catch (_) {}
+    const bits = [];
+    if (t.kg)      bits.push(`${Math.round(t.kg).toLocaleString('en-US')} kg (${Math.round(t.kg * 2.20462).toLocaleString('en-US')} lb)`);
+    if (t.pallets) bits.push(`${t.pallets} pallet${t.pallets !== 1 ? 's' : ''}`);
+    if (t.cbm)     bits.push(`${t.cbm} CBM`);
+    const oc = (s.entries || []).filter(e => e.orderId).length;
+    if (oc) bits.push(`${oc} order${oc !== 1 ? 's' : ''}`);
+    return bits.join(' · ');
+  }
+  // Apply a freshly-fetched carrier payload to a shipment: store tracking,
+  // auto-advance the shipment's status + ETA, cache the contents summary, and
+  // ping #shipments on a meaningful, newly-seen status change (deduped via
+  // tracking.notifiedStatus so the cron doesn't double-post).
+  async function _applyTrackingToShipment(s, data) {
+    if (!s || !data) return;
+    const prevNotified = (s.tracking && s.tracking.notifiedStatus) || '';
+    s.tracking = Object.assign({}, data, { checkedAt: Date.now(), notifiedStatus: prevNotified });
+    const newStatus = data.status || '';
+    const bucket = _trackBucketFromStatus(newStatus);
+    const toYmd = v => { const d = new Date(v); return isNaN(d) ? '' : d.toISOString().slice(0, 10); };
+    if (bucket === 'delivered' && s.status !== 'delivered' && s.status !== 'received') {
+      s.status = 'delivered';
+      if (!s.deliveredOn) s.deliveredOn = toYmd(data.deliveredOn || data.statusDate || data.eta) || new Date().toISOString().slice(0, 10);
+    }
+    if (data.eta && !s.eta && bucket !== 'delivered') { const y = toYmd(data.eta); if (y) s.eta = y; }
+    s.contentsSummary = _shipmentContentsSummary(s);
+    if (newStatus && newStatus.toLowerCase() !== prevNotified.toLowerCase()
+        && ['in_transit', 'out_for_delivery', 'delivered', 'exception'].includes(bucket)) {
+      try {
+        await apiCall('notify_shipment_change', {
+          sid: s.id, name: s.name || ('Shipment #' + s.id), carrier: s.carrier || '',
+          tracking: s.trackingNumber || '', status: newStatus, bucket,
+          location: data.location || '', eta: data.eta || '', summary: s.contentsSummary || '',
+        });
+        s.tracking.notifiedStatus = newStatus;
+      } catch (_) {}
+    }
+  }
+
   // On-view refresh (cached): fetch carrier status for tracked shipments whose
   // stored status is stale (>3h) or missing. Best-effort; marks checkedAt even
   // on failure so a blocked carrier isn't hammered every render.
@@ -52473,7 +52537,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       for (const s of due.slice(0, 8)) {   // cap per load — the rest refresh next visit
         try {
           const r = await apiCall('fetch_tracking_status', { carrier: s.carrier, tracking_number: s.trackingNumber });
-          if (r && r.ok && r.data) { s.tracking = Object.assign({}, r.data, { checkedAt: Date.now() }); changed = true; }
+          if (r && r.ok && r.data) { await _applyTrackingToShipment(s, r.data); changed = true; }
           else { s.tracking = Object.assign({}, s.tracking || {}, { checkedAt: Date.now() }); }
         } catch (e) { s.tracking = Object.assign({}, s.tracking || {}, { checkedAt: Date.now() }); }
       }

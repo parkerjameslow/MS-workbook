@@ -3988,6 +3988,45 @@ switch ($action) {
         echo json_encode(['success' => true, 'shipstation' => ms_shipstation_status_from($o['data'], $shipment)]);
         break;
     }
+    // Post a shipment status-change notification to #shipments. Called by the
+    // frontend refresh the moment a carrier status changes (the hourly cron is
+    // the backstop) — so delivery / out-for-delivery / exception are announced
+    // in near-real-time, with the shipment's contents (weight / pallets / CBM).
+    case 'notify_shipment_change': {
+        $bucket   = (string)($input['bucket'] ?? '');
+        $name     = trim((string)($input['name'] ?? 'Shipment'));
+        $carrier  = strtoupper(trim((string)($input['carrier'] ?? '')));
+        $tn       = trim((string)($input['tracking'] ?? ''));
+        $status   = trim((string)($input['status'] ?? ''));
+        $location = trim((string)($input['location'] ?? ''));
+        $eta      = trim((string)($input['eta'] ?? ''));
+        $summary  = trim((string)($input['summary'] ?? ''));
+        $sid      = (string)($input['sid'] ?? '');
+        if ($status === '') { echo json_encode(['success' => false, 'error' => 'status required']); break; }
+        if (SLACK_BOT_TOKEN === '' || SLACK_SHIPMENTS_CHANNEL === '' || !function_exists('curl_init')) {
+            echo json_encode(['success' => false, 'error' => 'Slack not configured']); break;
+        }
+        $icon = $bucket === 'delivered' ? '✅' : ($bucket === 'exception' ? '⚠️' : ($bucket === 'out_for_delivery' ? '🚚' : '📦'));
+        $head = $bucket === 'delivered'        ? ($icon . ' Delivered — ' . $name)
+              : ($bucket === 'out_for_delivery' ? ($icon . ' Out for delivery — ' . $name)
+              : ($bucket === 'exception'        ? ($icon . ' Shipment exception — ' . $name)
+              : ($icon . ' Shipment on the move — ' . $name)));
+        $lines = [];
+        $lines[] = '*' . $carrier . '* ' . $tn . ' → *' . $status . '*';
+        if ($summary !== '')  $lines[] = '📦 ' . $summary;
+        if ($location !== '')  $lines[] = '📍 ' . $location;
+        $ts = $eta !== '' ? strtotime($eta) : false;
+        if ($ts) $lines[] = ($bucket === 'delivered' ? '🗓 Delivered ' : '🗓 ETA ') . date('D, M j, Y', $ts);
+        if ($sid !== '') $lines[] = '<https://wb.marketsculpt.com/#/shipment/' . rawurlencode($sid) . '|Open shipment →>';
+        $blocks = [
+            ['type' => 'header',  'text' => ['type' => 'plain_text', 'text' => mb_substr($head, 0, 150), 'emoji' => true]],
+            ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $lines)]],
+        ];
+        $r = parker_slack_api('chat.postMessage', ['channel' => SLACK_SHIPMENTS_CHANNEL, 'text' => $head, 'blocks' => json_encode($blocks)]);
+        echo json_encode(['success' => is_array($r) && !empty($r['ok']), 'error' => (is_array($r) ? ($r['error'] ?? null) : 'no response')]);
+        break;
+    }
+
     // Pull recent ShipStation orders (optionally by tag) so ones built in
     // ShipStation can be imported into the To-China Samples list.
     case 'shipstation_import_orders': {
@@ -5293,9 +5332,12 @@ switch ($action) {
         $bucketOf = function ($statusTxt, $shipStatus) {
             $raw = strtolower((string)$statusTxt);
             $shipDone = in_array(strtolower((string)$shipStatus), ['delivered', 'received'], true);
-            if ($shipDone || preg_match('/deliver|received/', $raw)) return 'delivered';
+            // Out-for-delivery MUST be checked before 'delivered' — "out for
+            // delivery" contains "deliver" and would otherwise read as delivered.
+            if (preg_match('/out for delivery|with delivery courier|on vehicle for delivery|delivery attempt/', $raw)) return 'out_for_delivery';
+            if ($shipDone || preg_match('/\bdelivered\b|received/', $raw)) return 'delivered';
             if (preg_match('/except|fail|return to sender|undeliverable|held|on hold|customs hold/', $raw)) return 'exception';
-            if (preg_match('/transit|out for delivery|on its way|departed|arriv|processed|picked up|collect|scan|in progress|forwarded|clearance/', $raw)) return 'in_transit';
+            if (preg_match('/transit|on its way|departed|arriv|processed|picked up|collect|scan|in progress|forwarded|clearance/', $raw)) return 'in_transit';
             return 'pending';
         };
 
@@ -5341,7 +5383,7 @@ switch ($action) {
             // first sighting, only announce if it's already past "pending"
             // (so the initial sweep doesn't spam a Slack line for every old
             // label-created shipment).
-            $meaningful = in_array($newBucket, ['in_transit', 'delivered', 'exception'], true);
+            $meaningful = in_array($newBucket, ['in_transit', 'out_for_delivery', 'delivered', 'exception'], true);
             if ($bucketChanged || $statusChanged || $etaAppeared || ($firstEver && $meaningful)) {
                 $changes[] = [
                     'sid'      => (string)$sid,
@@ -5354,6 +5396,7 @@ switch ($action) {
                     'eta'      => $newEta,
                     'etaAppeared' => $etaAppeared,
                     'firstEver'   => $firstEver,
+                    'summary'  => (string)($s['contentsSummary'] ?? ''),
                 ];
             }
         }
@@ -5405,12 +5448,15 @@ switch ($action) {
             foreach (array_slice($changes, 0, 20) as $c) {
                 $icon = $c['bucket'] === 'delivered' ? '✅'
                       : ($c['bucket'] === 'exception' ? '⚠️'
-                      : ($c['bucket'] === 'in_transit' ? '🚚' : '📦'));
+                      : ($c['bucket'] === 'out_for_delivery' ? '🚚'
+                      : ($c['bucket'] === 'in_transit' ? '📦' : '📦')));
                 $head = $c['bucket'] === 'delivered' ? ($icon . ' Delivered — ' . $c['name'])
+                      : ($c['bucket'] === 'out_for_delivery' ? ($icon . ' Out for delivery — ' . $c['name'])
                       : ($c['bucket'] === 'exception' ? ($icon . ' Shipment exception — ' . $c['name'])
-                      : ($icon . ' Shipment on the move — ' . $c['name']));
+                      : ($icon . ' Shipment on the move — ' . $c['name'])));
                 $lines = [];
                 $lines[] = '*' . $c['carrier'] . '* ' . $c['tracking'] . ' → *' . ($c['status'] !== '' ? $c['status'] : ucfirst(str_replace('_', ' ', $c['bucket']))) . '*';
+                if (!empty($c['summary'])) $lines[] = '📦 ' . $c['summary'];
                 if ($c['location'] !== '') $lines[] = '📍 ' . $c['location'];
                 $etaFmt = $fmtEta($c['eta']);
                 if ($etaFmt !== '') $lines[] = ($c['bucket'] === 'delivered' ? '🗓 Delivered ' : '🗓 ETA ') . $etaFmt;
