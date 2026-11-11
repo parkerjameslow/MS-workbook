@@ -39522,7 +39522,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const carr = [(s.carrier || '').toUpperCase(), s.trackingNumber || ''].filter(Boolean).join(' ');
     if (carr) lines.push(`Carrier: ${carr}`);
     const summ = (typeof _shipmentContentsSummary === 'function') ? _shipmentContentsSummary(s) : '';
-    if (summ) lines.push(`📦 ${summ}`);
+    if (summ) lines.push(`📦 *Totals:* ${summ}`);
+    // Per-order / per-sample breakdown so the team sees exactly what to expect.
+    try {
+      const int = n => Math.round(Number(n) || 0).toLocaleString('en-US');
+      (s.entries || []).filter(e => e.orderId).forEach(e => {
+        const o = orderData[e.orderId]; if (!o) return;
+        const st = (typeof orderShipStats === 'function') ? orderShipStats(e.orderId) : {};
+        const d = [`${int(st.qty)} units`];
+        if (st.totalCartons) d.push(`${int(st.totalCartons)} cartons`);
+        if (st.totalWeightKg) d.push(`${int(st.totalWeightKg)} kg`);
+        lines.push(`• *${o.clientName} – ${o.name}*: ${d.join(' · ')}`);
+      });
+      (s.sampleEntries || []).forEach(e => {
+        const wt = (e.ship && e.ship.weight) || {};
+        const d = [`Qty ${e.qty || 1}`]; if (wt.value) d.push(`${wt.value} ${wt.unit || ''}`.trim());
+        lines.push(`• *${e.item || 'Sample'}*: ${d.join(' · ')}`);
+      });
+    } catch (_) {}
     lines.push('Open the Receiving lane to check received qty and mark it received.');
     // → #shipments (via the bot), not the CRM webhook's channel.
     _notifyStageSlack('Shipment delivered — needs audit', ':inbox_tray:', lines, 'shipments');
@@ -43933,13 +43950,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   function shipmentTotals(shipment) {
-    let totalCbm = 0, totalKg = 0, totalPallets = 0;
+    let totalCbm = 0, totalKg = 0, totalPallets = 0, totalUnits = 0, totalCartons = 0;
     (shipment.entries || []).forEach(entry => {
       if (entry.orderId) {
         const s = orderShipStats(entry.orderId);
         totalCbm     += s.totalCbm;
         totalKg      += s.totalWeightKg;
         totalPallets += s.palletsNeeded;
+        totalUnits   += (s.qty || 0);
+        totalCartons += (s.totalCartons || 0);
       } else {
         // Legacy workbook entry
         const key    = `${entry.clientName}|${entry.workbookId}`;
@@ -43949,12 +43968,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         totalCbm     += s.totalCbm;
         totalKg      += s.totalWeightKg;
         totalPallets += s.palletsNeeded;
+        totalUnits   += (parseFloat(entry.qty) || 0);
+        totalCartons += (s.totalCartons || 0);
       }
     });
     return {
       cbm:     parseFloat(totalCbm.toFixed(2)),
       kg:      parseFloat(totalKg.toFixed(1)),
       pallets: totalPallets,
+      units:   totalUnits,
+      cartons: totalCartons,
     };
   }
 
@@ -52491,19 +52514,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return s.sampleEntries.map(e => {
         const sh = e.ship || {}, wt = sh.weight || {}, dm = sh.dims || {};
         const bits = [e.item || 'Sample'];
+        if (e.qty) bits.push(`Qty ${e.qty}`);
         if (wt.value) bits.push(`${wt.value} ${wt.unit || ''}`.trim());
         if (dm.l || dm.w || dm.h) bits.push(`${dm.l || '?'}×${dm.w || '?'}×${dm.h || '?'} ${dm.unit || 'in'}`);
         return bits.join(' · ');
       }).join('; ');
     }
-    let t = { kg: 0, pallets: 0, cbm: 0 };
+    let t = { kg: 0, pallets: 0, cbm: 0, units: 0, cartons: 0 };
     try { if (typeof shipmentTotals === 'function') t = shipmentTotals(s); } catch (_) {}
     const bits = [];
+    if (t.units)   bits.push(`${Math.round(t.units).toLocaleString('en-US')} units`);
+    if (t.cartons) bits.push(`${Math.round(t.cartons).toLocaleString('en-US')} carton${t.cartons !== 1 ? 's' : ''}`);
     if (t.kg)      bits.push(`${Math.round(t.kg).toLocaleString('en-US')} kg (${Math.round(t.kg * 2.20462).toLocaleString('en-US')} lb)`);
     if (t.pallets) bits.push(`${t.pallets} pallet${t.pallets !== 1 ? 's' : ''}`);
     if (t.cbm)     bits.push(`${t.cbm} CBM`);
-    const oc = (s.entries || []).filter(e => e.orderId).length;
-    if (oc) bits.push(`${oc} order${oc !== 1 ? 's' : ''}`);
     return bits.join(' · ');
   }
   // Apply a freshly-fetched carrier payload to a shipment: store tracking,
