@@ -11201,8 +11201,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-card" style="margin-top:16px; margin-bottom:0;">
       <div class="section-header" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
         <span class="section-title">Shipping &amp; Tracking</span>
-        <button type="button" id="ship-split-btn" onclick="openSplitShipmentModal()" title="Split this shipment — send part of it by a different method (e.g. some Fast Air, the rest Slow Air)"
-          style="padding:5px 12px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Split Shipment</button>
+        <span style="display:inline-flex; gap:8px;">
+          <button type="button" id="ship-refresh-track-btn" onclick="refreshShipmentDetailTracking(this)" title="Fetch the latest status + ETA from the carrier for this shipment's tracking number"
+            style="padding:5px 12px; border-radius:8px; background:rgba(16,185,129,0.10); color:#16a34a; border:1px solid rgba(16,185,129,0.5); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">↻ Refresh tracking</button>
+          <button type="button" id="ship-split-btn" onclick="openSplitShipmentModal()" title="Split this shipment — send part of it by a different method (e.g. some Fast Air, the rest Slow Air)"
+            style="padding:5px 12px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Split Shipment</button>
+        </span>
       </div>
       <div class="section-body" style="padding:14px 16px; display:flex; flex-direction:column; gap:14px;">
         <div id="ship-detail-method-row" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -44510,23 +44514,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const cbmPct    = spec.cbm       > 0 ? Math.round((tot.cbm     / spec.cbm)       * 100) : 0;
       const kgPct     = spec.maxKg     > 0 ? Math.round((tot.kg      / spec.maxKg)     * 100) : 0;
       const palletPct = spec.maxPallets > 0 ? Math.round((tot.pallets / spec.maxPallets) * 100) : 0;
-      const isDelivered = s.status === 'delivered';
-      // ETA fallback chain (post-tracking-removal): manual s.eta →
-      // port arrival date → "—". Tracking-derived ETA was dropped
-      // when the carrier-fetch machinery came out; operators now
-      // open the carrier site directly via the ↗ launch button.
-      // Arrival estimates on the card. An ocean shipment has TWO — the
-      // destination-port arrival AND the final door ETA — so when both
-      // are on file, show them side by side. Otherwise show whichever
-      // single date exists. Delivered shipments show the actual
-      // delivered date instead of an estimate.
+      // Tracking-derived status/ETA (from the carrier API) feeds the card now
+      // that carrier fetch is back — so a DHL "delivered" + its date actually
+      // show, instead of "Delivered —".
+      const _trk = s.tracking || {};
+      const _trkEta = _trk.eta || '';
+      const _trkDelivered = /deliver/i.test(String(_trk.status || ''));
+      const isDelivered = s.status === 'delivered' || _trkDelivered;
+      // ETA chain: manual s.eta → carrier-tracking ETA → port arrival → "—".
+      // Ocean shipments can show BOTH the port arrival and the final door ETA.
+      // Delivered shipments show the actual delivered date.
       let _etaHtml;
       if (isDelivered) {
-        const d = s.deliveredOn ? _fmtShortDate(s.deliveredOn) : '—';
+        const dRaw = s.deliveredOn || _trkEta || '';
+        const d = dRaw ? _fmtShortDate(dRaw) : '—';
         _etaHtml = `<span class="sc-eta">Delivered <strong style="color:#34d399;">${d}</strong></span>`;
       } else {
         const _port = s.portArrivalDate || '';
-        const _fin  = s.eta || '';
+        const _fin  = s.eta || _trkEta || '';
         if (_port && _fin) {
           _etaHtml = `<span class="sc-eta">Port ETA <strong>${_fmtShortDate(_port)}</strong> · Final ETA <strong>${_fmtShortDate(_fin)}</strong></span>`;
         } else {
@@ -46350,6 +46355,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function startTrackingAutoRefresh() { /* removed */ }
   function stopTrackingAutoRefresh()  { /* removed */ }
 
+  // Manual "Refresh tracking" on the shipment detail — fetch + re-render so the
+  // status/ETA update immediately. Surfaces the carrier's error if it fails.
+  async function refreshShipmentDetailTracking(btn) {
+    const id = _currentShipmentId;
+    const s = shipmentData[id];
+    if (!s) return;
+    if (!s.carrier || !s.trackingNumber) {
+      if (typeof _msToast === 'function') _msToast('Add a carrier + tracking number first, then refresh.', 'warning');
+      return;
+    }
+    const ok = await refreshTrackingFor(id, btn);
+    if (ok) { try { renderShipmentDetail(id); } catch (_) {} if (typeof _msToast === 'function') _msToast('Tracking updated.', 'success'); }
+  }
   async function refreshTrackingFor(id, btn) {
     const s = shipmentData[id];
     if (!s) return false;
