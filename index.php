@@ -26449,20 +26449,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     // Received, Archived, …). Archived is tinted amber so it stands apart.
     const statusTxt = String(entry.status || '').replace(/[<&>]/g, '');
     const isArch = entry.archived || /archived/i.test(statusTxt);
+    // Status pill sits on its OWN line below the label/sub so it never squeezes
+    // the item name.
     const statusHtml = statusTxt
-      ? `<span style="flex-shrink:0; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; padding:2px 7px; border-radius:99px; white-space:nowrap; ${isArch ? 'background:rgba(217,119,6,0.12); border:1px solid rgba(217,119,6,0.4); color:#b45309;' : 'background:var(--surface2); border:1px solid var(--border); color:var(--text-muted);'}">${statusTxt}</span>`
+      ? `<span style="display:inline-block; margin-top:3px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; padding:2px 7px; border-radius:99px; white-space:nowrap; ${isArch ? 'background:rgba(217,119,6,0.12); border:1px solid rgba(217,119,6,0.4); color:#b45309;' : 'background:var(--surface2); border:1px solid var(--border); color:var(--text-muted);'}">${statusTxt}</span>`
       : '';
     // Use mousedown (not click) so the row fires before the search box's
     // onblur tears down the dropdown.
     return `<a href="#" onmousedown="event.preventDefault(); _sidebarSearchClick(${rowIdx});"
               data-search-row="${rowIdx}"
-              style="display:flex; align-items:center; gap:8px; padding:7px 12px; font-size:12px; color:var(--text); text-decoration:none; border-radius:6px; margin:1px 4px; opacity:${opacity}; cursor:pointer;">
-      <span style="width:18px; flex-shrink:0; text-align:center; font-size:12px;">${icon}</span>
+              style="display:flex; align-items:flex-start; gap:8px; padding:7px 12px; font-size:12px; color:var(--text); text-decoration:none; border-radius:6px; margin:1px 4px; opacity:${opacity}; cursor:pointer;">
+      <span style="width:18px; flex-shrink:0; text-align:center; font-size:12px; margin-top:1px;">${icon}</span>
       <span style="flex:1; min-width:0; overflow:hidden;">
         <span style="display:block; font-weight:600; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${labelEsc}</span>
         ${entry.sub ? `<span style="display:block; font-size:10.5px; color:var(--text-muted); white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${subEsc}</span>` : ''}
+        ${statusHtml}
       </span>
-      ${statusHtml}
     </a>`;
   }
 
