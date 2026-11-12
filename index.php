@@ -45567,12 +45567,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       </div>`;
     }).filter(Boolean).join('');
 
+    // Pre-pass: shipment-wide totals so each order can show its CBM share and
+    // the shipping cost allocated by that share (total shipping × CBM %).
+    let _shipTotalCbm = 0, _shipTotalShippingUsd = 0;
+    orderEntries.forEach(e => {
+      const st = orderShipStats(e.orderId);
+      _shipTotalCbm         += (st.totalCbm || 0);
+      _shipTotalShippingUsd += (st.totalShippingUsd || 0);
+    });
+
     const orderCardsHtml = entries.map((entry, idx) => {
       if (!entry.orderId) return '';
       const order = orderData[entry.orderId];
       if (!order) return '';
       const stats  = orderShipStats(entry.orderId);
       const orderHref = `#/order/${entry.orderId}`;
+      // CBM share of the whole shipment + the shipping cost that share implies.
+      const cbmPct     = _shipTotalCbm > 0 ? (stats.totalCbm / _shipTotalCbm) : 0;
+      const allocShip  = _shipTotalShippingUsd * cbmPct;
+      const cbmPctStr  = cbmPct > 0 ? (Math.round(cbmPct * 1000) / 10).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%' : '—';
 
       // Each stat is gated independently — Weight + CBM fall back to
       // the cached values from renderContainerViz when outer carton
@@ -45637,6 +45650,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <div class="soc-stat"><span class="soc-stat-val">${weightStr}</span><span class="soc-stat-lbl">Weight</span></div>
             <div class="soc-stat"><span class="soc-stat-val">${shipStr}</span><span class="soc-stat-lbl">Shipping</span></div>
           </div>
+          ${_shipTotalCbm > 0 && stats.totalCbm > 0
+            ? `<div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12px;">
+                 <span style="color:var(--text-muted);">Volume share <strong style="color:var(--text);">${cbmPctStr}</strong> of shipment CBM</span>
+                 <span style="color:var(--text-muted);">Shipping at that share <strong style="color:var(--accent);">$${fmt2(allocShip)}</strong></span>
+               </div>`
+            : ''}
         </div>
         ${crBanner}
       </div>`;
