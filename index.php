@@ -12219,6 +12219,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span id="order-detail-order-name-pencil"></span>
       </div>
       <div id="order-detail-client-name" style="font-size:14px; font-weight:600; color:var(--text-muted); margin:3px 0 8px;"></div>
+      <!-- Gross order total (Σ client sale) surfaced at the very top so the
+           operator sees it without scrolling to the Order Sheet footer. -->
+      <div id="order-detail-gross-total" style="display:none; align-items:baseline; gap:8px; margin:0 0 10px;">
+        <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted);">Gross Total</span>
+        <span id="order-detail-gross-total-usd" style="font-size:24px; font-weight:800; color:#10b981; line-height:1;"></span>
+        <span id="order-detail-gross-total-rmb" style="font-size:13px; font-weight:600; color:var(--text-muted);"></span>
+      </div>
 
       <!-- Fulfillment Address: dropdown to pick where the order ships
            to (Pyvot / MarketSculpt warehouse / the customer's own
@@ -12831,7 +12838,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
          Save button; Done just closes. -->
     <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 24px 14px; border-bottom:1px solid var(--border); flex-shrink:0;">
       <div style="min-width:0;">
-        <div class="modal-title" id="pl-modal-title" style="margin-bottom:4px;">Card</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="modal-title" id="pl-modal-title" style="margin-bottom:4px;">Card</div>
+          <span id="pl-modal-title-edit" style="display:none; margin-bottom:4px;"></span>
+        </div>
         <div id="pl-modal-stage" style="font-size:12px; color:var(--text-muted);"></div>
       </div>
       <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
@@ -53503,6 +53513,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const days = _pipelineDaysSince(c.since);
     const money = v => '$' + (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
     document.getElementById('pl-modal-title').textContent = c.title || c.product || 'Card';
+    // Order cards: allow renaming the order right here (same rename as the
+    // order screen / list), with a flat pencil next to the title.
+    const _plTitleEdit = document.getElementById('pl-modal-title-edit');
+    if (_plTitleEdit) {
+      if (c.kind === 'order') {
+        _plTitleEdit.style.display = 'inline-flex';
+        _plTitleEdit.innerHTML = `<button onclick="event.stopPropagation(); renamePipelineOrderCard('${_plEsc(String(c.id))}')" title="Rename this order" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:2px; display:inline-flex; align-items:center; line-height:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>`;
+      } else {
+        _plTitleEdit.style.display = 'none';
+        _plTitleEdit.innerHTML = '';
+      }
+    }
     document.getElementById('pl-modal-stage').innerHTML =
       `<span style="display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; background:${col.bg || '#eee'}; color:${col.fg || '#333'};">${_plEsc(col.label || c.stage)}</span>`
       + (days === null ? '' : ` <span style="margin-left:8px;">in this stage ${days <= 0 ? 'since today' : days + ' day' + (days === 1 ? '' : 's')}</span>`);
@@ -53526,10 +53548,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         facts.push(['Tracking #', ts.trackingNumber || '—']);
       }
     } else if (c.kind === 'order') {
-      facts.push(['Client', c.title]);
-      facts.push(['Order', String(c.sub || '').split(' · ')[0] || '—']);
+      facts.push(['Client', (c.clients && c.clients[0]) || String(c.sub || '').split(' · ')[0] || '—']);
       facts.push(['Workbooks', String((c.workbooks || []).length)]);
-      facts.push(['Total', c.totalUsd > 0 ? money(c.totalUsd) : '—']);
+      facts.push(['Gross total', c.totalUsd > 0 ? money(c.totalUsd) : '—']);
       if (c.flagged) facts.push(['Flag', 'Change requested']);
     } else {
       const s = shipmentData[c.id] || {};
@@ -55303,6 +55324,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _orderRenamePencil(id) {
     return `<button onclick="event.stopPropagation(); renameOrder('${id}')" title="Rename this order" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:2px; display:inline-flex; align-items:center; line-height:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>`;
   }
+  // Rename an order from the pipeline card modal — updates the order, the
+  // modal title, and the cached card so it reflects immediately, then repaints
+  // the board underneath. Mirrors renameOrder but keeps the modal in sync.
+  function renamePipelineOrderCard(id) {
+    const o = orderData[id]; if (!o) return;
+    const cur = _orderDisplayName(o);
+    const v = prompt('Rename order:', cur);
+    if (v === null) return;
+    o.title = v.trim(); // blank clears → falls back to the auto name
+    try { saveOrders(); } catch (_) {}
+    const newName = _orderDisplayName(o);
+    try { const c = _plLastCards[_plModalId]; if (c) c.title = newName; } catch (_) {}
+    const tEl = document.getElementById('pl-modal-title'); if (tEl) tEl.textContent = newName;
+    try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
+    try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
+  }
   function renameOrder(id) {
     const o = orderData[id]; if (!o) return;
     const cur = _orderDisplayName(o);
@@ -55833,6 +55870,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (table) table.style.display = 'none';
       if (empty) empty.style.display = '';
       if (tfoot) tfoot.innerHTML = '';
+      const _gt = document.getElementById('order-detail-gross-total');
+      if (_gt) _gt.style.display = 'none';
       return;
     }
     if (table) table.style.display = '';
@@ -56334,6 +56373,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Grand total footer
     const grandUsdStr     = grandUsd > 0 ? `$${fmt2(grandUsd)}` : '—';
     const grandLeadStr    = grandMaxLead > 0 ? `${grandMaxLead} days` : '—';
+    // Mirror the gross grand total up to the order header (very top).
+    try {
+      const _gtWrap = document.getElementById('order-detail-gross-total');
+      const _gtUsd  = document.getElementById('order-detail-gross-total-usd');
+      const _gtRmb  = document.getElementById('order-detail-gross-total-rmb');
+      if (_gtWrap && _gtUsd) {
+        if (grandUsd > 0) {
+          _gtUsd.textContent = grandUsdStr;
+          if (_gtRmb) _gtRmb.textContent = `¥${fmt2(grandUsd * _fxRate)}`;
+          _gtWrap.style.display = 'flex';
+        } else {
+          _gtWrap.style.display = 'none';
+        }
+      }
+    } catch (_) {}
     // Shipment line: weight + CBM (out of one 40' HC container's 67 m³)
     // with a small fill indicator so the operator can spot a near-full
     // container at a glance. Hidden when neither metric is populated.
