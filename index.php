@@ -11552,7 +11552,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <tr>
             <th style="width:5%;">#</th>
             <th style="width:9%;">Product</th>
-            <th style="width:9%;">Total MOQ</th>
             <th style="width:8%;">QTY</th>
             <th style="width:8%;">RMB Per</th>
             <th style="width:8%;">USD Per</th>
@@ -33976,7 +33975,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         </span>
       </td>
       ${inp('product', r.product, 'qq-text')}
-      ${inp('totalMoq', r.totalMoq, 'qq-text')}
       ${inp('qty', r.qty)}
       <td class="qq-cell"><input type="text" class="qq-rmb-input" value="${_qqEsc(r.rmbPer)}" oninput="qqInput(${i},'rmbPer',this.value)"></td>
       ${(() => {
@@ -34005,7 +34003,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
   function _qqRender() {
     const body = document.getElementById('qq-body'); if (!body) return;
-    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="13" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderSummary(); return; }
+    if (!_qq.rows.length) { body.innerHTML = `<tr><td colspan="12" style="text-align:center; color:var(--text-muted); padding:30px;">No rows yet &mdash; click &ldquo;+ Add Row&rdquo; to start a quick quote.</td></tr>`; _qqRenderSummary(); return; }
     body.innerHTML = _qq.rows.map((r, i) => _qqRowHtml(r, i)).join('');
     _qqRenderSummary();
   }
