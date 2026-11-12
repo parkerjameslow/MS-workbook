@@ -7498,6 +7498,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .oc-wb-row { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
     .oc-wb-row .oc-wb-prices { margin-left: auto; }   /* prices stay right; pill + assignee stay together on the left */
     .oc-wb-assignee { flex: 0 0 auto; display: inline-flex; align-items: center; }
+    /* Subtle circular margin badge to the LEFT of a workbook pill — the actual
+       margin the Sale Per implied when the order was confirmed. */
+    .oc-wb-margin {
+      flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text-muted); font-size: 10px; font-weight: 700; line-height: 1;
+      cursor: help;
+    }
     .oc-wb-pill {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px;
@@ -54277,12 +54286,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // different filter. The card's existing onclick navigates to
     // #/order/<id> which still works for editing / adding to
     // shipments / further notifications.
+    // Subtle EXT total across everything In Production — the sum of each
+    // order's gross sale (same figure as the card's EXT), pinned at the bottom.
+    const _extTotal = ids.reduce((s, id) => s + ((typeof _orderGrossSaleUsd === 'function') ? _orderGrossSaleUsd(orderData[id]) : 0), 0);
+    const _extTotalHtml = _extTotal > 0
+      ? `<div style="display:flex; justify-content:flex-end; align-items:baseline; gap:8px; padding:12px 6px 2px; margin-top:4px; border-top:1px solid var(--border); color:var(--text-muted); font-size:11px;">
+           <span style="text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">EXT Total</span>
+           <span style="font-size:13px; font-weight:700; color:var(--text);">$${_extTotal.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</span>
+         </div>`
+      : '';
     host.innerHTML = `<div class="order-cards">${ids.map(id => {
       // Defer to buildOrderCard if it exists in the outer closure;
       // since it's defined inside renderOrdersContent we re-render
       // the orders content silently to populate the helper in scope.
       return _buildFulfillmentCard(id);
-    }).join('')}</div>`;
+    }).join('')}</div>${_extTotalHtml}`;
   }
 
   // Fulfillment card builder — mirrors the Orders card's full
@@ -54426,6 +54444,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const det = workbookDetail[`${e.clientName}|${e.workbookId}`] || {};
       const prod = (det.product || e.workbookId || '?');
       const href = `#/client/${encodeURIComponent(e.clientName)}/workbook/${e.workbookId}`;
+      // Subtle margin badge — the ACTUAL margin the Sale Per implied (markup on
+      // landed cost, same basis as the Pricing-tab "Sale Per implies X%" drift
+      // note), so it reflects exactly what this workbook was margined at.
+      let marginBadge = '';
+      const _salePer    = parseFloat(det.pricingSalePer) || 0;
+      const _landedTot  = parseFloat(det.pricingLandedTotal) || 0;
+      const _units      = w.units || 0;
+      const _landedPer  = _units > 0 ? _landedTot / _units : 0;
+      if (_salePer > 0 && _landedPer > 0) {
+        const _impliedPct = ((_salePer - _landedPer) / _landedPer) * 100;
+        const _exact = Math.round(_impliedPct * 10) / 10;
+        marginBadge = `<span class="oc-wb-margin" title="Sale Per implies a ${_exact}% margin — what this workbook was actually margined at when confirmed">${Math.round(_impliedPct)}</span>`;
+      }
       const wbTotalUsd = w.liveTotal != null ? w.liveTotal : (w.price || 0);
       let wbRmb = '', wbUsd = '';
       if (wbTotalUsd > 0) {
@@ -54437,6 +54468,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         ? `<span class="oc-wb-prices">${wbRmb ? `<span>${wbRmb}</span>` : ''}${wbUsd ? `<span style="${wbRmb ? 'border-left:1px solid var(--border); padding-left:10px; margin-left:10px;' : ''}color:var(--text);">${wbUsd}</span>` : ''}</span>`
         : '';
       return `<div class="oc-wb-row">
+        ${marginBadge}
         <span class="oc-wb-pill" onclick="event.stopPropagation(); _wbBackHash='#/fulfillment'; _wbBackLabel='Back to In Production'; location.hash='${href}'">${prod} <span style="opacity:0.75;">→</span></span>
         <span class="oc-wb-assignee" onclick="event.stopPropagation();">${(typeof _assigneeSpotHtml === 'function') ? _assigneeSpotHtml('wb:' + e.clientName + '|' + e.workbookId, true) : ''}</span>
         ${priceStr}
