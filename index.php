@@ -54494,8 +54494,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return `<div class="order-card" onclick="location.hash='#/order/${id}'">
       <div class="oc-card-main">
         <div class="oc-left">
-          <span class="oc-client">${o.clientName || ''}</span>
-          <span class="oc-title">${o.name || `Order #${id}`}</span>
+          <span class="oc-client" style="display:inline-flex; align-items:center; gap:6px; max-width:100%;"><span style="overflow:hidden; text-overflow:ellipsis;">${_orderDisplayName(o)}</span> ${_orderRenamePencil(id)}</span>
+          <span class="oc-title">${o.clientName || ''}</span>
           ${_orderCardShipToBadge(o)}
           <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap;">${pills.join('')}</div>
         </div>
