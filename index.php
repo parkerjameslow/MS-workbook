@@ -12212,12 +12212,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     <!-- Header: client name (big) → ship-to → order name → controls -->
     <div class="order-detail-header">
-      <div class="order-detail-client-name" id="order-detail-client-name"></div>
-      <!-- Editable order name (smart default from the workbooks) + pencil. -->
-      <div style="display:flex; align-items:center; gap:7px; margin:1px 0 6px;">
-        <span id="order-detail-order-name" style="font-size:15px; font-weight:700; color:var(--text);"></span>
+      <!-- Order name (big, editable) on top; client as subtext below. -->
+      <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
+        <div id="order-detail-order-name" style="font-size:30px; font-weight:800; color:var(--text); line-height:1.1;"></div>
         <span id="order-detail-order-name-pencil"></span>
       </div>
+      <div id="order-detail-client-name" style="font-size:14px; font-weight:600; color:var(--text-muted); margin:3px 0 8px;"></div>
 
       <!-- Fulfillment Address: dropdown to pick where the order ships
            to (Pyvot / MarketSculpt warehouse / the customer's own
@@ -52156,8 +52156,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const tot = (typeof orderTotals === 'function') ? orderTotals(o) : { totalUsd: 0 };
       const since = (stage === 'production') ? (o.notifiedAt || o.createdAt || o.dateCreated) : (o.createdAt || o.dateCreated);
       const wbs = entries.map(e => ({ cn: e.clientName, wid: e.workbookId, product: _wbProduct(e.clientName, e.workbookId) }));
-      cards.push({ kind: 'order', stage, id: o.id, title: o.clientName || 'Order',
-                   sub: `${o.name || ('Order #' + o.id)} · ${entries.length} workbook${entries.length === 1 ? '' : 's'}`,
+      cards.push({ kind: 'order', stage, id: o.id, title: _orderDisplayName(o),
+                   sub: `${o.clientName || 'Order'} · ${entries.length} workbook${entries.length === 1 ? '' : 's'}`,
                    totalUsd: tot.totalUsd || 0, value: tot.totalUsd || 0, since,
                    flagged: !!o.changeRequested, workbooks: wbs,
                    search: [o.clientName, o.name, o.poNumber].concat(wbs.map(w => w.product)).join(' ').toLowerCase(),
@@ -55024,8 +55024,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return `<div class="order-card${o.changeRequested ? ' has-change-request' : ''}" onclick="location.hash='#/order/${id}'">
         <div class="oc-card-main">
           <div class="oc-left">
-            <span class="oc-client">${o.clientName}</span>
-            <span class="oc-title" style="display:inline-flex; align-items:center; gap:6px;">${_orderDisplayName(o)} ${_orderRenamePencil(id)}</span>
+            <span class="oc-client" style="display:inline-flex; align-items:center; gap:6px; max-width:100%;"><span style="overflow:hidden; text-overflow:ellipsis;">${_orderDisplayName(o)}</span> ${_orderRenamePencil(id)}</span>
+            <span class="oc-title">${o.clientName}</span>
             ${_orderCardShipToBadge(o)}
             ${leadBlock}
             ${deadlineBlock}
