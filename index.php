@@ -11210,6 +11210,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             style="padding:5px 12px; border-radius:8px; background:rgba(16,185,129,0.10); color:#16a34a; border:1px solid rgba(16,185,129,0.5); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">↻ Refresh tracking</button>
           <button type="button" id="ship-split-btn" onclick="openSplitShipmentModal()" title="Split this shipment — send part of it by a different method (e.g. some Fast Air, the rest Slow Air)"
             style="padding:5px 12px; border-radius:8px; background:rgba(107,147,255,0.10); color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Split Shipment</button>
+          <button type="button" id="ship-add-cost-btn" onclick="addShipmentCost()" title="Add another actual shipment cost (freight, duties, etc.)"
+            style="padding:5px 12px; border-radius:8px; background:rgba(16,185,129,0.10); color:#16a34a; border:1px solid rgba(16,185,129,0.5); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; cursor:pointer; font-family:inherit;">+ Add Shipment Cost</button>
         </span>
       </div>
       <div class="section-body" style="padding:14px 16px; display:flex; flex-direction:column; gap:14px;">
@@ -11255,6 +11257,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           </div>
           <div id="ship-detail-trackings"></div>
         </div>
+        <!-- Actual shipment cost(s) — real freight/duties paid, entered in RMB
+             or USD (each converts to the other). Multiple rows via + Add
+             Shipment Cost. -->
+        <div id="ship-detail-costs"></div>
         <!-- Split legs — portions of this shipment sent by a different method. -->
         <div id="ship-detail-splits"></div>
       </div>
@@ -44878,6 +44884,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (plEl) plEl.value = s.portLocation  || '';
     _updateShipDetailReleaseHint();
     _renderShipmentDetailTrackings();
+    _renderShipmentCosts();
     _renderShipmentSplits();
 
     // Container type buttons
@@ -45111,6 +45118,105 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     </div>`;
   }
 
+  // ── Actual shipment cost(s) ──────────────────────────────────────────
+  // Real freight/duties the operator paid, below the tracking numbers. Each
+  // row takes a label + an amount in EITHER RMB or USD — typing one fills the
+  // other via the live FX rate. Multiple rows via "+ Add Shipment Cost".
+  // Stored on the shipment as s.actualCosts = [{ id, label, rmb, usd }].
+  function _shipCostFx() {
+    return (typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.2;
+  }
+  function _shipCostNum(v) {
+    const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+    return isFinite(n) ? n : 0;
+  }
+  function _renderShipmentCosts() {
+    const host = document.getElementById('ship-detail-costs');
+    if (!host) return;
+    const s = shipmentData[_currentShipmentId];
+    if (!s) { host.innerHTML = ''; return; }
+    if (!Array.isArray(s.actualCosts)) s.actualCosts = [];
+    if (s.actualCosts.length === 0) {
+      // Default to ONE open cost row (seeded in-memory; persisted once the
+      // operator types an amount).
+      s.actualCosts.push({ id: 'ac' + Date.now(), label: '', rmb: '', usd: '' });
+    }
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const rows = s.actualCosts.map((c, idx) => `
+      <div style="display:grid; grid-template-columns:1fr 150px 150px auto; gap:8px; align-items:center;">
+        <input type="text" value="${esc(c.label)}" placeholder="Cost label (e.g. Freight, Duties)"
+               oninput="updateShipmentCost(${idx}, 'label', this.value)"
+               style="padding:7px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit;" />
+        <div style="position:relative;"><span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:13px; pointer-events:none;">¥</span>
+          <input type="text" inputmode="decimal" value="${esc(c.rmb)}" placeholder="0.00" data-cost-rmb="${idx}"
+                 oninput="updateShipmentCost(${idx}, 'rmb', this.value)"
+                 style="width:100%; padding:7px 10px 7px 22px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; box-sizing:border-box;" /></div>
+        <div style="position:relative;"><span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--text-muted); font-size:13px; pointer-events:none;">$</span>
+          <input type="text" inputmode="decimal" value="${esc(c.usd)}" placeholder="0.00" data-cost-usd="${idx}"
+                 oninput="updateShipmentCost(${idx}, 'usd', this.value)"
+                 style="width:100%; padding:7px 10px 7px 22px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; box-sizing:border-box;" /></div>
+        <button onclick="removeShipmentCost(${idx})" title="Remove this cost" style="width:30px; height:30px; padding:0; border:1px solid var(--border); border-radius:var(--radius-sm); background:transparent; color:var(--text-muted); cursor:pointer; font-size:16px; line-height:1;">×</button>
+      </div>`).join('');
+    host.innerHTML = `<div style="margin-top:4px;">
+      <label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); margin-bottom:8px;">Actual Cost</label>
+      <div style="display:flex; flex-direction:column; gap:8px;">${rows}</div>
+      <div id="ship-cost-total"></div>
+    </div>`;
+    _updateShipmentCostTotal();
+  }
+  function _updateShipmentCostTotal() {
+    const el = document.getElementById('ship-cost-total');
+    if (!el) return;
+    const s = shipmentData[_currentShipmentId];
+    const costs = (s && Array.isArray(s.actualCosts)) ? s.actualCosts : [];
+    const totUsd = costs.reduce((t, c) => t + _shipCostNum(c.usd), 0);
+    const totRmb = costs.reduce((t, c) => t + _shipCostNum(c.rmb), 0);
+    el.innerHTML = (totUsd > 0 || totRmb > 0)
+      ? `<div style="display:flex; justify-content:flex-end; gap:14px; margin-top:8px; font-size:12px; font-weight:700;">
+           <span style="color:var(--text-muted);">Total: ¥${totRmb.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3})}</span>
+           <span style="color:var(--text);">$${totUsd.toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:3})}</span>
+         </div>`
+      : '';
+  }
+  function updateShipmentCost(idx, field, value) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s || !Array.isArray(s.actualCosts) || !s.actualCosts[idx]) return;
+    const fx = _shipCostFx();
+    s.actualCosts[idx][field] = value;
+    // Typing one currency fills the other (without a full re-render, so the
+    // field the operator is in keeps focus).
+    if (field === 'rmb') {
+      const r = _shipCostNum(value);
+      const usd = r !== 0 ? String(Math.round((r / fx) * 1000) / 1000) : '';
+      s.actualCosts[idx].usd = usd;
+      const el = document.querySelector(`[data-cost-usd="${idx}"]`);
+      if (el && document.activeElement !== el) el.value = usd;
+    } else if (field === 'usd') {
+      const u = _shipCostNum(value);
+      const rmb = u !== 0 ? String(Math.round((u * fx) * 1000) / 1000) : '';
+      s.actualCosts[idx].rmb = rmb;
+      const el = document.querySelector(`[data-cost-rmb="${idx}"]`);
+      if (el && document.activeElement !== el) el.value = rmb;
+    }
+    saveShipments();
+    _updateShipmentCostTotal();
+  }
+  function addShipmentCost() {
+    const s = shipmentData[_currentShipmentId];
+    if (!s) return;
+    if (!Array.isArray(s.actualCosts)) s.actualCosts = [];
+    s.actualCosts.push({ id: 'ac' + Date.now(), label: '', rmb: '', usd: '' });
+    saveShipments();
+    _renderShipmentCosts();
+  }
+  function removeShipmentCost(idx) {
+    const s = shipmentData[_currentShipmentId];
+    if (!s || !Array.isArray(s.actualCosts)) return;
+    s.actualCosts.splice(idx, 1);
+    saveShipments();
+    _renderShipmentCosts();
+  }
+
   // Trackings = array of { carrier, number, addedAt }. Migration:
   // legacy shipments only have s.carrier + s.trackingNumber. The first
   // time we render, if trackings[] is empty and the legacy fields are
@@ -45125,10 +45231,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       s.trackings.push({ carrier: s.carrier, number: s.trackingNumber, addedAt: s.dateCreated || new Date().toISOString() });
     }
     if (s.trackings.length === 0) {
-      host.innerHTML = `<div style="padding:14px; text-align:center; color:var(--text-muted); font-size:12px; border:1px dashed var(--border); border-radius:8px;">
-        No tracking numbers yet. Use <strong>+ Add Tracking</strong> above to attach one.
-      </div>`;
-      return;
+      // Default to ONE open tracking row so the operator can type a number
+      // without first clicking "+ Add Tracking". Seeded in-memory only — it
+      // isn't persisted until they actually enter a carrier/number
+      // (updateShipmentTracking saves on input).
+      s.trackings.push({ carrier: '', number: '', addedAt: new Date().toISOString() });
     }
     const CARRIERS = [
       { v: '',       lbl: '— Carrier —' },
