@@ -26107,9 +26107,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const _wbStatus = _searchWbStatus(clientName, wb, detail);
         const fields = [wb.product, detail.product, detail.desc, clientName, detail.materials, detail.pantone, detail.cmyk, _wbStatus, ...rfqText]
           .filter(Boolean).join(' ').toLowerCase();
+        const _wbName = wb.product || detail.product || 'Untitled workbook';
         idx.push({
           type: 'workbook',
-          label: wb.product || detail.product || 'Untitled workbook',
+          label: _wbName,
           sub: clientName,
           href: `#/client/${enc(clientName)}/workbook/${wb.id}`,
           archived: !!wb.deleted_at,
@@ -26117,6 +26118,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           recencyTs: parseInt(wb.id) || 0,
           searchText: fields,
           clientName, workbookId: wb.id
+        });
+        // Also index each RFQ LINE ITEM (and variant) as its own hit, so a line
+        // like "Fire pit tins" inside a differently-named workbook ("Wax Fire
+        // Pit") can be found by its own name. Clicking opens the parent
+        // workbook. Skipped when the line name equals the workbook name.
+        (detail.rfqItems || []).forEach(li => {
+          const liName = String((li && li.item) || '').trim();
+          if (!liName || liName.toLowerCase() === _wbName.toLowerCase()) return;
+          idx.push({
+            type: 'workbook',
+            label: liName,
+            sub: `${clientName} · in ${_wbName}`,
+            href: `#/client/${enc(clientName)}/workbook/${wb.id}`,
+            archived: !!wb.deleted_at,
+            status: _wbStatus,
+            recencyTs: (parseInt(wb.id) || 0) - 1,
+            searchText: [liName, li.sku, clientName, _wbName, _wbStatus].filter(Boolean).join(' ').toLowerCase(),
+            clientName, workbookId: wb.id
+          });
+          (li.variants || []).forEach(v => {
+            const vn = String((v && v.variant) || '').trim();
+            if (!vn) return;
+            idx.push({
+              type: 'workbook',
+              label: `${liName} — ${vn}`,
+              sub: `${clientName} · in ${_wbName}`,
+              href: `#/client/${enc(clientName)}/workbook/${wb.id}`,
+              archived: !!wb.deleted_at,
+              status: _wbStatus,
+              recencyTs: (parseInt(wb.id) || 0) - 1,
+              searchText: [liName, vn, v.sku, clientName, _wbName].filter(Boolean).join(' ').toLowerCase(),
+              clientName, workbookId: wb.id
+            });
+          });
         });
       });
     });
