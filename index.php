@@ -51022,6 +51022,25 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return { totalUsd: Math.round(totalUsd * 100) / 100, totalRmb: Math.round(totalRmb * 100) / 100 };
   }
 
+  // Gross total SALE of an order — what the client pays. Sum of each
+  // workbook's LIVE client-quote total (Sale Per × qty + billed fees), the
+  // same number the Order Sheet / order-detail card show as "Price (customer)".
+  // This is deliberately NOT product cost (that's orderTotals().totalUsd).
+  function _orderGrossSaleUsd(order) {
+    let sale = 0;
+    ((order && order.entries) || []).forEach(e => {
+      const detail = workbookDetail[`${e.clientName}|${e.workbookId}`];
+      if (!detail) return;
+      try {
+        const live = (typeof _wbLiveTotalForOrder === 'function') ? _wbLiveTotalForOrder(detail, order, e.workbookId) : null;
+        sale += (live && live.total != null) ? live.total : (parseFloat(detail.pricingClientQuoteTotal) || 0);
+      } catch (_) {
+        sale += parseFloat(detail.pricingClientQuoteTotal) || 0;
+      }
+    });
+    return Math.round(sale * 100) / 100;
+  }
+
   // ── Nav badge helper ─────────────────────────────────────────────────
   // actionable > 0 → orange pulsing badge with actionable count
   // actionable = 0, total > 0 → blue badge with total count
@@ -52237,12 +52256,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (!stage) return;   // notified + already shipped → lives on shipment cards
       const entries = (o.entries || []).filter(Boolean);
       entries.forEach(e => claim(e.clientName, e.workbookId));
-      const tot = (typeof orderTotals === 'function') ? orderTotals(o) : { totalUsd: 0 };
+      const grossSale = _orderGrossSaleUsd(o);
       const since = (stage === 'production') ? (o.notifiedAt || o.createdAt || o.dateCreated) : (o.createdAt || o.dateCreated);
       const wbs = entries.map(e => ({ cn: e.clientName, wid: e.workbookId, product: _wbProduct(e.clientName, e.workbookId) }));
       cards.push({ kind: 'order', stage, id: o.id, title: _orderDisplayName(o),
                    sub: `${o.clientName || 'Order'} · ${entries.length} workbook${entries.length === 1 ? '' : 's'}`,
-                   totalUsd: tot.totalUsd || 0, value: tot.totalUsd || 0, since,
+                   totalUsd: grossSale, value: grossSale, since,
                    flagged: !!o.changeRequested, workbooks: wbs,
                    search: [o.clientName, o.name, o.poNumber].concat(wbs.map(w => w.product)).join(' ').toLowerCase(),
                    clients: o.clientName ? [o.clientName] : [] });
