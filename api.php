@@ -5531,6 +5531,35 @@ switch ($action) {
                         $ships[$sid]['tracking']['checkedAt'] = $nowMs;
                     } else {
                         $ships[$sid]['tracking'] = array_merge($new, ['checkedAt' => $nowMs]);
+                        // Advance the shipment's OWN status to match the carrier
+                        // bucket (so the status pill / dropdown reflect reality,
+                        // not just the tracking sub-object). delivered → delivered
+                        // (+ deliveredOn); any movement from an early stage →
+                        // in_transit. Never downgrades delivered/received.
+                        $cur = strtolower((string)($ships[$sid]['status'] ?? ''));
+                        $nb  = $bucketOf((string)($new['status'] ?? ''), $ships[$sid]['status'] ?? '');
+                        if ($nb === 'delivered' && !in_array($cur, ['delivered', 'received'], true)) {
+                            $ships[$sid]['status'] = 'delivered';
+                            if (empty($ships[$sid]['deliveredOn'])) {
+                                $ds = (string)($new['deliveredOn'] ?? ($new['statusDate'] ?? ($new['eta'] ?? '')));
+                                $ships[$sid]['deliveredOn'] = $ds !== '' ? substr($ds, 0, 10) : date('Y-m-d');
+                            }
+                        } elseif (($nb === 'in_transit' || $nb === 'out_for_delivery')
+                                  && in_array($cur, ['planning', 'booked', 'waiting_arrival', ''], true)) {
+                            $ships[$sid]['status'] = 'in_transit';
+                        }
+                        // Fill ETA / ETD if still empty (ETD = earliest event scan).
+                        if (empty($ships[$sid]['eta']) && !empty($new['eta']) && $nb !== 'delivered') {
+                            $ships[$sid]['eta'] = substr((string)$new['eta'], 0, 10);
+                        }
+                        if (empty($ships[$sid]['etd']) && !empty($new['events']) && is_array($new['events']) && $nb !== 'pending') {
+                            $tmin = 0;
+                            foreach ($new['events'] as $ev) {
+                                $t = isset($ev['time']) ? strtotime((string)$ev['time']) : 0;
+                                if ($t && ($tmin === 0 || $t < $tmin)) $tmin = $t;
+                            }
+                            if ($tmin) $ships[$sid]['etd'] = date('Y-m-d', $tmin);
+                        }
                         $updated++;
                     }
                 }

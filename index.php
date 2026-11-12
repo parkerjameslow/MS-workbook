@@ -44535,6 +44535,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const shipNav = document.getElementById('nav-shipments-link');
     if (shipNav) shipNav.classList.add('active');
     showView('view-shipments');
+    // Reconcile every shipment's status/ETA from its cached tracking so the
+    // list pills reflect the carrier (Planning → In Transit) without waiting
+    // on a fresh fetch.
+    try {
+      let _rc = false;
+      Object.values(shipmentData || {}).forEach(s => { if (_reconcileShipmentStatusFromTracking(s)) _rc = true; });
+      if (_rc) saveShipments();
+    } catch (_) {}
     renderShipmentsContent();
     // On-view tracking refresh (cached 3h) so ETAs/status fill in from the
     // tracking numbers without a manual refresh. Re-renders on change.
@@ -44834,6 +44842,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _currentShipmentId = parseInt(id);
     const s = shipmentData[_currentShipmentId];
     if (!s) { location.hash = '#/shipments'; return; }
+    // Reconcile the status/ETA/ETD from any cached tracking so the dropdown and
+    // dates reflect the carrier immediately — even before a fresh fetch lands.
+    try { if (_reconcileShipmentStatusFromTracking(s)) saveShipments(); } catch (_) {}
 
     document.getElementById('header-title').textContent = s.name;
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
@@ -52621,6 +52632,33 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (/transit|on its way|departed|arriv|processed|picked up|collect|scan|in progress|forwarded|clearance/.test(raw)) return 'in_transit';
     return 'pending';
   }
+  // Reconcile a shipment's own status / ETA / ETD from its CACHED tracking data
+  // (no network). Catches shipments whose tracking already shows movement but
+  // whose status field is stale, so simply opening the page advances
+  // Planning → In Transit even between fetches. Render-time only: never pings
+  // Slack (that's _applyTrackingToShipment's job on a fresh fetch). Returns
+  // true if it changed anything.
+  function _reconcileShipmentStatusFromTracking(s) {
+    if (!s || !s.tracking || !s.tracking.status) return false;
+    const bucket = _trackBucketFromStatus(s.tracking.status);
+    const toYmd = v => { const d = new Date(v); return isNaN(d) ? '' : d.toISOString().slice(0, 10); };
+    let changed = false;
+    if (bucket === 'delivered') {
+      if (s.status !== 'delivered' && s.status !== 'received') {
+        s.status = 'delivered';
+        if (!s.deliveredOn) s.deliveredOn = toYmd(s.tracking.deliveredOn || s.tracking.statusDate || s.tracking.eta) || new Date().toISOString().slice(0, 10);
+        changed = true;
+      }
+    } else if (bucket === 'in_transit' || bucket === 'out_for_delivery') {
+      if (['planning', 'booked', 'waiting_arrival'].indexOf(s.status) !== -1) { s.status = 'in_transit'; changed = true; }
+    }
+    if (!s.eta && s.tracking.eta && bucket !== 'delivered') { const y = toYmd(s.tracking.eta); if (y) { s.eta = y; changed = true; } }
+    if (!s.etd && Array.isArray(s.tracking.events) && s.tracking.events.length && bucket !== 'pending') {
+      const ts = s.tracking.events.map(e => e && e.time).filter(Boolean).map(t => new Date(t).getTime()).filter(n => !isNaN(n));
+      if (ts.length) { const y = toYmd(new Date(Math.min.apply(null, ts))); if (y) { s.etd = y; changed = true; } }
+    }
+    return changed;
+  }
   // Human "what's in it" summary for Slack / the card — weight (kg + lb),
   // pallets, CBM for order shipments; the sample's own weight/dims for a sample.
   function _shipmentContentsSummary(s) {
@@ -52659,7 +52697,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       s.status = 'delivered';
       if (!s.deliveredOn) s.deliveredOn = toYmd(data.deliveredOn || data.statusDate || data.eta) || new Date().toISOString().slice(0, 10);
     }
+    // Advance an early-stage shipment to In Transit the moment the carrier
+    // shows movement. Previously only 'delivered' auto-advanced, so the status
+    // dropdown stayed on Planning through the entire transit.
+    if ((bucket === 'in_transit' || bucket === 'out_for_delivery')
+        && ['planning', 'booked', 'waiting_arrival'].indexOf(s.status) !== -1) {
+      s.status = 'in_transit';
+    }
     if (data.eta && !s.eta && bucket !== 'delivered') { const y = toYmd(data.eta); if (y) s.eta = y; }
+    // Estimated departure = earliest tracking event (first pickup / origin scan).
+    if (!s.etd && Array.isArray(data.events) && data.events.length && bucket !== 'pending') {
+      const ts = data.events.map(e => e && e.time).filter(Boolean).map(t => new Date(t).getTime()).filter(n => !isNaN(n));
+      if (ts.length) { const y = toYmd(new Date(Math.min.apply(null, ts))); if (y) s.etd = y; }
+    }
     s.contentsSummary = _shipmentContentsSummary(s);
     if (newStatus && newStatus.toLowerCase() !== prevNotified.toLowerCase()) {
       try {
