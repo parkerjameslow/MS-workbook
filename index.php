@@ -54257,6 +54257,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof renderOrdersList === 'function') renderOrdersList();
   }
 
+  // Per-order EXT (the card's "EXT" stat = profit) stashed by _buildFulfillmentCard
+  // during a render so the dashboard's bottom "EXT Total" sums the EXACT same
+  // values shown on the cards.
+  let _fulfillmentExtById = {};
   function renderFulfillmentList() {
     document.getElementById('header-title').textContent = 'In Production';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
@@ -54286,21 +54290,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // different filter. The card's existing onclick navigates to
     // #/order/<id> which still works for editing / adding to
     // shipments / further notifications.
-    // Subtle EXT total across everything In Production — the sum of each
-    // order's gross sale (same figure as the card's EXT), pinned at the bottom.
-    const _extTotal = ids.reduce((s, id) => s + ((typeof _orderGrossSaleUsd === 'function') ? _orderGrossSaleUsd(orderData[id]) : 0), 0);
-    const _extTotalHtml = _extTotal > 0
+    // Build the cards first — each stashes its EXT (the card's EXT stat) into
+    // _fulfillmentExtById — then sum those SAME per-card values for a subtle
+    // "EXT Total" pinned at the bottom, so the total always equals the cards.
+    _fulfillmentExtById = {};
+    const _cardsHtml = ids.map(id => _buildFulfillmentCard(id)).join('');
+    const _extTotal = ids.reduce((s, id) => s + (parseFloat(_fulfillmentExtById[id]) || 0), 0);
+    const _extTotalHtml = _extTotal !== 0
       ? `<div style="display:flex; justify-content:flex-end; align-items:baseline; gap:8px; padding:12px 6px 2px; margin-top:4px; border-top:1px solid var(--border); color:var(--text-muted); font-size:11px;">
            <span style="text-transform:uppercase; letter-spacing:0.05em; font-weight:700;">EXT Total</span>
            <span style="font-size:13px; font-weight:700; color:var(--text);">$${_extTotal.toLocaleString('en-US', {minimumFractionDigits: 3, maximumFractionDigits: 3})}</span>
          </div>`
       : '';
-    host.innerHTML = `<div class="order-cards">${ids.map(id => {
-      // Defer to buildOrderCard if it exists in the outer closure;
-      // since it's defined inside renderOrdersContent we re-render
-      // the orders content silently to populate the helper in scope.
-      return _buildFulfillmentCard(id);
-    }).join('')}</div>${_extTotalHtml}`;
+    host.innerHTML = `<div class="order-cards">${_cardsHtml}</div>${_extTotalHtml}`;
   }
 
   // Fulfillment card builder — mirrors the Orders card's full
@@ -54518,6 +54520,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const profitBasis = agTotalOurs + agFeesAsIs;
     const profitT       = (agPrice > 0 && profitBasis > 0) ? (agPrice - profitBasis) : 0;
     const profitHasData = (agPrice > 0 && profitBasis > 0);
+    // Stash this card's EXT (= profit) so renderFulfillmentList can sum the
+    // exact same per-card values into the bottom "EXT Total".
+    try { _fulfillmentExtById[id] = profitHasData ? profitT : 0; } catch (_) {}
     const profitColor   = profitT < 0 ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
     const profitHtml    = profitHasData
       ? fmtUsdT(profitT)
