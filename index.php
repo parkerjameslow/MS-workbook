@@ -1018,6 +1018,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     /* Selects that bring their own arrow (wrapper ::after) or are compact
        pills must NOT also get the global chevron — prevents a double arrow. */
     .select-wrap select, .select-wrapper select, .ship-select-wrap select,
+    .sh-tier-select-inner select,
     .sample-status-sel, .sample-dir-sel { background-image: none; }
     /* Compact pill-style selects (sample row direction/status etc.) stay small. */
     .sample-status-sel, .sample-dir-sel { height: auto; padding: 3px 8px; }
@@ -2447,7 +2448,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .sh-tier-select-inner::after {
       content: '';
       position: absolute;
-      right: 10px;
+      right: 16px;
       top: 50%;
       transform: translateY(-50%);
       width: 0;
@@ -2459,7 +2460,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     }
     .sh-tier-select-inner select {
       height: 32px;
-      padding: 0 28px 0 10px;
+      padding: 0 36px 0 12px;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       background: var(--surface);
@@ -7181,7 +7182,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .ship-select-wrap::after {
       content: '';
       position: absolute;
-      right: 10px; top: 50%;
+      right: 14px; top: 50%;
       transform: translateY(-50%);
       width: 0; height: 0;
       border-left: 4px solid transparent;
