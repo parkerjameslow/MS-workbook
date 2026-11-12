@@ -55178,25 +55178,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   // ── Detail view ──────────────────────────────────────────────────────
-  // Smart default order name: the single workbook's product, or an abbreviated
-  // list of ALL the workbooks when there are several.
+  // Smart default order name: the single workbook's product, or the FULL
+  // product names of the workbooks joined with " · ". Names are kept whole
+  // (never initial-abbreviated — "Peekaboo Short Sleeve", not "PSS") so the
+  // title is always readable; when there are a lot, we cap the list and add
+  // "+N more" rather than mangling each name.
   function _orderAutoName(o) {
     if (!o) return '';
     const names = (o.entries || []).map(e => {
       const it = (clientData[e.clientName] || []).find(i => String(i.id) === String(e.workbookId));
-      if (it && it.product) return it.product;
+      if (it && it.product) return String(it.product).trim();
       const d = workbookDetail[`${e.clientName}|${e.workbookId}`];
-      return (d && d.product) ? d.product : '';
+      return (d && d.product) ? String(d.product).trim() : '';
     }).filter(Boolean);
     if (!names.length) return '';
     if (names.length === 1) return names[0];
-    const abbr = names.map(n => {
-      const words = String(n).trim().split(/\s+/);
-      if (n.length <= 12) return n;
-      return words.length > 1 ? words.map(w => w[0]).join('').toUpperCase() : n.slice(0, 10);
-    });
-    const shown = abbr.slice(0, 4).join(' · ');
-    return abbr.length > 4 ? `${shown} +${abbr.length - 4}` : shown;
+    const MAX = 3; // show up to 3 full names, then "+N more"
+    const shown = names.slice(0, MAX).join(' · ');
+    return names.length > MAX ? `${shown} +${names.length - MAX} more` : shown;
   }
   // The order's display name: an explicit custom title wins, else the smart
   // workbook-based auto name, else the legacy INV/number.
