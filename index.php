@@ -8738,13 +8738,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </colgroup>
         <thead>
           <tr>
-            <th style="text-align:center;">
-              <input type="checkbox" id="rfq-header-checkbox"
-                     onchange="toggleAllRfqRows(this.checked)"
-                     title="Select all line items to combine"
-                     style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
-              <div style="font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-muted); margin-top:2px; line-height:1;">Combine</div>
-            </th>
+            <th style="text-align:center;" title="Mark a line item as a sample request">SAMPLE</th>
             <th>#</th>
             <th style="text-align:center;" title="Attach Product Images, Design File &amp; Art Files to each line">SPECS</th>
             <th>SKU</th>
@@ -21172,18 +21166,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const handleAttr = isFirstRow ? '' : `draggable="true" onmousedown="this.closest('tr').draggable=true" onmouseup="this.closest('tr').draggable=false" ondragstart="event.dataTransfer.setData('text/plain','${id}'); this.closest('tr').style.opacity='0.4'" ondragend="this.closest('tr').style.opacity='1'; this.closest('tr').draggable=false"`;
     tr.innerHTML = `
       <td style="text-align:center; padding:22px 4px 0;">
-        <input type="checkbox" class="rfq-row-checkbox" data-rfq-id="${id}"
-               onchange="toggleRfqRowSelection(${id}, this.checked)"
-               title="Select to combine this line with others into one Client Quote line"
+        <input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''}
+               onchange="toggleRfqSample(this)"
+               title="Mark this line item as a sample request"
                style="width:16px; height:16px; cursor:pointer; accent-color:var(--accent); vertical-align:middle;" />
       </td>
       <td class="tier-col-num" style="color:var(--text-muted); font-weight:600; text-align:center;${isFirstRow ? '' : ' cursor:grab;'}" ${isFirstRow ? '' : 'title="Drag to reorder"'} ${handleAttr}>${isFirstRow ? id : '☰ ' + id}</td>
       <td style="padding:12px 6px 0; vertical-align:top;"><div style="display:flex; flex-direction:column; gap:6px; align-items:stretch;"><button type="button" class="rfq-specs-btn" id="rfq-specsbtn-${id}" onclick="openRfqImagePicker(${id})" style="justify-content:center;" title="Attach Product Images, Design File & Art Files to this line"></button><button type="button" class="rfq-specs-btn" id="rfq-optbtn-${id}" onclick="openRfqOptions(${id})" style="justify-content:center;" title="Add comparable supplier/factory options and pick which one is used on the client quote">Factory</button></div></td>
       <td>
         <input type="text" placeholder="SKU" value="${sku}" title="${sku}" oninput="this.title=this.value; recalcRfqTotals(); _refreshVariantSkusForParent(${id})" style="${inputStyle}" />
-        <div class="rfq-item-links">
-          <label class="rfq-sample-toggle" title="Mark this line as a sample request"><input type="checkbox" class="rfq-sample-check" ${sample ? 'checked' : ''} onchange="toggleRfqSample(this)" /> Sample</label>
-        </div>
       </td>
       <td>
         <input type="text" placeholder="Enter Item" value="${defaultItem}" oninput="recalcRfqTotals()" style="${inputStyle}" />
