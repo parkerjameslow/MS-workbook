@@ -53517,9 +53517,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // order screen / list), with a flat pencil next to the title.
     const _plTitleEdit = document.getElementById('pl-modal-title-edit');
     if (_plTitleEdit) {
-      if (c.kind === 'order') {
+      const _renameFn = c.kind === 'order' ? 'renamePipelineOrderCard'
+                      : c.kind === 'shipment' ? 'renamePipelineShipmentCard' : '';
+      if (_renameFn) {
+        const _what = c.kind === 'order' ? 'order' : 'shipment';
         _plTitleEdit.style.display = 'inline-flex';
-        _plTitleEdit.innerHTML = `<button onclick="event.stopPropagation(); renamePipelineOrderCard('${_plEsc(String(c.id))}')" title="Rename this order" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:2px; display:inline-flex; align-items:center; line-height:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>`;
+        _plTitleEdit.innerHTML = `<button onclick="event.stopPropagation(); ${_renameFn}('${_plEsc(String(c.id))}')" title="Rename this ${_what}" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:2px; display:inline-flex; align-items:center; line-height:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>`;
       } else {
         _plTitleEdit.style.display = 'none';
         _plTitleEdit.innerHTML = '';
@@ -55339,6 +55342,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const tEl = document.getElementById('pl-modal-title'); if (tEl) tEl.textContent = newName;
     try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
     try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
+  }
+  // Rename a shipment from the pipeline card modal — keeps the modal title,
+  // the cached card, the shipments nav, and the board in sync.
+  function renamePipelineShipmentCard(id) {
+    const s = shipmentData[id]; if (!s) return;
+    const cur = s.name || ('Shipment #' + id);
+    const v = prompt('Rename shipment:', cur);
+    if (v === null) return;
+    const nn = v.trim();
+    if (!nn) { if (typeof showToast === 'function') showToast('A shipment needs a name.', 'warn'); return; }
+    s.name = nn;
+    try { saveShipments(); } catch (_) {}
+    try { const c = _plLastCards[_plModalId]; if (c) c.title = nn; } catch (_) {}
+    const tEl = document.getElementById('pl-modal-title'); if (tEl) tEl.textContent = nn;
+    try { if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav(); } catch (_) {}
+    try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
   }
   function renameOrder(id) {
     const o = orderData[id]; if (!o) return;
