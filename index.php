@@ -34639,21 +34639,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Open Orders / Closed Orders: pulled from the Order system.
     // An order "belongs" to this client if order.clientName matches OR any
     // entry's clientName matches. Use orderTotals() for the USD value.
-    let openOrdersUsd = 0, closedOrdersUsd = 0;
+    let openOrdersUsd = 0, closedOrdersUsd = 0, closedOrdersProfit = 0;
     let openOrderCount = 0, closedOrderCount = 0;
     Object.values(orderData || {}).forEach(order => {
       const belongsHere = order.clientName === clientName ||
         (order.entries || []).some(e => e.clientName === clientName);
       if (!belongsHere) return;
-      const tot = orderTotals(order).totalUsd;
-      if (order.status === 'complete') {
-        closedOrdersUsd += tot;
+      // SOLD amount (gross sale = what the client pays), not our cost.
+      const scp = (typeof _orderSaleCostProfit === 'function')
+        ? _orderSaleCostProfit(order)
+        : { sale: orderTotals(order).totalUsd, profit: 0 };
+      // Closed = explicitly complete OR every shipment carrying it is received.
+      const isClosed = (typeof _orderIsClosed === 'function') ? _orderIsClosed(order) : (order.status === 'complete');
+      if (isClosed) {
+        closedOrdersUsd    += scp.sale;
+        closedOrdersProfit += scp.profit;
         closedOrderCount++;
       } else {
-        openOrdersUsd += tot;
+        openOrdersUsd += scp.sale;
         openOrderCount++;
       }
     });
+    closedOrdersProfit = Math.round(closedOrdersProfit * 100) / 100;
 
     // Total Pipeline: ALL open (flow not complete) workbooks for this client.
     // Preferred source: the workbook's cached Total Landed Cost from the
@@ -34879,9 +34886,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               <span class="cdc-fin-stat-label">Open Orders <span style="font-weight:400; opacity:0.7;">(${openOrderCount})</span></span>
               <span class="cdc-fin-stat-value accent">${fmtUsd(openOrdersUsd)}</span>
             </div>
-            <div class="cdc-fin-stat">
-              <span class="cdc-fin-stat-label">Closed Orders <span style="font-weight:400; opacity:0.7;">(${closedOrderCount})</span></span>
+            <div class="cdc-fin-stat" onclick="toggleClosedOrdersProfit(this)" style="cursor:pointer;" title="Click to see total profit on closed orders">
+              <span class="cdc-fin-stat-label">Closed Orders <span style="font-weight:400; opacity:0.7;">(${closedOrderCount})</span> <span class="cdc-closed-chev" style="font-size:10px; opacity:0.6;">▸</span></span>
               <span class="cdc-fin-stat-value success">${fmtUsd(closedOrdersUsd)}</span>
+            </div>
+            <div class="cdc-fin-closed-profit" style="display:none; margin:-2px 0 2px; padding:7px 10px; background:rgba(22,163,74,0.06); border:1px solid rgba(22,163,74,0.2); border-radius:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:12px;">
+                <span style="color:var(--text-muted); font-weight:600;">Total profit (closed)</span>
+                <span style="font-weight:800; color:#16a34a;">${fmtUsd(closedOrdersProfit)}</span>
+              </div>
             </div>
             <div class="cdc-fin-stat" style="margin-top:6px; padding-top:10px; border-top:1px solid rgba(107,147,255,0.2);">
               <span class="cdc-fin-stat-label">Total Pipeline</span>
@@ -51163,6 +51176,51 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
     });
     return Math.round(sale * 100) / 100;
+  }
+
+  // Sale / cost / profit for a whole order, mirroring the In Production card's
+  // math exactly: sale = Σ live client total; cost basis = Total (ours) + all
+  // fees as-is; profit = sale − cost basis. Returns dollars.
+  function _orderSaleCostProfit(order) {
+    let sale = 0, cost = 0, ship = 0, prodCost = 0, feesAsIs = 0;
+    ((order && order.entries) || []).forEach(e => {
+      const detail = workbookDetail[`${e.clientName}|${e.workbookId}`];
+      if (!detail) return;
+      const w = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(detail) || {}) : {};
+      let live = { total: 0, allFees: 0 };
+      try { if (typeof _wbLiveTotalForOrder === 'function') live = _wbLiveTotalForOrder(detail, order, e.workbookId); } catch (_) {}
+      sale     += (live.total || 0);
+      cost     += (w.cost || 0);
+      ship     += (w.shippingUsd || 0);
+      prodCost += (w.productCost || 0);
+      feesAsIs += (live.allFees || 0);
+    });
+    const totalOurs   = cost > 0 ? cost : (prodCost + ship);
+    const profitBasis = totalOurs + feesAsIs;
+    const profit = (sale > 0 && profitBasis > 0) ? (sale - profitBasis) : 0;
+    return { sale: Math.round(sale * 100) / 100, profit: Math.round(profit * 100) / 100 };
+  }
+
+  // An order is "closed" when it's explicitly marked complete OR every shipment
+  // carrying it has been received (the receiving audit is done). Status-only
+  // checks missed received orders, so a delivered+received order read as 0.
+  function _orderIsClosed(order) {
+    if (!order) return false;
+    if (order.status === 'complete') return true;
+    const ships = (typeof _orderShipmentsList === 'function') ? _orderShipmentsList(order) : [];
+    return ships.length > 0 && ships.every(s => s && s.status === 'received');
+  }
+
+  // Toggle the "total profit on closed orders" panel in the client Financial
+  // Summary (the Closed Orders row is clickable → expands).
+  function toggleClosedOrdersProfit(el) {
+    if (!el) return;
+    const panel = el.nextElementSibling;
+    if (!panel || !panel.classList.contains('cdc-fin-closed-profit')) return;
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? '' : 'none';
+    const chev = el.querySelector('.cdc-closed-chev');
+    if (chev) chev.textContent = isHidden ? '▾' : '▸';
   }
 
   // ── Nav badge helper ─────────────────────────────────────────────────
