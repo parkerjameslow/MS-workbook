@@ -34641,6 +34641,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // entry's clientName matches. Use orderTotals() for the USD value.
     let openOrdersUsd = 0, closedOrdersUsd = 0, closedOrdersProfit = 0;
     let openOrderCount = 0, closedOrderCount = 0;
+    const closedOrdersList = [];
     Object.values(orderData || {}).forEach(order => {
       const belongsHere = order.clientName === clientName ||
         (order.entries || []).some(e => e.clientName === clientName);
@@ -34655,12 +34656,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         closedOrdersUsd    += scp.sale;
         closedOrdersProfit += scp.profit;
         closedOrderCount++;
+        closedOrdersList.push({
+          id: order.id,
+          name: (typeof _orderDisplayName === 'function') ? _orderDisplayName(order) : (order.name || ('Order #' + order.id)),
+          date: (typeof _orderClosedDate === 'function') ? _orderClosedDate(order) : '',
+          sale: scp.sale,
+          profit: scp.profit,
+        });
       } else {
         openOrdersUsd += scp.sale;
         openOrderCount++;
       }
     });
     closedOrdersProfit = Math.round(closedOrdersProfit * 100) / 100;
+    // Newest closed first.
+    closedOrdersList.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
     // Total Pipeline: ALL open (flow not complete) workbooks for this client.
     // Preferred source: the workbook's cached Total Landed Cost from the
@@ -34890,9 +34900,26 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
               <span class="cdc-fin-stat-label">Closed Orders <span style="font-weight:400; opacity:0.7;">(${closedOrderCount})</span> <span class="cdc-closed-chev" style="font-size:10px; opacity:0.6;">▸</span></span>
               <span class="cdc-fin-stat-value success">${fmtUsd(closedOrdersUsd)}</span>
             </div>
-            <div class="cdc-fin-closed-profit" style="display:none; margin:-2px 0 2px; padding:7px 10px; background:rgba(22,163,74,0.06); border:1px solid rgba(22,163,74,0.2); border-radius:8px;">
-              <div style="display:flex; justify-content:space-between; align-items:baseline; font-size:12px;">
-                <span style="color:var(--text-muted); font-weight:600;">Total profit (closed)</span>
+            <div class="cdc-fin-closed-profit" style="display:none; margin:-2px 0 2px; padding:8px 10px; background:rgba(22,163,74,0.06); border:1px solid rgba(22,163,74,0.2); border-radius:8px;">
+              ${closedOrdersList.length === 0
+                ? `<div style="font-size:12px; color:var(--text-muted); text-align:center; padding:4px 0;">No closed orders yet.</div>`
+                : closedOrdersList.map(o => {
+                    const _nm = String(o.name == null ? '' : o.name).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    let _dt = '';
+                    if (o.date) { const _d = new Date(o.date); if (!isNaN(_d)) _dt = _d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }); }
+                    return `<div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:5px 0; border-bottom:1px solid rgba(22,163,74,0.14);">
+                      <div style="min-width:0;">
+                        <div style="font-size:12px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${_nm}</div>
+                        <div style="font-size:10px; color:var(--text-muted);">${_dt || '—'}</div>
+                      </div>
+                      <div style="text-align:right; white-space:nowrap;">
+                        <div style="font-size:12px; font-weight:700; color:var(--text);">${fmtUsd(o.sale)}</div>
+                        <div style="font-size:10px; font-weight:700; color:#16a34a;">+${fmtUsd(o.profit)} profit</div>
+                      </div>
+                    </div>`;
+                  }).join('')}
+              <div style="display:flex; justify-content:space-between; align-items:baseline; padding-top:8px; font-size:12px;">
+                <span style="color:var(--text-muted); font-weight:700;">Total profit (closed)</span>
                 <span style="font-weight:800; color:#16a34a;">${fmtUsd(closedOrdersProfit)}</span>
               </div>
             </div>
@@ -51209,6 +51236,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (order.status === 'complete') return true;
     const ships = (typeof _orderShipmentsList === 'function') ? _orderShipmentsList(order) : [];
     return ships.length > 0 && ships.every(s => s && s.status === 'received');
+  }
+
+  // When an order closed — latest received/delivered date across its shipments,
+  // falling back to order lifecycle stamps. Returns an ISO-ish string or ''.
+  function _orderClosedDate(order) {
+    const ships = (typeof _orderShipmentsList === 'function') ? _orderShipmentsList(order) : [];
+    let best = '';
+    ships.forEach(s => {
+      const d = (s && (s.receivedAt || s.deliveredOn)) || '';
+      if (d && (!best || String(d) > String(best))) best = d;
+    });
+    return best || order.completedAt || order.movedToProductionAt || order.notifiedAt || order.createdAt || '';
   }
 
   // Toggle the "total profit on closed orders" panel in the client Financial
