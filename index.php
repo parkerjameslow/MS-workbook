@@ -29580,15 +29580,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // pallet-total-cartons holds the bumped qty. We scale every RFQ
     // line's qty by (pitchUnits / grandRfqQty) so the Client Quote
     // line items + summary bars match the rolled-up Delivered Cost
-    // Summary. Self-contained so it doesn't depend on `effectiveQty`
-    // (which is declared further down the function — referencing it
-    // here would land in the const-TDZ and blow up workbook load).
-    const _pitchOnCq          = !!window._fullContainerPitchSnap;
-    const _pitchTotalUnitsCq  = _pitchOnCq ? (_msIntFromInput(document.getElementById('pallet-total-cartons'))) : 0;
-    const _rfqGrandQty        = (typeof _lastRfqPriceSummary !== 'undefined' && _lastRfqPriceSummary && _lastRfqPriceSummary.grandQty) || 0;
-    const _cqQtyScale = (_pitchOnCq && _pitchTotalUnitsCq > 0 && _rfqGrandQty > 0 && _pitchTotalUnitsCq !== _rfqGrandQty)
-      ? (_pitchTotalUnitsCq / _rfqGrandQty) : 1;
-    const _scaleQty = (q) => _cqQtyScale === 1 ? q : Math.round(q * _cqQtyScale);
+    // Full Container Pitch quantity scaling was removed — the Client Quote
+    // ALWAYS uses the RFQ quantity so its total can never diverge from the
+    // Landed Cost (which divides by tierQty = the RFQ qty). A stale pitch
+    // snapshot used to multiply every quote line's qty by pallet÷RFQ, which
+    // tripled Total USD while the cost side stayed at the real quantity.
+    const _cqQtyScale = 1;
+    const _scaleQty = (q) => q;
 
     // Sale Per is the operator's "ultimate say" for what the client
     // sees. When typed, every Client Quote line item displays it as
