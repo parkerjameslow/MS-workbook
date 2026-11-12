@@ -26029,6 +26029,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Build a fresh entry list from current globals every keystroke. The
   // dataset is small enough (typically a few hundred rows total) that
   // a full rebuild beats any cache-invalidation logic.
+  // Resolve a short status/stage label for a search result so each hit calls
+  // out where it is (RFQ, In Production, Received, Archived, …).
+  function _searchWbStatus(clientName, wb, detail) {
+    if (wb && wb.deleted_at) return 'Archived';
+    const key = `${clientName}|${wb.id}`;
+    if (typeof _wbManualCompleted !== 'undefined' && _wbManualCompleted.has && _wbManualCompleted.has(key)) return 'Completed';
+    try { if (typeof _wbFullyReceived === 'function' && _wbFullyReceived(clientName, wb.id)) return 'Received'; } catch (_) {}
+    try {
+      const ships = (typeof _wbShipmentsFor === 'function') ? _wbShipmentsFor(clientName, wb.id) : [];
+      if (ships.length) {
+        const sts = ships.map(s => s && s.status);
+        if (sts.includes('received'))   return 'Received';
+        if (sts.includes('delivered'))  return 'Delivered';
+        if (sts.includes('in_transit')) return 'In Transit';
+        return 'On Shipment';
+      }
+    } catch (_) {}
+    try { if (typeof _wbInAnyOrder === 'function' && _wbInAnyOrder(clientName, wb.id)) return 'In Production'; } catch (_) {}
+    try {
+      const stage = (typeof _pipelineStageFor === 'function') ? _pipelineStageFor(clientName, wb.id, detail) : '';
+      if (typeof _PK_STAGE_LBL !== 'undefined' && _PK_STAGE_LBL[stage]) return _PK_STAGE_LBL[stage];
+    } catch (_) {}
+    return '';
+  }
+  function _searchOrderStatus(o) {
+    if (!o) return '';
+    if (o.archived || o.status === 'archived') return 'Archived';
+    try { if (typeof _orderIsClosed === 'function' && _orderIsClosed(o)) return 'Closed'; } catch (_) {}
+    try { if (typeof _orderHasAnyWorkbookOnShipment === 'function' && _orderHasAnyWorkbookOnShipment(o)) return 'Shipped'; } catch (_) {}
+    try { if (typeof _orderIsInFulfillment === 'function' && _orderIsInFulfillment(o)) return 'In Production'; } catch (_) {}
+    try { if (typeof _orderIsInOrdersQueue === 'function' && _orderIsInOrdersQueue(o)) return 'Orders'; } catch (_) {}
+    return o.status || '';
+  }
+
   function _buildSearchIndex() {
     const idx = [];
     const isAdmin = !!(window.MS_SESSION && window.MS_SESSION.role === 'admin');
@@ -26070,7 +26104,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           const variants = (i.variants || []).map(v => v.variant);
           return [i.item, i.sku, ...variants];
         });
-        const fields = [wb.product, detail.product, detail.desc, clientName, detail.materials, detail.pantone, detail.cmyk, ...rfqText]
+        const _wbStatus = _searchWbStatus(clientName, wb, detail);
+        const fields = [wb.product, detail.product, detail.desc, clientName, detail.materials, detail.pantone, detail.cmyk, _wbStatus, ...rfqText]
           .filter(Boolean).join(' ').toLowerCase();
         idx.push({
           type: 'workbook',
@@ -26078,6 +26113,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           sub: clientName,
           href: `#/client/${enc(clientName)}/workbook/${wb.id}`,
           archived: !!wb.deleted_at,
+          status: _wbStatus,
           recencyTs: parseInt(wb.id) || 0,
           searchText: fields,
           clientName, workbookId: wb.id
@@ -26092,14 +26128,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         const det = _workbookDetail[k] || {};
         return [det.product, ...((det.rfqItems || []).map(r => r.item))];
       });
-      const fields = [o.name, o.clientName, o.status, o.poNumber, ...orderItems]
+      const _oStatus = _searchOrderStatus(o);
+      const fields = [o.name, o.clientName, o.status, _oStatus, o.poNumber, ...orderItems]
         .filter(Boolean).join(' ').toLowerCase();
       idx.push({
         type: 'order',
-        label: o.name || `Order #${o.id}`,
+        label: (typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : (o.name || `Order #${o.id}`),
         sub: o.clientName || '',
         href: `#/order/${o.id}`,
         archived: !!o.archived || o.status === 'archived',
+        status: _oStatus,
         recencyTs: parseInt(o.id) || 0,
         searchText: fields
       });
@@ -26107,14 +26145,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
     // ── Shipments
     Object.values(_shipmentData || {}).forEach(s => {
+      const _sStatus = s.archived ? 'Archived' : ((typeof _SHIP_STATUS_LABEL === 'function') ? _SHIP_STATUS_LABEL(s.status) : (s.status || ''));
       idx.push({
         type: 'shipment',
         label: s.name || `Shipment #${s.id}`,
         sub: s.status || '',
         href: `#/shipment/${s.id}`,
         archived: !!s.archived,
+        status: _sStatus,
         recencyTs: parseInt(s.id) || 0,
-        searchText: [s.name, s.status, s.notes].filter(Boolean).join(' ').toLowerCase()
+        searchText: [s.name, s.status, _sStatus, s.notes].filter(Boolean).join(' ').toLowerCase()
       });
     });
 
@@ -26128,6 +26168,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             sub: `${sm.clientName} · ${sm.product}`,
             href: `#/client/${enc(sm.clientName)}/workbook/${sm.workbookId}`,
             archived: false,
+            status: sm.status || 'Sample',
             recencyTs: parseInt(sm.workbookId) || 0,
             searchText: [sm.item, sm.product, sm.clientName, sm.status].filter(Boolean).join(' ').toLowerCase()
           });
@@ -26404,6 +26445,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const subEsc   = String(entry.sub   || '').replace(/[<&>]/g, c => ({'<':'&lt;','&':'&amp;','>':'&gt;'})[c]);
     const icon = _SEARCH_TYPE_ICON[entry.type] || '·';
     const opacity = muted ? '0.6' : '1';
+    // Status / stage pill so each hit calls out where it is (RFQ, In Production,
+    // Received, Archived, …). Archived is tinted amber so it stands apart.
+    const statusTxt = String(entry.status || '').replace(/[<&>]/g, '');
+    const isArch = entry.archived || /archived/i.test(statusTxt);
+    const statusHtml = statusTxt
+      ? `<span style="flex-shrink:0; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; padding:2px 7px; border-radius:99px; white-space:nowrap; ${isArch ? 'background:rgba(217,119,6,0.12); border:1px solid rgba(217,119,6,0.4); color:#b45309;' : 'background:var(--surface2); border:1px solid var(--border); color:var(--text-muted);'}">${statusTxt}</span>`
+      : '';
     // Use mousedown (not click) so the row fires before the search box's
     // onblur tears down the dropdown.
     return `<a href="#" onmousedown="event.preventDefault(); _sidebarSearchClick(${rowIdx});"
@@ -26414,6 +26462,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span style="display:block; font-weight:600; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${labelEsc}</span>
         ${entry.sub ? `<span style="display:block; font-size:10.5px; color:var(--text-muted); white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">${subEsc}</span>` : ''}
       </span>
+      ${statusHtml}
     </a>`;
   }
 
