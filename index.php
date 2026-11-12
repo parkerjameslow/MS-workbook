@@ -45240,6 +45240,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     saveShipments();
     _updateShipmentCostTotal();
+    // Re-render the order list so each order's CBM-allocated shipping tracks
+    // the actual cost as it's typed (different section, so focus is untouched).
+    if (typeof renderShipmentOrders === 'function') renderShipmentOrders();
   }
   function addShipmentCost() {
     const s = shipmentData[_currentShipmentId];
@@ -45248,6 +45251,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     s.actualCosts.push({ id: 'ac' + Date.now(), label: '', rmb: '', usd: '' });
     saveShipments();
     _renderShipmentCosts();
+    if (typeof renderShipmentOrders === 'function') renderShipmentOrders();
   }
   function removeShipmentCost(idx) {
     const s = shipmentData[_currentShipmentId];
@@ -45255,6 +45259,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     s.actualCosts.splice(idx, 1);
     saveShipments();
     _renderShipmentCosts();
+    if (typeof renderShipmentOrders === 'function') renderShipmentOrders();
   }
 
   // Trackings = array of { carrier, number, addedAt }. Migration:
@@ -45575,6 +45580,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       _shipTotalCbm         += (st.totalCbm || 0);
       _shipTotalShippingUsd += (st.totalShippingUsd || 0);
     });
+    // Allocation base = the ACTUAL cost entered on this shipment (sum of the
+    // Actual Cost rows, USD). Falls back to the computed total shipping only
+    // when no actual cost has been entered yet.
+    let _shipActualCostUsd = 0;
+    if (Array.isArray(s.actualCosts)) {
+      s.actualCosts.forEach(c => { _shipActualCostUsd += (parseFloat(String((c && c.usd) || '').replace(/,/g, '')) || 0); });
+    }
+    const _shipAllocBase = _shipActualCostUsd > 0 ? _shipActualCostUsd : _shipTotalShippingUsd;
 
     const orderCardsHtml = entries.map((entry, idx) => {
       if (!entry.orderId) return '';
@@ -45584,8 +45597,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const orderHref = `#/order/${entry.orderId}`;
       // CBM share of the whole shipment + the shipping cost that share implies.
       const cbmPct     = _shipTotalCbm > 0 ? (stats.totalCbm / _shipTotalCbm) : 0;
-      const allocShip  = _shipTotalShippingUsd * cbmPct;
+      const allocShip  = _shipAllocBase * cbmPct;
       const cbmPctStr  = cbmPct > 0 ? (Math.round(cbmPct * 1000) / 10).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%' : '—';
+      // When no actual cost is entered yet, the base is the estimate — flag it.
+      const allocNote  = _shipActualCostUsd > 0 ? '' : ` <span style="font-size:10px; opacity:0.7; text-transform:none; letter-spacing:0;">(est. — add Actual Cost)</span>`;
 
       // Each stat is gated independently — Weight + CBM fall back to
       // the cached values from renderContainerViz when outer carton
@@ -45653,7 +45668,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           ${_shipTotalCbm > 0 && stats.totalCbm > 0
             ? `<div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:12px;">
                  <span style="color:var(--text-muted);">Volume share <strong style="color:var(--text);">${cbmPctStr}</strong> of shipment CBM</span>
-                 <span style="color:var(--text-muted);">Shipping at that share <strong style="color:var(--accent);">$${fmt2(allocShip)}</strong></span>
+                 <span style="color:var(--text-muted);">Shipping at that share <strong style="color:var(--accent);">$${fmt2(allocShip)}</strong>${allocNote}</span>
                </div>`
             : ''}
         </div>
