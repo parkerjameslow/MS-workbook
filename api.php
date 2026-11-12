@@ -8610,23 +8610,6 @@ switch ($action) {
         break;
     }
 
-    case 'mock_quote_accounting_post': {
-        // TEMP mock: post a given Client Quote PDF to #Accounting via the real
-        // ms_slack_upload_pdf path, with a clear TEST label. Used for a
-        // dry-run of the approve→#Accounting feature. Operator-only. Remove
-        // after the demo.
-        $b64 = (string)($input['pdf_base64'] ?? '');
-        $b64 = preg_replace('/^data:[^,]*,/', '', $b64);
-        $pdf = base64_decode($b64, true);
-        if ($pdf === false || strlen($pdf) < 100) { echo json_encode(['success' => false, 'error' => 'valid pdf required']); break; }
-        $comment = ":test_tube: *TEST — Client Quote approved (mock run-through)*\n"
-                 . "Dry run of the approve \u{2192} #Accounting feature. When a client really approves a quote, "
-                 . "this is the Client Quote PDF that will land here for Kylie to add to the invoice. Safe to ignore.";
-        $r = ms_slack_upload_pdf($pdf, 'Quote-TEST.pdf', $comment, SLACK_ACCOUNTING_CHANNEL);
-        echo json_encode(['success' => !empty($r['ok']), 'error' => $r['error'] ?? null]);
-        break;
-    }
-
     case 'slack_send_invoice': {
         // Upload an invoice PDF (generated client-side) to the accounting
         // Slack channel. Uses the modern external-upload flow: get a one-time
