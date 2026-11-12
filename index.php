@@ -27336,6 +27336,73 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return String(uri).split(',')[1];
   }
 
+  // Build a Client Quote PDF (base64 body) from a _collectClientQuoteForExport
+  // data object (live tab or the saved clientQuoteExport snapshot). Mirrors the
+  // invoice builder's styling. Used to attach the approved quote to #Accounting
+  // so Kylie can add it to the invoice.
+  async function _buildClientQuotePdfBase64(data) {
+    if (!data || !Array.isArray(data.lineItems)) return '';
+    await _jspdfReady();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 48;
+    const meta = data.meta || {};
+    const summary = data.summary || {};
+    const dateStr = meta.quoteDate || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(232, 117, 26);
+    doc.text('Market Sculpt', M, 56);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(107, 114, 128);
+    doc.text('CLIENT QUOTE', M, 70);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(26, 29, 46);
+    doc.text('Quote', W - M, 54, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(55, 65, 81);
+    doc.text('Date: ' + String(dateStr), W - M, 70, { align: 'right' });
+    if (meta.quoteValid) doc.text('Valid until: ' + String(meta.quoteValid), W - M, 84, { align: 'right' });
+    doc.setDrawColor(232, 117, 26); doc.setLineWidth(2); doc.line(M, 96, W - M, 96);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(155, 163, 192);
+    doc.text('PREPARED FOR', M, 120);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(26, 29, 46);
+    doc.text(String(meta.clientName || ''), M, 136);
+    let by = 150;
+    if (meta.productName) { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(55, 65, 81); doc.text(String(meta.productName), M, by); by += 13; }
+    const body = [];
+    data.lineItems.forEach(it => {
+      let label = String(it.label || '');
+      if (it.kind === 'variant' || it.kind === 'combineMember') label = '    ' + label;
+      body.push([label, String(it.qty || ''), String(it.sale || ''), String(it.total || '')]);
+    });
+    doc.autoTable({
+      startY: Math.max(by + 12, 172),
+      head: [['Item', 'Qty', 'Unit', 'Total']],
+      body,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 6, textColor: [26, 29, 46], lineColor: [235, 237, 240] },
+      headStyles: { fillColor: [248, 249, 251], textColor: [107, 114, 128], fontStyle: 'bold', fontSize: 9, halign: 'left' },
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+      margin: { left: M, right: M },
+    });
+    let fy = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 200) + 24;
+    const grand = summary.totalOrder || '';
+    if (grand) {
+      doc.setDrawColor(232, 117, 26); doc.setLineWidth(1.5); doc.line(W - M - 210, fy - 12, W - M, fy - 12);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(26, 29, 46);
+      doc.text('Total', W - M - 210, fy + 2);
+      doc.text(String(grand), W - M, fy + 2, { align: 'right' });
+      fy += 20;
+    }
+    if (summary.totalLead || summary.estDelivery) {
+      let iy = fy + 14;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90, 95, 110);
+      if (summary.totalLead)   { doc.text('Total lead time: ' + String(summary.totalLead), M, iy); iy += 15; }
+      if (summary.estDelivery) { doc.text('Estimated delivery: ' + String(summary.estDelivery), M, iy); iy += 15; }
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(155, 163, 192);
+    doc.text('Market Sculpt LLC   ·   marketsculpt.com   ·   parker@marketsculpt.com', W / 2, doc.internal.pageSize.getHeight() - 40, { align: 'center' });
+    const uri = doc.output('datauristring');
+    return String(uri).split(',')[1];
+  }
+
   // Persist the QB invoice reference on the workbook. Merge-safe partial save
   // (only the qbInvoice* fields) so a concurrent editor isn't clobbered, plus
   // the in-memory detail so the button + client views reflect it immediately.
@@ -40109,19 +40176,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // the live pricing tab if THIS workbook is open, else the snapshot saved
       // on the workbook. Falls back to the simple email if neither is available.
       let quoteHtml = '';
+      let quoteData = null;
       try {
-        const data = (currentClient === clientName && String(currentWorkbookId) === String(workbookId) && typeof _collectClientQuoteForExport === 'function')
+        quoteData = (currentClient === clientName && String(currentWorkbookId) === String(workbookId) && typeof _collectClientQuoteForExport === 'function')
           ? _collectClientQuoteForExport()
           : ((workbookDetail[key] || {}).clientQuoteExport || null);
-        if (data) {
-          const imgs = (data.meta.clientQuoteImages || []).map(u => _cqImageAbsUrl(u));
+        if (quoteData) {
+          const imgs = (quoteData.meta.clientQuoteImages || []).map(u => _cqImageAbsUrl(u));
           // {{APPROVE_URL}} is swapped for the real tokenized link server-side.
-          quoteHtml = _clientQuoteDoc(data, imgs, { approveUrl: '{{APPROVE_URL}}' });
+          quoteHtml = _clientQuoteDoc(quoteData, imgs, { approveUrl: '{{APPROVE_URL}}' });
         }
       } catch (_) {}
       const res = await apiCall('send_quote_approval', { workbook_id: dbId, client_name: clientName, client_email: clientEmail, quote_html: quoteHtml });
       if (res && res.success) {
         const d = workbookDetail[key]; if (d) { d.approvalSentAt = new Date().toISOString(); }
+        // Capture the Client Quote PDF now so, when the client approves, the
+        // server-side approve_quote handler can post it to #Accounting for
+        // Kylie to add to the invoice. Fire-and-forget; never blocks the send.
+        if (quoteData && typeof _buildClientQuotePdfBase64 === 'function') {
+          _buildClientQuotePdfBase64(quoteData)
+            .then(b64 => { if (b64) return apiCall('store_quote_pdf', { workbook_id: dbId, pdf_base64: b64 }); })
+            .catch(e => console.warn('[quote pdf capture]', e));
+        }
         if (typeof _msToast === 'function') _msToast(`Approval request sent to ${clientEmail}.`, 'success');
         renderWaitingClientDashboard();
       } else {

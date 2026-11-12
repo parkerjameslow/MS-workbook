@@ -716,6 +716,24 @@ if ($_requestedAction === 'approve_quote') {
                             curl_exec($ch); curl_close($ch);
                         }
                     } catch (Exception $e) { /* never block the approval on a Slack hiccup */ }
+                    // Attach the Client Quote PDF to #Accounting so Kylie can
+                    // review it and add it to the invoice. The PDF was captured
+                    // + stored at send-for-approval time (store_quote_pdf).
+                    try {
+                        $qPath = __DIR__ . '/uploads/quotes/' . $wbId . '.pdf';
+                        if (is_file($qPath)) {
+                            $bytes = @file_get_contents($qPath);
+                            if ($bytes !== false && strlen($bytes) > 100) {
+                                $pn = trim((string)($detail['product'] ?? $row['product_name'] ?? 'Quote'));
+                                $cn2 = trim((string)($detail['client'] ?? ''));
+                                $fnSlug = preg_replace('/[^A-Za-z0-9]+/', '-', $pn) ?: 'Quote';
+                                $comment = ":white_check_mark: *Client Quote approved — ready to invoice* — *{$pn}*"
+                                         . ($cn2 !== '' ? " · {$cn2}" : '')
+                                         . "\nThe client approved this quote. Attached is the Client Quote PDF for the invoice (for Kylie).";
+                                ms_slack_upload_pdf($bytes, 'Quote-' . $fnSlug . '.pdf', $comment, SLACK_ACCOUNTING_CHANNEL);
+                            }
+                        }
+                    } catch (Throwable $e) { /* never block the approval on a Slack hiccup */ }
                 }
             }
         } catch (Exception $e) { /* fall through to the generic failure page */ }
@@ -1262,6 +1280,56 @@ function slack_resolve_channel_id(string $raw): string {
         if ($cursor === '') break;
     }
     return '';
+}
+
+// Upload raw PDF bytes to a Slack channel via the modern external-upload flow
+// (getUploadURLExternal → PUT the bytes → completeUploadExternal + share).
+// Reusable by slack_send_invoice and the server-side approve_quote handler.
+// Returns ['ok'=>bool, 'error'=>?string].
+function ms_slack_upload_pdf(string $pdfBytes, string $filename, string $comment, string $channelRaw): array {
+    if (!defined('SLACK_BOT_TOKEN') || SLACK_BOT_TOKEN === '' || !function_exists('curl_init')) {
+        return ['ok' => false, 'error' => 'Slack not configured'];
+    }
+    if (strlen($pdfBytes) < 100) return ['ok' => false, 'error' => 'empty pdf'];
+    $fn = preg_replace('/[^A-Za-z0-9._-]+/', '-', ($filename !== '' ? $filename : 'quote.pdf'));
+    if (!preg_match('/\.pdf$/i', $fn)) $fn .= '.pdf';
+    $chId = slack_resolve_channel_id($channelRaw);
+    if ($chId === '') return ['ok' => false, 'error' => 'channel not found'];
+    $len = strlen($pdfBytes);
+    $u = parker_slack_api('files.getUploadURLExternal', ['filename' => $fn, 'length' => $len]);
+    if (!is_array($u) || empty($u['ok']) || empty($u['upload_url']) || empty($u['file_id'])) {
+        return ['ok' => false, 'error' => 'upload init failed: ' . ($u['error'] ?? 'unknown')];
+    }
+    $tmp = tempnam(sys_get_temp_dir(), 'qpf');
+    file_put_contents($tmp, $pdfBytes);
+    $ch = curl_init($u['upload_url']);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => ['file' => new CURLFile($tmp, 'application/pdf', $fn)],
+        CURLOPT_TIMEOUT        => 40,
+    ]);
+    curl_exec($ch);
+    $upCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    @unlink($tmp);
+    if ($upCode < 200 || $upCode >= 300) return ['ok' => false, 'error' => 'file upload HTTP ' . $upCode];
+    $payload = json_encode([
+        'files'           => [['id' => $u['file_id'], 'title' => $fn]],
+        'channel_id'      => $chId,
+        'initial_comment' => $comment,
+    ]);
+    $ch = curl_init('https://slack.com/api/files.completeUploadExternal');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_HTTPHEADER     => ['Authorization: Bearer ' . SLACK_BOT_TOKEN, 'Content-Type: application/json; charset=utf-8'],
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $done = json_decode((string)curl_exec($ch), true);
+    curl_close($ch);
+    return ['ok' => is_array($done) && !empty($done['ok']), 'error' => is_array($done) ? ($done['error'] ?? null) : 'no response'];
 }
 
 // Find recent Slack messages mentioning each watched client. Prefers a
@@ -8524,6 +8592,24 @@ switch ($action) {
         ]);
         break;
     }
+    case 'store_quote_pdf': {
+        // Persist a client-generated Client Quote PDF keyed by workbook id so
+        // the public approve_quote handler can attach it to #Accounting when
+        // the client approves. Operator-only (not in $_publicActions).
+        $wbId = (int)($input['workbook_id'] ?? 0);
+        $b64  = (string)($input['pdf_base64'] ?? '');
+        $b64  = preg_replace('/^data:[^,]*,/', '', $b64);
+        $pdf  = base64_decode($b64, true);
+        if ($wbId <= 0 || $pdf === false || strlen($pdf) < 100) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id + valid pdf required']); break;
+        }
+        $dir = __DIR__ . '/uploads/quotes';
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        $ok = @file_put_contents($dir . '/' . $wbId . '.pdf', $pdf);
+        echo json_encode(['success' => $ok !== false]);
+        break;
+    }
+
     case 'slack_send_invoice': {
         // Upload an invoice PDF (generated client-side) to the accounting
         // Slack channel. Uses the modern external-upload flow: get a one-time
