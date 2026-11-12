@@ -44505,6 +44505,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof renderFulfillmentList === 'function' && location.hash === '#/fulfillment') {
       renderFulfillmentList();
     }
+    // If this was routed from the pipeline board (order dragged In Production →
+    // Shipments), repaint it so the order leaves In Production and the shipment
+    // card appears in the Shipments lane without a manual refresh.
+    if (typeof renderPipelineBoard === 'function' && location.hash === '#/pipeline') {
+      try { renderPipelineBoard(); } catch (_) {}
+    }
+    showToast(`Order added to ${(s.name || ('Shipment #' + shipmentId))}.`, 'success');
   }
 
   function _createNewShipmentForCurrentOrder() {
@@ -53082,8 +53089,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _pipelineMoveOrder(orderId, targetCol) {
     const o = orderData[orderId];
     if (!o) return;
+    // In Production → Shipments: don't silently move it — pop the shipment
+    // picker so the operator creates (or picks) the shipment that carries this
+    // order. Once the order is on a shipment it auto-exits In Production and
+    // shows up in the Shipments lane as a shipment card.
+    if (targetCol === 'shipments') {
+      if (!_orderIsInFulfillment(o) && !_orderIsInOrdersQueue(o)) {
+        showToast('This order is already on a shipment — open it from the Shipments lane.', 'info');
+        return;
+      }
+      if (typeof openPickShipmentForOrder === 'function') {
+        openPickShipmentForOrder(orderId);
+      } else {
+        showToast('Open the Shipments view to create a shipment for this order.', 'warn');
+      }
+      return;
+    }
     if (targetCol !== 'orders' && targetCol !== 'production') {
-      showToast('An order can only move between Orders and In Production.', 'warn');
+      showToast('An order can move between Orders, In Production, and Shipments.', 'warn');
       return;
     }
     const from = _orderIsInFulfillment(o) ? 'production' : (_orderIsInOrdersQueue(o) ? 'orders' : null);
