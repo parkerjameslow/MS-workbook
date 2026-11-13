@@ -13695,6 +13695,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div style="padding:12px 20px; border-bottom:1px solid var(--border);">
       <div class="seg-control">
         <button class="archive-tab seg-tab active" onclick="switchArchiveTab('workbooks', this)">Workbooks</button>
+        <button class="archive-tab seg-tab" onclick="switchArchiveTab('orders', this)">Orders</button>
+        <button class="archive-tab seg-tab" onclick="switchArchiveTab('shipments', this)">Shipments</button>
         <button class="archive-tab seg-tab" onclick="switchArchiveTab('clients', this)">Clients</button>
       </div>
     </div>
@@ -26194,7 +26196,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         type: 'order',
         label: (typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : (o.name || `Order #${o.id}`),
         sub: o.clientName || '',
-        href: `#/order/${o.id}`,
+        href: (o.archived || o.status === 'archived') ? '__archive__:orders' : `#/order/${o.id}`,
         archived: !!o.archived || o.status === 'archived',
         status: _oStatus,
         recencyTs: parseInt(o.id) || 0,
@@ -26209,7 +26211,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         type: 'shipment',
         label: s.name || `Shipment #${s.id}`,
         sub: s.status || '',
-        href: `#/shipment/${s.id}`,
+        href: s.archived ? '__archive__:shipments' : `#/shipment/${s.id}`,
         archived: !!s.archived,
         status: _sStatus,
         recencyTs: parseInt(s.id) || 0,
@@ -26277,6 +26279,24 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       });
     }
 
+    // ── Archived workbooks (server soft-delete) from the Archive cache, so
+    // search finds deleted workbooks too. Clicking opens the Archive modal.
+    try {
+      const _arch = (typeof archiveData === 'object' && archiveData && Array.isArray(archiveData.workbooks)) ? archiveData.workbooks : [];
+      _arch.forEach(wb => {
+        idx.push({
+          type: 'workbook',
+          label: wb.product_name || 'Archived workbook',
+          sub: wb.client_name || '',
+          href: '__archive__:workbooks',
+          archived: true,
+          status: 'Archived',
+          recencyTs: 0,
+          searchText: [wb.product_name, wb.client_name, 'archived'].filter(Boolean).join(' ').toLowerCase()
+        });
+      });
+    } catch (_) {}
+
     return idx;
   }
 
@@ -26334,8 +26354,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   // Top-level entry point: called from the search box's oninput. Handles
   // both the "empty query → recent searches" and the "non-empty → search
   // results" cases, plus updates the inline starred/client nav filter.
+  let _archivePreloaded = false;
   function sidebarSearchUpdate(query) {
     const q = (query || '').trim();
+    // Preload the Archive cache once so search can surface archived workbooks.
+    if (!_archivePreloaded) {
+      _archivePreloaded = true;
+      try { if (typeof loadArchiveData === 'function') loadArchiveData(); } catch (_) {}
+    }
     // Keep the legacy inline-filter behavior so the visible sidebar nav
     // also narrows down. Cheap and additive.
     if (typeof filterSidebarSearch === 'function') filterSidebarSearch(q);
@@ -26538,6 +26564,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     hideRecentNav();
     if (entry.href === '__open-users-modal__') {
       if (typeof openUsersModal === 'function') openUsersModal();
+      return;
+    }
+    // Archived hits open the Archive modal on the matching tab.
+    if (typeof entry.href === 'string' && entry.href.indexOf('__archive__') === 0) {
+      const tab = entry.href.split(':')[1] || 'workbooks';
+      if (typeof openArchiveModal === 'function') {
+        openArchiveModal();
+        try {
+          const btn = Array.from(document.querySelectorAll('.archive-tab')).find(b => (b.getAttribute('onclick') || '').indexOf(`'${tab}'`) !== -1);
+          if (btn && typeof switchArchiveTab === 'function') switchArchiveTab(tab, btn);
+        } catch (_) {}
+      }
       return;
     }
     if (entry.href) location.hash = entry.href;
@@ -33321,14 +33359,52 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   function renderArchiveList() {
     const list = document.getElementById('archive-list');
+    const _aEsc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const actionStyle = 'background:none; border:none; cursor:pointer; font-size:12px; font-weight:600; font-family:inherit; padding:0;';
+
+    // Orders / Shipments are client-side (app_state) — archived via the
+    // `archived` flag, not the server soft-delete table.
+    if (archiveTab === 'orders') {
+      const ord = Object.values(orderData || {}).filter(o => o && (o.archived || o.status === 'archived'))
+        .sort((a, b) => String(b.archivedAt || '').localeCompare(String(a.archivedAt || '')));
+      if (!ord.length) { list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No archived orders.</p>'; return; }
+      list.innerHTML = ord.map(o => `
+        <div class="archive-item">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${_aEsc((typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : (o.name || ('Order #' + o.id)))}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${_aEsc(o.clientName || '')}${o.archivedAt ? ' &middot; Archived ' + new Date(o.archivedAt).toLocaleDateString() : ''}</div>
+          </div>
+          <div style="display:flex; gap:14px; flex-shrink:0; margin-left:16px;">
+            <button onclick="restoreArchivedOrder('${_aEsc(String(o.id))}')" style="${actionStyle} color:var(--success);" title="Restore order">Restore</button>
+            <button onclick="permanentDeleteOrder('${_aEsc(String(o.id))}')" style="${actionStyle} color:var(--danger);" title="Delete forever">Delete</button>
+          </div>
+        </div>`).join('');
+      return;
+    }
+    if (archiveTab === 'shipments') {
+      const shp = Object.values(shipmentData || {}).filter(s => s && s.archived)
+        .sort((a, b) => String(b.archivedAt || '').localeCompare(String(a.archivedAt || '')));
+      if (!shp.length) { list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No archived shipments.</p>'; return; }
+      list.innerHTML = shp.map(s => `
+        <div class="archive-item">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${_aEsc(s.name || ('Shipment #' + s.id))}</div>
+            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">${_aEsc((s.carrier || '').toUpperCase())}${s.archivedAt ? ' &middot; Archived ' + new Date(s.archivedAt).toLocaleDateString() : ''}</div>
+          </div>
+          <div style="display:flex; gap:14px; flex-shrink:0; margin-left:16px;">
+            <button onclick="restoreArchivedShipment('${_aEsc(String(s.id))}')" style="${actionStyle} color:var(--success);" title="Restore shipment">Restore</button>
+            <button onclick="permanentDeleteShipment('${_aEsc(String(s.id))}')" style="${actionStyle} color:var(--danger);" title="Delete forever">Delete</button>
+          </div>
+        </div>`).join('');
+      return;
+    }
+
     const items = archiveTab === 'workbooks' ? archiveData.workbooks : archiveData.clients;
 
     if (!items || !items.length) {
       list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No archived items.</p>';
       return;
     }
-
-    const actionStyle = 'background:none; border:none; cursor:pointer; font-size:12px; font-weight:600; font-family:inherit; padding:0;';
 
     if (archiveTab === 'workbooks') {
       list.innerHTML = items.map(wb => `
@@ -33385,7 +33461,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   async function permanentDeleteWorkbook(id) {
-    if (!confirm('Permanently delete this workbook? This cannot be undone.')) return;
+    if (!confirm('Delete this workbook FOREVER?\n\nThis permanently removes it from the Archive and cannot be undone.')) return;
     try {
       await apiCall('permanent_delete_workbook', { id });
       loadArchiveData();
@@ -33394,8 +33470,55 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
   }
 
+  // ── Archived orders / shipments (client-side) ────────────────────────
+  function restoreArchivedOrder(id) {
+    const o = orderData[id]; if (!o) return;
+    if (!confirm('Restore this order back to the pipeline?')) return;
+    o.archived = false; o.archivedAt = null; if (o.status === 'archived') o.status = '';
+    try { saveOrders(); } catch (_) {}
+    try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
+    renderArchiveList();
+    if (typeof showToast === 'function') showToast('Order restored', 'success');
+  }
+  function permanentDeleteOrder(id) {
+    const o = orderData[id]; if (!o) return;
+    const nm = (typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : ('Order #' + id);
+    if (!confirm(`Delete “${nm}” FOREVER?\n\nThis permanently removes the order and cannot be undone.`)) return;
+    delete orderData[id];
+    try { _appStateDelSet('ms_orders').add(String(id)); } catch (_) {}
+    try { saveOrders(); } catch (_) {}
+    try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
+    renderArchiveList();
+    if (typeof showToast === 'function') showToast('Deleted forever', 'success');
+  }
+  function restoreArchivedShipment(id) {
+    const s = shipmentData[id]; if (!s) return;
+    if (!confirm('Restore this shipment?')) return;
+    s.archived = false; s.archivedAt = null;
+    try { saveShipments(); } catch (_) {}
+    try { if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav(); } catch (_) {}
+    renderArchiveList();
+    if (typeof showToast === 'function') showToast('Shipment restored', 'success');
+  }
+  function permanentDeleteShipment(id) {
+    const s = shipmentData[id]; if (!s) return;
+    if (!confirm(`Delete “${s.name || ('Shipment #' + id)}” FOREVER?\n\nThis permanently removes the shipment and cannot be undone.`)) return;
+    delete shipmentData[id];
+    try { _appStateDelSet('ms_shipments').add(String(id)); } catch (_) {}
+    // Unlink any standalone To-China samples that pointed at it.
+    try {
+      let touched = false;
+      (_toChinaStandalone || []).forEach(rec => { if (String(rec.shipmentId) === String(id)) { rec.shipmentId = null; touched = true; } });
+      if (touched && typeof _saveToChinaStandalone === 'function') _saveToChinaStandalone();
+    } catch (_) {}
+    try { saveShipments(); } catch (_) {}
+    try { if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav(); } catch (_) {}
+    renderArchiveList();
+    if (typeof showToast === 'function') showToast('Deleted forever', 'success');
+  }
+
   async function permanentDeleteClient(id) {
-    if (!confirm('Permanently delete this client and ALL its workbooks? This cannot be undone.')) return;
+    if (!confirm('Delete this client and ALL its workbooks FOREVER?\n\nThis permanently removes them and cannot be undone.')) return;
     try {
       await apiCall('permanent_delete_client', { id });
       loadArchiveData();
@@ -34753,6 +34876,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     let openOrderCount = 0, closedOrderCount = 0;
     const closedOrdersList = [];
     Object.values(orderData || {}).forEach(order => {
+      if (order.archived || order.status === 'archived') return;   // archived → excluded from financials
       const belongsHere = order.clientName === clientName ||
         (order.entries || []).some(e => e.clientName === clientName);
       if (!belongsHere) return;
@@ -44245,6 +44369,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const ids = Object.keys(shipmentData).filter(id => {
       const s = shipmentData[id];
       if (!s) return false;
+      if (s.archived) return false;
       if (_isArchiveCompleted(s)) return false;
       // delivered lives in the Receiving lane; received is archived.
       // Everything else (planning / booked / in_transit / waiting_arrival)
@@ -44264,7 +44389,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // rebuildShipmentsNav means saveShipments → rebuildShipmentsNav
     // → both badges update together.
     const receivingIds = Object.keys(shipmentData).filter(id => {
-      return shipmentData[id] && shipmentData[id].status === 'delivered';
+      return shipmentData[id] && shipmentData[id].status === 'delivered' && !shipmentData[id].archived;
     });
     _applyNavBadge(document.getElementById('badge-receiving'), 0, receivingIds.length);
     // Shipments list (if a sub-nav list element exists — may not, since Shipments is now a flat link)
@@ -44770,8 +44895,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // toward the badge but vanished from the page ("lost in abyss"
     // bug the user hit).
     const allIds = Object.keys(shipmentData).filter(id => {
-      const st = shipmentData[id] && shipmentData[id].status;
-      return st !== 'delivered' && st !== 'received';
+      const s = shipmentData[id];
+      if (!s || s.archived) return false;   // archived → Archive, not this list
+      return s.status !== 'delivered' && s.status !== 'received';
     });
     if (allIds.length === 0) {
       el.innerHTML = `<div class="shipment-list-empty">
@@ -46544,8 +46670,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
     const host = document.getElementById('receiving-list-content');
     if (!host) return;
-    const activeIds   = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'delivered');
-    const archivedIds = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'received');
+    const activeIds   = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'delivered' && !shipmentData[id].archived);
+    const archivedIds = Object.keys(shipmentData).filter(id => shipmentData[id].status === 'received'  && !shipmentData[id].archived);
 
     // Sort active by most-recent ETA first (parsed from the AI
     // tracking payload). Shipments without an ETA sink to the bottom.
@@ -52447,14 +52573,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // yet. The moment any workbook is added to a Shipment the order
   // auto-leaves Fulfillment (no manual action needed).
   function _orderIsInFulfillment(o) {
-    if (!o || !o.notifiedAt) return false;
+    if (!o || o.archived || o.status === 'archived' || !o.notifiedAt) return false;
     return !_orderHasAnyWorkbookOnShipment(o);
   }
   // An order is "in the Orders queue" iff it has NOT yet been
   // notified. Notification is the operator-controlled gate that
   // moves the order out of Orders and into Fulfillment.
   function _orderIsInOrdersQueue(o) {
-    return !!o && !o.notifiedAt;
+    return !!o && !o.archived && o.status !== 'archived' && !o.notifiedAt;
   }
 
   // ═══ Pipeline board ═══════════════════════════════════════════════
@@ -52595,6 +52721,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // ── Shipments (page) + Receiving (delivered) → shipment cards ──
     Object.values(shipmentData || {}).forEach(s => {
       if (!s || s.id == null) return;
+      if (s.archived) {
+        // Archived → no card, but claim its workbooks so they don't reappear.
+        try { _shipmentGroups(s).forEach(g => g.workbooks.forEach(w => claim(w.cn, w.wid))); } catch (_) {}
+        return;
+      }
       let stage = null;
       if (s.status === 'delivered') stage = 'receiving';
       else if (s.status && s.status !== 'received' && !(typeof _isArchiveCompleted === 'function' && _isArchiveCompleted(s))) stage = 'shipments';
@@ -52615,6 +52746,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // ── Orders queue + In Production (fulfillment) → order cards ──
     Object.values(orderData || {}).forEach(o => {
       if (!o || o.id == null) return;
+      if (o.archived || o.status === 'archived') {
+        // Archived → no card, but claim its workbooks so they don't reappear
+        // as loose cards on the board.
+        (o.entries || []).forEach(e => claim(e.clientName, e.workbookId));
+        return;
+      }
       let stage = null;
       if (_orderIsInFulfillment(o)) stage = 'production';
       else if (_orderIsInOrdersQueue(o)) stage = 'orders';
@@ -53746,6 +53883,39 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     setTimeout(() => document.addEventListener('mousedown', _plCardMenuOutside, true), 0);
     return false;
   }
+  // Delete a pipeline card WITHOUT leaving the board — each kind soft-archives
+  // (recoverable from the Archive) and the board repaints in place.
+  async function _pipelineDeleteCard(cid) {
+    const c = _plLastCards[cid]; if (!c) return;
+    if (c.kind === 'wb') {
+      const name = c.product || 'this workbook';
+      if (!confirm(`Archive “${name}”?\n\nIt leaves the pipeline and moves to the Archive — you can search for it and restore it, or delete it forever from there.`)) return;
+      try {
+        const key = `${c.clientName}|${c.workbookId}`;
+        const dbId = (typeof dbWorkbookMap !== 'undefined' && dbWorkbookMap[key]) ? dbWorkbookMap[key] : c.workbookId;
+        await apiCall('delete_workbook', { id: dbId });
+      } catch (e) { console.warn('[pipeline delete wb]', e); }
+      try { if (clientData[c.clientName]) clientData[c.clientName] = clientData[c.clientName].filter(i => String(i.id) !== String(c.workbookId)); } catch (_) {}
+      try { delete workbookDetail[`${c.clientName}|${c.workbookId}`]; } catch (_) {}
+      try { if (typeof saveToLocalStorage === 'function') saveToLocalStorage(); } catch (_) {}
+      try { if (typeof loadArchiveData === 'function') loadArchiveData(); } catch (_) {}  // refresh archive cache so search finds it
+    } else if (c.kind === 'order') {
+      const o = orderData[c.id]; if (!o) return;
+      if (!confirm(`Archive “${(typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : ('Order #' + c.id)}”?\n\nIt leaves the pipeline and moves to the Archive — restore it or delete it forever from there.`)) return;
+      o.archived = true; o.archivedAt = new Date().toISOString();
+      try { saveOrders(); } catch (_) {}
+      try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
+    } else if (c.kind === 'shipment') {
+      const s = shipmentData[c.id]; if (!s) return;
+      if (!confirm(`Archive “${s.name || ('Shipment #' + c.id)}”?\n\nIt leaves the pipeline and moves to the Archive — restore it or delete it forever from there.`)) return;
+      s.archived = true; s.archivedAt = new Date().toISOString();
+      try { saveShipments(); } catch (_) {}
+      try { if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav(); } catch (_) {}
+    }
+    try { if (typeof showToast === 'function') showToast('Moved to Archive', 'success'); } catch (_) {}
+    try { if (typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
+  }
+
   function _plCardMenuAct(action) {
     const cid = _plCardMenuCid;
     const ev  = _plCardMenuEv;
@@ -53765,20 +53935,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         case 'toProduction': if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'production'); break;
         case 'toOrders':     if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'orders'); break;
         case 'toShipments':  if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'shipments'); break;
-        case 'delete': {
-          // Each delete fn carries its own confirm. Orders/shipments navigate
-          // away on success — bounce back to the board so the operator stays
-          // in the pipeline (no-op when the confirm was cancelled).
-          if (c.kind === 'wb') {
-            if (typeof openDeleteModal === 'function') openDeleteModal(c.clientName, c.workbookId, c.product);
-          } else {
-            const was = location.hash;
-            if (c.kind === 'order'    && typeof deleteOrder    === 'function') deleteOrder(String(c.id));
-            if (c.kind === 'shipment' && typeof deleteShipment === 'function') deleteShipment(String(c.id));
-            if (was === '#/pipeline' && location.hash !== was) location.hash = '#/pipeline';
-          }
-          break;
-        }
+        case 'delete': _pipelineDeleteCard(cid); break;
       }
     } catch (e) { console.warn('[pl card menu]', e); }
   }
