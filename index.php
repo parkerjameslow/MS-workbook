@@ -52957,7 +52957,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <div class="crm-column-header" style="background:${col.bg}; color:${col.fg};">
           <span class="crm-col-title" style="flex:0 1 auto;">${col.label}</span>
           <button class="crm-col-add-icon" onclick="event.stopPropagation(); _pipelineAddToColumn('${col.id}')" title="Add to ${_plEsc(col.label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-          <button class="crm-col-add-icon" onclick="event.stopPropagation(); togglePipelineColSort('${col.id}')" title="Sort ${(_pipelineColSort[col.id] === 'newest') ? 'newest' : 'oldest'} first — click to flip">${(_pipelineColSort[col.id] === 'newest') ? '↑' : '↓'}</button>
+          <button class="crm-col-add-icon" onclick="event.stopPropagation(); togglePipelineColSort('${col.id}')" title="Sort ${(_pipelineColSort[col.id] === 'newest') ? 'newest' : 'oldest'} first — click to flip">${(_pipelineColSort[col.id] === 'newest')
+            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="6 11 12 5 18 11"/></svg>`
+            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="6 13 12 19 18 13"/></svg>`}</button>
           <span style="flex:1 1 auto;"></span>
           ${total > 0 ? `<span class="crm-col-total">${_plMoney(total)}</span>` : ''}
           <span class="crm-col-count">${cards.length}</span>
