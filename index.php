@@ -56964,7 +56964,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <span style="color:var(--text-muted); font-size:12px;">target ${fmtUsd(target)}</span>
             ${fullyPaid
               ? `<span style="margin-left:auto; font-size:12px; font-weight:700; color:var(--success, #16a34a);">✓ Fully paid</span>`
-              : `<span style="margin-left:auto; font-size:12px; color:var(--text-muted);"><strong style="color:var(--success, #16a34a);">${fmtUsd(paidSum)}</strong> of ${fmtUsd(target)} paid · <strong style="color:var(--text);">${fmtUsd(remaining)}</strong> remaining</span>`}
+              : `<span style="margin-left:auto; font-size:12px; color:var(--text-muted);"><strong style="color:var(--success, #16a34a);">${fmtUsd(paidSum)}</strong> of ${fmtUsd(target)} paid · <strong style="color:var(--danger, #dc2626);">${fmtUsd(remaining)}</strong> <span style="color:var(--danger, #dc2626); font-weight:700;">remaining</span></span>`}
             ${karenBtn}
           </div>
           <div style="margin-top:6px; height:5px; background:var(--surface2); border-radius:99px; overflow:hidden;">
