@@ -53720,14 +53720,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _plCardMenuCid = cid; _plCardMenuEv = ev;
     const items = [];
     if (c.kind === 'wb') {
-      items.push(['open', 'Open workbook'], ['move', 'Move to stage…'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments']);
+      items.push(['open', 'Open workbook'], ['move', 'Move to stage…'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Delete workbook']);
     } else if (c.kind === 'order') {
       items.push(['open', 'Open order'], ['rename', 'Rename']);
       if (c.stage === 'orders')     items.push(['toProduction', 'Move to In Production']);
       if (c.stage === 'production') items.push(['toShipments', 'Move to Shipments…'], ['toOrders', 'Back to Orders']);
-      items.push(['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments']);
+      items.push(['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Delete order']);
     } else {
-      items.push(['open', 'Open shipment'], ['rename', 'Rename'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments']);
+      items.push(['open', 'Open shipment'], ['rename', 'Rename'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Delete shipment']);
     }
     const esc = s => String(s).replace(/</g, '&lt;');
     const menu = document.createElement('div');
@@ -53735,7 +53735,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     menu.innerHTML = items.map(([act, lbl]) =>
       act === 'sep'
         ? `<div class="pl-card-menu-sep"></div>`
-        : `<button type="button" onmousedown="event.preventDefault();" onclick="_plCardMenuAct('${act}')">${esc(lbl)}</button>`
+        : `<button type="button" onmousedown="event.preventDefault();" onclick="_plCardMenuAct('${act}')"${act === 'delete' ? ' style="color:var(--danger,#dc2626); font-weight:600;"' : ''}>${esc(lbl)}</button>`
     ).join('');
     document.body.appendChild(menu);
     _plCardMenuEl = menu;
@@ -53765,6 +53765,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         case 'toProduction': if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'production'); break;
         case 'toOrders':     if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'orders'); break;
         case 'toShipments':  if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'shipments'); break;
+        case 'delete': {
+          // Each delete fn carries its own confirm. Orders/shipments navigate
+          // away on success — bounce back to the board so the operator stays
+          // in the pipeline (no-op when the confirm was cancelled).
+          if (c.kind === 'wb') {
+            if (typeof openDeleteModal === 'function') openDeleteModal(c.clientName, c.workbookId, c.product);
+          } else {
+            const was = location.hash;
+            if (c.kind === 'order'    && typeof deleteOrder    === 'function') deleteOrder(String(c.id));
+            if (c.kind === 'shipment' && typeof deleteShipment === 'function') deleteShipment(String(c.id));
+            if (was === '#/pipeline' && location.hash !== was) location.hash = '#/pipeline';
+          }
+          break;
+        }
       }
     } catch (e) { console.warn('[pl card menu]', e); }
   }
