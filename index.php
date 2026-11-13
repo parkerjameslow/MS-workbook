@@ -6660,6 +6660,30 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-stage-age { position: absolute; top: 8px; right: 8px; font-size: 9px; font-weight: 800; letter-spacing: 0.02em; padding: 2px 7px; border-radius: 99px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.12); }
     .pl-stage-age.age-warn { background: rgba(234,179,8,0.18); color: #fcd34d; border-color: rgba(252,211,77,0.35); }
     .pl-stage-age.age-old  { background: rgba(239,68,68,0.18); color: #fca5a5; border-color: rgba(252,165,165,0.35); }
+    /* Per-card ⋮ options button (hover) + the floating menu it opens (also on
+       right-click anywhere on the card). */
+    .pl-card-menu-btn {
+      position: absolute; top: 5px; right: 6px; z-index: 5;
+      display: none; align-items: center; justify-content: center;
+      width: 24px; height: 22px; padding: 0;
+      background: rgba(15,18,32,0.92); color: #e5e7eb;
+      border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+      cursor: pointer; font-size: 15px; line-height: 1; font-family: inherit;
+    }
+    .pl-card:hover .pl-card-menu-btn { display: inline-flex; }
+    .pl-card-menu-btn:hover { background: rgba(40,46,70,0.98); border-color: var(--accent); }
+    .pl-card-menu {
+      position: fixed; z-index: 9999; min-width: 194px;
+      background: var(--surface, #fff); border: 1px solid var(--border); border-radius: 10px;
+      box-shadow: 0 10px 34px rgba(0,0,0,0.28); padding: 5px;
+    }
+    .pl-card-menu button {
+      display: block; width: 100%; text-align: left; background: none; border: none;
+      color: var(--text); font-family: inherit; font-size: 13px; padding: 8px 12px;
+      border-radius: 7px; cursor: pointer; white-space: nowrap;
+    }
+    .pl-card-menu button:hover { background: var(--surface2); }
+    .pl-card-menu .pl-card-menu-sep { height: 1px; background: var(--border); margin: 4px 6px; }
     .pl-card .pl-card-sub { font-size: 11px; color: #9ca3af; margin-top: 3px; display: flex; flex-wrap: wrap; gap: 6px; }
     .pl-card .pl-card-val { font-size: 11px; font-weight: 700; color: #d1fae5; }
     .pl-lock-hint { font-size: 9px; color: #9ca3af; margin-top: 6px; font-style: italic; }
@@ -53148,9 +53172,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'${_plEsc(c.key)}')" ondragend="onPipelineDragEnd(event)"`
       : '';
     const cid = _plCardId(c);
+    const cidJs = _plEsc(cid).replace(/'/g, "\\'");
     return `<div class="crm-card pl-card ${c.movable ? '' : 'pl-locked'}${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs}
-                 onclick="openPipelineCardModal('${_plEsc(cid).replace(/'/g, "\\'")}')" title="View details">
+                 onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="View details — right-click for options">
       ${_pipelineAgeBadge(c.since)}
+      <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.product)}</div>
       <div class="pl-card-sub">${sub}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
       ${_wbTrackingPillHtml(c.clientName, c.workbookId)}
@@ -53172,8 +53198,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const dragAttrs = canDrag
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'order:${c.id}')" ondragend="onPipelineDragEnd(event)"`
       : '';
-    return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cid}')" title="${canDrag ? 'Drag between Orders / In Production, or click to view' : 'View details'}">
+    const cidJs = _plEsc(cid).replace(/'/g, "\\'");
+    return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
+      <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
@@ -53190,8 +53218,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       `<div class="pl-child-group">${_plEsc(g.label)}</div>${g.workbooks.map(_pipelineChildLine).join('')}`
     ).join('');
     const cid = _plCardId(c);
-    return `<div class="crm-card pl-card pl-locked pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" onclick="openPipelineCardModal('${cid}')" title="View details">
+    const cidJs = _plEsc(cid).replace(/'/g, "\\'");
+    return `<div class="crm-card pl-card pl-locked pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="View details — right-click for options">
       ${_pipelineAgeBadge(c.since)}
+      <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       ${c.sub ? `<div class="pl-card-sub">${_plEsc(c.sub)}</div>` : ''}
       ${_shipmentStatusPillHtml(c.id)}
@@ -53336,6 +53366,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         }
       } else if (c.from === 'recent' && typeof renderRecentWorkbooksView === 'function') {
         renderRecentWorkbooksView();
+      } else if (c.from === 'pipeline' && typeof renderPipelineBoard === 'function') {
+        renderPipelineBoard();
       } else {
         renderDashboard(c.clientName);
       }
@@ -53664,6 +53696,78 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   const _plModalAssignees = new Set();
 
   function _plCardId(c) { return c.kind === 'wb' ? `wb:${c.key}` : `${c.kind}:${c.id}`; }
+
+  // ── Per-card options menu (right-click on a card, or its hover ⋮ button) ──
+  let _plCardMenuEl = null, _plCardMenuCid = null, _plCardMenuEv = null;
+  function _plCardHref(c) {
+    return c.kind === 'wb'
+      ? `#/client/${encodeURIComponent(c.clientName)}/workbook/${c.workbookId}`
+      : c.kind === 'order' ? `#/order/${c.id}` : `#/shipment/${c.id}`;
+  }
+  function _closePlCardMenu() {
+    if (_plCardMenuEl) { _plCardMenuEl.remove(); _plCardMenuEl = null; }
+    document.removeEventListener('mousedown', _plCardMenuOutside, true);
+    _plCardMenuCid = null;
+  }
+  function _plCardMenuOutside(e) {
+    if (_plCardMenuEl && !_plCardMenuEl.contains(e.target)) _closePlCardMenu();
+  }
+  function _showPlCardMenu(ev, cid) {
+    try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+    _closePlCardMenu();
+    const c = _plLastCards[cid];
+    if (!c) return false;
+    _plCardMenuCid = cid; _plCardMenuEv = ev;
+    const items = [];
+    if (c.kind === 'wb') {
+      items.push(['open', 'Open workbook'], ['move', 'Move to stage…'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments']);
+    } else if (c.kind === 'order') {
+      items.push(['open', 'Open order'], ['rename', 'Rename']);
+      if (c.stage === 'orders')     items.push(['toProduction', 'Move to In Production']);
+      if (c.stage === 'production') items.push(['toShipments', 'Move to Shipments…'], ['toOrders', 'Back to Orders']);
+      items.push(['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments']);
+    } else {
+      items.push(['open', 'Open shipment'], ['rename', 'Rename'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments']);
+    }
+    const esc = s => String(s).replace(/</g, '&lt;');
+    const menu = document.createElement('div');
+    menu.className = 'pl-card-menu';
+    menu.innerHTML = items.map(([act, lbl]) =>
+      act === 'sep'
+        ? `<div class="pl-card-menu-sep"></div>`
+        : `<button type="button" onmousedown="event.preventDefault();" onclick="_plCardMenuAct('${act}')">${esc(lbl)}</button>`
+    ).join('');
+    document.body.appendChild(menu);
+    _plCardMenuEl = menu;
+    const x = (ev && ev.clientX) || 120, y = (ev && ev.clientY) || 120;
+    const h = menu.offsetHeight || (items.length * 36);
+    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - 210)) + 'px';
+    menu.style.top  = Math.max(8, Math.min(y + 4, window.innerHeight - h - 10)) + 'px';
+    setTimeout(() => document.addEventListener('mousedown', _plCardMenuOutside, true), 0);
+    return false;
+  }
+  function _plCardMenuAct(action) {
+    const cid = _plCardMenuCid;
+    const ev  = _plCardMenuEv;
+    const c = _plLastCards[cid];
+    _closePlCardMenu();
+    if (!c) return;
+    try {
+      switch (action) {
+        case 'open':    location.hash = _plCardHref(c); break;
+        case 'details': openPipelineCardModal(cid); break;
+        case 'assign':  if (typeof openAssigneePicker === 'function') openAssigneePicker(cid, ev, renderPipelineBoard); break;
+        case 'move':    if (typeof openStageMoveModal === 'function') openStageMoveModal(c.clientName, c.workbookId, 'pipeline'); break;
+        case 'rename':
+          if (c.kind === 'order' && typeof renamePipelineOrderCard === 'function') renamePipelineOrderCard(String(c.id));
+          else if (c.kind === 'shipment' && typeof renamePipelineShipmentCard === 'function') renamePipelineShipmentCard(String(c.id));
+          break;
+        case 'toProduction': if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'production'); break;
+        case 'toOrders':     if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'orders'); break;
+        case 'toShipments':  if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'shipments'); break;
+      }
+    } catch (e) { console.warn('[pl card menu]', e); }
+  }
 
   async function _ensurePlMetaLoaded() {
     if (_plMetaLoaded) return;
