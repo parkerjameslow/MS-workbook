@@ -52785,7 +52785,54 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // Shipments / Receiving) are per-ENTITY cards (an order or a shipment)
   // with a drill-down of their contents — matching those left-nav views
   // exactly. Workbooks owned by an entity are not also shown as loose cards.
+  // Self-heal: purge corrupted "ghost" workbooks whose id isn't a real numeric
+  // DB id (e.g. a stray entry keyed "<client>|Diced Cheese" that the server has
+  // no row for, so it can never be deleted through the normal flow). Removes
+  // them from workbookDetail, clientData, and any order/shipment entries, then
+  // persists. Numeric-id workbooks are never touched.
+  function _purgeGhostWorkbooks() {
+    const isGhostId = v => { const s = String(v == null ? '' : v).trim(); return s === '' || !/^\d+$/.test(s); };
+    let changed = false, ordersChanged = false, shipsChanged = false;
+    try {
+      Object.keys(workbookDetail || {}).forEach(key => {
+        const idx = key.lastIndexOf('|');
+        const wid = idx >= 0 ? key.slice(idx + 1) : key;
+        if (isGhostId(wid)) { delete workbookDetail[key]; changed = true; }
+      });
+    } catch (_) {}
+    try {
+      Object.keys(clientData || {}).forEach(cn => {
+        const arr = clientData[cn];
+        if (Array.isArray(arr)) {
+          const f = arr.filter(it => it && !isGhostId(it.id));
+          if (f.length !== arr.length) { clientData[cn] = f; changed = true; }
+        }
+      });
+    } catch (_) {}
+    try {
+      Object.values(orderData || {}).forEach(o => {
+        if (o && Array.isArray(o.entries)) {
+          const f = o.entries.filter(e => !(e && e.workbookId != null && isGhostId(e.workbookId)));
+          if (f.length !== o.entries.length) { o.entries = f; ordersChanged = true; }
+        }
+      });
+    } catch (_) {}
+    try {
+      Object.values(shipmentData || {}).forEach(s => {
+        if (s && Array.isArray(s.entries)) {
+          const f = s.entries.filter(e => !(e && e.workbookId != null && isGhostId(e.workbookId)));
+          if (f.length !== s.entries.length) { s.entries = f; shipsChanged = true; }
+        }
+      });
+    } catch (_) {}
+    if (changed) { try { saveToLocalStorage(); } catch (_) {} }
+    if (ordersChanged) { try { if (typeof saveOrders === 'function') saveOrders(); } catch (_) {} }
+    if (shipsChanged) { try { if (typeof saveShipments === 'function') saveShipments(); } catch (_) {} }
+    return changed || ordersChanged || shipsChanged;
+  }
+
   function collectPipeline() {
+    try { _purgeGhostWorkbooks(); } catch (_) {}
     const cards = [];
     const claimed = new Set();  // "cn|wid" represented by an entity card
     const claim = (cn, wid) => { if (cn != null && wid != null) claimed.add(`${cn}|${wid}`); };
