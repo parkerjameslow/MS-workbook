@@ -13293,6 +13293,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           oninput="debounceSuggestCategories()"></textarea>
       </div>
       <div id="modal-suggest-area" style="margin-bottom:12px;"></div>
+      <div class="modal-field">
+        <label>Start in stage</label>
+        <div class="select-wrap"><select id="modal-start-stage">
+          <option value="unstaged">Unstaged</option>
+          <option value="design">Design</option>
+          <option value="rfq">RFQ</option>
+          <option value="review">Ready for Review</option>
+          <option value="samples">Samples</option>
+        </select></div>
+      </div>
       <div class="modal-actions">
         <button type="button" class="btn-cancel" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn-create">Create Workbook</button>
@@ -32429,8 +32439,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     renderWorkbookSuggestions();
   }
 
-  function openNewWorkbookModal() {
+  function openNewWorkbookModal(startStage) {
     document.getElementById('new-workbook-form').reset();
+    // Default the start-stage to the column the + was pressed in (falls back to
+    // Unstaged when opened from elsewhere). Only flag-based stages are valid.
+    try {
+      const ss = document.getElementById('modal-start-stage');
+      if (ss) {
+        const valid = ['unstaged', 'design', 'rfq', 'review', 'samples'];
+        ss.value = (startStage && valid.indexOf(startStage) !== -1) ? startStage : 'unstaged';
+      }
+    } catch (_) {}
 
     const sel = document.getElementById('modal-client');
     const dropdownField = document.getElementById('modal-client-field');
@@ -32578,6 +32597,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     clientData[client] = items;
     dbWorkbookMap[`${client}|${newId}`] = newId;
+
+    // Start the workbook in the chosen stage (defaults to the column the + was
+    // pressed in). Flag-based stages only; persist server-side + mirror the
+    // flags locally so the board shows it in the right column right away.
+    const _startStage = (document.getElementById('modal-start-stage')?.value || 'unstaged');
+    if (_startStage && _startStage !== 'unstaged') {
+      const _nowIso = new Date().toISOString();
+      const _wkey = `${client}|${newId}`;
+      const _wd = workbookDetail[_wkey] || (workbookDetail[_wkey] = {});
+      if (!Array.isArray(_wd.rfqItems)) _wd.rfqItems = [];
+      _wd.product = product;
+      _wd.inDesign = (_startStage === 'design'); if (_wd.inDesign) _wd.inDesignAt = _nowIso;
+      _wd.sentToRfq = (_startStage === 'rfq' || _startStage === 'review'); if (_wd.sentToRfq) _wd.sentToRfqAt = _nowIso;
+      _wd.sentForReview = (_startStage === 'review'); if (_wd.sentForReview) _wd.sentForReviewAt = _nowIso;
+      const _newItem = items.find(i => String(i.id) === String(newId));
+      if (_newItem && _newItem.flow && (_startStage === 'rfq' || _startStage === 'review')) {
+        _newItem.flow.quoteChina = true; _newItem.flow.quoteSubmitted = true;
+      }
+      try { apiCall('set_pipeline_stage', { workbook_id: newId, stage: _startStage, changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }).catch(e => console.warn('[new wb stage]', e)); } catch (e) { console.warn('[new wb stage]', e); }
+    }
+
     saveToLocalStorage();
 
     // Store any suggested category to apply after navigation
@@ -37850,7 +37890,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Fill with basic info from the client list
       const items = clientData[clientName] || [];
       const item = items.find(i => i.id === parseInt(workbookId));
-      document.getElementById('client-name').value = clientName;
+      // Populate the client dropdown AND select this client — setting
+      // .value directly left it blank when the option wasn't built yet (a
+      // brand-new workbook), which looked like the client "didn't save".
+      populateClientNameSelect(clientName);
       document.getElementById('product-name').value = item ? item.product : '';
       document.getElementById('product-desc').value = item ? item.description : '';
       // Clear other fields
@@ -52889,8 +52932,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     } else if (colId === 'shipments' || colId === 'receiving') {
       if (typeof openNewShipmentModal === 'function') { openNewShipmentModal(); return; }
     }
-    // Unstaged / RFQ / Review / Samples (and any fallback) → new workbook.
-    if (typeof openNewWorkbookModal === 'function') openNewWorkbookModal();
+    // Unstaged / Design / RFQ / Review / Samples (and any fallback) → new
+    // workbook, defaulting the start-stage to the column pressed.
+    if (typeof openNewWorkbookModal === 'function') openNewWorkbookModal(colId);
   }
 
   function renderPipelineBoard() {
