@@ -13699,6 +13699,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="archive-tab seg-tab" onclick="switchArchiveTab('shipments', this)">Shipments</button>
         <button class="archive-tab seg-tab" onclick="switchArchiveTab('clients', this)">Clients</button>
       </div>
+      <input type="text" id="archive-search" placeholder="Search the archive…" oninput="onArchiveSearch(this.value)"
+             style="margin-top:10px; width:100%; box-sizing:border-box; height:38px; padding:0 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" />
     </div>
     <div id="archive-list" style="overflow-y:auto; flex:1; padding:12px 20px;">
       <p style="color:var(--text-muted); text-align:center;">Loading...</p>
@@ -33323,11 +33325,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   /* ── Archive Modal ─────────────────────────────────────────────────────── */
   let archiveData = { workbooks: [], clients: [] };
   let archiveTab = 'workbooks';
+  let archiveSearch = '';
+
+  function onArchiveSearch(v) {
+    archiveSearch = (v || '').trim().toLowerCase();
+    renderArchiveList();
+  }
 
   function openArchiveModal() {
     const overlay = document.getElementById('archive-modal-overlay');
     overlay.style.display = 'flex';
     archiveTab = 'workbooks';
+    archiveSearch = '';
+    const si = document.getElementById('archive-search'); if (si) si.value = '';
     loadArchiveData();
   }
 
@@ -33366,8 +33376,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // `archived` flag, not the server soft-delete table.
     if (archiveTab === 'orders') {
       const ord = Object.values(orderData || {}).filter(o => o && (o.archived || o.status === 'archived'))
+        .filter(o => !archiveSearch || ((((typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : (o.name || '')) + ' ' + (o.clientName || '') + ' ' + (o.poNumber || '')).toLowerCase().includes(archiveSearch)))
         .sort((a, b) => String(b.archivedAt || '').localeCompare(String(a.archivedAt || '')));
-      if (!ord.length) { list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No archived orders.</p>'; return; }
+      if (!ord.length) { list.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:20px;">${archiveSearch ? 'No archived orders match your search.' : 'No archived orders.'}</p>`; return; }
       list.innerHTML = ord.map(o => `
         <div class="archive-item">
           <div style="flex:1; min-width:0;">
@@ -33383,8 +33394,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     if (archiveTab === 'shipments') {
       const shp = Object.values(shipmentData || {}).filter(s => s && s.archived)
+        .filter(s => !archiveSearch || (((s.name || '') + ' ' + (s.carrier || '') + ' ' + (s.trackingNumber || '')).toLowerCase().includes(archiveSearch)))
         .sort((a, b) => String(b.archivedAt || '').localeCompare(String(a.archivedAt || '')));
-      if (!shp.length) { list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No archived shipments.</p>'; return; }
+      if (!shp.length) { list.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:20px;">${archiveSearch ? 'No archived shipments match your search.' : 'No archived shipments.'}</p>`; return; }
       list.innerHTML = shp.map(s => `
         <div class="archive-item">
           <div style="flex:1; min-width:0;">
@@ -33399,10 +33411,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return;
     }
 
-    const items = archiveTab === 'workbooks' ? archiveData.workbooks : archiveData.clients;
+    let items = archiveTab === 'workbooks' ? archiveData.workbooks : archiveData.clients;
+    if (items && archiveSearch) {
+      items = items.filter(it => archiveTab === 'workbooks'
+        ? (((it.product_name || '') + ' ' + (it.client_name || '')).toLowerCase().includes(archiveSearch))
+        : ((it.name || '').toLowerCase().includes(archiveSearch)));
+    }
 
     if (!items || !items.length) {
-      list.innerHTML = '<p style="color:var(--text-muted); text-align:center; padding:20px;">No archived items.</p>';
+      list.innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:20px;">${archiveSearch ? 'No archived items match your search.' : 'No archived items.'}</p>`;
       return;
     }
 
