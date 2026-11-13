@@ -11465,7 +11465,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="btn btn-ghost" onclick="clearPipelineFilters()">Clear</button>
         <span id="pl-filter-note" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></span>
       </div>
-      <button class="btn btn-ghost" id="pl-sort-btn" onclick="togglePipelineSort()" title="Sort each column by time in stage — oldest first or newest first" style="font-size:12px; border:1px solid var(--border); white-space:nowrap;">↓ Oldest first</button>
       <button class="btn btn-ghost" onclick="refreshAllTracking(this)" title="Re-check every shipment's carrier tracking now" style="font-size:12px; border:1px solid var(--border);">↻ Refresh all tracking</button>
       <span style="font-size:11px; color:var(--text-muted);" title="Drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.">Every workbook by stage</span>
     </div>
@@ -52614,10 +52613,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // clears every stage flag; the others set exactly one.
   const PIPELINE_FLAG_STAGES = new Set(['unstaged', 'design', 'rfq', 'review', 'samples', 'waitingClient', 'orders']);
   let _pipelineDragKey = null;
-  // Card sort within each column: 'oldest' (most days in stage first) or 'newest'.
-  let _pipelineSortDir = 'oldest';
-  function togglePipelineSort() {
-    _pipelineSortDir = (_pipelineSortDir === 'oldest') ? 'newest' : 'oldest';
+  // Per-column card sort: colId → 'oldest' (most days in stage first, default)
+  // or 'newest'. Toggled by the arrow in each column header.
+  let _pipelineColSort = {};
+  function togglePipelineColSort(colId) {
+    _pipelineColSort[colId] = (_pipelineColSort[colId] === 'newest') ? 'oldest' : 'newest';
     try { renderPipelineBoard(); } catch (_) {}
   }
 
@@ -52933,13 +52933,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const byCol = {};
     PIPELINE_COLUMNS.forEach(c => { byCol[c.id] = []; });
     shown.forEach(card => { (byCol[card.stage] = byCol[card.stage] || []).push(card); });
-    // Sort each column by time in stage. Default oldest-first (bottlenecks
-    // float up); the toolbar toggle flips to newest-first.
+    // Sort each column by time in stage — per-column direction (default
+    // oldest-first so bottlenecks float up; the header arrow flips to newest).
     const _age = c => { const d = _pipelineDaysSince(c.since); return d === null ? -1 : d; };
-    const _sortDir = (_pipelineSortDir === 'newest') ? -1 : 1;
-    Object.keys(byCol).forEach(k => byCol[k].sort((a, b) => (_age(b) - _age(a)) * _sortDir));
-    const _sortBtn = document.getElementById('pl-sort-btn');
-    if (_sortBtn) _sortBtn.textContent = (_pipelineSortDir === 'newest') ? '↑ Newest first' : '↓ Oldest first';
+    Object.keys(byCol).forEach(k => {
+      const dir = (_pipelineColSort[k] === 'newest') ? -1 : 1;
+      byCol[k].sort((a, b) => (_age(b) - _age(a)) * dir);
+    });
 
     board.innerHTML = PIPELINE_COLUMNS.map(col => {
       const cards = byCol[col.id] || [];
@@ -52957,6 +52957,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <div class="crm-column-header" style="background:${col.bg}; color:${col.fg};">
           <span class="crm-col-title" style="flex:0 1 auto;">${col.label}</span>
           <button class="crm-col-add-icon" onclick="event.stopPropagation(); _pipelineAddToColumn('${col.id}')" title="Add to ${_plEsc(col.label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+          <button onclick="event.stopPropagation(); togglePipelineColSort('${col.id}')" title="Sort ${(_pipelineColSort[col.id] === 'newest') ? 'newest' : 'oldest'} first — click to flip" style="background:none; border:none; color:inherit; cursor:pointer; font-size:15px; font-weight:800; line-height:1; padding:0 3px; opacity:0.85;">${(_pipelineColSort[col.id] === 'newest') ? '↑' : '↓'}</button>
           <span style="flex:1 1 auto;"></span>
           ${total > 0 ? `<span class="crm-col-total">${_plMoney(total)}</span>` : ''}
           <span class="crm-col-count">${cards.length}</span>
