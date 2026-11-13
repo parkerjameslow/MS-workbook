@@ -4248,8 +4248,8 @@ switch ($action) {
     case 'set_pipeline_stage': {
         $wbId  = (int)($input['workbook_id'] ?? 0);
         $stage = $input['stage'] ?? '';
-        if ($wbId <= 0 || !in_array($stage, ['unstaged', 'samples', 'rfq', 'review', 'waitingClient', 'orders'], true)) {
-            echo json_encode(['success' => false, 'error' => 'workbook_id and a valid stage (unstaged|samples|rfq|review|waitingClient|orders) required']);
+        if ($wbId <= 0 || !in_array($stage, ['unstaged', 'design', 'samples', 'rfq', 'review', 'waitingClient', 'orders'], true)) {
+            echo json_encode(['success' => false, 'error' => 'workbook_id and a valid stage (unstaged|design|samples|rfq|review|waitingClient|orders) required']);
             break;
         }
         $sel = $pdo->prepare("SELECT detail_json, flow_step FROM workbooks WHERE id = ? AND deleted_at IS NULL");
@@ -4271,6 +4271,10 @@ switch ($action) {
         $detail['sentForReview']   = false; $detail['sentForReviewAt'] = null;
         $detail['waitingForClient'] = false; $detail['waitingForClientAt'] = null;
         $detail['movedToOrders']   = false; $detail['movedToOrdersAt'] = null;
+        $detail['inDesign']        = false; $detail['inDesignAt']      = null;
+        // Moving to any earlier stage releases a prior client approval so the
+        // stage derivation doesn't pin the card to Pre-Production.
+        if ($stage !== 'orders') { $detail['approvedByClientAt'] = null; }
         // Flow-step must match the target stage or the flow-gated collectors
         // (RFQ/Review require quoteSubmitted AND NOT quoteClient; Samples
         // requires NOT past quoteClient) will reject the card and it falls
@@ -4286,6 +4290,15 @@ switch ($action) {
                 unset($it);
             }
             // Cap flow so quoteClient (and later) clears → not "advanced past".
+            $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
+        } elseif ($stage === 'design') {
+            // Earliest working stage — flag inDesign, drop any sample flags,
+            // cap flow so it isn't treated as advanced past the quote.
+            $detail['inDesign'] = true; $detail['inDesignAt'] = $now;
+            if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
+                foreach ($detail['rfqItems'] as &$it) { if (is_array($it)) $it['sample'] = false; }
+                unset($it);
+            }
             $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'samples') {
             // If the operator already ticked specific Sample lines, respect

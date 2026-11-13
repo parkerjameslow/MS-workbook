@@ -27831,7 +27831,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if(typeof openReceivedModal==='function') openReceivedModal(shipId, 'cockpit');
   }
   const _PK_STAGE_SLA = { unstaged:7, rfq:7, review:5, samples:21, orders:10, production:45 };
-  const _PK_STAGE_LBL = { unstaged:'Unstaged', rfq:'RFQ', review:'Ready for Review', samples:'Samples', waitingClient:'Waiting for Client', orders:'Orders', production:'In Production', shipments:'Shipments', receiving:'Receiving' };
+  const _PK_STAGE_LBL = { unstaged:'Unstaged', design:'Design', rfq:'RFQ', review:'Ready for Review', samples:'Samples', waitingClient:'Waiting for Client', orders:'Pre-Production', production:'In Production', shipments:'Shipments', receiving:'Receiving' };
   // Resolve a shipment's primary client (any entry shape), for account filtering.
   function _pkShipClient(s){
     for(const e of (s.entries||[])){
@@ -28403,6 +28403,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // dead zone when a workbook opens on initial load.
   const PIPELINE_COLUMNS = [
     { id: 'unstaged',   label: 'Unstaged',         bg: '#f3f4f6', fg: '#4b5563' },
+    { id: 'design',     label: 'Design',           bg: '#ffe4e6', fg: '#be123c' },
     { id: 'rfq',        label: 'RFQ',              bg: '#dbeafe', fg: '#1e40af' },
     { id: 'review',     label: 'Ready For Review', bg: '#e0e7ff', fg: '#3730a3' },
     { id: 'samples',    label: 'Samples',          bg: '#dcfce7', fg: '#15803d' },
@@ -41386,6 +41387,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       },
       // Shipment split
       shipmentSplits: collectShipmentSplits(),
+      // Design stage flag (managed via pipeline move — preserve from existing).
+      inDesign:   !!existing.inDesign,
+      inDesignAt: existing.inDesignAt || null,
       // RFQ queue flags (managed via toggleSendToRfq, not DOM-driven — preserve from existing)
       sentToRfq: !!existing.sentToRfq,
       sentToRfqAt: existing.sentToRfqAt || null,
@@ -52608,7 +52612,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // managed from their own views (Orders / Shipments / Receiving).
   // Stages you can freely drag a card to/from (pure flag flips). Unstaged
   // clears every stage flag; the others set exactly one.
-  const PIPELINE_FLAG_STAGES = new Set(['unstaged', 'rfq', 'review', 'samples', 'waitingClient', 'orders']);
+  const PIPELINE_FLAG_STAGES = new Set(['unstaged', 'design', 'rfq', 'review', 'samples', 'waitingClient', 'orders']);
   let _pipelineDragKey = null;
   // Card sort within each column: 'oldest' (most days in stage first) or 'newest'.
   let _pipelineSortDir = 'oldest';
@@ -52650,6 +52654,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // otherwise the status bubble says "Samples" for a workbook that never
     // appears in the Samples list ("it says this is in samples but I can't find it").
     if (detail && Array.isArray(detail.rfqItems) && detail.rfqItems.some(i => i && i.sample && (i.item || i.qty || i.priceRmb))) return 'samples';
+    if (detail && detail.inDesign) return 'design';
     // Nothing started → Unstaged (still on the board). Note: the fully-
     // received case above returns null (done, exited) — NOT unstaged.
     return 'unstaged';
@@ -52795,7 +52800,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     // ── Early workbook stages (exclude entity-claimed + fully-received) ──
     const wbStage = {}, meta = {};
-    const RANK = { unstaged: 0, samples: 1, rfq: 2, review: 3, waitingClient: 4, orders: 5 };
+    const RANK = { unstaged: 0, design: 1, samples: 2, rfq: 3, review: 4, waitingClient: 5, orders: 6 };
     const consider = (cn, wid, stage) => {
       if (cn == null || wid == null) return;
       if (_isQuotesClient(cn)) return;   // draft quotes never show on the Pipeline board
@@ -52817,6 +52822,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { (collectAllReadyForReview() || []).forEach(r => consider(r.clientName, r.workbookId, 'review')); } catch (_) {}
     try { (collectAllWaitingClient() || []).forEach(w => consider(w.clientName, w.workbookId, 'waitingClient')); } catch (_) {}
     try { (collectStagedForOrders() || []).forEach(s => consider(s.clientName, s.workbookId, 'orders')); } catch (_) {}
+    // Design stage — workbooks flagged inDesign (not yet claimed by an order/shipment).
+    try { Object.entries(workbookDetail).forEach(([key, d]) => { if (d && d.inDesign) { const [cn, wid] = key.split('|'); consider(cn, wid, 'design'); } }); } catch (_) {}
     Object.keys(wbStage).forEach(key => {
       const m = meta[key], stg = wbStage[key], d = m.detail;
       let since = stg === 'rfq' ? d.sentToRfqAt
@@ -53682,6 +53689,57 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // Move an ORDER between the Orders and In Production lanes from the board.
   // notifiedAt is the gate _orderIsInFulfillment checks; toggling it moves the
   // order between lanes. Re-renders the board in place (no view navigation).
+  // Move an ORDER back to an early workbook stage (client wants changes): take
+  // every workbook out of the order, send each to the chosen stage, and remove
+  // the now-empty order. Blocked if the order's workbooks are already on a
+  // shipment (remove them from the shipment first).
+  async function _pipelineOrderBackToStage(orderId, stage) {
+    const o = orderData[orderId]; if (!o) return;
+    if (typeof _orderHasAnyWorkbookOnShipment === 'function' && _orderHasAnyWorkbookOnShipment(o)) {
+      showToast('This order has workbooks on a shipment — remove them from the shipment first.', 'warn');
+      return;
+    }
+    const lbl = (PIPELINE_COLUMNS.find(c => c.id === stage) || {}).label || stage;
+    const entries = (o.entries || []).filter(Boolean);
+    const n = entries.length;
+    if (!confirm(`Send “${_orderDisplayName(o)}” back to ${lbl}?\n\nThis removes the order and sends its ${n} workbook${n === 1 ? '' : 's'} back to ${lbl} so you can revise ${n === 1 ? 'it' : 'them'}.`)) return;
+    const nowIso = () => new Date().toISOString();
+    for (const e of entries) {
+      const key = `${e.clientName}|${e.workbookId}`;
+      try {
+        const dbId = dbWorkbookMap[key] || e.workbookId;
+        await apiCall('set_pipeline_stage', { workbook_id: dbId, stage, changed_by: getCurrentUser() });
+      } catch (err) { console.warn('[order back move]', err); }
+      // Mirror locally so the board repaints without a reload.
+      const d = workbookDetail[key];
+      if (d) {
+        d.sentToRfq = false; d.sentToRfqAt = null; d.sentForReview = false; d.sentForReviewAt = null;
+        d.waitingForClient = false; d.waitingForClientAt = null; d.movedToOrders = false; d.movedToOrdersAt = null;
+        d.inDesign = false; d.inDesignAt = null; d.approvedByClientAt = null;
+        if (stage === 'design') { d.inDesign = true; d.inDesignAt = nowIso(); if (Array.isArray(d.rfqItems)) d.rfqItems.forEach(it => { if (it) it.sample = false; }); }
+        else if (stage === 'rfq') { d.sentToRfq = true; d.sentToRfqAt = nowIso(); }
+        else if (stage === 'review') { d.sentToRfq = true; d.sentToRfqAt = nowIso(); d.sentForReview = true; d.sentForReviewAt = nowIso(); }
+        else if (stage === 'samples') { if (Array.isArray(d.rfqItems)) { const any = d.rfqItems.some(it => it && it.sample && (it.item || it.qty || it.priceRmb)); if (!any) d.rfqItems.forEach(it => { if (it && (it.item || it.qty || it.priceRmb)) it.sample = true; }); } }
+        else if (stage === 'waitingClient') { d.waitingForClient = true; d.waitingForClientAt = nowIso(); }
+        else if (stage === 'unstaged') { if (Array.isArray(d.rfqItems)) d.rfqItems.forEach(it => { if (it) it.sample = false; }); }
+      }
+      const items = clientData[e.clientName] || [];
+      const item = items.find(i => String(i.id) === String(e.workbookId));
+      if (item && item.flow) {
+        item.flow.quoteClient = false; item.flow.clientApproved = false;
+        item.flow.officeInvoice = false; item.flow.confirmedPayment = false; item.flow.orderChina = false;
+        if (stage === 'rfq' || stage === 'review') { item.flow.quoteChina = true; item.flow.quoteSubmitted = true; }
+      }
+    }
+    delete orderData[orderId];
+    try { _appStateDelSet('ms_orders').add(String(orderId)); } catch (_) {}
+    try { saveOrders(); } catch (_) {}
+    try { saveToLocalStorage(); } catch (_) {}
+    try { rebuildOrdersNav(); } catch (_) {}
+    try { renderPipelineBoard(); } catch (_) {}
+    showToast(`Moved ${n} workbook${n === 1 ? '' : 's'} back to ${lbl}`, 'success');
+  }
+
   function _pipelineMoveOrder(orderId, targetCol) {
     const o = orderData[orderId];
     if (!o) return;
@@ -53699,6 +53757,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       } else {
         showToast('Open the Shipments view to create a shipment for this order.', 'warn');
       }
+      return;
+    }
+    // Dragged back to an early WORKBOOK stage (Design / RFQ / Review / Samples
+    // / Waiting / Unstaged): the client wants changes — dissolve the order and
+    // send its workbooks back to that stage.
+    if (['design', 'rfq', 'review', 'samples', 'waitingClient', 'unstaged'].indexOf(targetCol) !== -1) {
+      _pipelineOrderBackToStage(orderId, targetCol);
       return;
     }
     if (targetCol !== 'orders' && targetCol !== 'production') {
@@ -53749,17 +53814,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       sentForReview: detail.sentForReview, sentForReviewAt: detail.sentForReviewAt,
       waitingForClient: detail.waitingForClient, waitingForClientAt: detail.waitingForClientAt,
       movedToOrders: detail.movedToOrders, movedToOrdersAt: detail.movedToOrdersAt,
+      inDesign: detail.inDesign, inDesignAt: detail.inDesignAt,
+      approvedByClientAt: detail.approvedByClientAt,
       samples: Array.isArray(detail.rfqItems) ? detail.rfqItems.map(it => it ? !!it.sample : false) : null,
     };
     const now = new Date().toISOString();
-    // Reset all four flag-stage dividers, then set the target — mirrors the
-    // server set_pipeline_stage so the board updates without a reload.
+    // Reset all flag-stage dividers, then set the target — mirrors the server
+    // set_pipeline_stage so the board updates without a reload.
     detail.sentToRfq = false; detail.sentToRfqAt = null;
     detail.sentForReview = false; detail.sentForReviewAt = null;
     detail.waitingForClient = false; detail.waitingForClientAt = null;
     detail.movedToOrders = false; detail.movedToOrdersAt = null;
+    detail.inDesign = false; detail.inDesignAt = null;
+    // Moving to ANY earlier flag stage releases a prior client approval so the
+    // card isn't pinned to Pre-Production by the safety rail (client wanted
+    // changes → send it back).
+    if (targetStage !== 'orders') { detail.approvedByClientAt = null; }
     if (targetStage === 'unstaged') {
       // Clear every stage flag AND un-flag samples so it truly has no stage.
+      if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = false; });
+    } else if (targetStage === 'design') {
+      // Design is the earliest working stage — flag it, drop sample flags.
+      detail.inDesign = true; detail.inDesignAt = now;
       if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = false; });
     } else if (targetStage === 'samples') {
       // Make it a sample: respect any lines the operator already ticked;
@@ -53820,6 +53896,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       detail.sentForReview = _prevFlags.sentForReview; detail.sentForReviewAt = _prevFlags.sentForReviewAt;
       detail.waitingForClient = _prevFlags.waitingForClient; detail.waitingForClientAt = _prevFlags.waitingForClientAt;
       detail.movedToOrders = _prevFlags.movedToOrders; detail.movedToOrdersAt = _prevFlags.movedToOrdersAt;
+      detail.inDesign = _prevFlags.inDesign; detail.inDesignAt = _prevFlags.inDesignAt;
+      detail.approvedByClientAt = _prevFlags.approvedByClientAt;
       if (_prevFlags.samples && Array.isArray(detail.rfqItems)) {
         detail.rfqItems.forEach((it, i) => { if (it) it.sample = !!_prevFlags.samples[i]; });
       }
@@ -53888,14 +53966,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _plCardMenuCid = cid; _plCardMenuEv = ev;
     const items = [];
     if (c.kind === 'wb') {
-      items.push(['open', 'Open workbook'], ['move', 'Move to stage…'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Delete workbook']);
+      items.push(['open', 'Open workbook'], ['move', 'Move to stage…'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Archive workbook']);
     } else if (c.kind === 'order') {
       items.push(['open', 'Open order'], ['rename', 'Rename']);
       if (c.stage === 'orders')     items.push(['toProduction', 'Move to In Production']);
-      if (c.stage === 'production') items.push(['toShipments', 'Move to Shipments…'], ['toOrders', 'Back to Orders']);
-      items.push(['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Delete order']);
+      if (c.stage === 'production') items.push(['toShipments', 'Move to Shipments…'], ['toOrders', 'Back to Pre-Production']);
+      items.push(['sep', ''], ['backDesign', 'Send back to Design'], ['backRfq', 'Send back to RFQ']);
+      items.push(['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Archive order']);
     } else {
-      items.push(['open', 'Open shipment'], ['rename', 'Rename'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Delete shipment']);
+      items.push(['open', 'Open shipment'], ['rename', 'Rename'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Archive shipment']);
     }
     const esc = s => String(s).replace(/</g, '&lt;');
     const menu = document.createElement('div');
@@ -53966,6 +54045,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         case 'toProduction': if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'production'); break;
         case 'toOrders':     if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'orders'); break;
         case 'toShipments':  if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'shipments'); break;
+        case 'backDesign':   if (typeof _pipelineOrderBackToStage === 'function') _pipelineOrderBackToStage(String(c.id), 'design'); break;
+        case 'backRfq':      if (typeof _pipelineOrderBackToStage === 'function') _pipelineOrderBackToStage(String(c.id), 'rfq'); break;
         case 'delete': _pipelineDeleteCard(cid); break;
       }
     } catch (e) { console.warn('[pl card menu]', e); }
