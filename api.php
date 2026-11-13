@@ -4288,10 +4288,23 @@ switch ($action) {
             // Cap flow so quoteClient (and later) clears → not "advanced past".
             $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'samples') {
-            // Respect the per-line Sample checkmarks already on the workbook —
-            // don't bulk-flag. The existing rfqItems[].sample values decide
-            // which lines are samples; dividers are cleared and flow capped
-            // so the workbook sits in the Samples stage.
+            // If the operator already ticked specific Sample lines, respect
+            // those. If NONE are flagged, make the whole workbook a sample —
+            // flag every content-bearing line — so moving it to Samples always
+            // "takes" instead of silently falling back to Unstaged.
+            if (isset($detail['rfqItems']) && is_array($detail['rfqItems'])) {
+                $anySample = false;
+                foreach ($detail['rfqItems'] as $it) {
+                    if (is_array($it) && !empty($it['sample'])
+                        && (trim((string)($it['item'] ?? '')) !== '' || !empty($it['qty']) || !empty($it['priceRmb']))) { $anySample = true; break; }
+                }
+                if (!$anySample) {
+                    foreach ($detail['rfqItems'] as &$it) {
+                        if (is_array($it) && (trim((string)($it['item'] ?? '')) !== '' || !empty($it['qty']) || !empty($it['priceRmb']))) $it['sample'] = true;
+                    }
+                    unset($it);
+                }
+            }
             $flowSql = 'flow_step = LEAST(COALESCE(flow_step,0), 2)';
         } elseif ($stage === 'rfq') {
             $detail['sentToRfq'] = true; $detail['sentToRfqAt'] = $prevRfqAt ?: $now;

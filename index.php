@@ -8114,7 +8114,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </a>
 
         <a id="nav-orders-link" href="#/orders" onclick="event.preventDefault(); location.hash='#/orders'" class="nav-flat-link">
-          <span>Orders</span>
+          <span>Pre-Production</span>
           <span class="nav-badge" id="badge-orders"></span>
         </a>
 
@@ -11354,7 +11354,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div id="orders-staging" style="display:none;"></div>
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
-        <span class="section-title" style="margin-right:auto;">Orders</span>
+        <span class="section-title" style="margin-right:auto;">Pre-Production</span>
         <button class="btn btn-ghost" onclick="exportAllOrdersCsv()" title="Export all orders to CSV" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export All
@@ -28407,7 +28407,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     { id: 'review',     label: 'Ready For Review', bg: '#e0e7ff', fg: '#3730a3' },
     { id: 'samples',    label: 'Samples',          bg: '#dcfce7', fg: '#15803d' },
     { id: 'waitingClient', label: 'Waiting for Client', bg: '#fae8ff', fg: '#a21caf' },
-    { id: 'orders',     label: 'Orders',           bg: '#fef3c7', fg: '#a16207' },
+    { id: 'orders',     label: 'Pre-Production',   bg: '#fef3c7', fg: '#a16207' },
     { id: 'production', label: 'In Production',     bg: '#ffedd5', fg: '#c2410c' },
     { id: 'shipments',  label: 'Shipments',        bg: '#cffafe', fg: '#0e7490' },
     { id: 'receiving',  label: 'Receiving',        bg: '#f3e8ff', fg: '#7c3aed' },
@@ -53733,13 +53733,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const key = `${clientName}|${workbookId}`;
     const detail = workbookDetail[key];
     if (!detail) return;
-    // Samples are per-line-item and driven by the Sample checkmark on each
-    // RFQ line. Moving to Samples RESPECTS those checkmarks — it doesn't
-    // bulk-flag the whole workbook. So require at least one line already
-    // checked as a sample; otherwise tell the operator to tick some first.
+    // Moving to Samples MAKES the workbook a sample: if the operator already
+    // ticked specific Sample lines we respect those, otherwise we auto-flag
+    // every content-bearing line (below). Only block when there's nothing to
+    // flag — a workbook with no line items can't be a sample.
     if (targetStage === 'samples') {
-      const hasSample = Array.isArray(detail.rfqItems) && detail.rfqItems.some(it => it && it.sample);
-      if (!hasSample) { showToast('No line items are flagged as samples — tick the Sample checkbox on the items you want, then drag.', 'warn'); return; }
+      const hasContent = Array.isArray(detail.rfqItems) && detail.rfqItems.some(it => it && (it.item || it.qty || it.priceRmb));
+      if (!hasContent) { showToast('Add a line item (item / qty / price) first, then move it to Samples.', 'warn'); return; }
     }
     // Snapshot the current flag state so we can roll the optimistic move
     // BACK if the server rejects it (e.g. the id has no live DB row) —
@@ -53762,10 +53762,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Clear every stage flag AND un-flag samples so it truly has no stage.
       if (Array.isArray(detail.rfqItems)) detail.rfqItems.forEach(it => { if (it) it.sample = false; });
     } else if (targetStage === 'samples') {
-      // Respect the per-line Sample checkmarks already set on the workbook —
-      // do NOT bulk-flag. The dividers were cleared above and advanced flow
-      // is cleared below, so the workbook lands in Samples via whichever
-      // line items the operator already ticked as samples.
+      // Make it a sample: respect any lines the operator already ticked;
+      // otherwise flag every content-bearing line so the move takes. Mirrors
+      // the server set_pipeline_stage('samples') behavior.
+      if (Array.isArray(detail.rfqItems)) {
+        const anySample = detail.rfqItems.some(it => it && it.sample && (it.item || it.qty || it.priceRmb));
+        if (!anySample) detail.rfqItems.forEach(it => { if (it && (it.item || it.qty || it.priceRmb)) it.sample = true; });
+      }
     } else if (targetStage === 'rfq') {
       detail.sentToRfq = true; detail.sentToRfqAt = now;
     } else if (targetStage === 'review') {
@@ -55456,7 +55459,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   }
 
   function renderOrdersList() {
-    document.getElementById('header-title').textContent = 'Orders';
+    document.getElementById('header-title').textContent = 'Pre-Production';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const ordNav = document.getElementById('nav-orders-link');
