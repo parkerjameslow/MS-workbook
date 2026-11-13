@@ -4972,6 +4972,21 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
+    // Read-only diagnostic: find workbooks by product-name substring, with
+    // their client (NULL name / orphan=1 when the client no longer exists) and
+    // deleted_at. Used to locate an orphaned/stuck workbook the UI can't reach.
+    case 'admin_find_workbooks': {
+        $q = trim((string)($input['q'] ?? ($_GET['q'] ?? '')));
+        if ($q === '') { echo json_encode(['success' => false, 'error' => 'q (product name substring) required']); break; }
+        $stmt = $pdo->prepare(
+            "SELECT w.id, w.client_id, w.product_name, w.deleted_at, c.name AS client_name, (c.id IS NULL) AS orphan
+             FROM workbooks w LEFT JOIN clients c ON w.client_id = c.id
+             WHERE w.product_name LIKE ? ORDER BY w.id");
+        $stmt->execute(['%' . $q . '%']);
+        echo json_encode(['success' => true, 'rows' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+        break;
+    }
+
     case 'permanent_delete_workbook':
         if (empty($input['id'])) {
             echo json_encode(['success' => false, 'error' => 'Workbook ID required']);
@@ -4983,7 +4998,7 @@ switch ($action) {
         // Then delete the workbook
         $stmt = $pdo->prepare("DELETE FROM workbooks WHERE id = ?");
         $stmt->execute([$input['id']]);
-        echo json_encode(['success' => true]);
+        echo json_encode(['success' => true, 'deleted' => $stmt->rowCount()]);
         break;
 
     case 'permanent_delete_client':
