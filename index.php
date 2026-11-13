@@ -54003,13 +54003,36 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (c.kind === 'wb') {
       const name = c.product || 'this workbook';
       if (!confirm(`Archive “${name}”?\n\nIt leaves the pipeline and moves to the Archive — you can search for it and restore it, or delete it forever from there.`)) return;
-      try {
-        const key = `${c.clientName}|${c.workbookId}`;
-        const dbId = (typeof dbWorkbookMap !== 'undefined' && dbWorkbookMap[key]) ? dbWorkbookMap[key] : c.workbookId;
-        await apiCall('delete_workbook', { id: dbId });
-      } catch (e) { console.warn('[pipeline delete wb]', e); }
+      const key = `${c.clientName}|${c.workbookId}`;
+      // Resolve the real DB id: the clientData item's id IS the DB id; fall
+      // back to the dbWorkbookMap or the card's workbookId.
+      const item = (clientData[c.clientName] || []).find(i => String(i.id) === String(c.workbookId));
+      const dbId = (item && item.id != null) ? item.id
+                 : ((typeof dbWorkbookMap !== 'undefined' && dbWorkbookMap[key]) ? dbWorkbookMap[key] : c.workbookId);
+      let res = null;
+      try { res = await apiCall('delete_workbook', { id: dbId, deleted_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }); }
+      catch (e) { console.warn('[pipeline delete wb]', e); }
+      // If the server didn't actually soft-delete a row, the id was wrong or
+      // it's already gone — surface it instead of removing locally only to
+      // have it reappear on the next sync.
+      if (!res || res.success !== true) {
+        if (typeof showToast === 'function') showToast('Couldn’t archive — the server rejected it. Nothing changed.', 'error');
+        return;
+      }
+      if (res.deleted === 0) {
+        if (typeof showToast === 'function') showToast(`Couldn’t find “${name}” on the server (id ${dbId}) — it may already be archived, or it’s tied to an order/shipment. Remove it from there first.`, 'warn');
+        return;
+      }
       try { if (clientData[c.clientName]) clientData[c.clientName] = clientData[c.clientName].filter(i => String(i.id) !== String(c.workbookId)); } catch (_) {}
       try { delete workbookDetail[`${c.clientName}|${c.workbookId}`]; } catch (_) {}
+      // Drop any order/shipment references so the delete fully "takes" and no
+      // ghost entry keeps it (or its order) on the board.
+      try {
+        Object.values(orderData || {}).forEach(o => {
+          if (o && Array.isArray(o.entries)) o.entries = o.entries.filter(e => !(e && e.clientName === c.clientName && String(e.workbookId) === String(c.workbookId)));
+        });
+        if (typeof saveOrders === 'function') saveOrders();
+      } catch (_) {}
       try { if (typeof saveToLocalStorage === 'function') saveToLocalStorage(); } catch (_) {}
       try { if (typeof loadArchiveData === 'function') loadArchiveData(); } catch (_) {}  // refresh archive cache so search finds it
     } else if (c.kind === 'order') {
@@ -54227,12 +54250,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // order screen / list), with a flat pencil next to the title.
     const _plTitleEdit = document.getElementById('pl-modal-title-edit');
     if (_plTitleEdit) {
-      const _renameFn = c.kind === 'order' ? 'renamePipelineOrderCard'
-                      : c.kind === 'shipment' ? 'renamePipelineShipmentCard' : '';
-      if (_renameFn) {
-        const _what = c.kind === 'order' ? 'order' : 'shipment';
+      const _cidJs = _plEsc(String(id)).replace(/'/g, "\\'");
+      let _onclick = '', _what = '';
+      if (c.kind === 'order')         { _onclick = `renamePipelineOrderCard('${_plEsc(String(c.id))}')`;    _what = 'order'; }
+      else if (c.kind === 'shipment') { _onclick = `renamePipelineShipmentCard('${_plEsc(String(c.id))}')`; _what = 'shipment'; }
+      else if (c.kind === 'wb')       { _onclick = `renamePipelineWorkbookCard('${_cidJs}')`;               _what = 'workbook'; }
+      if (_onclick) {
         _plTitleEdit.style.display = 'inline-flex';
-        _plTitleEdit.innerHTML = `<button onclick="event.stopPropagation(); ${_renameFn}('${_plEsc(String(c.id))}')" title="Rename this ${_what}" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:2px; display:inline-flex; align-items:center; line-height:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>`;
+        _plTitleEdit.innerHTML = `<button onclick="event.stopPropagation(); ${_onclick}" title="Rename this ${_what}" style="background:none; border:none; cursor:pointer; color:var(--text-muted); padding:2px; display:inline-flex; align-items:center; line-height:0;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg></button>`;
       } else {
         _plTitleEdit.style.display = 'none';
         _plTitleEdit.innerHTML = '';
@@ -56081,6 +56106,38 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
     try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
   }
+  // Rename a WORKBOOK from the pipeline card modal — persists the new name into
+  // the workbook itself (product_name column + detail.product, merge-safe) and
+  // keeps the modal, card, client view, and board in sync.
+  async function renamePipelineWorkbookCard(cid) {
+    const c = _plLastCards[cid]; if (!c || c.kind !== 'wb') return;
+    const key = `${c.clientName}|${c.workbookId}`;
+    const d = workbookDetail[key] || {};
+    const cur = c.product || d.product || '';
+    const v = prompt('Rename workbook:', cur);
+    if (v === null) return;
+    const nn = v.trim();
+    if (!nn) { if (typeof showToast === 'function') showToast('A workbook needs a name.', 'warn'); return; }
+    // Local updates.
+    if (workbookDetail[key]) workbookDetail[key].product = nn;
+    const items = clientData[c.clientName] || [];
+    const item = items.find(i => String(i.id) === String(c.workbookId));
+    if (item) item.product = nn;
+    c.product = nn;
+    const tEl = document.getElementById('pl-modal-title'); if (tEl) tEl.textContent = nn;
+    // If this workbook is open, reflect it in the product-name input.
+    try { if (currentClient === c.clientName && String(currentWorkbookId) === String(c.workbookId)) { const pn = document.getElementById('product-name'); if (pn) pn.value = nn; } } catch (_) {}
+    try { if (typeof saveToLocalStorage === 'function') saveToLocalStorage(); } catch (_) {}
+    // Persist: the product_name column AND detail.product (3-way merge so it
+    // never clobbers a concurrent editor's other fields).
+    const dbId = (typeof dbWorkbookMap !== 'undefined' && dbWorkbookMap[key]) ? dbWorkbookMap[key] : c.workbookId;
+    try { await apiCall('update_workbook', { id: dbId, product_name: nn }); } catch (e) { console.warn('[wb rename name]', e); }
+    try { await apiCall('save_workbook_detail', { id: dbId, detail: { product: nn }, base: { product: cur }, changed_by: (typeof getCurrentUser === 'function' ? getCurrentUser() : '') }); } catch (e) { console.warn('[wb rename detail]', e); }
+    try { if (typeof rebuildSidebar === 'function') rebuildSidebar(); } catch (_) {}
+    try { renderPipelineBoard(); } catch (_) {}
+    if (typeof showToast === 'function') showToast('Workbook renamed', 'success');
+  }
+
   // Rename a shipment from the pipeline card modal — keeps the modal title,
   // the cached card, the shipments nav, and the board in sync.
   function renamePipelineShipmentCard(id) {

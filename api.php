@@ -4351,7 +4351,10 @@ switch ($action) {
         $deletedBy = $input['deleted_by'] ?? '';
         $stmt = $pdo->prepare("UPDATE workbooks SET deleted_at = NOW(), deleted_by = ? WHERE id = ? AND deleted_at IS NULL");
         $stmt->execute([$deletedBy, $input['id']]);
-        echo json_encode(['success' => true]);
+        // Report how many rows were actually soft-deleted so the caller can
+        // tell a no-op (wrong id / already deleted) from a real delete instead
+        // of the workbook silently reappearing on the next sync.
+        echo json_encode(['success' => true, 'deleted' => $stmt->rowCount()]);
         break;
 
     // ─── RECENT WORKBOOKS (for landing page) ──────────
