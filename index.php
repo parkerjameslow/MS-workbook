@@ -11465,6 +11465,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="btn btn-ghost" onclick="clearPipelineFilters()">Clear</button>
         <span id="pl-filter-note" style="font-size:11px; color:var(--text-muted); white-space:nowrap;"></span>
       </div>
+      <button class="btn btn-ghost" id="pl-sort-btn" onclick="togglePipelineSort()" title="Sort each column by time in stage — oldest first or newest first" style="font-size:12px; border:1px solid var(--border); white-space:nowrap;">↓ Oldest first</button>
       <button class="btn btn-ghost" onclick="refreshAllTracking(this)" title="Re-check every shipment's carrier tracking now" style="font-size:12px; border:1px solid var(--border);">↻ Refresh all tracking</button>
       <span style="font-size:11px; color:var(--text-muted);" title="Drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.">Every workbook by stage</span>
     </div>
@@ -52609,6 +52610,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // clears every stage flag; the others set exactly one.
   const PIPELINE_FLAG_STAGES = new Set(['unstaged', 'rfq', 'review', 'samples', 'waitingClient', 'orders']);
   let _pipelineDragKey = null;
+  // Card sort within each column: 'oldest' (most days in stage first) or 'newest'.
+  let _pipelineSortDir = 'oldest';
+  function togglePipelineSort() {
+    _pipelineSortDir = (_pipelineSortDir === 'oldest') ? 'newest' : 'oldest';
+    try { renderPipelineBoard(); } catch (_) {}
+  }
 
   function _wbOrdersFor(clientName, workbookId) {
     const match = e => e && e.clientName === clientName && String(e.workbookId) === String(workbookId);
@@ -52919,9 +52926,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const byCol = {};
     PIPELINE_COLUMNS.forEach(c => { byCol[c.id] = []; });
     shown.forEach(card => { (byCol[card.stage] = byCol[card.stage] || []).push(card); });
-    // Oldest-in-stage first so bottlenecks float to the top.
+    // Sort each column by time in stage. Default oldest-first (bottlenecks
+    // float up); the toolbar toggle flips to newest-first.
     const _age = c => { const d = _pipelineDaysSince(c.since); return d === null ? -1 : d; };
-    Object.keys(byCol).forEach(k => byCol[k].sort((a, b) => _age(b) - _age(a)));
+    const _sortDir = (_pipelineSortDir === 'newest') ? -1 : 1;
+    Object.keys(byCol).forEach(k => byCol[k].sort((a, b) => (_age(b) - _age(a)) * _sortDir));
+    const _sortBtn = document.getElementById('pl-sort-btn');
+    if (_sortBtn) _sortBtn.textContent = (_pipelineSortDir === 'newest') ? '↑ Newest first' : '↓ Oldest first';
 
     board.innerHTML = PIPELINE_COLUMNS.map(col => {
       const cards = byCol[col.id] || [];
