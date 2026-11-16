@@ -53087,10 +53087,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     shown.forEach(card => { (byCol[card.stage] = byCol[card.stage] || []).push(card); });
     // Sort each column by time in stage — per-column direction (default
     // oldest-first so bottlenecks float up; the header arrow flips to newest).
+    // EXCEPTION: In Production sorts by Production ETA (earliest at top by
+    // default; the arrow still flips it). Cards with no ETA sink to the bottom.
     const _age = c => { const d = _pipelineDaysSince(c.since); return d === null ? -1 : d; };
+    const _etaTime = c => {
+      if (c.kind !== 'order' || typeof _orderProductionEta !== 'function') return Infinity;
+      const e = _orderProductionEta(orderData[c.id]);
+      return (e && e.date) ? e.date.getTime() : Infinity;
+    };
     Object.keys(byCol).forEach(k => {
       const dir = (_pipelineColSort[k] === 'newest') ? -1 : 1;
-      byCol[k].sort((a, b) => (_age(b) - _age(a)) * dir);
+      if (k === 'production') {
+        byCol[k].sort((a, b) => (_etaTime(a) - _etaTime(b)) * dir);
+      } else {
+        byCol[k].sort((a, b) => (_age(b) - _age(a)) * dir);
+      }
     });
 
     board.innerHTML = PIPELINE_COLUMNS.map(col => {
