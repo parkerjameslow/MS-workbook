@@ -7060,19 +7060,19 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       overflow: hidden;
     }
     #view-pipeline > main.container {
-      flex: 1 1 auto; min-height: 0;
+      flex: 1 1 auto; min-height: 0; min-width: 0;
       display: flex; flex-direction: column;
       overflow: hidden;
       padding: 0 16px 6px;
     }
     #view-pipeline > main.container > div:not(#pipeline-board) { flex: 0 0 auto; }
     #view-pipeline > main.container > #pipeline-board {
-      flex: 1 1 auto; min-height: 0;
-      /* min-width:0 is CRITICAL: without it the flex item grows to its content
-         width (all columns) and the fixed container clips it with no scroll.
-         Constrained to the container, the board's own overflow-x scrolls. */
-      min-width: 0; width: 100%;
-      overflow-x: auto; overflow-y: hidden;
+      /* flex:1 1 0% + min-width:0 keeps the board exactly the container width
+         (not its content width) so its own overflow scrolls instead of the
+         fixed container clipping it. overflow:auto (both axes) — columns are
+         height:100% so there's no vertical overflow; only horizontal scrolls. */
+      flex: 1 1 0%; min-height: 0; min-width: 0;
+      overflow: auto;
     }
     #view-pipeline .crm-column {
       height: 100%; min-height: 0; max-height: none;
@@ -55355,10 +55355,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const pills = [];
     pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;"><span style="text-transform:uppercase;">Notified</span><span style="text-transform:none; letter-spacing:0;">${notifiedFmt}</span></span>`);
     if (agMaxLead > 0) {
-      pills.push(`<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;">${agMaxLead} day lead</span>`);
+      pills.push(`<span style="display:inline-flex; align-items:center; color:#3b82f6; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;">${agMaxLead} day lead</span>`);
     }
     if (fulfillmentDateFmt) {
-      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Production ETA — ${(_prodEta ? _prodEta.leadDays : agMaxLead)} business days (no weekends) from the day it moved into Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
+      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6; font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Production ETA — ${(_prodEta ? _prodEta.leadDays : agMaxLead)} business days (no weekends) from the day it moved into Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
     }
 
     // Workbook pills — same RMB + USD layout as the Orders card so
