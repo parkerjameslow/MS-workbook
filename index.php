@@ -6979,7 +6979,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       min-height: 70vh;
     }
     .crm-column {
-      flex: 0 0 280px;
+      flex: 0 0 300px;
       background: transparent;
       border: none;
       border-radius: 0;
@@ -7059,7 +7059,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        ellipsis (handled on .pl-card-title). */
     /* Lock every column (and therefore every card) to the same 240px — min-width:0
        stops a nowrap child (e.g. the Production ETA pill) from widening it. */
-    #view-pipeline .crm-column { min-width: 0; max-width: 280px; }
+    #view-pipeline .crm-column { min-width: 0; max-width: 300px; }
     #view-pipeline .pl-card { flex: 0 0 auto; max-width: 100%; box-sizing: border-box; overflow: hidden; }
     /* The Production ETA pill wraps within the card instead of forcing its width. */
     #view-pipeline .pl-card .pl-prod-eta { flex-wrap: wrap; white-space: normal !important; max-width: 100%; }
