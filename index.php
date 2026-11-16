@@ -23,6 +23,13 @@ if (empty($_SESSION['user_id']) && !empty($_COOKIE[MS_REMEMBER_COOKIE]) && !isse
     } catch (Exception $e) { /* fall through — requireAuth() redirects to login.php */ }
 }
 requireAuth();
+// Trusted-device flag for the client-side session guard below. A device
+// carrying a valid remember cookie is already authenticated server-side
+// (requireAuth would have bounced it otherwise), so the client "require login
+// on hard refresh" guard must NOT force a logout on it. Without this, that
+// guard fought the remember-me restore — rendering the dashboard, then
+// redirecting to logout.php (which deletes the token) — i.e. the blink loop.
+$_msTrustedDevice = !empty($_COOKIE[MS_REMEMBER_COOKIE]);
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: Thu, 01 Jan 1970 00:00:00 GMT');
@@ -13772,6 +13779,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<script>window.__MS_TRUSTED_DEVICE__ = <?= $_msTrustedDevice ? 'true' : 'false' ?>;</script>
 <script>
   /* ── Session guard: require login on every hard refresh ─────────────── */
   (function() {
@@ -13781,6 +13789,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       const savedHash = params.get('hash');
       window.history.replaceState({}, '', window.location.pathname);
       if (savedHash) location.hash = savedHash;
+    } else if (window.__MS_TRUSTED_DEVICE__ === true) {
+      /* Trusted device (valid remember cookie): the server already signed us in
+         via the remember-me token, so count this as authed instead of bouncing
+         to logout. Without this branch the guard fought the restore and caused
+         the dashboard blink/redirect loop. */
+      sessionStorage.setItem('ms_auth', '1');
     } else if (!sessionStorage.getItem('ms_auth')) {
       const h = location.hash;
       window.location.href = 'logout.php' + (h ? '?hash=' + encodeURIComponent(h) : '');
