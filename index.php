@@ -11480,7 +11480,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button class="btn btn-ghost" onclick="refreshAllTracking(this)" title="Re-check every shipment's carrier tracking now" style="font-size:12px; border:1px solid var(--border);">↻ Refresh all tracking</button>
       <span style="font-size:11px; color:var(--text-muted);" title="Drag cards through RFQ → Ready for Review → Samples → Orders. Later stages are managed from their own views.">Every workbook by stage</span>
     </div>
-    <div id="recent-wb-pipeline" class="recent-wb-strip"></div>
     <div id="pipeline-board" class="crm-board"></div>
   </main>
 </div><!-- /#view-pipeline -->
@@ -53047,7 +53046,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   function renderPipelineBoard() {
     document.getElementById('header-title').textContent = 'Pipeline';
-    try { renderRecentWbStrip(); } catch (_) {}
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
     const link = document.getElementById('nav-pipeline-link');
