@@ -53553,7 +53553,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (c.stage === 'production') {
       const _eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
       if (_eta) {
-        _prodEtaHtml = `<div style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.18); color:#93c5fd; border:1px solid rgba(59,130,246,0.40); font-size:10px; font-weight:700; letter-spacing:0.04em; white-space:nowrap;" title="Production ETA — ${_eta.leadDays} business days (no weekends) from the day it entered Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums;">${_eta.dateFmt}</span></span></div>`;
+        _prodEtaHtml = `<div style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.18); color:#93c5fd; border:1px solid rgba(59,130,246,0.40); font-size:10px; font-weight:700; letter-spacing:0.04em; white-space:nowrap;" title="Production ETA — ${_eta.leadDays} business days (no weekends) from the day it entered Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums;">${_eta.dateFmt}</span><span style="text-transform:none; letter-spacing:0; opacity:0.75;">(${_eta.leadDays} day lead)</span></span></div>`;
       }
     }
     return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
@@ -55354,11 +55354,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       : '';
     const pills = [];
     pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;"><span style="text-transform:uppercase;">Notified</span><span style="text-transform:none; letter-spacing:0;">${notifiedFmt}</span></span>`);
-    if (agMaxLead > 0) {
-      pills.push(`<span style="display:inline-flex; align-items:center; color:#3b82f6; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;">${agMaxLead} day lead</span>`);
-    }
     if (fulfillmentDateFmt) {
-      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6; font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Production ETA — ${(_prodEta ? _prodEta.leadDays : agMaxLead)} business days (no weekends) from the day it moved into Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
+      const _leadNote = agMaxLead > 0 ? ` <span style="text-transform:none; letter-spacing:0; opacity:0.8;">(${agMaxLead} day lead)</span>` : '';
+      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6; font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Production ETA — ${(_prodEta ? _prodEta.leadDays : agMaxLead)} business days (no weekends) from the day it moved into Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span>${_leadNote}</span>`);
     }
 
     // Workbook pills — same RMB + USD layout as the Orders card so
