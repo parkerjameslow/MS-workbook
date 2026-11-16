@@ -7068,6 +7068,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #view-pipeline > main.container > div:not(#pipeline-board) { flex: 0 0 auto; }
     #view-pipeline > main.container > #pipeline-board {
       flex: 1 1 auto; min-height: 0;
+      /* min-width:0 is CRITICAL: without it the flex item grows to its content
+         width (all columns) and the fixed container clips it with no scroll.
+         Constrained to the container, the board's own overflow-x scrolls. */
+      min-width: 0; width: 100%;
       overflow-x: auto; overflow-y: hidden;
     }
     #view-pipeline .crm-column {
@@ -12287,11 +12291,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span id="order-detail-gross-total-usd" style="font-size:24px; font-weight:800; color:#10b981; line-height:1;"></span>
         <span id="order-detail-gross-total-rmb" style="font-size:13px; font-weight:600; color:var(--text-muted);"></span>
       </div>
-      <!-- Production ETA — shown once the order is In Production. -->
-      <div id="order-detail-prod-eta" style="display:none; align-items:center; gap:8px; margin:0 0 10px;">
+      <!-- Production ETA — shown once the order is In Production. All blue. -->
+      <div id="order-detail-prod-eta" style="display:none; align-items:baseline; gap:8px; margin:0 0 10px; color:#3b82f6;">
         <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#3b82f6;">Production ETA</span>
-        <span id="order-detail-prod-eta-date" style="font-size:16px; font-weight:800; color:var(--text);"></span>
-        <span id="order-detail-prod-eta-sub" style="font-size:12px; font-weight:600; color:var(--text-muted);"></span>
+        <span id="order-detail-prod-eta-date" style="font-size:16px; font-weight:800; color:#3b82f6;"></span>
+        <span id="order-detail-prod-eta-sub" style="font-size:12px; font-weight:600; color:#3b82f6; opacity:0.8;"></span>
       </div>
 
       <!-- Fulfillment Address: dropdown to pick where the order ships
@@ -51613,7 +51617,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (leadDays <= 0) return null;
     const date = _addBusinessDays(start, leadDays);
     if (!date) return null;
-    return { leadDays, date };
+    const dateFmt = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return { leadDays, date, dateFmt };
   }
 
   // Sale / cost / profit for a whole order, mirroring the In Production card's
@@ -53548,8 +53553,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (c.stage === 'production') {
       const _eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
       if (_eta) {
-        const _fmt = (typeof _fmtShortDate === 'function') ? _fmtShortDate(_eta.date) : _eta.date.toLocaleDateString();
-        _prodEtaHtml = `<div style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.18); color:#93c5fd; border:1px solid rgba(59,130,246,0.40); font-size:10px; font-weight:700; letter-spacing:0.04em; white-space:nowrap;" title="Production ETA — ${_eta.leadDays} business days (no weekends) from the day it entered Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums;">${_fmt}</span></span></div>`;
+        _prodEtaHtml = `<div style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.18); color:#93c5fd; border:1px solid rgba(59,130,246,0.40); font-size:10px; font-weight:700; letter-spacing:0.04em; white-space:nowrap;" title="Production ETA — ${_eta.leadDays} business days (no weekends) from the day it entered Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums;">${_eta.dateFmt}</span></span></div>`;
       }
     }
     return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
@@ -55346,7 +55350,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // day the order moved into Production.
     const _prodEta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(o) : null;
     const fulfillmentDateFmt = _prodEta
-      ? _fmtShortDate(_prodEta.date)
+      ? _prodEta.dateFmt
       : '';
     const pills = [];
     pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;"><span style="text-transform:uppercase;">Notified</span><span style="text-transform:none; letter-spacing:0;">${notifiedFmt}</span></span>`);
@@ -56433,8 +56437,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         ? _orderProductionEta(o) : null;
       if (etaWrap) {
         if (eta) {
-          document.getElementById('order-detail-prod-eta-date').textContent = (typeof _fmtShortDate === 'function') ? _fmtShortDate(eta.date) : eta.date.toLocaleDateString();
-          document.getElementById('order-detail-prod-eta-sub').textContent = `${eta.leadDays} business days from production start`;
+          document.getElementById('order-detail-prod-eta-date').textContent = eta.dateFmt;
+          document.getElementById('order-detail-prod-eta-sub').textContent = `(${eta.leadDays} business days from production start)`;
           etaWrap.style.display = 'flex';
         } else {
           etaWrap.style.display = 'none';
