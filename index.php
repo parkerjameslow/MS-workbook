@@ -7075,8 +7075,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       width: 240px; max-width: 240px;
     }
     /* Cards never widen to fit a long title — fixed to the column width and a
-       long title truncates with an ellipsis (handled on .pl-card-title). */
-    #view-pipeline .pl-card { max-width: 100%; box-sizing: border-box; overflow: hidden; }
+       long title truncates with an ellipsis (handled on .pl-card-title).
+       flex:0 0 auto is CRITICAL: the column body is now a height-constrained
+       flex column, so without it the cards shrink/clip to fit instead of
+       keeping their natural height + letting the column scroll. */
+    #view-pipeline .pl-card { max-width: 100%; box-sizing: border-box; overflow: hidden; flex: 0 0 auto; }
     /* Dark/charcoal cards — sit "in front of" the watermark with a
        deep slate background, light text, and a soft outer shadow so
        they feel floating rather than docked. */
