@@ -7059,17 +7059,25 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        ellipsis (handled on .pl-card-title). */
     /* Lock every column (and therefore every card) to the same 240px — min-width:0
        stops a nowrap child (e.g. the Production ETA pill) from widening it. */
-    /* No vertical PAGE scroll on the pipeline: the board gets a capped height
-       and each column body scrolls inside it, so the toolbar + column headers
-       stay put. The board stays a normal block scroll container (NOT a nested
-       flex item) so overflow-x still scrolls horizontally. The view max-height
-       + overflow:hidden is a safety net that guarantees the page never scrolls. */
-    #view-pipeline.active { max-height: calc(100vh - 64px); overflow: hidden; }
-    #view-pipeline .crm-board { height: calc(100vh - 140px); min-height: 0; overflow-y: hidden; }
-    #view-pipeline .crm-column { min-width: 0; max-width: 300px; height: 100%; min-height: 0; max-height: none; }
+    /* Lock every column (and therefore every card) to the same width; cards
+       never shrink, and the Production ETA pill wraps instead of widening the
+       card. Harmless at every width, so these stay global. */
+    #view-pipeline .crm-column { min-width: 0; max-width: 300px; }
     #view-pipeline .pl-card { flex: 0 0 auto; max-width: 100%; box-sizing: border-box; overflow: hidden; }
-    /* The Production ETA pill wraps within the card instead of forcing its width. */
     #view-pipeline .pl-card .pl-prod-eta { flex-wrap: wrap; white-space: normal !important; max-width: 100%; }
+
+    /* No vertical PAGE scroll on the pipeline — DESKTOP ONLY. The board gets a
+       capped height and each column body scrolls inside it, so the toolbar +
+       column headers stay put. The board stays a normal block scroll container
+       (NOT a nested flex item) so overflow-x still scrolls horizontally. On
+       mobile this cap is skipped entirely: 100vh there includes the browser
+       chrome and the header is taller, so a fixed cap left a gray gap and cut
+       the columns short — mobile keeps the original natural-flow behavior. */
+    @media (min-width: 769px) {
+      #view-pipeline.active { max-height: calc(100vh - 64px); overflow: hidden; }
+      #view-pipeline .crm-board { height: calc(100vh - 140px); min-height: 0; overflow-y: hidden; }
+      #view-pipeline .crm-column { height: 100%; min-height: 0; max-height: none; }
+    }
     /* Dark/charcoal cards — sit "in front of" the watermark with a
        deep slate background, light text, and a soft outer shadow so
        they feel floating rather than docked. */
