@@ -7051,39 +7051,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       outline: 2px dashed rgba(107,147,255,0.35);
       outline-offset: -2px;
     }
-    /* ── Pipeline board: the toolbar stays fixed; only each column scrolls.
-       The view fills the area under the 64px app header and never lets the
-       page itself scroll — the board row + each column body own the scroll. */
-    #view-pipeline.active {
-      display: flex; flex-direction: column;
-      height: calc(100vh - 64px);
-      overflow: hidden;
-    }
-    #view-pipeline > main.container {
-      flex: 1 1 auto; min-height: 0; min-width: 0;
-      display: flex; flex-direction: column;
-      overflow: hidden;
-      padding: 0 16px 6px;
-    }
-    #view-pipeline > main.container > div:not(#pipeline-board) { flex: 0 0 auto; }
-    #view-pipeline > main.container > #pipeline-board {
-      /* flex:1 1 0% + min-width:0 keeps the board exactly the container width
-         (not its content width) so its own overflow scrolls instead of the
-         fixed container clipping it. overflow:auto (both axes) — columns are
-         height:100% so there's no vertical overflow; only horizontal scrolls. */
-      flex: 1 1 0%; min-height: 0; min-width: 0;
-      overflow: auto;
-    }
-    #view-pipeline .crm-column {
-      height: 100%; min-height: 0; max-height: none;
-      width: 240px; max-width: 240px;
-    }
-    /* Cards never widen to fit a long title — fixed to the column width and a
-       long title truncates with an ellipsis (handled on .pl-card-title).
-       flex:0 0 auto is CRITICAL: the column body is now a height-constrained
-       flex column, so without it the cards shrink/clip to fit instead of
-       keeping their natural height + letting the column scroll. */
-    #view-pipeline .pl-card { max-width: 100%; box-sizing: border-box; overflow: hidden; flex: 0 0 auto; }
+    /* Pipeline board scrolls horizontally (base .crm-board overflow-x:auto) and
+       each column scrolls vertically (base .crm-column max-height + .crm-col-body
+       overflow-y:auto) — the original Trello-style behavior. The only addition:
+       cards are fixed to the column width, never shrink (so a tall column
+       scrolls instead of squishing cards), and a long title truncates with an
+       ellipsis (handled on .pl-card-title). */
+    #view-pipeline .pl-card { flex: 0 0 auto; max-width: 100%; box-sizing: border-box; }
     /* Dark/charcoal cards — sit "in front of" the watermark with a
        deep slate background, light text, and a soft outer shadow so
        they feel floating rather than docked. */
