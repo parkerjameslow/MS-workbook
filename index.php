@@ -7057,7 +7057,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        cards are fixed to the column width, never shrink (so a tall column
        scrolls instead of squishing cards), and a long title truncates with an
        ellipsis (handled on .pl-card-title). */
-    #view-pipeline .pl-card { flex: 0 0 auto; max-width: 100%; box-sizing: border-box; }
+    /* Lock every column (and therefore every card) to the same 240px — min-width:0
+       stops a nowrap child (e.g. the Production ETA pill) from widening it. */
+    #view-pipeline .crm-column { min-width: 0; max-width: 240px; }
+    #view-pipeline .pl-card { flex: 0 0 auto; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+    /* The Production ETA pill wraps within the card instead of forcing its width. */
+    #view-pipeline .pl-card .pl-prod-eta { flex-wrap: wrap; white-space: normal !important; max-width: 100%; }
     /* Dark/charcoal cards — sit "in front of" the watermark with a
        deep slate background, light text, and a soft outer shadow so
        they feel floating rather than docked. */
@@ -53527,7 +53532,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (c.stage === 'production') {
       const _eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
       if (_eta) {
-        _prodEtaHtml = `<div style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.18); color:#93c5fd; border:1px solid rgba(59,130,246,0.40); font-size:10px; font-weight:700; letter-spacing:0.04em; white-space:nowrap;" title="Production ETA — ${_eta.leadDays} business days (no weekends) from the day it entered Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums;">${_eta.dateFmt}</span><span style="text-transform:none; letter-spacing:0; opacity:0.75;">(${_eta.leadDays} day lead)</span></span></div>`;
+        _prodEtaHtml = `<div style="margin-top:6px;"><span class="pl-prod-eta" style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.18); color:#93c5fd; border:1px solid rgba(59,130,246,0.40); font-size:10px; font-weight:700; letter-spacing:0.04em;" title="Production ETA — ${_eta.leadDays} business days (no weekends) from the day it entered Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums;">${_eta.dateFmt}</span><span style="text-transform:none; letter-spacing:0; opacity:0.75;">(${_eta.leadDays} day lead)</span></span></div>`;
       }
     }
     return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
