@@ -55244,8 +55244,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       </div>`;
       return;
     }
-    // Sort: most recently notified first (newest at the top).
-    ids.sort((a, b) => String(orderData[b].notifiedAt || '').localeCompare(String(orderData[a].notifiedAt || '')));
+    // Sort: earliest Production ETA at the top (soonest-due first) so the
+    // operator always sees what needs to ship next. Orders with no computable
+    // ETA fall to the bottom; ties break on most-recently-notified.
+    const _fulfEtaMs = o => {
+      const e = (typeof _orderProductionEta === 'function') ? _orderProductionEta(o) : null;
+      return (e && e.date instanceof Date && !isNaN(e.date.getTime())) ? e.date.getTime() : Infinity;
+    };
+    ids.sort((a, b) => {
+      const d = _fulfEtaMs(orderData[a]) - _fulfEtaMs(orderData[b]);
+      if (d !== 0) return d;
+      return String(orderData[b].notifiedAt || '').localeCompare(String(orderData[a].notifiedAt || ''));
+    });
     // Reuse the same renderer the Orders dashboard uses so cards
     // are visually identical — Fulfillment is the same data with a
     // different filter. The card's existing onclick navigates to
