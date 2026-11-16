@@ -12284,6 +12284,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <span id="order-detail-gross-total-usd" style="font-size:24px; font-weight:800; color:#10b981; line-height:1;"></span>
         <span id="order-detail-gross-total-rmb" style="font-size:13px; font-weight:600; color:var(--text-muted);"></span>
       </div>
+      <!-- Production ETA — shown once the order is In Production. -->
+      <div id="order-detail-prod-eta" style="display:none; align-items:center; gap:8px; margin:0 0 10px;">
+        <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:#3b82f6;">Production ETA</span>
+        <span id="order-detail-prod-eta-date" style="font-size:16px; font-weight:800; color:var(--text);"></span>
+        <span id="order-detail-prod-eta-sub" style="font-size:12px; font-weight:600; color:var(--text-muted);"></span>
+      </div>
 
       <!-- Fulfillment Address: dropdown to pick where the order ships
            to (Pyvot / MarketSculpt warehouse / the customer's own
@@ -51565,6 +51571,48 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     return Math.round(sale * 100) / 100;
   }
 
+  // Add N BUSINESS days (skip Sat/Sun) to a start date → Date (or null).
+  function _addBusinessDays(start, n) {
+    const d = new Date(start);
+    if (isNaN(d.getTime())) return null;
+    let added = 0;
+    const steps = Math.max(0, Math.round(n));
+    while (added < steps) {
+      d.setDate(d.getDate() + 1);
+      const day = d.getDay();
+      if (day !== 0 && day !== 6) added++;
+    }
+    return d;
+  }
+  // Order's lead = (max production lead) + (max shipping lead) across its
+  // workbooks — parallel production, ship together. Mirrors the In Production
+  // card's agMaxLead so every ETA on the order agrees.
+  function _orderMaxLeadDays(order) {
+    let maxProd = 0, maxShip = 0;
+    ((order && order.entries) || []).forEach(e => {
+      const d = workbookDetail[`${e.clientName}|${e.workbookId}`];
+      if (!d) return;
+      const w = (typeof _wbStatsForPicker === 'function') ? (_wbStatsForPicker(d) || {}) : {};
+      if ((w.prodLeadDays || 0) > maxProd) maxProd = w.prodLeadDays || 0;
+      if ((w.shipLeadDays || 0) > maxShip) maxShip = w.shipLeadDays || 0;
+    });
+    return maxProd + maxShip;
+  }
+  // Production ETA — the order's max lead counted in BUSINESS days from the day
+  // it moved into Production. Returns { leadDays, date } or null.
+  function _orderProductionEta(order) {
+    if (!order) return null;
+    const startRaw = order.movedToProductionAt || order.notifiedAt;
+    if (!startRaw) return null;
+    const start = new Date(startRaw);
+    if (isNaN(start.getTime())) return null;
+    const leadDays = _orderMaxLeadDays(order);
+    if (leadDays <= 0) return null;
+    const date = _addBusinessDays(start, leadDays);
+    if (!date) return null;
+    return { leadDays, date };
+  }
+
   // Sale / cost / profit for a whole order, mirroring the In Production card's
   // math exactly: sale = Σ live client total; cost basis = Total (ours) + all
   // fees as-is; profit = sale − cost basis. Returns dollars.
@@ -53491,11 +53539,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ? `draggable="true" ondragstart="onPipelineDragStart(event,'order:${c.id}')" ondragend="onPipelineDragEnd(event)"`
       : '';
     const cidJs = _plEsc(cid).replace(/'/g, "\\'");
+    // Production ETA pill — only for In-Production order cards: max lead in
+    // business days from the day it entered Production.
+    let _prodEtaHtml = '';
+    if (c.stage === 'production') {
+      const _eta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(orderData[c.id]) : null;
+      if (_eta) {
+        const _fmt = (typeof _fmtShortDate === 'function') ? _fmtShortDate(_eta.date) : _eta.date.toLocaleDateString();
+        _prodEtaHtml = `<div style="margin-top:6px;"><span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.18); color:#93c5fd; border:1px solid rgba(59,130,246,0.40); font-size:10px; font-weight:700; letter-spacing:0.04em; white-space:nowrap;" title="Production ETA — ${_eta.leadDays} business days (no weekends) from the day it entered Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0; font-variant-numeric:tabular-nums;">${_fmt}</span></span></div>`;
+      }
+    }
     return `<div class="crm-card pl-card ${canDrag ? '' : 'pl-locked'} pl-entity${_cardHasKaren(cid) ? ' pl-card-karen' : ''}" ${dragAttrs} onclick="openPipelineCardModal('${cidJs}')" oncontextmenu="return _showPlCardMenu(event,'${cidJs}')" title="${canDrag ? 'Drag between lanes, click to view, right-click for options' : 'View details — right-click for options'}">
       ${_pipelineAgeBadge(c.since)}
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
+      ${_prodEtaHtml}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${children ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${wbs.length} workbook${wbs.length === 1 ? '' : 's'}</button>
       <div class="pl-children">${children}</div>` : ''}
@@ -55280,8 +55339,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const notifiedDateObj = o.notifiedAt ? new Date(o.notifiedAt) : null;
     const _fmtShortDate = d => d ? d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'2-digit' }) : '';
     const notifiedFmt = notifiedDateObj && !isNaN(notifiedDateObj.getTime()) ? _fmtShortDate(notifiedDateObj) : '—';
-    const fulfillmentDateFmt = (notifiedDateObj && !isNaN(notifiedDateObj.getTime()) && agMaxLead > 0)
-      ? _fmtShortDate(new Date(notifiedDateObj.getTime() + agMaxLead * 86400000))
+    // Production ETA = max lead counted in BUSINESS days (no Sat/Sun) from the
+    // day the order moved into Production.
+    const _prodEta = (typeof _orderProductionEta === 'function') ? _orderProductionEta(o) : null;
+    const fulfillmentDateFmt = _prodEta
+      ? _fmtShortDate(_prodEta.date)
       : '';
     const pills = [];
     pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(16,185,129,0.10); color:#10b981; border:1px solid rgba(16,185,129,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;"><span style="text-transform:uppercase;">Notified</span><span style="text-transform:none; letter-spacing:0;">${notifiedFmt}</span></span>`);
@@ -55289,7 +55351,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       pills.push(`<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:9px; background:rgba(232,117,26,0.10); color:var(--accent); border:1px solid rgba(232,117,26,0.30); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; white-space:nowrap;">${agMaxLead} day lead</span>`);
     }
     if (fulfillmentDateFmt) {
-      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Projected delivery — Notify date + max workbook lead (${agMaxLead} days)"><span style="text-transform:uppercase;">Production Date</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
+      pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:9px; background:rgba(59,130,246,0.10); color:#3b82f6; border:1px solid rgba(59,130,246,0.30); font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Production ETA — ${(_prodEta ? _prodEta.leadDays : agMaxLead)} business days (no weekends) from the day it moved into Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span></span>`);
     }
 
     // Workbook pills — same RMB + USD layout as the Orders card so
@@ -56360,6 +56422,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (onEl) onEl.textContent = _orderDisplayName(o);
       const pEl = document.getElementById('order-detail-order-name-pencil');
       if (pEl) pEl.innerHTML = _orderRenamePencil(String(o.id));
+    } catch (_) {}
+    // Production ETA at the top — only once the order is In Production.
+    try {
+      const etaWrap = document.getElementById('order-detail-prod-eta');
+      const eta = (typeof _orderIsInFulfillment === 'function' && _orderIsInFulfillment(o) && typeof _orderProductionEta === 'function')
+        ? _orderProductionEta(o) : null;
+      if (etaWrap) {
+        if (eta) {
+          document.getElementById('order-detail-prod-eta-date').textContent = (typeof _fmtShortDate === 'function') ? _fmtShortDate(eta.date) : eta.date.toLocaleDateString();
+          document.getElementById('order-detail-prod-eta-sub').textContent = `${eta.leadDays} business days from production start`;
+          etaWrap.style.display = 'flex';
+        } else {
+          etaWrap.style.display = 'none';
+        }
+      }
     } catch (_) {}
     document.getElementById('order-detail-po').value = o.poNumber || '';
     // Seed the invoice input. Backfill from o.name when it already
