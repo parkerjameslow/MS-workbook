@@ -7059,7 +7059,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        ellipsis (handled on .pl-card-title). */
     /* Lock every column (and therefore every card) to the same 240px — min-width:0
        stops a nowrap child (e.g. the Production ETA pill) from widening it. */
-    #view-pipeline .crm-column { min-width: 0; max-width: 300px; }
+    /* No vertical PAGE scroll on the pipeline: the board gets a capped height
+       and each column body scrolls inside it, so the toolbar + column headers
+       stay put. The board stays a normal block scroll container (NOT a nested
+       flex item) so overflow-x still scrolls horizontally. The view max-height
+       + overflow:hidden is a safety net that guarantees the page never scrolls. */
+    #view-pipeline.active { max-height: calc(100vh - 64px); overflow: hidden; }
+    #view-pipeline .crm-board { height: calc(100vh - 140px); min-height: 0; overflow-y: hidden; }
+    #view-pipeline .crm-column { min-width: 0; max-width: 300px; height: 100%; min-height: 0; max-height: none; }
     #view-pipeline .pl-card { flex: 0 0 auto; max-width: 100%; box-sizing: border-box; overflow: hidden; }
     /* The Production ETA pill wraps within the card instead of forcing its width. */
     #view-pipeline .pl-card .pl-prod-eta { flex-wrap: wrap; white-space: normal !important; max-width: 100%; }
