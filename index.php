@@ -1,5 +1,27 @@
 <?php
 require_once __DIR__ . '/auth.php';
+// ── Trusted-device "remember me" restore ────────────────────────────────
+// index.php is the page you land on when your PHP session has expired, so the
+// remember-me restore MUST be able to run here. It needs a DB handle at
+// requireAuth() time; without one, ms_try_remember_login() silently gives up
+// and bounces you to login.php (which deliberately does NOT restore, to avoid
+// a redirect loop). Connect only when a restore is actually needed — session
+// empty AND this device carries a remember cookie — so ordinary logged-in page
+// loads open no DB connection. Restoring here renders in place (no redirect),
+// so it cannot cause the loop. A failed connect is swallowed: requireAuth()
+// then falls back to the login form.
+if (empty($_SESSION['user_id']) && !empty($_COOKIE[MS_REMEMBER_COOKIE]) && !isset($GLOBALS['ms_auth_pdo'])) {
+    $host = 'localhost';
+    $db   = 'markewq4_workbook';
+    $user = 'markewq4_workbook';
+    $pass = 'MarketFun123';   // <-- replace with the password from login.php line 13
+    try {
+        $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $GLOBALS['ms_auth_pdo'] = $pdo;
+    } catch (Exception $e) { /* fall through — requireAuth() redirects to login.php */ }
+}
 requireAuth();
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
