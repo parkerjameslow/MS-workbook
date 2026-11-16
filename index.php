@@ -7051,6 +7051,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       outline: 2px dashed rgba(107,147,255,0.35);
       outline-offset: -2px;
     }
+    /* ── Pipeline board: the toolbar stays fixed; only each column scrolls.
+       The view fills the area under the 64px app header and never lets the
+       page itself scroll — the board row + each column body own the scroll. */
+    #view-pipeline.active {
+      display: flex; flex-direction: column;
+      height: calc(100vh - 64px);
+      overflow: hidden;
+    }
+    #view-pipeline > main.container {
+      flex: 1 1 auto; min-height: 0;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      padding: 0 16px 6px;
+    }
+    #view-pipeline > main.container > div:not(#pipeline-board) { flex: 0 0 auto; }
+    #view-pipeline > main.container > #pipeline-board {
+      flex: 1 1 auto; min-height: 0;
+      overflow-x: auto; overflow-y: hidden;
+    }
+    #view-pipeline .crm-column {
+      height: 100%; min-height: 0; max-height: none;
+      width: 240px; max-width: 240px;
+    }
+    /* Cards never widen to fit a long title — fixed to the column width and a
+       long title truncates with an ellipsis (handled on .pl-card-title). */
+    #view-pipeline .pl-card { max-width: 100%; box-sizing: border-box; overflow: hidden; }
     /* Dark/charcoal cards — sit "in front of" the watermark with a
        deep slate background, light text, and a soft outer shadow so
        they feel floating rather than docked. */
