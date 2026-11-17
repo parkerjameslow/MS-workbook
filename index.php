@@ -12312,6 +12312,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:flex; align-items:center; gap:9px; flex-wrap:wrap;">
         <div id="order-detail-order-name" style="font-size:30px; font-weight:800; color:var(--text); line-height:1.1;"></div>
         <span id="order-detail-order-name-pencil"></span>
+        <span id="order-detail-art-btn" style="margin-left:4px;"></span>
       </div>
       <div id="order-detail-client-name" style="font-size:14px; font-weight:600; color:var(--text-muted); margin:3px 0 8px;"></div>
       <!-- Gross order total (Σ client sale) surfaced at the very top so the
@@ -12400,10 +12401,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <button class="btn btn-ghost" onclick="duplicateOrder(_currentOrderId)" title="Clone this entire order — copies every workbook (full detail) and starts a fresh order in the Orders queue, so you can re-run it later and tweak qty/costs" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Duplicate Order
-        </button>
-        <button class="btn btn-ghost" onclick="openOrderArtModal(_currentOrderId)" title="View all art &amp; design files attached across every workbook in this order" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          Art
         </button>
         <button class="btn-danger" id="order-delete-btn" onclick="deleteOrder(_currentOrderId)">Delete</button>
       </div>
@@ -56530,14 +56527,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // attached across every workbook in the order into one modal gallery,
   // grouped by workbook. Reuses the file-tile renderer + art lightbox so
   // images/PDF/AI/video all preview exactly as they do on the Art tab.
-  function openOrderArtModal(orderId) {
+  // Gather every art/design/image file across all of an order's workbooks,
+  // grouped by workbook and deduped. Shared by the Art button's count badge
+  // and the Art modal so the number on the button always matches the gallery.
+  function _collectOrderArt(orderId) {
     const o = orderData[orderId];
-    if (!o) return;
-    const _esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-    const entries = o.entries || [];
     const groups = [];
     let totalCount = 0;
-    entries.forEach(e => {
+    if (!o) return { groups, totalCount };
+    (o.entries || []).forEach(e => {
       const key = `${e.clientName}|${e.workbookId}`;
       const d = workbookDetail[key] || {};
       const seen = new Set();
@@ -56554,6 +56552,29 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const title = d.productName || item.product || item.name || ('Workbook #' + e.workbookId);
       if (urls.length) { groups.push({ title, urls }); totalCount += urls.length; }
     });
+    return { groups, totalCount };
+  }
+
+  // Art button (with a total-image count badge) shown next to the order title.
+  function _orderArtButtonHtml(orderId) {
+    let count = 0;
+    try { count = _collectOrderArt(orderId).totalCount; } catch (_) {}
+    const badge = count > 0
+      ? ` <span style="display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 5px; border-radius:99px; background:var(--accent); color:#fff; font-size:11px; font-weight:800; line-height:1;">${count}</span>`
+      : '';
+    return `<button type="button" onclick="openOrderArtModal(_currentOrderId)" title="View all art &amp; design files attached across every workbook in this order" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:8px; background:var(--surface2); color:var(--text); border:1px solid var(--border); font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+      Art${badge}
+    </button>`;
+  }
+
+  function openOrderArtModal(orderId) {
+    const o = orderData[orderId];
+    if (!o) return;
+    const _esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const _art = _collectOrderArt(orderId);
+    const groups = _art.groups;
+    const totalCount = _art.totalCount;
 
     const existing = document.getElementById('order-art-modal');
     if (existing) existing.remove();
@@ -56665,6 +56686,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (onEl) onEl.textContent = _orderDisplayName(o);
       const pEl = document.getElementById('order-detail-order-name-pencil');
       if (pEl) pEl.innerHTML = _orderRenamePencil(String(o.id));
+      const artBtnEl = document.getElementById('order-detail-art-btn');
+      if (artBtnEl) artBtnEl.innerHTML = (typeof _orderArtButtonHtml === 'function') ? _orderArtButtonHtml(o.id) : '';
     } catch (_) {}
     // Production ETA at the top — only once the order is In Production.
     try {
