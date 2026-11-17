@@ -6246,6 +6246,80 @@ switch ($action) {
         ]);
         break;
 
+    case 'notify_card_assignment':
+        // Slack-DM an operator who was just assigned to a pipeline / order /
+        // shipment card. Per-person DM via CRM_SLACK_USER_WEBHOOKS (same map
+        // the CRM board uses), shared-channel fallback via SLACK_WEBHOOK_URL.
+        // Called from the frontend when an assignee is ADDED to a card.
+        $assignees = is_array($input['assignees'] ?? null)
+            ? $input['assignees']
+            : (isset($input['assignee']) ? [$input['assignee']] : []);
+        $assignees = array_values(array_filter(array_map(fn($n) => trim((string)$n), $assignees), fn($n) => $n !== ''));
+        $title = trim((string)($input['title'] ?? ''));
+        $kind  = trim((string)($input['kind']  ?? ''));   // order | shipment | workbook
+        $stage = trim((string)($input['stage'] ?? ''));
+        if (empty($assignees)) { echo json_encode(['ok' => false, 'error' => 'assignee required']); break; }
+        $userWebhooks = is_array(CRM_SLACK_USER_WEBHOOKS) ? CRM_SLACK_USER_WEBHOOKS : [];
+        if (empty($userWebhooks) && SLACK_WEBHOOK_URL === '') {
+            echo json_encode(['ok' => true, 'skipped' => true, 'reason' => 'no_slack_configured']);
+            break;
+        }
+        $kindLbl   = $kind !== '' ? $kind : 'card';
+        $portalUrl = rtrim(PUBLIC_BASE_URL, '/') . '/index.php#/pipeline';
+        $bodyLines = [];
+        if ($title !== '') $bodyLines[] = '*' . $title . '*';
+        if ($stage !== '') $bodyLines[] = 'Stage: ' . $stage;
+        $bodyLines[] = '<' . $portalUrl . '|Open the pipeline →>';
+        $postToSlack = function ($url, $body) {
+            if (!function_exists('curl_init') || !$url) return ['ok' => false, 'status' => 0, 'error' => 'curl_or_url_missing'];
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $body,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 8,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+                CURLOPT_POSTREDIR => 7,
+            ]);
+            $resp = curl_exec($ch);
+            $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err  = curl_error($ch) ?: null;
+            curl_close($ch);
+            return ['ok' => $code >= 200 && $code < 300, 'status' => $code, 'error' => $err];
+        };
+        $results = [];
+        $fallbackNames = [];
+        foreach ($assignees as $name) {
+            $personalUrl = $userWebhooks[$name] ?? null;
+            if (!$personalUrl) { $fallbackNames[] = $name; $results[$name] = ['ok' => false, 'reason' => 'no_personal_webhook']; continue; }
+            $personalBody = json_encode([
+                'text'   => "You've been assigned to " . ($title !== '' ? $title : ('a ' . $kindLbl)),
+                'blocks' => [
+                    ['type' => 'header',  'text' => ['type' => 'plain_text', 'text' => '📌 New Assignment']],
+                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => "Hey {$name} — you've been assigned to this {$kindLbl}:"]],
+                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $bodyLines)]],
+                ],
+            ]);
+            $results[$name] = $postToSlack($personalUrl, $personalBody);
+        }
+        $fallbackResult = null;
+        if (!empty($fallbackNames) && SLACK_WEBHOOK_URL !== '') {
+            $whoLine = implode(', ', array_map(fn($n) => '*' . $n . '*', $fallbackNames));
+            $fallbackBody = json_encode([
+                'text'   => 'New assignment: ' . ($title !== '' ? $title : $kindLbl),
+                'blocks' => [
+                    ['type' => 'header',  'text' => ['type' => 'plain_text', 'text' => '📌 New Assignment']],
+                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => "Hey {$whoLine} — you've been assigned to this {$kindLbl} (no personal DM webhook on file):"]],
+                    ['type' => 'section', 'text' => ['type' => 'mrkdwn', 'text' => implode("\n", $bodyLines)]],
+                ],
+            ]);
+            $fallbackResult = $postToSlack(SLACK_WEBHOOK_URL, $fallbackBody);
+        }
+        echo json_encode(['ok' => true, 'personal_sends' => $results, 'fallback_sent' => $fallbackResult, 'fallback_names' => $fallbackNames]);
+        break;
+
     case 'crm_notify_column_move':
         // Posts a Slack DM to each currently-assigned operator on a
         // card whose column just changed. Same per-person DM webhook

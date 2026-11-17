@@ -54545,23 +54545,41 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       Object.keys(CRM_ASSIGNEE_COLORS).map(name => {
         const col = CRM_ASSIGNEE_COLORS[name];
         const on = cur.has(name);
-        return `<div class="assignee-picker-item${on ? ' on' : ''}" onclick="_toggleAssignee('${name}')">
+        return `<div class="assignee-picker-item${on ? ' on' : ''}" onclick="_toggleAssignee('${name}', event)">
           <span class="pl-avatar" style="background:${col.bg}; color:${col.fg};">${name.charAt(0)}</span>
           <span class="assignee-picker-name">${name}</span>
           <span class="assignee-picker-check">${on ? '&#10003;' : ''}</span>
         </div>`;
       }).join('');
   }
-  function _toggleAssignee(name) {
+  function _toggleAssignee(name, ev) {
+    // Keep the picker OPEN so multiple people can be assigned in a row. Without
+    // this, the re-render below detaches the clicked item from the menu, so the
+    // outside-click handler thinks you clicked out and closes the picker.
+    if (ev && ev.stopPropagation) ev.stopPropagation();
     const id = _assignPickerCardId; if (!id) return;
     const meta = _plMeta[id] || (_plMeta[id] = { assignees: [], note: '', comments: [] });
     if (!Array.isArray(meta.assignees)) meta.assignees = [];
     const i = meta.assignees.indexOf(name);
+    const added = i < 0;
     if (i >= 0) meta.assignees.splice(i, 1); else meta.assignees.push(name);
     if (typeof _persistPlMeta === 'function') _persistPlMeta();
     _renderAssigneePicker();
     _reRenderAssigneeSurfaces();
+    if (added) { try { _notifyCardAssignmentSlack(id, name); } catch (_) {} }
     if (_assignPickerAfter) { try { _assignPickerAfter(); } catch (_) {} }
+  }
+  // Fire a Slack DM to the just-assigned operator (their own channel via the
+  // CRM_SLACK_USER_WEBHOOKS map, shared-channel fallback otherwise). Best-effort
+  // — never blocks the assignment, silently no-ops if Slack isn't configured.
+  function _notifyCardAssignmentSlack(cardId, name) {
+    try {
+      const c = (typeof _plLastCards === 'object' && _plLastCards) ? _plLastCards[cardId] : null;
+      const title = c ? (c.title || c.product || 'a card') : 'a card';
+      const kind  = c ? (c.kind || '') : '';
+      const stage = c ? (((typeof _PK_STAGE_LBL === 'object' && _PK_STAGE_LBL) ? _PK_STAGE_LBL[c.stage] : '') || c.stage || '') : '';
+      if (typeof apiCall === 'function') apiCall('notify_card_assignment', { assignee: name, title, kind, stage });
+    } catch (_) {}
   }
   // Re-render whichever assignee-showing view is up so avatars update live.
   function _reRenderAssigneeSurfaces() {
@@ -54684,10 +54702,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }).join('');
   }
   function _togglePlAssignee(name) {
+    const added = !_plModalAssignees.has(name);
     if (_plModalAssignees.has(name)) _plModalAssignees.delete(name);
     else _plModalAssignees.add(name);
     _renderPlModalAssignees();
     _plCardAutoSaveDebounced();
+    if (added && typeof _plModalId !== 'undefined' && _plModalId) { try { _notifyCardAssignmentSlack(_plModalId, name); } catch (_) {} }
   }
   // Debounced auto-save — wired to the Notes textarea + assignee toggles so
   // the card persists without a Save button (matches the CRM card modal).
