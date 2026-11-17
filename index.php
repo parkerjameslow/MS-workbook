@@ -56554,6 +56554,26 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // attached across every workbook in the order into one modal gallery,
   // grouped by workbook. Reuses the file-tile renderer + art lightbox so
   // images/PDF/AI/video all preview exactly as they do on the Art tab.
+  // All art/design/image file URLs attached to a single workbook detail —
+  // Art tab (artImages), Design File, product images, and per-line + variant
+  // images — deduped. The ONE definition of "a workbook's art", shared by the
+  // order-level Art modal/badge AND the per-workbook Art count on the Order
+  // Sheet, so every "Art N" across the app counts the same thing.
+  function _collectWorkbookArtUrls(d) {
+    d = d || {};
+    const seen = new Set();
+    const urls = [];
+    const add = u => { if (u && typeof u === 'string' && !seen.has(u)) { seen.add(u); urls.push(u); } };
+    (Array.isArray(d.artImages) ? d.artImages : []).forEach(add);
+    if (d.designFile) add(d.designFile);
+    (Array.isArray(d.productImages) ? d.productImages : []).forEach(add);
+    (Array.isArray(d.rfqItems) ? d.rfqItems : []).forEach(it => {
+      if (it && Array.isArray(it.images)) it.images.forEach(add);
+      if (it && Array.isArray(it.variants)) it.variants.forEach(v => { if (v && Array.isArray(v.images)) v.images.forEach(add); });
+    });
+    return urls;
+  }
+
   // Gather every art/design/image file across all of an order's workbooks,
   // grouped by workbook and deduped. Shared by the Art button's count badge
   // and the Art modal so the number on the button always matches the gallery.
@@ -56565,16 +56585,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     (o.entries || []).forEach(e => {
       const key = `${e.clientName}|${e.workbookId}`;
       const d = workbookDetail[key] || {};
-      const seen = new Set();
-      const urls = [];
-      const add = u => { if (u && typeof u === 'string' && !seen.has(u)) { seen.add(u); urls.push(u); } };
-      (Array.isArray(d.artImages) ? d.artImages : []).forEach(add);
-      if (d.designFile) add(d.designFile);
-      (Array.isArray(d.productImages) ? d.productImages : []).forEach(add);
-      (Array.isArray(d.rfqItems) ? d.rfqItems : []).forEach(it => {
-        if (it && Array.isArray(it.images)) it.images.forEach(add);
-        if (it && Array.isArray(it.variants)) it.variants.forEach(v => { if (v && Array.isArray(v.images)) v.images.forEach(add); });
-      });
+      const urls = _collectWorkbookArtUrls(d);
       const item = (clientData[e.clientName] || []).find(i => String(i.id) === String(e.workbookId)) || {};
       const title = d.productName || item.product || item.name || ('Workbook #' + e.workbookId);
       if (urls.length) { groups.push({ title, urls }); totalCount += urls.length; }
@@ -57522,10 +57533,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // via the shared .order-sheet-product-link class. Deep-links
       // to that workbook's Art tab. No emoji per UX direction; the
       // "Art N" label alone is enough.
-      const _artCount = Array.isArray(detail.artImages) ? detail.artImages.length : 0;
+      const _artCount = (typeof _collectWorkbookArtUrls === 'function') ? _collectWorkbookArtUrls(detail).length : (Array.isArray(detail.artImages) ? detail.artImages.length : 0);
       const _artPill = `<span class="order-sheet-product-link" style="margin-left:8px;"
         onclick="event.stopPropagation(); _wbBackHash='#/order/${_currentOrderId}'; _wbBackLabel='Back to Order'; location.hash='${wbHref.substring(1)}/art'"
-        title="Open this workbook's Art tab — ${_artCount} file${_artCount === 1 ? '' : 's'} uploaded">
+        title="Art &amp; design files on this workbook — ${_artCount} file${_artCount === 1 ? '' : 's'} (Art tab, design file, per-line specs). Opens the Art tab.">
         Art <span style="opacity:0.6; font-weight:500; font-variant-numeric:tabular-nums;">${_artCount}</span>
       </span>`;
       let rows = `<tr class="order-sheet-wb-header" style="cursor:pointer;" onclick="toggleOrderSheetWb('${esc(key).replace(/'/g,"\\'")}')">
