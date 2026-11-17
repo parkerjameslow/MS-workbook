@@ -45171,6 +45171,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <div class="sc-left">
           <span class="sc-title">${s.name}</span>
           ${_shipStatusBadge(s)}
+          ${typeof _doneDetailToggleHtml === 'function' ? _doneDetailToggleHtml('shipment', String(id)) : ''}
           ${_etaHtml}
           ${_shippingInfoBlock}
           ${_trackingStrip}
@@ -54222,9 +54223,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { if (done && obj && obj.doneAt) when = ' · ' + new Date(obj.doneAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (_) {}
     const by = (done && obj && obj.doneBy) ? (' by ' + String(obj.doneBy)) : '';
     if (done) {
-      return `<button type="button" onclick="_toggleEntityDone('${kind}','${id}')" title="Marked DONE${by}${when} — click to undo" style="display:inline-flex; align-items:center; gap:5px; padding:3px 11px; border-radius:99px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.5); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;">✓ DONE${when}</button>`;
+      return `<button type="button" onclick="event.stopPropagation(); _toggleEntityDone('${kind}','${id}')" title="Marked DONE${by}${when} — click to undo" style="display:inline-flex; align-items:center; gap:5px; padding:3px 11px; border-radius:99px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.5); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;">✓ DONE${when}</button>`;
     }
-    return `<button type="button" onclick="_toggleEntityDone('${kind}','${id}')" title="Mark this ${kind} DONE so the whole team sees it" style="display:inline-flex; align-items:center; gap:5px; padding:3px 11px; border-radius:99px; background:transparent; color:var(--text-muted); border:1px dashed var(--border); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;">○ Mark DONE</button>`;
+    return `<button type="button" onclick="event.stopPropagation(); _toggleEntityDone('${kind}','${id}')" title="Mark this ${kind} DONE so the whole team sees it" style="display:inline-flex; align-items:center; gap:5px; padding:3px 11px; border-radius:99px; background:transparent; color:var(--text-muted); border:1px dashed var(--border); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;">○ Mark DONE</button>`;
   }
   function _toggleEntityDone(kind, id) {
     const obj = _entityDoneObj(kind, id);
@@ -54245,6 +54246,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (h.indexOf('#/pipeline') === 0 && typeof renderPipelineBoard === 'function') renderPipelineBoard();
       else if (kind === 'order' && h.indexOf('#/order/') === 0 && typeof renderOrderDetail === 'function') renderOrderDetail(id);
       else if (kind === 'shipment' && h.indexOf('#/shipment/') === 0 && typeof renderShipmentDetail === 'function') renderShipmentDetail(id);
+      else if (h.indexOf('#/fulfillment') === 0 && typeof renderFulfillmentList === 'function') renderFulfillmentList();
+      else if (h.indexOf('#/shipments') === 0 && typeof renderShipmentsContent === 'function') renderShipmentsContent();
+      else if (h.indexOf('#/orders') === 0 && typeof renderOrdersList === 'function') renderOrdersList();
+    } catch (_) {}
+    // If the pipeline card modal is open, re-render it so its DONE toggle flips too.
+    try {
+      const _plm = document.getElementById('pl-card-modal');
+      if (_plm && _plm.classList.contains('open') && typeof _plModalId !== 'undefined' && _plModalId && typeof openPipelineCardModal === 'function') openPipelineCardModal(_plModalId);
     } catch (_) {}
     try { if (kind === 'order' && typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
     try { if (typeof showToast === 'function') showToast(now ? 'Marked DONE' : 'DONE removed', 'success'); } catch (_) {}
@@ -54557,7 +54566,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     document.getElementById('pl-modal-stage').innerHTML =
       `<span style="display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; background:${col.bg || '#eee'}; color:${col.fg || '#333'};">${_plEsc(col.label || c.stage)}</span>`
-      + (days === null ? '' : ` <span style="margin-left:8px;">in this stage ${days <= 0 ? 'since today' : days + ' day' + (days === 1 ? '' : 's')}</span>`);
+      + (days === null ? '' : ` <span style="margin-left:8px;">in this stage ${days <= 0 ? 'since today' : days + ' day' + (days === 1 ? '' : 's')}</span>`)
+      + ((c.kind === 'order' || c.kind === 'shipment') && typeof _doneDetailToggleHtml === 'function' ? (' <span style="margin-left:10px;">' + _doneDetailToggleHtml(c.kind, String(c.id)) + '</span>') : '');
 
     const facts = [];
     if (c.kind === 'wb') {
@@ -55477,6 +55487,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const _leadNote = agMaxLead > 0 ? ` <span style="text-transform:none; letter-spacing:0; opacity:0.8;">(${agMaxLead} day lead)</span>` : '';
       pills.push(`<span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6; font-size:10px; font-weight:700; letter-spacing:0.05em; white-space:nowrap;" title="Production ETA — ${(_prodEta ? _prodEta.leadDays : agMaxLead)} business days (no weekends) from the day it moved into Production"><span style="text-transform:uppercase;">Production ETA</span><span style="text-transform:none; letter-spacing:0;">${fulfillmentDateFmt}</span>${_leadNote}</span>`);
     }
+    // Team-wide DONE toggle — same control as the detail page / pipeline card.
+    if (typeof _doneDetailToggleHtml === 'function') pills.push(_doneDetailToggleHtml('order', String(id)));
 
     // Workbook pills — same RMB + USD layout as the Orders card so
     // the operator sees both currencies inline regardless of which
