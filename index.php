@@ -47073,6 +47073,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const carrierUrl = carrierUrls[s.carrier] || '#';
     const shipName = s.name || `Shipment #${id}`;
     const open = _receivingItemOpen.has(String(id));
+    // Button reads "Receiving" while the shipment is still en route (the receiving
+    // process hasn't started), and flips to "Mark Received" once it's delivered /
+    // arrived and the operator can confirm the per-workbook audit.
+    const _recArrived = /deliver/i.test(statusText) || s.status === 'delivered' || s.status === 'received' || !!s.deliveredOn;
     return `<div class="order-card" style="padding:0; overflow:hidden;">
       <div onclick="toggleReceivingItem('${id}')" style="display:flex; align-items:center; gap:12px; padding:12px 14px; cursor:pointer; flex-wrap:wrap;" title="Click to ${open ? 'collapse' : 'expand'} tracking detail">
         <span id="rec-chev-${id}" style="font-size:12px; color:var(--text-muted); transition:transform .15s ease; ${open ? 'transform:rotate(90deg);' : ''}">▶</span>
@@ -47082,7 +47086,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <span style="font-size:12px; color:var(--text-muted);" title="ETA / delivery date">${_esc(_recDateLabel(id))}</span>
         <span style="margin-left:auto; display:flex; gap:8px; align-items:center;" onclick="event.stopPropagation();">
           <a href="${carrierUrl}" target="_blank" rel="noopener" style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);" title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
-          <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); openReceivedModal('${id}','receiving')" title="Open the per-workbook audit to confirm receipt.">Mark Received</button>
+          <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); openReceivedModal('${id}','receiving')" title="${_recArrived ? 'Open the per-workbook audit to confirm receipt.' : 'Not delivered yet — opens the receiving audit when it arrives.'}">${_recArrived ? 'Mark Received' : 'Receiving'}</button>
         </span>
       </div>
       <div id="rec-details-${id}" style="display:${open ? 'block' : 'none'}; padding:0 14px 14px;">
