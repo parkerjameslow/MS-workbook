@@ -6816,6 +6816,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-radius: 99px; background: rgba(239,68,68,0.20); color: #fca5a5;
       border: 1px solid rgba(252,165,165,0.35);
     }
+    /* Manual "DONE" stamp on an order/shipment pipeline card — a team-wide
+       "this is finished" marker (toggled from the card menu or detail page).
+       Non-destructive: the card stays exactly where it is. */
+    .pl-done-badge {
+      display: inline-block; margin-top: 6px; font-size: 9px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px;
+      border-radius: 99px; background: rgba(16,185,129,0.22); color: #6ee7b7;
+      border: 1px solid rgba(110,231,183,0.45);
+    }
     /* Column header total (customer value in that stage). */
     .crm-col-total { font-size: 10px; font-weight: 800; opacity: 0.85; margin-left: 6px; white-space: nowrap; }
     /* Column focus flash when jumped to from the nav drill-down. */
@@ -11200,10 +11209,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   <main class="container">
 
     <!-- Breadcrumb -->
-    <div style="margin-bottom:16px;">
+    <div style="margin-bottom:16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
       <a href="#/shipments" onclick="event.preventDefault(); location.hash='#/shipments'" style="font-size:12px; color:var(--text-muted); text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
         ‹ All Shipments
       </a>
+      <span id="ship-detail-done-toggle"></span>
     </div>
 
     <!-- Header: name + status + dates -->
@@ -12293,6 +12303,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </a>
       <span id="order-detail-stage-pill" style="display:none;"></span>
       <span id="order-detail-client-status" style="display:none;"></span>
+      <span id="order-detail-done-toggle"></span>
     </div>
 
     <!-- Header: client name (big) → ship-to → order name → controls -->
@@ -45276,6 +45287,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.getElementById('ship-detail-eta').value       = s.eta || '';
     document.getElementById('ship-detail-delivered').value = s.deliveredOn || '';
     document.getElementById('ship-delivered-wrap').style.display = s.status === 'delivered' ? 'flex' : 'none';
+    const shDoneEl = document.getElementById('ship-detail-done-toggle');
+    if (shDoneEl) shDoneEl.innerHTML = (typeof _doneDetailToggleHtml === 'function') ? _doneDetailToggleHtml('shipment', String(_currentShipmentId)) : '';
 
     // Shipping method + port-date wiring
     const methodEl = document.getElementById('ship-detail-method');
@@ -53597,6 +53610,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       <div class="pl-card-sub">${_plEsc(c.sub)}${val ? `<span class="pl-card-val">${val}</span>` : ''}</div>
+      ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
       ${_prodEtaHtml}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${children ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${wbs.length} workbook${wbs.length === 1 ? '' : 's'}</button>
@@ -53618,6 +53632,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <button type="button" class="pl-card-menu-btn" title="Options" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); return _showPlCardMenu(event,'${cidJs}')">&#8942;</button>
       <div class="pl-card-title">${_plEsc(c.title)}</div>
       ${c.sub ? `<div class="pl-card-sub">${_plEsc(c.sub)}</div>` : ''}
+      ${_entityIsDone('shipment', c.id) ? _doneBadgeHtml(shipmentData[c.id]) : ''}
       ${_shipmentStatusPillHtml(c.id)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
       ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${c.count} workbook${c.count === 1 ? '' : 's'}</button>
@@ -54180,6 +54195,61 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _plCardMenuOutside(e) {
     if (_plCardMenuEl && !_plCardMenuEl.contains(e.target)) _closePlCardMenu();
   }
+  // ── Manual "DONE" marker for orders & shipments ────────────────────────
+  // A team-wide "this is finished" stamp, toggled from the pipeline card ⋮
+  // menu or the order/shipment detail page. Persists on the order/shipment
+  // object (o.done / o.doneAt / o.doneBy) via saveOrders/saveShipments, so
+  // everyone sees it. Non-destructive — the card stays where it is and only
+  // gains a green DONE badge.
+  function _entityDoneObj(kind, id) {
+    try { return kind === 'order' ? (orderData && orderData[id]) : (shipmentData && shipmentData[id]); }
+    catch (_) { return null; }
+  }
+  function _entityIsDone(kind, id) { const o = _entityDoneObj(kind, id); return !!(o && o.done); }
+  function _doneBadgeHtml(obj) {
+    let t = 'Marked DONE';
+    try {
+      if (obj && obj.doneBy) t += ' by ' + obj.doneBy;
+      if (obj && obj.doneAt) t += ' · ' + new Date(obj.doneAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch (_) {}
+    return `<div class="pl-done-badge" title="${String(t).replace(/"/g, '&quot;')}">✓ DONE</div>`;
+  }
+  // Clickable toggle pill for the order/shipment detail pages.
+  function _doneDetailToggleHtml(kind, id) {
+    const done = _entityIsDone(kind, id);
+    const obj = _entityDoneObj(kind, id);
+    let when = '';
+    try { if (done && obj && obj.doneAt) when = ' · ' + new Date(obj.doneAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (_) {}
+    const by = (done && obj && obj.doneBy) ? (' by ' + String(obj.doneBy)) : '';
+    if (done) {
+      return `<button type="button" onclick="_toggleEntityDone('${kind}','${id}')" title="Marked DONE${by}${when} — click to undo" style="display:inline-flex; align-items:center; gap:5px; padding:3px 11px; border-radius:99px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.5); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;">✓ DONE${when}</button>`;
+    }
+    return `<button type="button" onclick="_toggleEntityDone('${kind}','${id}')" title="Mark this ${kind} DONE so the whole team sees it" style="display:inline-flex; align-items:center; gap:5px; padding:3px 11px; border-radius:99px; background:transparent; color:var(--text-muted); border:1px dashed var(--border); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; cursor:pointer;">○ Mark DONE</button>`;
+  }
+  function _toggleEntityDone(kind, id) {
+    const obj = _entityDoneObj(kind, id);
+    if (!obj) return;
+    const now = !obj.done;
+    obj.done = now;
+    if (now) {
+      obj.doneAt = new Date().toISOString();
+      obj.doneBy = (typeof getCurrentUser === 'function' ? getCurrentUser() : '') || '';
+    } else {
+      obj.doneAt = null;
+      obj.doneBy = '';
+    }
+    try { if (kind === 'order') saveOrders(); else saveShipments(); } catch (_) {}
+    // Repaint whatever surface we're on so the badge/pill updates in place.
+    try {
+      const h = location.hash || '';
+      if (h.indexOf('#/pipeline') === 0 && typeof renderPipelineBoard === 'function') renderPipelineBoard();
+      else if (kind === 'order' && h.indexOf('#/order/') === 0 && typeof renderOrderDetail === 'function') renderOrderDetail(id);
+      else if (kind === 'shipment' && h.indexOf('#/shipment/') === 0 && typeof renderShipmentDetail === 'function') renderShipmentDetail(id);
+    } catch (_) {}
+    try { if (kind === 'order' && typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
+    try { if (typeof showToast === 'function') showToast(now ? 'Marked DONE' : 'DONE removed', 'success'); } catch (_) {}
+  }
+
   function _showPlCardMenu(ev, cid) {
     try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
     _closePlCardMenu();
@@ -54190,13 +54260,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (c.kind === 'wb') {
       items.push(['open', 'Open workbook'], ['move', 'Move to stage…'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Archive workbook']);
     } else if (c.kind === 'order') {
-      items.push(['open', 'Open order'], ['rename', 'Rename']);
+      items.push(['open', 'Open order'], ['rename', 'Rename'], ['done', _entityIsDone('order', c.id) ? '✓ Unmark DONE' : 'Mark DONE']);
       if (c.stage === 'orders')     items.push(['toProduction', 'Move to In Production']);
       if (c.stage === 'production') items.push(['toShipments', 'Move to Shipments…'], ['toOrders', 'Back to Pre-Production']);
       items.push(['sep', ''], ['backDesign', 'Send back to Design'], ['backRfq', 'Send back to RFQ']);
       items.push(['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Archive order']);
     } else {
-      items.push(['open', 'Open shipment'], ['rename', 'Rename'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Archive shipment']);
+      items.push(['open', 'Open shipment'], ['rename', 'Rename'], ['done', _entityIsDone('shipment', c.id) ? '✓ Unmark DONE' : 'Mark DONE'], ['sep', ''], ['assign', 'Assign…'], ['details', 'Details & comments'], ['sep', ''], ['delete', 'Archive shipment']);
     }
     const esc = s => String(s).replace(/</g, '&lt;');
     const menu = document.createElement('div');
@@ -54292,6 +54362,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         case 'toShipments':  if (typeof _pipelineMoveOrder === 'function') _pipelineMoveOrder(String(c.id), 'shipments'); break;
         case 'backDesign':   if (typeof _pipelineOrderBackToStage === 'function') _pipelineOrderBackToStage(String(c.id), 'design'); break;
         case 'backRfq':      if (typeof _pipelineOrderBackToStage === 'function') _pipelineOrderBackToStage(String(c.id), 'rfq'); break;
+        case 'done':
+          if (c.kind === 'order' || c.kind === 'shipment') _toggleEntityDone(c.kind, String(c.id));
+          break;
         case 'delete': _pipelineDeleteCard(cid); break;
       }
     } catch (e) { console.warn('[pl card menu]', e); }
@@ -56466,6 +56539,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         csEl.textContent = '';
       }
     }
+
+    const odDoneEl = document.getElementById('order-detail-done-toggle');
+    if (odDoneEl) odDoneEl.innerHTML = (typeof _doneDetailToggleHtml === 'function') ? _doneDetailToggleHtml('order', String(o.id)) : '';
 
     document.getElementById('order-detail-client-name').textContent = o.clientName;
     try {
