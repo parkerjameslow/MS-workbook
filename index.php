@@ -50183,6 +50183,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   // ── Totals helper ────────────────────────────────────────────────────
   // ── Background poll — picks up changes made on another device/browser ──
+  // Run a re-render while keeping the current scroll position. The 60s remote
+  // poll re-renders whatever view is open to show partner changes; without this
+  // the full re-render snapped the operator back to the top of the page every
+  // tick. Snap selectors are re-queried AFTER the render (the view DOM is
+  // replaced), and restored again next frame once layout settles.
+  function _preserveScroll(fn) {
+    const sel = ['.app-content', '.view.active', '#pipeline-board', '#crm-board'];
+    const snap = [];
+    try { const se = document.scrollingElement || document.documentElement; if (se && se.scrollTop > 0) snap.push(['__win__', se.scrollTop]); } catch (_) {}
+    try { sel.forEach(s => { const el = document.querySelector(s); if (el && el.scrollTop > 0) snap.push([s, el.scrollTop]); }); } catch (_) {}
+    try { fn(); } catch (e) { console.warn('[poll render]', e); }
+    const restore = () => snap.forEach(([s, top]) => {
+      try {
+        const el = (s === '__win__') ? (document.scrollingElement || document.documentElement) : document.querySelector(s);
+        if (el && el.scrollTop !== top) el.scrollTop = top;
+      } catch (_) {}
+    });
+    restore();
+    try { requestAnimationFrame(restore); } catch (_) {}
+  }
+
   async function pollForRemoteChanges() {
     if (_pollActive) return; // don't overlap with a slow previous poll
     _pollActive = true;
@@ -50253,9 +50274,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         }
       }
 
-      // Re-render only the relevant view if it's currently open
-      if (ordChanged && onOrdersView)     router();
-      if (shipChanged && onShipmentsView) router();
+      // Re-render only the relevant view if it's currently open. Preserve the
+      // scroll position so a background sync never yanks the operator to the top.
+      if (ordChanged && onOrdersView)     _preserveScroll(router);
+      if (shipChanged && onShipmentsView) _preserveScroll(router);
 
       // ── 2. Workbooks & clients — heavier call, skip if actively editing ─
       if (!_isDirty) {
@@ -50269,7 +50291,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           rebuildSidebar();
           // Avoid re-rendering the workbook editor mid-session (would reset the form)
           if (!onWorkbookEditor) {
-            router();
+            _preserveScroll(router);
           }
           // Self-heal: on this 60s cadence, sweep any client-approved quotes
           // out of Waiting-for-Client into Orders so approvals never stall.
