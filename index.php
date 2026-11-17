@@ -21929,10 +21929,17 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const chooseBtn = (section) => `<button type="button" class="rfq-imgpick-choose" onclick="openRfqGalleryModal('${section}')">Choose File</button>`;
     const emptyNote = (txt) => `<div class="rfq-imgpick-empty">${txt}</div>`;
     let html = '';
-    // Product Images section removed per operator — Line Item Specs now holds
-    // just the Design File + Art for this line.
+    // Product Images section is hidden by default per operator — Line Item Specs
+    // leads with the Design File + Art for this line.
     html += sec('Design File', tiles(g.design) || emptyNote('Nothing yet — tap “Choose File”.'), chooseBtn('design'));
     html += sec('Art for this line', tiles(g.lineArt) || emptyNote('Nothing yet — tap “Choose File”.'), chooseBtn('art'));
+    // …but any file pinned to Product Images (or an image that falls back there)
+    // still counts on the Specs (N) button. If we don't render those, the count
+    // says "2" while the modal looks empty. So surface them in a Photos section
+    // WHENEVER any exist — guaranteeing the count always matches what's visible.
+    if (g.productAssigned && g.productAssigned.length) {
+      html += sec('Photos / Images', tiles(g.productAssigned), chooseBtn('product'));
+    }
     grid.innerHTML = html;
     try { if (typeof _hydrateAiThumbs === 'function') _hydrateAiThumbs(grid); } catch (_) {}
     grid.onscroll = _updateRfqPickerFade;
