@@ -34984,6 +34984,38 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { if (typeof _persistClientConvos === 'function' && typeof _clientConvos === 'object') _persistClientConvos(); } catch (_) {}
   }
 
+  // Prominent client logo / image spot shown directly above the Conversations
+  // section on the client detail page. Reuses the existing per-client logo
+  // (clients.logo_url) + its upload/remove endpoints, so this image and the
+  // avatar everywhere stay the same picture.
+  function _clientImageSpotHtml(clientName, d) {
+    d = d || clientDetails[clientName] || {};
+    const url = d.logo_url || '';
+    const encN = encodeURIComponent(clientName);
+    const escA = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    if (url) {
+      return `<div class="section-card" style="margin-bottom:14px; padding:16px 18px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+          <span class="section-title">Logo / Image</span>
+          <span style="display:flex; gap:8px;">
+            <button type="button" onclick="pickClientLogo(decodeURIComponent('${encN}'))" style="padding:5px 11px; border-radius:7px; background:transparent; color:var(--accent); border:1px solid var(--accent); font-size:11px; font-weight:700; cursor:pointer; font-family:inherit;">Change</button>
+            <button type="button" onclick="removeClientLogoFor(decodeURIComponent('${encN}'))" style="padding:5px 11px; border-radius:7px; background:transparent; color:var(--text-muted); border:1px solid var(--border); font-size:11px; font-weight:700; cursor:pointer; font-family:inherit;">Remove</button>
+          </span>
+        </div>
+        <div style="display:flex; justify-content:center; padding:12px; background:var(--surface2); border:1px solid var(--border); border-radius:10px;">
+          <img src="${escA(url)}" alt="${escA(clientName)} logo" style="max-width:100%; max-height:170px; object-fit:contain; border-radius:6px;" />
+        </div>
+      </div>`;
+    }
+    return `<div class="section-card" style="margin-bottom:14px; padding:16px 18px;">
+      <div style="margin-bottom:10px;"><span class="section-title">Logo / Image</span></div>
+      <button type="button" onclick="pickClientLogo(decodeURIComponent('${encN}'))" title="Upload a logo or image for this client" style="width:100%; padding:26px 16px; border-radius:10px; background:var(--surface2); border:1.5px dashed var(--border); color:var(--text-muted); font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; display:flex; flex-direction:column; align-items:center; gap:6px;">
+        <span style="font-size:24px; line-height:1;">＋</span>
+        <span>Upload a logo / image</span>
+      </button>
+    </div>`;
+  }
+
   function renderClientDetailCard(clientName) {
     const wrap = document.getElementById('client-detail-card-wrap');
     if (!wrap) return;
@@ -35307,6 +35339,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // Async-populate the intake status line ("Pending — sent 3 days ago")
     // without blocking the initial card render.
     hydrateIntakeStatus(clientName);
+
+    // Client logo / image spot — sits directly above the Conversations
+    // section. Reuses the existing per-client logo (clients.logo_url).
+    const _imgWrap = document.createElement('div');
+    _imgWrap.id = 'client-image-wrap';
+    _imgWrap.innerHTML = (typeof _clientImageSpotHtml === 'function') ? _clientImageSpotHtml(clientName, d) : '';
+    wrap.appendChild(_imgWrap);
 
     // Conversations (Plaud PDF transcripts etc.) — appended below the card.
     const _convoWrap = document.createElement('div');
