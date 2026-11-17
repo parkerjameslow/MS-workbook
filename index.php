@@ -11,10 +11,7 @@ require_once __DIR__ . '/auth.php';
 // so it cannot cause the loop. A failed connect is swallowed: requireAuth()
 // then falls back to the login form.
 if (empty($_SESSION['user_id']) && !empty($_COOKIE[MS_REMEMBER_COOKIE]) && !isset($GLOBALS['ms_auth_pdo'])) {
-    $host = 'localhost';
-    $db   = 'markewq4_workbook';
-    $user = 'markewq4_workbook';
-    $pass = 'MarketFun123';   // <-- replace with the password from login.php line 13
+require_once __DIR__ . '/dbconfig.php'; $host = MS_DB_HOST; $db = MS_DB_NAME; $user = MS_DB_USER; $pass = MS_DB_PASS;
     try {
         $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass);
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);

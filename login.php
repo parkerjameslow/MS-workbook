@@ -7,10 +7,7 @@ if (!empty($_SESSION['user_id'])) {
     exit;
 }
 
-$host = 'localhost';
-$db   = 'markewq4_workbook';
-$user = 'markewq4_workbook';
-$pass = 'MarketFun123';
+require_once __DIR__ . '/dbconfig.php'; $host = MS_DB_HOST; $db = MS_DB_NAME; $user = MS_DB_USER; $pass = MS_DB_PASS;
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8mb4", $user, $pass);

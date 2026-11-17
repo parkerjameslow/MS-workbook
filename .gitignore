@@ -8,3 +8,4 @@ api.local.php
 
 # Claude Code session data / worktrees — never deploy to live
 .claude/
+dbconfig.php
