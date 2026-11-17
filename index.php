@@ -12401,6 +12401,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Duplicate Order
         </button>
+        <button class="btn btn-ghost" onclick="openOrderArtModal(_currentOrderId)" title="View all art &amp; design files attached across every workbook in this order" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          Art
+        </button>
         <button class="btn-danger" id="order-delete-btn" onclick="deleteOrder(_currentOrderId)">Delete</button>
       </div>
       <!-- Lane controls — surfaces the same Orders ↔ Production ↔
@@ -56522,6 +56526,67 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     try { if (typeof rebuildOrdersNav === 'function') rebuildOrdersNav(); } catch (_) {}
     try { if (location.hash === '#/pipeline' && typeof renderPipelineBoard === 'function') renderPipelineBoard(); } catch (_) {}
   }
+  // "Art" button on the order detail — gathers ALL art/design/image files
+  // attached across every workbook in the order into one modal gallery,
+  // grouped by workbook. Reuses the file-tile renderer + art lightbox so
+  // images/PDF/AI/video all preview exactly as they do on the Art tab.
+  function openOrderArtModal(orderId) {
+    const o = orderData[orderId];
+    if (!o) return;
+    const _esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const entries = o.entries || [];
+    const groups = [];
+    let totalCount = 0;
+    entries.forEach(e => {
+      const key = `${e.clientName}|${e.workbookId}`;
+      const d = workbookDetail[key] || {};
+      const seen = new Set();
+      const urls = [];
+      const add = u => { if (u && typeof u === 'string' && !seen.has(u)) { seen.add(u); urls.push(u); } };
+      (Array.isArray(d.artImages) ? d.artImages : []).forEach(add);
+      if (d.designFile) add(d.designFile);
+      (Array.isArray(d.productImages) ? d.productImages : []).forEach(add);
+      (Array.isArray(d.rfqItems) ? d.rfqItems : []).forEach(it => {
+        if (it && Array.isArray(it.images)) it.images.forEach(add);
+        if (it && Array.isArray(it.variants)) it.variants.forEach(v => { if (v && Array.isArray(v.images)) v.images.forEach(add); });
+      });
+      const item = (clientData[e.clientName] || []).find(i => String(i.id) === String(e.workbookId)) || {};
+      const title = d.productName || item.product || item.name || ('Workbook #' + e.workbookId);
+      if (urls.length) { groups.push({ title, urls }); totalCount += urls.length; }
+    });
+
+    const existing = document.getElementById('order-art-modal');
+    if (existing) existing.remove();
+    const orderName = (typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : (o.name || ('Order #' + orderId));
+    const body = groups.length
+      ? groups.map(g => `
+          <div style="margin-bottom:22px;">
+            <div style="font-size:12px; font-weight:800; color:var(--text); margin-bottom:10px; text-transform:uppercase; letter-spacing:0.04em;">${_esc(g.title)} <span style="color:var(--text-muted); font-weight:600;">(${g.urls.length})</span></div>
+            <div class="image-gallery" style="display:flex; flex-wrap:wrap; gap:10px;">
+              ${g.urls.map(u => `<div class="image-gallery-item">${_buildFileTileInner(u, '')}</div>`).join('')}
+            </div>
+          </div>`).join('')
+      : `<div style="padding:36px 10px; text-align:center; color:var(--text-muted); font-size:14px;">No art has been attached to this order's workbooks yet.<br><span style="font-size:12px;">Open a workbook's Art tab to add design files, mockups, or photos.</span></div>`;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'order-art-modal';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:1300; background:rgba(0,0,0,0.6); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto;';
+    overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:var(--surface); border:1px solid var(--border); border-radius:14px; width:100%; max-width:880px; box-shadow:0 20px 60px rgba(0,0,0,0.4);';
+    panel.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); border-radius:14px 14px 0 0; z-index:1;">
+        <div>
+          <div style="font-size:16px; font-weight:800; color:var(--text);">All Art — ${_esc(orderName)}</div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">${totalCount} file${totalCount === 1 ? '' : 's'} across ${groups.length} workbook${groups.length === 1 ? '' : 's'}</div>
+        </div>
+        <button type="button" onclick="document.getElementById('order-art-modal').remove()" title="Close" style="background:none; border:none; font-size:24px; color:var(--text-muted); cursor:pointer; line-height:1; padding:0 4px;">&times;</button>
+      </div>
+      <div style="padding:18px 20px;">${body}</div>`;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  }
+
   function renderOrderDetail(id) {
     _currentOrderId = parseInt(id);
     if (typeof _ensurePlMetaLoaded === 'function') _ensurePlMetaLoaded();
