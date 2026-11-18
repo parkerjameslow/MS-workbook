@@ -46905,7 +46905,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // production estimate from the production-lead math) until one of its
   // workbooks lands on a tracked shipment — then that shipment's real carrier
   // ETA ("Shipment ETA", green) represents it instead.
-  let _calYear = null, _calMonth = null;
+  let _calYear = null, _calMonth = null, _calView = 'month';  // 'month' | 'timeline'
+  function _calSetView(v) { _calView = (v === 'timeline') ? 'timeline' : 'month'; renderShipmentCalendar(); }
   function _calDayKey(d) {
     try { const x = (d instanceof Date) ? d : new Date(d); if (isNaN(x.getTime())) return null; return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
     catch (_) { return null; }
@@ -46920,7 +46921,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const etaRaw = (s.tracking && s.tracking.eta) || s.eta || '';
       if (!hasTracking || !etaRaw) return;
       const k = _calDayKey(etaRaw); if (!k) return;
-      events.push({ dateKey: k, type: 'shipment', label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: (typeof _carrierLabel === 'function' ? _carrierLabel(s.carrier || '') : (s.carrier || '')) });
+      const endDate = new Date(etaRaw);
+      let startDate = null;
+      const etdRaw = s.etd || (s.tracking && s.tracking.etd) || s.portShipDate || '';
+      if (etdRaw) { const sd = new Date(etdRaw); if (!isNaN(sd.getTime())) startDate = sd; }
+      if (!startDate || startDate > endDate) startDate = new Date(endDate.getTime() - 7 * 86400000);
+      events.push({ dateKey: k, type: 'shipment', label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: (typeof _carrierLabel === 'function' ? _carrierLabel(s.carrier || '') : (s.carrier || '')), startDate, endDate });
     });
     // Order ETAs — pre-production + production orders NOT yet on a shipment.
     Object.keys(orderData || {}).forEach(id => {
@@ -46938,7 +46944,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (!etaDate) return;
       const k = _calDayKey(etaDate); if (!k) return;
       const nm = (typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : (o.name || ('Order #' + id));
-      events.push({ dateKey: k, type: 'order', label: nm, href: '#/order/' + id, sub: (o.clientName || ''), rough });
+      let startDate = null;
+      const startRaw = o.movedToProductionAt || o.notifiedAt || '';
+      if (startRaw) { const sd = new Date(startRaw); if (!isNaN(sd.getTime())) startDate = sd; }
+      if (!startDate) startDate = new Date();
+      if (startDate > etaDate) startDate = new Date(etaDate.getTime() - 86400000);
+      events.push({ dateKey: k, type: 'order', label: nm, href: '#/order/' + id, sub: (o.clientName || ''), rough, startDate, endDate: etaDate });
     });
     return events;
   }
@@ -46950,6 +46961,65 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     renderShipmentCalendar();
   }
   function _calGoToday() { const n = new Date(); _calYear = n.getFullYear(); _calMonth = n.getMonth(); renderShipmentCalendar(); }
+  // Horizontal timeline / Gantt: each event is a bar from its start (production
+  // start for orders, ship date for shipments) to its ETA. Auto-fits the window
+  // to all events + today, with horizontal scroll.
+  function _calTimelineHtml(events, esc) {
+    const midnight = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+    const evs = (events || []).filter(e => e.startDate && e.endDate);
+    if (!evs.length) return `<div style="padding:34px; text-align:center; color:var(--text-muted);">No ETAs to plot yet — orders in pre-production/production and tracked shipments will appear here as bars.</div>`;
+    const today = midnight(new Date());
+    let minD = today, maxD = today;
+    evs.forEach(e => { const s = midnight(e.startDate), en = midnight(e.endDate); if (s < minD) minD = s; if (en > maxD) maxD = en; });
+    const winStart = new Date(minD); winStart.setDate(winStart.getDate() - 2);
+    const winEnd = new Date(maxD); winEnd.setDate(winEnd.getDate() + 2);
+    const dayMs = 86400000;
+    let totalDays = Math.round((midnight(winEnd) - midnight(winStart)) / dayMs) + 1;
+    if (totalDays > 200) totalDays = 200;
+    const dayW = 46, totalW = totalDays * dayW;
+    const offOf = d => Math.round((midnight(d) - midnight(winStart)) / dayMs);
+
+    let header = '';
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(winStart); d.setDate(d.getDate() + i);
+      const isToday = midnight(d).getTime() === today.getTime();
+      const showMonth = d.getDate() === 1 || i === 0;
+      header += `<div style="width:${dayW}px; flex:0 0 ${dayW}px; text-align:center; padding:5px 0; border-left:1px solid var(--border); font-size:10px; color:${isToday ? 'var(--accent)' : 'var(--text-muted)'}; font-weight:${isToday ? '800' : '600'};">
+        ${showMonth ? `<div style="font-weight:800; color:var(--text); font-size:9px; text-transform:uppercase;">${d.toLocaleDateString('en-US', { month: 'short' })}</div>` : '<div style="height:12px;"></div>'}
+        <div>${d.getDate()}</div>
+      </div>`;
+    }
+
+    let rows = '';
+    evs.slice().sort((a, b) => midnight(a.startDate) - midnight(b.startDate)).forEach(e => {
+      const color = e.type === 'shipment' ? '#16a34a' : (e.rough ? '#E8751A' : '#3b82f6');
+      let left = offOf(e.startDate) * dayW;
+      const widthDays0 = Math.max(1, offOf(e.endDate) - offOf(e.startDate) + 1);
+      let widthDays = widthDays0;
+      if (left < 0) { widthDays += Math.round(left / dayW); left = 0; }
+      let width = Math.max(dayW, widthDays * dayW);
+      if (left + width > totalW) width = Math.max(dayW, totalW - left);
+      const range = `${midnight(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${midnight(e.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+      const tag = e.type === 'shipment' ? 'Shipment ETA' : 'Order ETA';
+      rows += `<div style="position:relative; height:36px; border-bottom:1px dashed var(--border);">
+        <div onclick="location.hash='${e.href}'" title="${tag} — ${esc(e.label)} · ${range}${e.sub ? ' · ' + esc(e.sub) : ''}" style="position:absolute; left:${left}px; width:${width}px; top:6px; height:24px; background:${color}; border-radius:6px; color:#fff; font-size:11px; font-weight:700; padding:0 9px; display:flex; align-items:center; gap:8px; overflow:hidden; white-space:nowrap; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.18);">
+          <span style="overflow:hidden; text-overflow:ellipsis;">${esc(e.label)}</span>
+          <span style="opacity:0.85; font-weight:600; font-size:10px; margin-left:auto; white-space:nowrap;">${range}</span>
+        </div>
+      </div>`;
+    });
+
+    const todayLeft = offOf(today) * dayW;
+    const todayLine = (todayLeft >= 0 && todayLeft <= totalW)
+      ? `<div style="position:absolute; top:0; bottom:0; left:${todayLeft}px; width:2px; background:var(--accent); z-index:3; pointer-events:none;"></div>`
+      : '';
+    return `<div style="overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface);">
+      <div style="position:relative; width:${totalW}px; min-width:100%;">
+        <div style="display:flex; position:sticky; top:0; background:var(--surface); z-index:2; border-bottom:1px solid var(--border);">${header}</div>
+        <div style="position:relative;">${rows}${todayLine}</div>
+      </div>
+    </div>`;
+  }
   function renderShipmentCalendar() {
     document.getElementById('header-title').textContent = 'Shipping Calendar';
     document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
@@ -47019,23 +47089,29 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     host.innerHTML = `
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+        <div style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+          <button type="button" onclick="_calSetView('month')" style="font-size:12px; font-weight:700; padding:6px 14px; border:none; cursor:pointer; font-family:inherit; background:${_calView === 'month' ? 'var(--accent)' : 'transparent'}; color:${_calView === 'month' ? '#fff' : 'var(--text)'};">Calendar</button>
+          <button type="button" onclick="_calSetView('timeline')" style="font-size:12px; font-weight:700; padding:6px 14px; border:none; cursor:pointer; font-family:inherit; background:${_calView === 'timeline' ? 'var(--accent)' : 'transparent'}; color:${_calView === 'timeline' ? '#fff' : 'var(--text)'};">Timeline</button>
+        </div>
+        ${_calView === 'month' ? `
         <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(-1)" style="font-size:13px; padding:4px 10px;">‹ Prev</button>
         <div style="font-size:18px; font-weight:800; color:var(--text); min-width:170px; text-align:center;">${esc(monthName)}</div>
         <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(1)" style="font-size:13px; padding:4px 10px;">Next ›</button>
-        <button type="button" class="btn btn-ghost" onclick="_calGoToday()" style="font-size:13px; padding:4px 10px;">Today</button>
+        <button type="button" class="btn btn-ghost" onclick="_calGoToday()" style="font-size:13px; padding:4px 10px;">Today</button>` : `<div style="font-size:16px; font-weight:800; color:var(--text);">Timeline — all ETAs</div>`}
         <div style="margin-left:auto; display:flex; gap:12px; align-items:center; font-size:11px; font-weight:700; flex-wrap:wrap;">
           <span style="display:inline-flex; align-items:center; gap:5px; color:#E8751A;"><span style="width:10px; height:10px; border-radius:2px; background:#E8751A; display:inline-block;"></span>Order ETA (rough)</span>
           <span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6;"><span style="width:10px; height:10px; border-radius:2px; background:#3b82f6; display:inline-block;"></span>Order ETA (production)</span>
           <span style="display:inline-flex; align-items:center; gap:5px; color:#16a34a;"><span style="width:10px; height:10px; border-radius:2px; background:#16a34a; display:inline-block;"></span>Shipment ETA</span>
         </div>
       </div>
+      ${_calView === 'timeline' ? _calTimelineHtml(allEvents, esc) : `
       <div style="display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;">
         <div style="flex:1 1 540px; min-width:0;">
           <div class="cal-weekdays">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(w => `<div class="cal-weekday">${w}</div>`).join('')}</div>
           <div class="cal-grid">${cells}</div>
         </div>
         <div style="flex:0 0 300px; max-width:100%;">${listPanel}</div>
-      </div>`;
+      </div>`}`;
   }
 
   function renderReceivingList() {
