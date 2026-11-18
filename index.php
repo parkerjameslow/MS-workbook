@@ -12398,6 +12398,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           Export PDF
         </button>
+        <button class="btn btn-ghost" onclick="openOrderDepositSummary(_currentOrderId)" title="Combine every workbook in this order into a client-facing deposit summary — per-workbook invoice totals, the deposit due, and the balance due on delivery" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          Deposit Summary
+        </button>
         <button class="btn btn-ghost" onclick="duplicateOrder(_currentOrderId)" title="Clone this entire order — copies every workbook (full detail) and starts a fresh order in the Orders queue, so you can re-run it later and tweak qty/costs" style="display:inline-flex; align-items:center; gap:5px; font-size:12px;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Duplicate Order
@@ -56666,6 +56670,119 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       <div style="padding:18px 20px;">${body}</div>`;
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
+  }
+
+  // ── Order Deposit Summary ──────────────────────────────────────────────
+  // Combines every workbook in the order into one client-facing summary:
+  // per-workbook invoice total + deposit due, then Gross / Total Deposit /
+  // Remaining-on-delivery. Deposit % is the order's own depositPct (default 50).
+  // Client-facing money uses 2 decimals (invoice standard), not the site 3dp.
+  let _depositSummaryPlain = '', _depositSummaryHtml = '';
+  function openOrderDepositSummary(orderId) {
+    const o = orderData[orderId];
+    if (!o) return;
+    const pct = (o.depositPct != null ? o.depositPct : 50);
+    const fmt = v => '$' + (Number(v) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    // If the order's invoice # is numeric, number the workbooks sequentially
+    // from it (Invoice 1825, 1826, …), matching the reference layout.
+    const baseInv = parseInt(String(o.invoiceNumber || '').replace(/[^0-9]/g, ''), 10);
+    const hasInv = !isNaN(baseInv);
+    const lines = [];
+    let gross = 0;
+    (o.entries || []).forEach(e => {
+      const detail = workbookDetail[`${e.clientName}|${e.workbookId}`] || {};
+      const live = (typeof _wbLiveTotalForOrder === 'function') ? _wbLiveTotalForOrder(detail, o, e.workbookId) : { total: 0 };
+      const total = live.total || 0;
+      if (total <= 0) return;
+      const item = (clientData[e.clientName] || []).find(i => String(i.id) === String(e.workbookId)) || {};
+      const name = detail.productName || item.product || item.name || ('Workbook #' + e.workbookId);
+      const dep = Math.round(total * (pct / 100) * 100) / 100;
+      gross += total;
+      lines.push({ inv: hasInv ? (baseInv + lines.length) : null, name, total, dep });
+    });
+    const totalDeposit = Math.round(gross * (pct / 100) * 100) / 100;
+    const remaining = Math.round((gross - totalDeposit) * 100) / 100;
+    const clientName = o.clientName || (((o.entries || [])[0]) || {}).clientName || '';
+    const orderName = (typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : (o.name || ('Order #' + orderId));
+    const heading = `${clientName ? clientName + ' — ' : ''}${orderName} Deposit Summary`;
+
+    // Plain text (Copy → paste into an email).
+    const txt = [heading, ''];
+    lines.forEach(l => {
+      txt.push((l.inv != null ? `Invoice ${l.inv} – ` : '') + l.name);
+      txt.push('Invoice Total: ' + fmt(l.total));
+      txt.push(`${pct}% Deposit Due: ` + fmt(l.dep));
+      txt.push('');
+    });
+    txt.push('Gross Invoice Total: ' + fmt(gross));
+    txt.push(`TOTAL ${pct}% DEPOSIT DUE: ` + fmt(totalDeposit));
+    txt.push(`Remaining ${pct}% Due on Delivery: ` + fmt(remaining));
+    _depositSummaryPlain = txt.join('\n');
+
+    const modalBody = lines.length
+      ? lines.map(l => `
+          <div style="margin-bottom:18px;">
+            <div style="font-size:15px; font-weight:700; color:var(--text);">${l.inv != null ? `Invoice ${l.inv} – ` : ''}${esc(l.name)}</div>
+            <div style="font-size:14px; color:var(--text); margin-top:3px;">Invoice Total: <strong>${fmt(l.total)}</strong></div>
+            <div style="font-size:14px; color:var(--text-muted); margin-top:1px;">${pct}% Deposit Due: <strong style="color:var(--text);">${fmt(l.dep)}</strong></div>
+          </div>`).join('')
+      : `<div style="color:var(--text-muted); padding:16px 0;">No workbook totals yet — add Sale Per / pricing to this order's workbooks, then try again.</div>`;
+    const modalFoot = lines.length ? `
+        <div style="border-top:2px solid var(--border); margin-top:6px; padding-top:14px;">
+          <div style="font-size:15px; color:var(--text); margin-bottom:5px;">Gross Invoice Total: <strong>${fmt(gross)}</strong></div>
+          <div style="font-size:15px; color:var(--text); margin-bottom:5px;">TOTAL ${pct}% DEPOSIT DUE: <strong style="color:var(--accent);">${fmt(totalDeposit)}</strong></div>
+          <div style="font-size:15px; color:var(--text);">Remaining ${pct}% Due on Delivery: <strong>${fmt(remaining)}</strong></div>
+        </div>` : '';
+
+    // Print HTML uses fixed colors (the print window has no theme variables).
+    const printBody = (lines.length ? lines.map(l => `
+        <div style="margin-bottom:16px;">
+          <div style="font-size:15px; font-weight:700;">${l.inv != null ? `Invoice ${l.inv} – ` : ''}${esc(l.name)}</div>
+          <div style="font-size:14px; margin-top:3px;">Invoice Total: <strong>${fmt(l.total)}</strong></div>
+          <div style="font-size:14px; color:#555; margin-top:1px;">${pct}% Deposit Due: <strong style="color:#000;">${fmt(l.dep)}</strong></div>
+        </div>`).join('') : '') + (lines.length ? `
+        <div style="border-top:2px solid #ddd; margin-top:8px; padding-top:14px;">
+          <div style="font-size:15px; margin-bottom:5px;">Gross Invoice Total: <strong>${fmt(gross)}</strong></div>
+          <div style="font-size:15px; margin-bottom:5px;">TOTAL ${pct}% DEPOSIT DUE: <strong style="color:#E8751A;">${fmt(totalDeposit)}</strong></div>
+          <div style="font-size:15px;">Remaining ${pct}% Due on Delivery: <strong>${fmt(remaining)}</strong></div>
+        </div>` : '');
+    _depositSummaryHtml = `<h2 style="margin:0 0 18px; color:#E8751A;">${esc(heading)}</h2>${printBody}`;
+
+    const existing = document.getElementById('order-deposit-summary-modal');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'order-deposit-summary-modal';
+    overlay.style.cssText = 'position:fixed; inset:0; z-index:1300; background:rgba(0,0,0,0.6); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; overflow:auto;';
+    overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:var(--surface); border:1px solid var(--border); border-radius:14px; width:100%; max-width:640px; box-shadow:0 20px 60px rgba(0,0,0,0.4);';
+    panel.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 22px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); border-radius:14px 14px 0 0; z-index:1;">
+        <div style="font-size:17px; font-weight:800; color:var(--text);">${esc(heading)}</div>
+        <button type="button" onclick="document.getElementById('order-deposit-summary-modal').remove()" title="Close" style="background:none; border:none; font-size:24px; color:var(--text-muted); cursor:pointer; line-height:1; padding:0 4px;">&times;</button>
+      </div>
+      <div style="padding:22px;">${modalBody}${modalFoot}</div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; padding:14px 22px; border-top:1px solid var(--border);">
+        <button type="button" class="btn btn-ghost" onclick="_copyDepositSummary(this)" style="font-size:13px;">Copy text</button>
+        <button type="button" class="btn btn-primary" onclick="_printDepositSummary()" style="font-size:13px;">Print / Save PDF</button>
+      </div>`;
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  }
+  function _copyDepositSummary(btn) {
+    const t = _depositSummaryPlain || '';
+    const done = () => { if (btn) { const o = btn.textContent; btn.textContent = 'Copied ✓'; setTimeout(() => { btn.textContent = o; }, 1400); } };
+    const fallback = () => { try { const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done(); } catch (_) {} };
+    try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done).catch(fallback); else fallback(); } catch (_) { fallback(); }
+  }
+  function _printDepositSummary() {
+    const win = window.open('', '_blank');
+    if (!win) { if (typeof _msToast === 'function') _msToast('Pop-up blocked — allow pop-ups to print.', 'error'); return; }
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Deposit Summary</title><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1d2e;max-width:640px;margin:40px auto;padding:0 24px;line-height:1.55;} h2{font-size:21px;} strong{font-weight:700;}</style></head><body>${_depositSummaryHtml}</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { try { win.print(); } catch (_) {} }, 250);
   }
 
   function renderOrderDetail(id) {
