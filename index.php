@@ -329,13 +329,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     #nav-clients-link.active,
     #nav-recent-link,
     #nav-recent-link:hover,
-    #nav-recent-link.active { background: #E8751A; color: #1a1d2e; }
+    #nav-recent-link.active,
+    #nav-calendar-link,
+    #nav-calendar-link:hover,
+    #nav-calendar-link.active { background: #E8751A; color: #1a1d2e; }
     #nav-all-workbooks span,
     #nav-clients-link span,
-    #nav-recent-link span { color: #1a1d2e; }
+    #nav-recent-link span,
+    #nav-calendar-link span { color: #1a1d2e; }
     #nav-all-workbooks:hover,
     #nav-clients-link:hover,
-    #nav-recent-link:hover { background: #d4661a; }
+    #nav-recent-link:hover,
+    #nav-calendar-link:hover { background: #d4661a; }
     /* Stacked variant — main label row on top, smaller mixed-case
        sub-label underneath. Used by nav items that want a permanent
        hint about what lives inside (e.g. Inventory → "SKUs & Variants"). */
@@ -8125,6 +8130,15 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </a>
   </div>
 
+  <!-- Shipping Calendar — orange pill matching Pipeline / Clients / Recent WB.
+       Month view of Order ETAs (pre-production / production lead) + Shipment
+       ETAs (real carrier ETA once a tracking number exists). -->
+  <div style="padding: 0 10px 8px;">
+    <a id="nav-calendar-link" href="#/calendar" onclick="event.preventDefault(); location.hash='#/calendar'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
+      <span>Shipping Calendar</span>
+    </a>
+  </div>
+
   <!-- Client Quotes — staging area of draft workbooks; commit to a client
        when they say yes. Quick Quote = internal margin calculator. -->
   <div style="padding: 0 10px 8px;">
@@ -8211,13 +8225,6 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <a id="nav-receiving-link" href="#/receiving" onclick="event.preventDefault(); location.hash='#/receiving'" class="nav-flat-link">
           <span>Receiving</span>
           <span class="nav-badge" id="badge-receiving"></span>
-        </a>
-
-        <!-- Shipping Calendar — month view of Order ETAs (pre-production /
-             production lead math) + Shipment ETAs (real carrier ETA once a
-             tracking number exists). -->
-        <a id="nav-calendar-link" href="#/calendar" onclick="event.preventDefault(); location.hash='#/calendar'" class="nav-flat-link">
-          <span>Shipping Calendar</span>
         </a>
       </div>
     </div>
