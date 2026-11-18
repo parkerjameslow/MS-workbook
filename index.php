@@ -11275,11 +11275,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
           <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">ETD</label>
-          <input type="date" id="ship-detail-etd" style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange()" />
+          <input type="date" id="ship-detail-etd" style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange('etd')" />
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
           <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:var(--text-muted);">ETA</label>
-          <input type="date" id="ship-detail-eta" style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange()" />
+          <input type="date" id="ship-detail-eta" style="height:34px; padding:0 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); color:var(--text); font-size:13px; font-family:inherit; outline:none;" oninput="onShipmentDateChange('eta')" />
         </div>
         <div id="ship-delivered-wrap" style="display:none; align-items:center; gap:6px;">
           <label style="font-size:11px; font-weight:600; text-transform:uppercase; color:#34d399;">Delivered On</label>
@@ -45385,6 +45385,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.getElementById('ship-detail-eta').value       = s.eta || '';
     document.getElementById('ship-detail-delivered').value = s.deliveredOn || '';
     document.getElementById('ship-delivered-wrap').style.display = s.status === 'delivered' ? 'flex' : 'none';
+    // In Transit requires an ETD — red-flag it if missing so Karen fills it in.
+    if (typeof _shipFlagEtdRequired === 'function') _shipFlagEtdRequired(s.status === 'in_transit' && !s.etd);
     const shDoneEl = document.getElementById('ship-detail-done-toggle');
     if (shDoneEl) shDoneEl.innerHTML = (typeof _doneDetailToggleHtml === 'function') ? _doneDetailToggleHtml('shipment', String(_currentShipmentId)) : '';
 
@@ -46856,7 +46858,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       document.getElementById('ship-detail-status').value = s.status || 'planning';
       return;
     }
-    const needsTracking = (newStatus === 'in_transit' || newStatus === 'waiting_arrival' || newStatus === 'delivered');
+    // In Transit no longer force-requires a parcel tracking number — ocean /
+    // Matson shipments from China are ETD-driven (handled in the in_transit
+    // branch below). Waiting Arrival + Delivered still require carrier + tracking.
+    const needsTracking = (newStatus === 'waiting_arrival' || newStatus === 'delivered');
     if (needsTracking && (!s.carrier || !s.trackingNumber)) {
       openTrackingModal(_currentShipmentId, newStatus, 'detail');
       // Revert until modal confirms — keeps the displayed status
@@ -46876,6 +46881,20 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     saveShipments();
     rebuildShipmentsNav();
     updateReceivingBadge();
+    // In Transit (ocean/Matson from China): ETD is required; the port ETA auto-
+    // fills to ETD + 21 days. If ETD is set, fill the ETA now; otherwise flag the
+    // ETD field so Karen enters the departure date.
+    if (newStatus === 'in_transit') {
+      if (s.etd) {
+        const _eta21 = _addCalendarDays(s.etd, 21);
+        if (_eta21) { s.eta = _eta21; const _etaEl = document.getElementById('ship-detail-eta'); if (_etaEl) _etaEl.value = _eta21; saveShipments(); }
+        _shipFlagEtdRequired(false);
+      } else {
+        _shipFlagEtdRequired(true);
+        const _etdEl = document.getElementById('ship-detail-etd'); if (_etdEl) _etdEl.focus();
+        if (typeof _msToast === 'function') _msToast('In Transit needs a departure date (ETD) — enter it to set the 21-day port ETA.', 'warn');
+      }
+    }
     // If status moved to delivered (already had tracking), route the
     // operator to the Receiving lane so they land on the card.
     if (newStatus === 'delivered') {
@@ -46921,7 +46940,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (!s || s.archived || s.status === 'archived') return;
       const hasTracking = !!(s.trackingNumber && String(s.trackingNumber).trim());
       const etaRaw = (s.tracking && s.tracking.eta) || s.eta || '';
-      if (!hasTracking || !etaRaw) return;
+      if (!etaRaw) return;
+      // Include In-Transit ocean shipments (ETD+21 ETA) even without a parcel
+      // tracking number; otherwise a shipment needs a tracking number to show.
+      if (!hasTracking && s.status !== 'in_transit') return;
       const k = _calDayKey(etaRaw); if (!k) return;
       const endDate = new Date(etaRaw);
       let startDate = null;
@@ -46930,7 +46952,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (!startDate || startDate > endDate) startDate = new Date(endDate.getTime() - 7 * 86400000);
       const _carrier = ((typeof _carrierLabel === 'function' ? _carrierLabel(s.carrier || '') : (s.carrier || '')) || 'Carrier');
       const _trk = String(s.trackingNumber || '').trim();
-      events.push({ dateKey: k, type: 'shipment', label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: _carrier + (_trk ? ' · ' + _trk : ''), carrier: _carrier, tracking: _trk, client: ((typeof _pkShipClient === 'function' ? _pkShipClient(s) : '') || '').trim(), startDate, endDate });
+      events.push({ dateKey: k, type: 'shipment', shipStatus: s.status, label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: _carrier + (_trk ? ' · ' + _trk : ''), carrier: _carrier, tracking: _trk, client: ((typeof _pkShipClient === 'function' ? _pkShipClient(s) : '') || '').trim(), startDate, endDate });
     });
     // Order ETAs — pre-production + production orders NOT yet on a shipment.
     Object.keys(orderData || {}).forEach(id => {
@@ -46967,6 +46989,21 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       events.push({ dateKey: k, type: 'order', label: nm, href: '#/order/' + id, sub: _osub, rough, client: (o.clientName || ''), startDate, endDate: etaDate });
     });
     return events;
+  }
+  // Event colors: In-Transit (China/ocean) shipments are cyan so they stand out
+  // ("21 days to port"); delivered/tracked shipments green; order ETAs orange
+  // (rough pre-production) / blue (firm production).
+  function _calEventColor(e) {
+    if (e && e.type === 'shipment') return (e.shipStatus === 'in_transit') ? '#06b6d4' : '#16a34a';
+    return (e && e.rough) ? '#E8751A' : '#3b82f6';
+  }
+  function _calEventBg(e) {
+    const m = { '#06b6d4': 'rgba(6,182,212,0.12)', '#16a34a': 'rgba(22,163,74,0.12)', '#E8751A': 'rgba(232,117,26,0.12)', '#3b82f6': 'rgba(59,130,246,0.12)' };
+    return m[_calEventColor(e)] || 'rgba(0,0,0,0.08)';
+  }
+  function _calEventTag(e) {
+    if (!e || e.type !== 'shipment') return 'Order ETA';
+    return (e.shipStatus === 'in_transit') ? 'In Transit → port' : 'Shipment ETA';
   }
   function _calShiftMonth(delta) {
     if (_calYear == null) { const n = new Date(); _calYear = n.getFullYear(); _calMonth = n.getMonth(); }
@@ -47007,7 +47044,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
     let rows = '';
     evs.slice().sort((a, b) => midnight(a.startDate) - midnight(b.startDate)).forEach(e => {
-      const color = e.type === 'shipment' ? '#16a34a' : (e.rough ? '#E8751A' : '#3b82f6');
+      const color = (typeof _calEventColor === 'function') ? _calEventColor(e) : (e.type === 'shipment' ? '#16a34a' : (e.rough ? '#E8751A' : '#3b82f6'));
       let left = offOf(e.startDate) * dayW;
       const widthDays0 = Math.max(1, offOf(e.endDate) - offOf(e.startDate) + 1);
       let widthDays = widthDays0;
@@ -47015,7 +47052,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       let width = Math.max(dayW, widthDays * dayW);
       if (left + width > totalW) width = Math.max(dayW, totalW - left);
       const range = `${midnight(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${midnight(e.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-      const tag = e.type === 'shipment' ? 'Shipment ETA' : 'Order ETA';
+      const tag = (typeof _calEventTag === 'function') ? _calEventTag(e) : (e.type === 'shipment' ? 'Shipment ETA' : 'Order ETA');
       rows += `<div style="position:relative; height:36px; border-bottom:1px dashed var(--border);">
         <div onclick="location.hash='${e.href}'" title="${tag} — ${esc(e.label)} · ${range}${e.sub ? ' · ' + esc(e.sub) : ''}" style="position:absolute; left:${left}px; width:${width}px; top:6px; height:24px; background:${color}; border-radius:6px; color:#fff; font-size:11px; font-weight:700; padding:0 9px; display:flex; align-items:center; gap:8px; overflow:hidden; white-space:nowrap; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.18);">
           <span style="overflow:hidden; text-overflow:ellipsis;">${esc(e.label)}</span>
@@ -47061,9 +47098,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const todayKey = _calDayKey(now);
 
     const eventPill = (e) => {
-      const color = e.type === 'shipment' ? '#16a34a' : (e.rough ? '#E8751A' : '#3b82f6');
-      const bg    = e.type === 'shipment' ? 'rgba(22,163,74,0.12)' : (e.rough ? 'rgba(232,117,26,0.12)' : 'rgba(59,130,246,0.12)');
-      const tag   = e.type === 'shipment' ? 'Shipment ETA' : 'Order ETA';
+      const color = _calEventColor(e);
+      const bg    = _calEventBg(e);
+      const tag   = _calEventTag(e);
       return `<div onclick="event.stopPropagation(); location.hash='${e.href}'" title="${esc(tag)} — ${esc(e.label)}${e.sub ? ' · ' + esc(e.sub) : ''}" style="cursor:pointer; background:${bg}; color:${color}; border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:5px; padding:2px 6px; margin-bottom:3px; font-size:11px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(e.label)}</div>`;
     };
 
@@ -47083,7 +47120,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const mPrefix = `${_calYear}-${String(_calMonth + 1).padStart(2, '0')}`;
     const monthEvents = allEvents.filter(e => e.dateKey && e.dateKey.indexOf(mPrefix) === 0).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
     const listItem = (e) => {
-      const color = e.type === 'shipment' ? '#16a34a' : (e.rough ? '#E8751A' : '#3b82f6');
+      const color = _calEventColor(e);
       let dlabel = e.dateKey;
       try { dlabel = new Date(e.dateKey + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (_) {}
       return `<div onclick="location.hash='${e.href}'" title="Open" style="cursor:pointer; display:flex; gap:10px; align-items:flex-start; padding:9px 10px; border-radius:8px; border:1px solid var(--border); border-left:3px solid ${color}; background:var(--surface2); margin-bottom:7px;">
@@ -47125,6 +47162,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <div style="margin-left:auto; display:flex; gap:12px; align-items:center; font-size:11px; font-weight:700; flex-wrap:wrap;">
           <span style="display:inline-flex; align-items:center; gap:5px; color:#E8751A;"><span style="width:10px; height:10px; border-radius:2px; background:#E8751A; display:inline-block;"></span>Order ETA (rough)</span>
           <span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6;"><span style="width:10px; height:10px; border-radius:2px; background:#3b82f6; display:inline-block;"></span>Order ETA (production)</span>
+          <span style="display:inline-flex; align-items:center; gap:5px; color:#06b6d4;"><span style="width:10px; height:10px; border-radius:2px; background:#06b6d4; display:inline-block;"></span>In Transit → port</span>
           <span style="display:inline-flex; align-items:center; gap:5px; color:#16a34a;"><span style="width:10px; height:10px; border-radius:2px; background:#16a34a; display:inline-block;"></span>Shipment ETA</span>
         </div>
       </div>
@@ -47944,7 +47982,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (selectEl) selectEl.value = s.status || 'planning';
       return;
     }
-    const needsTracking = (newStatus === 'in_transit' || newStatus === 'waiting_arrival' || newStatus === 'delivered');
+    // In Transit is ETD-driven (ocean), not parcel-tracking gated — see the
+    // in_transit branch below. Waiting Arrival + Delivered still need tracking.
+    const needsTracking = (newStatus === 'waiting_arrival' || newStatus === 'delivered');
     if (needsTracking && (!s.carrier || !s.trackingNumber)) {
       openTrackingModal(id, newStatus, 'card');
       if (selectEl) selectEl.value = s.status || 'planning';
@@ -47957,6 +47997,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     s.status = newStatus;
     saveShipments();
+    if (newStatus === 'in_transit') {
+      if (s.etd) {
+        const _eta21 = _addCalendarDays(s.etd, 21);
+        if (_eta21) { s.eta = _eta21; saveShipments(); }
+      } else {
+        if (typeof _msToast === 'function') _msToast('In Transit needs a departure date (ETD) — opening the shipment to set it.', 'warn');
+        location.hash = '#/shipment/' + id;
+        return;
+      }
+    }
     if (newStatus === 'delivered') { location.hash = '#/receiving'; rebuildShipmentsNav(); return; }
     if (typeof renderShipmentsContent === 'function') renderShipmentsContent();
     rebuildShipmentsNav();
@@ -47969,12 +48019,36 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function updateReceivingBadge() {
     if (typeof rebuildShipmentsNav === 'function') rebuildShipmentsNav();
   }
-  function onShipmentDateChange() {
+  // Add N calendar days to a 'YYYY-MM-DD' date input value, returning the same
+  // format. Used for the In-Transit port ETA = ETD + 21 days rule.
+  function _addCalendarDays(ymd, n) {
+    if (!ymd) return '';
+    const d = new Date(ymd + 'T00:00:00');
+    if (isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  // Red-flag the shipment ETD field when In Transit needs a departure date.
+  function _shipFlagEtdRequired(on) {
+    const el = document.getElementById('ship-detail-etd');
+    if (!el) return;
+    el.style.borderColor = on ? '#ef4444' : 'var(--border)';
+    el.style.boxShadow = on ? '0 0 0 2px rgba(239,68,68,0.18)' : 'none';
+  }
+
+  function onShipmentDateChange(source) {
     const s = shipmentData[_currentShipmentId];
     if (!s) return;
     s.etd         = document.getElementById('ship-detail-etd').value;
     s.eta         = document.getElementById('ship-detail-eta').value;
     s.deliveredOn = document.getElementById('ship-detail-delivered').value;
+    // In Transit: entering/updating the ETD auto-sets the port ETA to ETD + 21
+    // days (editing the ETA field directly is respected). Clears the ETD flag.
+    if (source === 'etd' && s.status === 'in_transit' && s.etd) {
+      const eta21 = _addCalendarDays(s.etd, 21);
+      if (eta21) { s.eta = eta21; const _etaEl = document.getElementById('ship-detail-eta'); if (_etaEl) _etaEl.value = eta21; }
+      _shipFlagEtdRequired(false);
+    }
     // Dates drive the flow: pushing ETD/ETA past today advances the
     // status automatically (forward only, capped at Waiting Arrival).
     // Reflect it in the header dropdown right away so the operator sees
