@@ -46906,7 +46906,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // workbooks lands on a tracked shipment — then that shipment's real carrier
   // ETA ("Shipment ETA", green) represents it instead.
   let _calYear = null, _calMonth = null, _calView = 'month';  // 'month' | 'timeline'
-  function _calSetView(v) { _calView = (v === 'timeline') ? 'timeline' : 'month'; renderShipmentCalendar(); }
+  let _calCenterTimeline = false, _calTimelineScrollLeft = 0;
+  function _calSetView(v) { _calView = (v === 'timeline') ? 'timeline' : 'month'; if (_calView === 'timeline') _calCenterTimeline = true; renderShipmentCalendar(); }
   function _calDayKey(d) {
     try { const x = (d instanceof Date) ? d : new Date(d); if (isNaN(x.getTime())) return null; return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
     catch (_) { return null; }
@@ -46926,7 +46927,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       const etdRaw = s.etd || (s.tracking && s.tracking.etd) || s.portShipDate || '';
       if (etdRaw) { const sd = new Date(etdRaw); if (!isNaN(sd.getTime())) startDate = sd; }
       if (!startDate || startDate > endDate) startDate = new Date(endDate.getTime() - 7 * 86400000);
-      events.push({ dateKey: k, type: 'shipment', label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: (typeof _carrierLabel === 'function' ? _carrierLabel(s.carrier || '') : (s.carrier || '')), startDate, endDate });
+      const _carrier = ((typeof _carrierLabel === 'function' ? _carrierLabel(s.carrier || '') : (s.carrier || '')) || 'Carrier');
+      const _trk = String(s.trackingNumber || '').trim();
+      events.push({ dateKey: k, type: 'shipment', label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: _carrier + (_trk ? ' · ' + _trk : ''), carrier: _carrier, tracking: _trk, startDate, endDate });
     });
     // Order ETAs — pre-production + production orders NOT yet on a shipment.
     Object.keys(orderData || {}).forEach(id => {
@@ -46949,7 +46952,18 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (startRaw) { const sd = new Date(startRaw); if (!isNaN(sd.getTime())) startDate = sd; }
       if (!startDate) startDate = new Date();
       if (startDate > etaDate) startDate = new Date(etaDate.getTime() - 86400000);
-      events.push({ dateKey: k, type: 'order', label: nm, href: '#/order/' + id, sub: (o.clientName || ''), rough, startDate, endDate: etaDate });
+      // Sub line: for a production order, show when it was committed to
+      // Production (movedToProductionAt) + the workbook-derived lead days; for a
+      // pre-production order, show it's not in production yet + the est. lead.
+      const _lead = (typeof _orderMaxLeadDays === 'function') ? _orderMaxLeadDays(o) : 0;
+      let _osub = o.clientName || '';
+      if (!rough && startRaw) {
+        const _cd = new Date(startRaw);
+        if (!isNaN(_cd.getTime())) _osub = (o.clientName ? o.clientName + ' · ' : '') + 'In production since ' + _cd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + (_lead ? ' · ' + _lead + 'd lead' : '');
+      } else {
+        _osub = (o.clientName ? o.clientName + ' · ' : '') + 'Pre-production' + (_lead ? ' · ~' + _lead + 'd lead' : '');
+      }
+      events.push({ dateKey: k, type: 'order', label: nm, href: '#/order/' + id, sub: _osub, rough, startDate, endDate: etaDate });
     });
     return events;
   }
@@ -47013,7 +47027,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const todayLine = (todayLeft >= 0 && todayLeft <= totalW)
       ? `<div style="position:absolute; top:0; bottom:0; left:${todayLeft}px; width:2px; background:var(--accent); z-index:3; pointer-events:none;"></div>`
       : '';
-    return `<div style="overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface);">
+    return `<div id="cal-timeline-scroll" data-today-left="${todayLeft}" style="overflow-x:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface);">
       <div style="position:relative; width:${totalW}px; min-width:100%;">
         <div style="display:flex; position:sticky; top:0; background:var(--surface); z-index:2; border-bottom:1px solid var(--border);">${header}</div>
         <div style="position:relative;">${rows}${todayLine}</div>
@@ -47112,6 +47126,22 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         </div>
         <div style="flex:0 0 300px; max-width:100%;">${listPanel}</div>
       </div>`}`;
+
+    // Timeline: center TODAY in the viewport on toggle, then remember the
+    // operator's scroll so background re-renders don't jump them back.
+    if (_calView === 'timeline') {
+      requestAnimationFrame(() => {
+        const sc = document.getElementById('cal-timeline-scroll');
+        if (!sc) return;
+        if (_calCenterTimeline) {
+          _calCenterTimeline = false;
+          const tl = parseFloat(sc.getAttribute('data-today-left')) || 0;
+          _calTimelineScrollLeft = Math.max(0, tl - sc.clientWidth / 2 + 23);
+        }
+        sc.scrollLeft = _calTimelineScrollLeft;
+        if (!sc._scrollBound) { sc._scrollBound = true; sc.addEventListener('scroll', () => { _calTimelineScrollLeft = sc.scrollLeft; }, { passive: true }); }
+      });
+    }
   }
 
   function renderReceivingList() {
