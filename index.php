@@ -46906,8 +46906,9 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   // workbooks lands on a tracked shipment — then that shipment's real carrier
   // ETA ("Shipment ETA", green) represents it instead.
   let _calYear = null, _calMonth = null, _calView = 'month';  // 'month' | 'timeline'
-  let _calCenterTimeline = false, _calTimelineScrollLeft = 0;
+  let _calCenterTimeline = false, _calTimelineScrollLeft = 0, _calClientFilter = '';
   function _calSetView(v) { _calView = (v === 'timeline') ? 'timeline' : 'month'; if (_calView === 'timeline') _calCenterTimeline = true; renderShipmentCalendar(); }
+  function _calSetClient(v) { _calClientFilter = v || ''; _calCenterTimeline = true; renderShipmentCalendar(); }
   function _calDayKey(d) {
     try { const x = (d instanceof Date) ? d : new Date(d); if (isNaN(x.getTime())) return null; return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
     catch (_) { return null; }
@@ -46929,7 +46930,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       if (!startDate || startDate > endDate) startDate = new Date(endDate.getTime() - 7 * 86400000);
       const _carrier = ((typeof _carrierLabel === 'function' ? _carrierLabel(s.carrier || '') : (s.carrier || '')) || 'Carrier');
       const _trk = String(s.trackingNumber || '').trim();
-      events.push({ dateKey: k, type: 'shipment', label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: _carrier + (_trk ? ' · ' + _trk : ''), carrier: _carrier, tracking: _trk, startDate, endDate });
+      events.push({ dateKey: k, type: 'shipment', label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: _carrier + (_trk ? ' · ' + _trk : ''), carrier: _carrier, tracking: _trk, client: ((typeof _pkShipClient === 'function' ? _pkShipClient(s) : '') || '').trim(), startDate, endDate });
     });
     // Order ETAs — pre-production + production orders NOT yet on a shipment.
     Object.keys(orderData || {}).forEach(id => {
@@ -46963,7 +46964,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       } else {
         _osub = (o.clientName ? o.clientName + ' · ' : '') + 'Pre-production' + (_lead ? ' · ~' + _lead + 'd lead' : '');
       }
-      events.push({ dateKey: k, type: 'order', label: nm, href: '#/order/' + id, sub: _osub, rough, startDate, endDate: etaDate });
+      events.push({ dateKey: k, type: 'order', label: nm, href: '#/order/' + id, sub: _osub, rough, client: (o.clientName || ''), startDate, endDate: etaDate });
     });
     return events;
   }
@@ -47048,6 +47049,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const byDay = {};
     const allEvents = _collectCalendarEvents();
     allEvents.forEach(e => { (byDay[e.dateKey] = byDay[e.dateKey] || []).push(e); });
+    // Timeline client filter — distinct clients present, + the filtered set.
+    const clientsInView = Array.from(new Set(allEvents.map(e => e.client).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    if (_calClientFilter && clientsInView.indexOf(_calClientFilter) === -1) _calClientFilter = '';
+    const tlEvents = _calClientFilter ? allEvents.filter(e => e.client === _calClientFilter) : allEvents;
 
     const first = new Date(_calYear, _calMonth, 1);
     const startDow = first.getDay();
@@ -47111,14 +47116,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(-1)" style="font-size:13px; padding:4px 10px;">‹ Prev</button>
         <div style="font-size:18px; font-weight:800; color:var(--text); min-width:170px; text-align:center;">${esc(monthName)}</div>
         <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(1)" style="font-size:13px; padding:4px 10px;">Next ›</button>
-        <button type="button" class="btn btn-ghost" onclick="_calGoToday()" style="font-size:13px; padding:4px 10px;">Today</button>` : `<div style="font-size:16px; font-weight:800; color:var(--text);">Timeline — all ETAs</div>`}
+        <button type="button" class="btn btn-ghost" onclick="_calGoToday()" style="font-size:13px; padding:4px 10px;">Today</button>` : `
+        <div style="font-size:16px; font-weight:800; color:var(--text);">Timeline</div>
+        <select onchange="_calSetClient(this.value)" title="Filter the timeline by client" style="font-size:13px; padding:6px 10px; min-width:170px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface2); color:var(--text); font-family:inherit; cursor:pointer;">
+          <option value="">All clients</option>
+          ${clientsInView.map(c => `<option value="${esc(c)}"${c === _calClientFilter ? ' selected' : ''}>${esc(c)}</option>`).join('')}
+        </select>`}
         <div style="margin-left:auto; display:flex; gap:12px; align-items:center; font-size:11px; font-weight:700; flex-wrap:wrap;">
           <span style="display:inline-flex; align-items:center; gap:5px; color:#E8751A;"><span style="width:10px; height:10px; border-radius:2px; background:#E8751A; display:inline-block;"></span>Order ETA (rough)</span>
           <span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6;"><span style="width:10px; height:10px; border-radius:2px; background:#3b82f6; display:inline-block;"></span>Order ETA (production)</span>
           <span style="display:inline-flex; align-items:center; gap:5px; color:#16a34a;"><span style="width:10px; height:10px; border-radius:2px; background:#16a34a; display:inline-block;"></span>Shipment ETA</span>
         </div>
       </div>
-      ${_calView === 'timeline' ? _calTimelineHtml(allEvents, esc) : `
+      ${_calView === 'timeline' ? _calTimelineHtml(tlEvents, esc) : `
       <div style="display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;">
         <div style="flex:1 1 540px; min-width:0;">
           <div class="cal-weekdays">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(w => `<div class="cal-weekday">${w}</div>`).join('')}</div>
