@@ -46962,7 +46962,8 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     if (_calYear == null) { _calYear = now.getFullYear(); _calMonth = now.getMonth(); }
     const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
     const byDay = {};
-    _collectCalendarEvents().forEach(e => { (byDay[e.dateKey] = byDay[e.dateKey] || []).push(e); });
+    const allEvents = _collectCalendarEvents();
+    allEvents.forEach(e => { (byDay[e.dateKey] = byDay[e.dateKey] || []).push(e); });
 
     const first = new Date(_calYear, _calMonth, 1);
     const startDow = first.getDay();
@@ -46989,6 +46990,33 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       </div>`;
     }
 
+    // ── Right-side list view — the month's events grouped Shipment / Order ──
+    const mPrefix = `${_calYear}-${String(_calMonth + 1).padStart(2, '0')}`;
+    const monthEvents = allEvents.filter(e => e.dateKey && e.dateKey.indexOf(mPrefix) === 0).sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+    const listItem = (e) => {
+      const color = e.type === 'shipment' ? '#16a34a' : (e.rough ? '#E8751A' : '#3b82f6');
+      let dlabel = e.dateKey;
+      try { dlabel = new Date(e.dateKey + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch (_) {}
+      return `<div onclick="location.hash='${e.href}'" title="Open" style="cursor:pointer; display:flex; gap:10px; align-items:flex-start; padding:9px 10px; border-radius:8px; border:1px solid var(--border); border-left:3px solid ${color}; background:var(--surface2); margin-bottom:7px;">
+        <div style="min-width:0; flex:1;">
+          <div style="font-size:13px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(e.label)}</div>
+          ${e.sub ? `<div style="font-size:11px; color:var(--text-muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(e.sub)}</div>` : ''}
+        </div>
+        <div style="font-size:11px; font-weight:800; color:${color}; white-space:nowrap;">${dlabel}</div>
+      </div>`;
+    };
+    const listSection = (title, arr, emptyTxt) => `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); margin-bottom:8px;">${title} <span style="font-weight:600;">(${arr.length})</span></div>
+        ${arr.length ? arr.map(listItem).join('') : `<div style="font-size:12px; color:var(--text-muted); font-style:italic; padding:2px 2px 6px;">${emptyTxt}</div>`}
+      </div>`;
+    const listPanel = `
+      <div class="section-card" style="padding:16px; margin:0;">
+        <div style="font-size:14px; font-weight:800; color:var(--text); margin-bottom:12px;">${esc(monthName)} — List</div>
+        ${listSection('Shipment ETAs', monthEvents.filter(e => e.type === 'shipment'), 'No shipment ETAs this month.')}
+        ${listSection('Order ETAs', monthEvents.filter(e => e.type === 'order'), 'No order ETAs this month.')}
+      </div>`;
+
     host.innerHTML = `
       <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
         <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(-1)" style="font-size:13px; padding:4px 10px;">‹ Prev</button>
@@ -47001,8 +47029,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <span style="display:inline-flex; align-items:center; gap:5px; color:#16a34a;"><span style="width:10px; height:10px; border-radius:2px; background:#16a34a; display:inline-block;"></span>Shipment ETA</span>
         </div>
       </div>
-      <div class="cal-weekdays">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(w => `<div class="cal-weekday">${w}</div>`).join('')}</div>
-      <div class="cal-grid">${cells}</div>`;
+      <div style="display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap;">
+        <div style="flex:1 1 540px; min-width:0;">
+          <div class="cal-weekdays">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(w => `<div class="cal-weekday">${w}</div>`).join('')}</div>
+          <div class="cal-grid">${cells}</div>
+        </div>
+        <div style="flex:0 0 300px; max-width:100%;">${listPanel}</div>
+      </div>`;
   }
 
   function renderReceivingList() {
