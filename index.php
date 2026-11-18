@@ -6816,6 +6816,18 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       border-radius: 99px; background: rgba(239,68,68,0.20); color: #fca5a5;
       border: 1px solid rgba(252,165,165,0.35);
     }
+    /* ── Shipping Calendar ─────────────────────────────────────────────── */
+    .cal-weekdays { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; }
+    .cal-weekday { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-muted); text-align:center; padding:4px 0; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+    .cal-cell { min-height:94px; border:1px solid var(--border); border-radius:8px; background:var(--surface2); padding:6px; display:flex; flex-direction:column; overflow:hidden; }
+    .cal-cell-empty { background:transparent; border:1px solid transparent; }
+    .cal-cell-today { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+    .cal-daynum { font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:4px; }
+    .cal-daynum-today { color:var(--accent); }
+    .cal-events { flex:1; min-height:0; overflow-y:auto; }
+    @media (max-width:768px) { .cal-cell { min-height:66px; padding:4px; } .cal-grid, .cal-weekdays { gap:3px; } .cal-weekday { font-size:9px; } }
+
     /* Manual "DONE" stamp on an order/shipment pipeline card — a team-wide
        "this is finished" marker (toggled from the card menu or detail page).
        Non-destructive: the card stays exactly where it is. */
@@ -8199,6 +8211,13 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
         <a id="nav-receiving-link" href="#/receiving" onclick="event.preventDefault(); location.hash='#/receiving'" class="nav-flat-link">
           <span>Receiving</span>
           <span class="nav-badge" id="badge-receiving"></span>
+        </a>
+
+        <!-- Shipping Calendar — month view of Order ETAs (pre-production /
+             production lead math) + Shipment ETAs (real carrier ETA once a
+             tracking number exists). -->
+        <a id="nav-calendar-link" href="#/calendar" onclick="event.preventDefault(); location.hash='#/calendar'" class="nav-flat-link">
+          <span>Shipping Calendar</span>
         </a>
       </div>
     </div>
@@ -10770,6 +10789,20 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </div>
   </main>
 </div><!-- /#view-receiving -->
+
+<div id="view-calendar" class="view">
+  <main class="container">
+    <div class="section-card">
+      <div class="section-header" style="display:flex; align-items:center; gap:10px;">
+        <span class="section-title" style="margin-right:auto;">Shipping Calendar</span>
+        <span style="font-size:11px; color:var(--text-muted); font-weight:600;">Order ETAs &amp; Shipment ETAs</span>
+      </div>
+      <div class="section-body">
+        <div id="calendar-content"></div>
+      </div>
+    </div>
+  </main>
+</div><!-- /#view-calendar -->
 
 <!-- Tracking entry modal — triggered when an operator switches a
      shipment's status to "Waiting Arrival". Captures carrier + tracking
@@ -40971,6 +41004,12 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       return;
     }
 
+    // Match: #/calendar — shipping calendar (Order ETAs + Shipment ETAs).
+    if (hash === '#/calendar') {
+      renderShipmentCalendar();
+      return;
+    }
+
     // Match: #/inventory
     if (hash === '#/inventory') {
       renderInventoryView();
@@ -46851,6 +46890,112 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function toggleReceivingArchive() {
     _receivingArchiveOpen = !_receivingArchiveOpen;
     renderReceivingList();
+  }
+
+  // ── Shipping Calendar ──────────────────────────────────────────────────
+  // Month view populated from Order ETAs and Shipment ETAs. An order shows an
+  // "Order ETA" (orange = rough pre-production estimate, blue = firm in-
+  // production estimate from the production-lead math) until one of its
+  // workbooks lands on a tracked shipment — then that shipment's real carrier
+  // ETA ("Shipment ETA", green) represents it instead.
+  let _calYear = null, _calMonth = null;
+  function _calDayKey(d) {
+    try { const x = (d instanceof Date) ? d : new Date(d); if (isNaN(x.getTime())) return null; return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); }
+    catch (_) { return null; }
+  }
+  function _collectCalendarEvents() {
+    const events = [];
+    // Shipment ETAs — the real carrier estimate, once a tracking number exists.
+    Object.keys(shipmentData || {}).forEach(id => {
+      const s = shipmentData[id];
+      if (!s || s.archived || s.status === 'archived') return;
+      const hasTracking = !!(s.trackingNumber && String(s.trackingNumber).trim());
+      const etaRaw = (s.tracking && s.tracking.eta) || s.eta || '';
+      if (!hasTracking || !etaRaw) return;
+      const k = _calDayKey(etaRaw); if (!k) return;
+      events.push({ dateKey: k, type: 'shipment', label: s.name || ('Shipment #' + id), href: '#/shipment/' + id, sub: (typeof _carrierLabel === 'function' ? _carrierLabel(s.carrier || '') : (s.carrier || '')) });
+    });
+    // Order ETAs — pre-production + production orders NOT yet on a shipment.
+    Object.keys(orderData || {}).forEach(id => {
+      const o = orderData[id];
+      if (!o || o.archived || o.status === 'archived') return;
+      const inPlay = (typeof _orderIsInOrdersQueue === 'function' && _orderIsInOrdersQueue(o)) || (typeof _orderIsInFulfillment === 'function' && _orderIsInFulfillment(o));
+      if (!inPlay) return;
+      let etaDate = null, rough = true;
+      const pe = (typeof _orderProductionEta === 'function') ? _orderProductionEta(o) : null;
+      if (pe && pe.date) { etaDate = pe.date; rough = false; }
+      else if (typeof _orderMaxLeadDays === 'function' && typeof _addBusinessDays === 'function') {
+        const lead = _orderMaxLeadDays(o);
+        if (lead > 0) etaDate = _addBusinessDays(new Date(), lead);
+      }
+      if (!etaDate) return;
+      const k = _calDayKey(etaDate); if (!k) return;
+      const nm = (typeof _orderDisplayName === 'function') ? _orderDisplayName(o) : (o.name || ('Order #' + id));
+      events.push({ dateKey: k, type: 'order', label: nm, href: '#/order/' + id, sub: (o.clientName || ''), rough });
+    });
+    return events;
+  }
+  function _calShiftMonth(delta) {
+    if (_calYear == null) { const n = new Date(); _calYear = n.getFullYear(); _calMonth = n.getMonth(); }
+    _calMonth += delta;
+    while (_calMonth < 0) { _calMonth += 12; _calYear--; }
+    while (_calMonth > 11) { _calMonth -= 12; _calYear++; }
+    renderShipmentCalendar();
+  }
+  function _calGoToday() { const n = new Date(); _calYear = n.getFullYear(); _calMonth = n.getMonth(); renderShipmentCalendar(); }
+  function renderShipmentCalendar() {
+    document.getElementById('header-title').textContent = 'Shipping Calendar';
+    document.querySelectorAll('.sidebar-nav .nav-item').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.nav-flat-link').forEach(a => a.classList.remove('active'));
+    const navEl = document.getElementById('nav-calendar-link'); if (navEl) navEl.classList.add('active');
+    showView('view-calendar');
+    const host = document.getElementById('calendar-content');
+    if (!host) return;
+    const now = new Date();
+    if (_calYear == null) { _calYear = now.getFullYear(); _calMonth = now.getMonth(); }
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const byDay = {};
+    _collectCalendarEvents().forEach(e => { (byDay[e.dateKey] = byDay[e.dateKey] || []).push(e); });
+
+    const first = new Date(_calYear, _calMonth, 1);
+    const startDow = first.getDay();
+    const daysInMonth = new Date(_calYear, _calMonth + 1, 0).getDate();
+    const monthName = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const todayKey = _calDayKey(now);
+
+    const eventPill = (e) => {
+      const color = e.type === 'shipment' ? '#16a34a' : (e.rough ? '#E8751A' : '#3b82f6');
+      const bg    = e.type === 'shipment' ? 'rgba(22,163,74,0.12)' : (e.rough ? 'rgba(232,117,26,0.12)' : 'rgba(59,130,246,0.12)');
+      const tag   = e.type === 'shipment' ? 'Shipment ETA' : 'Order ETA';
+      return `<div onclick="event.stopPropagation(); location.hash='${e.href}'" title="${esc(tag)} — ${esc(e.label)}${e.sub ? ' · ' + esc(e.sub) : ''}" style="cursor:pointer; background:${bg}; color:${color}; border:1px solid ${color}44; border-left:3px solid ${color}; border-radius:5px; padding:2px 6px; margin-bottom:3px; font-size:11px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(e.label)}</div>`;
+    };
+
+    let cells = '';
+    for (let i = 0; i < startDow; i++) cells += `<div class="cal-cell cal-cell-empty"></div>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = _calYear + '-' + String(_calMonth + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      const evs = byDay[key] || [];
+      const isToday = key === todayKey;
+      cells += `<div class="cal-cell${isToday ? ' cal-cell-today' : ''}">
+        <div class="cal-daynum${isToday ? ' cal-daynum-today' : ''}">${d}</div>
+        <div class="cal-events">${evs.map(eventPill).join('')}</div>
+      </div>`;
+    }
+
+    host.innerHTML = `
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(-1)" style="font-size:13px; padding:4px 10px;">‹ Prev</button>
+        <div style="font-size:18px; font-weight:800; color:var(--text); min-width:170px; text-align:center;">${esc(monthName)}</div>
+        <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(1)" style="font-size:13px; padding:4px 10px;">Next ›</button>
+        <button type="button" class="btn btn-ghost" onclick="_calGoToday()" style="font-size:13px; padding:4px 10px;">Today</button>
+        <div style="margin-left:auto; display:flex; gap:12px; align-items:center; font-size:11px; font-weight:700; flex-wrap:wrap;">
+          <span style="display:inline-flex; align-items:center; gap:5px; color:#E8751A;"><span style="width:10px; height:10px; border-radius:2px; background:#E8751A; display:inline-block;"></span>Order ETA (rough)</span>
+          <span style="display:inline-flex; align-items:center; gap:5px; color:#3b82f6;"><span style="width:10px; height:10px; border-radius:2px; background:#3b82f6; display:inline-block;"></span>Order ETA (production)</span>
+          <span style="display:inline-flex; align-items:center; gap:5px; color:#16a34a;"><span style="width:10px; height:10px; border-radius:2px; background:#16a34a; display:inline-block;"></span>Shipment ETA</span>
+        </div>
+      </div>
+      <div class="cal-weekdays">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(w => `<div class="cal-weekday">${w}</div>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>`;
   }
 
   function renderReceivingList() {
