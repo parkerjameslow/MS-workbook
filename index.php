@@ -21451,10 +21451,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (primaryQty) { const tr = document.getElementById('rfq-' + domId); const q = tr && tr.querySelectorAll('input:not([type="checkbox"])')[2]; if (q) q.value = primaryQty; }
     });
     g.itemIdxs.sort((a, b) => a - b);
-    try { console.log('[KIT] added to kit', g.id, '→ members now:', JSON.stringify(g.itemIdxs)); } catch (_) {}
     closeAddToKitModal();
     updateRfqGroupsBar();
-    try { console.log('[KIT] after updateRfqGroupsBar, members:', JSON.stringify((((_combineGroups || []).find(x => x && x.id === gid)) || {}).itemIdxs)); } catch (_) {}
     if (typeof recalcRfqTotals === 'function') { try { recalcRfqTotals(); } catch (_) {} }
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
     if (typeof _msToast === 'function') _msToast(`Added ${added} line${added === 1 ? '' : 's'} to "${g.label || 'kit'}".`, added ? 'success' : 'warn');
@@ -38223,7 +38221,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // refresh the bulk-select chrome + groups summary bar so the
       // operator immediately sees how many groups this workbook has.
       _combineGroups = Array.isArray(data.combineGroups) ? data.combineGroups.slice() : [];
-      try { console.log('[KIT] LOADED combineGroups from server:', JSON.stringify((data.combineGroups || []).map(x => x && x.itemIdxs)), '| rfqItems count:', (Array.isArray(data.rfqItems) ? data.rfqItems.length : 0)); } catch (_) {}
       _rfqPrimaryId = (data.rfqPrimaryId != null) ? data.rfqPrimaryId : null;
       _rfqSelected.clear();
       updateRfqBulkBar();
@@ -42017,7 +42014,6 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       try { if (typeof renderPricingTab === 'function') renderPricingTab(); } catch (_) {}
       const detail = collectWorkbookDetail();
       const key = `${currentClient}|${currentWorkbookId}`;
-      try { console.log('[KIT] SAVING combineGroups:', JSON.stringify((detail.combineGroups || []).map(x => x && x.itemIdxs)), '| base:', JSON.stringify(((_wbBaseDetail[key] || {}).combineGroups || []).map(x => x && x.itemIdxs))); } catch (_) {}
       _guardRfqSilentBlanking(detail, _wbBaseDetail[key]);
       // Snapshot the rendered Client Quote (same data the PDF uses) so the
       // Waiting-for-Client approval email can show the full itemized quote even

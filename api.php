@@ -4428,6 +4428,15 @@ switch ($action) {
                 if (!$isEmptyVal($iv) || $isEmptyVal($cv)) $mergedArr[$k] = $iv;
             }
         }
+        // combineGroups (kit membership): ALWAYS honor the latest incoming value
+        // — never merge-skip it. The base-vs-incoming skip above froze kit changes
+        // whenever the client's base drifted ahead of the DB (incoming == base but
+        // DB stale) — the "add to kit never sticks" bug: the line's rfqItems saved
+        // but its kit membership didn't. It's small, operator-controlled state, and
+        // the client-side union reconcile already protects concurrent additions.
+        if (is_array($input['detail'] ?? null) && array_key_exists('combineGroups', $input['detail'])) {
+            $mergedArr['combineGroups'] = $input['detail']['combineGroups'];
+        }
         $incomingArr  = $mergedArr;
         $incomingJson = json_encode($incomingArr);
 
