@@ -20928,7 +20928,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       (Array.isArray(g.itemIdxs) ? g.itemIdxs : []).forEach(raw => {
         const i = parseInt(raw, 10);
         if (!Number.isInteger(i) || i < 0) { changed = true; return; }
-        if (rowCount != null && i >= rowCount) { changed = true; return; }
+        // Out-of-range indices are KEPT, not dropped. A transient DOM row-count
+        // mismatch (a member added, the table mid-render, a poll mid-rebuild)
+        // must never DESTROY a valid kit member and auto-persist the loss — that
+        // was the "add to kit → hard refresh → member gone" bug. A stale index
+        // simply doesn't render until its row exists; rendering is null-guarded.
         if (claimed.has(i) || valid.includes(i)) { changed = true; return; }
         valid.push(i);
       });
