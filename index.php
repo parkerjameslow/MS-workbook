@@ -34879,14 +34879,38 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _qqRenderSummary();
     saveQuickQuote();
   }
+  // Group the integer part of a numeric string with thousands commas, keeping
+  // any decimal portion (and a trailing dot while the operator is mid-type).
+  function _qqFmtThousands(v) {
+    let s = String(v == null ? '' : v).replace(/[^0-9.]/g, '');
+    if (s === '') return '';
+    const dot = s.indexOf('.');
+    let intp = dot === -1 ? s : s.slice(0, dot);
+    let frac = dot === -1 ? '' : s.slice(dot);          // includes the '.'
+    intp = intp.replace(/^0+(?=\d)/, '');               // drop leading zeros
+    if (intp === '') intp = '0';
+    intp = intp.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return intp + frac;
+  }
   // Manual shipping override from the Results modal (total USD). Blank clears
   // it (back to the weight × rate estimate). Recomputes landed cost, profit,
-  // and the Totals tiles live.
-  function qqResultShip(i, val) {
+  // and the Totals tiles live. Formats the field with thousands commas as the
+  // operator types, storing a comma-free value for the math.
+  function qqResultShip(i, el) {
     const r = _qq.rows[i]; if (!r) return;
+    // Reformat with commas while preserving the caret by digit count.
+    const before = el.value;
+    const caret = el.selectionStart || 0;
+    const digitsBeforeCaret = (before.slice(0, caret).match(/[0-9]/g) || []).length;
+    const formatted = _qqFmtThousands(before);
+    el.value = formatted;
+    let pos = 0, seen = 0;
+    while (pos < formatted.length && seen < digitsBeforeCaret) { if (formatted.charCodeAt(pos) >= 48 && formatted.charCodeAt(pos) <= 57) seen++; pos++; }
+    try { el.setSelectionRange(pos, pos); } catch (_) {}
+    const clean = formatted.replace(/,/g, '');
     const wasActive = r.shipManualUsd != null && String(r.shipManualUsd).trim() !== '';
-    r.shipManualUsd = val;
-    const nowActive = String(val).trim() !== '';
+    r.shipManualUsd = clean;
+    const nowActive = clean.trim() !== '';
     try { _qqSyncRevenue(i); } catch (e) {}
     _qqRenderSummary();
     saveQuickQuote();
@@ -34962,7 +34986,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           ${row('Total (RMB)', 'qq-r-shiptot', _qqRmb(c.shipTotRmb))}
           <div class="qq-res-row">
             <span>Total (USD) <span style="opacity:0.6; font-weight:600;">— type to override</span></span>
-            <span style="display:inline-flex; align-items:center; gap:3px;"><span style="color:var(--text-muted);">$</span><input type="text" inputmode="decimal" id="qq-r-shiptotusd-input" class="qq-ship-override" value="${c.shipManualActive ? _qqEsc(r.shipManualUsd) : (c.shipTotUsd > 0 ? (Math.round(c.shipTotUsd * 100) / 100) : '')}" placeholder="0" oninput="qqResultShip(${i}, this.value)" style="width:120px; border:1px solid var(--border); border-radius:7px; padding:4px 8px; font-size:13.5px; font-weight:700; text-align:right; background:var(--surface); color:var(--text); font-family:inherit;"></span>
+            <span style="display:inline-flex; align-items:center; gap:3px;"><span style="color:var(--text-muted);">$</span><input type="text" inputmode="decimal" id="qq-r-shiptotusd-input" class="qq-ship-override" value="${c.shipManualActive ? _qqEsc(_qqFmtThousands(r.shipManualUsd)) : (c.shipTotUsd > 0 ? _qqFmtThousands(Math.round(c.shipTotUsd * 100) / 100) : '')}" placeholder="0" oninput="qqResultShip(${i}, this)" style="width:120px; border:1px solid var(--border); border-radius:7px; padding:4px 8px; font-size:13.5px; font-weight:700; text-align:right; background:var(--surface); color:var(--text); font-family:inherit;"></span>
           </div>
           ${c.shipManualActive ? `<div class="qq-res-row" style="padding-top:0;"><span style="font-size:11px; color:var(--text-muted);">Overrides the weight × rate estimate</span><span><button type="button" onclick="qqResultShipReset(${i})" style="border:1px solid var(--border); background:var(--surface2); color:var(--text-muted); font-size:11px; font-weight:700; border-radius:6px; padding:3px 9px; cursor:pointer;">Reset to weight</button></span></div>` : ''}
         </div>
