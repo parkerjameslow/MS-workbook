@@ -16378,6 +16378,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (!haveInner) { uL = g('dim-cm-l'); uW = g('dim-cm-w'); uH = g('dim-cm-h'); }
     const innerCnt = gi('carton-inner-count');
     const unitsPerInner = haveInner ? Math.max(1, innerCnt || 1) : 1;
+    // Unit weight for the packed unit: the inner-carton weight (else product ×
+    // units-per-inner), or the product weight when packing products directly.
+    const prodKg = g('dim-weight-kg');
+    const unitKg = haveInner ? (g('carton-inner-weight') || (prodKg * Math.max(1, innerCnt))) : prodKg;
     // N = number of packed units (inner cartons, or products) to fit in the box.
     let N;
     if (source === 'units') {
@@ -16405,6 +16409,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       // If they typed Inner Cartons, derive Units in Outer; if they typed Units,
       // leave their number alone (the box already fits ~that many).
       if (source !== 'units') set('carton-outer-units', haveInner ? N * unitsPerInner : N);
+      // Outer weight = N × unit weight — update it to match the qty you entered
+      // (overwrites, since the box just changed; blank-only seeding would miss it).
+      if (unitKg > 0) {
+        const owEl = document.getElementById('carton-outer-weight');
+        if (owEl) { owEl.value = (unitKg * N).toFixed(2); if (typeof convertWeight === 'function') convertWeight('carton-outer-weight', 'carton-outer-weight-lbs', 'kg'); }
+      }
     } finally { _autoSizingOuter = false; }
     if (typeof updateOuterWeightHint === 'function') updateOuterWeightHint();
     if (typeof renderPalletViz === 'function') renderPalletViz();
