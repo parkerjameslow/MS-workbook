@@ -21773,6 +21773,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       tr.dataset.factory = value;
     }
     if (!_filling) { try { autoSaveWorkbook(); } catch (e) {} }
+    // A factory change can shift the quoted price basis, so refresh the RFQ
+    // totals → tiers → Shipping-tab tier pricing (dropdown + detail panel) so
+    // it never goes stale after switching the line's factory.
+    if (!_filling) { try { if (typeof recalcRfqTotals === 'function') recalcRfqTotals(); } catch (e) {} }
   }
 
   // ── Factory profiles (Internal → Factories) ───────────────────────
@@ -30006,7 +30010,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     document.querySelectorAll('.wb-tab').forEach(el => el.classList.remove('active'));
     document.getElementById('wb-tab-' + tabName).classList.add('active');
     btn.classList.add('active');
-    if (tabName === 'shipping') { syncShippingDims(); syncShippingPalletStats(); calcFreight(); }
+    if (tabName === 'shipping') {
+      // Rebuild tier pricing from the CURRENT RFQ/factory state every time the
+      // Shipping tab is shown so it never displays stale per-unit / tier totals
+      // after an RFQ or factory edit made on another tab. recalcRfqTotals()
+      // refreshes _lastRfqPriceSummary + each tier row's dataset.price (via
+      // applyRfqRmbToTiers), and populateTierDropdown() re-renders the dropdown
+      // labels + the currently-selected tier's detail panel.
+      try { if (typeof recalcRfqTotals === 'function') recalcRfqTotals(); } catch (_) {}
+      try { if (typeof populateTierDropdown === 'function') populateTierDropdown(); } catch (_) {}
+      syncShippingDims(); syncShippingPalletStats(); calcFreight();
+    }
     if (tabName === 'pricing')  { renderPricingTab(); }
     // Always land at the top of the newly-shown tab — switching used to leave
     // the page scrolled halfway down wherever the previous tab was.
