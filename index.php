@@ -9379,11 +9379,11 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <div class="specs-full-row" style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
               <div style="flex:1 1 130px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="How many inner cartons go in one outer box — type it and the outer L×W×H auto-fills.">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Inner Cartons)</span></div>
-                <input type="number" min="0" placeholder="e.g. 2 — then press AUTO-FILL" id="carton-outer-count" title="Type how many inner cartons go in one outer box, then press the AUTO-FILL button (top-right) to size the outer L×W×H." style="width:100%;" />
+                <input type="number" min="0" placeholder="e.g. 2 — auto-sizes the box" id="carton-outer-count" title="Type how many inner cartons go in one outer box — the outer L×W×H + arrangement auto-size to fit." style="width:100%;" oninput="sizeOuterFromQty('count')" />
               </div>
               <div style="flex:1 1 130px; min-width:0;">
                 <div class="specs-row-label" style="margin-bottom:5px; white-space:normal;" title="Total Units in the Outer Carton — auto = units per inner × inner cartons">Qty <span style="font-weight:400; text-transform:none; font-size:11px;">(Units in Outer)</span></div>
-                <input type="number" min="0" placeholder="auto (or type)" id="carton-outer-units" style="width:100%;" />
+                <input type="number" min="0" placeholder="type to size the box" id="carton-outer-units" title="Type how many product units you want in the outer box — the box auto-sizes to fit." style="width:100%;" oninput="sizeOuterFromQty('units')" />
               </div>
             </div>
             <!-- Inner-orientation fit: how the inner carton packs into the
@@ -16311,6 +16311,62 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       _msToast(`Box ${fit.L.toFixed(1)} × ${fit.W.toFixed(1)} × ${fit.H.toFixed(1)} cm · ${N} ${haveInner ? 'inner cartons' : 'units'} ≈ ${lb.toFixed(0)} lb (${fit.nx}×${fit.ny}×${fit.nz}).`, 'success');
     }
     if (typeof renderOuterOrientTiles === 'function') { try { renderOuterOrientTiles(); } catch (_) {} }
+  }
+
+  // Type the qty you want in an outer carton (Inner Cartons OR Units in Outer)
+  // and the outer box auto-sizes to fit it — L×W×H + the Depth×Width×Height
+  // arrangement — without pressing AUTO-FILL. Debounced so it settles after you
+  // stop typing instead of flickering per keystroke. (Parker, 2026-11-23.)
+  let _sizingOuterQtyTimer = null;
+  function sizeOuterFromQty(source) {
+    if (_autoSizingOuter || _filling) return;
+    clearTimeout(_sizingOuterQtyTimer);
+    _sizingOuterQtyTimer = setTimeout(() => { try { _sizeOuterFromQtyNow(source); } catch (e) { console.warn('[sizeOuterFromQty]', e); } }, 350);
+  }
+  function _sizeOuterFromQtyNow(source) {
+    if (_autoSizingOuter || _filling) return;
+    const g  = id => parseFloat(document.getElementById(id)?.value) || 0;
+    const gi = id => parseInt(document.getElementById(id)?.value) || 0;
+    // The unit packed into the outer box: the inner carton if dimensioned, else
+    // the product itself.
+    let uL = g('carton-inner-l-cm'), uW = g('carton-inner-w-cm'), uH = g('carton-inner-h-cm');
+    const haveInner = (uL > 0 && uW > 0 && uH > 0);
+    if (!haveInner) { uL = g('dim-cm-l'); uW = g('dim-cm-w'); uH = g('dim-cm-h'); }
+    const innerCnt = gi('carton-inner-count');
+    const unitsPerInner = haveInner ? Math.max(1, innerCnt || 1) : 1;
+    // N = number of packed units (inner cartons, or products) to fit in the box.
+    let N;
+    if (source === 'units') {
+      const typedUnits = gi('carton-outer-units');
+      if (typedUnits <= 0) return;
+      N = haveInner ? Math.max(1, Math.round(typedUnits / unitsPerInner)) : typedUnits;
+    } else {
+      N = gi('carton-outer-count');
+    }
+    if (!N || N <= 0) return;
+    if (uL <= 0 || uW <= 0 || uH <= 0) {
+      if (typeof _msToast === 'function') _msToast('Enter the product (or inner-carton) dimensions first — then the box sizes to your qty.', 'warn');
+      return;
+    }
+    const oWallSel = gi('carton-outer-wall') || 2;
+    const wall2 = (oWallSel === 2 ? 0.7 : 0.4) * 2;
+    const fit = _bestCubicCarton(uL + wall2, uW + wall2, uH + wall2, N);
+    if (!fit) return;
+    _autoSizingOuter = true;
+    try {
+      setCartonDimFields('carton-outer', fit.L, fit.W, fit.H);
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+      set('carton-outer-row', fit.nx); set('carton-outer-side', fit.ny); set('carton-outer-stack', fit.nz);
+      set('carton-outer-count', N);
+      // If they typed Inner Cartons, derive Units in Outer; if they typed Units,
+      // leave their number alone (the box already fits ~that many).
+      if (source !== 'units') set('carton-outer-units', haveInner ? N * unitsPerInner : N);
+    } finally { _autoSizingOuter = false; }
+    if (typeof updateOuterWeightHint === 'function') updateOuterWeightHint();
+    if (typeof renderPalletViz === 'function') renderPalletViz();
+    if (typeof calcFreight === 'function') calcFreight();
+    if (typeof renderOuterOrientTiles === 'function') { try { renderOuterOrientTiles(); } catch (_) {} }
+    if (!_filling && typeof autoSaveWorkbook === 'function') autoSaveWorkbook();
   }
 
   // When the operator edits the Depth × Width × Height arrangement by hand,
