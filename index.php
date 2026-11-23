@@ -29067,13 +29067,16 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
             <td class="nq-right nq-total-cell">${f.amount > 0 ? '$' + fmt2(f.amount) : '—'}</td>
           </tr>`;
         }
-        // Complimentary — shown so the client sees the value, billed at $0.
+        // Complimentary — show the value struck-through next to $0.00 so the
+        // client sees the cost we're waiving (what they're saving).
+        const compVal = (typeof f.usd === 'number' ? f.usd : parseFloat(f.usd)) || 0;
+        const compValStr = compVal > 0 ? '$' + fmt2(compVal) : '';
         return `<tr class="nq-fee-row">
           <td class="nq-num-cell" style="color:#6b7280;">—</td>
           <td>${_escHtml(f.label)}${desc} <span style="display:inline-block; margin-left:6px; padding:1px 7px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#16a34a; background:rgba(22,163,74,0.10); border:1px solid rgba(22,163,74,0.35); border-radius:9px;">Complimentary</span></td>
           <td class="nq-right" style="color:var(--text-muted);">—</td>
-          <td class="nq-right" style="color:var(--text-muted);">—</td>
-          <td class="nq-right nq-total-cell" style="color:#16a34a;">$0.00</td>
+          <td class="nq-right" style="color:#9ca3af; text-decoration:line-through;">${compValStr || '—'}</td>
+          <td class="nq-right nq-total-cell">${compValStr ? `<span style="text-decoration:line-through; color:#9ca3af; font-weight:400; margin-right:5px;">${compValStr}</span>` : ''}<span style="color:#16a34a; font-weight:700;">$0.00</span></td>
         </tr>`;
       }).join('');
 
@@ -30573,12 +30576,14 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                 <td style="text-align:right; font-weight:600; color:var(--accent);">${f.amount > 0 ? '$' + _fmt2(f.amount) : '—'}</td>
               </tr>`;
             } else {
-              html += `<tr class="cq-fee-row cq-fee-comp-row">
+              const _cv = (typeof f.usd === 'number' ? f.usd : parseFloat(f.usd)) || 0;
+              const _cvStr = _cv > 0 ? '$' + _fmt2(_cv) : '';
+              html += `<tr class="cq-fee-row cq-fee-comp-row" data-cq-fee-value="${_cvStr}">
                 <td style="color:var(--text-muted); width:24px; font-weight:700;">—</td>
                 <td style="font-weight:500;">${escFee(f.label)}${desc}${_compBadge}</td>
                 <td style="text-align:right; color:var(--text-muted);">—</td>
-                <td style="text-align:right; color:var(--text-muted);">—</td>
-                <td style="text-align:right; font-weight:600; color:#16a34a;">$0.00</td>
+                <td style="text-align:right; color:#9ca3af; text-decoration:line-through;">${_cvStr || '—'}</td>
+                <td style="text-align:right; font-weight:600;">${_cvStr ? `<span style="text-decoration:line-through; color:#9ca3af; font-weight:400; margin-right:5px;">${_cvStr}</span>` : ''}<span style="color:#16a34a;">$0.00</span></td>
               </tr>`;
             }
           });
@@ -31562,6 +31567,13 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       }
       if (tr.classList.contains('cq-fee-zero-row')) {
         lineItems.push({ kind: 'feeZero', label: cellText(1), qty: '', sale: '', total: cellText(4) });
+        return;
+      }
+      if (tr.classList.contains('cq-fee-comp-row')) {
+        // Complimentary fee — show it on the quote/PDF at $0.00 but note the
+        // value waived so the client sees what they're saving.
+        const _cv = (tr.getAttribute('data-cq-fee-value') || '').trim();
+        lineItems.push({ kind: 'feeZero', label: cellText(1), qty: '', sale: '', total: _cv ? ('$0.00 (was ' + _cv + ')') : '$0.00' });
         return;
       }
       if (tr.classList.contains('cq-fee-row')) {
