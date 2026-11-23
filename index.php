@@ -34567,7 +34567,11 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
   function _qqEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function _qqNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/[, ]/g, '')); return isFinite(n) ? n : 0; }
   function _qqFx() { const o = _qqNum(_qq.fx); if (o > 0) return o; return (typeof _fxUsdFromRmbPrecise === 'function') ? _fxUsdFromRmbPrecise(1) : (1 / ((typeof USD_TO_RMB === 'number' && USD_TO_RMB > 0) ? USD_TO_RMB : 7.24)); }
-  function _qqUsd(n) { return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
+  // Extended / aggregate USD totals (Revenue column, Totals tiles, result
+  // modal) — rounded to the nearest whole dollar, no trailing decimals. The
+  // per-unit price cells (USD Per, Sale) use their own 3-decimal formatters,
+  // so they keep full precision; only these big dollar sums round.
+  function _qqUsd(n) { return (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('en-US'); }
   function _qqUsd3(n) { return '$' + (Math.round(n * 1000) / 1000).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
   function _qqRmb(n) { return '¥' + (Math.round(n * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); }
   // A row's Sale auto-fills with the suggested markup price unless the operator
