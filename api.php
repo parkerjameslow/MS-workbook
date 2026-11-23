@@ -4541,7 +4541,7 @@ switch ($action) {
             $pdo->exec("DELETE FROM workbook_revisions WHERE created_at < DATE_SUB(NOW(), INTERVAL 180 DAY)");
         }
 
-        echo json_encode(['success' => true]);
+        echo json_encode(['success' => true, 'saved_combine' => array_map(function ($g) { return is_array($g) ? ($g['itemIdxs'] ?? null) : null; }, is_array($mergedArr['combineGroups'] ?? null) ? $mergedArr['combineGroups'] : [])]);
         break;
 
     // ─── REVISION HISTORY ────────────────────────────────

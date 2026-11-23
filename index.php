@@ -38221,6 +38221,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // refresh the bulk-select chrome + groups summary bar so the
       // operator immediately sees how many groups this workbook has.
       _combineGroups = Array.isArray(data.combineGroups) ? data.combineGroups.slice() : [];
+      try { console.log('[KIT] LOADED combineGroups from server:', JSON.stringify((data.combineGroups || []).map(x => x && x.itemIdxs)), '| rfqItems:', (Array.isArray(data.rfqItems) ? data.rfqItems.length : 0)); } catch (_) {}
       _rfqPrimaryId = (data.rfqPrimaryId != null) ? data.rfqPrimaryId : null;
       _rfqSelected.clear();
       updateRfqBulkBar();
@@ -42043,8 +42044,10 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       // Save to DB — autosave does NOT create a revision (only nav saves do)
       const dbId = dbWorkbookMap[key] || currentWorkbookId;
       showSaveStatus('saving');
+      try { console.log('[KIT] client SENT combineGroups:', JSON.stringify((detail.combineGroups || []).map(x => x && x.itemIdxs)), '| base:', JSON.stringify(((_wbBaseDetail[key] || {}).combineGroups || []).map(x => x && x.itemIdxs))); } catch (_) {}
       apiCall('save_workbook_detail', { id: dbId, detail: detail, base: _wbBaseDetail[key], changed_by: getCurrentUser(), create_revision: false })
         .then(r => {
+          try { console.log('[KIT] server STORED combineGroups:', JSON.stringify(r && r.saved_combine), '| success:', r && r.success); } catch (_) {}
           _wbSavePending = false;   // server round-trip done — reconcile may resume
           showSaveStatus(r && r.success ? 'saved' : 'error');
           if (r && r.success) {
