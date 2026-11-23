@@ -8823,6 +8823,10 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           Create Kit
         </button>
+        <button type="button" class="btn btn-ghost" style="font-size:12px; display:inline-flex; align-items:center; gap:6px;" onclick="openAddToKitModal()" title="Add more line items into an existing kit, after it's been created.">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add to Kit
+        </button>
         <span style="font-size:11px; color:var(--text-muted);">Bundle items (mailer + patch + stickers…) into one kit — the qty counts as <strong>kits</strong>, not each item.</span>
       </div>
 
@@ -11025,6 +11029,32 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
         <button class="btn btn-ghost" onclick="closeKitModal()">Cancel</button>
         <button class="btn btn-primary" onclick="confirmKitModal()">Create Kit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add items to an existing Kit — pick a kit + the loose line(s) to fold in. -->
+<div class="modal-overlay" id="add-to-kit-modal" style="display:none;">
+  <div class="modal" style="max-width:540px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Add items to a Kit</h3>
+      <button onclick="closeAddToKitModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Fold more line items into an existing kit. Added items join the kit (their qty is set to match the kit) and stop being priced as separate units.</p>
+      <div id="add-to-kit-kitsel-wrap">
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Kit</label>
+        <select id="add-to-kit-kit" class="form-input" style="width:100%;" onchange="_renderAddToKitItems()"></select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Items to add <span style="font-weight:400;text-transform:none;">(lines not already in a kit)</span></label>
+        <div id="add-to-kit-items" style="display:flex;flex-direction:column;gap:4px;max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px;"></div>
+      </div>
+      <div id="add-to-kit-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closeAddToKitModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmAddToKitModal()">Add to Kit</button>
       </div>
     </div>
   </div>
@@ -21365,6 +21395,63 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     updateRfqGroupsBar();
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
     if (typeof _msToast === 'function') _msToast(`Kit "${label}" created — counts as ${kitQty ? kitQty.toLocaleString('en-US') + ' kits' : itemIdxs.length + ' items'}.`, 'success');
+  }
+
+  // Add more line items into an EXISTING kit (after it was created).
+  function openAddToKitModal() {
+    const groups = Array.isArray(_combineGroups) ? _combineGroups : [];
+    if (!groups.length) { alert('Create a kit first, then you can add items to it.'); return; }
+    const sel = document.getElementById('add-to-kit-kit');
+    if (sel) sel.innerHTML = groups.map(g => `<option value="${g.id}">${_kitEsc(g.label || 'Kit')} · ${(g.itemIdxs || []).length} item(s)</option>`).join('');
+    const wrap = document.getElementById('add-to-kit-kitsel-wrap');
+    if (wrap) wrap.style.display = groups.length > 1 ? '' : 'none';   // hide selector when there's only one kit
+    document.getElementById('add-to-kit-error').style.display = 'none';
+    _renderAddToKitItems();
+    document.getElementById('add-to-kit-modal').style.display = 'flex';
+  }
+  function closeAddToKitModal() { const m = document.getElementById('add-to-kit-modal'); if (m) m.style.display = 'none'; }
+  function _renderAddToKitItems() {
+    const host = document.getElementById('add-to-kit-items'); if (!host) return;
+    const inGroup = new Set();
+    (Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => (g.itemIdxs || []).forEach(i => inGroup.add(i)));
+    const rows = _kitParentRows().filter(d => !inGroup.has(_rfqIdxFromDomId(d.domId)));
+    if (!rows.length) {
+      host.innerHTML = `<div style="font-size:12px;color:var(--text-muted);font-style:italic;padding:8px;">Every line is already in a kit. Add a new line item to the table first, then add it here.</div>`;
+      return;
+    }
+    host.innerHTML = rows.map(d => `<label style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;cursor:pointer;">
+      <input type="checkbox" class="addkit-item-check" value="${d.domId}" style="width:16px;height:16px;flex:0 0 auto;" />
+      <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_kitEsc(d.name)}</span>
+      <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${d.qty ? d.qty.toLocaleString('en-US') : '—'} qty</span>
+    </label>`).join('');
+  }
+  function confirmAddToKitModal() {
+    const errEl = document.getElementById('add-to-kit-error');
+    const show = m => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
+    const gid = document.getElementById('add-to-kit-kit').value;
+    const g = (_combineGroups || []).find(x => x && x.id === gid);
+    if (!g) return show('Pick a kit.');
+    const ids = Array.from(document.querySelectorAll('.addkit-item-check:checked')).map(c => parseInt(c.value, 10)).filter(x => !isNaN(x));
+    if (!ids.length) return show('Pick at least one line to add.');
+    if (!Array.isArray(g.itemIdxs)) g.itemIdxs = [];
+    // Match the kit's qty on the added lines (one of each item per kit).
+    const primaryDomId = _rfqDomIdFromIdx(g.primaryIdx);
+    const primaryTr = primaryDomId ? document.getElementById('rfq-' + primaryDomId) : null;
+    const primaryQty = primaryTr ? (primaryTr.querySelectorAll('input:not([type="checkbox"])')[2]?.value || '') : '';
+    let added = 0;
+    ids.forEach(domId => {
+      const idx = _rfqIdxFromDomId(domId);
+      if (idx < 0 || g.itemIdxs.indexOf(idx) !== -1) return;
+      g.itemIdxs.push(idx);
+      added++;
+      if (primaryQty) { const tr = document.getElementById('rfq-' + domId); const q = tr && tr.querySelectorAll('input:not([type="checkbox"])')[2]; if (q) q.value = primaryQty; }
+    });
+    g.itemIdxs.sort((a, b) => a - b);
+    closeAddToKitModal();
+    updateRfqGroupsBar();
+    if (typeof recalcRfqTotals === 'function') { try { recalcRfqTotals(); } catch (_) {} }
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+    if (typeof _msToast === 'function') _msToast(`Added ${added} line${added === 1 ? '' : 's'} to "${g.label || 'kit'}".`, added ? 'success' : 'warn');
   }
 
   // ── Manage Groups modal ───────────────────────────────────────────
