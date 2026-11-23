@@ -35451,33 +35451,57 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     closedOrdersList.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
     // Total Pipeline: ALL open (flow not complete) workbooks for this client.
-    // Preferred source: the workbook's cached Total Landed Cost from the
-    // Pricing tab (tier qty × weighted-avg landed). Falls back to the legacy
-    // tier-based estimate for workbooks that haven't been opened on the
-    // Pricing tab yet (so they still contribute SOMETHING).
-    let pipelineUsd = 0;
+    // Shows the SALE value (what the client pays = Sale Per × qty + fees,
+    // cached as pricingClientQuoteTotal), not our landed cost — plus the
+    // profit (sale − landed cost) so the pipeline reads like money coming in.
+    // Landed cost is still computed per workbook so the profit is accurate;
+    // both fall back to the legacy tier / quote estimate for workbooks that
+    // haven't been opened on the Pricing tab yet (so they still contribute).
+    let pipelineUsd = 0;        // our landed cost (drives profit)
+    let pipelineSaleUsd = 0;    // what the client pays (the headline figure)
+    const pipelineList = [];    // per-workbook { name, sale, profit } for the expand
     items.forEach(item => {
       if (isFlowComplete(item.flow)) return;
       const detail = workbookDetail[`${clientName}|${item.id}`] || {};
 
+      // ── Landed cost ──
+      let landed = 0;
       const cachedLanded = parseFloat(detail.pricingLandedTotal);
       if (!isNaN(cachedLanded) && cachedLanded > 0) {
-        pipelineUsd += cachedLanded;
-        return;
-      }
-
-      const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
-      const tier = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
-      if (tier && parseFloat(tier.price) && parseFloat(tier.qty)) {
-        pipelineUsd += (parseFloat(tier.price) / USD_TO_RMB) * parseFloat(tier.qty);
+        landed = cachedLanded;
       } else {
-        const qty = parseFloat(detail.quoteClQty) || 0;
-        const price = parseFloat(detail.quoteClUnitPrice) || 0;
-        const ship = parseFloat(detail.quoteClShipping) || 0;
-        if (qty && price) pipelineUsd += qty * price + ship;
+        const tiers = Array.isArray(detail.tiers) ? detail.tiers : [];
+        const tier = tiers.find(t => t.id == detail.selectedTierIdx) || tiers[0];
+        if (tier && parseFloat(tier.price) && parseFloat(tier.qty)) {
+          landed = (parseFloat(tier.price) / USD_TO_RMB) * parseFloat(tier.qty);
+        } else {
+          const qty = parseFloat(detail.quoteClQty) || 0;
+          const price = parseFloat(detail.quoteClUnitPrice) || 0;
+          const ship = parseFloat(detail.quoteClShipping) || 0;
+          if (qty && price) landed = qty * price + ship;
+        }
       }
+      pipelineUsd += landed;
+
+      // ── Sale value (what the client pays) ──
+      // Cached Client Quote total = Sale Per × qty + applied fees. Fall back
+      // to the landed cost when a workbook has no quote total yet so the
+      // pipeline figure never understates (0 profit on that line, not a gap).
+      const cachedSale = parseFloat(detail.pricingClientQuoteTotal);
+      const sale = (!isNaN(cachedSale) && cachedSale > 0) ? cachedSale : landed;
+      pipelineSaleUsd += sale;
+
+      pipelineList.push({
+        name: detail.product || item.product || ('Workbook #' + item.id),
+        sale,
+        profit: sale - landed,
+      });
     });
-    pipelineUsd = Math.round(pipelineUsd * 100) / 100;
+    pipelineUsd      = Math.round(pipelineUsd * 100) / 100;
+    pipelineSaleUsd  = Math.round(pipelineSaleUsd * 100) / 100;
+    const pipelineProfitUsd = Math.round((pipelineSaleUsd - pipelineUsd) * 100) / 100;
+    // Biggest-profit workbooks first in the expand.
+    pipelineList.sort((a, b) => (b.profit || 0) - (a.profit || 0));
 
     const fmtUsd = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
@@ -35701,9 +35725,28 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
                 <span style="font-weight:800; color:#16a34a;">${fmtUsd(closedOrdersProfit)}</span>
               </div>
             </div>
-            <div class="cdc-fin-stat" style="margin-top:6px; padding-top:10px; border-top:1px solid rgba(107,147,255,0.2);">
-              <span class="cdc-fin-stat-label">Total Pipeline</span>
-              <span class="cdc-fin-stat-value" style="font-size:18px;">${fmtUsd(pipelineUsd)}</span>
+            <div class="cdc-fin-stat" onclick="togglePipelineProfit(this)" style="cursor:pointer; margin-top:6px; padding-top:10px; border-top:1px solid rgba(107,147,255,0.2);" title="Click to see the profit sitting in the open pipeline">
+              <span class="cdc-fin-stat-label">Total Pipeline <span class="cdc-pipe-chev" style="font-size:10px; opacity:0.6;">▸</span></span>
+              <span class="cdc-fin-stat-value" style="font-size:18px;">${fmtUsd(pipelineSaleUsd)}</span>
+            </div>
+            <div class="cdc-fin-pipe-profit" style="display:none; margin:2px 0; padding:8px 10px; background:rgba(22,163,74,0.06); border:1px solid rgba(22,163,74,0.2); border-radius:8px;">
+              ${pipelineList.length === 0
+                ? `<div style="font-size:12px; color:var(--text-muted); text-align:center; padding:4px 0;">No open workbooks in the pipeline yet.</div>`
+                : pipelineList.map(w => {
+                    const _nm = String(w.name == null ? '' : w.name).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    const _pos = (w.profit || 0) >= 0;
+                    return `<div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:5px 0; border-bottom:1px solid rgba(22,163,74,0.14);">
+                      <div style="min-width:0; font-size:12px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${_nm}</div>
+                      <div style="text-align:right; white-space:nowrap;">
+                        <div style="font-size:12px; font-weight:700; color:var(--text);">${fmtUsd(w.sale)}</div>
+                        <div style="font-size:10px; font-weight:700; color:${_pos ? '#16a34a' : '#ef4444'};">${_pos ? '+' : ''}${fmtUsd(w.profit)} profit</div>
+                      </div>
+                    </div>`;
+                  }).join('')}
+              <div style="display:flex; justify-content:space-between; align-items:baseline; padding-top:8px; font-size:12px;">
+                <span style="color:var(--text-muted); font-weight:700;">Profit in pipeline</span>
+                <span style="font-weight:800; color:${pipelineProfitUsd >= 0 ? '#16a34a' : '#ef4444'};">${pipelineProfitUsd >= 0 ? '+' : ''}${fmtUsd(pipelineProfitUsd)}</span>
+              </div>
             </div>
           </div>
           <button type="button" class="cdc-delete-btn" onclick="openDeleteClientModal(decodeURIComponent('${_encName}'))" title="Delete this client">
@@ -52492,6 +52535,19 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const isHidden = panel.style.display === 'none';
     panel.style.display = isHidden ? '' : 'none';
     const chev = el.querySelector('.cdc-closed-chev');
+    if (chev) chev.textContent = isHidden ? '▾' : '▸';
+  }
+
+  // Total Pipeline expand — mirrors toggleClosedOrdersProfit, revealing the
+  // per-workbook sale + profit breakdown and the total profit sitting in the
+  // open pipeline.
+  function togglePipelineProfit(el) {
+    if (!el) return;
+    const panel = el.nextElementSibling;
+    if (!panel || !panel.classList.contains('cdc-fin-pipe-profit')) return;
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? '' : 'none';
+    const chev = el.querySelector('.cdc-pipe-chev');
     if (chev) chev.textContent = isHidden ? '▾' : '▸';
   }
 
