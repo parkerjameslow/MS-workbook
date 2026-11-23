@@ -22546,9 +22546,22 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       if (detail.combineGroups.length > 0) {
         const _localCollapsed = {};
         (Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => { if (g && g.id != null) _localCollapsed[g.id] = g.collapsed; });
+        const _localGroups = Array.isArray(_combineGroups) ? _combineGroups : [];
         const _adopted = detail.combineGroups.map(g => {
           const gg = Object.assign({}, g);
           if (g && g.id != null && Object.prototype.hasOwnProperty.call(_localCollapsed, g.id)) gg.collapsed = _localCollapsed[g.id];
+          // Non-destructive membership merge: if THIS user's copy of the same
+          // kit has extra members (a line they just added), keep them — so a
+          // co-editor's concurrent full-detail save can't silently drop a line
+          // you just added to the kit. (Removals go through Manage explicitly.)
+          const _lg = _localGroups.find(x => x && String(x.id) === String(g && g.id));
+          if (_lg && Array.isArray(_lg.itemIdxs) && Array.isArray(gg.itemIdxs)) {
+            const _union = Array.from(new Set(gg.itemIdxs.concat(_lg.itemIdxs)))
+              .map(n => parseInt(n, 10))
+              .filter(n => Number.isInteger(n) && n >= 0)
+              .sort((a, b) => a - b);
+            if (_union.length !== gg.itemIdxs.length) gg.itemIdxs = _union;
+          }
           return gg;
         });
         const _grpStructSig = gs => (Array.isArray(gs) ? gs : []).map(g =>
