@@ -8816,6 +8816,16 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            with summed unit price. The RFQ table stays unchanged
            visually; the rollup only affects the Client Quote / PDF /
            Notify-Client email. -->
+      <!-- Create Kit — bundle several line items into ONE kit that counts &
+           prices by the number of kits (not the sum of items). Always visible. -->
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-primary" style="font-size:12px; display:inline-flex; align-items:center; gap:6px;" onclick="openKitModal()" title="Bundle several line items into one Kit — counted and priced by the number of kits, not the sum of items.">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          Create Kit
+        </button>
+        <span style="font-size:11px; color:var(--text-muted);">Bundle items (mailer + patch + stickers…) into one kit — the qty counts as <strong>kits</strong>, not each item.</span>
+      </div>
+
       <div id="rfq-bulk-bar" style="display:none; align-items:center; gap:12px; padding:8px 12px; background:rgba(232,117,26,0.08); border:1px solid rgba(232,117,26,0.25); border-radius:8px; margin-bottom:10px;">
         <strong style="font-size:13px; color:var(--accent);"><span id="rfq-bulk-count">0 items</span> selected</strong>
         <button type="button" class="btn btn-ghost" style="font-size:12px;" onclick="deselectAllRfqRows()">Deselect all</button>
@@ -8832,9 +8842,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            1+ groups defined. Click "Manage" to see / delete them. -->
       <div id="rfq-groups-bar" style="display:none; align-items:center; gap:10px; padding:7px 12px; background:rgba(107,147,255,0.07); border:1px solid rgba(107,147,255,0.25); border-radius:8px; margin-bottom:10px; font-size:12px;">
         <span style="font-weight:700; color:#6b93ff; letter-spacing:0.03em; text-transform:uppercase; font-size:11px;">
-          <span id="rfq-groups-count">0</span> combined group<span id="rfq-groups-plural">s</span>
+          <span id="rfq-groups-count">0</span> kit<span id="rfq-groups-plural">s</span>
         </span>
-        <span style="color:var(--text-muted);">Client Quote rolls them up into single lines with summed unit prices.</span>
+        <span style="color:var(--text-muted);">Each kit is counted &amp; priced by its kit quantity — not the sum of its items.</span>
         <!-- Lines left outside a group are priced as their own full-price
              units and ADD to the order qty — the silent doubling that made
              a 500-unit kit quote as 1,000. -->
@@ -10986,6 +10996,40 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
   </div>
 </div>
 
+<!-- Create Kit modal — bundle several RFQ line items into ONE kit. The kit is
+     counted + priced by the number of kits (the engine = the combine-group
+     engine: one Client-Quote line at the primary's qty with summed prices). -->
+<div class="modal-overlay" id="kit-rfq-modal" style="display:none;">
+  <div class="modal" style="max-width:540px; width:100%;">
+    <div class="modal-header">
+      <h3 style="margin:0; font-size:16px;">Create a Kit</h3>
+      <button onclick="closeKitModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Bundle several line items into one <strong>Kit</strong>. The kit is counted and priced by the <strong>number of kits</strong> — so 1,600 kits of 5 items reads as <strong>1,600</strong>, not 8,000. Pick the items, name the kit, and set how many kits.</p>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Kit name (what the client sees)</label>
+        <input id="kit-rfq-label" type="text" class="form-input" style="width:100%;" placeholder="e.g. Door Buster 2027 Kit" autocomplete="off" oninput="_renderKitPreview()" />
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);display:block;margin-bottom:4px;">Items in this kit <span style="font-weight:400;text-transform:none;">(one of each per kit)</span></label>
+        <div id="kit-rfq-items" style="display:flex;flex-direction:column;gap:4px;max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px;"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);">Number of kits</label>
+        <input id="kit-rfq-qty" type="number" min="1" class="form-input" style="width:130px;" placeholder="e.g. 1600" oninput="_renderKitPreview()" />
+        <span style="font-size:11px;color:var(--text-muted);">Sets each item's qty to this.</span>
+      </div>
+      <div id="kit-rfq-preview" style="background:rgba(107,147,255,0.06); border:1px solid rgba(107,147,255,0.25); border-radius:8px; padding:12px 14px; font-size:13px;"></div>
+      <div id="kit-rfq-error" style="display:none;background:rgba(251,113,133,0.12);border:1px solid rgba(251,113,133,0.35);color:#fb7185;border-radius:8px;padding:8px 12px;font-size:12px;"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+        <button class="btn btn-ghost" onclick="closeKitModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="confirmKitModal()">Create Kit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Manage Combined Groups modal — list of existing groups with a
      delete button per group. Opened from the rfq-groups-bar's Manage
      button. Used to clean up stale groups (especially after RFQ
@@ -10993,7 +11037,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 <div class="modal-overlay" id="manage-rfq-groups-modal" style="display:none;">
   <div class="modal" style="max-width:560px; width:100%;">
     <div class="modal-header">
-      <h3 style="margin:0; font-size:16px;">Manage Combined Groups</h3>
+      <h3 style="margin:0; font-size:16px;">Manage Kits</h3>
       <button onclick="closeManageRfqGroupsModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:10px;">
@@ -21227,6 +21271,92 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
   }
 
+  // ── Create Kit — friendly re-exposure of the combine-group engine ──────
+  // Bundle several RFQ line items into ONE kit. The kit is counted + priced by
+  // the number of kits (the engine rolls them into a single Client-Quote line
+  // at the primary's qty), so 1,600 kits of 5 items reads as 1,600, not 8,000.
+  function _kitEsc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function _kitParentRows() {
+    const out = [];
+    document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])').forEach(tr => {
+      const m = tr.id && tr.id.match(/^rfq-(\d+)$/);
+      if (!m) return;
+      const d = _rfqRowData(parseInt(m[1], 10));
+      if (d) out.push(d);
+    });
+    return out;
+  }
+  function openKitModal() {
+    const rows = _kitParentRows();
+    if (rows.length < 2) { alert('Add at least 2 line items first, then bundle them into a kit.'); return; }
+    const inGroup = new Set();
+    (Array.isArray(_combineGroups) ? _combineGroups : []).forEach(g => (g.itemIdxs || []).forEach(i => inGroup.add(i)));
+    const host = document.getElementById('kit-rfq-items');
+    if (host) host.innerHTML = rows.map(d => {
+      const idx = _rfqIdxFromDomId(d.domId);
+      const already = inGroup.has(idx);
+      return `<label style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;${already ? 'opacity:0.5;' : 'cursor:pointer;'}">
+        <input type="checkbox" class="kit-item-check" value="${d.domId}" ${already ? 'disabled' : ''} onchange="_renderKitPreview()" style="width:16px;height:16px;flex:0 0 auto;" />
+        <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_kitEsc(d.name)}${already ? ' <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(already in a kit)</span>' : ''}</span>
+        <span style="font-size:12px;color:var(--text-muted);white-space:nowrap;">${d.qty ? d.qty.toLocaleString('en-US') : '—'} qty</span>
+      </label>`;
+    }).join('');
+    document.getElementById('kit-rfq-label').value = '';
+    document.getElementById('kit-rfq-qty').value = '';
+    document.getElementById('kit-rfq-error').style.display = 'none';
+    _renderKitPreview();
+    document.getElementById('kit-rfq-modal').style.display = 'flex';
+    setTimeout(() => { try { document.getElementById('kit-rfq-label').focus(); } catch (_) {} }, 50);
+  }
+  function closeKitModal() { const m = document.getElementById('kit-rfq-modal'); if (m) m.style.display = 'none'; }
+  function _kitCheckedDomIds() {
+    return Array.from(document.querySelectorAll('.kit-item-check:checked')).map(c => parseInt(c.value, 10)).filter(x => !isNaN(x));
+  }
+  function _renderKitPreview() {
+    const pv = document.getElementById('kit-rfq-preview'); if (!pv) return;
+    const ids = _kitCheckedDomIds();
+    const label = (document.getElementById('kit-rfq-label').value || '').trim();
+    const qtyRaw = parseInt(document.getElementById('kit-rfq-qty').value);
+    if (!ids.length) { pv.innerHTML = `<span style="color:var(--text-muted);">Pick the items to bundle into this kit.</span>`; return; }
+    const names = ids.map(id => _rfqRowName(id));
+    const kitQty = (!isNaN(qtyRaw) && qtyRaw > 0) ? qtyRaw : null;
+    pv.innerHTML = `<div style="font-weight:800;color:var(--text);margin-bottom:4px;">${label ? _kitEsc(label) : '<span style="color:var(--text-muted);font-weight:600;">(name your kit)</span>'}</div>
+      <div style="font-size:12px;color:var(--text-muted);">${ids.length} item${ids.length === 1 ? '' : 's'}: ${names.map(_kitEsc).join(', ')}</div>
+      <div style="font-size:13px;margin-top:6px;color:var(--text);">Counts as <strong>${kitQty ? kitQty.toLocaleString('en-US') : '—'}</strong> kit${kitQty === 1 ? '' : 's'}${kitQty ? ` <span style="color:var(--text-muted);">(not ${(kitQty * ids.length).toLocaleString('en-US')} individual units)</span>` : ''}.</div>`;
+  }
+  function confirmKitModal() {
+    const errEl = document.getElementById('kit-rfq-error');
+    const show = m => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
+    const label = (document.getElementById('kit-rfq-label').value || '').trim();
+    const ids = _kitCheckedDomIds();
+    const qtyRaw = parseInt(document.getElementById('kit-rfq-qty').value);
+    if (!label) return show('Give the kit a name (this is what the client sees).');
+    if (ids.length < 2) return show('Pick at least 2 items for the kit.');
+    // itemIdxs in table order; primary = the TOP selected line (engine convention).
+    const parents = Array.from(document.querySelectorAll('#rfq-body tr:not([data-rfq-parent]):not([data-rfq-add-for]):not([data-rfq-optrow])'));
+    const orderedDomIds = parents.map(tr => { const m = tr.id && tr.id.match(/^rfq-(\d+)$/); return m ? parseInt(m[1], 10) : null; }).filter(x => x != null && ids.indexOf(x) !== -1);
+    const itemIdxs = orderedDomIds.map(_rfqIdxFromDomId).filter(i => i >= 0);
+    if (itemIdxs.length < 2) return show('Could not resolve the selected items — reload and try again.');
+    const primaryIdx = itemIdxs[0];
+    const kitQty = (!isNaN(qtyRaw) && qtyRaw > 0) ? qtyRaw : null;
+    // Set each member's qty to the kit count (one of each item per kit).
+    if (kitQty != null) {
+      orderedDomIds.forEach(domId => {
+        const tr = document.getElementById('rfq-' + domId);
+        if (!tr) return;
+        const inputs = tr.querySelectorAll('input:not([type="checkbox"])');
+        if (inputs[2]) inputs[2].value = String(kitQty);
+      });
+    }
+    const gid = 'g' + Date.now() + Math.floor(Math.random() * 1000);
+    _combineGroups.push({ id: gid, label, primaryIdx, itemIdxs, collapsed: true });
+    closeKitModal();
+    if (kitQty != null && typeof recalcRfqTotals === 'function') { try { recalcRfqTotals(); } catch (_) {} }
+    updateRfqGroupsBar();
+    if (typeof autoSaveWorkbook === 'function' && !_filling) autoSaveWorkbook();
+    if (typeof _msToast === 'function') _msToast(`Kit "${label}" created — counts as ${kitQty ? kitQty.toLocaleString('en-US') + ' kits' : itemIdxs.length + ' items'}.`, 'success');
+  }
+
   // ── Manage Groups modal ───────────────────────────────────────────
   function openManageRfqGroupsModal() {
     renderManageRfqGroupsList();
@@ -21239,7 +21369,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     const host = document.getElementById('manage-rfq-groups-list');
     if (!host) return;
     if (!_combineGroups || !_combineGroups.length) {
-      host.innerHTML = `<div style="padding:24px 8px; text-align:center; color:var(--text-muted); font-size:13px; font-style:italic;">No combined groups defined yet.</div>`;
+      host.innerHTML = `<div style="padding:24px 8px; text-align:center; color:var(--text-muted); font-size:13px; font-style:italic;">No kits yet.</div>`;
       return;
     }
     const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
