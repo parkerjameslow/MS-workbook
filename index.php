@@ -11784,7 +11784,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
 <!-- Quick Quote per-row results modal -->
 <div class="modal-overlay" id="qq-result-modal" onclick="if(event.target===this)qqCloseResult()" style="z-index:1150;">
-  <div class="modal" style="max-width:560px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
+  <div class="modal" style="max-width:min(960px, calc(100vw - 48px)); width:960px; display:flex; flex-direction:column; overflow:hidden; max-height:calc(100vh - 40px);">
     <div class="modal-title" style="flex-shrink:0;" id="qq-result-title">Results</div>
     <div id="qq-result-body" style="overflow-y:auto; flex:1 1 auto; margin-top:10px;"><!-- JS --></div>
     <div class="modal-actions" style="margin-top:16px; flex-shrink:0;">
@@ -34598,11 +34598,24 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     // column; LB is converted to kg since the freight rate is RMB per kg.
     const shipUnit = (_qq.shipUnit === 'lb') ? 'lb' : 'kg';
     const shipKg = shipUnit === 'lb' ? shipWt * 0.45359237 : shipWt;
-    const shipPerRmb = master > 0 ? (shipKg * rmbKg) / master : 0;
-    const shipTotRmb = shipPerRmb * qty;
+    // Manual shipping override — when the operator types a total shipping cost
+    // (USD) in the Results modal, it REPLACES the weight × rate estimate. Blank
+    // → fall back to the computed (shipKg × RMB/kg ÷ masterpack) path. fx is
+    // USD-per-RMB, so RMB = USD / fx.
+    const shipManualActive = r.shipManualUsd != null && String(r.shipManualUsd).trim() !== '';
+    let shipPerRmb, shipTotRmb, shipPerUsd, shipTotUsd;
+    if (shipManualActive) {
+      shipTotUsd = _qqNum(r.shipManualUsd);
+      shipPerUsd = qty > 0 ? shipTotUsd / qty : 0;
+      shipTotRmb = fx > 0 ? shipTotUsd / fx : 0;
+      shipPerRmb = qty > 0 ? shipTotRmb / qty : 0;
+    } else {
+      shipPerRmb = master > 0 ? (shipKg * rmbKg) / master : 0;
+      shipTotRmb = shipPerRmb * qty;
+      shipPerUsd = shipPerRmb * fx;
+      shipTotUsd = shipTotRmb * fx;
+    }
     const pricePerUsd = rmbPer * fx;
-    const shipPerUsd = shipPerRmb * fx;
-    const shipTotUsd = shipTotRmb * fx;
     const landedPer = pricePerUsd + shipPerUsd;
     const costExt = landedPer * qty;
     const suggested = landedPer * (1 + markup);
@@ -34617,7 +34630,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const chinaUsd = profit * china;
     // % the chosen Sale sits above landed cost (the real margin markup).
     const salePct = landedPer > 0 ? (sale / landedPer - 1) * 100 : 0;
-    return { shipPerRmb, shipTotRmb, pricePerUsd, shipPerUsd, shipTotUsd, landedPer, costExt, suggested, total, profit, chinaUsd, markupPct, salePct, sale, saleIsAuto, shipUnit };
+    return { shipPerRmb, shipTotRmb, pricePerUsd, shipPerUsd, shipTotUsd, landedPer, costExt, suggested, total, profit, chinaUsd, markupPct, salePct, sale, saleIsAuto, shipUnit, shipManualActive };
   }
   function renderQuickQuoteView() {
     showView('view-quickquote');
@@ -34866,6 +34879,35 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _qqRenderSummary();
     saveQuickQuote();
   }
+  // Manual shipping override from the Results modal (total USD). Blank clears
+  // it (back to the weight × rate estimate). Recomputes landed cost, profit,
+  // and the Totals tiles live.
+  function qqResultShip(i, val) {
+    const r = _qq.rows[i]; if (!r) return;
+    const wasActive = r.shipManualUsd != null && String(r.shipManualUsd).trim() !== '';
+    r.shipManualUsd = val;
+    const nowActive = String(val).trim() !== '';
+    try { _qqSyncRevenue(i); } catch (e) {}
+    _qqRenderSummary();
+    saveQuickQuote();
+    if (wasActive !== nowActive) {
+      // The "· manual" badge + Reset button appear/disappear — rebuild the
+      // modal body once and restore focus/caret to the shipping input.
+      _qqRenderResult(i);
+      const inp = document.getElementById('qq-r-shiptotusd-input');
+      if (inp) { inp.focus(); try { const L = inp.value.length; inp.setSelectionRange(L, L); } catch (_) {} }
+    } else {
+      _qqUpdateResultDeps(i);
+    }
+  }
+  function qqResultShipReset(i) {
+    const r = _qq.rows[i]; if (!r) return;
+    delete r.shipManualUsd;
+    try { _qqSyncRevenue(i); } catch (e) {}
+    _qqRenderSummary();
+    saveQuickQuote();
+    _qqRenderResult(i);
+  }
   function _qqUpdateResultDeps(i) {
     const r = _qq.rows[i]; if (!r) return;
     const c = _qqCompute(r);
@@ -34914,11 +34956,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           ${row('Landed cost', 'qq-r-landed', _qqUsd3(c.landedPer), 'qq-strong')}
         </div>
         <div class="qq-res-group">
-          <div class="qq-res-sec">Shipping</div>
+          <div class="qq-res-sec">Shipping ${c.shipManualActive ? '<span style="color:var(--accent); font-weight:800;">· manual</span>' : ''}</div>
           ${row('Per unit (RMB)', 'qq-r-shipunit', _qqRmb(c.shipPerRmb))}
           ${row('Per unit (USD)', 'qq-r-shipusd2', _qqUsd3(c.shipPerUsd))}
           ${row('Total (RMB)', 'qq-r-shiptot', _qqRmb(c.shipTotRmb))}
-          ${row('Total (USD)', 'qq-r-shiptotusd', _qqUsd(c.shipTotUsd))}
+          <div class="qq-res-row">
+            <span>Total (USD) <span style="opacity:0.6; font-weight:600;">— type to override</span></span>
+            <span style="display:inline-flex; align-items:center; gap:3px;"><span style="color:var(--text-muted);">$</span><input type="text" inputmode="decimal" id="qq-r-shiptotusd-input" class="qq-ship-override" value="${c.shipManualActive ? _qqEsc(r.shipManualUsd) : (c.shipTotUsd > 0 ? (Math.round(c.shipTotUsd * 100) / 100) : '')}" placeholder="0" oninput="qqResultShip(${i}, this.value)" style="width:120px; border:1px solid var(--border); border-radius:7px; padding:4px 8px; font-size:13.5px; font-weight:700; text-align:right; background:var(--surface); color:var(--text); font-family:inherit;"></span>
+          </div>
+          ${c.shipManualActive ? `<div class="qq-res-row" style="padding-top:0;"><span style="font-size:11px; color:var(--text-muted);">Overrides the weight × rate estimate</span><span><button type="button" onclick="qqResultShipReset(${i})" style="border:1px solid var(--border); background:var(--surface2); color:var(--text-muted); font-size:11px; font-weight:700; border-radius:6px; padding:3px 9px; cursor:pointer;">Reset to weight</button></span></div>` : ''}
         </div>
       </div>`;
   }
