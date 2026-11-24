@@ -54423,11 +54423,17 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       else if (b.key === 'in_transit' && b.eta) sub = ' · ETA ' + _trackFmtDate(b.eta);
       return `<div class="pl-track-pill pl-track-${b.key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[b.key]};"></span>${carrierPrefix}${labels[b.key]}${_plEsc(sub)}</div>`;
     }
-    // No carrier scrape yet — show the shipment's own status, colored by stage.
+    // No carrier scrape yet (manual ETA, or an ocean/local carrier with no API
+    // feed like Matson/Cosco/Local Freight) — show the shipment's own status,
+    // colored by stage, and still surface the operator-entered ETA.
     const lbl = (typeof _SHIP_STATUS_LABEL === 'function') ? _SHIP_STATUS_LABEL(s.status) : (s.status || '');
     if (!lbl && !carrierPrefix) return '';
     const key = (s.status === 'delivered' || s.status === 'received') ? 'delivered' : (s.status === 'in_transit' ? 'in_transit' : 'pending');
-    return `<div class="pl-track-pill pl-track-${key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[key]};"></span>${carrierPrefix}${_plEsc(lbl)}</div>`;
+    const manualEta = s.eta || (s.tracking && s.tracking.eta) || '';
+    let sub = '';
+    if (key === 'delivered' && s.deliveredOn) sub = ' · ' + _trackFmtDate(s.deliveredOn);
+    else if (key !== 'delivered' && manualEta) sub = ' · ETA ' + _trackFmtDate(manualEta);
+    return `<div class="pl-track-pill pl-track-${key}"${clickAttr}><span class="pl-track-dot" style="background:${dotCol[key]};"></span>${carrierPrefix}${_plEsc(lbl)}${_plEsc(sub)}</div>`;
   }
 
   // Carrier status phrase → coarse bucket (mirrors the server bucketOf).
