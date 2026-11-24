@@ -6881,7 +6881,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 4px 0 14px; }
     .pl-fact { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
     .pl-fact-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-    .pl-fact-value { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 2px; }
+    .pl-fact-value { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 2px; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
     .pl-modal-list { list-style: none; padding: 0; margin: 0 0 14px; font-size: 13px; }
     .pl-modal-list li { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 10px; }
     .pl-modal-group { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); padding-top: 10px; }
