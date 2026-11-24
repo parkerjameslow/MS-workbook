@@ -8714,7 +8714,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
 
       <!-- Product media (Images + Design File + Videos) — collapsible box,
            closed by default. The collapsed header shows live counts. -->
-      <div id="media-collapse" style="margin-top:4px; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden;">
+      <div id="media-collapse" style="margin-top:22px; border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden;">
       <div onclick="toggleMediaCollapse()" style="display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; background:var(--surface2); user-select:none;">
         <span style="font-size:13px; font-weight:700; color:var(--text);">Product Images, Design File &amp; Videos</span>
         <span id="media-collapse-summary" style="font-size:11px; color:var(--text-muted);"></span>
