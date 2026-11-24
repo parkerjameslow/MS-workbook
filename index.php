@@ -8606,9 +8606,9 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
            right and stretches (align-items:stretch) to the full height of
            those three combined. The rich-text editor wraps #product-desc in
            place (initRichEditors), so it works wherever the textarea lives. -->
-      <div class="form-grid form-grid-2" style="align-items:stretch;">
+      <div class="form-grid form-grid-2" style="align-items:stretch; gap:22px;">
         <!-- Left column -->
-        <div style="min-width:0; display:flex; flex-direction:column; gap:14px;">
+        <div style="min-width:0; display:flex; flex-direction:column; gap:18px;">
           <div class="field" style="margin:0;">
             <label>Product Name</label>
             <input type="text" placeholder="e.g. Custom Tote Bag" id="product-name" />
@@ -8630,10 +8630,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc" data-rich="1"></textarea>
           </div>
         </div>
-        <!-- Right column — Technical Specifications, full height of the left stack -->
-        <div style="min-width:0; display:flex; flex-direction:column;">
+        <!-- Right column — Technical Specifications, full height of the left stack.
+             gap:5px matches the .field label→input gap so the box top lines up
+             with the Product Name input top. -->
+        <div style="min-width:0; display:flex; flex-direction:column; gap:5px;">
           <label>Technical Specifications</label>
-          <div style="border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); padding:14px; display:flex; flex-direction:column; gap:14px; flex:1 1 auto;">
+          <div style="border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); padding:18px; display:flex; flex-direction:column; gap:18px; flex:1 1 auto;">
             <div class="field" style="margin:0;">
               <label>Product Category</label>
               <div class="select-wrapper">
