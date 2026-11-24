@@ -8129,14 +8129,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     </a>
   </div>
 
-  <!-- Shipping Calendar — orange pill matching Pipeline / Clients / Recent WB.
-       Month view of Order ETAs (pre-production / production lead) + Shipment
-       ETAs (real carrier ETA once a tracking number exists). -->
-  <div style="padding: 0 10px 8px;">
-    <a id="nav-calendar-link" href="#/calendar" onclick="event.preventDefault(); location.hash='#/calendar'" class="nav-flat-link" style="font-size:12px; font-weight:700; padding:8px 12px;">
-      <span>Shipping Calendar</span>
-    </a>
-  </div>
+  <!-- (Shipping Calendar moved to the Shipments view header as a button.) -->
 
   <!-- Quick Quote = internal margin calculator. (Client Quotes moved to the
        Clients dashboard header as a top-right button.) -->
@@ -10757,6 +10750,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     <div class="section-card">
       <div class="section-header" style="display:flex; align-items:center; gap:10px;">
         <span class="section-title" style="margin-right:auto;">Shipments</span>
+        <!-- Shipping Calendar — moved here from the left nav. -->
+        <button type="button" onclick="location.hash='#/calendar'" title="Open the Shipping Calendar — Order + Shipment ETAs"
+          style="padding:7px 14px; font-size:13px; font-weight:700; font-family:inherit; border:1px solid #E8751A; border-radius:6px; background:#E8751A; color:#fff; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; gap:7px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Shipping Calendar
+        </button>
         <button class="btn btn-primary" onclick="openNewShipmentModal()">+ New Shipment</button>
       </div>
       <div class="section-body">
