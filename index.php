@@ -47719,29 +47719,29 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       </div>`;
 
     host.innerHTML = `
-      <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:7px; margin-bottom:14px; flex-wrap:wrap;">
         <div style="display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
-          <button type="button" onclick="_calSetView('month')" style="font-size:12px; font-weight:700; padding:6px 14px; border:none; cursor:pointer; font-family:inherit; background:${_calView === 'month' ? 'var(--accent)' : 'transparent'}; color:${_calView === 'month' ? '#fff' : 'var(--text)'};">Calendar</button>
-          <button type="button" onclick="_calSetView('timeline')" style="font-size:12px; font-weight:700; padding:6px 14px; border:none; cursor:pointer; font-family:inherit; background:${_calView === 'timeline' ? 'var(--accent)' : 'transparent'}; color:${_calView === 'timeline' ? '#fff' : 'var(--text)'};">Timeline</button>
+          <button type="button" onclick="_calSetView('month')" style="font-size:12px; font-weight:700; padding:5px 10px; border:none; cursor:pointer; font-family:inherit; background:${_calView === 'month' ? 'var(--accent)' : 'transparent'}; color:${_calView === 'month' ? '#fff' : 'var(--text)'};">Calendar</button>
+          <button type="button" onclick="_calSetView('timeline')" style="font-size:12px; font-weight:700; padding:5px 10px; border:none; cursor:pointer; font-family:inherit; background:${_calView === 'timeline' ? 'var(--accent)' : 'transparent'}; color:${_calView === 'timeline' ? '#fff' : 'var(--text)'};">Timeline</button>
         </div>
         ${_calView === 'month' ? `
-        <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(-1)" style="font-size:13px; padding:4px 10px;">‹ Prev</button>
-        <div style="font-size:18px; font-weight:800; color:var(--text); min-width:170px; text-align:center;">${esc(monthName)}</div>
-        <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(1)" style="font-size:13px; padding:4px 10px;">Next ›</button>
-        <button type="button" class="btn btn-ghost" onclick="_calGoToday()" style="font-size:13px; padding:4px 10px;">Today</button>` : `
+        <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(-1)" style="font-size:12px; padding:3px 7px;">‹</button>
+        <div style="font-size:15px; font-weight:800; color:var(--text); min-width:116px; text-align:center;">${esc(monthName)}</div>
+        <button type="button" class="btn btn-ghost" onclick="_calShiftMonth(1)" style="font-size:12px; padding:3px 7px;">›</button>
+        <button type="button" class="btn btn-ghost" onclick="_calGoToday()" style="font-size:12px; padding:3px 9px;">Today</button>` : `
         <div style="font-size:16px; font-weight:800; color:var(--text);">Timeline</div>
         <select onchange="_calSetClient(this.value)" title="Filter the timeline by client" style="font-size:13px; padding:6px 10px; min-width:170px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface2); color:var(--text); font-family:inherit; cursor:pointer;">
           <option value="">All clients</option>
           ${clientsInView.map(c => `<option value="${esc(c)}"${c === _calClientFilter ? ' selected' : ''}>${esc(c)}</option>`).join('')}
         </select>`}
-        <div style="margin-left:auto; display:flex; gap:8px; align-items:center; font-size:11px; font-weight:700; flex-wrap:wrap;">
+        <div style="margin-left:auto; display:flex; gap:6px; align-items:center; font-size:11px; font-weight:700; flex-wrap:wrap; justify-content:flex-end;">
           ${(() => {
             const chip = (key, color, label) => {
               const on = _calStatusFilter.indexOf(key) !== -1;
               const dim = _calStatusFilter.length > 0 && !on;
               return `<button type="button" onclick="_calToggleStatus('${key}')" title="Filter the calendar to ${label}"
-                style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; font-family:inherit; cursor:pointer; padding:4px 10px; border-radius:999px; border:1px solid ${color}${on ? '' : '66'}; background:${on ? color : 'transparent'}; color:${on ? '#fff' : color}; opacity:${dim ? '0.45' : '1'}; transition:all 0.12s;">
-                <span style="width:10px; height:10px; border-radius:2px; background:${on ? '#fff' : color}; display:inline-block;"></span>${label}</button>`;
+                style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; font-family:inherit; cursor:pointer; padding:4px 9px; white-space:nowrap; border-radius:999px; border:1px solid ${color}${on ? '' : '66'}; background:${on ? color : 'transparent'}; color:${on ? '#fff' : color}; opacity:${dim ? '0.45' : '1'}; transition:all 0.12s;">
+                <span style="width:9px; height:9px; border-radius:2px; background:${on ? '#fff' : color}; display:inline-block;"></span>${label}</button>`;
             };
             return chip('rough', '#E8751A', 'Order ETA (rough)')
                  + chip('production', '#3b82f6', 'Order ETA (production)')
