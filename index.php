@@ -1874,14 +1874,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
        colgroup widths win on its own. */
     .dash-table#rfq-table { table-layout: fixed; }
     .dash-table#rfq-table th:nth-child(1), .dash-table#rfq-table td:nth-child(1) { width: 40px; text-align: center; padding-left: 6px; padding-right: 6px; }  /* Select */
-    .dash-table#rfq-table th:nth-child(2), .dash-table#rfq-table td:nth-child(2) { width: 16%; overflow: hidden; }   /* Client */
-    .dash-table#rfq-table th:nth-child(3), .dash-table#rfq-table td:nth-child(3) { width: 20%; overflow: hidden; }   /* Workbook */
-    .dash-table#rfq-table th:nth-child(4), .dash-table#rfq-table td:nth-child(4) { width: 9%;  }   /* Submitted */
-    .dash-table#rfq-table th:nth-child(5), .dash-table#rfq-table td:nth-child(5) { width: 6%;  }   /* Lines */
-    .dash-table#rfq-table th:nth-child(6), .dash-table#rfq-table td:nth-child(6) { width: 8%;  }   /* Qty */
-    .dash-table#rfq-table th:nth-child(7), .dash-table#rfq-table td:nth-child(7) { width: 10%; }   /* RMB */
-    .dash-table#rfq-table th:nth-child(8), .dash-table#rfq-table td:nth-child(8) { width: 11%; }   /* USD */
-    .dash-table#rfq-table th:nth-child(9), .dash-table#rfq-table td:nth-child(9) { width: 16%; }   /* Action */
+    .dash-table#rfq-table th:nth-child(2), .dash-table#rfq-table td:nth-child(2) { width: 14%; overflow: hidden; }   /* Client */
+    .dash-table#rfq-table th:nth-child(3), .dash-table#rfq-table td:nth-child(3) { width: 17%; overflow: hidden; }   /* Workbook */
+    .dash-table#rfq-table th:nth-child(4), .dash-table#rfq-table td:nth-child(4) { width: 8%;  }   /* Submitted */
+    .dash-table#rfq-table th:nth-child(5), .dash-table#rfq-table td:nth-child(5) { width: 5%;  }   /* Lines */
+    .dash-table#rfq-table th:nth-child(6), .dash-table#rfq-table td:nth-child(6) { width: 7%;  }   /* Qty */
+    .dash-table#rfq-table th:nth-child(7), .dash-table#rfq-table td:nth-child(7) { width: 9%;  }   /* RMB */
+    .dash-table#rfq-table th:nth-child(8), .dash-table#rfq-table td:nth-child(8) { width: 10%; }   /* USD */
+    .dash-table#rfq-table th:nth-child(9), .dash-table#rfq-table td:nth-child(9) { width: 24%; }   /* Action */
     .dash-table#rfq-table th, .dash-table#rfq-table td { padding-left: 12px; padding-right: 12px; }
 
     /* Ready-for-Review table — 7 columns, no per-row action (the row
