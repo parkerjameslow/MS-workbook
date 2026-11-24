@@ -6800,8 +6800,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     .pl-entity .pl-card-sub { color: #cbd5e1; }
     .pl-children { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; gap: 2px; }
     .pl-child-group { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; margin-top: 5px; }
-    .pl-child { font-size: 11px; color: #e5e7eb; padding: 4px 11px; border-radius: 999px; cursor: pointer; align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); transition: background 0.12s; }
-    .pl-child:hover { background: rgba(255,255,255,0.14); }
+    .pl-child { font-size: 11px; color: #1e3a8a; padding: 4px 11px; border-radius: 999px; cursor: pointer; align-self: flex-start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #e8f0fe; border: 1px solid #c7dafc; transition: background 0.12s; }
+    .pl-child:hover { background: #d7e6fd; }
     .pl-child-val { color: #a7f3d0; font-weight: 600; flex-shrink: 0; }
     /* Collapsible drill-down — children hidden until the toggle is clicked. */
     .pl-children { display: none; }
