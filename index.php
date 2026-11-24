@@ -54675,7 +54675,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${_entityIsDone('order', c.id) ? _doneBadgeHtml(orderData[c.id]) : ''}
       ${_prodEtaHtml}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
-      ${children ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${wbs.length} workbook${wbs.length === 1 ? '' : 's'}</button>
+      ${children ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${_plEsc(_wbClientBreakdown(wbs, wbs.length))}</button>
       <div class="pl-children">${children}</div>` : ''}
       ${_plAssigneeChips(cid)}
     </div>`;
@@ -54683,25 +54683,32 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   // Shipment entity card (Shipments / Receiving) — titled by shipment name,
   // drills down shipment → order → workbooks. Click header → open shipment.
-  // Collapsed drill-toggle label for a shipment card: a per-client workbook
-  // breakdown, e.g. "Salt - 1 workbook, Nut Garden - 2 workbooks", instead of a
-  // bare total. Falls back to the plain count if client names aren't resolvable.
-  function _shipmentWbBreakdown(c) {
+  // Collapsed drill-toggle label: a per-client workbook breakdown, e.g.
+  // "Salt - 1 workbook, Nut Garden - 2 workbooks", instead of a bare total.
+  // Takes a flat workbook list ([{cn,...}]) and a fallback count used only when
+  // no client names are resolvable.
+  function _wbClientBreakdown(wbs, fallbackCount) {
     const byClient = {};
     const order = [];
-    (c.groups || []).forEach(g => (g.workbooks || []).forEach(w => {
-      const cn = (w.cn || '').trim() || '—';
+    (wbs || []).forEach(w => {
+      const cn = ((w && w.cn) || '').trim() || '—';
       if (!(cn in byClient)) { byClient[cn] = 0; order.push(cn); }
       byClient[cn]++;
-    }));
+    });
     if (!order.length) {
-      const n = c.count || 0;
+      const n = fallbackCount || 0;
       return `${n} workbook${n === 1 ? '' : 's'}`;
     }
     return order.map(cn => {
       const n = byClient[cn];
       return `${cn} - ${n} workbook${n === 1 ? '' : 's'}`;
     }).join(', ');
+  }
+  // Shipment card: flatten its order groups into one workbook list.
+  function _shipmentWbBreakdown(c) {
+    const flat = [];
+    (c.groups || []).forEach(g => (g.workbooks || []).forEach(w => flat.push(w)));
+    return _wbClientBreakdown(flat, c.count);
   }
 
   function _pipelineShipmentCardHtml(c) {
