@@ -25841,12 +25841,12 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
     ['overview', 'rfq', 'tiers', 'fees', 'dimensions', 'pallet'].forEach(_updateSectionSummary);
   }
 
-  // Auto-collapse the data-heavy sections (RFQ, Tiered Pricing,
-  // Additional Fees, Dimensions, Pallet) on every workbook open so the
-  // operator lands on a clean Product Overview view. The sections are
-  // still ONE click away — the chevron in each header expands them.
+  // Collapse the less-used sections on every workbook open and leave RFQ
+  // expanded — that's the one we work in most. Product Overview is collapsed
+  // too (per operator preference). Every section is still ONE click away via
+  // the chevron in its header.
   function _collapseHeavySectionsOnOpen() {
-    ['rfq', 'tiers', 'fees', 'dimensions', 'pallet'].forEach(name => {
+    ['overview', 'tiers', 'fees', 'dimensions', 'pallet'].forEach(name => {
       const card = document.querySelector(`.section-card[data-section="${name}"]`);
       if (card) card.classList.add('collapsed');
     });
