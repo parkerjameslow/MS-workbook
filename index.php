@@ -11284,7 +11284,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       <button onclick="closeReceivedModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);">&times;</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
-      <p style="margin:0; font-size:13px; color:var(--text-muted);">Confirm received qty per workbook. Defaults to expected qty — only change the rows with a discrepancy. Once confirmed, the shipment archives out of Receiving.</p>
+      <p style="margin:0; font-size:13px; color:var(--text-muted);">Confirm received qty per workbook. Defaults to expected qty — only change the rows with a discrepancy. A clean receipt archives out of Receiving and sends a reconciliation PDF to #accounting (one per client); a discrepancy keeps the shipment here for review.</p>
+      <div id="received-modal-summary" style="display:none; padding:9px 12px; border-radius:8px; font-size:13px; font-weight:700;"></div>
       <div style="overflow-x:auto; border:1px solid var(--border); border-radius:8px;">
         <table id="received-audit-table" style="width:100%; border-collapse:collapse; font-size:13px;">
           <thead>
@@ -11315,7 +11316,8 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       </div>
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
         <button class="btn btn-ghost" onclick="closeReceivedModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="confirmReceivedModal()">✓ Confirm Receipt</button>
+        <button id="received-ack-btn" style="display:none; background:#b91c1c; color:#fff; border:none; padding:9px 16px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer;" onclick="confirmReceivedModal(true)" title="This shipment has a quantity discrepancy. Acknowledge it and complete the receipt anyway — the reconciliation PDFs will note the variance.">⚠ Acknowledge discrepancy &amp; complete anyway</button>
+        <button class="btn btn-primary" onclick="confirmReceivedModal(false)">✓ Confirm Receipt</button>
       </div>
     </div>
   </div>
@@ -28085,6 +28087,139 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     doc.text('Market Sculpt LLC   ·   marketsculpt.com   ·   parker@marketsculpt.com', W / 2, doc.internal.pageSize.getHeight() - 40, { align: 'center' });
     const uri = doc.output('datauristring');
     return String(uri).split(',')[1];
+  }
+
+  // Build a per-client RECEIVING RECONCILIATION PDF (base64 body) from the
+  // completed receiving audit rows for one client. Mirrors the invoice styling
+  // (_buildInvoicePdfBase64) so #accounting gets a familiar, branded doc.
+  // `rows` = audit entries for this client; `meta` = { shipName, dateStr }.
+  async function _buildReceivingReconPdfBase64(clientName, rows, meta) {
+    if (!Array.isArray(rows) || !rows.length) return '';
+    await _jspdfReady();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const W = doc.internal.pageSize.getWidth();
+    const M = 48;
+    const m = meta || {};
+    const dateStr = m.dateStr || new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(20); doc.setTextColor(232, 117, 26);
+    doc.text('Market Sculpt', M, 56);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(107, 114, 128);
+    doc.text('RECEIVING RECONCILIATION', M, 70);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(22); doc.setTextColor(26, 29, 46);
+    doc.text('Received', W - M, 54, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(55, 65, 81);
+    doc.text('Date: ' + String(dateStr), W - M, 70, { align: 'right' });
+    if (m.shipName) doc.text(String(m.shipName), W - M, 84, { align: 'right' });
+    doc.setDrawColor(232, 117, 26); doc.setLineWidth(2); doc.line(M, 96, W - M, 96);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(155, 163, 192);
+    doc.text('BILL TO', M, 120);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(26, 29, 46);
+    doc.text(String(clientName || ''), M, 136);
+
+    const nf = (n) => (Number(n) || 0).toLocaleString('en-US');
+    let anyVar = false, grand = 0;
+    const body = [];
+    const varRowIdx = [];
+    rows.forEach((r, i) => {
+      const expected = Number(r.expectedQty) || 0;
+      const received = Number(r.receivedQty) || 0;
+      const diff = received - expected;
+      if (diff !== 0) { anyVar = true; varRowIdx.push(i); }
+      const detail = (workbookDetail[r.key] || workbookDetail[`${r.clientName}|${r.workbookId}`] || {});
+      let unit = parseFloat(detail.pricingSalePer) || 0;
+      if (!(unit > 0)) {
+        const cqt = parseFloat(detail.pricingClientQuoteTotal) || 0;
+        if (cqt > 0 && expected > 0) unit = cqt / expected;
+      }
+      const amount = unit > 0 ? received * unit : 0;
+      grand += amount;
+      body.push([
+        String(r.product || 'Item'),
+        nf(expected),
+        nf(received),
+        diff === 0 ? '—' : (diff > 0 ? '+' + nf(diff) : '−' + nf(Math.abs(diff))),
+        unit > 0 ? _qbFmtUsd(unit) : '—',
+        unit > 0 ? _qbFmtUsd(amount) : '—',
+      ]);
+    });
+    doc.autoTable({
+      startY: 156,
+      head: [['Product / service', 'Expected', 'Received', 'Variance', 'Unit', 'Amount']],
+      body,
+      theme: 'grid',
+      styles: { fontSize: 10, cellPadding: 6, textColor: [26, 29, 46], lineColor: [235, 237, 240] },
+      headStyles: { fillColor: [248, 249, 251], textColor: [107, 114, 128], fontStyle: 'bold', fontSize: 9, halign: 'left' },
+      columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+      margin: { left: M, right: M },
+      didParseCell: (data) => {
+        if (data.section === 'body' && varRowIdx.indexOf(data.row.index) !== -1) {
+          data.cell.styles.fillColor = [254, 242, 242];
+          if (data.column.index === 3) { data.cell.styles.textColor = [185, 28, 28]; data.cell.styles.fontStyle = 'bold'; }
+        }
+      },
+    });
+    let fy = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 200) + 24;
+    doc.setDrawColor(232, 117, 26); doc.setLineWidth(1.5); doc.line(W - M - 210, fy - 12, W - M, fy - 12);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(26, 29, 46);
+    doc.text('Total', W - M - 210, fy + 2);
+    doc.text(_qbFmtUsd(grand), W - M, fy + 2, { align: 'right' });
+    let iy = fy + 28;
+    if (anyVar) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(185, 28, 28);
+      doc.text('⚠ Discrepancy acknowledged — see the Variance column (received differs from expected).', M, iy);
+      iy += 16;
+    }
+    const gnotes = (rows.map(r => (r.notes || '').trim()).filter(Boolean));
+    if (gnotes.length) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90, 95, 110);
+      gnotes.slice(0, 6).forEach(nt => { doc.text('• ' + String(nt).slice(0, 110), M, iy); iy += 13; });
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(155, 163, 192);
+    doc.text('Market Sculpt LLC   ·   marketsculpt.com   ·   parker@marketsculpt.com', W / 2, doc.internal.pageSize.getHeight() - 40, { align: 'center' });
+    const uri = doc.output('datauristring');
+    return String(uri).split(',')[1];
+  }
+
+  // On a completed (or acknowledged) receipt, group the audit by client and
+  // send one reconciliation PDF per client to #accounting, each with a one-line
+  // text header. Sequential + guarded so one failure doesn't block the rest.
+  async function _sendReceivingPdfsToAccounting(s, audit) {
+    if (!Array.isArray(audit) || !audit.length) return;
+    const shipName = s.name || ('Shipment #' + (s.id != null ? s.id : ''));
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const acknowledged = !!s.discrepancyAcknowledged;
+    // Group rows by client (preserve first-seen order).
+    const byClient = {}; const order = [];
+    audit.forEach(a => {
+      const cn = (a.clientName || '').trim() || 'Unassigned';
+      if (!(cn in byClient)) { byClient[cn] = []; order.push(cn); }
+      byClient[cn].push(a);
+    });
+    const slug = (v) => String(v || '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'client';
+    let sent = 0, failed = 0;
+    for (const cn of order) {
+      const rows = byClient[cn];
+      try {
+        const pdf = await _buildReceivingReconPdfBase64(cn, rows, { shipName, dateStr });
+        if (!pdf) { failed++; continue; }
+        const nItems = rows.length;
+        const varLines = rows.filter(r => r.discrepancy).length;
+        let comment = `*${cn}* — received for ${shipName} on ${dateStr} · ${nItems} item${nItems === 1 ? '' : 's'}`;
+        if (varLines > 0) comment += ` · ⚠ discrepancy acknowledged (${varLines} line${varLines === 1 ? '' : 's'})`;
+        const r = await apiCall('receiving_recon_to_accounting', {
+          pdf_base64: pdf,
+          filename: `Receiving-${slug(shipName)}-${slug(cn)}.pdf`,
+          comment,
+        });
+        if (r && r.success) sent++; else failed++;
+      } catch (e) { console.warn('[receiving pdf]', cn, e); failed++; }
+    }
+    if (typeof _msToast === 'function') {
+      if (failed === 0 && sent > 0) _msToast(`Sent ${sent} reconciliation PDF${sent === 1 ? '' : 's'} to #accounting.`, 'success');
+      else if (sent > 0) _msToast(`Sent ${sent} to #accounting; ${failed} failed — check Slack config.`, 'warning');
+      else _msToast('Could not send reconciliation PDFs to #accounting — check Slack config.', 'warning');
+    }
   }
 
   // Persist the QB invoice reference on the workbook. Merge-safe partial save
@@ -48010,17 +48145,26 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     const carrierUrl = carrierUrls[s.carrier] || '#';
     const shipName = s.name || `Shipment #${id}`;
     const open = _receivingItemOpen.has(String(id));
-    return `<div class="order-card" style="padding:0; overflow:hidden;">
+    // Discrepancy flag — a receipt was audited but a quantity didn't match and
+    // wasn't acknowledged, so it's parked here for review (status still
+    // 'delivered'). Red left-border + chip make it unmissable.
+    const discCount = (s.discrepancyFlagged && Array.isArray(s.receivedAudit)) ? s.receivedAudit.filter(a => a && a.discrepancy).length : 0;
+    const flagged = !!s.discrepancyFlagged && discCount > 0;
+    const flagChip = flagged
+      ? `<span style="padding:2px 9px; border-radius:99px; background:rgba(239,68,68,0.14); color:#b91c1c; font-size:11px; font-weight:800;" title="The receiving audit found a quantity that doesn't match expected. Reopen Receiving to fix the count or acknowledge the discrepancy to complete.">⚠ Discrepancy — ${discCount} line${discCount === 1 ? '' : 's'} need review</span>`
+      : '';
+    return `<div class="order-card" style="padding:0; overflow:hidden;${flagged ? ' border-left:4px solid #ef4444;' : ''}">
       <div onclick="toggleReceivingItem('${id}')" style="display:flex; align-items:center; gap:12px; padding:12px 14px; cursor:pointer; flex-wrap:wrap;" title="Click to ${open ? 'collapse' : 'expand'} tracking detail">
         <span id="rec-chev-${id}" style="font-size:12px; color:var(--text-muted); transition:transform .15s ease; ${open ? 'transform:rotate(90deg);' : ''}">▶</span>
         <span style="font-weight:700; font-size:14px;">${_esc(shipName)}</span>
         <span style="padding:2px 9px; border-radius:99px; background:${carrierColor}; color:#fff; font-size:10px; font-weight:800; letter-spacing:0.03em; text-transform:uppercase;">${_esc(carrierLabel)}</span>
         <span style="font-size:12px; font-weight:700; color:${statusColor};">${_esc(statusText)}</span>
+        ${flagChip}
         <span style="font-size:12px; color:var(--text-muted);" title="ETA / delivery date">${_esc(_recDateLabel(id))}</span>
         <span style="margin-left:auto; display:flex; gap:8px; align-items:center;" onclick="event.stopPropagation();">
           <a href="${carrierUrl}" target="_blank" rel="noopener" style="font-family:'SF Mono','Consolas',monospace; font-size:11px; color:var(--text); text-decoration:none; padding:3px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface2);" title="Open carrier tracking page">${_esc(s.trackingNumber || '—')} ↗</a>
           <span class="sc-wb-pill" onclick="event.stopPropagation(); location.hash='#/shipment/${id}'" title="Open this shipment's detail page — orders, workbooks, trackings &amp; costs">View Shipment</span>
-          <button class="btn btn-ghost" style="font-size:12px;" onclick="event.stopPropagation(); openReceivedModal('${id}','receiving')" title="Open the per-workbook receiving audit to confirm receipt.">Receiving</button>
+          <button class="btn ${flagged ? 'btn-primary' : 'btn-ghost'}" style="font-size:12px;${flagged ? ' background:#b91c1c; border-color:#b91c1c;' : ''}" onclick="event.stopPropagation(); openReceivedModal('${id}','receiving')" title="Open the per-workbook receiving audit to confirm receipt.">${flagged ? 'Review discrepancy' : 'Receiving'}</button>
         </span>
       </div>
       <div id="rec-details-${id}" style="display:${open ? 'block' : 'none'}; padding:0 14px 14px;">
@@ -48460,11 +48604,15 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
           <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted); background:rgba(107,147,255,0.04);" title="${r.inner > 0 && r.outer > 0 ? r.inner + ' inner × ' + r.outer + ' outer' : 'Carton fields not set on this workbook'}">${fmt(r.masterPack)}</td>
           <td style="padding:8px 12px; text-align:right; font-variant-numeric:tabular-nums; color:var(--text-muted); background:rgba(107,147,255,0.04);">${fmt(r.totalCartons)}</td>
           <td style="padding:6px 8px; text-align:right; border-left:2px solid var(--border); background:rgba(16,185,129,0.04);">
-            <input type="number" min="0" step="1" data-received-idx="${idx}"
-                   value="${r.qty > 0 ? r.qty : ''}"
-                   placeholder="${r.qty > 0 ? r.qty : '0'}"
-                   class="form-input"
-                   style="width:96px; padding:4px 8px; text-align:right; font-variant-numeric:tabular-nums;" />
+            <div style="display:flex; align-items:center; justify-content:flex-end; gap:6px;">
+              <span id="rec-var-${idx}" style="font-size:11px; font-weight:800; white-space:nowrap;"></span>
+              <input type="number" min="0" step="1" data-received-idx="${idx}"
+                     value="${r.qty > 0 ? r.qty : ''}"
+                     placeholder="${r.qty > 0 ? r.qty : '0'}"
+                     oninput="_recAuditRowChanged(${idx})"
+                     class="form-input"
+                     style="width:96px; padding:4px 8px; text-align:right; font-variant-numeric:tabular-nums;" />
+            </div>
           </td>
           <td style="padding:6px 8px; background:rgba(16,185,129,0.04);">
             <input type="text" data-received-note-idx="${idx}"
@@ -48477,6 +48625,63 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     }
     document.getElementById('received-modal-notes').value = '';
     document.getElementById('received-modal').style.display = 'flex';
+    // Paint initial variance badges + summary (defaults match expected → clean).
+    (ctx.rows || []).forEach((r, idx) => { try { _recAuditRowChanged(idx); } catch (_) {} });
+    _recAuditUpdateSummary();
+  }
+
+  // Live variance badge for one audit row as the operator types the received
+  // qty. Highlights the input + shows ▲/▼ delta; drives the modal summary.
+  function _recAuditRowChanged(idx) {
+    if (!_receivedModalCtx) return;
+    const row = (_receivedModalCtx.rows || [])[idx];
+    if (!row) return;
+    const inp  = document.querySelector(`#received-audit-tbody input[data-received-idx="${idx}"]`);
+    const badge = document.getElementById('rec-var-' + idx);
+    const expected = Number(row.qty) || 0;
+    const received = inp ? (parseFloat(inp.value) || 0) : 0;
+    const diff = received - expected;
+    if (badge) {
+      if (diff === 0) { badge.textContent = ''; badge.style.color = ''; }
+      else {
+        const over = diff > 0;
+        badge.textContent = (over ? '▲+' : '▼−') + Math.abs(diff).toLocaleString('en-US');
+        badge.style.color = over ? '#b45309' : '#b91c1c';
+      }
+    }
+    if (inp) {
+      inp.style.borderColor = diff === 0 ? '' : (diff > 0 ? '#f59e0b' : '#ef4444');
+      inp.style.background  = diff === 0 ? '' : (diff > 0 ? 'rgba(245,158,11,0.10)' : 'rgba(239,68,68,0.10)');
+    }
+    _recAuditUpdateSummary();
+  }
+
+  // Count mismatched rows → green "all match" or amber "N don't match" banner,
+  // and reveal the Acknowledge-&-complete-anyway button only when needed.
+  function _recAuditUpdateSummary() {
+    if (!_receivedModalCtx) return;
+    let n = 0;
+    (_receivedModalCtx.rows || []).forEach((r, idx) => {
+      const inp = document.querySelector(`#received-audit-tbody input[data-received-idx="${idx}"]`);
+      const received = inp ? (parseFloat(inp.value) || 0) : 0;
+      if (received !== (Number(r.qty) || 0)) n++;
+    });
+    const banner = document.getElementById('received-modal-summary');
+    const ackBtn = document.getElementById('received-ack-btn');
+    if (banner) {
+      if (n === 0) {
+        banner.style.display = 'block';
+        banner.style.background = 'rgba(16,185,129,0.12)';
+        banner.style.color = '#047857';
+        banner.textContent = '✓ All quantities match expected — completing will send the reconciliation PDF(s) to #accounting.';
+      } else {
+        banner.style.display = 'block';
+        banner.style.background = 'rgba(239,68,68,0.12)';
+        banner.style.color = '#b91c1c';
+        banner.textContent = `⚠ ${n} line${n === 1 ? '' : 's'} don't match expected. Confirm to keep this shipment in Receiving for review, or acknowledge the discrepancy to complete anyway.`;
+      }
+    }
+    if (ackBtn) ackBtn.style.display = n > 0 ? 'inline-block' : 'none';
   }
 
   function closeReceivedModal() {
@@ -48484,7 +48689,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     _receivedModalCtx = null;
   }
 
-  function confirmReceivedModal() {
+  function confirmReceivedModal(acknowledge) {
     if (!_receivedModalCtx) return;
     const ctx = _receivedModalCtx;
     const s = shipmentData[ctx.shipmentId];
@@ -48514,22 +48719,32 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
         discrepancy: receivedQty !== r.qty,
       });
     });
-    s.status = 'received';
-    s.receivedAt = new Date().toISOString();
+    const hasDiscrepancy = audit.some(a => a.discrepancy);
     s.receivedNotes = document.getElementById('received-modal-notes').value.trim();
     s.receivedAudit = audit;
+
+    // Discrepancy present and NOT acknowledged → save the audit but don't
+    // finish. The shipment stays in Receiving (status stays 'delivered') with a
+    // visual "needs review" flag; nothing is sent to #accounting yet.
+    if (hasDiscrepancy && !acknowledge) {
+      s.discrepancyFlagged = true;
+      s.discrepancyAt = new Date().toISOString();
+      saveShipments();
+      closeReceivedModal();
+      if (typeof _msToast === 'function') _msToast('Saved — discrepancy flagged; shipment stays in Receiving for review.', 'warning');
+      try { renderReceivingList(); } catch (_) {}
+      try { rebuildShipmentsNav(); } catch (_) {}
+      return;
+    }
+
+    // Clean receipt (or an acknowledged discrepancy) → complete it, and send an
+    // invoice-styled reconciliation PDF to #accounting — one per client.
+    s.status = 'received';
+    s.receivedAt = new Date().toISOString();
+    s.discrepancyFlagged = false;
+    s.discrepancyAcknowledged = hasDiscrepancy;
     saveShipments();
-    // Ping #Accounting with exactly what was received + any discrepancies to
-    // chase (so they can email the supplier). Fire-and-forget.
-    try {
-      apiCall('notify_received', {
-        name: s.name || ('Shipment #' + ctx.shipmentId),
-        sid: String(ctx.shipmentId),
-        receivedBy: (typeof getCurrentUser === 'function' ? getCurrentUser() : ''),
-        notes: s.receivedNotes || '',
-        audit: audit.map(a => ({ product: a.product, client: a.clientName, order: a.orderName, expected: a.expectedQty, received: a.receivedQty, discrepancy: a.discrepancy, note: a.notes })),
-      }).catch(() => {});
-    } catch (_) {}
+    try { _sendReceivingPdfsToAccounting(s, audit); } catch (_) {}
     closeReceivedModal();
     if (ctx.returnTo === 'detail') {
       const dd = document.getElementById('ship-detail-status');

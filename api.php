@@ -4133,6 +4133,26 @@ switch ($action) {
         break;
     }
 
+    // Upload ONE client's receiving-reconciliation PDF to #Accounting, with a
+    // one-line text header. The frontend builds the invoice-styled PDF (jsPDF)
+    // and calls this once per client on a completed/acknowledged receipt, so a
+    // shipment spanning two clients produces two separate uploads. Mirrors the
+    // approved-quote-PDF precedent (ms_slack_upload_pdf). Operator-only.
+    case 'receiving_recon_to_accounting': {
+        $b64      = (string)($input['pdf_base64'] ?? '');
+        $filename = trim((string)($input['filename'] ?? 'Receiving.pdf'));
+        $comment  = trim((string)($input['comment'] ?? ''));
+        if ($b64 === '') { echo json_encode(['success' => false, 'error' => 'missing pdf']); break; }
+        if (SLACK_BOT_TOKEN === '' || SLACK_ACCOUNTING_CHANNEL === '' || !function_exists('curl_init')) {
+            echo json_encode(['success' => false, 'error' => 'Slack not configured']); break;
+        }
+        $bytes = base64_decode($b64, true);
+        if ($bytes === false || strlen($bytes) < 100) { echo json_encode(['success' => false, 'error' => 'bad pdf']); break; }
+        $res = ms_slack_upload_pdf($bytes, $filename, $comment, SLACK_ACCOUNTING_CHANNEL);
+        echo json_encode(['success' => !empty($res['ok']), 'error' => $res['error'] ?? null]);
+        break;
+    }
+
     // Pull recent ShipStation orders (optionally by tag) so ones built in
     // ShipStation can be imported into the To-China Samples list.
     case 'shipstation_import_orders': {
