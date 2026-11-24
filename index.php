@@ -6810,6 +6810,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
       margin-top: 7px; background: transparent; border: none; padding: 2px 0;
       color: #93c5fd; font-size: 10px; font-weight: 700; cursor: pointer;
       font-family: inherit; letter-spacing: 0.02em;
+      text-align: left; white-space: normal; line-height: 1.45;
     }
     .pl-drill-toggle:hover { color: #bfdbfe; text-decoration: underline; }
     .pl-drill-toggle::before { content: '\25B8  '; }
@@ -54683,6 +54684,27 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
 
   // Shipment entity card (Shipments / Receiving) — titled by shipment name,
   // drills down shipment → order → workbooks. Click header → open shipment.
+  // Collapsed drill-toggle label for a shipment card: a per-client workbook
+  // breakdown, e.g. "Salt - 1 workbook, Nut Garden - 2 workbooks", instead of a
+  // bare total. Falls back to the plain count if client names aren't resolvable.
+  function _shipmentWbBreakdown(c) {
+    const byClient = {};
+    const order = [];
+    (c.groups || []).forEach(g => (g.workbooks || []).forEach(w => {
+      const cn = (w.cn || '').trim() || '—';
+      if (!(cn in byClient)) { byClient[cn] = 0; order.push(cn); }
+      byClient[cn]++;
+    }));
+    if (!order.length) {
+      const n = c.count || 0;
+      return `${n} workbook${n === 1 ? '' : 's'}`;
+    }
+    return order.map(cn => {
+      const n = byClient[cn];
+      return `${cn} - ${n} workbook${n === 1 ? '' : 's'}`;
+    }).join(', ');
+  }
+
   function _pipelineShipmentCardHtml(c) {
     const body = (c.groups || []).map(g =>
       `<div class="pl-child-group">${_plEsc(g.label)}</div>${g.workbooks.map(_pipelineChildLine).join('')}`
@@ -54697,7 +54719,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       ${_entityIsDone('shipment', c.id) ? _doneBadgeHtml(shipmentData[c.id]) : ''}
       ${_shipmentStatusPillHtml(c.id)}
       ${c.flagged ? `<div class="pl-flag">⚑ Change requested</div>` : ''}
-      ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${c.count} workbook${c.count === 1 ? '' : 's'}</button>
+      ${body ? `<button class="pl-drill-toggle" onclick="event.stopPropagation(); this.closest('.pl-card').classList.toggle('pl-open');">${_plEsc(_shipmentWbBreakdown(c))}</button>
       <div class="pl-children">${body}</div>` : ''}
       ${_plAssigneeChips(cid)}
     </div>`;
