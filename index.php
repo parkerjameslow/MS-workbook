@@ -8631,14 +8631,14 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
              wraps #product-desc in place (initRichEditors), so it works
              wherever the textarea lives. -->
         <div class="field col-full">
-          <div class="wb-desc-specs" style="display:flex; gap:20px; align-items:stretch; flex-wrap:wrap;">
-            <!-- Left — Product Description -->
-            <div style="flex:1 1 360px; min-width:0; display:flex; flex-direction:column;">
+          <div class="wb-desc-specs form-grid form-grid-2" style="align-items:start;">
+            <!-- Left — Product Description (lines up with Client Name above) -->
+            <div style="min-width:0; display:flex; flex-direction:column;">
               <label>Product Description</label>
               <textarea placeholder="Describe the product — intended use, key features, special requirements…" id="product-desc" data-rich="1"></textarea>
             </div>
-            <!-- Right — Technical Specifications -->
-            <div style="flex:1 1 300px; min-width:0; display:flex; flex-direction:column;">
+            <!-- Right — Technical Specifications (lines up with Product Name above) -->
+            <div style="min-width:0; display:flex; flex-direction:column;">
               <label>Technical Specifications</label>
               <div style="border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface2); padding:14px; display:flex; flex-direction:column; gap:14px; flex:1 1 auto;">
                 <div class="field" style="margin:0;">
