@@ -12750,6 +12750,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
             <option value="dhl">DHL</option>
             <option value="cosco">Cosco</option>
             <option value="matson">Matson</option>
+            <option value="local">Local Freight</option>
           </select>
         </div>
       </div>
@@ -12808,6 +12809,7 @@ $_msUsername = htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES);
           <option value="dhl">DHL</option>
           <option value="cosco">Cosco</option>
           <option value="matson">Matson</option>
+          <option value="local">Local Freight</option>
         </select>
         <input type="text" id="split-ship-tracking" placeholder="Tracking number" autocomplete="off" style="flex:1;" />
       </div>
@@ -46308,6 +46310,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
       { v: 'dhl',    lbl: 'DHL' },
       { v: 'cosco',  lbl: 'Cosco' },
       { v: 'matson', lbl: 'Matson' },
+      { v: 'local',  lbl: 'Local Freight' },
     ];
     const _trackingUrlFor = (carrier, number) => {
       if (!carrier || !number) return '';
@@ -47939,7 +47942,7 @@ define('QBO_ENVIRONMENT', 'production'); // or 'sandbox'</pre>
     rebuildShipmentsNav();
   }
 
-  function _carrierLabel(c) { return ({ ups: 'UPS', fedex: 'FedEx', dhl: 'DHL', cosco: 'Cosco', matson: 'Matson' })[c] || c.toUpperCase(); }
+  function _carrierLabel(c) { return ({ ups: 'UPS', fedex: 'FedEx', dhl: 'DHL', cosco: 'Cosco', matson: 'Matson', local: 'Local Freight' })[c] || c.toUpperCase(); }
   function _carrierColor(c) {
     // UPS brown, FedEx purple, DHL yellow, Cosco navy, Matson red —
     // universally recognized so the operator scans the lane at a glance.
